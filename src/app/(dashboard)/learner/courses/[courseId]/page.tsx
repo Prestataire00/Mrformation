@@ -52,10 +52,12 @@ interface Chapter {
   key_concepts: string[] | null;
   order_index: number;
   estimated_duration_minutes: number;
+  gamma_deck_id: string | null;
   gamma_deck_url: string | null;
   gamma_embed_url: string | null;
   gamma_export_pdf: string | null;
   gamma_export_pptx: string | null;
+  gamma_slide_start: number | null;
   elearning_quizzes: {
     id: string;
     title: string;
@@ -73,6 +75,7 @@ interface Course {
   estimated_duration_minutes: number;
   final_exam_passing_score: number;
   final_quiz_target_count: number | null;
+  course_type: string | null;
   gamma_embed_url: string | null;
   gamma_deck_url: string | null;
   elearning_chapters: Chapter[];
@@ -101,15 +104,18 @@ type Screen =
   | { type: "final_score" }
   | { type: "course_complete" };
 
-function buildScreens(chapters: Chapter[]): Screen[] {
+function buildScreens(chapters: Chapter[], courseType?: string | null): Screen[] {
   const screens: Screen[] = [{ type: "cover" }];
+  const isQuizOnly = courseType === "quiz";
   const hasAnyQuiz = chapters.some((ch) =>
     ch.elearning_quizzes.some((q) => q.elearning_quiz_questions.length > 0)
   );
 
   chapters.forEach((ch, ci) => {
-    // 1. Gamma slides (or text fallback)
-    screens.push({ type: "gamma_chapter", chapterIdx: ci });
+    // 1. Gamma slides — skip in quiz-only mode
+    if (!isQuizOnly) {
+      screens.push({ type: "gamma_chapter", chapterIdx: ci });
+    }
     // 2. Flashcards (if any)
     if (ch.elearning_flashcards && ch.elearning_flashcards.length > 0) {
       screens.push({ type: "flashcards", chapterIdx: ci });
@@ -327,7 +333,7 @@ export default function CoursePlayerPage() {
       });
     }
     setCourse(data);
-    setScreens(buildScreens(data.elearning_chapters || []));
+    setScreens(buildScreens(data.elearning_chapters || [], data.course_type));
 
     // Fetch best score
     try {
@@ -616,10 +622,12 @@ export default function CoursePlayerPage() {
                 <Clock className="h-4 w-4 text-[#3DB5C5]" />
                 {course.estimated_duration_minutes} min
               </span>
-              <span className="flex items-center gap-1.5">
-                <Sparkles className="h-4 w-4 text-violet-500" />
-                Présentations Gamma
-              </span>
+              {course.course_type !== "quiz" && (
+                <span className="flex items-center gap-1.5">
+                  <Sparkles className="h-4 w-4 text-violet-500" />
+                  Présentations Gamma
+                </span>
+              )}
             </div>
             {bestScore && (
               <div className="bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-xl px-6 py-3 mb-6 flex items-center gap-3">
@@ -642,8 +650,7 @@ export default function CoursePlayerPage() {
       /* ---- GAMMA CHAPTER (Gamma embed) ---- */
       case "gamma_chapter": {
         const ch = chapters[screen.chapterIdx];
-        // Use course-level single deck URL if available, otherwise per-chapter URL (backward compat)
-        const embedUrl = course.gamma_embed_url || ch.gamma_embed_url || (ch.gamma_deck_url ? ch.gamma_deck_url.replace("/docs/", "/embed/") : null);
+        const embedUrl = ch.gamma_embed_url || (ch.gamma_deck_url ? ch.gamma_deck_url.replace("/docs/", "/embed/") : null);
         const hasGamma = !!embedUrl;
         const hasFlashcards = ch.elearning_flashcards && ch.elearning_flashcards.length > 0;
         const hasQuiz = ch.elearning_quizzes.some((q) => q.elearning_quiz_questions.length > 0);
@@ -667,17 +674,17 @@ export default function CoursePlayerPage() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                {ch.gamma_export_pptx && (
-                  <a href={ch.gamma_export_pptx} target="_blank" rel="noopener noreferrer">
+                {ch.gamma_deck_id && (
+                  <a href={`/api/elearning/${courseId}/download-pptx?chapterId=${ch.id}`} target="_blank" rel="noopener noreferrer">
                     <Button variant="outline" size="sm" className="gap-1.5 text-xs h-8 text-orange-600 border-orange-200 hover:bg-orange-50">
                       <Download className="h-3.5 w-3.5" /> PPTX
                     </Button>
                   </a>
                 )}
-                {ch.gamma_export_pdf && (
-                  <a href={ch.gamma_export_pdf} target="_blank" rel="noopener noreferrer">
+                {ch.gamma_deck_id && (
+                  <a href={`/api/elearning/${courseId}/download-pdf?chapterId=${ch.id}`} target="_blank" rel="noopener noreferrer">
                     <Button variant="outline" size="sm" className="gap-1.5 text-xs h-8 text-red-600 border-red-200 hover:bg-red-50">
-                      <FileText className="h-3.5 w-3.5" /> PDF
+                      <Download className="h-3.5 w-3.5" /> PDF
                     </Button>
                   </a>
                 )}
@@ -1047,7 +1054,7 @@ export default function CoursePlayerPage() {
               Quiz Final
             </h2>
             <p className="text-gray-500 mb-6 max-w-sm">
-              Testez vos connaissances sur l&apos;ensemble du cours avec {course.final_quiz_target_count || 40} questions.
+              Testez vos connaissances sur l&apos;ensemble du cours avec {finalQuestions.length} questions.
             </p>
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 max-w-sm mb-8">
               <div className="flex items-center gap-2 text-sm text-amber-700">

@@ -323,6 +323,11 @@ const trainerNavItems: NavItem[] = [
     icon: LayoutDashboard,
   },
   {
+    label: "Mes Cours",
+    href: "/trainer/courses",
+    icon: BookOpen,
+  },
+  {
     label: "Mes Sessions",
     href: "/trainer/sessions",
     icon: Calendar,

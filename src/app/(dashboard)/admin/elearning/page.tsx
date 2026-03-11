@@ -61,6 +61,9 @@ import {
   BarChart3,
   BookMarked,
   Sparkles,
+  Upload,
+  Loader2,
+  Link as LinkIcon,
 } from "lucide-react";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -467,6 +470,43 @@ export default function ELearningPage() {
       [newModules[idx], newModules[swapIdx]] = [newModules[swapIdx], newModules[idx]];
       return { ...prev, modules: newModules };
     });
+  };
+
+  // ── File upload for module ──────────────────────────────────────────────────
+
+  const [uploadingModuleId, setUploadingModuleId] = useState<string | null>(null);
+
+  const handleModuleFileUpload = async (moduleId: string, file: File) => {
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+    const validExts = ["pdf", "pptx", "ppt", "docx", "doc", "mp4", "mp3", "txt", "xlsx", "zip"];
+    if (!validExts.includes(ext)) {
+      toast({ title: "Format non supporté", description: "PDF, PPTX, DOCX, MP4, MP3, XLSX, ZIP acceptés.", variant: "destructive" });
+      return;
+    }
+    if (file.size > 100 * 1024 * 1024) {
+      toast({ title: "Fichier trop volumineux", description: "Maximum 100 Mo.", variant: "destructive" });
+      return;
+    }
+    setUploadingModuleId(moduleId);
+    try {
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const storagePath = `course-modules/${Date.now()}_${safeName}`;
+      const { data, error: uploadError } = await supabase.storage
+        .from("elearning-documents")
+        .upload(storagePath, file, { cacheControl: "3600", upsert: false });
+      if (uploadError) throw new Error(uploadError.message);
+      // Generate a signed URL valid for 5 years
+      const { data: signedData, error: signedError } = await supabase.storage
+        .from("elearning-documents")
+        .createSignedUrl(data.path, 157_680_000); // 5 years in seconds
+      if (signedError || !signedData?.signedUrl) throw new Error("Impossible de générer l'URL");
+      updateModule(moduleId, { content_url: signedData.signedUrl });
+      toast({ title: "Fichier uploadé", description: file.name });
+    } catch (err) {
+      toast({ title: "Erreur upload", description: err instanceof Error ? err.message : "Erreur inconnue", variant: "destructive" });
+    } finally {
+      setUploadingModuleId(null);
+    }
   };
 
   // ─── Render ───────────────────────────────────────────────────────────────
@@ -1106,31 +1146,69 @@ export default function ELearningPage() {
                           />
                         </div>
 
-                        <div className="space-y-1 sm:col-span-3">
+                        <div className="space-y-1.5 sm:col-span-3">
                           <Label className="text-xs text-gray-500">
-                            URL du contenu{" "}
+                            Contenu{" "}
                             <span className="text-gray-400">
                               ({mod.content_type === "video"
-                                ? "lien vidéo"
+                                ? "lien vidéo ou fichier"
                                 : mod.content_type === "document"
-                                ? "lien PDF / document"
+                                ? "lien ou fichier PDF / PPTX / DOCX..."
                                 : "lien quiz"})
                             </span>
                           </Label>
-                          <Input
-                            value={mod.content_url}
-                            onChange={(e) =>
-                              updateModule(mod.id, { content_url: e.target.value })
-                            }
-                            placeholder={
-                              mod.content_type === "video"
-                                ? "https://youtube.com/..."
-                                : mod.content_type === "document"
-                                ? "https://example.com/document.pdf"
-                                : "https://example.com/quiz"
-                            }
-                            className="h-8 text-xs"
-                          />
+                          <div className="flex gap-2">
+                            <Input
+                              value={mod.content_url}
+                              onChange={(e) =>
+                                updateModule(mod.id, { content_url: e.target.value })
+                              }
+                              placeholder={
+                                mod.content_type === "video"
+                                  ? "https://youtube.com/..."
+                                  : mod.content_type === "document"
+                                  ? "https://example.com/document.pdf"
+                                  : "https://example.com/quiz"
+                              }
+                              className="h-8 text-xs flex-1"
+                            />
+                            {(mod.content_type === "document" || mod.content_type === "video") && (
+                              <label className={cn(
+                                "inline-flex items-center gap-1.5 h-8 px-3 rounded-md border text-xs font-medium cursor-pointer shrink-0 transition-colors",
+                                uploadingModuleId === mod.id
+                                  ? "border-gray-200 text-gray-400 pointer-events-none"
+                                  : "border-[#3DB5C5] text-[#3DB5C5] hover:bg-[#3DB5C5]/5"
+                              )}>
+                                <input
+                                  type="file"
+                                  accept=".pdf,.pptx,.ppt,.docx,.doc,.mp4,.mp3,.txt,.xlsx,.zip"
+                                  className="hidden"
+                                  onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) handleModuleFileUpload(mod.id, file);
+                                    e.target.value = "";
+                                  }}
+                                />
+                                {uploadingModuleId === mod.id ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <Upload className="h-3.5 w-3.5" />
+                                )}
+                                {uploadingModuleId === mod.id ? "Upload..." : "Fichier"}
+                              </label>
+                            )}
+                          </div>
+                          {mod.content_url && mod.content_url.startsWith("https://") && (
+                            <a
+                              href={mod.content_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-[11px] text-[#3DB5C5] hover:underline"
+                            >
+                              <LinkIcon className="h-3 w-3" />
+                              Aperçu du lien
+                            </a>
+                          )}
                         </div>
                       </div>
 

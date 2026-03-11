@@ -35,7 +35,7 @@ export async function GET(
          final_exam_passing_score, final_quiz_target_count,
          elearning_chapters(id, title, summary, order_index, estimated_duration_minutes,
            key_concepts, is_enriched,
-           gamma_deck_id, gamma_deck_url, gamma_embed_url, gamma_export_pdf, gamma_export_pptx,
+           gamma_deck_id, gamma_deck_url, gamma_embed_url, gamma_export_pdf, gamma_export_pptx, gamma_slide_start,
            elearning_quizzes(id, passing_score, elearning_quiz_questions(id)))`;
 
     const shallowQueryFallback = `id, title, description, objectives, status, generation_status,

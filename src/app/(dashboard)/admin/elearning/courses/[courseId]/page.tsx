@@ -56,6 +56,7 @@ interface Chapter {
   gamma_embed_url: string | null;
   gamma_export_pdf: string | null;
   gamma_export_pptx: string | null;
+  gamma_slide_start: number | null;
   is_enriched: boolean;
   elearning_quizzes: Quiz[];
 }
@@ -86,6 +87,7 @@ interface Course {
   gamma_embed_url: string | null;
   gamma_deck_url: string | null;
   gamma_deck_id: string | null;
+  gamma_export_pptx: string | null;
   elearning_chapters: Chapter[];
 }
 
@@ -225,7 +227,8 @@ export default function CourseEditorPage() {
     0
   );
   const hasGammaDeck = !!course.gamma_embed_url || chapters.some((ch) => ch.gamma_deck_url);
-  const gammaApiCalls = course.gamma_embed_url ? 1 : chapters.filter((ch) => ch.gamma_deck_url).length;
+  // Un deck par chapitre → 1 appel API par chapitre
+  const gammaApiCalls = chapters.filter((ch) => !!ch.gamma_deck_url).length || (course.gamma_embed_url ? 1 : 0);
   const hasContent = chapters.length > 0;
 
   return (
@@ -343,7 +346,7 @@ export default function CourseEditorPage() {
         {[
           { icon: BookOpen, label: "Chapitres", value: chapters.length, color: "text-blue-600 bg-blue-50", editable: false },
           { icon: HelpCircle, label: "Questions quiz", value: totalQuestions, color: "text-amber-600 bg-amber-50", editable: false },
-          { icon: Sparkles, label: "Présentation Gamma", value: hasGammaDeck ? "1 deck" : "Aucune", color: hasGammaDeck ? "text-violet-600 bg-violet-50" : "text-gray-400 bg-gray-50", editable: false },
+          ...(course.course_type !== "quiz" ? [{ icon: Sparkles, label: "Présentation Gamma", value: hasGammaDeck ? `${gammaApiCalls} deck${gammaApiCalls > 1 ? "s" : ""}` : "Aucune", color: hasGammaDeck ? "text-violet-600 bg-violet-50" : "text-gray-400 bg-gray-50", editable: false }] : []),
           { icon: Clock, label: "Durée estimée", value: `${course.estimated_duration_minutes || 0} min`, color: "text-gray-600 bg-gray-50", editable: true },
         ].map((stat) => (
           <div key={stat.label} className="bg-white border border-gray-200 rounded-xl p-3 flex items-center gap-3 relative group">
@@ -405,14 +408,14 @@ export default function CourseEditorPage() {
       </div>
 
       {/* Gamma generate/regenerate */}
-      {hasContent && !hasGammaDeck && (
+      {hasContent && !hasGammaDeck && course.course_type !== "quiz" && (
         <div className="bg-gradient-to-r from-violet-50 to-purple-50 border border-violet-200 rounded-xl p-5 flex items-center justify-between">
           <div>
             <p className="text-sm font-semibold text-violet-700 flex items-center gap-2">
               <Sparkles className="h-4 w-4" /> Aucune présentation Gamma
             </p>
             <p className="text-xs text-violet-500 mt-0.5">
-              Générez une présentation interactive pour tout le cours (1 seul appel API, ~40 crédits)
+              Génère une présentation par chapitre (~40 crédits chacune)
             </p>
           </div>
           <Button
@@ -430,7 +433,7 @@ export default function CourseEditorPage() {
       )}
 
       {/* Gamma API info */}
-      {hasGammaDeck && (
+      {hasGammaDeck && course.course_type !== "quiz" && (
         <div className="bg-gradient-to-r from-violet-50 to-purple-50 border border-violet-200 rounded-xl p-4">
           <p className="text-sm font-semibold text-violet-700 flex items-center gap-2 mb-2">
             <Sparkles className="h-4 w-4" /> Informations Gamma API
@@ -450,17 +453,33 @@ export default function CourseEditorPage() {
             </div>
           </div>
           <p className="text-[11px] text-violet-400 mt-2">
-            {course.gamma_embed_url
-              ? "1 seul appel API Gamma pour tout le cours (~40 crédits, ~0.50 $). Plan Gamma Plus : 400 crédits/mois inclus."
-              : "1 appel API Gamma = 1 présentation (~40 crédits, ~0.50 $). Plan Gamma Plus : 400 crédits/mois inclus."}
+            1 appel API Gamma par chapitre (~40 crédits, ~0.50 $ chacun). Plan Gamma Plus : 400 crédits/mois inclus.
           </p>
-          <div className="mt-3 flex items-center gap-2">
+          <div className="mt-3 flex items-center gap-2 flex-wrap">
             {course.gamma_deck_url && (
               <a href={course.gamma_deck_url} target="_blank" rel="noopener noreferrer">
                 <Button variant="outline" size="sm" className="gap-1.5 text-xs h-8 text-violet-700 border-violet-200 hover:bg-violet-50">
-                  <ExternalLink className="h-3.5 w-3.5" /> Ouvrir le deck complet dans Gamma
+                  <ExternalLink className="h-3.5 w-3.5" /> Voir / Éditer dans Gamma
                 </Button>
               </a>
+            )}
+            {course.gamma_deck_id ? (
+              <>
+                <a href={`/api/elearning/${course.id}/download-pptx`} target="_blank" rel="noopener noreferrer">
+                  <Button variant="outline" size="sm" className="gap-1.5 text-xs h-8 text-orange-600 border-orange-200 hover:bg-orange-50">
+                    <Download className="h-3.5 w-3.5" /> Télécharger PPTX
+                  </Button>
+                </a>
+                <a href={`/api/elearning/${course.id}/download-pdf`} target="_blank" rel="noopener noreferrer">
+                  <Button variant="outline" size="sm" className="gap-1.5 text-xs h-8 text-red-600 border-red-200 hover:bg-red-50">
+                    <Download className="h-3.5 w-3.5" /> Télécharger PDF
+                  </Button>
+                </a>
+              </>
+            ) : (
+              <Button variant="outline" size="sm" disabled className="gap-1.5 text-xs h-8 text-gray-400 border-gray-200">
+                <Download className="h-3.5 w-3.5" /> PPTX / PDF (prochaine génération)
+              </Button>
             )}
             <Button
               variant="outline"
@@ -481,20 +500,59 @@ export default function CourseEditorPage() {
 
       {/* Chapters with Gamma presentations */}
       <div className="space-y-3">
-        <h2 className="text-lg font-semibold text-gray-900">Chapitres & Présentations</h2>
+        <h2 className="text-lg font-semibold text-gray-900">
+          {course.course_type === "presentation" ? "Présentation Gamma" : "Chapitres & Présentations"}
+        </h2>
 
         {chapters.length === 0 ? (
-          <div className="bg-white border border-gray-200 rounded-xl p-8 text-center">
-            <BookOpen className="h-10 w-10 text-gray-300 mx-auto mb-3" />
-            <p className="text-gray-500 text-sm">Aucun chapitre généré</p>
-          </div>
+          course.course_type === "presentation" && hasGammaDeck ? (
+            <div className="space-y-3">
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <Sparkles className="h-5 w-5 text-blue-500 shrink-0 mt-0.5" />
+                  <p className="text-sm text-blue-700">
+                    Mode Présentation — le contenu est directement généré sous forme de slides Gamma, sans chapitres textuels.
+                  </p>
+                </div>
+                {course.gamma_deck_id && (
+                  <div className="flex items-center gap-2 shrink-0">
+                    <a href={`/api/elearning/${course.id}/download-pptx`} target="_blank" rel="noopener noreferrer">
+                      <Button variant="outline" size="sm" className="gap-1.5 text-xs h-8 text-orange-600 border-orange-200 hover:bg-orange-50">
+                        <Download className="h-3.5 w-3.5" /> PPTX
+                      </Button>
+                    </a>
+                    <a href={`/api/elearning/${course.id}/download-pdf`} target="_blank" rel="noopener noreferrer">
+                      <Button variant="outline" size="sm" className="gap-1.5 text-xs h-8 text-red-600 border-red-200 hover:bg-red-50">
+                        <Download className="h-3.5 w-3.5" /> PDF
+                      </Button>
+                    </a>
+                  </div>
+                )}
+              </div>
+              {course.gamma_embed_url && (
+                <div className="aspect-video bg-gray-900 rounded-xl overflow-hidden">
+                  <iframe
+                    src={course.gamma_embed_url}
+                    className="w-full h-full border-0"
+                    allow="fullscreen"
+                    title={course.title}
+                  />
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="bg-white border border-gray-200 rounded-xl p-8 text-center">
+              <BookOpen className="h-10 w-10 text-gray-300 mx-auto mb-3" />
+              <p className="text-gray-500 text-sm">Aucun chapitre généré</p>
+            </div>
+          )
         ) : (
           <div className="space-y-2">
             {chapters.map((ch, i) => {
               const isExpanded = expandedChapter === ch.id;
               const questionsCount = ch.elearning_quizzes.reduce((a, q) => a + q.elearning_quiz_questions.length, 0);
-              const hasGamma = !!ch.gamma_deck_url || !!course.gamma_embed_url;
-              const embedUrl = course.gamma_embed_url || ch.gamma_embed_url || (ch.gamma_deck_url ? ch.gamma_deck_url.replace("/docs/", "/embed/") : null);
+              const hasGamma = !!ch.gamma_deck_url || !!ch.gamma_embed_url;
+              const embedUrl = ch.gamma_embed_url || (ch.gamma_deck_url ? ch.gamma_deck_url.replace("/docs/", "/embed/") : null);
 
               return (
                 <div key={ch.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
@@ -547,24 +605,26 @@ export default function CourseEditorPage() {
                       {/* Download/link buttons */}
                       {hasGamma && (
                         <div className="flex items-center gap-2 px-5 py-3 bg-violet-50/50 border-b border-gray-100">
-                          {ch.gamma_export_pptx && (
-                            <a href={ch.gamma_export_pptx} target="_blank" rel="noopener noreferrer">
-                              <Button variant="outline" size="sm" className="gap-1.5 text-xs h-8 text-orange-600 border-orange-200 hover:bg-orange-50">
-                                <Download className="h-3.5 w-3.5" /> Télécharger PPTX
-                              </Button>
-                            </a>
+                          {/* PPTX + PDF download via API re-fetch */}
+                          {ch.gamma_deck_id && (
+                            <>
+                              <a href={`/api/elearning/${course.id}/download-pptx?chapterId=${ch.id}`} target="_blank" rel="noopener noreferrer">
+                                <Button variant="outline" size="sm" className="gap-1.5 text-xs h-8 text-orange-600 border-orange-200 hover:bg-orange-50">
+                                  <Download className="h-3.5 w-3.5" /> Télécharger PPTX
+                                </Button>
+                              </a>
+                              <a href={`/api/elearning/${course.id}/download-pdf?chapterId=${ch.id}`} target="_blank" rel="noopener noreferrer">
+                                <Button variant="outline" size="sm" className="gap-1.5 text-xs h-8 text-red-600 border-red-200 hover:bg-red-50">
+                                  <Download className="h-3.5 w-3.5" /> Télécharger PDF
+                                </Button>
+                              </a>
+                            </>
                           )}
-                          {ch.gamma_export_pdf && (
-                            <a href={ch.gamma_export_pdf} target="_blank" rel="noopener noreferrer">
-                              <Button variant="outline" size="sm" className="gap-1.5 text-xs h-8 text-red-600 border-red-200 hover:bg-red-50">
-                                <FileText className="h-3.5 w-3.5" /> Télécharger PDF
-                              </Button>
-                            </a>
-                          )}
-                          {ch.gamma_deck_url && (
-                            <a href={ch.gamma_deck_url} target="_blank" rel="noopener noreferrer">
+                          {/* Edit: use chapter or course deck URL */}
+                          {(ch.gamma_deck_url || course.gamma_deck_url) && (
+                            <a href={(ch.gamma_deck_url || course.gamma_deck_url)!} target="_blank" rel="noopener noreferrer">
                               <Button variant="outline" size="sm" className="gap-1.5 text-xs h-8 text-violet-700 border-violet-200 hover:bg-violet-50">
-                                <ExternalLink className="h-3.5 w-3.5" /> Ouvrir dans Gamma
+                                <ExternalLink className="h-3.5 w-3.5" /> Modifier dans Gamma
                               </Button>
                             </a>
                           )}
@@ -581,7 +641,7 @@ export default function CourseEditorPage() {
                             title={`Présentation - ${ch.title}`}
                           />
                         </div>
-                      ) : (
+                      ) : course.course_type !== "quiz" ? (
                         <div className="p-8 text-center">
                           <div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center mx-auto mb-3">
                             <Sparkles className="h-6 w-6 text-gray-400" />
@@ -593,7 +653,7 @@ export default function CourseEditorPage() {
                             <p className="text-xs text-gray-400 mt-2 max-w-md mx-auto">{ch.summary}</p>
                           )}
                         </div>
-                      )}
+                      ) : null}
                     </div>
                   )}
                 </div>
@@ -645,21 +705,15 @@ export default function CourseEditorPage() {
               </div>
               <div className="min-w-0">
                 <p className="text-xs text-gray-500">Source</p>
-                {course.source_file_url.startsWith("http") ? (
-                  <a
-                    href={course.source_file_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 hover:underline text-sm truncate block max-w-xs"
-                    title={course.source_file_url}
-                  >
-                    {course.source_file_url}
-                  </a>
-                ) : (
-                  <p className="text-gray-700 text-sm truncate" title={course.source_file_url}>
-                    {course.source_file_name || course.source_file_url}
-                  </p>
-                )}
+                <a
+                  href={`/api/elearning/${course.id}/source-url`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:underline text-sm truncate block max-w-xs"
+                  title={course.source_file_url}
+                >
+                  {course.source_file_name || course.source_file_url}
+                </a>
               </div>
             </div>
           )}

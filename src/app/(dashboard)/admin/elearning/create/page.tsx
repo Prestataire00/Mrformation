@@ -173,6 +173,9 @@ export default function CreateCoursePage() {
   // Chapter count
   const [numChapters, setNumChapters] = useState(5);
 
+  // Final exam question count
+  const [finalExamCount, setFinalExamCount] = useState(40);
+
   // Fetch Gamma themes when course type includes presentations
   useEffect(() => {
     if (courseType !== "quiz" && gammaThemes.length === 0 && !themesLoading) {
@@ -246,7 +249,15 @@ export default function CreateCoursePage() {
         if (extractedTitle) setTitle(extractedTitle);
       }
 
-      toast({ title: "Contenu extrait", description: `${data.word_count} mots extraits` });
+      if (data.metadata?.transcript_available === false) {
+        toast({
+          title: `${data.word_count} mots extraits`,
+          description: data.metadata.warning as string || "Aucun sous-titre disponible — seule la description a été extraite.",
+          variant: "destructive",
+        });
+      } else {
+        toast({ title: "Contenu extrait", description: `${data.word_count} mots extraits` });
+      }
       setViewStep("configure");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Erreur d'extraction";
@@ -305,7 +316,7 @@ export default function CreateCoursePage() {
       const createBody: Record<string, unknown> = {
         title: effectiveTitle,
         course_type: courseType, // "presentation" | "quiz" | "complete"
-        final_quiz_target_count: courseType === "presentation" ? 0 : 40,
+        final_quiz_target_count: courseType === "presentation" ? 0 : finalExamCount,
         flashcards_target_count: courseType === "presentation" ? 0 : 40,
         num_chapters: numChapters,
         ...(selectedThemeId && { gamma_theme_id: selectedThemeId }),
@@ -627,6 +638,11 @@ export default function CreateCoursePage() {
                           )}>
                             {ct.title}
                           </span>
+                          {ct.id === "complete" && (
+                            <span className="absolute -top-2 right-2 bg-green-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
+                              Recommandé
+                            </span>
+                          )}
                         </button>
                       );
                     })}
@@ -658,6 +674,35 @@ export default function CreateCoursePage() {
                     <span className="text-xs text-gray-400 w-4 text-center">8</span>
                   </div>
                 </div>
+
+                {/* Final exam question count */}
+                {courseType !== "presentation" && (
+                  <div className="bg-white rounded-2xl border border-gray-200 p-6 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                          <GraduationCap className="h-4 w-4 text-amber-500" />
+                          Questions — Examen final
+                        </p>
+                        <p className="text-xs text-gray-400 mt-0.5">Entre 10 et 80 questions (recommandé : 30-40)</p>
+                      </div>
+                      <span className="text-2xl font-bold text-amber-600">{finalExamCount}</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-gray-400 w-6 text-center">10</span>
+                      <input
+                        type="range"
+                        min={10}
+                        max={80}
+                        step={5}
+                        value={finalExamCount}
+                        onChange={(e) => setFinalExamCount(Number(e.target.value))}
+                        className="flex-1 h-2 bg-gray-200 rounded-full appearance-none cursor-pointer accent-amber-500 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-amber-500 [&::-webkit-slider-thumb]:shadow-md"
+                      />
+                      <span className="text-xs text-gray-400 w-6 text-center">80</span>
+                    </div>
+                  </div>
+                )}
 
                 {/* Gamma Theme (optional) */}
                 {courseType !== "quiz" && (
@@ -758,6 +803,18 @@ export default function CreateCoursePage() {
                     ) : (
                       <p className="text-xs text-gray-400 text-center">Le style par défaut sera utilisé</p>
                     )}
+                  </div>
+                )}
+
+                {wordCount > 0 && wordCount < 100 && (
+                  <div className="flex items-start gap-2 p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-700">
+                    <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-medium">Contenu extrait très court ({wordCount} mots)</p>
+                      <p className="text-xs text-amber-600 mt-0.5">
+                        La vidéo YouTube n&apos;a probablement pas de sous-titres disponibles. Seule la description a été extraite. Le cours généré sera limité en contenu.
+                      </p>
+                    </div>
                   </div>
                 )}
 
@@ -908,6 +965,11 @@ export default function CreateCoursePage() {
                       )}>
                         {ct.title}
                       </span>
+                      {ct.id === "complete" && (
+                        <span className="absolute -top-2 right-2 bg-green-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
+                          Recommandé
+                        </span>
+                      )}
                     </button>
                   );
                 })}
@@ -939,6 +1001,35 @@ export default function CreateCoursePage() {
                 <span className="text-xs text-gray-400 w-4 text-center">8</span>
               </div>
             </div>
+
+            {/* Final exam question count */}
+            {courseType !== "presentation" && (
+              <div className="bg-white rounded-2xl border border-gray-200 p-6 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                      <GraduationCap className="h-4 w-4 text-amber-500" />
+                      Questions — Examen final
+                    </p>
+                    <p className="text-xs text-gray-400 mt-0.5">Entre 10 et 80 questions (recommandé : 30-40)</p>
+                  </div>
+                  <span className="text-2xl font-bold text-amber-600">{finalExamCount}</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-gray-400 w-6 text-center">10</span>
+                  <input
+                    type="range"
+                    min={10}
+                    max={80}
+                    step={5}
+                    value={finalExamCount}
+                    onChange={(e) => setFinalExamCount(Number(e.target.value))}
+                    className="flex-1 h-2 bg-gray-200 rounded-full appearance-none cursor-pointer accent-amber-500 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-amber-500 [&::-webkit-slider-thumb]:shadow-md"
+                  />
+                  <span className="text-xs text-gray-400 w-6 text-center">80</span>
+                </div>
+              </div>
+            )}
 
             {/* Gamma Theme selector (only for presentation/complete modes) */}
             {courseType !== "quiz" && (

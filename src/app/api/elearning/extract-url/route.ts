@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { extractFromUrl } from "@/lib/services/doc-extraction";
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 /**
  * POST /api/elearning/extract-url

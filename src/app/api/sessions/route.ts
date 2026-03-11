@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    if (profile.role !== "admin") {
+    if (!["admin", "trainer"].includes(profile.role)) {
       return NextResponse.json({ data: null, error: "Accès non autorisé" }, { status: 403 });
     }
 

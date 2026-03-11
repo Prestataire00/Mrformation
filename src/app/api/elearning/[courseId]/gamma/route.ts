@@ -1,14 +1,18 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
-import { generateGammaFullCourseContent } from "@/lib/services/openai";
 import { generateGammaChapterDeck } from "@/lib/services/gamma";
 import type { GammaGenerateOptions } from "@/lib/services/gamma";
 
-export const maxDuration = 180;
+export const maxDuration = 300;
+
+function buildChapterMarkdown(title: string, contentMarkdown: string): string {
+  // Convertit ### → ## pour la structure Gamma (H1 titre + H2 sections)
+  const body = contentMarkdown.replace(/^### /gm, "## ");
+  return `# ${title}\n\n${body}`;
+}
 
 /**
- * POST: Generate (or regenerate) a single Gamma deck for the entire course.
- * Uses the unified single-deck approach: 1 API call for all chapters.
+ * POST: Regenerate Gamma decks — one per chapter, in parallel.
  */
 export async function POST(
   _request: NextRequest,
@@ -35,9 +39,9 @@ export async function POST(
     const { data: course, error: courseError } = await supabase
       .from("elearning_courses")
       .select(`
-        id, title, objectives, gamma_theme_id,
+        id, title, gamma_theme_id,
         elearning_chapters (
-          id, title, summary, key_concepts, order_index, content_markdown
+          id, title, summary, order_index, content_markdown
         )
       `)
       .eq("id", params.courseId)
@@ -48,7 +52,7 @@ export async function POST(
     }
 
     const chapters = ((course.elearning_chapters || []) as {
-      id: string; title: string; summary: string; key_concepts: string[];
+      id: string; title: string; summary: string;
       order_index: number; content_markdown: string;
     }[]).sort((a, b) => a.order_index - b.order_index);
 
@@ -56,68 +60,77 @@ export async function POST(
       return NextResponse.json({ error: "Aucun chapitre dans ce cours" }, { status: 400 });
     }
 
-    // Step 1: Generate unified markdown for all chapters via OpenAI
-    const fullGammaMarkdown = await generateGammaFullCourseContent(
-      course.title,
-      chapters.map((ch) => ({
-        title: ch.title,
-        contentMarkdown: ch.content_markdown || ch.summary || "",
-        key_concepts: ch.key_concepts || [],
-      }))
-    );
-
-    // Step 2: Single Gamma API call
     const gammaOptions: GammaGenerateOptions = {
       themeId: (course as Record<string, unknown>).gamma_theme_id as string || undefined,
+      numCards: 8,
       language: "fr",
       tone: "professionnel et pédagogique",
       audience: "apprenants en formation professionnelle",
       textAmount: "medium",
       imageSource: "aiGenerated",
       imageStyle: "professionnel, moderne, éducatif",
+      exportAs: "pptx",
     };
 
-    const gammaDeck = await generateGammaChapterDeck(fullGammaMarkdown, gammaOptions);
+    // Generate one deck per chapter in parallel
+    const gammaResults = await Promise.allSettled(
+      chapters.map((ch) =>
+        generateGammaChapterDeck(
+          buildChapterMarkdown(ch.title, ch.content_markdown || ch.summary || ""),
+          gammaOptions
+        )
+      )
+    );
 
-    if (gammaDeck.status !== "completed" || !gammaDeck.embedUrl) {
-      return NextResponse.json({
-        error: `Gamma: statut ${gammaDeck.status} — pas d'URL générée`,
-      }, { status: 502 });
+    const succeeded: { chapter_id: string; deck_url: string; embed_url: string }[] = [];
+
+    for (let i = 0; i < chapters.length; i++) {
+      const r = gammaResults[i];
+      if (r.status === "fulfilled" && r.value.status === "completed" && r.value.embedUrl) {
+        await supabase
+          .from("elearning_chapters")
+          .update({
+            gamma_embed_url: r.value.embedUrl,
+            gamma_deck_url: r.value.url,
+            gamma_deck_id: r.value.id, // generationId — used for re-downloading PPTX
+            gamma_slide_start: null,
+            ...(r.value.exportPptx && { gamma_export_pptx: r.value.exportPptx }),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", chapters[i].id);
+        succeeded.push({ chapter_id: chapters[i].id, deck_url: r.value.url, embed_url: r.value.embedUrl });
+      } else {
+        console.warn(`[Gamma] Chapitre ${i + 1} échoué:`, r.status === "rejected" ? r.reason : r.value.status);
+      }
     }
 
-    // Step 3: Store at course level
-    await supabase
-      .from("elearning_courses")
-      .update({
-        gamma_embed_url: gammaDeck.embedUrl,
-        gamma_deck_url: gammaDeck.url,
-        gamma_deck_id: gammaDeck.gammaId || gammaDeck.id,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", params.courseId);
+    // Store chapter 1's deck at course level (for "Voir dans Gamma" button)
+    if (succeeded.length > 0) {
+      const firstResult = gammaResults[0];
+      if (firstResult?.status === "fulfilled" && firstResult.value.status === "completed") {
+        const first = firstResult.value;
+        await supabase
+          .from("elearning_courses")
+          .update({
+            gamma_embed_url: first.embedUrl,
+            gamma_deck_url: first.url,
+            gamma_deck_id: first.id, // generationId — used for re-downloading PPTX
+            ...(first.exportPptx && { gamma_export_pptx: first.exportPptx }),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", params.courseId);
+      }
+    }
 
-    // Step 4: Update each chapter with same URL + estimated slide_start
-    const ESTIMATED_SLIDES_PER_CHAPTER = 7;
-    for (let i = 0; i < chapters.length; i++) {
-      const slideStart = 1 + i * ESTIMATED_SLIDES_PER_CHAPTER;
-      await supabase
-        .from("elearning_chapters")
-        .update({
-          gamma_slide_start: slideStart,
-          gamma_embed_url: gammaDeck.embedUrl,
-          gamma_deck_url: gammaDeck.url,
-          gamma_deck_id: gammaDeck.gammaId || gammaDeck.id,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", chapters[i].id);
+    if (succeeded.length === 0) {
+      return NextResponse.json({ error: "Aucun deck Gamma généré" }, { status: 502 });
     }
 
     return NextResponse.json({
       data: {
-        deck_url: gammaDeck.url,
-        embed_url: gammaDeck.embedUrl,
-        deck_id: gammaDeck.gammaId || gammaDeck.id,
-        chapters_count: chapters.length,
+        chapters_succeeded: succeeded.length,
+        chapters_total: chapters.length,
+        chapters: succeeded,
       },
     });
   } catch (error) {

@@ -6,7 +6,6 @@ import {
   generateQuizAndFlashcards,
   generateFinalExamBatch,
   enrichChapterContent,
-  generateGammaFullCourseContent,
 } from "@/lib/services/openai";
 import { generateGammaChapterDeck } from "@/lib/services/gamma";
 import type { GammaGenerateOptions } from "@/lib/services/gamma";
@@ -69,11 +68,148 @@ export async function POST(
           return;
         }
 
+        const courseType = course.course_type || "complete";
+
         // Update status
         await supabase
           .from("elearning_courses")
           .update({ generation_status: "generating", updated_at: new Date().toISOString() })
           .eq("id", params.courseId);
+
+        // ══════════════════════════════════════════════════════════════
+        // MODE PRÉSENTATION : Plan OpenAI + 1 deck Gamma par chapitre
+        // ══════════════════════════════════════════════════════════════
+        if (courseType === "presentation") {
+          send("analyzing", 3, "Analyse du document en cours...");
+
+          // Pass 1 : outline (titres + summaries seulement, pas de contenu complet)
+          const maxChaptersP = course.num_chapters || 6;
+          const outlineP = await generateCourseOutline(course.extracted_text, maxChaptersP);
+          send("outline_done", 10, `Plan généré : ${outlineP.chapters.length} chapitres`, {
+            title: outlineP.title,
+            chapters: outlineP.chapters.map((c) => c.title),
+          });
+
+          await supabase
+            .from("elearning_courses")
+            .update({
+              title: outlineP.title || course.title,
+              description: outlineP.description,
+              objectives: outlineP.objectives,
+              estimated_duration_minutes: outlineP.estimated_duration_minutes,
+            })
+            .eq("id", params.courseId);
+
+          // Pass 2 : insérer chapitres en DB (content_markdown vide — contenu uniquement dans Gamma)
+          const chapInserts = outlineP.chapters.map((ch, idx) => ({
+            course_id: params.courseId,
+            title: ch.title,
+            summary: ch.summary || "",
+            content_html: "",
+            content_markdown: "",
+            key_concepts: ch.key_concepts || [],
+            order_index: idx,
+            estimated_duration_minutes: Math.max(
+              5,
+              Math.round((outlineP.estimated_duration_minutes || 30) / outlineP.chapters.length)
+            ),
+          }));
+
+          const { data: insertedChaps, error: chapInsertError } = await supabase
+            .from("elearning_chapters")
+            .insert(chapInserts)
+            .select("id, title, summary, order_index");
+
+          if (chapInsertError || !insertedChaps) {
+            throw new Error(`Erreur insertion chapitres : ${chapInsertError?.message}`);
+          }
+
+          send("chapters_created", 30, `${insertedChaps.length} chapitres créés`);
+
+          // Pass 3 : 1 deck Gamma par chapitre en parallèle
+          const gammaOptionsP: GammaGenerateOptions = {
+            themeId: (course as Record<string, unknown>).gamma_theme_id as string || undefined,
+            numCards: 8,
+            language: "fr",
+            tone: "professionnel et pédagogique",
+            audience: "apprenants en formation professionnelle",
+            textAmount: "medium",
+            imageSource: "aiGenerated",
+            imageStyle: "professionnel, moderne, éducatif",
+            exportAs: "pptx",
+          };
+
+          send("gamma_generating", 40, `Génération de ${insertedChaps.length} présentations Gamma...`);
+
+          const gammaResultsP = await Promise.allSettled(
+            insertedChaps.map((ch) =>
+              generateGammaChapterDeck(
+                buildChapterMarkdown(ch.title, ch.summary || ""),
+                gammaOptionsP
+              )
+            )
+          );
+
+          let gammaPSuccess = false;
+          for (let i = 0; i < insertedChaps.length; i++) {
+            const r = gammaResultsP[i];
+            if (r.status === "fulfilled" && r.value.status === "completed" && r.value.embedUrl) {
+              await supabase
+                .from("elearning_chapters")
+                .update({
+                  gamma_embed_url: r.value.embedUrl,
+                  gamma_deck_url: r.value.url,
+                  gamma_deck_id: r.value.id, // generationId
+                  gamma_slide_start: null,
+                  ...(r.value.exportPptx && { gamma_export_pptx: r.value.exportPptx }),
+                  updated_at: new Date().toISOString(),
+                })
+                .eq("id", insertedChaps[i].id);
+              gammaPSuccess = true;
+            } else {
+              const reason = r.status === "rejected" ? r.reason : `statut ${r.value.status}`;
+              console.warn(`[Gamma] Chapitre présentation ${i + 1} échoué:`, reason);
+            }
+          }
+
+          // Chapitre 1 au niveau cours
+          const firstResultP = gammaResultsP[0];
+          if (firstResultP?.status === "fulfilled" && firstResultP.value.status === "completed") {
+            const first = firstResultP.value;
+            await supabase
+              .from("elearning_courses")
+              .update({
+                gamma_embed_url: first.embedUrl,
+                gamma_deck_url: first.url,
+                gamma_deck_id: first.id,
+                ...(first.exportPptx && { gamma_export_pptx: first.exportPptx }),
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", params.courseId);
+          }
+
+          send("gamma_done", 75, `${gammaResultsP.filter((r) => r.status === "fulfilled").length}/${insertedChaps.length} présentations Gamma générées`);
+
+          await supabase
+            .from("elearning_courses")
+            .update({
+              status: "draft",
+              generation_status: "completed",
+              generation_log: [
+                { step: "outline", timestamp: new Date().toISOString(), message: `${outlineP.chapters.length} chapitres planifiés` },
+                { step: "gamma", timestamp: new Date().toISOString(), message: gammaPSuccess ? `${gammaResultsP.filter((r) => r.status === "fulfilled").length} présentations Gamma générées` : "Échec génération Gamma" },
+              ],
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", params.courseId);
+
+          send("complete", 100, "Cours généré avec succès !", { course_id: params.courseId });
+          return;
+        }
+
+        // ══════════════════════════════════════════════════════════════
+        // MODES QUIZ / COMPLET : Pipeline OpenAI complet
+        // ══════════════════════════════════════════════════════════════
 
         send("analyzing", 3, "Analyse du document en cours...");
 
@@ -180,175 +316,160 @@ export async function POST(
           send(`chapter_${i + 1}_done`, progress, `Chapitre ${i + 1} généré${isEnriched ? " et enrichi" : ""}`);
         }
 
-        // ── Pass 3: Generate per-chapter quizzes & flashcards (skip for "presentation" mode) ─────
-        const courseType = course.course_type || "complete";
-        const shouldGenerateQuizzes = courseType !== "presentation";
+        // ── Pass 3: Generate per-chapter quizzes & flashcards ─────
         let quizCount = 0;
         let flashcardCount = 0;
 
-        if (shouldGenerateQuizzes) {
-          send("quizzes", 38, "Génération des quiz et flashcards par chapitre...");
+        send("quizzes", 38, "Génération des quiz et flashcards par chapitre...");
 
-          const quizData = await generateQuizAndFlashcards(
-            chapterData.map((c) => ({
-              title: c.title,
-              summary: c.summary,
-              key_concepts: c.key_concepts,
-            })),
-            outline.title
-          );
+        const quizData = await generateQuizAndFlashcards(
+          chapterData.map((c) => ({
+            title: c.title,
+            summary: c.summary,
+            key_concepts: c.key_concepts,
+          })),
+          outline.title
+        );
 
-          for (let i = 0; i < chapterData.length; i++) {
-            const chapterId = chapterData[i].id;
+        for (let i = 0; i < chapterData.length; i++) {
+          const chapterId = chapterData[i].id;
 
-            const chapterQuestions = quizData.quiz_questions.filter((q) => q.chapter_index === i);
-            const validQuestions = chapterQuestions.filter((q) => {
-              if (q.type === "multiple_choice") {
-                return q.options && q.options.length >= 2;
-              }
-              return true;
-            });
-
-            if (validQuestions.length > 0) {
-              const { data: quiz } = await supabase
-                .from("elearning_quizzes")
-                .insert({ chapter_id: chapterId, title: `Quiz - ${chapterData[i].title}` })
-                .select("id")
-                .single();
-
-              if (quiz) {
-                const questions = validQuestions.map((q, qIdx) => ({
-                  quiz_id: quiz.id,
-                  question_text: q.question,
-                  question_type: q.type,
-                  options:
-                    q.type === "multiple_choice"
-                      ? (q.options || []).map((opt, optIdx) => ({
-                          text: opt,
-                          is_correct: optIdx === q.correct_answer,
-                        }))
-                      : [
-                          { text: "Vrai", is_correct: q.correct_answer === true },
-                          { text: "Faux", is_correct: q.correct_answer === false },
-                        ],
-                  explanation: q.explanation,
-                  order_index: qIdx,
-                }));
-
-                await supabase.from("elearning_quiz_questions").insert(questions);
-              }
+          const chapterQuestions = quizData.quiz_questions.filter((q) => q.chapter_index === i);
+          const validQuestions = chapterQuestions.filter((q) => {
+            if (q.type === "multiple_choice") {
+              return q.options && q.options.length >= 2;
             }
+            return true;
+          });
 
-            const chapterFlashcards = quizData.flashcards.filter((f) => f.chapter_index === i);
-            if (chapterFlashcards.length > 0) {
-              const flashcards = chapterFlashcards.map((f, fIdx) => ({
-                chapter_id: chapterId,
-                front_text: f.front,
-                back_text: f.back,
-                order_index: fIdx,
+          if (validQuestions.length > 0) {
+            const { data: quiz } = await supabase
+              .from("elearning_quizzes")
+              .insert({ chapter_id: chapterId, title: `Quiz - ${chapterData[i].title}` })
+              .select("id")
+              .single();
+
+            if (quiz) {
+              const questions = validQuestions.map((q, qIdx) => ({
+                quiz_id: quiz.id,
+                question_text: q.question,
+                question_type: q.type,
+                options:
+                  q.type === "multiple_choice"
+                    ? (q.options || []).map((opt, optIdx) => ({
+                        text: opt,
+                        is_correct: optIdx === q.correct_answer,
+                      }))
+                    : [
+                        { text: "Vrai", is_correct: q.correct_answer === true },
+                        { text: "Faux", is_correct: q.correct_answer === false },
+                      ],
+                explanation: q.explanation,
+                order_index: qIdx,
               }));
-              await supabase.from("elearning_flashcards").insert(flashcards);
+
+              await supabase.from("elearning_quiz_questions").insert(questions);
             }
           }
 
-          quizCount = quizData.quiz_questions.length;
-          flashcardCount = quizData.flashcards.length;
-          send("quizzes_done", 48, `${quizCount} questions et ${flashcardCount} flashcards par chapitre`);
-        } else {
-          send("quizzes_skipped", 48, "Quiz et flashcards ignorés (mode Présentation)");
+          const chapterFlashcards = quizData.flashcards.filter((f) => f.chapter_index === i);
+          if (chapterFlashcards.length > 0) {
+            const flashcards = chapterFlashcards.map((f, fIdx) => ({
+              chapter_id: chapterId,
+              front_text: f.front,
+              back_text: f.back,
+              order_index: fIdx,
+            }));
+            await supabase.from("elearning_flashcards").insert(flashcards);
+          }
         }
 
-        // ── Pass 4: Generate ONE Gamma presentation for entire course (skip for "quiz" mode) ──
-        const shouldGenerateGamma = courseType !== "quiz";
+        quizCount = quizData.quiz_questions.length;
+        flashcardCount = quizData.flashcards.length;
+        send("quizzes_done", 48, `${quizCount} questions et ${flashcardCount} flashcards par chapitre`);
+
+        // ── Pass 4: Gamma (mode "complete" uniquement) ──────────
+        // Un deck par chapitre, générés en parallèle
+        function buildChapterMarkdown(title: string, contentMarkdown: string): string {
+          // Convertit ### → ## pour la structure Gamma (H1 titre + H2 sections)
+          const body = contentMarkdown.replace(/^### /gm, "## ");
+          return `# ${title}\n\n${body}`;
+        }
+
         let gammaSuccess = false;
 
-        if (shouldGenerateGamma) {
-          const gammaThemeId = course.gamma_theme_id || null;
+        if (courseType === "complete") {
+          send("gamma", 50, `Génération de ${chapterData.length} présentations Gamma en parallèle...`);
 
-          send("gamma", 50, "Génération du contenu Gamma unifié (1 seul appel API)...");
-
-          // Gamma generation options
           const gammaOptions: GammaGenerateOptions = {
-            themeId: gammaThemeId || undefined,
+            themeId: course.gamma_theme_id || undefined,
+            numCards: 8, // 1 titre + 6-7 slides de contenu par chapitre
             language: "fr",
             tone: "professionnel et pédagogique",
             audience: "apprenants en formation professionnelle",
             textAmount: "medium",
             imageSource: "aiGenerated",
             imageStyle: "professionnel, moderne, éducatif",
+            exportAs: "pptx",
           };
 
-          try {
-            // Pre-check: verify Gamma API key is configured
-            if (!process.env.GAMMA_API_KEY || process.env.GAMMA_API_KEY === "votre-cle-gamma" || process.env.GAMMA_API_KEY === "sk-gamma-J6zCwUMnIojCSr09beTKYREIa22wE9dmF7txAQjHv1c") {
-              throw new Error("Clé Gamma API invalide ou non configurée. Rendez-vous sur gamma.app pour obtenir une clé valide.");
-            }
+          const gammaResults = await Promise.allSettled(
+            chapterData.map((ch) =>
+              generateGammaChapterDeck(buildChapterMarkdown(ch.title, ch.contentMarkdown), gammaOptions)
+            )
+          );
 
-            // Step 1: Generate unified markdown for all chapters via OpenAI
-            send("gamma_content", 52, "Création du storyboard unifié pour Gamma...");
-            const fullGammaMarkdown = await generateGammaFullCourseContent(
-              outline.title,
-              chapterData.map((ch) => ({
-                title: ch.title,
-                contentMarkdown: ch.contentMarkdown,
-                key_concepts: ch.key_concepts,
-              }))
-            );
-
-            // Step 2: Single Gamma API call for the entire course
-            send("gamma_generating", 58, "Appel Gamma API — génération du deck complet...");
-            const gammaDeck = await generateGammaChapterDeck(fullGammaMarkdown, gammaOptions);
-
-            if (gammaDeck.status === "completed" && gammaDeck.embedUrl) {
-              // Step 3: Store at course level
-              const courseGammaUpdate: Record<string, unknown> = {
-                gamma_embed_url: gammaDeck.embedUrl,
-                gamma_deck_url: gammaDeck.url,
-                gamma_deck_id: gammaDeck.gammaId || gammaDeck.id,
-                updated_at: new Date().toISOString(),
-              };
+          for (let i = 0; i < chapterData.length; i++) {
+            const r = gammaResults[i];
+            if (r.status === "fulfilled" && r.value.status === "completed" && r.value.embedUrl) {
               await supabase
-                .from("elearning_courses")
-                .update(courseGammaUpdate)
-                .eq("id", params.courseId);
-
-              // Step 4: Estimate slide_start per chapter
-              // The unified markdown uses H1 per chapter, Gamma creates ~6-8 cards per H1 section
-              // We estimate: slide 0 = cover, then ~7 slides per chapter
-              const ESTIMATED_SLIDES_PER_CHAPTER = 7;
-              for (let i = 0; i < chapterData.length; i++) {
-                const slideStart = 1 + i * ESTIMATED_SLIDES_PER_CHAPTER; // slide 0 = course title card
-                await supabase
-                  .from("elearning_chapters")
-                  .update({
-                    gamma_slide_start: slideStart,
-                    gamma_embed_url: gammaDeck.embedUrl, // same URL for all chapters (backward compat)
-                    gamma_deck_url: gammaDeck.url,
-                    gamma_deck_id: gammaDeck.gammaId || gammaDeck.id,
-                    updated_at: new Date().toISOString(),
-                  })
-                  .eq("id", chapterData[i].id);
-              }
-
+                .from("elearning_chapters")
+                .update({
+                  gamma_embed_url: r.value.embedUrl,
+                  gamma_deck_url: r.value.url,
+                  gamma_deck_id: r.value.id, // generationId — used for re-downloading PPTX
+                  gamma_slide_start: null,
+                  ...(r.value.exportPptx && { gamma_export_pptx: r.value.exportPptx }),
+                  updated_at: new Date().toISOString(),
+                })
+                .eq("id", chapterData[i].id);
               gammaSuccess = true;
-              send("gamma_done", 75, `Présentation Gamma unique générée — ${gammaDeck.url}`);
             } else {
-              send("gamma_error", 75, `Gamma : statut ${gammaDeck.status} — pas d'URL générée`);
+              const reason = r.status === "rejected" ? r.reason : `statut ${r.value.status}`;
+              console.warn(`[Gamma] Chapitre ${i + 1} échoué:`, reason);
             }
-          } catch (e) {
-            console.error("[Gamma] Error generating single deck:", e);
-            send("gamma_error", 75, `Erreur Gamma : ${e instanceof Error ? e.message : "erreur"}`);
+          }
+
+          // Stocker le deck du chapitre 1 au niveau du cours (bouton "Voir dans Gamma")
+          const firstResult = gammaResults[0];
+          if (firstResult?.status === "fulfilled" && firstResult.value.status === "completed") {
+            const first = firstResult.value;
+            await supabase
+              .from("elearning_courses")
+              .update({
+                gamma_embed_url: first.embedUrl,
+                gamma_deck_url: first.url,
+                gamma_deck_id: first.id, // generationId — used for re-downloading PPTX
+                ...(first.exportPptx && { gamma_export_pptx: first.exportPptx }),
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", params.courseId);
+          }
+
+          if (gammaSuccess) {
+            send("gamma_done", 75, `${gammaResults.filter((r) => r.status === "fulfilled").length}/${chapterData.length} présentations Gamma générées`);
+          } else {
+            send("gamma_error", 75, "Aucune présentation Gamma générée");
           }
         } else {
-          send("gamma_skipped", 75, "Présentations Gamma ignorées (mode Quiz)");
+          send("gamma_skipped", 75, "Présentations Gamma ignorées (mode Quiz interactif)");
         }
 
-        // ── Pass 5: Generate Final Exam (skip for "presentation" mode) ─────
+        // ── Pass 5: Generate Final Exam ─────────────────────────
         const finalQuizTarget = course.final_quiz_target_count ?? 40;
-        const shouldGenerateFinalExam = courseType !== "presentation" && finalQuizTarget > 0;
         let finalExamCount = 0;
 
-        if (shouldGenerateFinalExam) {
+        if (finalQuizTarget > 0) {
           send("final_exam", 76, `Génération de l'examen final (${finalQuizTarget} questions)...`);
 
           const sourceChunks = chunks.map((text, index) => ({ index, text }));
@@ -361,9 +482,11 @@ export async function POST(
             const remaining = finalQuizTarget - allFinalQuestions.length;
             const batchCount = Math.min(EXAM_BATCH_SIZE, remaining);
 
-            const mcq = Math.round(batchCount * 0.6);
-            const tf = Math.round(batchCount * 0.2);
-            const sa = batchCount - mcq - tf;
+            // Buffer +40% pour absorber les questions invalides filtrées par OpenAI
+            const bufferedCount = Math.min(Math.ceil(batchCount * 1.4), EXAM_BATCH_SIZE);
+            const mcq = Math.round(bufferedCount * 0.6);
+            const tf = Math.round(bufferedCount * 0.2);
+            const sa = bufferedCount - mcq - tf;
 
             const chaptersPerBatch = Math.ceil(chapterData.length / examTotalBatches);
             const startChapter = batchIdx * chaptersPerBatch;
@@ -388,7 +511,7 @@ export async function POST(
                 sourceChunks,
                 {
                   batchIndex: batchIdx,
-                  questionsToGenerate: batchCount,
+                  questionsToGenerate: bufferedCount,
                   typeDistribution: { multiple_choice: mcq, true_false: tf, short_answer: sa },
                   difficultyRange: { min: diffMin, max: diffMax },
                   focusChapterIndices: focusChapters,
@@ -407,8 +530,11 @@ export async function POST(
             }
           }
 
-          if (allFinalQuestions.length > 0) {
-            const finalExamInserts = allFinalQuestions.map((q, idx) => ({
+          // Tronquer au nombre cible (le buffer peut en générer plus)
+          const trimmedFinalQuestions = allFinalQuestions.slice(0, finalQuizTarget);
+
+          if (trimmedFinalQuestions.length > 0) {
+            const finalExamInserts = trimmedFinalQuestions.map((q, idx) => ({
               course_id: params.courseId,
               question_text: q.question,
               question_type: q.type,
@@ -434,13 +560,13 @@ export async function POST(
             }
           }
 
-          finalExamCount = allFinalQuestions.length;
+          finalExamCount = trimmedFinalQuestions.length;
           send("final_exam_done", 95, `${finalExamCount} questions d'examen final générées`);
         } else {
-          send("final_exam_skipped", 95, "Examen final ignoré (mode Présentation)");
+          send("final_exam_skipped", 95, "Examen final ignoré (cible = 0)");
         }
 
-        // ── Finalize (no more global flashcards pass) ─────────────
+        // ── Finalize ─────────────────────────────────────────────
         await supabase
           .from("elearning_courses")
           .update({
@@ -449,9 +575,9 @@ export async function POST(
             generation_log: [
               { step: "outline", timestamp: new Date().toISOString(), message: `${outline.chapters.length} chapitres planifiés` },
               { step: "chapters", timestamp: new Date().toISOString(), message: `${chapterData.length} chapitres générés` },
-              ...(shouldGenerateQuizzes ? [{ step: "quizzes", timestamp: new Date().toISOString(), message: `${quizCount} questions, ${flashcardCount} flashcards par chapitre` }] : []),
-              ...(shouldGenerateGamma ? [{ step: "gamma", timestamp: new Date().toISOString(), message: gammaSuccess ? "1 présentation Gamma unique générée" : "Échec génération Gamma" }] : []),
-              ...(shouldGenerateFinalExam ? [{ step: "final_exam", timestamp: new Date().toISOString(), message: `${finalExamCount} questions d'examen final` }] : []),
+              { step: "quizzes", timestamp: new Date().toISOString(), message: `${quizCount} questions, ${flashcardCount} flashcards par chapitre` },
+              ...(courseType === "complete" ? [{ step: "gamma", timestamp: new Date().toISOString(), message: gammaSuccess ? "1 présentation Gamma unique générée" : "Échec génération Gamma" }] : []),
+              ...(finalExamCount > 0 ? [{ step: "final_exam", timestamp: new Date().toISOString(), message: `${finalExamCount} questions d'examen final` }] : []),
             ],
             updated_at: new Date().toISOString(),
           })

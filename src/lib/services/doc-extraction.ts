@@ -4,6 +4,10 @@
 
 import pdfParse from "pdf-parse";
 import mammoth from "mammoth";
+import { execFile } from "child_process";
+import { promisify } from "util";
+
+const execFileAsync = promisify(execFile);
 
 /**
  * Extrait le texte d'un buffer selon le type de fichier
@@ -95,144 +99,196 @@ export async function extractFromUrl(
   return extractFromWebPage(url);
 }
 
+// Common headers for YouTube requests — includes consent cookie to bypass EU GDPR page
+const YT_HEADERS = {
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
+  "Cookie": "CONSENT=YES+cb.20210328-17-p0.fr+FX+667; SOCS=CAESEwgDEgk0ODE3Nzk3MjkaAmZyIAEaBgiA_LyaBg",
+};
+
 /**
- * Extract transcript from a YouTube video using free transcript APIs
+ * Parse transcript lines from captions XML (srv1/srv3)
+ */
+function parseXmlTranscript(xml: string): string[] {
+  const lines: string[] = [];
+  const matches = xml.matchAll(/<text[^>]*>([\s\S]*?)<\/text>/gi);
+  for (const m of matches) {
+    const line = m[1]
+      .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&apos;/g, "'")
+      .replace(/<[^>]+>/g, "").trim();
+    if (line) lines.push(line);
+  }
+  return lines;
+}
+
+/**
+ * Build a readable text from transcript lines (one paragraph every ~10 lines)
+ */
+function linesToParagraphs(lines: string[], groupSize = 10): string {
+  const paragraphs: string[] = [];
+  for (let i = 0; i < lines.length; i += groupSize) {
+    const chunk = lines.slice(i, i + groupSize).join(" ");
+    if (chunk.trim()) paragraphs.push(chunk);
+  }
+  return paragraphs.join("\n\n");
+}
+
+/**
+ * Extract transcript from a YouTube video
+ * Method 1: Python youtube-transcript-api (most reliable, handles anti-bot) — tried FIRST
+ * Method 2: ytInitialPlayerResponse JSON embedded in page HTML
+ * Fallback: description only
  */
 async function extractFromYouTube(
   videoId: string,
   originalUrl: string
 ): Promise<{ text: string; metadata: Record<string, unknown> }> {
-  // Try multiple transcript extraction methods
+  let videoTitle = "Vidéo YouTube";
+  let descriptionFallback: string | null = null;
 
-  // Method 1: YouTube's internal timedtext API (via page scraping for captions)
+  // Fetch page to get title and description (used as fallback)
+  // Also try Method 2 (ytInitialPlayerResponse) as a secondary path
   try {
-    const pageRes = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-        "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
-      },
-    });
-    const html = await pageRes.text();
+    const pageRes = await fetch(`https://www.youtube.com/watch?v=${videoId}`, { headers: YT_HEADERS });
+    const pageHtml = await pageRes.text();
 
-    // Extract video title
-    const titleMatch = html.match(/<title>([^<]*)<\/title>/);
-    const videoTitle = titleMatch ? titleMatch[1].replace(" - YouTube", "").trim() : "Vidéo YouTube";
+    const titleMatch = pageHtml.match(/<title>([^<]*)<\/title>/);
+    if (titleMatch) videoTitle = titleMatch[1].replace(" - YouTube", "").trim();
 
-    // Extract captions URL from page data
-    // The JSON is embedded in JS, so we need a greedy match for the array
-    const captionsMatch = html.match(/"captionTracks":\s*(\[[\s\S]*?\])(?=\s*[,}\]])/);
-    if (captionsMatch) {
-      // Unescape unicode sequences like \u0026 that YouTube embeds in the JS
-      const rawJson = captionsMatch[1].replace(/\\u0026/g, "&").replace(/\\"/g, '"');
-      let captionTracks: { baseUrl: string; languageCode: string; name?: { simpleText?: string } }[];
+    const descMatch = pageHtml.match(/"shortDescription":"((?:[^"\\]|\\.)*)"/);
+    if (descMatch) {
+      descriptionFallback = descMatch[1]
+        .replace(/\\n/g, "\n").replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+    }
+  } catch { /* page fetch failed, continue with default title */ }
+
+  // Method 1: Python youtube-transcript-api (most reliable — handles anti-bot)
+  try {
+    const pyScript = `
+import sys, json
+from youtube_transcript_api import YouTubeTranscriptApi
+api = YouTubeTranscriptApi()
+video_id = sys.argv[1]
+try:
+    t = api.fetch(video_id, languages=['fr', 'en'])
+except Exception:
+    t = api.fetch(video_id)
+print(json.dumps([{'text': s.text, 'start': s.start} for s in t]))
+`.trim();
+
+    // Candidates for python3 binary — Next.js may have a restricted PATH
+    const pythonCandidates = [
+      process.env.PYTHON3_PATH,
+      "/usr/local/opt/python@3.13/bin/python3.13",
+      "/usr/local/opt/python@3.12/bin/python3.12",
+      "/usr/local/bin/python3",
+      "/usr/bin/python3",
+      "python3",
+    ].filter(Boolean) as string[];
+
+    let stdout = "";
+    let lastError = "";
+    for (const py of pythonCandidates) {
       try {
-        captionTracks = JSON.parse(rawJson);
-      } catch {
-        // Try with a broader regex: grab until the closing bracket more carefully
-        const broader = html.match(/"captionTracks":\s*(\[[\s\S]*?\])\s*[,}]/);
-        if (broader) {
-          const raw2 = broader[1].replace(/\\u0026/g, "&").replace(/\\"/g, '"');
-          captionTracks = JSON.parse(raw2);
-        } else {
-          captionTracks = [];
-        }
+        const result = await execFileAsync(py, ["-c", pyScript, videoId], {
+          timeout: 30000,
+          env: { ...process.env, PATH: `/usr/local/opt/python@3.13/bin:/usr/local/opt/python@3.12/bin:/usr/local/bin:/usr/bin:/bin:${process.env.PATH || ""}` },
+        });
+        stdout = result.stdout;
+        console.log(`[YouTube] Python transcript OK with ${py}, segments: ${stdout.substring(0, 100)}`);
+        break;
+      } catch (e) {
+        lastError = String(e);
+        console.warn(`[YouTube] Python candidate ${py} failed:`, lastError.substring(0, 200));
       }
+    }
 
-      // Prefer French, then auto-generated French, then English, then first available
-      const frTrack = captionTracks.find((t) => t.languageCode === "fr" && !t.name?.simpleText?.includes("auto"));
-      const frAutoTrack = captionTracks.find((t) => t.languageCode === "fr");
-      const enTrack = captionTracks.find((t) => t.languageCode === "en");
-      const track = frTrack || frAutoTrack || enTrack || captionTracks[0];
+    if (stdout.trim()) {
+      const segments: { text: string; start: number }[] = JSON.parse(stdout.trim());
+      if (segments.length > 0) {
+        const lines = segments.map((s) => s.text.trim()).filter(Boolean);
+        const text = `# ${videoTitle}\n\nTranscription complète de la vidéo YouTube\nSource : ${originalUrl}\n\n${linesToParagraphs(lines)}`;
+        return {
+          text,
+          metadata: { type: "youtube", video_id: videoId, title: videoTitle, segment_count: segments.length, char_count: text.length },
+        };
+      }
+    }
+    console.warn("[YouTube] Python method returned no segments, trying page-based method");
+  } catch (e) {
+    console.warn("[YouTube] Python method error:", String(e).substring(0, 200));
+  }
+
+  // Method 2: parse ytInitialPlayerResponse from page HTML
+  try {
+    const pageRes = await fetch(`https://www.youtube.com/watch?v=${videoId}`, { headers: YT_HEADERS });
+    const pageHtml = await pageRes.text();
+
+    const marker = "ytInitialPlayerResponse = ";
+    const idx = pageHtml.indexOf(marker);
+    if (idx !== -1) {
+      const start = idx + marker.length;
+      let depth = 0, end = start;
+      for (let i = start; i < pageHtml.length; i++) {
+        if (pageHtml[i] === "{") depth++;
+        else if (pageHtml[i] === "}") { depth--; if (depth === 0) { end = i + 1; break; } }
+      }
+      const playerData = JSON.parse(pageHtml.substring(start, end));
+      const tracks: { baseUrl: string; languageCode: string; name?: { simpleText?: string } }[] =
+        playerData?.captions?.playerCaptionsTracklistRenderer?.captionTracks ?? [];
+
+      const frTrack = tracks.find((t) => t.languageCode === "fr" && !t.name?.simpleText?.toLowerCase().includes("auto"));
+      const frAutoTrack = tracks.find((t) => t.languageCode === "fr");
+      const enTrack = tracks.find((t) => t.languageCode === "en");
+      const track = frTrack || frAutoTrack || enTrack || tracks[0];
 
       if (track) {
-        // Ensure the baseUrl is properly unescaped
-        const baseUrl = track.baseUrl.replace(/\\u0026/g, "&").replace(/&amp;/g, "&");
-
-        // Try json3 format first, fall back to srv3 (XML)
-        let transcriptLines: string[] = [];
+        let lines: string[] = [];
 
         try {
-          const captionRes = await fetch(baseUrl + "&fmt=json3");
-          const captionText = await captionRes.text();
-          if (captionText.trim().startsWith("{")) {
-            const captionData = JSON.parse(captionText) as { events?: { segs?: { utf8: string }[] }[] };
-            if (captionData.events) {
-              transcriptLines = captionData.events
-                .filter((e) => e.segs)
-                .map((e) => e.segs!.map((s) => s.utf8).join(""))
-                .filter((l) => l.trim());
-            }
+          const res = await fetch(track.baseUrl + "&fmt=json3", { headers: YT_HEADERS });
+          const json = await res.json() as { events?: { segs?: { utf8: string }[] }[] };
+          if (json.events) {
+            lines = json.events
+              .filter((e) => e.segs)
+              .flatMap((e) => e.segs!.map((s) => s.utf8.trim()))
+              .filter(Boolean);
           }
-        } catch {
-          // json3 failed, try srv3 (XML)
-        }
+        } catch { /* try xml */ }
 
-        // Fallback: srv3 XML format
-        if (transcriptLines.length === 0) {
+        if (lines.length === 0) {
           try {
-            const xmlRes = await fetch(baseUrl + "&fmt=srv3");
-            const xmlText = await xmlRes.text();
-            // Extract text from <p> tags in srv3 XML
-            const pMatches = xmlText.matchAll(/<p[^>]*>([\s\S]*?)<\/p>/gi);
-            for (const m of pMatches) {
-              const line = m[1].replace(/<[^>]+>/g, "").trim();
-              if (line) transcriptLines.push(line);
-            }
-          } catch {
-            // srv3 also failed
-          }
+            const res = await fetch(track.baseUrl, { headers: YT_HEADERS });
+            lines = parseXmlTranscript(await res.text());
+          } catch { /* xml also failed */ }
         }
 
-        if (transcriptLines.length > 0) {
-          // Group into paragraphs (~every 10 lines)
-          const paragraphs: string[] = [];
-          for (let i = 0; i < transcriptLines.length; i += 10) {
-            paragraphs.push(transcriptLines.slice(i, i + 10).join(" "));
-          }
-
-          const text = `# ${videoTitle}\n\nTranscription de la vidéo YouTube\nSource : ${originalUrl}\n\n${paragraphs.join("\n\n")}`;
-
+        if (lines.length > 0) {
+          const text = `# ${videoTitle}\n\nTranscription de la vidéo YouTube\nSource : ${originalUrl}\n\n${linesToParagraphs(lines)}`;
           return {
             text,
-            metadata: {
-              type: "youtube",
-              video_id: videoId,
-              title: videoTitle,
-              language: track.languageCode,
-              char_count: text.length,
-            },
+            metadata: { type: "youtube", video_id: videoId, title: videoTitle, language: track.languageCode, char_count: text.length },
           };
         }
       }
     }
+  } catch { /* Method 2 failed */ }
 
-    // Fallback: try to get description from page
-    const descMatch = html.match(/"shortDescription":"((?:[^"\\]|\\.)*)"/);
-    if (descMatch) {
-      const description = descMatch[1]
-        .replace(/\\n/g, "\n")
-        .replace(/\\"/g, '"')
-        .replace(/\\\\/g, "\\");
-
-      const text = `# ${videoTitle}\n\nDescription de la vidéo YouTube\nSource : ${originalUrl}\n\n${description}`;
-
-      return {
-        text,
-        metadata: {
-          type: "youtube",
-          video_id: videoId,
-          title: videoTitle,
-          source: "description",
-          char_count: text.length,
-        },
-      };
-    }
-
-    throw new Error("Impossible d'extraire la transcription YouTube. Vérifiez que la vidéo a des sous-titres activés.");
-  } catch (err) {
-    if (err instanceof Error && err.message.includes("transcription")) throw err;
-    throw new Error(`Erreur extraction YouTube: ${err instanceof Error ? err.message : "erreur inconnue"}`);
+  // Final fallback: description only
+  if (descriptionFallback && descriptionFallback.length > 50) {
+    const text = `# ${videoTitle}\n\nDescription de la vidéo YouTube\nSource : ${originalUrl}\n\n${descriptionFallback}`;
+    return {
+      text,
+      metadata: {
+        type: "youtube", video_id: videoId, title: videoTitle, source: "description",
+        transcript_available: false, char_count: text.length,
+        warning: "Aucun sous-titre disponible pour cette vidéo. Seule la description a été extraite. Le contenu généré sera limité.",
+      },
+    };
   }
+
+  throw new Error("Impossible d'extraire la transcription YouTube. Vérifiez que la vidéo a des sous-titres activés.");
 }
 
 /**

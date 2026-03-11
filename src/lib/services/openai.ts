@@ -798,14 +798,14 @@ Tu génères un storyboard COMPLET en markdown pour un cours entier, en un seul 
 Gamma excelle avec : titres H1/H2, tableaux markdown, listes, étapes numérotées, exemples, citations.
 
 RÈGLES CRITIQUES :
-- Commence par une slide de titre du cours (H1 avec le titre du cours + objectifs)
+- Commence par UNE SEULE slide de titre du cours (H1 avec le titre du cours + objectifs)
 - Pour CHAQUE chapitre, utilise un H1 "# Chapitre X : Titre" comme séparateur clair
-- Sous chaque H1 de chapitre, génère 5 à 8 cards (sections H2) avec du contenu riche
-- Inclure au moins 1 tableau comparatif/récapitulatif par chapitre
-- Inclure des exemples concrets par chapitre
-- Termine par une slide H1 "# Conclusion" avec un récapitulatif global
+- Sous chaque H1 de chapitre, génère EXACTEMENT 6 sous-sections H2 avec du contenu riche
+- Les 6 H2 par chapitre doivent couvrir : introduction, concepts clés, exemples, approfondissement, tableau récapitulatif, points essentiels à retenir
+- Termine par UNE SEULE slide H1 "# Conclusion" avec un récapitulatif global
 - Le markdown doit être propre et bien structuré pour Gamma
-- IMPORTANT : Chaque H1 = début d'une nouvelle section Gamma (carte de titre)`,
+- IMPORTANT : Chaque H1 = début d'une nouvelle section Gamma (carte de titre)
+- CRITIQUE : Respecter EXACTEMENT 6 H2 par chapitre, ni plus ni moins`,
       },
       {
         role: "user",
@@ -814,8 +814,8 @@ RÈGLES CRITIQUES :
 ${chapterBlocks}
 
 Transforme tout ce contenu en UN SEUL storyboard Gamma unifié.
-Chaque chapitre doit être clairement séparé par un H1.
-Structure par chapitre : H1 titre chapitre → H2 sous-sections (5-8 cards) avec contenu développé.`,
+Structure OBLIGATOIRE : 1 slide titre cours (H1) + pour chaque chapitre [1 H1 titre + exactement 6 H2] + 1 slide conclusion (H1).
+Total attendu : ${1 + chapters.length * 7 + 1} sections (1 titre + ${chapters.length}×7 + 1 conclusion).`,
       },
     ],
     { model: "gpt-4o-mini", temperature: 0.4, max_tokens: 8000 }

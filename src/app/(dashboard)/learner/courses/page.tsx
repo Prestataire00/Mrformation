@@ -5,7 +5,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
 import { Badge } from "@/components/ui/badge";
-import { BookOpen, Clock, Play, CheckCircle2, Loader2, Plus } from "lucide-react";
+import { BookOpen, Clock, Play, CheckCircle2, Loader2, Plus, FileText, Video, HelpCircle, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface PublishedCourse {
@@ -14,6 +14,22 @@ interface PublishedCourse {
   description: string | null;
   estimated_duration_minutes: number;
   elearning_chapters: { id: string }[];
+}
+
+interface ManualCourseModule {
+  id: string;
+  title: string;
+  content_type: "video" | "document" | "quiz";
+  content_url: string;
+  duration_minutes: number;
+}
+
+interface ManualCourse {
+  id: string;
+  title: string;
+  description: string | null;
+  objectives: string | null;
+  content: { type: string; status: string; modules: ManualCourseModule[] };
 }
 
 interface CourseWithEnrollment {
@@ -40,8 +56,10 @@ export default function LearnerCoursesPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "in_progress" | "completed">("all");
   const [catalogue, setCatalogue] = useState<PublishedCourse[]>([]);
+  const [manualCourses, setManualCourses] = useState<ManualCourse[]>([]);
   const [enrolling, setEnrolling] = useState<string | null>(null);
   const [learnerId, setLearnerId] = useState<string | null>(null);
+  const [expandedManual, setExpandedManual] = useState<string | null>(null);
 
   const fetchEnrollments = useCallback(async () => {
     setLoading(true);
@@ -104,6 +122,22 @@ export default function LearnerCoursesPage() {
           (c) => !enrolledIds.includes(c.id)
         );
         setCatalogue(notEnrolled);
+      }
+
+      // Fetch published manual courses from programs table
+      const { data: programs } = await supabase
+        .from("programs")
+        .select("id, title, description, objectives, content")
+        .order("updated_at", { ascending: false });
+
+      if (programs) {
+        const published = (programs as ManualCourse[]).filter(
+          (p) =>
+            p.content?.type === "elearning" &&
+            p.content?.status === "published" &&
+            (p.content?.modules?.length ?? 0) > 0
+        );
+        setManualCourses(published);
       }
     }
     setLoading(false);
@@ -256,7 +290,93 @@ export default function LearnerCoursesPage() {
         </div>
       )}
 
-      {/* Catalogue — published courses not yet enrolled */}
+      {/* Manual courses — programs table */}
+      {manualCourses.length > 0 && (
+        <div className="space-y-4 pt-4 border-t border-gray-200">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900">Cours & Supports</h2>
+            <p className="text-sm text-gray-500 mt-0.5">
+              Accédez directement aux supports de cours mis à votre disposition.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {manualCourses.map((course) => {
+              const modules = course.content?.modules ?? [];
+              const isExpanded = expandedManual === course.id;
+              const totalMin = modules.reduce((acc, m) => acc + (m.duration_minutes || 0), 0);
+              return (
+                <div
+                  key={course.id}
+                  className="bg-white border border-gray-200 rounded-xl p-5 hover:shadow-md transition-all duration-200"
+                >
+                  <div className="flex items-start justify-between gap-2 mb-3">
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-gray-900 line-clamp-2">{course.title}</h3>
+                      {course.description && (
+                        <p className="text-sm text-gray-500 mt-1 line-clamp-2">{course.description}</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs text-gray-400 mb-3">
+                    <span className="flex items-center gap-1">
+                      <BookOpen className="h-3.5 w-3.5" />
+                      {modules.length} module{modules.length > 1 ? "s" : ""}
+                    </span>
+                    {totalMin > 0 && (
+                      <span className="flex items-center gap-1">
+                        <Clock className="h-3.5 w-3.5" />
+                        {totalMin} min
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Module list (collapsible) */}
+                  {modules.length > 0 && (
+                    <div className="space-y-1.5">
+                      {(isExpanded ? modules : modules.slice(0, 2)).map((mod) => (
+                        <a
+                          key={mod.id}
+                          href={mod.content_url || "#"}
+                          target={mod.content_url ? "_blank" : undefined}
+                          rel="noopener noreferrer"
+                          className={cn(
+                            "flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors",
+                            mod.content_url
+                              ? "bg-gray-50 hover:bg-[#3DB5C5]/10 text-gray-700 hover:text-[#3DB5C5] cursor-pointer"
+                              : "bg-gray-50 text-gray-400 cursor-default"
+                          )}
+                        >
+                          {mod.content_type === "video" ? (
+                            <Video className="h-3.5 w-3.5 text-purple-500 shrink-0" />
+                          ) : mod.content_type === "quiz" ? (
+                            <HelpCircle className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                          ) : (
+                            <FileText className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                          )}
+                          <span className="flex-1 truncate">{mod.title || "Module sans titre"}</span>
+                          {mod.content_url && (
+                            <ExternalLink className="h-3 w-3 shrink-0 opacity-50" />
+                          )}
+                        </a>
+                      ))}
+                      {modules.length > 2 && (
+                        <button
+                          onClick={() => setExpandedManual(isExpanded ? null : course.id)}
+                          className="text-xs text-[#3DB5C5] hover:underline ml-1"
+                        >
+                          {isExpanded ? "Voir moins" : `+ ${modules.length - 2} module${modules.length - 2 > 1 ? "s" : ""}`}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Catalogue — published AI courses not yet enrolled */}
       {catalogue.length > 0 && (
         <div className="space-y-4 pt-4 border-t border-gray-200">
           <div>

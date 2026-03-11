@@ -16,6 +16,7 @@ const GAMMA_API_BASE = "https://public-api.gamma.app/v1.0";
 
 export interface GammaGenerateResult {
   id: string;
+  generationId: string;
   gammaId: string;
   url: string;
   embedUrl: string;
@@ -302,16 +303,53 @@ async function pollGammaGeneration(generationId: string): Promise<GammaGenerateR
           data.id ||
           "";
         const embedUrl = buildEmbedUrl(gammaUrl);
-        console.log("[Gamma] COMPLETED:", { gammaUrl, embedUrl, gammaId, rawData: JSON.stringify(data) });
+
+        // exportUrl is the real PPTX export URL from Gamma API
+        let downloadLink: string | undefined =
+          data.exportUrl ||
+          data.downloadLink ||
+          data.exportPptx ||
+          data.exportPptxUrl ||
+          data.pptx_url ||
+          data.pptxUrl ||
+          undefined;
+
+        // If no exportUrl yet, do up to 3 extra polls with short delay
+        if (!downloadLink) {
+          for (let extra = 0; extra < 3; extra++) {
+            await new Promise((r) => setTimeout(r, 2000));
+            try {
+              const extraRes = await fetch(`${GAMMA_API_BASE}/generations/${generationId}`, { headers: gammaHeaders() });
+              if (extraRes.ok) {
+                const extraData = await extraRes.json();
+                console.log(`[Gamma] Extra poll ${extra + 1}:`, JSON.stringify(extraData));
+                downloadLink =
+                  extraData.exportUrl ||
+                  extraData.downloadLink ||
+                  extraData.exportPptx ||
+                  extraData.exportPptxUrl ||
+                  extraData.pptx_url ||
+                  extraData.pptxUrl ||
+                  undefined;
+                if (downloadLink) break;
+              }
+            } catch (err) {
+              console.warn(`[Gamma] Extra poll ${extra + 1} error:`, err);
+            }
+          }
+        }
+
+        console.log("[Gamma] COMPLETED:", { gammaUrl, embedUrl, gammaId, downloadLink, rawData: JSON.stringify(data) });
 
         return {
           id: generationId,
+          generationId,
           gammaId,
           url: gammaUrl,
           embedUrl,
           status: "completed",
-          exportPdf: data.exportPdf || undefined,
-          exportPptx: data.exportPptx || undefined,
+          exportPdf: data.exportPdf || data.exportPdfUrl || data.pdf_url || undefined,
+          exportPptx: downloadLink,
         };
       }
 
@@ -319,6 +357,7 @@ async function pollGammaGeneration(generationId: string): Promise<GammaGenerateR
         console.error("[Gamma] Generation FAILED:", data);
         return {
           id: generationId,
+          generationId,
           gammaId: "",
           url: "",
           embedUrl: "",
@@ -333,5 +372,54 @@ async function pollGammaGeneration(generationId: string): Promise<GammaGenerateR
   }
 
   console.warn("[Gamma] Timed out after", maxAttempts, "attempts for:", generationId);
-  return { id: generationId, gammaId: "", url: "", embedUrl: "", status: "pending" };
+  return { id: generationId, generationId, gammaId: "", url: "", embedUrl: "", status: "pending" };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Re-fetch fresh download URL (for expired PPTX links)              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Re-fetch the export URL for a generation (PPTX or PDF).
+ * For PDF: derives from the PPTX exportUrl by replacing /pptx/ → /pdf/.
+ * Returns both the URL and raw response fields for debugging.
+ * @param generationId The generation ID stored in gamma_deck_id
+ */
+export async function exportGammaDeckFresh(
+  generationId: string
+): Promise<{ url: string | null; rawFields: Record<string, string> }> {
+  try {
+    const res = await fetch(`${GAMMA_API_BASE}/generations/${generationId}`, {
+      headers: gammaHeaders(),
+    });
+    if (!res.ok) {
+      console.warn("[Gamma] exportGammaDeckFresh HTTP error:", res.status);
+      return { url: null, rawFields: { httpStatus: String(res.status) } };
+    }
+    const data = await res.json();
+    console.log("[Gamma] exportGammaDeckFresh raw response:", JSON.stringify(data));
+
+    const url: string | null =
+      data.exportUrl ||
+      data.downloadLink ||
+      data.exportPptx ||
+      data.exportPptxUrl ||
+      data.pptx_url ||
+      data.pptxUrl ||
+      null;
+
+    // Expose all top-level keys with truncated string values for debugging
+    const rawFields = Object.fromEntries(
+      Object.keys(data).map((k) => [
+        k,
+        typeof data[k] === "string"
+          ? (data[k] as string).substring(0, 100)
+          : typeof data[k],
+      ])
+    ) as Record<string, string>;
+    return { url, rawFields };
+  } catch (err) {
+    console.warn("[Gamma] exportGammaDeckFresh error:", err);
+    return { url: null, rawFields: { error: String(err) } };
+  }
 }

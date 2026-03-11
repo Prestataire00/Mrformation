@@ -1,29 +1,6 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-
-// Mapping : route prefix → allowed roles
-const PAGE_ROLE_ROUTES: Record<string, string[]> = {
-  "/admin/crm": ["admin", "trainer"],
-  "/admin": ["admin"],
-  "/trainer": ["admin", "trainer"],
-  "/client": ["admin", "client"],
-  "/learner": ["admin", "learner"],
-};
-
-const API_ROLE_ROUTES: Record<string, string[]> = {
-  "/api/clients": ["admin"],
-  "/api/trainers": ["admin"],
-  "/api/trainings": ["admin"],
-  "/api/sessions": ["admin"],
-  "/api/crm": ["admin", "trainer"],
-  "/api/elearning": ["admin", "learner"],
-  "/api/enrollments/self-enroll": ["learner"],
-  "/api/admin": ["admin"],
-  "/api/ai": ["admin"],
-  "/api/emails": ["admin"],
-  "/api/infogreffe": ["admin"],
-  "/api/pappers": ["admin"],
-};
+import { PAGE_PERMISSIONS, API_PERMISSIONS, type Role } from "@/lib/auth/permissions";
 
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({
@@ -113,20 +90,20 @@ export async function middleware(request: NextRequest) {
       }
     }
 
-    // Check page routes
-    for (const [prefix, allowedRoles] of Object.entries(PAGE_ROLE_ROUTES)) {
+    // Check page routes (first match wins — PAGE_PERMISSIONS is ordered most-specific first)
+    for (const [prefix, allowedRoles] of PAGE_PERMISSIONS) {
       if (pathname.startsWith(prefix)) {
-        if (!userRole || !allowedRoles.includes(userRole)) {
+        if (!userRole || !allowedRoles.includes(userRole as Role)) {
           return NextResponse.redirect(new URL("/", request.url));
         }
         break;
       }
     }
 
-    // Check API routes
-    for (const [prefix, allowedRoles] of Object.entries(API_ROLE_ROUTES)) {
+    // Check API routes (first match wins — API_PERMISSIONS is ordered most-specific first)
+    for (const [prefix, allowedRoles] of API_PERMISSIONS) {
       if (pathname.startsWith(prefix)) {
-        if (!userRole || !allowedRoles.includes(userRole)) {
+        if (!userRole || !allowedRoles.includes(userRole as Role)) {
           return NextResponse.json({ error: "Accès non autorisé" }, { status: 403 });
         }
         break;

@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
 
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("entity_id, role, has_crm_access")
+      .select("entity_id, role")
       .eq("id", user.id)
       .single();
 
@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    if (profile.role !== "admin" && !profile.has_crm_access) {
+    if (profile.role !== "admin") {
       return NextResponse.json({ data: null, error: "Accès non autorisé" }, { status: 403 });
     }
 
@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
 
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("entity_id, role, has_crm_access")
+      .select("entity_id, role")
       .eq("id", user.id)
       .single();
 
@@ -133,7 +133,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (profile.role !== "admin" && !profile.has_crm_access) {
+    if (profile.role !== "admin") {
       return NextResponse.json({ data: null, error: "Accès non autorisé" }, { status: 403 });
     }
 
