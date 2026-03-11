@@ -28,10 +28,13 @@ export interface OpenAIResponse {
  */
 export async function chatCompletion(
   messages: ChatMessage[],
-  options?: { model?: string; temperature?: number; max_tokens?: number }
+  options?: { model?: string; temperature?: number; max_tokens?: number; timeout?: number }
 ): Promise<OpenAIResponse> {
   const apiKey = getApiKey();
-  const { model = "gpt-4o-mini", temperature = 0.7, max_tokens = 2000 } = options || {};
+  const { model = "gpt-4o-mini", temperature = 0.7, max_tokens = 2000, timeout = 90000 } = options || {};
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
 
   const response = await fetch(OPENAI_API_URL, {
     method: "POST",
@@ -40,7 +43,8 @@ export async function chatCompletion(
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({ model, messages, temperature, max_tokens }),
-  });
+    signal: controller.signal,
+  }).finally(() => clearTimeout(timer));
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
@@ -713,8 +717,8 @@ export async function enrichChapterContent(
 ): Promise<EnrichedChapterContent> {
   const wordCount = existingContent.trim().split(/\s+/).length;
 
-  // Si le contenu est déjà dense (>400 mots), pas besoin d'enrichir
-  if (wordCount > 400) {
+  // Si le contenu est déjà dense (>300 mots), pas besoin d'enrichir
+  if (wordCount > 300) {
     return { enriched_markdown: existingContent, was_enriched: false, word_count: wordCount };
   }
 
@@ -753,7 +757,7 @@ Enrichis ce contenu en gardant la même structure mais en ajoutant beaucoup plus
 Format : Markdown structuré avec titres H2/H3, listes, tableaux, exemples.`,
       },
     ],
-    { model: "gpt-4o", temperature: 0.5, max_tokens: 4000 }
+    { model: "gpt-4o-mini", temperature: 0.5, max_tokens: 3000 }
   );
 
   const enrichedWordCount = result.content.trim().split(/\s+/).length;
@@ -814,7 +818,7 @@ Chaque chapitre doit être clairement séparé par un H1.
 Structure par chapitre : H1 titre chapitre → H2 sous-sections (5-8 cards) avec contenu développé.`,
       },
     ],
-    { model: "gpt-4o", temperature: 0.4, max_tokens: 10000 }
+    { model: "gpt-4o-mini", temperature: 0.4, max_tokens: 8000 }
   );
 
   return result.content;

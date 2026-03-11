@@ -1,0 +1,13 @@
+{
+  "functions": {
+    "src/app/api/elearning/[courseId]/generate/route.ts": {
+      "maxDuration": 300
+    },
+    "src/app/api/elearning/[courseId]/extract/route.ts": {
+      "maxDuration": 120
+    },
+    "src/app/api/ai/**": {
+      "maxDuration": 120
+    }
+  }
+}
