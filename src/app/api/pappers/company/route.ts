@@ -1,0 +1,178 @@
+import { NextRequest, NextResponse } from "next/server";
+import { requireRole } from "@/lib/auth/require-role";
+
+export const dynamic = "force-dynamic";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+export interface PappersDirigeant {
+  nom: string;
+  prenom: string | null;
+  qualite: string;
+  date_naissance_formate: string | null;
+}
+
+export interface PappersFinances {
+  annee: number;
+  chiffre_affaires: number | null;
+  resultat: number | null;
+  effectif: number | null;
+}
+
+export interface PappersCompanyDetail {
+  company_name: string;
+  siret: string;
+  siren: string;
+  legal_form: string;
+  address: string;
+  city: string;
+  postal_code: string;
+  capital: number | null;
+  naf_code: string | null;
+  naf_label: string | null;
+  creation_date: string | null;
+  employees: string | null;
+  dirigeants: PappersDirigeant[];
+  finances: PappersFinances[];
+  website: string | null;
+  is_demo?: boolean;
+}
+
+// ─── Mock data ────────────────────────────────────────────────────────────────
+
+const MOCK_DETAIL: PappersCompanyDetail = {
+  company_name: "FORMATION EXCELLENCE SAS",
+  siret: "44306184100047",
+  siren: "443061841",
+  legal_form: "Société par actions simplifiée",
+  address: "12 Rue de la Formation",
+  city: "Paris",
+  postal_code: "75008",
+  capital: 10000,
+  naf_code: "8559A",
+  naf_label: "Autres formations",
+  creation_date: "2001-03-15",
+  employees: "10 à 19 salariés",
+  dirigeants: [
+    {
+      nom: "DUPONT",
+      prenom: "Jean-Marc",
+      qualite: "Président",
+      date_naissance_formate: "Janvier 1972",
+    },
+  ],
+  finances: [
+    { annee: 2022, chiffre_affaires: 850000, resultat: 62000, effectif: 12 },
+    { annee: 2021, chiffre_affaires: 720000, resultat: 48000, effectif: 10 },
+    { annee: 2020, chiffre_affaires: 580000, resultat: 31000, effectif: 9 },
+  ],
+  website: null,
+  is_demo: true,
+};
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function mapPappersDetail(entreprise: Record<string, unknown>): PappersCompanyDetail {
+  const siege = (entreprise.siege ?? {}) as Record<string, unknown>;
+
+  const dirigeants: PappersDirigeant[] = ((entreprise.dirigeants as Record<string, unknown>[]) ?? []).map(
+    (d) => ({
+      nom: (d.nom as string) ?? "",
+      prenom: (d.prenom as string) ?? null,
+      qualite: (d.qualite as string) ?? "",
+      date_naissance_formate: (d.date_naissance_formate as string) ?? null,
+    })
+  );
+
+  const finances: PappersFinances[] = ((entreprise.finances as Record<string, unknown>[]) ?? []).map(
+    (f) => ({
+      annee: (f.annee as number) ?? 0,
+      chiffre_affaires: (f.chiffre_affaires as number) ?? null,
+      resultat: (f.resultat as number) ?? null,
+      effectif: (f.effectif as number) ?? null,
+    })
+  );
+
+  return {
+    company_name: (entreprise.nom_entreprise as string) ?? "",
+    siret: (siege.siret as string) ?? "",
+    siren: (entreprise.siren as string) ?? "",
+    legal_form: (entreprise.forme_juridique as string) ?? "",
+    address: (siege.adresse_ligne_1 as string) ?? "",
+    city: (siege.ville as string) ?? "",
+    postal_code: (siege.code_postal as string) ?? "",
+    capital: (entreprise.capital as number) ?? null,
+    naf_code: (entreprise.code_naf as string) ?? null,
+    naf_label: (entreprise.libelle_code_naf as string) ?? null,
+    creation_date: (entreprise.date_creation as string) ?? null,
+    employees: (entreprise.tranche_effectif as string) ?? null,
+    dirigeants,
+    finances,
+    website: (entreprise.site_web as string) ?? null,
+  };
+}
+
+// ─── Route handler ────────────────────────────────────────────────────────────
+
+export async function GET(request: NextRequest) {
+  const auth = await requireRole(["admin"]);
+  if (auth.error) return auth.error;
+
+  try {
+    const { searchParams } = new URL(request.url);
+    const siret = searchParams.get("siret");
+
+    if (!siret || siret.trim().length < 9) {
+      return NextResponse.json(
+        { error: "Le paramètre 'siret' est requis (SIRET ou SIREN)" },
+        { status: 400 }
+      );
+    }
+
+    const apiKey = process.env.PAPPERS_API_KEY;
+    const isDemo = !apiKey || apiKey === "votre-cle-pappers" || apiKey.trim() === "";
+
+    // ── Mode démo ─────────────────────────────────────────────────────────────
+    if (isDemo) {
+      return NextResponse.json({
+        data: { ...MOCK_DETAIL, siret: siret.trim() },
+        demo: true,
+        message: "Mode démo — configurez PAPPERS_API_KEY pour des données réelles",
+      });
+    }
+
+    // ── Appel API Pappers réel ─────────────────────────────────────────────────
+    const url = new URL("https://api.pappers.fr/v2/entreprise");
+    url.searchParams.set("siret", siret.trim());
+    url.searchParams.set("api_token", apiKey);
+
+    const response = await fetch(url.toString(), {
+      headers: { Accept: "application/json" },
+      next: { revalidate: 600 }, // cache 10 min
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      console.error("[Pappers company] API error:", response.status, text);
+      if (response.status === 404) {
+        return NextResponse.json(
+          { error: "Entreprise non trouvée" },
+          { status: 404 }
+        );
+      }
+      return NextResponse.json(
+        { error: `Erreur API Pappers (${response.status})` },
+        { status: response.status }
+      );
+    }
+
+    const json = (await response.json()) as Record<string, unknown>;
+    const detail = mapPappersDetail(json);
+
+    return NextResponse.json({ data: detail, demo: false });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Erreur interne";
+    console.error("[Pappers company] Unexpected error:", error);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}

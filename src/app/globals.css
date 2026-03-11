@@ -1,26 +1,153 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
+@layer base {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    /* Turquoise - couleur principale de l'ancien CRM */
+    --primary: 187 72% 42%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 187 30% 94%;
+    --secondary-foreground: 187 72% 25%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 187 20% 93%;
+    --accent-foreground: 187 72% 25%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 187 72% 42%;
+    --radius: 0.5rem;
+    /* Sidebar claire */
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 222 20% 25%;
+    --sidebar-primary: 187 72% 45%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 210 20% 95%;
+    --sidebar-accent-foreground: 222 20% 25%;
+    --sidebar-border: 220 14% 90%;
+    --sidebar-ring: 187 72% 45%;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 187 72% 45%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 187 72% 45%;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* ── Entity themes ────────────────────────────────────────── */
+[data-entity="mr-formation"] {
+  --primary: 217 89% 53%;
+  --primary-foreground: 0 0% 100%;
+  --ring: 217 89% 53%;
+  --secondary: 217 30% 94%;
+  --secondary-foreground: 217 89% 30%;
+  --accent: 217 20% 93%;
+  --accent-foreground: 217 89% 30%;
+  --sidebar-primary: 217 89% 53%;
+  --sidebar-ring: 217 89% 53%;
+}
+
+[data-entity="c3v-formation"] {
+  --primary: 263 83% 57%;
+  --primary-foreground: 0 0% 100%;
+  --ring: 263 83% 57%;
+  --secondary: 263 30% 94%;
+  --secondary-foreground: 263 83% 30%;
+  --accent: 263 20% 93%;
+  --accent-foreground: 263 83% 30%;
+  --sidebar-primary: 263 83% 57%;
+  --sidebar-ring: 263 83% 57%;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground));
+}
+
+/* Print styles — hide sidebar and nav for clean PDF export */
+@media print {
+  /* Hide sidebar, topbar, and navigation elements */
+  nav, aside, header,
+  [data-sidebar],
+  .sidebar,
+  button,
+  .no-print {
+    display: none !important;
+  }
+  /* Make main content full width */
+  main, [role="main"], .flex-1 {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  body {
+    background: white !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  /* Keep action buttons hidden */
+  .rounded-full.gap-2 {
+    display: none !important;
+  }
+}
+
+/* Flashcard 3D flip utilities */
+.perspective-1000 {
+  perspective: 1000px;
+}
+.transform-style-3d {
+  transform-style: preserve-3d;
+}
+.backface-hidden {
+  backface-visibility: hidden;
+}
+.rotate-y-180 {
+  transform: rotateY(180deg);
 }

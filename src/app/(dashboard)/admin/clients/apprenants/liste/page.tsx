@@ -1,0 +1,282 @@
+"use client";
+
+import { useEffect, useState, useCallback } from "react";
+import Link from "next/link";
+import { createClient } from "@/lib/supabase/client";
+import { Download, ChevronLeft, ChevronRight } from "lucide-react";
+import { downloadXlsx } from "@/lib/export-xlsx";
+import { useToast } from "@/components/ui/use-toast";
+
+interface Learner {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone?: string;
+  client_id?: string;
+  clients?: { company_name: string } | null;
+  sessions_count?: number;
+}
+
+const PAGE_SIZE = 15;
+
+export default function ApprenantsListePage() {
+  const supabase = createClient();
+  const { toast } = useToast();
+
+  const [learners, setLearners] = useState<Learner[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+
+  const [nameFilter, setNameFilter] = useState("");
+  const [companyFilter, setCompanyFilter] = useState("");
+  const [sessionsMin, setSessionsMin] = useState("");
+  const [appliedName, setAppliedName] = useState("");
+  const [appliedCompany, setAppliedCompany] = useState("");
+
+  const fetchLearners = useCallback(async () => {
+    setLoading(true);
+    try {
+      let query = supabase
+        .from("learners")
+        .select("id, first_name, last_name, email, phone, client_id, clients(company_name)", { count: "exact" })
+        .order("last_name", { ascending: true });
+
+      if (appliedName.trim()) {
+        query = query.or(`first_name.ilike.%${appliedName.trim()}%,last_name.ilike.%${appliedName.trim()}%`);
+      }
+
+      const from = (page - 1) * PAGE_SIZE;
+      query = query.range(from, from + PAGE_SIZE - 1);
+
+      const { data, error, count } = await query;
+      if (error) throw error;
+      setLearners((data as unknown as Learner[]) ?? []);
+      setTotal(count ?? 0);
+    } catch {
+      toast({ title: "Erreur", description: "Impossible de charger les apprenants.", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  }, [supabase, appliedName, page, toast]);
+
+  useEffect(() => { fetchLearners(); }, [fetchLearners]);
+
+  const handleFilter = () => {
+    setAppliedName(nameFilter);
+    setAppliedCompany(companyFilter);
+    setPage(1);
+  };
+
+  const handleDownloadExcel = () => {
+    const headers = ["Nom", "Entreprise", "Téléphone", "Email", "Sessions"];
+    const rows = learners.map((l) => [
+      `${l.last_name} ${l.first_name}`,
+      l.clients?.company_name ?? "",
+      l.phone ?? "",
+      l.email,
+      l.sessions_count ?? 0,
+    ]);
+    downloadXlsx(headers, rows, "apprenants.xlsx");
+  };
+
+  const handleDelete = async (id: string, name: string) => {
+    if (!confirm(`Supprimer ${name} ?`)) return;
+    const { error } = await supabase.from("learners").delete().eq("id", id);
+    if (error) {
+      toast({ title: "Erreur", description: "Impossible de supprimer.", variant: "destructive" });
+    } else {
+      toast({ title: "Supprimé", description: `${name} a été supprimé.` });
+      fetchLearners();
+    }
+  };
+
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+
+  const filteredLearners = appliedCompany.trim()
+    ? learners.filter((l) =>
+        l.clients?.company_name?.toLowerCase().includes(appliedCompany.toLowerCase())
+      )
+    : learners;
+
+  const displayLearners = sessionsMin.trim()
+    ? filteredLearners.filter((l) => (l.sessions_count ?? 0) >= parseInt(sessionsMin))
+    : filteredLearners;
+
+  return (
+    <div className="p-6">
+      {/* Breadcrumb */}
+      <div className="flex items-center gap-2 text-sm mb-4">
+        <Link href="/admin" className="text-[#3DB5C5] hover:underline">Accueil</Link>
+        <span className="text-gray-400">/</span>
+        <Link href="/admin/clients" className="text-[#3DB5C5] hover:underline">Clients</Link>
+        <span className="text-gray-400">/</span>
+        <Link href="/admin/clients/apprenants" className="text-[#3DB5C5] hover:underline">Apprenants</Link>
+        <span className="text-gray-400">/</span>
+        <span className="text-gray-500">Liste</span>
+      </div>
+
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-gray-700 text-xl font-bold">Clients / Tous Les Apprenants</h1>
+        <div className="flex gap-2">
+          <button
+            onClick={handleDownloadExcel}
+            className="border border-[#3DB5C5] text-[#3DB5C5] px-4 py-2 rounded-lg text-sm flex items-center gap-1"
+          >
+            <Download className="h-4 w-4" />
+            Télécharger en Excel
+          </button>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="bg-white border border-gray-200 rounded-xl p-4 mb-6">
+        <div className="flex flex-wrap gap-3 items-end">
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Nom de l&apos;apprenant</label>
+            <input
+              type="text"
+              placeholder="Rechercher par nom..."
+              value={nameFilter}
+              onChange={(e) => setNameFilter(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#3DB5C5] w-52"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Nom de l&apos;entreprise</label>
+            <input
+              type="text"
+              placeholder="Rechercher par entreprise..."
+              value={companyFilter}
+              onChange={(e) => setCompanyFilter(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#3DB5C5] w-52"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Plus que... sessions</label>
+            <input
+              type="number"
+              placeholder="Ex: 3"
+              value={sessionsMin}
+              onChange={(e) => setSessionsMin(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#3DB5C5] w-32"
+            />
+          </div>
+          <button
+            onClick={handleFilter}
+            className="text-white px-4 py-2 rounded-lg text-sm font-medium uppercase"
+            style={{ background: "#3DB5C5" }}
+          >
+            Filtrer plus avancé
+          </button>
+        </div>
+      </div>
+
+      {/* Count */}
+      <p className="text-sm text-gray-500 mb-3">{total} apprenant{total !== 1 ? "s" : ""}</p>
+
+      {/* Table */}
+      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+        {loading ? (
+          <div className="flex justify-center py-16">
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#3DB5C5] border-t-transparent" />
+          </div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-200">
+                <th className="px-4 py-3 text-left font-semibold text-gray-600">Nom</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-600">Entreprise</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-600">Tél</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-600">Email</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-600">Sessions</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-600">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {displayLearners.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-12 text-center text-gray-400">
+                    Aucun apprenant trouvé
+                  </td>
+                </tr>
+              ) : (
+                displayLearners.map((learner) => {
+                  const fullName = `${learner.first_name} ${learner.last_name}`;
+                  return (
+                    <tr key={learner.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-3 font-medium text-gray-800">{fullName}</td>
+                      <td className="px-4 py-3 text-gray-600">{learner.clients?.company_name ?? "—"}</td>
+                      <td className="px-4 py-3 text-gray-600">{learner.phone ?? "—"}</td>
+                      <td className="px-4 py-3 text-gray-600 truncate max-w-[200px]">{learner.email}</td>
+                      <td className="px-4 py-3 text-gray-600">{learner.sessions_count ?? 0}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          <button className="text-[#3DB5C5] hover:underline text-xs font-medium">
+                            Modifier
+                          </button>
+                          <Link
+                            href={`/admin/crm/quotes/new?learner_name=${encodeURIComponent(fullName)}`}
+                            className="text-gray-500 hover:underline text-xs"
+                          >
+                            Créer un devis
+                          </Link>
+                          <button
+                            onClick={() => handleDelete(learner.id, fullName)}
+                            className="text-red-500 hover:underline text-xs"
+                          >
+                            Supprimer
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-4">
+          <p className="text-sm text-gray-500">
+            Page {page} sur {totalPages} — {total} résultats
+          </p>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+              className="px-3 py-1.5 rounded border border-gray-300 text-sm text-gray-600 disabled:opacity-40 hover:border-[#3DB5C5]"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+              const p = Math.max(1, Math.min(page - 2, totalPages - 4)) + i;
+              return (
+                <button
+                  key={p}
+                  onClick={() => setPage(p)}
+                  className="px-3 py-1.5 rounded border text-sm font-medium"
+                  style={p === page ? { background: "#3DB5C5", color: "white", borderColor: "#3DB5C5" } : { borderColor: "#d1d5db", color: "#4b5563" }}
+                >
+                  {p}
+                </button>
+              );
+            })}
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages}
+              className="px-3 py-1.5 rounded border border-gray-300 text-sm text-gray-600 disabled:opacity-40 hover:border-[#3DB5C5] flex items-center gap-1"
+            >
+              Suivant <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
