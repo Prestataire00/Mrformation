@@ -278,15 +278,9 @@ export default function CreateCoursePage() {
     }
   };
 
-  const getSourceContent = (): string => {
-    if (method === "generate") return prompt;
-    if (method === "paste") return pastedText;
-    return extractedText;
-  };
-
   const canProceed = (): boolean => {
+    if (method === "generate") return prompt.trim().length >= 20;
     if (!title.trim()) return false;
-    if (method === "generate" && prompt.trim().length < 20) return false;
     if (method === "paste" && pastedText.trim().length < 50) return false;
     if (method === "import" && !uploadedFile && !extractedText) return false;
     return true;
@@ -301,10 +295,15 @@ export default function CreateCoursePage() {
     setLoading(true);
     setError(null);
 
+    // Auto-extract title from prompt for generate mode
+    const effectiveTitle = method === "generate" && !title.trim()
+      ? prompt.trim().split(/[.\n]/)[0].slice(0, 80)
+      : title.trim();
+
     try {
       // Step 1: Create the course
       const createBody: Record<string, unknown> = {
-        title: title.trim(),
+        title: effectiveTitle,
         course_type: courseType, // "presentation" | "quiz" | "complete"
         final_quiz_target_count: courseType === "presentation" ? 0 : 40,
         flashcards_target_count: courseType === "presentation" ? 0 : 40,
@@ -551,12 +550,252 @@ export default function CreateCoursePage() {
       {/* ==================== STEP 3: Configure ==================== */}
       {viewStep === "configure" && (
         <div className="flex flex-col items-center px-6 pt-12 pb-12">
+
+          {/* ---- Generate mode: simplified prompt-first layout ---- */}
+          {method === "generate" && (
+            <>
+              <div className="text-center mb-8">
+                <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-400 to-purple-500 mb-4 shadow-lg">
+                  <Sparkles className="h-8 w-8 text-white" />
+                </div>
+                <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-2">
+                  Générer avec l&apos;IA
+                </h1>
+                <p className="text-gray-500">
+                  Décrivez le cours que vous souhaitez créer
+                </p>
+              </div>
+
+              <div className="max-w-2xl w-full space-y-6">
+                {/* Hero prompt box */}
+                <div className="bg-white rounded-2xl border-2 border-gray-200 focus-within:border-blue-400 transition-colors shadow-sm p-5 space-y-3">
+                  <Textarea
+                    id="prompt"
+                    value={prompt}
+                    onChange={(e) => setPrompt(e.target.value)}
+                    placeholder={"Décrivez le cours que vous souhaitez créer...\n\nExemple : Formation complète sur la gestion de projet Agile avec Scrum. Niveau intermédiaire, destiné aux chefs de projet. Aborder les rôles, cérémonies et outils."}
+                    rows={7}
+                    className="resize-none text-base border-0 shadow-none focus-visible:ring-0 p-0 placeholder:text-gray-400"
+                    autoFocus
+                  />
+                  <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+                    <p className="text-xs text-gray-400">{prompt.length} caractères (minimum 20)</p>
+                  </div>
+                </div>
+
+                {/* Course type */}
+                <div className="space-y-3">
+                  <p className="text-center text-gray-700 font-semibold">
+                    Qu&apos;aimeriez-vous créer ?
+                  </p>
+                  <div className="grid grid-cols-3 gap-3">
+                    {COURSE_TYPES.map((ct) => {
+                      const Icon = ct.icon;
+                      const isSelected = courseType === ct.id;
+                      return (
+                        <button
+                          key={ct.id}
+                          onClick={() => setCourseType(ct.id)}
+                          className={cn(
+                            "relative flex flex-col items-center gap-2 p-5 rounded-2xl border-2 transition-all duration-200 text-center",
+                            isSelected
+                              ? "border-blue-600 bg-white shadow-lg shadow-blue-100"
+                              : "border-gray-200 bg-white hover:border-gray-300 hover:shadow-md"
+                          )}
+                        >
+                          {isSelected && (
+                            <div className="absolute top-3 left-3">
+                              <div className="w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center">
+                                <CheckCircle2 className="h-3.5 w-3.5 text-white" />
+                              </div>
+                            </div>
+                          )}
+                          {!isSelected && (
+                            <div className="absolute top-3 left-3">
+                              <div className="w-5 h-5 rounded-full border-2 border-gray-300" />
+                            </div>
+                          )}
+                          <div className={cn(
+                            "w-10 h-10 rounded-xl flex items-center justify-center",
+                            isSelected ? "bg-blue-100" : "bg-gray-100"
+                          )}>
+                            <Icon className={cn("h-5 w-5", isSelected ? "text-blue-600" : "text-gray-500")} />
+                          </div>
+                          <span className={cn(
+                            "text-sm font-semibold",
+                            isSelected ? "text-blue-700" : "text-gray-700"
+                          )}>
+                            {ct.title}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Chapters */}
+                <div className="bg-white rounded-2xl border border-gray-200 p-6 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                        <BookOpen className="h-4 w-4 text-blue-500" />
+                        Nombre de chapitres
+                      </p>
+                      <p className="text-xs text-gray-400 mt-0.5">Entre 2 et 8 chapitres (recommandé : 4-6)</p>
+                    </div>
+                    <span className="text-2xl font-bold text-blue-600">{numChapters}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-gray-400 w-4 text-center">2</span>
+                    <input
+                      type="range"
+                      min={2}
+                      max={8}
+                      value={numChapters}
+                      onChange={(e) => setNumChapters(Number(e.target.value))}
+                      className="flex-1 h-2 bg-gray-200 rounded-full appearance-none cursor-pointer accent-blue-600 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-600 [&::-webkit-slider-thumb]:shadow-md"
+                    />
+                    <span className="text-xs text-gray-400 w-4 text-center">8</span>
+                  </div>
+                </div>
+
+                {/* Gamma Theme (optional) */}
+                {courseType !== "quiz" && (
+                  <div className="space-y-3">
+                    <div className="text-center">
+                      <p className="text-gray-700 font-semibold flex items-center justify-center gap-2">
+                        <Palette className="h-4 w-4 text-purple-500" />
+                        Style visuel (optionnel)
+                      </p>
+                      <p className="text-xs text-gray-400 mt-1">Choisissez les couleurs et polices de vos présentations Gamma</p>
+                    </div>
+                    {themesLoading ? (
+                      <div className="flex items-center justify-center gap-2 text-sm text-gray-400 py-4">
+                        <Loader2 className="h-4 w-4 animate-spin" /> Chargement des styles...
+                      </div>
+                    ) : gammaThemes.length > 0 ? (
+                      <div className="space-y-3">
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                          <Input
+                            value={themeSearch}
+                            onChange={(e) => setThemeSearch(e.target.value)}
+                            placeholder="Rechercher un style..."
+                            className="pl-9 h-9 text-sm"
+                          />
+                        </div>
+                        <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 max-h-[280px] overflow-y-auto pr-1 py-1">
+                          <button
+                            onClick={() => setSelectedThemeId("")}
+                            className={cn(
+                              "group relative flex flex-col items-center rounded-xl border-2 transition-all overflow-hidden",
+                              !selectedThemeId
+                                ? "border-purple-500 ring-2 ring-purple-200 shadow-md"
+                                : "border-gray-200 hover:border-gray-300 hover:shadow-sm"
+                            )}
+                          >
+                            <div className="w-full h-14 bg-gradient-to-br from-violet-400 via-purple-400 to-pink-400 flex items-center justify-center">
+                              <Sparkles className="h-5 w-5 text-white drop-shadow" />
+                            </div>
+                            <div className="p-2 text-center w-full">
+                              <span className="text-xs font-semibold text-gray-700">Auto</span>
+                            </div>
+                          </button>
+                          {gammaThemes
+                            .filter((t) => !themeSearch || t.name.toLowerCase().includes(themeSearch.toLowerCase()))
+                            .map((theme) => {
+                              const colors = (theme.colorKeywords || []).map((kw: string) => keywordToColor(kw));
+                              const bg = colors.length >= 2
+                                ? `linear-gradient(135deg, ${colors[0]}, ${colors[1]}${colors[2] ? `, ${colors[2]}` : ""})`
+                                : colors.length === 1
+                                  ? colors[0]
+                                  : "#94a3b8";
+                              return (
+                                <button
+                                  key={theme.id}
+                                  onClick={() => setSelectedThemeId(theme.id)}
+                                  className={cn(
+                                    "group relative flex flex-col items-center rounded-xl border-2 transition-all overflow-hidden",
+                                    selectedThemeId === theme.id
+                                      ? "border-purple-500 ring-2 ring-purple-200 shadow-md"
+                                      : "border-gray-200 hover:border-gray-300 hover:shadow-sm"
+                                  )}
+                                >
+                                  <div
+                                    className="w-full h-14 flex items-end justify-start p-1.5 gap-1"
+                                    style={{ background: bg }}
+                                  >
+                                    <div className="flex gap-0.5">
+                                      {colors.slice(0, 4).map((c: string, i: number) => (
+                                        <div
+                                          key={i}
+                                          className="w-3 h-3 rounded-full border border-white/40"
+                                          style={{ backgroundColor: c }}
+                                        />
+                                      ))}
+                                    </div>
+                                  </div>
+                                  <div className="p-2 text-center w-full bg-white">
+                                    <span className="text-[11px] font-semibold leading-tight block truncate text-gray-700">
+                                      {theme.name}
+                                    </span>
+                                    {theme.toneKeywords && theme.toneKeywords.length > 0 && (
+                                      <span className="text-[9px] text-gray-400 truncate block mt-0.5">
+                                        {theme.toneKeywords.slice(0, 2).join(" · ")}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {selectedThemeId === theme.id && (
+                                    <div className="absolute top-1 right-1 w-5 h-5 rounded-full bg-purple-500 flex items-center justify-center shadow">
+                                      <CheckCircle2 className="h-3.5 w-3.5 text-white" />
+                                    </div>
+                                  )}
+                                </button>
+                              );
+                            })}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gray-400 text-center">Le style par défaut sera utilisé</p>
+                    )}
+                  </div>
+                )}
+
+                {error && (
+                  <div className="flex items-center gap-2 p-4 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600">
+                    <AlertCircle className="h-4 w-4 flex-shrink-0" /> {error}
+                  </div>
+                )}
+
+                <Button
+                  onClick={handleStartGeneration}
+                  disabled={!canProceed() || loading}
+                  className="w-full h-14 text-base font-semibold rounded-2xl bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-lg shadow-blue-200 gap-3 transition-all duration-200"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                      Préparation en cours...
+                    </>
+                  ) : (
+                    <>
+                      Générer avec l&apos;IA <Sparkles className="h-5 w-5" />
+                    </>
+                  )}
+                </Button>
+              </div>
+            </>
+          )}
+
+          {/* ---- Paste / Import mode: full configure layout ---- */}
+          {method !== "generate" && (
+            <>
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-500 to-pink-500 mb-4 shadow-lg">
               <Sparkles className="h-8 w-8 text-white" />
             </div>
             <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-2">
-              {method === "import" ? "Importer avec l\u2019IA" : method === "generate" ? "Générer avec l\u2019IA" : "Coller votre contenu"}
+              {method === "import" ? "Importer avec l\u2019IA" : "Coller votre contenu"}
             </h1>
             <p className="text-gray-500">
               {method === "import"
@@ -603,24 +842,6 @@ export default function CreateCoursePage() {
                   className="h-12 text-base"
                 />
               </div>
-
-              {/* Generate: prompt input */}
-              {method === "generate" && (
-                <div className="space-y-2">
-                  <Label htmlFor="prompt" className="text-sm font-semibold text-gray-700">
-                    Décrivez votre cours <span className="text-red-500">*</span>
-                  </Label>
-                  <Textarea
-                    id="prompt"
-                    value={prompt}
-                    onChange={(e) => setPrompt(e.target.value)}
-                    placeholder={`Décrivez le cours que vous souhaitez créer...\n\nExemple :\nFormation complète sur la gestion de projet Agile avec Scrum. Couvrir les principes fondamentaux, les rôles, les cérémonies et les outils. Niveau intermédiaire, destiné aux chefs de projet.`}
-                    rows={8}
-                    className="resize-none text-sm"
-                  />
-                  <p className="text-xs text-gray-400">{prompt.length} caractères (minimum 20)</p>
-                </div>
-              )}
 
               {/* Paste: text input */}
               {method === "paste" && (
@@ -771,9 +992,6 @@ export default function CreateCoursePage() {
                             : colors.length === 1
                               ? colors[0]
                               : "#94a3b8";
-                          const isDark = (theme.colorKeywords || []).some((kw: string) =>
-                            /dark|black|noir|night|midnight|charcoal|obsidian/i.test(kw)
-                          );
                           return (
                             <button
                               key={theme.id}
@@ -877,6 +1095,8 @@ export default function CreateCoursePage() {
               )}
             </Button>
           </div>
+          </>
+          )}
         </div>
       )}
 
