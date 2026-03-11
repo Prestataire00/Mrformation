@@ -279,6 +279,11 @@ export async function POST(
           };
 
           try {
+            // Pre-check: verify Gamma API key is configured
+            if (!process.env.GAMMA_API_KEY || process.env.GAMMA_API_KEY === "votre-cle-gamma" || process.env.GAMMA_API_KEY === "sk-gamma-J6zCwUMnIojCSr09beTKYREIa22wE9dmF7txAQjHv1c") {
+              throw new Error("Clé Gamma API invalide ou non configurée. Rendez-vous sur gamma.app pour obtenir une clé valide.");
+            }
+
             // Step 1: Generate unified markdown for all chapters via OpenAI
             send("gamma_content", 52, "Création du storyboard unifié pour Gamma...");
             const fullGammaMarkdown = await generateGammaFullCourseContent(

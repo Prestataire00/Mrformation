@@ -192,11 +192,16 @@ export async function generateGammaChapterDeck(
   }
 
   const postData = await res.json();
-  console.log("[Gamma] POST response:", JSON.stringify(postData));
+  console.log("[Gamma] POST response (full):", JSON.stringify(postData));
 
-  const generationId: string = postData.generationId || postData.id || "";
+  const generationId: string =
+    postData.generationId ||
+    postData.generation_id ||
+    postData.id ||
+    postData.jobId ||
+    "";
   if (!generationId) {
-    throw new Error("Gamma API: no generationId in response");
+    throw new Error(`Gamma API: no generationId in response. Raw: ${JSON.stringify(postData)}`);
   }
 
   console.log("[Gamma] Polling for completion, id:", generationId);
@@ -281,13 +286,27 @@ async function pollGammaGeneration(generationId: string): Promise<GammaGenerateR
       const status = data.status || "pending";
 
       if (status === "completed") {
-        const gammaUrl = data.gammaUrl || "";
+        // Gamma API may return the URL in different fields depending on version
+        const gammaUrl =
+          data.gammaUrl ||
+          data.url ||
+          data.deckUrl ||
+          data.deck_url ||
+          data.gammaLink ||
+          data.link ||
+          "";
+        const gammaId =
+          data.gammaId ||
+          data.deckId ||
+          data.deck_id ||
+          data.id ||
+          "";
         const embedUrl = buildEmbedUrl(gammaUrl);
-        console.log("[Gamma] COMPLETED:", { gammaUrl, embedUrl, gammaId: data.gammaId });
+        console.log("[Gamma] COMPLETED:", { gammaUrl, embedUrl, gammaId, rawData: JSON.stringify(data) });
 
         return {
           id: generationId,
-          gammaId: data.gammaId || "",
+          gammaId,
           url: gammaUrl,
           embedUrl,
           status: "completed",
