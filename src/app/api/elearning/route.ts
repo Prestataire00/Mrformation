@@ -1,5 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
+import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
+import { logAudit } from "@/lib/audit-log";
 
 export async function GET(request: NextRequest) {
   try {
@@ -40,13 +42,12 @@ export async function GET(request: NextRequest) {
 
     const { data, error } = await query;
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: sanitizeDbError(error, "fetching elearning courses") }, { status: 500 });
     }
 
     return NextResponse.json({ data });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Erreur interne";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: sanitizeError(error, "fetching elearning courses") }, { status: 500 });
   }
 }
 
@@ -75,7 +76,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { title, source_file_name, source_file_url, source_file_type, final_quiz_target_count, flashcards_target_count, extracted_text, course_type, gamma_theme_id, gamma_template_id, num_chapters } = body;
+    const { title, source_file_name, source_file_url, source_file_type, final_quiz_target_count, flashcards_target_count, extracted_text, course_type, gamma_theme_id, gamma_template_id, num_chapters, program_id } = body;
 
     if (!title) {
       return NextResponse.json({ error: "Le titre est requis" }, { status: 400 });
@@ -103,6 +104,7 @@ export async function POST(request: NextRequest) {
     if (final_quiz_target_count !== undefined) insertData.final_quiz_target_count = final_quiz_target_count;
     if (flashcards_target_count !== undefined) insertData.flashcards_target_count = flashcards_target_count;
     if (num_chapters !== undefined) insertData.num_chapters = Math.min(8, Math.max(2, Number(num_chapters) || 5));
+    if (program_id) insertData.program_id = program_id;
 
     const { data, error } = await supabase
       .from("elearning_courses")
@@ -111,12 +113,21 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: sanitizeDbError(error, "creating elearning course") }, { status: 500 });
     }
+
+    logAudit({
+      supabase,
+      entityId: profile.entity_id,
+      userId: user.id,
+      action: "create",
+      resourceType: "elearning_course",
+      resourceId: data.id,
+      details: { name: data.title },
+    });
 
     return NextResponse.json({ data }, { status: 201 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Erreur interne";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: sanitizeError(error, "creating elearning course") }, { status: 500 });
   }
 }

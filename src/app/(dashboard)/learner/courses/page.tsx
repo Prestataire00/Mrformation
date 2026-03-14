@@ -5,8 +5,9 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
 import { Badge } from "@/components/ui/badge";
-import { BookOpen, Clock, Play, CheckCircle2, Loader2, Plus, FileText, Video, HelpCircle, ExternalLink } from "lucide-react";
+import { BookOpen, Clock, Play, CheckCircle2, Loader2, Plus, FileText, Video, HelpCircle, ExternalLink, GraduationCap, Calendar } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useEntity } from "@/contexts/EntityContext";
 
 interface PublishedCourse {
   id: string;
@@ -32,6 +33,26 @@ interface ManualCourse {
   content: { type: string; status: string; modules: ManualCourseModule[] };
 }
 
+interface AssignedCourse {
+  id: string;
+  course_id: string;
+  session_id: string;
+  is_completed: boolean;
+  start_date: string | null;
+  end_date: string | null;
+  elearning_courses: {
+    id: string;
+    title: string;
+    description: string | null;
+    estimated_duration_minutes: number;
+    elearning_chapters: { id: string }[];
+  } | null;
+  sessions: {
+    title: string;
+    training: { title: string } | null;
+  } | null;
+}
+
 interface CourseWithEnrollment {
   id: string;
   course_id: string;
@@ -51,8 +72,10 @@ interface CourseWithEnrollment {
 export default function LearnerCoursesPage() {
   const supabase = createClient();
   const { toast } = useToast();
+  const { entityId } = useEntity();
 
   const [enrollments, setEnrollments] = useState<CourseWithEnrollment[]>([]);
+  const [assignedCourses, setAssignedCourses] = useState<AssignedCourse[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "in_progress" | "completed">("all");
   const [catalogue, setCatalogue] = useState<PublishedCourse[]>([]);
@@ -86,60 +109,75 @@ export default function LearnerCoursesPage() {
       .from("learners")
       .select("id")
       .eq("email", profile.email)
-      .single();
+      .maybeSingle();
 
-    if (!learner) {
-      setLoading(false);
-      return;
-    }
+    const currentLearnerId = learner?.id ?? null;
+    setLearnerId(currentLearnerId);
 
-    setLearnerId(learner.id);
+    // Fetch enrollments only if learner record exists
+    const enrolledData: CourseWithEnrollment[] = [];
+    if (currentLearnerId) {
+      const { data, error } = await supabase
+        .from("elearning_enrollments")
+        .select(
+          `*, elearning_courses(id, title, description, estimated_duration_minutes, status, elearning_chapters(id))`
+        )
+        .eq("learner_id", currentLearnerId)
+        .order("enrolled_at", { ascending: false });
 
-    const { data, error } = await supabase
-      .from("elearning_enrollments")
-      .select(
-        `*, elearning_courses(id, title, description, estimated_duration_minutes, status, elearning_chapters(id))`
-      )
-      .eq("learner_id", learner.id)
-      .order("enrolled_at", { ascending: false });
-
-    if (error) {
-      toast({ title: "Erreur", description: error.message, variant: "destructive" });
-    } else {
-      const enrolledData = (data as CourseWithEnrollment[]) || [];
-      setEnrollments(enrolledData);
-
-      // Fetch all published courses to show catalogue (courses not yet enrolled)
-      const enrolledIds = enrolledData.map((e) => e.course_id);
-      const { data: published } = await supabase
-        .from("elearning_courses")
-        .select("id, title, description, estimated_duration_minutes, elearning_chapters(id)")
-        .eq("status", "published")
-        .order("created_at", { ascending: false });
-
-      if (published) {
-        const notEnrolled = (published as PublishedCourse[]).filter(
-          (c) => !enrolledIds.includes(c.id)
-        );
-        setCatalogue(notEnrolled);
-      }
-
-      // Fetch published manual courses from programs table
-      const { data: programs } = await supabase
-        .from("programs")
-        .select("id, title, description, objectives, content")
-        .order("updated_at", { ascending: false });
-
-      if (programs) {
-        const published = (programs as ManualCourse[]).filter(
-          (p) =>
-            p.content?.type === "elearning" &&
-            p.content?.status === "published" &&
-            (p.content?.modules?.length ?? 0) > 0
-        );
-        setManualCourses(published);
+      if (error) {
+        toast({ title: "Erreur", description: error.message, variant: "destructive" });
+      } else {
+        enrolledData.push(...((data as CourseWithEnrollment[]) || []));
       }
     }
+    setEnrollments(enrolledData);
+
+    // Catalogue — published AI courses not yet enrolled (always shown)
+    const enrolledIds = enrolledData.map((e) => e.course_id);
+    const { data: publishedCourses } = await supabase
+      .from("elearning_courses")
+      .select("id, title, description, estimated_duration_minutes, elearning_chapters(id)")
+      .eq("status", "published")
+      .order("created_at", { ascending: false });
+
+    if (publishedCourses) {
+      const notEnrolled = (publishedCourses as PublishedCourse[]).filter(
+        (c) => !enrolledIds.includes(c.id)
+      );
+      setCatalogue(notEnrolled);
+    }
+
+    // Manual courses from programs table (always shown)
+    const { data: programs } = await supabase
+      .from("programs")
+      .select("id, title, description, objectives, content")
+      .order("updated_at", { ascending: false });
+
+    if (programs) {
+      const publishedPrograms = (programs as ManualCourse[]).filter(
+        (p) =>
+          p.content?.type === "elearning" &&
+          p.content?.status === "published" &&
+          (p.content?.modules?.length ?? 0) > 0
+      );
+      setManualCourses(publishedPrograms);
+    }
+
+    // Fetch e-learning assigned via formations (formation_elearning_assignments)
+    if (currentLearnerId) {
+      const { data: assignments } = await supabase
+        .from("formation_elearning_assignments")
+        .select(
+          "id, course_id, session_id, is_completed, start_date, end_date, elearning_courses(id, title, description, estimated_duration_minutes, elearning_chapters(id)), sessions(title, training:trainings(title))"
+        )
+        .eq("learner_id", currentLearnerId);
+
+      if (assignments) {
+        setAssignedCourses(assignments as unknown as AssignedCourse[]);
+      }
+    }
+
     setLoading(false);
   }, []);
 
@@ -153,7 +191,7 @@ export default function LearnerCoursesPage() {
     const { error } = await supabase.from("elearning_enrollments").insert({
       course_id: courseId,
       learner_id: learnerId,
-      status: "not_started",
+      status: "enrolled",
       completion_rate: 0,
     });
     if (error) {
@@ -167,6 +205,7 @@ export default function LearnerCoursesPage() {
 
   const filtered = enrollments.filter((e) => {
     if (filter === "all") return true;
+    if (filter === "in_progress") return e.status === "in_progress" || e.status === "enrolled";
     return e.status === filter;
   });
 
@@ -186,6 +225,86 @@ export default function LearnerCoursesPage() {
           Accédez à vos cours et suivez votre progression.
         </p>
       </div>
+
+      {/* Assigned via formations */}
+      {!loading && assignedCourses.length > 0 && (
+        <div className="space-y-3 pb-4 border-b border-gray-200">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+              <GraduationCap className="h-5 w-5 text-blue-600" />
+              Cours assignés via mes formations
+            </h2>
+            <p className="text-sm text-gray-500 mt-0.5">
+              Cours e-learning rattachés à vos sessions de formation.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {assignedCourses.map((assignment) => {
+              const course = Array.isArray(assignment.elearning_courses)
+                ? assignment.elearning_courses[0]
+                : assignment.elearning_courses;
+              if (!course) return null;
+              const sessionInfo = Array.isArray(assignment.sessions)
+                ? assignment.sessions[0]
+                : assignment.sessions;
+              const trainingTitle = sessionInfo?.training
+                ? (Array.isArray(sessionInfo.training) ? sessionInfo.training[0]?.title : sessionInfo.training.title)
+                : null;
+
+              return (
+                <Link
+                  key={assignment.id}
+                  href={`/learner/courses/${course.id}`}
+                  className="block"
+                >
+                  <div className="bg-white border border-blue-100 rounded-xl p-5 hover:shadow-md transition-all duration-200 group h-full">
+                    <div className="flex items-start justify-between mb-2">
+                      {assignment.is_completed ? (
+                        <Badge className="text-xs border bg-green-100 text-green-700 border-green-200">
+                          <CheckCircle2 className="h-3 w-3 mr-1" /> Terminé
+                        </Badge>
+                      ) : (
+                        <Badge className="text-xs border bg-blue-100 text-blue-700 border-blue-200">
+                          <Play className="h-3 w-3 mr-1" /> En cours
+                        </Badge>
+                      )}
+                    </div>
+                    <h3 className="font-semibold text-gray-900 group-hover:text-[#3DB5C5] transition-colors line-clamp-2">
+                      {course.title}
+                    </h3>
+                    {trainingTitle && (
+                      <p className="text-xs text-blue-600 mt-1 flex items-center gap-1">
+                        <Calendar className="h-3 w-3" />
+                        {trainingTitle}
+                      </p>
+                    )}
+                    {course.description && (
+                      <p className="text-sm text-gray-500 mt-1 line-clamp-2">{course.description}</p>
+                    )}
+                    <div className="flex items-center gap-3 text-xs text-gray-400 mt-3">
+                      <span className="flex items-center gap-1">
+                        <BookOpen className="h-3.5 w-3.5" />
+                        {course.elearning_chapters?.length ?? 0} chapitres
+                      </span>
+                      {course.estimated_duration_minutes > 0 && (
+                        <span className="flex items-center gap-1">
+                          <Clock className="h-3.5 w-3.5" />
+                          {course.estimated_duration_minutes} min
+                        </span>
+                      )}
+                      {assignment.end_date && (
+                        <span className="text-amber-600">
+                          Échéance : {new Date(assignment.end_date).toLocaleDateString("fr-FR")}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Filter */}
       <div className="flex gap-1 border rounded-lg p-1 bg-gray-50 w-fit">

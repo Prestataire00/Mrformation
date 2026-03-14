@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
+import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 
 export async function GET(request: NextRequest) {
   try {
@@ -31,13 +32,12 @@ export async function GET(request: NextRequest) {
       .order("name");
 
     if (error) {
-      return NextResponse.json({ data: null, error: error.message }, { status: 500 });
+      return NextResponse.json({ data: null, error: sanitizeDbError(error, "fetching tags") }, { status: 500 });
     }
 
     return NextResponse.json({ data, error: null });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Internal server error";
-    return NextResponse.json({ data: null, error: message }, { status: 500 });
+    return NextResponse.json({ data: null, error: sanitizeError(err, "fetching tags") }, { status: 500 });
   }
 }
 
@@ -85,13 +85,12 @@ export async function POST(request: NextRequest) {
       if (error.code === "23505") {
         return NextResponse.json({ data: null, error: "Ce tag existe déjà" }, { status: 409 });
       }
-      return NextResponse.json({ data: null, error: error.message }, { status: 500 });
+      return NextResponse.json({ data: null, error: sanitizeDbError(error, "creating tag") }, { status: 500 });
     }
 
     return NextResponse.json({ data, error: null }, { status: 201 });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Internal server error";
-    return NextResponse.json({ data: null, error: message }, { status: 500 });
+    return NextResponse.json({ data: null, error: sanitizeError(err, "creating tag") }, { status: 500 });
   }
 }
 
@@ -132,12 +131,11 @@ export async function DELETE(request: NextRequest) {
       .eq("entity_id", profile.entity_id);
 
     if (error) {
-      return NextResponse.json({ data: null, error: error.message }, { status: 500 });
+      return NextResponse.json({ data: null, error: sanitizeDbError(error, "deleting tag") }, { status: 500 });
     }
 
     return NextResponse.json({ data: { deleted: true }, error: null });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Internal server error";
-    return NextResponse.json({ data: null, error: message }, { status: 500 });
+    return NextResponse.json({ data: null, error: sanitizeError(err, "deleting tag") }, { status: 500 });
   }
 }

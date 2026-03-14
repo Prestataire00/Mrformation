@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { extractText } from "@/lib/services/doc-extraction";
+import { sanitizeError } from "@/lib/api-error";
 
 export const maxDuration = 60;
 
@@ -104,7 +105,7 @@ export async function POST(
       },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Erreur interne";
+    const message = sanitizeError(error, "extracting text from document");
     // Update course with error
     try {
       const supabase = createClient();

@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
+import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 
 export async function POST(request: Request) {
   try {
@@ -32,19 +33,17 @@ export async function POST(request: Request) {
     });
 
     if (error) {
-      console.error("Referral insert error:", error);
       // Don't fail the registration if referral tracking fails
       return NextResponse.json(
-        { success: false, message: "Parrainage non enregistré (table manquante ?)", detail: error.message },
+        { success: false, message: "Parrainage non enregistré (table manquante ?)", detail: sanitizeDbError(error, "register-referral insert") },
         { status: 200 }
       );
     }
 
     return NextResponse.json({ success: true, message: "Parrainage enregistré" });
   } catch (err) {
-    console.error("Register referral error:", err);
     return NextResponse.json(
-      { error: "Erreur serveur" },
+      { error: sanitizeError(err, "register-referral") },
       { status: 500 }
     );
   }

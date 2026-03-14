@@ -302,9 +302,46 @@ export default function CoursePlayerPage() {
   const scorePopupTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const confettiTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Track which chapters have been marked as completed (to avoid duplicate API calls)
+  const completedChaptersRef = useRef<Set<number>>(new Set());
+
   // Total score
   const totalScore = Array.from(chapterScores.values()).reduce((acc, s) => acc + s.correct * 10, 0)
     + (finalScore ? finalScore.correct * 10 : 0);
+
+  /* ---------------------------------------------------------------- */
+  /*  Progress tracking — mark chapter completed via API                */
+  /* ---------------------------------------------------------------- */
+  async function markChapterCompleted(chapterIdx: number) {
+    if (!enrollmentId || !course) return;
+    if (completedChaptersRef.current.has(chapterIdx)) return;
+    completedChaptersRef.current.add(chapterIdx);
+
+    const chapter = course.elearning_chapters[chapterIdx];
+    if (!chapter) return;
+
+    try {
+      await fetch("/api/elearning/progress", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          enrollment_id: enrollmentId,
+          chapter_id: chapter.id,
+          is_completed: true,
+          time_spent_seconds: 0,
+        }),
+      });
+    } catch {
+      // non-blocking — don't break the course flow
+    }
+  }
+
+  async function markAllChaptersCompleted() {
+    if (!enrollmentId || !course) return;
+    for (let i = 0; i < course.elearning_chapters.length; i++) {
+      await markChapterCompleted(i);
+    }
+  }
 
   /* ---------------------------------------------------------------- */
   /*  Data loading                                                      */
@@ -395,6 +432,17 @@ export default function CoursePlayerPage() {
       fetchFinalQuestions();
     }
   }, [currentScreen, fetchFinalQuestions]);
+
+  // Mark chapter as completed when reaching chapter_score screen
+  useEffect(() => {
+    if (currentScreen?.type === "chapter_score" && "chapterIdx" in currentScreen) {
+      markChapterCompleted(currentScreen.chapterIdx);
+    }
+    // Presentation-only: mark all chapters completed when reaching course_complete
+    if (currentScreen?.type === "course_complete") {
+      markAllChaptersCompleted();
+    }
+  }, [currentIdx]);
 
   /* ---------------------------------------------------------------- */
   /*  Quiz helpers                                                      */
@@ -549,6 +597,9 @@ export default function CoursePlayerPage() {
       // non-blocking
     }
 
+    // Mark all chapters as completed after final exam
+    await markAllChaptersCompleted();
+
     setFinalSubmitting(false);
     goNext();
   }
@@ -598,9 +649,11 @@ export default function CoursePlayerPage() {
       case "cover":
         return (
           <div className="flex flex-col items-center justify-center h-full text-center px-8 py-12">
-            <div className="w-24 h-24 rounded-3xl bg-gradient-to-br from-[#3DB5C5] to-blue-600 flex items-center justify-center mb-8 shadow-2xl">
-              <BookOpen className="h-12 w-12 text-white" />
-            </div>
+            <img
+              src="/logo-mr-formation.png"
+              alt="MR Formation"
+              className="h-24 mb-8 object-contain"
+            />
             <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4 leading-tight">
               {course.title}
             </h1>

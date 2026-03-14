@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
+import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 
 export async function POST(request: NextRequest) {
   try {
@@ -185,7 +186,7 @@ export async function POST(request: NextRequest) {
       const { error } = await supabase.from("crm_notifications").insert(notifications);
       if (error) {
         console.error("Failed to insert notifications:", error.message);
-        return NextResponse.json({ data: null, error: error.message }, { status: 500 });
+        return NextResponse.json({ data: null, error: sanitizeDbError(error, "inserting notifications") }, { status: 500 });
       }
     }
 
@@ -202,7 +203,6 @@ export async function POST(request: NextRequest) {
       error: null,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Internal server error";
-    return NextResponse.json({ data: null, error: message }, { status: 500 });
+    return NextResponse.json({ data: null, error: sanitizeError(err, "generating notifications") }, { status: 500 });
   }
 }

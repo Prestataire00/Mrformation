@@ -27,6 +27,8 @@ import {
   GripVertical,
   ChevronDown,
   ChevronUp,
+  GraduationCap,
+  Monitor,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -506,11 +508,50 @@ export default function ProgramDetailPage() {
                 variant="outline"
                 className="rounded-full gap-2"
                 onClick={() => {
-                  window.print();
+                  const printWindow = window.open(window.location.href, '_blank');
+                  if (printWindow) {
+                    printWindow.addEventListener('afterprint', () => printWindow.close());
+                    printWindow.onload = () => {
+                      setTimeout(() => printWindow.print(), 500);
+                    };
+                  }
                 }}
               >
                 <Download className="w-3.5 h-3.5" />
                 Exporter (PDF)
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="rounded-full gap-2 border-blue-300 text-blue-700 hover:bg-blue-50"
+                onClick={() => {
+                  const params = new URLSearchParams({
+                    from_program: program.id,
+                    title: program.title,
+                    ...(program.objectives ? { objectives: program.objectives } : {}),
+                    ...(meta.duration_hours ? { duration: String(meta.duration_hours) } : {}),
+                  });
+                  router.push(`/admin/trainings?${params.toString()}`);
+                }}
+              >
+                <GraduationCap className="w-3.5 h-3.5" />
+                Créer une formation
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="rounded-full gap-2 border-purple-300 text-purple-700 hover:bg-purple-50"
+                onClick={() => {
+                  const params = new URLSearchParams({
+                    from_program: program.id,
+                    title: program.title,
+                    ...(program.objectives ? { objectives: program.objectives } : {}),
+                  });
+                  router.push(`/admin/elearning/create?${params.toString()}`);
+                }}
+              >
+                <Monitor className="w-3.5 h-3.5" />
+                Générer un E-Learning
               </Button>
             </div>
           </div>

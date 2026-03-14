@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
+import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 
 export async function PATCH(
   request: NextRequest,
@@ -46,13 +47,12 @@ export async function PATCH(
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: sanitizeDbError(error, "updating chapter") }, { status: 500 });
     }
 
     return NextResponse.json({ data });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Erreur interne";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: sanitizeError(error, "updating chapter") }, { status: 500 });
   }
 }
 
@@ -87,12 +87,11 @@ export async function DELETE(
       .eq("course_id", params.courseId);
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: sanitizeDbError(error, "deleting chapter") }, { status: 500 });
     }
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Erreur interne";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: sanitizeError(error, "deleting chapter") }, { status: 500 });
   }
 }

@@ -34,7 +34,11 @@ interface DashboardData {
   // Prospect funnel
   prospectsByStatus: { status: string; label: string; count: number; color: string }[];
   totalProspects: number;
+  wonCount: number;
   conversionRate: number;
+
+  // Revenue from won prospects
+  wonRevenue: number;
 
   // Quote pipeline
   quotesByStatus: { status: string; label: string; amount: number; count: number; color: string }[];
@@ -45,11 +49,11 @@ interface DashboardData {
   todayTasks: number;
   completedThisWeek: number;
 
-  // Monthly revenue (accepted quotes)
+  // Monthly revenue (quotes from won prospects)
   monthlyRevenue: { month: string; amount: number }[];
 }
 
-const PROSPECT_STATUS_MAP: Record<string, { label: string; color: string }> = {
+const DEFAULT_PROSPECT_STATUS_MAP: Record<string, { label: string; color: string }> = {
   new: { label: "Lead", color: "#3DB5C5" },
   contacted: { label: "Contacté", color: "#f97316" },
   qualified: { label: "Qualifié", color: "#8b5cf6" },
@@ -58,6 +62,24 @@ const PROSPECT_STATUS_MAP: Record<string, { label: string; color: string }> = {
   lost: { label: "Perdu", color: "#ef4444" },
   dormant: { label: "Dormant", color: "#9ca3af" },
 };
+
+interface KanbanColumn {
+  id: string;
+  label: string;
+  color: string;
+}
+
+function getProspectColumns(entityId: string | null): KanbanColumn[] {
+  if (!entityId) return Object.entries(DEFAULT_PROSPECT_STATUS_MAP).map(([id, meta]) => ({ id, ...meta }));
+  try {
+    const stored = localStorage.getItem(`crm-columns-${entityId}`);
+    if (stored) {
+      const parsed = JSON.parse(stored) as KanbanColumn[];
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch { /* ignore */ }
+  return Object.entries(DEFAULT_PROSPECT_STATUS_MAP).map(([id, meta]) => ({ id, ...meta }));
+}
 
 const QUOTE_STATUS_MAP: Record<string, { label: string; color: string }> = {
   draft: { label: "Brouillon", color: "#9ca3af" },
@@ -76,7 +98,9 @@ export default function CrmDashboardPage() {
   const [data, setData] = useState<DashboardData>({
     prospectsByStatus: [],
     totalProspects: 0,
+    wonCount: 0,
     conversionRate: 0,
+    wonRevenue: 0,
     quotesByStatus: [],
     pipelineValue: 0,
     overdueTasks: 0,
@@ -92,8 +116,8 @@ export default function CrmDashboardPage() {
     try {
       // Fetch all data in parallel
       const [prospectsRes, quotesRes, tasksRes] = await Promise.all([
-        supabase.from("crm_prospects").select("status").eq("entity_id", entityId),
-        supabase.from("crm_quotes").select("status, amount, created_at").eq("entity_id", entityId),
+        supabase.from("crm_prospects").select("id, status").eq("entity_id", entityId),
+        supabase.from("crm_quotes").select("status, amount, created_at, prospect_id").eq("entity_id", entityId),
         supabase.from("crm_tasks").select("status, due_date").eq("entity_id", entityId),
       ]);
 
@@ -101,16 +125,22 @@ export default function CrmDashboardPage() {
       const quotes = quotesRes.data ?? [];
       const tasks = tasksRes.data ?? [];
 
-      // Prospect funnel
+      // Build set of won prospect IDs
+      const wonProspectIds = new Set(
+        prospects.filter((p) => p.status === "won").map((p) => p.id)
+      );
+
+      // Prospect funnel — read columns from localStorage (synced with kanban config)
+      const columns = getProspectColumns(entityId);
       const statusCounts: Record<string, number> = {};
       for (const p of prospects) {
         statusCounts[p.status] = (statusCounts[p.status] ?? 0) + 1;
       }
-      const prospectsByStatus = Object.entries(PROSPECT_STATUS_MAP).map(([status, meta]) => ({
-        status,
-        label: meta.label,
-        count: statusCounts[status] ?? 0,
-        color: meta.color,
+      const prospectsByStatus = columns.map((col) => ({
+        status: col.id,
+        label: col.label,
+        count: statusCounts[col.id] ?? 0,
+        color: col.color,
       }));
 
       const totalProspects = prospects.length;
@@ -156,15 +186,23 @@ export default function CrmDashboardPage() {
         }
       }
 
-      // Monthly revenue (last 6 months)
+      // Quotes from won prospects only (for revenue)
+      const wonQuotes = quotes.filter(
+        (q) => q.prospect_id && wonProspectIds.has(q.prospect_id)
+      );
+
+      // Total won revenue
+      const wonRevenue = wonQuotes.reduce((sum, q) => sum + Number(q.amount ?? 0), 0);
+
+      // Monthly revenue from won prospects (last 6 months)
       const now = new Date();
       const monthlyRevenue: { month: string; amount: number }[] = [];
       for (let i = 5; i >= 0; i--) {
         const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
         const yearMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
         const label = `${MONTH_LABELS[d.getMonth()]} ${d.getFullYear()}`;
-        const monthAmount = quotes
-          .filter((q) => q.status === "accepted" && q.created_at.startsWith(yearMonth))
+        const monthAmount = wonQuotes
+          .filter((q) => q.created_at.startsWith(yearMonth))
           .reduce((sum, q) => sum + Number(q.amount ?? 0), 0);
         monthlyRevenue.push({ month: label, amount: monthAmount });
       }
@@ -172,7 +210,9 @@ export default function CrmDashboardPage() {
       setData({
         prospectsByStatus,
         totalProspects,
+        wonCount,
         conversionRate,
+        wonRevenue,
         quotesByStatus,
         pipelineValue,
         overdueTasks,
@@ -210,7 +250,7 @@ export default function CrmDashboardPage() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-5 gap-4">
         <Card>
           <CardContent className="p-4 flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100">
@@ -225,11 +265,35 @@ export default function CrmDashboardPage() {
         <Card>
           <CardContent className="p-4 flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-100">
+              <CheckCircle className="h-5 w-5 text-green-600" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Leads gagnés</p>
+              <p className="text-2xl font-bold text-green-600">{data.wonCount}</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-100">
               <Target className="h-5 w-5 text-green-600" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Taux de conversion</p>
               <p className="text-2xl font-bold text-green-600">{data.conversionRate}%</p>
+              <p className="text-[10px] text-muted-foreground">{data.wonCount}/{data.totalProspects} gagnés</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100">
+              <TrendingUp className="h-5 w-5 text-emerald-600" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">CA Gagné</p>
+              <p className="text-lg font-bold text-emerald-600">{formatCurrency(data.wonRevenue)}</p>
+              <p className="text-[10px] text-muted-foreground">{data.wonCount} lead{data.wonCount > 1 ? "s" : ""} gagné{data.wonCount > 1 ? "s" : ""}</p>
             </div>
           </CardContent>
         </Card>
@@ -241,17 +305,6 @@ export default function CrmDashboardPage() {
             <div>
               <p className="text-xs text-muted-foreground">Pipeline devis</p>
               <p className="text-lg font-bold text-violet-600">{formatCurrency(data.pipelineValue)}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-100">
-              <AlertTriangle className="h-5 w-5 text-red-600" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Tâches en retard</p>
-              <p className="text-2xl font-bold text-red-600">{data.overdueTasks}</p>
             </div>
           </CardContent>
         </Card>
@@ -367,7 +420,7 @@ export default function CrmDashboardPage() {
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-semibold flex items-center gap-2">
             <TrendingUp className="h-4 w-4 text-green-600" />
-            Chiffre d&apos;affaires mensuel (devis acceptés)
+            Chiffre d&apos;affaires mensuel (leads gagnés)
           </CardTitle>
         </CardHeader>
         <CardContent>

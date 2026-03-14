@@ -13,6 +13,9 @@ import {
   KeyRound,
   X,
   ChevronDown,
+  Pencil,
+  Mail,
+  BookOpen,
 } from "lucide-react";
 
 interface UserProfile {
@@ -27,6 +30,20 @@ interface UserProfile {
   source?: string; // "profile" | "learner" | "trainer"
 }
 
+interface EnrollmentEntry {
+  id: string;
+  status: string;
+  enrolled_at: string;
+  session: {
+    id: string;
+    start_date: string | null;
+    end_date: string | null;
+    training: {
+      title: string;
+    } | null;
+  } | null;
+}
+
 const ROLE_LABELS: Record<string, string> = {
   admin: "Administrateur",
   trainer: "Formateur",
@@ -39,6 +56,20 @@ const ROLE_COLORS: Record<string, string> = {
   trainer: "bg-green-100 text-green-700",
   client: "bg-purple-100 text-purple-700",
   learner: "bg-orange-100 text-orange-700",
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  registered: "Inscrit",
+  confirmed: "Confirmé",
+  cancelled: "Annulé",
+  completed: "Terminé",
+};
+
+const STATUS_COLORS: Record<string, string> = {
+  registered: "bg-blue-50 text-blue-700",
+  confirmed: "bg-green-50 text-green-700",
+  cancelled: "bg-red-50 text-red-700",
+  completed: "bg-gray-100 text-gray-600",
 };
 
 export default function UsersPage() {
@@ -66,8 +97,22 @@ export default function UsersPage() {
   // Password change modal
   const [passwordModal, setPasswordModal] = useState<{ userId: string; name: string } | null>(null);
   const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [changingPassword, setChangingPassword] = useState(false);
   const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  // Edit user modal
+  const [editModal, setEditModal] = useState<UserProfile | null>(null);
+  const [editForm, setEditForm] = useState({ first_name: "", last_name: "", email: "", phone: "", role: "" });
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  // Formations modal
+  const [formationsModal, setFormationsModal] = useState<{ userId: string; name: string } | null>(null);
+  const [formations, setFormations] = useState<EnrollmentEntry[]>([]);
+  const [loadingFormations, setLoadingFormations] = useState(false);
 
   // Delete
   const [deleting, setDeleting] = useState<string | null>(null);
@@ -122,10 +167,17 @@ export default function UsersPage() {
   }
 
   async function handleChangePassword() {
-    if (!passwordModal || newPassword.length < 6) {
+    if (!passwordModal) return;
+
+    if (newPassword.length < 6) {
       setPasswordError("Le mot de passe doit contenir au moins 6 caractères");
       return;
     }
+    if (newPassword !== confirmPassword) {
+      setPasswordError("Les mots de passe ne correspondent pas");
+      return;
+    }
+
     setChangingPassword(true);
     setPasswordError(null);
 
@@ -144,16 +196,91 @@ export default function UsersPage() {
 
     setPasswordModal(null);
     setNewPassword("");
+    setConfirmPassword("");
     setChangingPassword(false);
   }
 
-  async function handleDelete(userId: string) {
-    if (!confirm("Supprimer cet utilisateur ? Cette action est irréversible.")) return;
-    setDeleting(userId);
+  function openEditModal(u: UserProfile) {
+    setEditModal(u);
+    setEditForm({
+      first_name: u.first_name,
+      last_name: u.last_name,
+      email: u.email,
+      phone: u.phone || "",
+      role: u.role,
+    });
+    setEditError(null);
+  }
 
-    // Delete profile (auth user stays but can't access anything without a profile)
-    await supabase.from("profiles").delete().eq("id", userId);
-    setUsers((prev) => prev.filter((u) => u.id !== userId));
+  async function handleEditSave() {
+    if (!editModal) return;
+    if (!editForm.first_name || !editForm.last_name || !editForm.email) {
+      setEditError("Prénom, nom et email sont obligatoires");
+      return;
+    }
+
+    setEditSaving(true);
+    setEditError(null);
+
+    const res = await fetch(`/api/admin/users/${editModal.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...editForm, source: editModal.source }),
+    });
+
+    const json = await res.json();
+    if (!res.ok) {
+      setEditError(json.error || "Erreur lors de la sauvegarde");
+      setEditSaving(false);
+      return;
+    }
+
+    setEditModal(null);
+    setEditSaving(false);
+    loadUsers();
+  }
+
+  async function openFormationsModal(u: UserProfile) {
+    setFormationsModal({ userId: u.id, name: `${u.first_name} ${u.last_name}` });
+    setFormations([]);
+    setLoadingFormations(true);
+
+    const { data, error } = await supabase
+      .from("enrollments")
+      .select(`
+        id,
+        status,
+        enrolled_at,
+        session:sessions(
+          id,
+          start_date,
+          end_date,
+          training:trainings(title)
+        )
+      `)
+      .eq("learner_id", u.id)
+      .order("enrolled_at", { ascending: false });
+
+    if (!error && data) {
+      setFormations(data as unknown as EnrollmentEntry[]);
+    }
+    setLoadingFormations(false);
+  }
+
+  async function handleDelete(u: UserProfile) {
+    if (!confirm(`Supprimer l'utilisateur ${u.first_name} ${u.last_name} ? Cette action est irréversible.`)) return;
+    setDeleting(u.id);
+
+    if (u.source === "profile") {
+      // Use the API to delete both profile and auth user
+      await fetch(`/api/admin/users/${u.id}`, { method: "DELETE" });
+    } else {
+      // For learners/trainers without auth accounts, delete directly
+      const table = u.source === "learner" ? "learners" : "trainers";
+      await supabase.from(table).delete().eq("id", u.id);
+    }
+
+    setUsers((prev) => prev.filter((x) => x.id !== u.id));
     setDeleting(null);
   }
 
@@ -383,7 +510,6 @@ export default function UsersPage() {
               learner: { bg: "bg-white", border: "border-orange-200", text: "text-orange-800", headerBg: "bg-orange-50" },
             };
 
-            // Group filtered users by role (preserving order)
             const roleOrder = ["admin", "trainer", "client", "learner"];
             const groups = roleOrder
               .map((role) => ({
@@ -398,7 +524,6 @@ export default function UsersPage() {
 
               return (
                 <div key={group.role} className={`border rounded-xl overflow-hidden ${style.border}`}>
-                  {/* Section header - cliquable */}
                   <button
                     onClick={() => setCollapsedRoles((prev) => ({ ...prev, [group.role]: !prev[group.role] }))}
                     className={`w-full flex items-center justify-between px-4 py-3 ${style.headerBg} ${style.text} hover:opacity-80 transition-opacity`}
@@ -409,7 +534,6 @@ export default function UsersPage() {
                     <ChevronDown className={`w-4 h-4 transition-transform ${isCollapsed ? "" : "rotate-180"}`} />
                   </button>
 
-                  {/* Table content */}
                   {!isCollapsed && (
                     <table className="w-full text-sm">
                       <thead className="bg-gray-50 border-t border-b">
@@ -434,11 +558,42 @@ export default function UsersPage() {
                             </td>
                             <td className="px-4 py-3 text-right">
                               <div className="flex items-center justify-end gap-1">
+                                {/* Modifier les informations */}
+                                <button
+                                  onClick={() => openEditModal(u)}
+                                  title="Modifier les informations"
+                                  className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
+                                >
+                                  <Pencil className="w-4 h-4" />
+                                </button>
+
+                                {/* Envoyer un email */}
+                                <a
+                                  href={`mailto:${u.email}`}
+                                  title="Envoyer un email"
+                                  className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded"
+                                >
+                                  <Mail className="w-4 h-4" />
+                                </a>
+
+                                {/* Voir les formations (apprenants uniquement) */}
+                                {u.role === "learner" && (
+                                  <button
+                                    onClick={() => openFormationsModal(u)}
+                                    title="Voir les formations inscrites"
+                                    className="p-1.5 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded"
+                                  >
+                                    <BookOpen className="w-4 h-4" />
+                                  </button>
+                                )}
+
+                                {/* Changer le mot de passe (utilisateurs auth uniquement) */}
                                 {u.source === "profile" && (
                                   <button
                                     onClick={() => {
                                       setPasswordModal({ userId: u.id, name: `${u.first_name} ${u.last_name}` });
                                       setNewPassword("");
+                                      setConfirmPassword("");
                                       setPasswordError(null);
                                     }}
                                     title="Changer le mot de passe"
@@ -447,8 +602,10 @@ export default function UsersPage() {
                                     <KeyRound className="w-4 h-4" />
                                   </button>
                                 )}
+
+                                {/* Supprimer */}
                                 <button
-                                  onClick={() => handleDelete(u.id)}
+                                  onClick={() => handleDelete(u)}
                                   disabled={deleting === u.id}
                                   title="Supprimer"
                                   className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded disabled:opacity-50"
@@ -478,8 +635,14 @@ export default function UsersPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-lg">Changer le mot de passe</h3>
-              <button onClick={() => setPasswordModal(null)} className="text-gray-400 hover:text-gray-600">
+              <h3 className="font-semibold text-lg flex items-center gap-2">
+                <KeyRound className="w-5 h-5 text-blue-600" />
+                Changer le mot de passe
+              </h3>
+              <button
+                onClick={() => { setPasswordModal(null); setNewPassword(""); setConfirmPassword(""); }}
+                className="text-gray-400 hover:text-gray-600"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -491,17 +654,51 @@ export default function UsersPage() {
                 {passwordError}
               </div>
             )}
-            <input
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="Nouveau mot de passe (min. 6 caractères)"
-              className="w-full px-3 py-2 border rounded-lg text-sm mb-4"
-              autoFocus
-            />
+            <div className="space-y-3 mb-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Nouveau mot de passe</label>
+                <div className="relative">
+                  <input
+                    type={showNewPassword ? "text" : "password"}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Min. 6 caractères"
+                    className="w-full px-3 py-2 border rounded-lg text-sm pr-10"
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPassword(!showNewPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
+                  >
+                    {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Confirmer le mot de passe</label>
+                <div className="relative">
+                  <input
+                    type={showConfirmPassword ? "text" : "password"}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Répétez le mot de passe"
+                    className="w-full px-3 py-2 border rounded-lg text-sm pr-10"
+                    onKeyDown={(e) => e.key === "Enter" && handleChangePassword()}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
+                  >
+                    {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+            </div>
             <div className="flex justify-end gap-3">
               <button
-                onClick={() => setPasswordModal(null)}
+                onClick={() => { setPasswordModal(null); setNewPassword(""); setConfirmPassword(""); }}
                 className="px-4 py-2 text-sm text-gray-600"
               >
                 Annuler
@@ -513,6 +710,154 @@ export default function UsersPage() {
               >
                 {changingPassword && <Loader2 className="w-4 h-4 animate-spin" />}
                 Confirmer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit User Modal */}
+      {editModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-lg shadow-xl">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-lg flex items-center gap-2">
+                <Pencil className="w-5 h-5 text-blue-600" />
+                Modifier l&apos;utilisateur
+              </h3>
+              <button onClick={() => setEditModal(null)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {editError && (
+              <div className="bg-red-50 border border-red-200 text-red-600 px-3 py-2 rounded-lg text-sm mb-4">
+                {editError}
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Prénom *</label>
+                <input
+                  type="text"
+                  value={editForm.first_name}
+                  onChange={(e) => setEditForm({ ...editForm, first_name: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Nom *</label>
+                <input
+                  type="text"
+                  value={editForm.last_name}
+                  onChange={(e) => setEditForm({ ...editForm, last_name: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              <div className="col-span-2">
+                <label className="block text-xs font-medium text-gray-600 mb-1">Email *</label>
+                <input
+                  type="email"
+                  value={editForm.email}
+                  onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Téléphone</label>
+                <input
+                  type="tel"
+                  value={editForm.phone}
+                  onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="06 12 34 56 78"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Rôle</label>
+                <select
+                  value={editForm.role}
+                  onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
+                  disabled={editModal.source !== "profile"}
+                  className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-400"
+                >
+                  <option value="learner">Apprenant</option>
+                  <option value="trainer">Formateur</option>
+                  <option value="client">Entreprise</option>
+                  <option value="admin">Administrateur</option>
+                </select>
+                {editModal.source !== "profile" && (
+                  <p className="text-xs text-gray-400 mt-1">Le rôle ne peut être modifié que pour les utilisateurs avec un compte.</p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setEditModal(null)} className="px-4 py-2 text-sm text-gray-600">
+                Annuler
+              </button>
+              <button
+                onClick={handleEditSave}
+                disabled={editSaving}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium disabled:opacity-50"
+              >
+                {editSaving && <Loader2 className="w-4 h-4 animate-spin" />}
+                Enregistrer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Formations Modal */}
+      {formationsModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-lg shadow-xl">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-lg flex items-center gap-2">
+                <BookOpen className="w-5 h-5 text-orange-600" />
+                Formations de {formationsModal.name}
+              </h3>
+              <button onClick={() => setFormationsModal(null)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {loadingFormations ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
+              </div>
+            ) : formations.length === 0 ? (
+              <div className="text-center py-8 text-gray-400 text-sm">
+                Aucune formation inscrite
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-80 overflow-y-auto">
+                {formations.map((enroll) => (
+                  <div key={enroll.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm text-gray-900 truncate">
+                        {enroll.session?.training?.title || "Formation sans titre"}
+                      </p>
+                      {enroll.session?.start_date && (
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {new Date(enroll.session.start_date).toLocaleDateString("fr-FR")}
+                          {enroll.session.end_date && ` → ${new Date(enroll.session.end_date).toLocaleDateString("fr-FR")}`}
+                        </p>
+                      )}
+                    </div>
+                    <span className={`ml-3 shrink-0 px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[enroll.status] || "bg-gray-100 text-gray-600"}`}>
+                      {STATUS_LABELS[enroll.status] || enroll.status}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex justify-end mt-4">
+              <button onClick={() => setFormationsModal(null)} className="px-4 py-2 text-sm text-gray-600">
+                Fermer
               </button>
             </div>
           </div>

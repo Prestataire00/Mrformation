@@ -1,4 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
+import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
+import { logAudit } from "@/lib/audit-log";
 import { NextRequest, NextResponse } from "next/server";
 
 interface RouteContext {
@@ -60,15 +62,14 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
         );
       }
       return NextResponse.json(
-        { data: null, error: fetchError.message },
+        { data: null, error: sanitizeDbError(fetchError, "fetch client") },
         { status: 500 }
       );
     }
 
     return NextResponse.json({ data, error: null });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Internal server error";
-    return NextResponse.json({ data: null, error: message }, { status: 500 });
+    return NextResponse.json({ data: null, error: sanitizeError(err, "fetch client") }, { status: 500 });
   }
 }
 
@@ -149,22 +150,31 @@ export async function PUT(request: NextRequest, { params }: RouteContext) {
 
     if (updateError) {
       return NextResponse.json(
-        { data: null, error: updateError.message },
+        { data: null, error: sanitizeDbError(updateError, "update client") },
         { status: 500 }
       );
     }
 
+    logAudit({
+      supabase,
+      entityId: profile.entity_id,
+      userId: user!.id,
+      action: "update",
+      resourceType: "clients",
+      resourceId: params.id,
+      details: { name },
+    });
+
     return NextResponse.json({ data, error: null });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Internal server error";
-    return NextResponse.json({ data: null, error: message }, { status: 500 });
+    return NextResponse.json({ data: null, error: sanitizeError(err, "update client") }, { status: 500 });
   }
 }
 
 export async function DELETE(request: NextRequest, { params }: RouteContext) {
   try {
     const supabase = createClient();
-    const { profile, error, status } = await getAuthenticatedProfile(supabase);
+    const { user, profile, error, status } = await getAuthenticatedProfile(supabase);
 
     if (error || !profile) {
       return NextResponse.json({ data: null, error }, { status });
@@ -196,17 +206,25 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
 
     if (deleteError) {
       return NextResponse.json(
-        { data: null, error: deleteError.message },
+        { data: null, error: sanitizeDbError(deleteError, "delete client") },
         { status: 500 }
       );
     }
+
+    logAudit({
+      supabase,
+      entityId: profile.entity_id,
+      userId: user!.id,
+      action: "delete",
+      resourceType: "clients",
+      resourceId: params.id,
+    });
 
     return NextResponse.json(
       { data: { id: params.id }, error: null },
       { status: 200 }
     );
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Internal server error";
-    return NextResponse.json({ data: null, error: message }, { status: 500 });
+    return NextResponse.json({ data: null, error: sanitizeError(err, "delete client") }, { status: 500 });
   }
 }

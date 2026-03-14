@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest } from "next/server";
+import { sanitizeError } from "@/lib/api-error";
 import {
   generateCourseOutline,
   generateChapterContent,
@@ -585,7 +586,7 @@ export async function POST(
 
         send("complete", 100, "Cours généré avec succès !", { course_id: params.courseId });
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Erreur interne";
+        const message = sanitizeError(error, "generating course content");
         send("error", 0, message);
 
         try {

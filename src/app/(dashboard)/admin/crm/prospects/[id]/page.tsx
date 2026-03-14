@@ -28,6 +28,7 @@ import {
   TrendingUp,
   Download,
   MoreHorizontal,
+  Search,
 } from "lucide-react";
 import { downloadDevisPDF, type DevisData } from "@/lib/devis-pdf";
 import { Button } from "@/components/ui/button";
@@ -51,7 +52,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn, formatDate } from "@/lib/utils";
-import type { CrmProspect, CrmQuote, ProspectStatus } from "@/lib/types";
+import type { CrmProspect, CrmQuote, ProspectStatus, Training } from "@/lib/types";
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
@@ -111,6 +112,14 @@ export default function ProspectDetailPage() {
   // Activity log (built from notes)
   const [activities, setActivities] = useState<ActivityEntry[]>([]);
 
+  // Training linking
+  const [linkTrainingOpen, setLinkTrainingOpen] = useState(false);
+  const [existingTrainings, setExistingTrainings] = useState<Training[]>([]);
+  const [trainingSearch, setTrainingSearch] = useState("");
+  const [loadingTrainings, setLoadingTrainings] = useState(false);
+  const [linkedTraining, setLinkedTraining] = useState<Training | null>(null);
+  const [linkingSaving, setLinkingSaving] = useState(false);
+
   // ── Fetch ─────────────────────────────────────────────────────────────────
 
   const fetchProspect = useCallback(async () => {
@@ -124,6 +133,18 @@ export default function ProspectDetailPage() {
     if (data) {
       setProspect(data as CrmProspect);
       buildActivities(data as CrmProspect);
+
+      // Fetch linked training if any
+      if (data.linked_training_id) {
+        const { data: trainingData } = await supabase
+          .from("trainings")
+          .select("*")
+          .eq("id", data.linked_training_id)
+          .single();
+        setLinkedTraining((trainingData as Training) ?? null);
+      } else {
+        setLinkedTraining(null);
+      }
     }
 
     // Fetch linked quotes
@@ -170,6 +191,47 @@ export default function ProspectDetailPage() {
     }
 
     setActivities(acts.reverse());
+  }
+
+  // ── Fetch trainings for linking dialog ──────────────────────────────────
+  async function openLinkTrainingDialog() {
+    setLinkTrainingOpen(true);
+    setTrainingSearch("");
+    if (existingTrainings.length > 0) return; // already loaded
+    setLoadingTrainings(true);
+    const { data } = await supabase
+      .from("trainings")
+      .select("*")
+      .eq("entity_id", entityId)
+      .eq("is_active", true)
+      .order("title");
+    setExistingTrainings((data as Training[]) ?? []);
+    setLoadingTrainings(false);
+  }
+
+  async function handleLinkTraining(training: Training) {
+    setLinkingSaving(true);
+    const { error } = await supabase
+      .from("crm_prospects")
+      .update({ linked_training_id: training.id, updated_at: new Date().toISOString() })
+      .eq("id", prospectId);
+    if (!error) {
+      setLinkedTraining(training);
+      setProspect((prev) => prev ? { ...prev, linked_training_id: training.id } : prev);
+    }
+    setLinkingSaving(false);
+    setLinkTrainingOpen(false);
+  }
+
+  async function handleUnlinkTraining() {
+    const { error } = await supabase
+      .from("crm_prospects")
+      .update({ linked_training_id: null, updated_at: new Date().toISOString() })
+      .eq("id", prospectId);
+    if (!error) {
+      setLinkedTraining(null);
+      setProspect((prev) => prev ? { ...prev, linked_training_id: null } : prev);
+    }
   }
 
   // ── Actions ───────────────────────────────────────────────────────────────
@@ -294,12 +356,16 @@ export default function ProspectDetailPage() {
         duration: (meta.duration as string) || undefined,
         notes: (meta.notes_text as string) || undefined,
         mention: (meta.mention as string) || undefined,
+        training_title: (meta.training_title as string) || undefined,
+        signer_name: (meta.signer_name as string) || undefined,
+        validity_days: meta.validity_days ? Number(meta.validity_days) : 30,
         lines: lines.map((l: Record<string, unknown>) => ({
           description: String(l.description ?? ""),
           quantity: Number(l.quantity ?? 1),
           unit_price: Number(l.unit_price ?? 0),
         })),
         prospect_name: prospect.company_name,
+        prospect_address: (meta.prospect_address as string) || undefined,
         prospect_email: prospect.email ?? undefined,
         prospect_phone: prospect.phone ?? undefined,
         prospect_siret: prospect.siret ?? undefined,
@@ -622,31 +688,66 @@ export default function ProspectDetailPage() {
           <CardTitle className="text-base">Formation</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="bg-muted/40 rounded-lg p-4 mb-3">
-            <p className="text-sm text-muted-foreground">
-              Le lead est déjà un client, vous pouvez désormais le connecter à une formation.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              size="sm"
-              variant="default"
-              className="text-xs h-8"
-              onClick={() => router.push("/admin/trainings")}
-            >
-              <ExternalLink className="w-3 h-3 mr-1.5" />
-              CONNECTER À UNE FORMATION EXISTANTE
-            </Button>
-            <Button
-              size="sm"
-              variant="default"
-              className="text-xs h-8"
-              onClick={() => router.push("/admin/trainings")}
-            >
-              <BookOpen className="w-3 h-3 mr-1.5" />
-              CRÉER UNE NOUVELLE FORMATION
-            </Button>
-          </div>
+          {linkedTraining ? (
+            <div>
+              <div className="flex items-center gap-3 rounded-lg border border-blue-200 bg-blue-50/50 p-3 mb-3">
+                <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600">
+                  <BookOpen className="h-4 w-4" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-gray-900">{linkedTraining.title}</p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    {linkedTraining.category && (
+                      <span className="text-xs text-gray-500">{linkedTraining.category}</span>
+                    )}
+                    {linkedTraining.duration_hours && (
+                      <span className="text-xs text-gray-500">{linkedTraining.duration_hours}h</span>
+                    )}
+                    {linkedTraining.price_per_person && (
+                      <span className="text-xs text-gray-500">{Number(linkedTraining.price_per_person).toLocaleString("fr-FR")} €/pers</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-xs h-8"
+                  onClick={openLinkTrainingDialog}
+                >
+                  <ExternalLink className="w-3 h-3 mr-1.5" />
+                  Changer de formation
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-xs h-8 text-red-500 hover:text-red-600"
+                  onClick={handleUnlinkTraining}
+                >
+                  <Trash2 className="w-3 h-3 mr-1.5" />
+                  Dissocier
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <div className="bg-muted/40 rounded-lg p-4 mb-3">
+                <p className="text-sm text-muted-foreground">
+                  Connectez ce prospect à une formation existante.
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="default"
+                className="text-xs h-8"
+                onClick={openLinkTrainingDialog}
+              >
+                <ExternalLink className="w-3 h-3 mr-1.5" />
+                CONNECTER À UNE FORMATION
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -846,6 +947,73 @@ export default function ProspectDetailPage() {
               SUPPRIMER
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Link Training Dialog ───────────────────────────────────────── */}
+      <Dialog open={linkTrainingOpen} onOpenChange={setLinkTrainingOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Connecter à une formation existante</DialogTitle>
+          </DialogHeader>
+          <div className="relative mb-3">
+            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+            <Input
+              placeholder="Rechercher une formation…"
+              value={trainingSearch}
+              onChange={(e) => setTrainingSearch(e.target.value)}
+              className="pl-8 text-sm"
+            />
+          </div>
+          <div className="max-h-[350px] overflow-y-auto space-y-1">
+            {loadingTrainings ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+              </div>
+            ) : existingTrainings
+                .filter((t) => {
+                  const q = trainingSearch.toLowerCase();
+                  return !q || t.title.toLowerCase().includes(q) || (t.category ?? "").toLowerCase().includes(q);
+                })
+                .length === 0 ? (
+              <p className="text-center text-sm text-gray-400 py-8">
+                Aucune formation trouvée
+              </p>
+            ) : (
+              existingTrainings
+                .filter((t) => {
+                  const q = trainingSearch.toLowerCase();
+                  return !q || t.title.toLowerCase().includes(q) || (t.category ?? "").toLowerCase().includes(q);
+                })
+                .map((t) => (
+                  <button
+                    key={t.id}
+                    disabled={linkingSaving}
+                    onClick={() => handleLinkTraining(t)}
+                    className="flex w-full items-center gap-3 rounded-lg border border-gray-100 bg-white p-3 text-left hover:border-blue-300 hover:bg-blue-50/50 transition-all disabled:opacity-50"
+                  >
+                    <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600">
+                      <BookOpen className="h-4 w-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-gray-900 truncate">{t.title}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        {t.category && (
+                          <span className="text-xs text-gray-400">{t.category}</span>
+                        )}
+                        {t.duration_hours && (
+                          <span className="text-xs text-gray-400">{t.duration_hours}h</span>
+                        )}
+                        {t.price_per_person && (
+                          <span className="text-xs text-gray-400">{Number(t.price_per_person).toLocaleString("fr-FR")} €/pers</span>
+                        )}
+                      </div>
+                    </div>
+                    <ChevronRight className="h-4 w-4 text-gray-300 flex-shrink-0" />
+                  </button>
+                ))
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </div>

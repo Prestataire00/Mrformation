@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
+import { sanitizeError } from "@/lib/api-error";
 
 export async function POST(
   request: NextRequest,
@@ -96,7 +97,6 @@ export async function POST(
       },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Erreur interne";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: sanitizeError(error, "submitting quiz answers") }, { status: 500 });
   }
 }

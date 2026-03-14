@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { extractFromUrl } from "@/lib/services/doc-extraction";
+import { sanitizeError } from "@/lib/api-error";
 
 export const maxDuration = 120;
 
@@ -63,7 +64,6 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Erreur interne";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: sanitizeError(error, "extracting content from URL") }, { status: 500 });
   }
 }

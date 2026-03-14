@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
+import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 
 export async function GET(request: NextRequest) {
   try {
@@ -33,7 +34,7 @@ export async function GET(request: NextRequest) {
     const { data, error, count: totalCount } = await query;
 
     if (error) {
-      return NextResponse.json({ data: null, error: error.message }, { status: 500 });
+      return NextResponse.json({ data: null, error: sanitizeDbError(error, "fetching notifications") }, { status: 500 });
     }
 
     // Also get unread count
@@ -45,8 +46,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ data, error: null, unread_count: count ?? 0, total_count: totalCount ?? 0 });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Internal server error";
-    return NextResponse.json({ data: null, error: message }, { status: 500 });
+    return NextResponse.json({ data: null, error: sanitizeError(err, "fetching notifications") }, { status: 500 });
   }
 }
 
@@ -74,7 +74,7 @@ export async function PATCH(request: NextRequest) {
         .eq("is_read", false);
 
       if (error) {
-        return NextResponse.json({ data: null, error: error.message }, { status: 500 });
+        return NextResponse.json({ data: null, error: sanitizeDbError(error, "marking all notifications read") }, { status: 500 });
       }
       return NextResponse.json({ data: { updated: true }, error: null });
     }
@@ -87,14 +87,13 @@ export async function PATCH(request: NextRequest) {
         .eq("user_id", user.id);
 
       if (error) {
-        return NextResponse.json({ data: null, error: error.message }, { status: 500 });
+        return NextResponse.json({ data: null, error: sanitizeDbError(error, "marking notification read") }, { status: 500 });
       }
       return NextResponse.json({ data: { updated: true }, error: null });
     }
 
     return NextResponse.json({ data: null, error: "ID or mark_all_read required" }, { status: 400 });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Internal server error";
-    return NextResponse.json({ data: null, error: message }, { status: 500 });
+    return NextResponse.json({ data: null, error: sanitizeError(err, "updating notifications") }, { status: 500 });
   }
 }

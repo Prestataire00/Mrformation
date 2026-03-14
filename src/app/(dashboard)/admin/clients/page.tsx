@@ -50,6 +50,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/components/ui/use-toast";
 import { useEntity } from "@/contexts/EntityContext";
+import { useDebounce } from "@/hooks/useDebounce";
 import { cn, formatDate, STATUS_COLORS } from "@/lib/utils";
 import type { Client, ClientStatus } from "@/lib/types";
 
@@ -126,6 +127,7 @@ export default function ClientsPage() {
 
   // Filters & pagination
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebounce(search, 300);
   const [statusFilter, setStatusFilter] = useState<ClientStatus | "all">("all");
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -145,7 +147,7 @@ export default function ClientsPage() {
     fetchClients();
     fetchStatusCounts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entityId, search, statusFilter, page]);
+  }, [entityId, debouncedSearch, statusFilter, page]);
 
   const fetchStatusCounts = useCallback(async () => {
     const statuses: ClientStatus[] = ["active", "inactive", "prospect"];
@@ -176,7 +178,7 @@ export default function ClientsPage() {
 
       if (entityId) query = query.eq("entity_id", entityId);
       if (statusFilter !== "all") query = query.eq("status", statusFilter);
-      if (search.trim()) query = query.ilike("company_name", `%${search.trim()}%`);
+      if (debouncedSearch.trim()) query = query.ilike("company_name", `%${debouncedSearch.trim()}%`);
 
       const from = (page - 1) * PAGE_SIZE;
       query = query.range(from, from + PAGE_SIZE - 1);
@@ -201,7 +203,7 @@ export default function ClientsPage() {
     } finally {
       setLoading(false);
     }
-  }, [supabase, entityId, statusFilter, search, page, toast]);
+  }, [supabase, entityId, statusFilter, debouncedSearch, page, toast]);
 
   function validateForm(): boolean {
     const errors: Partial<Record<keyof ClientFormData, string>> = {};
@@ -384,6 +386,10 @@ export default function ClientsPage() {
         {statusFilterCards.map(({ status, label, colorClass }) => (
           <Card
             key={status}
+            role="button"
+            tabIndex={0}
+            aria-label={`Filtrer par statut ${label}`}
+            aria-pressed={statusFilter === status}
             className={cn(
               "cursor-pointer transition-all hover:shadow-sm border",
               statusFilter === status && "ring-2 ring-primary"
@@ -391,6 +397,13 @@ export default function ClientsPage() {
             onClick={() => {
               setStatusFilter(statusFilter === status ? "all" : status);
               setPage(1);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                setStatusFilter(statusFilter === status ? "all" : status);
+                setPage(1);
+              }
             }}
           >
             <CardContent className="p-4 flex items-center gap-3">
@@ -413,6 +426,7 @@ export default function ClientsPage() {
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Rechercher par nom d'entreprise…"
+                aria-label="Rechercher par nom d'entreprise"
                 value={search}
                 onChange={(e) => { setSearch(e.target.value); setPage(1); }}
                 className="pl-9"
@@ -474,7 +488,7 @@ export default function ClientsPage() {
           ) : (
             <>
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full text-sm" aria-label="Liste des clients">
                   <thead>
                     <tr className="border-b bg-gray-50/80">
                       <th className="px-4 py-3 text-left font-medium text-gray-600">Entreprise</th>
@@ -591,17 +605,19 @@ export default function ClientsPage() {
                       size="sm"
                       disabled={page <= 1}
                       onClick={() => setPage((p) => p - 1)}
+                      aria-label="Page précédente"
                       className="gap-1"
                     >
                       <ChevronLeft className="h-4 w-4" />
                       Précédent
                     </Button>
-                    <span className="text-sm font-medium px-2">{page} / {totalPages}</span>
+                    <span className="text-sm font-medium px-2" aria-live="polite">Page {page} sur {totalPages}</span>
                     <Button
                       variant="outline"
                       size="sm"
                       disabled={page >= totalPages}
                       onClick={() => setPage((p) => p + 1)}
+                      aria-label="Page suivante"
                       className="gap-1"
                     >
                       Suivant

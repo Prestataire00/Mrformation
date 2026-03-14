@@ -4,6 +4,11 @@ import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
 import {
+  evaluateProspectStatusFromQuotes,
+  notifyQuoteStatusChange,
+  notifyProspectWon,
+} from "@/lib/crm/automations";
+import {
   Plus,
   Search,
   Pencil,
@@ -19,7 +24,9 @@ import {
   Send,
   CheckCircle,
   AlertTriangle,
+  Download,
 } from "lucide-react";
+import { downloadDevisPDF, type DevisData } from "@/lib/devis-pdf";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -246,6 +253,11 @@ export default function QuotesPage() {
       const { error } = await supabase.from("crm_quotes").insert([payload]);
       if (error) throw error;
 
+      // Auto-transition: if prospect is "new", move to "contacted"
+      if (formData.prospect_id && entityId) {
+        await evaluateProspectStatusFromQuotes(supabase, formData.prospect_id, entityId);
+      }
+
       toast({ title: "Devis créé", description: `Le devis ${formData.reference} a été créé.` });
       setAddDialogOpen(false);
       setFormData(EMPTY_FORM);
@@ -315,11 +327,12 @@ export default function QuotesPage() {
         .eq("id", quote.id);
       if (error) throw error;
 
+      const { data: { user } } = await supabase.auth.getUser();
+
       // Auto-create follow-up task when quote is sent
       if (newStatus === "sent") {
         const dueDate = new Date();
         dueDate.setDate(dueDate.getDate() + 7);
-        const { data: { user } } = await supabase.auth.getUser();
         await supabase.from("crm_tasks").insert({
           entity_id: entityId,
           title: `Relance devis: ${quote.reference}`,
@@ -334,6 +347,31 @@ export default function QuotesPage() {
         });
       }
 
+      // Auto-transition prospect status based on quotes
+      if (quote.prospect_id && entityId) {
+        const newProspectStatus = await evaluateProspectStatusFromQuotes(supabase, quote.prospect_id, entityId);
+
+        // Notify if prospect was won
+        if (newProspectStatus === "won") {
+          const { data: prospect } = await supabase
+            .from("crm_prospects")
+            .select("company_name, assigned_to")
+            .eq("id", quote.prospect_id)
+            .single();
+          if (prospect) {
+            await notifyProspectWon(supabase, entityId, quote.prospect_id, prospect.company_name, prospect.assigned_to);
+          }
+        }
+      }
+
+      // Instant notification for accepted/rejected
+      if (entityId && (newStatus === "accepted" || newStatus === "rejected")) {
+        await notifyQuoteStatusChange(
+          supabase, entityId, quote.reference, quote.id, newStatus,
+          quote.created_by || user?.id || null, quote.prospect_id
+        );
+      }
+
       toast({
         title: "Statut mis à jour",
         description: `Le devis ${quote.reference} est maintenant "${QUOTE_STATUS_LABELS[newStatus]}".${newStatus === "sent" ? " Une tâche de relance a été créée pour J+7." : ""}`,
@@ -342,6 +380,89 @@ export default function QuotesPage() {
     } catch (err) {
       console.error("handleStatusChange error:", err);
       toast({ title: "Erreur", description: "Impossible de changer le statut.", variant: "destructive" });
+    }
+  }
+
+  async function handleDownloadDevis(quote: CrmQuote) {
+    try {
+      let meta: Record<string, unknown> = {};
+      try { meta = quote.notes ? JSON.parse(quote.notes) : {}; } catch { /* notes is plain text */ }
+
+      // Fetch prospect or client details for the PDF
+      let prospectName = "";
+      let prospectEmail: string | undefined;
+      let prospectPhone: string | undefined;
+      let prospectSiret: string | undefined;
+
+      if (quote.prospect_id) {
+        const { data: p } = await supabase
+          .from("crm_prospects")
+          .select("company_name, email, phone, siret, notes")
+          .eq("id", quote.prospect_id)
+          .single();
+        if (p) {
+          prospectName = p.company_name;
+          prospectEmail = p.email ?? undefined;
+          prospectPhone = p.phone ?? undefined;
+          prospectSiret = p.siret ?? undefined;
+        }
+      } else if (quote.client_id) {
+        const { data: c } = await supabase
+          .from("clients")
+          .select("company_name, email, phone, siret")
+          .eq("id", quote.client_id)
+          .single();
+        if (c) {
+          prospectName = c.company_name;
+          prospectEmail = c.email ?? undefined;
+          prospectPhone = c.phone ?? undefined;
+          prospectSiret = c.siret ?? undefined;
+        }
+      }
+
+      const lines = Array.isArray(meta.lines) ? meta.lines : [];
+      let tvaRate = 20;
+      if (typeof meta.tva === "number") {
+        tvaRate = meta.tva;
+      } else if (typeof meta.tva === "string") {
+        tvaRate = parseFloat(String(meta.tva).replace(",", ".")) || 20;
+      }
+
+      const devisData: DevisData = {
+        reference: quote.reference ?? `DEV-${quote.id.slice(0, 6).toUpperCase()}`,
+        date_creation: quote.created_at?.slice(0, 10) ?? new Date().toISOString().slice(0, 10),
+        date_echeance: quote.valid_until ?? quote.created_at?.slice(0, 10) ?? "",
+        training_start: (meta.training_start as string) || undefined,
+        training_end: (meta.training_end as string) || undefined,
+        tva: tvaRate,
+        effectifs: meta.effectifs ? Number(meta.effectifs) : undefined,
+        duration: (meta.duration as string) || undefined,
+        notes: (meta.notes_text as string) || undefined,
+        mention: (meta.mention as string) || undefined,
+        training_title: (meta.training_title as string) || undefined,
+        signer_name: (meta.signer_name as string) || undefined,
+        validity_days: meta.validity_days ? Number(meta.validity_days) : 30,
+        lines: lines.map((l: Record<string, unknown>) => ({
+          description: String(l.description ?? ""),
+          quantity: Number(l.quantity ?? 1),
+          unit_price: Number(l.unit_price ?? 0),
+        })),
+        prospect_name: prospectName,
+        prospect_address: (meta.prospect_address as string) || undefined,
+        prospect_email: prospectEmail,
+        prospect_phone: prospectPhone,
+        prospect_siret: prospectSiret,
+      };
+
+      if (devisData.lines.length === 0 && quote.amount && quote.amount > 0) {
+        const amountHT = quote.amount / (1 + tvaRate / 100);
+        devisData.lines = [{ description: "Formation", quantity: 1, unit_price: Math.round(amountHT * 100) / 100 }];
+      }
+
+      await downloadDevisPDF(devisData);
+    } catch (err) {
+      console.error("PDF download error:", err);
+      toast({ title: "Erreur", description: "Impossible de générer le PDF.", variant: "destructive" });
     }
   }
 
@@ -644,6 +765,10 @@ export default function QuotesPage() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-52">
+                              <DropdownMenuItem onClick={() => handleDownloadDevis(quote)} className="gap-2">
+                                <Download className="h-4 w-4" />
+                                Télécharger PDF
+                              </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => openEditDialog(quote)} className="gap-2">
                                 <Pencil className="h-4 w-4" />
                                 Modifier

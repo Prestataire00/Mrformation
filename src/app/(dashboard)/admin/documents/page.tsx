@@ -62,6 +62,11 @@ import {
   File,
   CheckCircle2,
   XCircle,
+  ExternalLink,
+  Upload,
+  Building2,
+  Users,
+  GraduationCap,
 } from "lucide-react";
 import { exportToPDF } from "@/lib/pdf-export";
 
@@ -140,11 +145,22 @@ const emptyGenerateForm: GenerateFormData = {
 };
 
 type GeneratedDocumentFull = GeneratedDocument & {
-  template: { name: string; type: DocumentType } | null;
-  session: { title: string } | null;
+  template: { name: string; type: DocumentType; entity_id?: string } | null;
+  session: { title: string; trainer?: { first_name: string; last_name: string } | null } | null;
   client: { company_name: string } | null;
   learner: { first_name: string; last_name: string } | null;
 };
+
+interface ClientDocument {
+  id: string;
+  client_id: string;
+  name: string;
+  type: string;
+  file_url: string | null;
+  notes: string | null;
+  created_at: string;
+  client?: { company_name: string } | null;
+}
 
 export default function DocumentsPage() {
   const supabase = createClient();
@@ -192,6 +208,20 @@ export default function DocumentsPage() {
   const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
   const [previewTemplate, setPreviewTemplate] = useState<DocumentTemplate | null>(null);
 
+  // Client documents state
+  const [clientDocs, setClientDocs] = useState<ClientDocument[]>([]);
+  const [clientDocsLoading, setClientDocsLoading] = useState(true);
+  const [clientDocSearch, setClientDocSearch] = useState("");
+  const CLIENT_DOC_TYPE_LABELS: Record<string, string> = {
+    contract: "Contrat",
+    agreement: "Convention",
+    invoice: "Facture",
+    quote: "Devis",
+    bpf: "BPF",
+    certificate: "Certificat",
+    other: "Autre",
+  };
+
   const fetchTemplates = useCallback(async () => {
     setTemplatesLoading(true);
     let query = supabase
@@ -201,6 +231,7 @@ export default function DocumentsPage() {
     if (entityId) query = query.eq("entity_id", entityId);
     const { data, error } = await query;
     if (error) {
+      console.error("fetchTemplates error:", error);
       toast({ title: "Erreur", description: "Impossible de charger les modèles.", variant: "destructive" });
     } else {
       setTemplates((data as DocumentTemplate[]) || []);
@@ -210,16 +241,17 @@ export default function DocumentsPage() {
 
   const fetchGeneratedDocs = useCallback(async () => {
     setDocsLoading(true);
-    let query = supabase
+    const { data, error } = await supabase
       .from("generated_documents")
-      .select("*, template:document_templates(name, type), session:sessions(title), client:clients(company_name), learner:learners(first_name, last_name)")
+      .select("*, template:document_templates(name, type, entity_id), session:sessions(title, trainer:trainers(first_name, last_name)), client:clients(company_name), learner:learners(first_name, last_name)")
       .order("created_at", { ascending: false });
-    if (entityId) query = query.eq("entity_id", entityId);
-    const { data, error } = await query;
     if (error) {
+      console.error("fetchGeneratedDocs error:", error);
       toast({ title: "Erreur", description: "Impossible de charger les documents.", variant: "destructive" });
     } else {
-      setGeneratedDocs((data as GeneratedDocumentFull[]) || []);
+      const all = (data as GeneratedDocumentFull[]) || [];
+      const filtered = entityId ? all.filter((d) => d.template?.entity_id === entityId) : all;
+      setGeneratedDocs(filtered);
     }
     setDocsLoading(false);
   }, [entityId]);
@@ -239,11 +271,22 @@ export default function DocumentsPage() {
     setLearners((l as Learner[]) || []);
   }, [entityId]);
 
+  const fetchClientDocs = useCallback(async () => {
+    setClientDocsLoading(true);
+    const { data, error } = await supabase
+      .from("client_documents")
+      .select("*, client:clients(company_name)")
+      .order("created_at", { ascending: false });
+    if (!error) setClientDocs((data as ClientDocument[]) || []);
+    setClientDocsLoading(false);
+  }, []);
+
   useEffect(() => {
     fetchTemplates();
     fetchGeneratedDocs();
     fetchRefs();
-  }, [fetchTemplates, fetchGeneratedDocs, fetchRefs]);
+    fetchClientDocs();
+  }, [fetchTemplates, fetchGeneratedDocs, fetchRefs, fetchClientDocs]);
 
   const filteredTemplates = templates.filter((t) => {
     const matchSearch =
@@ -466,7 +509,6 @@ export default function DocumentsPage() {
       name: generateForm.name.trim(),
       content: finalContent,
       file_url: null,
-      entity_id: entityId,
     }).select("id").single();
 
     if (error) {
@@ -528,7 +570,7 @@ export default function DocumentsPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Documents</h1>
           <p className="text-sm text-gray-500 mt-1">
-            {templates.length} modèle{templates.length !== 1 ? "s" : ""} — {generatedDocs.length} document{generatedDocs.length !== 1 ? "s" : ""} générés
+            {templates.length} modèle{templates.length !== 1 ? "s" : ""} — {generatedDocs.length} document{generatedDocs.length !== 1 ? "s" : ""} générés — {clientDocs.length} document{clientDocs.length !== 1 ? "s" : ""} clients
           </p>
         </div>
         {/* Bouton "Générer un document" retiré */}
@@ -538,6 +580,10 @@ export default function DocumentsPage() {
         <TabsList>
           <TabsTrigger value="templates">Modèles</TabsTrigger>
           <TabsTrigger value="generated">Documents générés</TabsTrigger>
+          <TabsTrigger value="client-docs" className="gap-2">
+            <Building2 className="h-4 w-4" />
+            Documents clients
+          </TabsTrigger>
         </TabsList>
 
         {/* TEMPLATES TAB */}
@@ -691,10 +737,14 @@ export default function DocumentsPage() {
                 <thead className="bg-gray-50 border-b">
                   <tr>
                     <th className="text-left px-4 py-3 font-medium text-gray-600 min-w-[180px]">Nom</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">Modèle</th>
                     <th className="text-left px-4 py-3 font-medium text-gray-600">Session</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">
+                      <span className="flex items-center gap-1"><Users className="h-3.5 w-3.5" />Formateur</span>
+                    </th>
                     <th className="text-left px-4 py-3 font-medium text-gray-600">Client</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">Apprenant</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">
+                      <span className="flex items-center gap-1"><GraduationCap className="h-3.5 w-3.5" />Apprenant</span>
+                    </th>
                     <th className="text-left px-4 py-3 font-medium text-gray-600">Créé le</th>
                     <th className="text-right px-4 py-3 font-medium text-gray-600">Action</th>
                   </tr>
@@ -712,7 +762,7 @@ export default function DocumentsPage() {
                     ))
                   ) : filteredDocs.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-12 text-center text-gray-500">
+                      <td colSpan={8} className="px-4 py-12 text-center text-gray-500">
                         <FileText className="h-10 w-10 mx-auto mb-2 text-gray-300" />
                         <p className="font-medium">Aucun document généré</p>
                         <p className="text-xs mt-1">Utilisez un modèle pour générer votre premier document.</p>
@@ -722,7 +772,7 @@ export default function DocumentsPage() {
                     docsByType.flatMap((group) => [
                       // Type group header row
                       <tr key={`header-${group.type}`} className="bg-gray-50 border-t-2 border-gray-200">
-                        <td colSpan={7} className="px-4 py-2">
+                        <td colSpan={8} className="px-4 py-2">
                           <div className="flex items-center gap-2">
                             <Badge className={cn("text-xs font-semibold", TYPE_COLORS[group.type])}>
                               <TypeIcon type={group.type} />
@@ -736,20 +786,21 @@ export default function DocumentsPage() {
                       ...group.docs.map((doc) => (
                         <tr key={doc.id} className="hover:bg-gray-50 transition-colors">
                           <td className="px-4 py-3">
-                            <p className="font-medium text-gray-900">{truncate(doc.name, 40)}</p>
-                          </td>
-                          <td className="px-4 py-3">
-                            {doc.template ? (
-                              <span className="text-xs text-gray-500">{truncate(doc.template.name, 25)}</span>
-                            ) : (
-                              <span className="text-gray-400 text-xs">—</span>
+                            <p className="font-medium text-gray-900">{truncate(doc.name, 38)}</p>
+                            {doc.template && (
+                              <p className="text-[11px] text-gray-400 mt-0.5">{truncate(doc.template.name, 30)}</p>
                             )}
                           </td>
                           <td className="px-4 py-3 text-xs text-gray-600">
-                            {doc.session?.title ? truncate(doc.session.title, 30) : <span className="text-gray-400">—</span>}
+                            {doc.session?.title ? truncate(doc.session.title, 28) : <span className="text-gray-400">—</span>}
                           </td>
                           <td className="px-4 py-3 text-xs text-gray-600">
-                            {doc.client?.company_name ? truncate(doc.client.company_name, 25) : <span className="text-gray-400">—</span>}
+                            {doc.session?.trainer
+                              ? `${doc.session.trainer.first_name} ${doc.session.trainer.last_name}`
+                              : <span className="text-gray-400">—</span>}
+                          </td>
+                          <td className="px-4 py-3 text-xs text-gray-600">
+                            {doc.client?.company_name ? truncate(doc.client.company_name, 22) : <span className="text-gray-400">—</span>}
                           </td>
                           <td className="px-4 py-3 text-xs text-gray-600">
                             {doc.learner ? `${doc.learner.first_name} ${doc.learner.last_name}` : <span className="text-gray-400">—</span>}
@@ -761,7 +812,7 @@ export default function DocumentsPage() {
                             <Button
                               variant="outline"
                               size="sm"
-                              className="h-8 gap-1.5 text-xs text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+                              className="h-8 gap-1.5 text-xs"
                               onClick={() => handleDownload(doc)}
                             >
                               <Download className="h-3.5 w-3.5" />
@@ -775,9 +826,10 @@ export default function DocumentsPage() {
                 </tbody>
               </table>
             </div>
-            {!docsLoading && filteredDocs.length > 0 && (
-              <div className="px-4 py-3 border-t bg-gray-50 text-xs text-gray-500 flex items-center gap-4">
-                <span>{filteredDocs.length} document{filteredDocs.length !== 1 ? "s" : ""}</span>
+            {!docsLoading && generatedDocs.length > 0 && (
+              <div className="px-4 py-3 border-t bg-gray-50 text-xs text-gray-500 flex flex-wrap items-center gap-2">
+                <span className="font-medium">{generatedDocs.length} document{generatedDocs.length !== 1 ? "s" : ""} au total</span>
+                <span className="text-gray-300">|</span>
                 {docsByType.map((g) => (
                   <span key={g.type} className={cn("px-2 py-0.5 rounded-full text-[10px] font-medium", TYPE_COLORS[g.type])}>
                     {g.label} : {g.docs.length}
@@ -786,6 +838,120 @@ export default function DocumentsPage() {
               </div>
             )}
           </div>
+        </TabsContent>
+        {/* CLIENT DOCUMENTS TAB */}
+        <TabsContent value="client-docs" className="space-y-4">
+          {/* Stats cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {Object.entries(CLIENT_DOC_TYPE_LABELS).map(([type, label]) => {
+              const count = clientDocs.filter((d) => d.type === type).length;
+              if (count === 0) return null;
+              return (
+                <Card key={type} className="p-3">
+                  <p className="text-2xl font-bold text-gray-900">{count}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{label}{count > 1 ? "s" : ""}</p>
+                </Card>
+              );
+            })}
+          </div>
+
+          <div className="flex items-center gap-3">
+            <div className="relative flex-1 min-w-[200px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Input
+                placeholder="Rechercher un document client..."
+                value={clientDocSearch}
+                onChange={(e) => setClientDocSearch(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+          </div>
+
+          {clientDocsLoading ? (
+            <div className="space-y-2">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="h-14 rounded-lg bg-gray-100 animate-pulse" />
+              ))}
+            </div>
+          ) : (() => {
+            const filtered = clientDocs.filter((d) =>
+              clientDocSearch === "" ||
+              d.name.toLowerCase().includes(clientDocSearch.toLowerCase()) ||
+              d.client?.company_name?.toLowerCase().includes(clientDocSearch.toLowerCase())
+            );
+
+            // Group by client
+            const byClient = filtered.reduce<Record<string, { company: string; docs: ClientDocument[] }>>((acc, doc) => {
+              const key = doc.client_id;
+              if (!acc[key]) acc[key] = { company: doc.client?.company_name || "Client inconnu", docs: [] };
+              acc[key].docs.push(doc);
+              return acc;
+            }, {});
+
+            if (filtered.length === 0) {
+              return (
+                <div className="flex flex-col items-center justify-center py-20 text-center">
+                  <Building2 className="h-12 w-12 text-gray-300 mb-3" />
+                  <p className="font-medium text-gray-600">Aucun document client</p>
+                  <p className="text-sm text-gray-400 mt-1">Les documents clients (contrats, BPF, factures...) apparaissent ici.</p>
+                </div>
+              );
+            }
+
+            return (
+              <div className="space-y-4">
+                {Object.entries(byClient).map(([clientId, { company, docs }]) => (
+                  <div key={clientId} className="border rounded-lg overflow-hidden bg-white shadow-sm">
+                    <div className="flex items-center gap-2 px-4 py-3 bg-gray-50 border-b">
+                      <Building2 className="h-4 w-4 text-gray-500" />
+                      <span className="font-medium text-gray-800">{company}</span>
+                      <Badge variant="secondary" className="ml-auto text-xs">{docs.length} document{docs.length > 1 ? "s" : ""}</Badge>
+                    </div>
+                    <table className="w-full text-sm">
+                      <tbody className="divide-y divide-gray-100">
+                        {docs.map((doc) => (
+                          <tr key={doc.id} className="hover:bg-gray-50 transition-colors">
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                <FileText className="h-4 w-4 text-gray-400 shrink-0" />
+                                <span className="font-medium text-gray-900">{doc.name}</span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <Badge variant="outline" className="text-xs font-normal">
+                                {CLIENT_DOC_TYPE_LABELS[doc.type] || doc.type}
+                              </Badge>
+                            </td>
+                            <td className="px-4 py-3 text-xs text-gray-500">
+                              {doc.notes ? truncate(doc.notes, 40) : <span className="text-gray-300">—</span>}
+                            </td>
+                            <td className="px-4 py-3 text-xs text-gray-500">
+                              {formatDate(doc.created_at)}
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              {doc.file_url ? (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 gap-1.5 text-xs"
+                                  onClick={() => window.open(doc.file_url!, "_blank")}
+                                >
+                                  <ExternalLink className="h-3.5 w-3.5" />
+                                  Ouvrir
+                                </Button>
+                              ) : (
+                                <span className="text-xs text-gray-400">Aucun fichier</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
         </TabsContent>
       </Tabs>
 

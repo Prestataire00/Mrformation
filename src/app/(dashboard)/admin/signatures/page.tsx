@@ -38,7 +38,13 @@ import {
   Trash2,
   Shield,
   ChevronRight,
+  QrCode,
+  Mail,
+  Copy,
+  Loader2,
+  Send,
 } from "lucide-react";
+import QRCode from "qrcode";
 
 // ──────────────────────────────────────────────
 // Types
@@ -52,7 +58,7 @@ type SessionFull = Session & {
 };
 
 type SignatureFull = Signature & {
-  session: { id: string; title: string; duration_hours: number | null } | null;
+  session: { id: string; title: string; training: { duration_hours: number | null } | null } | null;
   learner_name?: string;
   trainer_name?: string;
 };
@@ -240,6 +246,16 @@ export default function SignaturesPage() {
   const [signatureMap, setSignatureMap] = useState<SignatureMap>({});
   const [saving, setSaving] = useState<string | null>(null);
 
+  // QR Code state
+  const [qrDialogOpen, setQrDialogOpen] = useState(false);
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const [signingLink, setSigningLink] = useState("");
+  const [qrLoading, setQrLoading] = useState(false);
+
+  // Email state
+  const [sendingEmails, setSendingEmails] = useState(false);
+  const [emailProgress, setEmailProgress] = useState({ sent: 0, total: 0 });
+
   // ── Fetch active sessions (upcoming + in_progress) ──
   const fetchSessions = useCallback(async () => {
     setLoading(true);
@@ -274,7 +290,7 @@ export default function SignaturesPage() {
       .select(
         `
         *,
-        session:sessions(id, title, duration_hours)
+        session:sessions(id, title, training:trainings(duration_hours))
       `
       )
       .order("signed_at", { ascending: false });
@@ -404,6 +420,121 @@ export default function SignaturesPage() {
       await fetchSignatures();
     }
     setSaving(null);
+  };
+
+  // ── Generate QR Code ──
+  const handleGenerateQR = async () => {
+    if (!selectedSession) return;
+    setQrLoading(true);
+
+    try {
+      const res = await fetch("/api/emargement", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: selectedSession.id, type: "session" }),
+      });
+
+      const result = await res.json();
+      if (!res.ok || !result.tokens?.length) {
+        toast({ title: "Erreur", description: "Impossible de générer le lien.", variant: "destructive" });
+        setQrLoading(false);
+        return;
+      }
+
+      const token = result.tokens[0].token;
+      const baseUrl = window.location.origin;
+      const link = `${baseUrl}/emargement/${token}`;
+      setSigningLink(link);
+
+      const dataUrl = await QRCode.toDataURL(link, {
+        width: 300,
+        margin: 2,
+        color: { dark: "#1e293b", light: "#ffffff" },
+      });
+      setQrDataUrl(dataUrl);
+      setQrDialogOpen(true);
+    } catch {
+      toast({ title: "Erreur", description: "Erreur lors de la génération du QR code.", variant: "destructive" });
+    }
+    setQrLoading(false);
+  };
+
+  // ── Copy link to clipboard ──
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(signingLink);
+      toast({ title: "Lien copié !", description: "Le lien d'émargement a été copié dans le presse-papiers." });
+    } catch {
+      toast({ title: "Erreur", description: "Impossible de copier le lien.", variant: "destructive" });
+    }
+  };
+
+  // ── Send emails to learners ──
+  const handleSendEmails = async () => {
+    if (!selectedSession) return;
+    setSendingEmails(true);
+
+    try {
+      // Generate individual tokens
+      const res = await fetch("/api/emargement", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: selectedSession.id, type: "individual" }),
+      });
+
+      const result = await res.json();
+      if (!res.ok) {
+        toast({ title: "Erreur", description: "Impossible de générer les liens.", variant: "destructive" });
+        setSendingEmails(false);
+        return;
+      }
+
+      const tokens = result.tokens || [];
+      // Filter: only learners who haven't signed and have an email
+      const unsignedTokens = tokens.filter(
+        (t: { learner: { id: string; email?: string | null }; used_at: string | null }) =>
+          !signatureMap[t.learner?.id] && t.learner?.email && !t.used_at
+      );
+
+      if (unsignedTokens.length === 0) {
+        toast({ title: "Info", description: "Tous les apprenants ont déjà signé ou n'ont pas d'email." });
+        setSendingEmails(false);
+        return;
+      }
+
+      setEmailProgress({ sent: 0, total: unsignedTokens.length });
+      const baseUrl = window.location.origin;
+      let sent = 0;
+
+      for (const tokenData of unsignedTokens) {
+        const learner = tokenData.learner;
+        const link = `${baseUrl}/emargement/${tokenData.token}`;
+
+        try {
+          await fetch("/api/emails/send", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              to: learner.email,
+              subject: `Émargement - ${selectedSession.title}`,
+              body: `Bonjour ${learner.first_name} ${learner.last_name},\n\nVeuillez signer votre feuille d'émargement pour la session "${selectedSession.title}" en cliquant sur le lien ci-dessous :\n\n${link}\n\nCe lien est valable 24 heures.\n\nCordialement,\nL'équipe de formation`,
+            }),
+          });
+          sent++;
+        } catch {
+          // Continue with next learner
+        }
+        setEmailProgress({ sent, total: unsignedTokens.length });
+      }
+
+      toast({
+        title: "Emails envoyés",
+        description: `${sent} email${sent > 1 ? "s" : ""} envoyé${sent > 1 ? "s" : ""} sur ${unsignedTokens.length}.`,
+      });
+    } catch {
+      toast({ title: "Erreur", description: "Erreur lors de l'envoi des emails.", variant: "destructive" });
+    }
+    setSendingEmails(false);
   };
 
   // ── Statistics ──
@@ -731,10 +862,10 @@ export default function SignaturesPage() {
                               <p className="text-gray-600 text-xs">{formatDateTime(sig.signed_at)}</p>
                             </td>
                             <td className="px-4 py-3">
-                              {sig.session?.duration_hours ? (
+                              {sig.session?.training?.duration_hours ? (
                                 <Badge className="bg-green-100 text-green-700 text-xs gap-1">
                                   <CheckCircle2 className="h-3 w-3" />
-                                  {sig.session.duration_hours}h
+                                  {sig.session.training.duration_hours}h
                                 </Badge>
                               ) : (
                                 <span className="text-xs text-gray-400">—</span>
@@ -960,7 +1091,96 @@ export default function SignaturesPage() {
           )}
 
           <DialogFooter className="flex-shrink-0 pt-3 border-t mt-2">
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
+            <div className="flex items-center gap-2 w-full">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 text-xs"
+                onClick={handleGenerateQR}
+                disabled={qrLoading}
+              >
+                {qrLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <QrCode className="h-3.5 w-3.5" />}
+                QR Code
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 text-xs"
+                onClick={handleSendEmails}
+                disabled={sendingEmails}
+              >
+                {sendingEmails ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    {emailProgress.sent}/{emailProgress.total}
+                  </>
+                ) : (
+                  <>
+                    <Send className="h-3.5 w-3.5" />
+                    Envoyer par email
+                  </>
+                )}
+              </Button>
+              <div className="flex-1" />
+              <Button variant="outline" onClick={() => setDialogOpen(false)}>
+                Fermer
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── QR Code Dialog ── */}
+      <Dialog open={qrDialogOpen} onOpenChange={setQrDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <QrCode className="h-5 w-5 text-blue-600" />
+              QR Code d&apos;émargement
+            </DialogTitle>
+            {selectedSession && (
+              <p className="text-sm text-gray-500 mt-0.5">{selectedSession.title}</p>
+            )}
+          </DialogHeader>
+
+          <div className="flex flex-col items-center gap-4 py-4">
+            {qrDataUrl && (
+              <button
+                onClick={copyLink}
+                className="rounded-xl border-2 border-gray-200 p-2 hover:border-blue-400 transition-colors cursor-pointer group relative"
+                title="Cliquer pour copier le lien"
+              >
+                <img src={qrDataUrl} alt="QR Code" className="w-64 h-64" />
+                <div className="absolute inset-0 flex items-center justify-center bg-white/80 opacity-0 group-hover:opacity-100 transition-opacity rounded-xl">
+                  <div className="flex items-center gap-2 text-blue-600 font-medium text-sm">
+                    <Copy className="h-4 w-4" />
+                    Copier le lien
+                  </div>
+                </div>
+              </button>
+            )}
+
+            <p className="text-xs text-gray-400 text-center">
+              Cliquez sur le QR code pour copier le lien
+            </p>
+
+            <div className="w-full flex items-center gap-2">
+              <input
+                type="text"
+                readOnly
+                value={signingLink}
+                className="flex-1 text-xs bg-gray-50 border rounded-md px-3 py-2 text-gray-700 select-all focus:outline-none focus:ring-2 focus:ring-blue-500"
+                onClick={(e) => (e.target as HTMLInputElement).select()}
+              />
+              <Button variant="outline" size="sm" onClick={copyLink} className="gap-1.5 flex-shrink-0">
+                <Copy className="h-3.5 w-3.5" />
+                Copier
+              </Button>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setQrDialogOpen(false)}>
               Fermer
             </Button>
           </DialogFooter>

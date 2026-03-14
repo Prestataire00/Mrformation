@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
+import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 
 export async function GET(
   request: NextRequest,
@@ -73,13 +74,12 @@ export async function GET(
     }
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 404 });
+      return NextResponse.json({ error: sanitizeDbError(error, "fetching course details") }, { status: 404 });
     }
 
     return NextResponse.json({ data });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Erreur interne";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: sanitizeError(error, "fetching course details") }, { status: 500 });
   }
 }
 
@@ -126,13 +126,12 @@ export async function PATCH(
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: sanitizeDbError(error, "updating course") }, { status: 500 });
     }
 
     return NextResponse.json({ data });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Erreur interne";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: sanitizeError(error, "updating course") }, { status: 500 });
   }
 }
 
@@ -166,12 +165,11 @@ export async function DELETE(
       .eq("id", params.courseId);
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: sanitizeDbError(error, "deleting course") }, { status: 500 });
     }
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Erreur interne";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: sanitizeError(error, "deleting course") }, { status: 500 });
   }
 }

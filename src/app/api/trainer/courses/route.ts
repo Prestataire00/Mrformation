@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
+import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 
 /**
  * GET  /api/trainer/courses        — list current trainer's courses
@@ -26,11 +27,11 @@ export async function GET(_request: NextRequest) {
       .eq("trainer_id", trainer.id)
       .order("created_at", { ascending: false });
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return NextResponse.json({ error: sanitizeDbError(error, "trainer/courses GET") }, { status: 500 });
 
     return NextResponse.json({ data: courses || [] });
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : "Erreur interne" }, { status: 500 });
+    return NextResponse.json({ error: sanitizeError(e, "trainer/courses GET") }, { status: 500 });
   }
 }
 
@@ -67,10 +68,10 @@ export async function POST(request: NextRequest) {
       .select()
       .single();
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return NextResponse.json({ error: sanitizeDbError(error, "trainer/courses POST") }, { status: 500 });
 
     return NextResponse.json({ data: course }, { status: 201 });
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : "Erreur interne" }, { status: 500 });
+    return NextResponse.json({ error: sanitizeError(e, "trainer/courses POST") }, { status: 500 });
   }
 }

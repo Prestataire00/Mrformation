@@ -1,0 +1,114 @@
+import { createClient } from "@/lib/supabase/server";
+import { NextRequest, NextResponse } from "next/server";
+import { createExpiringQuoteTasks, notifyOverdueTasks } from "@/lib/crm/automations";
+import { sanitizeError } from "@/lib/api-error";
+
+export async function POST(request: NextRequest) {
+  try {
+    const supabase = createClient();
+
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json({ data: null, error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("entity_id, role")
+      .eq("id", user.id)
+      .single();
+
+    if (!profile?.entity_id || profile.role !== "admin") {
+      return NextResponse.json({ data: null, error: "Admin access required" }, { status: 403 });
+    }
+
+    const entityId = profile.entity_id;
+    const today = new Date().toISOString().split("T")[0];
+
+    // 1. Create tasks for expiring quotes
+    const expiringTasksCreated = await createExpiringQuoteTasks(supabase, entityId);
+
+    // 2. Notify admins about overdue tasks (3+ days)
+    const overdueNotifs = await notifyOverdueTasks(supabase, entityId);
+
+    // 3. Aggregate daily stats
+    const [
+      { count: overdueCount },
+      { count: todayTaskCount },
+      { count: newLeadsCount },
+      { data: expiringQuotes },
+    ] = await Promise.all([
+      supabase
+        .from("crm_tasks")
+        .select("id", { count: "exact", head: true })
+        .eq("entity_id", entityId)
+        .lt("due_date", today)
+        .in("status", ["pending", "in_progress"]),
+      supabase
+        .from("crm_tasks")
+        .select("id", { count: "exact", head: true })
+        .eq("entity_id", entityId)
+        .eq("due_date", today)
+        .in("status", ["pending", "in_progress"]),
+      supabase
+        .from("crm_prospects")
+        .select("id", { count: "exact", head: true })
+        .eq("entity_id", entityId)
+        .gte("created_at", today),
+      supabase
+        .from("crm_quotes")
+        .select("id")
+        .eq("entity_id", entityId)
+        .eq("status", "sent")
+        .lte("valid_until", new Date(Date.now() + 3 * 86400000).toISOString().split("T")[0])
+        .gte("valid_until", today),
+    ]);
+
+    // 4. Create digest notification for all admins
+    const { data: admins } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("entity_id", entityId)
+      .eq("role", "admin");
+
+    const parts: string[] = [];
+    if ((overdueCount ?? 0) > 0) parts.push(`${overdueCount} tâche(s) en retard`);
+    if ((todayTaskCount ?? 0) > 0) parts.push(`${todayTaskCount} tâche(s) du jour`);
+    if ((expiringQuotes?.length ?? 0) > 0) parts.push(`${expiringQuotes?.length} devis expirant bientôt`);
+    if ((newLeadsCount ?? 0) > 0) parts.push(`${newLeadsCount} nouveau(x) lead(s)`);
+
+    if (parts.length > 0 && admins) {
+      const digestNotifs = admins.map((admin) => ({
+        entity_id: entityId,
+        user_id: admin.id,
+        type: "daily_digest",
+        title: "Résumé quotidien",
+        message: parts.join(" | "),
+        link: "/admin/crm",
+        resource_type: "digest",
+        resource_id: today,
+      }));
+      await supabase.from("crm_notifications").insert(digestNotifs);
+    }
+
+    return NextResponse.json({
+      data: {
+        expiring_tasks_created: expiringTasksCreated,
+        overdue_notifications: overdueNotifs,
+        digest: {
+          overdue_tasks: overdueCount ?? 0,
+          today_tasks: todayTaskCount ?? 0,
+          expiring_quotes: expiringQuotes?.length ?? 0,
+          new_leads: newLeadsCount ?? 0,
+        },
+      },
+      error: null,
+    });
+  } catch (err) {
+    return NextResponse.json({ data: null, error: sanitizeError(err, "generating daily digest") }, { status: 500 });
+  }
+}

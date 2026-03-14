@@ -1,4 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
+import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
+import { parsePagination, createSessionSchema } from "@/lib/validations";
+import { logAudit } from "@/lib/audit-log";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
@@ -42,9 +45,7 @@ export async function GET(request: NextRequest) {
     const clientId = searchParams.get("client_id") ?? "";
     const dateFrom = searchParams.get("date_from") ?? "";
     const dateTo = searchParams.get("date_to") ?? "";
-    const page = parseInt(searchParams.get("page") ?? "1", 10);
-    const perPage = parseInt(searchParams.get("per_page") ?? "20", 10);
-    const offset = (page - 1) * perPage;
+    const { page, perPage, offset } = parsePagination(searchParams);
 
     let query = supabase
       .from("sessions")
@@ -94,7 +95,7 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       return NextResponse.json(
-        { data: null, error: error.message },
+        { data: null, error: sanitizeDbError(error, "fetch sessions") },
         { status: 500 }
       );
     }
@@ -110,8 +111,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Internal server error";
-    return NextResponse.json({ data: null, error: message }, { status: 500 });
+    return NextResponse.json({ data: null, error: sanitizeError(err, "fetch sessions") }, { status: 500 });
   }
 }
 
@@ -150,37 +150,15 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
 
-    const {
-      training_id,
-      trainer_id,
-      client_id,
-      start_date,
-      end_date,
-      mode,
-      location,
-      address,
-      city,
-      postal_code,
-      max_participants,
-      status,
-      notes,
-      price,
-      internal_notes,
-    } = body;
-
-    if (!training_id) {
+    const parsed = createSessionSchema.safeParse(body);
+    if (!parsed.success) {
       return NextResponse.json(
-        { data: null, error: "La formation est requise" },
+        { data: null, error: parsed.error.issues[0].message },
         { status: 400 }
       );
     }
 
-    if (!start_date) {
-      return NextResponse.json(
-        { data: null, error: "La date de début est requise" },
-        { status: 400 }
-      );
-    }
+    const { training_id, trainer_id, client_id, start_date, end_date, location, status, max_participants, notes } = parsed.data;
 
     const { data, error } = await supabase
       .from("sessions")
@@ -189,18 +167,18 @@ export async function POST(request: NextRequest) {
         training_id,
         trainer_id: trainer_id ?? null,
         client_id: client_id ?? null,
-        start_date,
+        start_date: start_date ?? null,
         end_date: end_date ?? null,
-        mode: mode ?? "presentiel",
+        mode: body.mode ?? "presentiel",
         location: location ?? null,
-        address: address ?? null,
-        city: city ?? null,
-        postal_code: postal_code ?? null,
+        address: body.address ?? null,
+        city: body.city ?? null,
+        postal_code: body.postal_code ?? null,
         max_participants: max_participants ?? null,
         status: status ?? "upcoming",
         notes: notes ?? null,
-        price: price ?? null,
-        internal_notes: internal_notes ?? null,
+        price: body.price ?? null,
+        internal_notes: body.internal_notes ?? null,
         created_by: user.id,
       })
       .select()
@@ -208,14 +186,23 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       return NextResponse.json(
-        { data: null, error: error.message },
+        { data: null, error: sanitizeDbError(error, "create session") },
         { status: 500 }
       );
     }
 
+    logAudit({
+      supabase,
+      entityId: profile.entity_id,
+      userId: user.id,
+      action: "create",
+      resourceType: "session",
+      resourceId: data.id,
+      details: { name: data.title ?? body.title },
+    });
+
     return NextResponse.json({ data, error: null }, { status: 201 });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Internal server error";
-    return NextResponse.json({ data: null, error: message }, { status: 500 });
+    return NextResponse.json({ data: null, error: sanitizeError(err, "create session") }, { status: 500 });
   }
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import pdf from "pdf-parse";
+import { sanitizeError } from "@/lib/api-error";
 
 interface ParsedProgram {
   title: string;
@@ -249,9 +250,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ parsed });
   } catch (err: unknown) {
-    console.error("PDF import error:", err);
     return NextResponse.json(
-      { error: "Erreur lors du traitement du PDF: " + (err instanceof Error ? err.message : String(err)) },
+      { error: sanitizeError(err, "programs/import-pdf") },
       { status: 500 }
     );
   }

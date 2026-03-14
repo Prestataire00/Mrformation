@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
+import { useDebounce } from "@/hooks/useDebounce";
 import { Trainer, TrainerCompetency } from "@/lib/types";
 import { cn, getInitials, formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -83,6 +84,7 @@ export default function TrainersPage() {
   const [trainers, setTrainers] = useState<TrainerWithCompetencies[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebounce(search, 300);
   const [typeFilter, setTypeFilter] = useState<"all" | "internal" | "external">("all");
   const [competencyFilter, setCompetencyFilter] = useState("");
   const [levelFilter, setLevelFilter] = useState<string>("all");
@@ -143,9 +145,9 @@ export default function TrainersPage() {
   }, [fetchTrainers]);
 
   const filtered = trainers.filter((t) => {
-    const searchLower = search.toLowerCase();
+    const searchLower = debouncedSearch.toLowerCase();
     const matchSearch =
-      search === "" ||
+      debouncedSearch === "" ||
       `${t.first_name} ${t.last_name}`.toLowerCase().includes(searchLower) ||
       t.email?.toLowerCase().includes(searchLower) ||
       t.competencies.some((c) => c.competency.toLowerCase().includes(searchLower));

@@ -1,5 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
+import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
+import { logAudit } from "@/lib/audit-log";
 
 export async function POST(request: NextRequest) {
   try {
@@ -73,13 +75,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (session.entity_id !== profile.entity_id) {
-      return NextResponse.json(
-        { error: "Session non disponible pour votre organisme" },
-        { status: 403 }
-      );
-    }
-
     if (session.status === "cancelled" || session.status === "completed") {
       return NextResponse.json(
         { error: "Cette session n'accepte plus d'inscriptions" },
@@ -131,18 +126,26 @@ export async function POST(request: NextRequest) {
 
     if (insertError) {
       return NextResponse.json(
-        { error: `Erreur inscription: ${insertError.message}` },
+        { error: sanitizeDbError(insertError, "self-enroll insert") },
         { status: 500 }
       );
     }
+
+    logAudit({
+      supabase,
+      entityId: profile.entity_id,
+      userId: user.id,
+      action: "create",
+      resourceType: "enrollment",
+      resourceId: enrollment.id,
+      details: { name: `Inscription session ${session_id}` },
+    });
 
     return NextResponse.json({
       data: enrollment,
       message: "Inscription réussie",
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Erreur interne";
-    console.error("Self-enroll error:", message);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: sanitizeError(err, "self-enroll") }, { status: 500 });
   }
 }

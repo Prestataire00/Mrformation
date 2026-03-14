@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
+import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 
 // GET: Get active session for a course
 export async function GET(
@@ -30,11 +31,11 @@ export async function GET(
       .limit(1)
       .maybeSingle();
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return NextResponse.json({ error: sanitizeDbError(error, "fetching live session") }, { status: 500 });
 
     return NextResponse.json({ data });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Erreur" }, { status: 500 });
+    return NextResponse.json({ error: sanitizeError(error, "fetching live session") }, { status: 500 });
   }
 }
 
@@ -77,11 +78,11 @@ export async function POST(
       .select()
       .single();
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return NextResponse.json({ error: sanitizeDbError(error, "creating live session") }, { status: 500 });
 
     return NextResponse.json({ data }, { status: 201 });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Erreur" }, { status: 500 });
+    return NextResponse.json({ error: sanitizeError(error, "creating live session") }, { status: 500 });
   }
 }
 
@@ -123,10 +124,10 @@ export async function PATCH(
       .select()
       .single();
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return NextResponse.json({ error: sanitizeDbError(error, "updating live session") }, { status: 500 });
 
     return NextResponse.json({ data });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Erreur" }, { status: 500 });
+    return NextResponse.json({ error: sanitizeError(error, "updating live session") }, { status: 500 });
   }
 }

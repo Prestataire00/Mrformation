@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
+import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 
 /**
  * GET    /api/trainer/courses/[id]  — get one course
@@ -34,7 +35,7 @@ export async function GET(
     if (error || !course) return NextResponse.json({ error: "Cours non trouvé" }, { status: 404 });
     return NextResponse.json({ data: course });
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : "Erreur interne" }, { status: 500 });
+    return NextResponse.json({ error: sanitizeError(e, "trainer/courses/[id] GET") }, { status: 500 });
   }
 }
 
@@ -68,10 +69,10 @@ export async function PUT(
       .select()
       .single();
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return NextResponse.json({ error: sanitizeDbError(error, "trainer/courses/[id] PUT") }, { status: 500 });
     return NextResponse.json({ data: course });
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : "Erreur interne" }, { status: 500 });
+    return NextResponse.json({ error: sanitizeError(e, "trainer/courses/[id] PUT") }, { status: 500 });
   }
 }
 
@@ -93,9 +94,9 @@ export async function DELETE(
       .eq("id", params.id)
       .eq("trainer_id", trainerId);
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return NextResponse.json({ error: sanitizeDbError(error, "trainer/courses/[id] DELETE") }, { status: 500 });
     return NextResponse.json({ success: true });
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : "Erreur interne" }, { status: 500 });
+    return NextResponse.json({ error: sanitizeError(e, "trainer/courses/[id] DELETE") }, { status: 500 });
   }
 }

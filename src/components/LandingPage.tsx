@@ -49,7 +49,7 @@ export function LandingPage() {
       <div className="w-full max-w-lg">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-white/20 mb-4">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-white/20 mb-4" aria-hidden="true">
             <GraduationCap className="w-7 h-7 text-white" />
           </div>
           <h1 className="text-white font-bold text-2xl mb-1">
@@ -70,6 +70,7 @@ export function LandingPage() {
                 key={entity.slug}
                 onClick={() => handleSelect(entity)}
                 disabled={selecting !== null}
+                aria-label={`Sélectionner ${entity.name}`}
                 className="group bg-white rounded-2xl shadow-xl overflow-hidden transition-all hover:shadow-2xl hover:scale-[1.02] disabled:opacity-60 disabled:pointer-events-none text-left"
               >
                 <div className="flex items-center gap-4 p-5">
@@ -102,6 +103,7 @@ export function LandingPage() {
                         viewBox="0 0 24 24"
                         stroke="currentColor"
                         strokeWidth={2}
+                        aria-hidden="true"
                       >
                         <path
                           strokeLinecap="round"

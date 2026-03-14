@@ -500,7 +500,9 @@ export default function ELearningPage() {
         .from("elearning-documents")
         .createSignedUrl(data.path, 157_680_000); // 5 years in seconds
       if (signedError || !signedData?.signedUrl) throw new Error("Impossible de générer l'URL");
-      updateModule(moduleId, { content_url: signedData.signedUrl });
+      const videoExts = ["mp4", "mp3", "avi", "mov", "webm"];
+      const detectedType = videoExts.includes(ext) ? "video" : "document";
+      updateModule(moduleId, { content_url: signedData.signedUrl, content_type: detectedType });
       toast({ title: "Fichier uploadé", description: file.name });
     } catch (err) {
       toast({ title: "Erreur upload", description: err instanceof Error ? err.message : "Erreur inconnue", variant: "destructive" });

@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
+import { useDebounce } from "@/hooks/useDebounce";
 import { Training } from "@/lib/types";
 import { cn, formatCurrency, formatDate, truncate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -126,6 +128,7 @@ interface TrainingFormData {
   prerequisites: string;
   classification: string;
   is_active: boolean;
+  program_id: string | null;
 }
 
 const emptyForm: TrainingFormData = {
@@ -140,16 +143,19 @@ const emptyForm: TrainingFormData = {
   prerequisites: "",
   classification: "",
   is_active: true,
+  program_id: null,
 };
 
 export default function TrainingsPage() {
   const supabase = createClient();
   const { toast } = useToast();
   const { entityId } = useEntity();
+  const searchParams = useSearchParams();
 
   const [trainings, setTrainings] = useState<TrainingWithCount[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebounce(search, 300);
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [activeFilter, setActiveFilter] = useState<"all" | "active" | "inactive">("all");
   const [classificationFilter, setClassificationFilter] = useState("all");
@@ -292,6 +298,7 @@ export default function TrainingsPage() {
       prerequisites: prerequisites || "",
       classification: "",
       is_active: true,
+      program_id: program.id,
     });
     setEditingTraining(null);
     setProgramPickerOpen(false);
@@ -327,10 +334,39 @@ export default function TrainingsPage() {
     fetchCategories();
   }, [fetchTrainings, fetchCategories]);
 
+  // Pre-fill form from program page query params
+  useEffect(() => {
+    const fromProgram = searchParams.get("from_program");
+    const title = searchParams.get("title");
+    if (fromProgram && title) {
+      setFormData({
+        ...emptyForm,
+        title,
+        objectives: searchParams.get("objectives") || "",
+        duration_hours: searchParams.get("duration") || "",
+        program_id: fromProgram,
+      });
+      setEditingTraining(null);
+      setDialogOpen(true);
+      toast({ title: "Programme chargé", description: `Formulaire pré-rempli depuis "${title}".` });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Open create dialog when coming from prospect page with ?action=create
+  useEffect(() => {
+    if (searchParams.get("action") === "create") {
+      setFormData(emptyForm);
+      setEditingTraining(null);
+      setDialogOpen(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const filtered = trainings.filter((t) => {
     const matchSearch =
-      search === "" || t.title.toLowerCase().includes(search.toLowerCase()) ||
-      t.category?.toLowerCase().includes(search.toLowerCase());
+      debouncedSearch === "" || t.title.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+      t.category?.toLowerCase().includes(debouncedSearch.toLowerCase());
     const matchCategory = categoryFilter === "all" || t.category === categoryFilter;
     const matchActive =
       activeFilter === "all" ||
@@ -363,6 +399,7 @@ export default function TrainingsPage() {
       prerequisites: training.prerequisites || "",
       classification: training.classification || "",
       is_active: training.is_active,
+      program_id: training.program_id || null,
     });
     setDialogOpen(true);
   };
@@ -386,6 +423,7 @@ export default function TrainingsPage() {
       prerequisites: formData.prerequisites.trim() || null,
       classification: formData.classification || null,
       is_active: formData.is_active,
+      program_id: formData.program_id || null,
     };
 
     if (editingTraining) {

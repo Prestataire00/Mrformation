@@ -254,9 +254,10 @@ export default function TasksPage() {
     if (!selectedTask || !validateForm()) return;
     setSaving(true);
     try {
-      const { error } = await supabase
-        .from("crm_tasks")
-        .update({
+      const res = await fetch(`/api/crm/tasks/${selectedTask.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           title: formData.title.trim(),
           description: formData.description.trim() || null,
           priority: formData.priority,
@@ -265,9 +266,10 @@ export default function TasksPage() {
           assigned_to: formData.assigned_to || null,
           prospect_id: formData.prospect_id || null,
           client_id: formData.client_id || null,
-        })
-        .eq("id", selectedTask.id);
-      if (error) throw error;
+        }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "Erreur serveur");
 
       toast({ title: "Tâche modifiée", description: `"${formData.title}" a été mise à jour.` });
       setEditDialogOpen(false);
@@ -286,8 +288,9 @@ export default function TasksPage() {
     if (!selectedTask) return;
     setDeleting(true);
     try {
-      const { error } = await supabase.from("crm_tasks").delete().eq("id", selectedTask.id);
-      if (error) throw error;
+      const res = await fetch(`/api/crm/tasks/${selectedTask.id}`, { method: "DELETE" });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "Erreur serveur");
       toast({ title: "Tâche supprimée" });
       setDeleteDialogOpen(false);
       setSelectedTask(null);
@@ -303,8 +306,13 @@ export default function TasksPage() {
   async function handleToggleComplete(task: CrmTask) {
     const newStatus: TaskStatus = task.status === "completed" ? "pending" : "completed";
     try {
-      const { error } = await supabase.from("crm_tasks").update({ status: newStatus }).eq("id", task.id);
-      if (error) throw error;
+      const res = await fetch(`/api/crm/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "Erreur serveur");
       setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, status: newStatus } : t));
       fetchTasks(); // refresh stats
     } catch (err) {
@@ -817,10 +825,10 @@ function TaskForm({ formData, formErrors, onUpdate, profiles, prospects, clients
 
         <div className="space-y-1.5">
           <Label htmlFor="assigned_to">Assigné à</Label>
-          <Select value={formData.assigned_to} onValueChange={(v) => onUpdate("assigned_to", v)}>
+          <Select value={formData.assigned_to || "_none"} onValueChange={(v) => onUpdate("assigned_to", v === "_none" ? "" : v)}>
             <SelectTrigger id="assigned_to"><SelectValue placeholder="Choisir" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Non assigné</SelectItem>
+              <SelectItem value="_none">Non assigné</SelectItem>
               {profiles.map((p) => (
                 <SelectItem key={p.id} value={p.id}>
                   {[p.first_name, p.last_name].filter(Boolean).join(" ") || p.email}
@@ -832,10 +840,10 @@ function TaskForm({ formData, formErrors, onUpdate, profiles, prospects, clients
 
         <div className="space-y-1.5">
           <Label htmlFor="prospect_id">Prospect lié</Label>
-          <Select value={formData.prospect_id} onValueChange={(v) => onUpdate("prospect_id", v)}>
+          <Select value={formData.prospect_id || "_none"} onValueChange={(v) => onUpdate("prospect_id", v === "_none" ? "" : v)}>
             <SelectTrigger id="prospect_id"><SelectValue placeholder="Aucun" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Aucun</SelectItem>
+              <SelectItem value="_none">Aucun</SelectItem>
               {prospects.map((p) => <SelectItem key={p.id} value={p.id}>{p.company_name}</SelectItem>)}
             </SelectContent>
           </Select>
@@ -843,10 +851,10 @@ function TaskForm({ formData, formErrors, onUpdate, profiles, prospects, clients
 
         <div className="space-y-1.5">
           <Label htmlFor="client_id">Client lié</Label>
-          <Select value={formData.client_id} onValueChange={(v) => onUpdate("client_id", v)}>
+          <Select value={formData.client_id || "_none"} onValueChange={(v) => onUpdate("client_id", v === "_none" ? "" : v)}>
             <SelectTrigger id="client_id"><SelectValue placeholder="Aucun" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Aucun</SelectItem>
+              <SelectItem value="_none">Aucun</SelectItem>
               {clients.map((c) => <SelectItem key={c.id} value={c.id}>{c.company_name}</SelectItem>)}
             </SelectContent>
           </Select>

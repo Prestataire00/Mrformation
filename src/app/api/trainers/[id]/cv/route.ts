@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import pdf from "pdf-parse";
+import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 
 interface RouteContext {
   params: { id: string };
@@ -79,7 +80,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
 
     if (uploadError) {
       return NextResponse.json(
-        { error: `Erreur upload: ${uploadError.message}` },
+        { error: sanitizeDbError(uploadError, "trainers/[id]/cv upload") },
         { status: 500 }
       );
     }
@@ -102,7 +103,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
 
     if (updateError) {
       return NextResponse.json(
-        { error: `Erreur mise à jour: ${updateError.message}` },
+        { error: sanitizeDbError(updateError, "trainers/[id]/cv update") },
         { status: 500 }
       );
     }
@@ -113,8 +114,6 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       message: "CV uploadé et analysé avec succès",
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Erreur interne";
-    console.error("CV upload error:", message);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: sanitizeError(err, "trainers/[id]/cv") }, { status: 500 });
   }
 }

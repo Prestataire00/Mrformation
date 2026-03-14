@@ -124,7 +124,11 @@ export function Header({ profile, entity }: HeaderProps) {
       {/* Entity Switcher */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 bg-white/20 hover:bg-white/30 transition-colors focus:outline-none">
+          <button
+            aria-label="Changer d'entité"
+            aria-haspopup="true"
+            className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 bg-white/20 hover:bg-white/30 transition-colors focus:outline-none"
+          >
             <div
               className="w-2.5 h-2.5 rounded-full shrink-0 bg-white"
             />
@@ -175,7 +179,7 @@ export function Header({ profile, entity }: HeaderProps) {
       </div>
 
       {/* Search */}
-      <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-white/20 rounded-lg text-sm text-white/80 w-52">
+      <div role="search" aria-label="Recherche globale" className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-white/20 rounded-lg text-sm text-white/80 w-52">
         <Search className="w-3.5 h-3.5" />
         <span className="text-xs">Rechercher...</span>
       </div>
@@ -186,9 +190,13 @@ export function Header({ profile, entity }: HeaderProps) {
       {/* User menu */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button className="flex items-center gap-2.5 rounded-lg px-2 py-1 hover:bg-white/20 transition-colors focus:outline-none">
+          <button
+            aria-label="Menu utilisateur"
+            aria-haspopup="true"
+            className="flex items-center gap-2.5 rounded-lg px-2 py-1 hover:bg-white/20 transition-colors focus:outline-none"
+          >
             <Avatar className="h-7 w-7">
-              <AvatarImage src={profile?.avatar_url || undefined} />
+              <AvatarImage src={profile?.avatar_url || undefined} alt={fullName} />
               <AvatarFallback className="text-white text-xs font-bold bg-white/30">
                 {initials}
               </AvatarFallback>

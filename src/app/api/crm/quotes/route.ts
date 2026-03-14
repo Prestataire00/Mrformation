@@ -1,5 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
+import { evaluateProspectStatusFromQuotes } from "@/lib/crm/automations";
+import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
+import { parsePagination, createQuoteSchema } from "@/lib/validations";
+import { logAudit } from "@/lib/audit-log";
 
 export async function GET(request: NextRequest) {
   try {
@@ -40,9 +44,7 @@ export async function GET(request: NextRequest) {
     const prospectId = searchParams.get("prospect_id") ?? "";
     const dateFrom = searchParams.get("date_from") ?? "";
     const dateTo = searchParams.get("date_to") ?? "";
-    const page = parseInt(searchParams.get("page") ?? "1", 10);
-    const perPage = parseInt(searchParams.get("per_page") ?? "20", 10);
-    const offset = (page - 1) * perPage;
+    const { page, perPage, offset } = parsePagination(searchParams);
 
     let query = supabase
       .from("crm_quotes")
@@ -83,7 +85,7 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       return NextResponse.json(
-        { data: null, error: error.message },
+        { data: null, error: sanitizeDbError(error, "fetching quotes") },
         { status: 500 }
       );
     }
@@ -99,8 +101,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Internal server error";
-    return NextResponse.json({ data: null, error: message }, { status: 500 });
+    return NextResponse.json({ data: null, error: sanitizeError(err, "fetching quotes") }, { status: 500 });
   }
 }
 
@@ -139,35 +140,21 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
 
-    const {
-      reference,
-      client_id,
-      prospect_id,
-      amount,
-      status,
-      valid_until,
-      notes,
-    } = body;
-
-    if (!client_id && !prospect_id) {
+    const parsed = createQuoteSchema.safeParse(body);
+    if (!parsed.success) {
       return NextResponse.json(
-        { data: null, error: "Un client ou un prospect est requis" },
+        { data: null, error: parsed.error.issues[0].message },
         { status: 400 }
       );
     }
 
-    if (!reference) {
-      return NextResponse.json(
-        { data: null, error: "La référence du devis est requise" },
-        { status: 400 }
-      );
-    }
+    const { client_id, prospect_id, title, amount, status, valid_until, notes } = parsed.data;
 
     const { data, error } = await supabase
       .from("crm_quotes")
       .insert({
         entity_id: profile.entity_id,
-        reference,
+        reference: body.reference ?? title,
         client_id: client_id ?? null,
         prospect_id: prospect_id ?? null,
         amount: amount ?? null,
@@ -181,14 +168,28 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       return NextResponse.json(
-        { data: null, error: error.message },
+        { data: null, error: sanitizeDbError(error, "creating quote") },
         { status: 500 }
       );
     }
 
+    // Auto-transition prospect status when a quote is created
+    if (data && prospect_id && profile.entity_id) {
+      await evaluateProspectStatusFromQuotes(supabase, prospect_id, profile.entity_id);
+    }
+
+    logAudit({
+      supabase,
+      entityId: profile.entity_id,
+      userId: user.id,
+      action: "create",
+      resourceType: "quote",
+      resourceId: data.id,
+      details: { name: data.reference ?? title },
+    });
+
     return NextResponse.json({ data, error: null }, { status: 201 });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Internal server error";
-    return NextResponse.json({ data: null, error: message }, { status: 500 });
+    return NextResponse.json({ data: null, error: sanitizeError(err, "creating quote") }, { status: 500 });
   }
 }

@@ -33,6 +33,7 @@ export const API_PERMISSIONS: Array<[string, Role[]]> = [
   ["/api/clients",                 ["admin"]],
   ["/api/trainers",                ["admin"]],
   ["/api/trainings",               ["admin"]],
+  ["/api/crm/tasks",               ["admin", "trainer"]],
   ["/api/crm",                     ["admin"]],
 
   // ── Admin + Trainer ────────────────────────────────────────────────────────

@@ -400,7 +400,7 @@ export default function LearnerPage() {
   // ── render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-6">
+    <main aria-label="Tableau de bord apprenant" className="space-y-6">
       {/* ── Welcome header ── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-center gap-4">
@@ -479,7 +479,7 @@ export default function LearnerPage() {
       </div>
 
       {/* ── Browse available sessions ── */}
-      <Link href="/learner/sessions">
+      <Link href="/learner/catalog" className="mt-6 block">
         <Card className="border-dashed border-2 border-blue-200 bg-blue-50/50 hover:bg-blue-50 transition-colors cursor-pointer">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
@@ -652,6 +652,7 @@ export default function LearnerPage() {
                     size="sm"
                     onClick={cancelEdit}
                     disabled={saving}
+                    aria-label="Annuler la modification"
                   >
                     <X className="h-3.5 w-3.5" />
                   </Button>
@@ -862,6 +863,6 @@ export default function LearnerPage() {
           </Card>
         </div>
       </div>
-    </div>
+    </main>
   );
 }

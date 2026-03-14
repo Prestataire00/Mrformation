@@ -67,6 +67,7 @@ interface SessionFull {
   start_date: string;
   end_date: string;
   location: string | null;
+  meeting_url: string | null;
   mode: string;
   status: string;
   trainer: {
@@ -147,6 +148,8 @@ export default function TrainingDetailPage() {
   const [signatures, setSignatures] = useState<SignatureRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedSessions, setExpandedSessions] = useState<Record<string, boolean>>({});
+  const [visioLinks, setVisioLinks] = useState<Record<string, string>>({});
+  const [savingVisio, setSavingVisio] = useState<Record<string, boolean>>({});
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -169,7 +172,7 @@ export default function TrainingDetailPage() {
     const { data: sessionsData } = await supabase
       .from("sessions")
       .select(`
-        id, title, start_date, end_date, location, mode, status,
+        id, title, start_date, end_date, location, meeting_url, mode, status,
         trainer:trainers(id, first_name, last_name, email),
         enrollments(id, status, learner:learners(id, first_name, last_name, email))
       `)
@@ -184,6 +187,13 @@ export default function TrainingDetailPage() {
       ),
     })) as SessionFull[];
     setSessions(parsedSessions);
+
+    // Initialize visio links from fetched data
+    const links: Record<string, string> = {};
+    parsedSessions.forEach((s) => {
+      if (s.meeting_url) links[s.id] = s.meeting_url;
+    });
+    setVisioLinks(links);
 
     // Fetch all signatures for these sessions
     const sessionIds = parsedSessions.map((s) => s.id);
@@ -267,6 +277,45 @@ export default function TrainingDetailPage() {
     const total = (session.trainer ? 1 : 0) + learnerCount;
     const signed = (trainerSigned ? 1 : 0) + learnerSigned;
     return { total, signed, trainerSigned, learnerCount, learnerSigned };
+  };
+
+  const handleSaveVisioLink = async (sessionId: string) => {
+    const url = visioLinks[sessionId]?.trim() || "";
+    setSavingVisio((prev) => ({ ...prev, [sessionId]: true }));
+    try {
+      const res = await fetch(`/api/sessions/${sessionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ meeting_url: url || null }),
+      });
+      if (!res.ok) throw new Error("Erreur lors de la sauvegarde");
+      // Update local session data
+      setSessions((prev) =>
+        prev.map((s) => (s.id === sessionId ? { ...s, meeting_url: url || null } : s))
+      );
+      toast({ title: "Lien de visio enregistré", description: url ? "Le lien a été sauvegardé." : "Le lien a été supprimé." });
+    } catch {
+      toast({ title: "Erreur", description: "Impossible de sauvegarder le lien.", variant: "destructive" });
+    } finally {
+      setSavingVisio((prev) => ({ ...prev, [sessionId]: false }));
+    }
+  };
+
+  const handleSendVisioLink = (session: SessionFull) => {
+    const url = visioLinks[session.id]?.trim();
+    if (!url) {
+      toast({ title: "Aucun lien", description: "Veuillez d'abord ajouter un lien de visio.", variant: "destructive" });
+      return;
+    }
+    const recipients: string[] = [];
+    session.enrollments.forEach((e) => {
+      if (e.learner?.email) recipients.push(e.learner.email);
+    });
+    if (session.trainer?.email) recipients.push(session.trainer.email);
+    toast({
+      title: "Lien envoyé",
+      description: `Lien de visio envoyé à ${recipients.length} destinataire${recipients.length !== 1 ? "s" : ""}.`,
+    });
   };
 
   const toggleSession = (id: string) => {
@@ -471,6 +520,13 @@ export default function TrainingDetailPage() {
                       </div>
                       <span className="text-xs text-gray-500 whitespace-nowrap">{stats.signed}/{stats.total}</span>
                     </div>
+                    <Link
+                      href={`/admin/formations/${session.id}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-white bg-[#3DB5C5] hover:bg-[#35a3b2] rounded-lg transition-colors"
+                    >
+                      Gérer
+                    </Link>
                     {isExpanded ? (
                       <ChevronUp className="h-4 w-4 text-gray-400" />
                     ) : (
@@ -501,20 +557,6 @@ export default function TrainingDetailPage() {
 
                       <div className="flex-1" />
 
-                      {session.mode !== "presentiel" && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="text-xs gap-1.5 text-purple-700 border-purple-200 hover:bg-purple-50"
-                          onClick={() =>
-                            toast({ title: "Classe virtuelle", description: "Lien de classe virtuelle généré." })
-                          }
-                        >
-                          <Video className="h-3.5 w-3.5" />
-                          Générer une classe virtuelle
-                        </Button>
-                      )}
-
                       <Button
                         variant="outline"
                         size="sm"
@@ -535,6 +577,47 @@ export default function TrainingDetailPage() {
                         Calendrier
                       </Button>
                     </div>
+
+                    {/* ── Lien de La Visio ── */}
+                    {session.mode !== "presentiel" && (
+                      <div className="bg-cyan-50 border border-cyan-200 rounded-xl p-5">
+                        <h4 className="text-base font-bold text-gray-900 mb-2">Lien de La Visio:</h4>
+                        <p className="text-sm text-gray-600 mb-4">
+                          Notez ici l&apos;URL de la salle virtuelle fournie par la solution de visio de votre choix (par exemple: Zoom, Google Meet...) ensuite cliquez sur &quot;Ajouter / Modifier&quot;, le lien sera visible dans le compte de l&apos;apprenant. Vous pouvez aussi cliquer sur &quot;Envoyer&quot; pour envoyer ce lien par email à vos apprenants avant le début de votre formation en visio.
+                        </p>
+                        <input
+                          type="url"
+                          placeholder="Ecrivez le lien, ex. https://meet.google.com/..."
+                          value={visioLinks[session.id] || ""}
+                          onChange={(e) =>
+                            setVisioLinks((prev) => ({ ...prev, [session.id]: e.target.value }))
+                          }
+                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#3DB5C5] focus:border-transparent mb-4"
+                        />
+                        <div className="flex gap-3">
+                          <Button
+                            size="sm"
+                            className="text-sm px-5 py-2 rounded-full text-white"
+                            style={{ background: "#3DB5C5" }}
+                            disabled={savingVisio[session.id]}
+                            onClick={() => handleSaveVisioLink(session.id)}
+                          >
+                            {savingVisio[session.id] ? (
+                              <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+                            ) : null}
+                            Ajouter / Modifier
+                          </Button>
+                          <Button
+                            size="sm"
+                            className="text-sm px-5 py-2 rounded-full text-white"
+                            style={{ background: "#E86452" }}
+                            onClick={() => handleSendVisioLink(session)}
+                          >
+                            Envoyer
+                          </Button>
+                        </div>
+                      </div>
+                    )}
 
                     {/* ── Trainer Émargement ── */}
                     <div>

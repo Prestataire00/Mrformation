@@ -43,6 +43,7 @@ import {
   Play,
   PenLine,
   Upload,
+  CalendarDays,
 } from "lucide-react";
 
 interface NavItem {
@@ -97,7 +98,7 @@ const navItems: NavItem[] = [
     label: "Formations",
     icon: BookOpen,
     children: [
-      { label: "Filtrer les Formations", href: "/admin/trainings", icon: BookOpen },
+      { label: "Toutes les Formations", href: "/admin/trainings", icon: BookOpen },
       { label: "Sessions", href: "/admin/sessions", icon: Calendar },
       { label: "Emargement", href: "/admin/signatures", icon: PenLine },
       { label: "Parcours", href: "/admin/trainings/parcours", icon: Route },
@@ -105,7 +106,7 @@ const navItems: NavItem[] = [
     ],
   },
   {
-    label: "Bibliothèque",
+    label: "Programmes",
     icon: Library,
     children: [
       { label: "Tous les Programmes", href: "/admin/programs", icon: Library },
@@ -121,7 +122,7 @@ const navItems: NavItem[] = [
   },
   {
     label: "Satisfaction & Qualité",
-    href: "/admin/satisfaction",
+    href: "/admin/questionnaires/dashboard",
     icon: Star,
   },
   {
@@ -243,6 +244,7 @@ function NavItemComponent({ item, collapsed, siblingHrefs = [] }: { item: NavIte
       <div>
         <button
           onClick={() => setExpanded(!expanded)}
+          aria-expanded={expanded}
           className={cn(
             "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors",
             isChildActive
@@ -275,6 +277,7 @@ function NavItemComponent({ item, collapsed, siblingHrefs = [] }: { item: NavIte
   return (
     <Link
       href={item.href!}
+      aria-current={isActive ? "page" : undefined}
       className={cn(
         "flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] transition-colors",
         isActive
@@ -297,12 +300,29 @@ const learnerNavItems: NavItem[] = [
     icon: LayoutDashboard,
   },
   {
-    label: "Mes Formations",
+    label: "Catalogue de Formations",
+    href: "/learner/catalog",
     icon: BookOpen,
-    children: [
-      { label: "Formations Disponibles", href: "/learner/sessions", icon: Calendar },
-      { label: "Mes Cours E-Learning", href: "/learner/courses", icon: Monitor },
-    ],
+  },
+  {
+    label: "Mes Formations",
+    href: "/learner/my-trainings",
+    icon: GraduationCap,
+  },
+  {
+    label: "E-Learning",
+    href: "/learner/courses",
+    icon: Monitor,
+  },
+  {
+    label: "Calendrier",
+    href: "/learner/calendar",
+    icon: CalendarDays,
+  },
+  {
+    label: "Contacts",
+    href: "/learner/contacts",
+    icon: Users,
   },
   {
     label: "Questionnaires",
@@ -386,7 +406,7 @@ const trainerCrmNavItems: NavItem[] = [
     children: [
       { label: "Dashboard CRM", href: "/admin/crm", icon: BarChart3 },
       { label: "Mes Prospects", href: "/admin/crm/prospects", icon: TrendingUp },
-      { label: "Mes Tâches", href: "/admin/crm/tasks", icon: ClipboardList },
+      { label: "Mes Tâches", href: "/trainer/tasks", icon: ClipboardList },
       { label: "Mes Devis", href: "/admin/crm/quotes", icon: FileText },
     ],
   },
@@ -437,7 +457,7 @@ export function Sidebar({ entity, role = "admin", hasCrmAccess = false }: Sideba
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-0.5">
+      <nav role="navigation" aria-label="Menu principal" className="flex-1 overflow-y-auto px-2 py-3 space-y-0.5">
         {(ROLE_NAV_ITEMS[role] ?? navItems).map((item) => (
           <NavItemComponent key={item.label} item={item} collapsed={collapsed} />
         ))}

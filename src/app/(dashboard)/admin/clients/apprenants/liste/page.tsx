@@ -214,9 +214,12 @@ export default function ApprenantsListePage() {
                       <td className="px-4 py-3 text-gray-600">{learner.sessions_count ?? 0}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
-                          <button className="text-[#3DB5C5] hover:underline text-xs font-medium">
+                          <Link
+                            href={`/admin/clients/apprenants/${learner.id}`}
+                            className="text-[#3DB5C5] hover:underline text-xs font-medium"
+                          >
                             Modifier
-                          </button>
+                          </Link>
                           <Link
                             href={`/admin/crm/quotes/new?learner_name=${encodeURIComponent(fullName)}`}
                             className="text-gray-500 hover:underline text-xs"

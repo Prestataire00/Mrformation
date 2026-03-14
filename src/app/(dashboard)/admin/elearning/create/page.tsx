@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -135,6 +135,7 @@ function keywordToColor(keyword: string): string {
 export default function CreateCoursePage() {
   const router = useRouter();
   const { toast } = useToast();
+  const searchParams = useSearchParams();
 
   // Navigation
   const [viewStep, setViewStep] = useState<ViewStep>("method");
@@ -143,6 +144,7 @@ export default function CreateCoursePage() {
 
   // Common
   const [title, setTitle] = useState("");
+  const [programId, setProgramId] = useState<string | null>(null);
   const [courseId, setCourseId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -175,6 +177,20 @@ export default function CreateCoursePage() {
 
   // Final exam question count
   const [finalExamCount, setFinalExamCount] = useState(40);
+
+  // Pre-fill from program page query params
+  useEffect(() => {
+    const fromProgram = searchParams.get("from_program");
+    const paramTitle = searchParams.get("title");
+    const paramObjectives = searchParams.get("objectives");
+    if (fromProgram && paramTitle) {
+      setProgramId(fromProgram);
+      setTitle(paramTitle);
+      if (paramObjectives) setPastedText(paramObjectives);
+      toast({ title: "Programme chargé", description: `Formulaire pré-rempli depuis "${paramTitle}".` });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Fetch Gamma themes when course type includes presentations
   useEffect(() => {
@@ -320,6 +336,7 @@ export default function CreateCoursePage() {
         flashcards_target_count: courseType === "presentation" ? 0 : 40,
         num_chapters: numChapters,
         ...(selectedThemeId && { gamma_theme_id: selectedThemeId }),
+        ...(programId && { program_id: programId }),
         };
 
       if (method === "import" && extractedText) {

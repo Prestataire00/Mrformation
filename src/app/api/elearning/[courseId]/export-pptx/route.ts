@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { generatePptxBuffer } from "@/lib/services/pptx-generator";
+import { sanitizeError } from "@/lib/api-error";
 
 export async function GET(
   request: NextRequest,
@@ -52,6 +53,6 @@ export async function GET(
       },
     });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Erreur" }, { status: 500 });
+    return NextResponse.json({ error: sanitizeError(error, "exporting PPTX") }, { status: 500 });
   }
 }

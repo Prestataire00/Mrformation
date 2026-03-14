@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/require-role";
+import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
+import { logAudit } from "@/lib/audit-log";
 
 export async function GET(request: NextRequest) {
   const auth = await requireRole(["admin", "trainer", "learner"]);
@@ -21,7 +23,7 @@ export async function GET(request: NextRequest) {
     .eq("session_id", sessionId);
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: sanitizeDbError(error, "signatures GET") }, { status: 500 });
   }
 
   return NextResponse.json({ signatures: data });
@@ -121,8 +123,18 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: sanitizeDbError(error, "signatures POST") }, { status: 500 });
     }
+
+    logAudit({
+      supabase: auth.supabase,
+      entityId: auth.profile.entity_id,
+      userId: auth.user.id,
+      action: "create",
+      resourceType: "signature",
+      resourceId: data.id,
+      details: { name: `Signature session ${session_id}` },
+    });
 
     return NextResponse.json({
       success: true,
@@ -130,9 +142,8 @@ export async function POST(request: NextRequest) {
       message: "Signature enregistrée. Elle vaut validation des heures de formation réalisées.",
     });
   } catch (err: unknown) {
-    console.error("[signatures] Unexpected error:", err);
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Erreur interne du serveur" },
+      { error: sanitizeError(err, "signatures POST") },
       { status: 500 }
     );
   }
@@ -158,7 +169,7 @@ export async function DELETE(request: NextRequest) {
     .eq("id", signatureId);
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: sanitizeDbError(error, "signatures DELETE") }, { status: 500 });
   }
 
   return NextResponse.json({ success: true, message: "Signature supprimée." });

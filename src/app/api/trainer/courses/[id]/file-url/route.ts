@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
+import { sanitizeError } from "@/lib/api-error";
 
 /**
  * GET /api/trainer/courses/[id]/file-url?path=trainer-courses/xxx/file.pdf
@@ -59,7 +60,7 @@ export async function GET(
     return NextResponse.json({ url: data.signedUrl });
   } catch (e) {
     return NextResponse.json(
-      { error: e instanceof Error ? e.message : "Erreur interne" },
+      { error: sanitizeError(e, "trainer/courses/[id]/file-url GET") },
       { status: 500 }
     );
   }

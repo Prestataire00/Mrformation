@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { extractText } from "@/lib/services/doc-extraction";
+import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 
 /**
  * POST /api/library-migration
@@ -56,7 +57,7 @@ export async function POST(request: NextRequest) {
       .eq("entity_id", profile.entity_id);
 
     if (pgErr) {
-      return NextResponse.json({ error: pgErr.message }, { status: 500 });
+      return NextResponse.json({ error: sanitizeDbError(pgErr, "library-migration POST programs") }, { status: 500 });
     }
 
     // Try to match by title similarity
@@ -72,8 +73,7 @@ export async function POST(request: NextRequest) {
       programs: (programs || []).map((p) => ({ id: p.id, title: p.title })),
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Erreur interne";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: sanitizeError(error, "library-migration POST") }, { status: 500 });
   }
 }
 
@@ -108,7 +108,7 @@ export async function GET() {
       .order("title");
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: sanitizeDbError(error, "library-migration GET programs") }, { status: 500 });
     }
 
     // Determine migration status for each program
@@ -155,8 +155,7 @@ export async function GET() {
       stats: { total: result.length, migrated, partial, empty },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Erreur interne";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: sanitizeError(error, "library-migration GET") }, { status: 500 });
   }
 }
 
@@ -213,13 +212,12 @@ export async function PUT(request: NextRequest) {
       .eq("entity_id", profile.entity_id);
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: sanitizeDbError(error, "library-migration PUT update") }, { status: 500 });
     }
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Erreur interne";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: sanitizeError(error, "library-migration PUT") }, { status: 500 });
   }
 }
 

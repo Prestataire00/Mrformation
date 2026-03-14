@@ -106,12 +106,25 @@ export interface TrainerCompetency {
   level: "beginner" | "intermediate" | "expert";
 }
 
+// ===== GMAIL CONNECTIONS =====
+export interface GmailConnection {
+  id: string;
+  trainer_id: string;
+  profile_id: string;
+  gmail_address: string;
+  is_active: boolean;
+  connected_at: string;
+  last_used_at: string | null;
+  last_error: string | null;
+}
+
 // ===== TRAININGS =====
 export type TrainingClassification = "reglementaire" | "certifiant" | "qualifiant" | null;
 
 export interface Training {
   id: string;
   entity_id: string;
+  program_id: string | null;
   title: string;
   description: string | null;
   objectives: string | null;
@@ -128,11 +141,13 @@ export interface Training {
   created_at: string;
   updated_at: string;
   sessions?: Session[];
+  program?: Program;
 }
 
-// ===== SESSIONS =====
+// ===== SESSIONS (= Formation dans l'UI) =====
 export type SessionStatus = "upcoming" | "in_progress" | "completed" | "cancelled";
 export type SessionMode = "presentiel" | "distanciel" | "hybride";
+export type FormationType = "intra" | "inter";
 
 export interface Session {
   id: string;
@@ -148,11 +163,216 @@ export interface Session {
   trainer_id: string | null;
   is_public?: boolean;
   notes: string | null;
+  // Nouveaux champs formation
+  type: FormationType;
+  domain: string | null;
+  description: string | null;
+  total_price: number | null;
+  planned_hours: number | null;
+  visio_link: string | null;
+  manager_id: string | null;
+  program_id: string | null;
+  is_planned: boolean;
+  is_completed: boolean;
+  is_dpc: boolean;
+  catalog_pre_registration: boolean;
+  updated_at: string;
   created_at: string;
+  // Relations
   training?: Training;
   trainer?: Trainer;
+  program?: Program;
+  manager?: Pick<Profile, "id" | "first_name" | "last_name" | "email">;
   enrollments?: Enrollment[];
+  formation_trainers?: FormationTrainer[];
+  formation_companies?: FormationCompany[];
+  formation_financiers?: FormationFinancier[];
+  formation_comments?: FormationComment[];
+  formation_time_slots?: FormationTimeSlot[];
+  formation_absences?: FormationAbsence[];
+  formation_documents?: FormationDocument[];
+  formation_evaluation_assignments?: FormationEvaluationAssignment[];
+  formation_satisfaction_assignments?: FormationSatisfactionAssignment[];
+  formation_convention_documents?: FormationConventionDocument[];
+  formation_elearning_assignments?: FormationElearningAssignment[];
+  signatures?: Signature[];
   _count?: { enrollments: number };
+}
+
+// ===== FORMATION TIME SLOTS =====
+export interface FormationTimeSlot {
+  id: string;
+  session_id: string;
+  title: string | null;
+  start_time: string;
+  end_time: string;
+  slot_order: number;
+  module_title: string | null;
+  module_objectives: string | null;
+  module_themes: string | null;
+  module_exercises: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ===== FORMATION TRAINERS =====
+export interface FormationTrainer {
+  id: string;
+  session_id: string;
+  trainer_id: string;
+  role: string;
+  created_at: string;
+  trainer?: Trainer;
+}
+
+// ===== FORMATION COMPANIES =====
+export interface FormationCompany {
+  id: string;
+  session_id: string;
+  client_id: string;
+  amount: number | null;
+  email: string | null;
+  reference: string | null;
+  created_at: string;
+  client?: Client;
+}
+
+// ===== FORMATION FINANCIERS =====
+export type FinancierType = "opco" | "pole_emploi" | "cpf" | "entreprise" | "region" | "autre";
+
+export interface FormationFinancier {
+  id: string;
+  session_id: string;
+  name: string;
+  type: FinancierType | null;
+  reference: string | null;
+  amount: number | null;
+  notes: string | null;
+  created_at: string;
+}
+
+// ===== FORMATION COMMENTS =====
+export interface FormationComment {
+  id: string;
+  session_id: string;
+  author_id: string | null;
+  content: string;
+  created_at: string;
+  updated_at: string;
+  author?: Pick<Profile, "id" | "first_name" | "last_name">;
+}
+
+// ===== FORMATION ABSENCES =====
+export type AbsenceStatus = "justified" | "unjustified" | "excused";
+
+export interface FormationAbsence {
+  id: string;
+  session_id: string;
+  learner_id: string;
+  time_slot_id: string | null;
+  date: string;
+  reason: string | null;
+  status: AbsenceStatus;
+  notes: string | null;
+  created_at: string;
+  learner?: Learner;
+  time_slot?: FormationTimeSlot;
+}
+
+// ===== FORMATION DOCUMENTS =====
+export type FormationDocCategory = "learner" | "program_support" | "common" | "private" | "trainer" | "common_trainer";
+
+export interface FormationDocument {
+  id: string;
+  session_id: string;
+  category: FormationDocCategory;
+  learner_id: string | null;
+  trainer_id: string | null;
+  file_name: string;
+  file_url: string;
+  uploaded_by: string | null;
+  created_at: string;
+  learner?: Learner;
+  trainer?: Trainer;
+}
+
+// ===== FORMATION EVALUATION ASSIGNMENTS =====
+export type EvaluationType = "eval_preformation" | "eval_pendant" | "eval_postformation" | "auto_eval_pre" | "auto_eval_post";
+
+export interface FormationEvaluationAssignment {
+  id: string;
+  session_id: string;
+  questionnaire_id: string;
+  evaluation_type: EvaluationType;
+  learner_id: string | null;
+  created_at: string;
+  questionnaire?: Questionnaire;
+}
+
+// ===== FORMATION SATISFACTION ASSIGNMENTS =====
+export type SatisfactionType = "satisfaction_chaud" | "satisfaction_froid" | "quest_financeurs" | "quest_formateurs" | "quest_managers" | "quest_entreprises" | "autres_quest";
+export type SatisfactionTargetType = "learner" | "trainer" | "manager" | "financier" | "company";
+
+export interface FormationSatisfactionAssignment {
+  id: string;
+  session_id: string;
+  questionnaire_id: string;
+  satisfaction_type: SatisfactionType;
+  target_type: SatisfactionTargetType;
+  target_id: string | null;
+  created_at: string;
+  questionnaire?: Questionnaire;
+}
+
+// ===== FORMATION CONVENTION DOCUMENTS =====
+export type ConventionDocType =
+  | "convocation" | "certificat_realisation" | "attestation_assiduite"
+  | "feuille_emargement" | "micro_certificat"
+  | "cgv" | "politique_confidentialite" | "reglement_interieur" | "programme_formation"
+  | "convention_entreprise" | "feuille_emargement_collectif"
+  | "convention_intervention" | "contrat_sous_traitance"
+  | "custom";
+
+export type ConventionOwnerType = "learner" | "company" | "trainer";
+
+export interface FormationConventionDocument {
+  id: string;
+  session_id: string;
+  doc_type: ConventionDocType;
+  owner_type: ConventionOwnerType;
+  owner_id: string;
+  template_id: string | null;
+  is_confirmed: boolean;
+  confirmed_at: string | null;
+  is_sent: boolean;
+  sent_at: string | null;
+  is_signed: boolean;
+  signed_at: string | null;
+  document_date: string | null;
+  custom_label: string | null;
+  requires_signature: boolean;
+  created_at: string;
+  template?: DocumentTemplate;
+}
+
+// ===== FORMATION E-LEARNING ASSIGNMENTS =====
+export interface FormationElearningAssignment {
+  id: string;
+  session_id: string;
+  learner_id: string;
+  course_id: string;
+  elearning_enrollment_id: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  notes: string | null;
+  time_elearning_modules: number;
+  time_elearning_evaluations: number;
+  time_other_evaluations: number;
+  time_virtual_classroom: number;
+  time_signed_attendance: number;
+  is_completed: boolean;
+  created_at: string;
+  course?: { id: string; title: string; status: string; estimated_duration_minutes: number };
 }
 
 // ===== ENROLLMENTS =====
@@ -278,6 +498,8 @@ export interface EmailTemplate {
   created_at: string;
 }
 
+export type EmailRecipientType = "learner" | "trainer" | "client" | "financier" | "manager";
+
 export interface EmailHistory {
   id: string;
   entity_id: string;
@@ -289,6 +511,9 @@ export interface EmailHistory {
   sent_by: string | null;
   sent_at: string;
   error_message: string | null;
+  session_id: string | null;
+  recipient_type: EmailRecipientType | null;
+  recipient_id: string | null;
   template?: EmailTemplate;
 }
 
@@ -301,6 +526,21 @@ export interface Signature {
   signature_data: string | null;
   signed_at: string;
   document_id: string | null;
+  time_slot_id: string | null;
+}
+
+// ===== SIGNING TOKENS =====
+export interface SigningToken {
+  id: string;
+  token: string;
+  session_id: string;
+  enrollment_id: string | null;
+  learner_id: string | null;
+  entity_id: string;
+  token_type: "session" | "individual";
+  expires_at: string;
+  used_at: string | null;
+  created_at: string;
 }
 
 // ===== CRM =====
@@ -327,6 +567,8 @@ export interface CrmProspect {
   notes: string | null;
   assigned_to: string | null;
   converted_client_id: string | null;
+  linked_training_id: string | null;
+  score: number;
   created_at: string;
   updated_at: string;
   assignee?: Profile;
@@ -347,7 +589,9 @@ export interface CrmTask {
   assigned_to: string | null;
   prospect_id: string | null;
   client_id: string | null;
+  created_by: string | null;
   created_at: string;
+  updated_at: string;
   assignee?: Profile;
   prospect?: CrmProspect;
   client?: Client;
@@ -371,6 +615,79 @@ export interface CrmQuote {
   prospect?: CrmProspect;
 }
 
+// ===== SEGMENT CRITERIA =====
+export type SegmentCriterionType =
+  | "prospect_status"
+  | "prospect_source"
+  | "prospect_score"
+  | "prospect_training"
+  | "prospect_created_at"
+  | "client_status"
+  | "client_sector"
+  | "client_city"
+  | "client_created_at"
+  | "tags"
+  | "training_participation";
+
+interface BaseSegmentCriterion {
+  id: string;
+  type: SegmentCriterionType;
+}
+
+export interface SelectCriterion extends BaseSegmentCriterion {
+  type: "prospect_status" | "prospect_source" | "client_status";
+  operator: "in";
+  values: string[];
+}
+
+export interface TextCriterion extends BaseSegmentCriterion {
+  type: "client_sector" | "client_city";
+  operator: "contains" | "equals";
+  value: string;
+}
+
+export interface RangeCriterion extends BaseSegmentCriterion {
+  type: "prospect_score";
+  operator: "between" | "gte" | "lte";
+  min?: number;
+  max?: number;
+}
+
+export interface DateRangeCriterion extends BaseSegmentCriterion {
+  type: "prospect_created_at" | "client_created_at";
+  operator: "between" | "after" | "before";
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+export interface TagsCriterion extends BaseSegmentCriterion {
+  type: "tags";
+  operator: "any" | "all";
+  tagIds: string[];
+}
+
+export interface TrainingCriterion extends BaseSegmentCriterion {
+  type: "prospect_training" | "training_participation";
+  operator: "in";
+  trainingIds: string[];
+}
+
+export type SegmentCriterion =
+  | SelectCriterion
+  | TextCriterion
+  | RangeCriterion
+  | DateRangeCriterion
+  | TagsCriterion
+  | TrainingCriterion;
+
+export type SegmentTargetPool = "prospects" | "clients" | "both";
+
+export interface SegmentCriteria {
+  logic: "and";
+  criteria: SegmentCriterion[];
+  targetPool: SegmentTargetPool;
+}
+
 export interface CrmCampaign {
   id: string;
   entity_id: string;
@@ -384,10 +701,11 @@ export interface CrmCampaign {
   scheduled_at: string | null;
   sent_at: string | null;
   created_at: string;
+  segment_criteria?: SegmentCriteria | null;
 }
 
 // ===== CRM NOTIFICATIONS =====
-export type NotificationType = "task_overdue" | "task_due_today" | "task_due_soon" | "quote_followup" | "quote_expiring" | "general";
+export type NotificationType = "task_overdue" | "task_due_today" | "task_due_soon" | "quote_followup" | "quote_expiring" | "general" | "prospect_won" | "quote_accepted" | "quote_rejected" | "daily_digest" | "weekly_summary";
 
 export interface CrmNotification {
   id: string;

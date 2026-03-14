@@ -13,6 +13,7 @@ import {
   ChevronDown,
   GripVertical,
   LayoutGrid,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,6 +36,8 @@ import {
 import { cn, formatDate } from "@/lib/utils";
 import type { CrmProspect, CrmTag, ProspectStatus } from "@/lib/types";
 import { CompanySearch, type CompanySearchResult } from "@/components/crm/CompanySearch";
+import { createFirstContactTask, createProposalPrepTask } from "@/lib/crm/automations";
+import { updateProspectScore } from "@/lib/crm/lead-scoring";
 import { TagBadges } from "@/components/crm/TagManager";
 import { Badge } from "@/components/ui/badge";
 
@@ -140,8 +143,9 @@ export default function CrmProspectsPage() {
   const [dateFrom,         setDateFrom]          = useState(`${currentYear}-01-01`);
   const [dateTo,           setDateTo]            = useState(`${currentYear}-12-31`);
 
-  // Colonnes kanban (modifiables via config)
+  // Colonnes kanban (modifiables via config) — persistées dans localStorage
   const [columns,          setColumns]           = useState<KanbanColumn[]>(DEFAULT_COLUMNS);
+  const [columnsLoaded,    setColumnsLoaded]     = useState(false);
 
   // Dialogues
   const [addOpen,          setAddOpen]           = useState(false);
@@ -170,6 +174,29 @@ export default function CrmProspectsPage() {
   // Drag & drop cartes (leads)
   const [draggedCardId,    setDraggedCardId]     = useState<string | null>(null);
   const [dragOverCardCol,  setDragOverCardCol]   = useState<string | null>(null);
+
+  // ── Charger colonnes depuis localStorage quand entityId est prêt ─────────
+  useEffect(() => {
+    if (entityId === undefined) return;
+    try {
+      const stored = localStorage.getItem(`crm-columns-${entityId}`);
+      if (stored) {
+        const parsed = JSON.parse(stored) as KanbanColumn[];
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setColumns(parsed);
+        }
+      }
+    } catch { /* ignore */ }
+    setColumnsLoaded(true);
+  }, [entityId]);
+
+  // Helper pour persister les colonnes
+  function persistColumns(cols: KanbanColumn[]) {
+    setColumns(cols);
+    if (entityId) {
+      try { localStorage.setItem(`crm-columns-${entityId}`, JSON.stringify(cols)); } catch { /* ignore */ }
+    }
+  }
 
   // ── Init ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -237,7 +264,9 @@ export default function CrmProspectsPage() {
 
   // ── Groupement par colonne ────────────────────────────────────────────────
   function getProspectsForColumn(colId: string): CrmProspect[] {
-    return filtered.filter((p) => p.status === colId);
+    return filtered
+      .filter((p) => p.status === colId)
+      .sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
   }
 
   // ── Ajout ─────────────────────────────────────────────────────────────────
@@ -261,10 +290,20 @@ export default function CrmProspectsPage() {
       notes:        form.notes.trim()        || null,
       entity_id:    entityId ?? undefined,
     };
-    const { error } = await supabase.from("crm_prospects").insert([payload]);
+    const { data: inserted, error } = await supabase.from("crm_prospects").insert([payload]).select("id").single();
     if (error) {
       console.error("handleAdd error:", error);
     } else {
+      // Auto-create "Premier contact" task + calculate score
+      if (inserted && entityId) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          await createFirstContactTask(
+            supabase, inserted.id, form.company_name.trim(), entityId, null, user.id
+          );
+        }
+        await updateProspectScore(supabase, inserted.id);
+      }
       setAddOpen(false);
       setForm(EMPTY_FORM);
       fetchProspects();
@@ -332,7 +371,7 @@ export default function CrmProspectsPage() {
     setConfigOpen(true);
   }
   function saveConfig() {
-    setColumns([...tempColumns]);
+    persistColumns([...tempColumns]);
     setConfigOpen(false);
   }
 
@@ -354,7 +393,7 @@ export default function CrmProspectsPage() {
     const updated = [...columns];
     const [moved] = updated.splice(draggedColIdx, 1);
     updated.splice(idx, 0, moved);
-    setColumns(updated);
+    persistColumns(updated);
     setDraggedColIdx(null);
     setDragOverColIdx(null);
   }
@@ -388,6 +427,19 @@ export default function CrmProspectsPage() {
       .from("crm_prospects")
       .update({ status: colId, updated_at: new Date().toISOString() })
       .eq("id", cardId);
+
+    // Auto-create "Préparer proposition" task when prospect moves to "qualified"
+    if (colId === "qualified" && card && entityId) {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await createProposalPrepTask(
+          supabase, cardId, card.company_name, entityId, card.assigned_to, user.id
+        );
+      }
+    }
+
+    // Recalculate lead score after status change
+    await updateProspectScore(supabase, cardId);
   }
   function handleCardDragEnd() {
     setDraggedCardId(null);
@@ -579,7 +631,7 @@ export default function CrmProspectsPage() {
                           isBeingDragged && "opacity-40 scale-95"
                         )}
                       >
-                        {/* Avatar + Nom */}
+                        {/* Avatar + Nom + Score */}
                         <div className="flex items-start gap-2.5 mb-2.5">
                           <div
                             className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
@@ -587,12 +639,25 @@ export default function CrmProspectsPage() {
                           >
                             {getInitialsFromName(p.company_name, p.contact_name)}
                           </div>
-                          <div className="min-w-0">
+                          <div className="min-w-0 flex-1">
                             <p className="text-sm font-bold text-gray-900 leading-tight">
                               {p.company_name}
                             </p>
                             <p className="text-[11px] text-gray-400 mt-0.5">Entreprise</p>
                           </div>
+                          {(p.score ?? 0) > 0 && (
+                            <span
+                              className={cn(
+                                "flex h-6 min-w-[24px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold text-white",
+                                (p.score ?? 0) >= 80 ? "bg-green-500" :
+                                (p.score ?? 0) >= 50 ? "bg-amber-500" :
+                                "bg-gray-400"
+                              )}
+                              title={`Score : ${p.score}/120`}
+                            >
+                              {p.score}
+                            </span>
+                          )}
                         </div>
 
                         {/* Tags */}
@@ -732,10 +797,10 @@ export default function CrmProspectsPage() {
           </DialogHeader>
 
           <p className="text-xs text-gray-400 mb-3">
-            Renommez et réordonnez les colonnes du kanban.
+            Renommez, réordonnez, ajoutez ou supprimez les colonnes du kanban.
           </p>
 
-          <div className="space-y-2">
+          <div className="space-y-2 max-h-[400px] overflow-y-auto">
             {tempColumns.map((col, idx) => (
               <div key={col.id} className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
                 <div className="flex flex-col gap-0.5">
@@ -762,9 +827,16 @@ export default function CrmProspectsPage() {
                     <ChevronDown className="h-3.5 w-3.5" />
                   </button>
                 </div>
-                <div
-                  className="h-4 w-4 flex-shrink-0 rounded-full"
-                  style={{ backgroundColor: col.color }}
+                <input
+                  type="color"
+                  value={col.color}
+                  onChange={(e) => {
+                    const updated = [...tempColumns];
+                    updated[idx] = { ...col, color: e.target.value };
+                    setTempColumns(updated);
+                  }}
+                  className="h-7 w-7 flex-shrink-0 cursor-pointer rounded border-0 bg-transparent p-0"
+                  title="Changer la couleur"
                 />
                 <div className="flex-1">
                   <Input
@@ -779,9 +851,33 @@ export default function CrmProspectsPage() {
                   />
                 </div>
                 <span className="text-xs text-gray-300 italic whitespace-nowrap">({col.id})</span>
+                <button
+                  onClick={() => {
+                    setTempColumns((prev) => prev.filter((_, i) => i !== idx));
+                  }}
+                  className="rounded p-1 text-gray-300 hover:text-red-500 hover:bg-red-50 transition"
+                  title="Supprimer cette colonne"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
               </div>
             ))}
           </div>
+
+          {/* Ajouter une colonne */}
+          <button
+            onClick={() => {
+              const id = `custom-${Date.now()}`;
+              setTempColumns((prev) => [
+                ...prev,
+                { id, label: "Nouvelle colonne", color: "#6b7280" },
+              ]);
+            }}
+            className="flex w-full items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-gray-300 py-2.5 text-sm font-medium text-gray-400 hover:border-[#3DB5C5] hover:text-[#3DB5C5] transition"
+          >
+            <Plus className="h-4 w-4" />
+            Ajouter une colonne
+          </button>
 
           <DialogFooter className="gap-2 mt-4">
             <Button variant="outline" size="sm" onClick={() => setConfigOpen(false)}>

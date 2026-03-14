@@ -4,10 +4,7 @@
 
 import pdfParse from "pdf-parse";
 import mammoth from "mammoth";
-import { execFile } from "child_process";
-import { promisify } from "util";
-
-const execFileAsync = promisify(execFile);
+import { YoutubeTranscript, YoutubeTranscriptNotAvailableLanguageError } from "youtube-transcript";
 
 /**
  * Extrait le texte d'un buffer selon le type de fichier
@@ -135,8 +132,19 @@ function linesToParagraphs(lines: string[], groupSize = 10): string {
 }
 
 /**
+ * Decode HTML entities in transcript text
+ */
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&apos;/g, "'")
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(parseInt(dec)));
+}
+
+/**
  * Extract transcript from a YouTube video
- * Method 1: Python youtube-transcript-api (most reliable, handles anti-bot) — tried FIRST
+ * Method 1: youtube-transcript npm package (Node.js native, no Python needed)
  * Method 2: ytInitialPlayerResponse JSON embedded in page HTML
  * Fallback: description only
  */
@@ -146,137 +154,122 @@ async function extractFromYouTube(
 ): Promise<{ text: string; metadata: Record<string, unknown> }> {
   let videoTitle = "Vidéo YouTube";
   let descriptionFallback: string | null = null;
+  let cachedPageHtml: string | null = null;
 
-  // Fetch page to get title and description (used as fallback)
-  // Also try Method 2 (ytInitialPlayerResponse) as a secondary path
+  // Fetch page to get title, description, and cache HTML for Method 2
   try {
     const pageRes = await fetch(`https://www.youtube.com/watch?v=${videoId}`, { headers: YT_HEADERS });
-    const pageHtml = await pageRes.text();
+    cachedPageHtml = await pageRes.text();
 
-    const titleMatch = pageHtml.match(/<title>([^<]*)<\/title>/);
+    const titleMatch = cachedPageHtml.match(/<title>([^<]*)<\/title>/);
     if (titleMatch) videoTitle = titleMatch[1].replace(" - YouTube", "").trim();
 
-    const descMatch = pageHtml.match(/"shortDescription":"((?:[^"\\]|\\.)*)"/);
+    const descMatch = cachedPageHtml.match(/"shortDescription":"((?:[^"\\]|\\.)*)"/);
     if (descMatch) {
       descriptionFallback = descMatch[1]
         .replace(/\\n/g, "\n").replace(/\\"/g, '"').replace(/\\\\/g, "\\");
     }
-  } catch { /* page fetch failed, continue with default title */ }
-
-  // Method 1: Python youtube-transcript-api (most reliable — handles anti-bot)
-  try {
-    const pyScript = `
-import sys, json
-from youtube_transcript_api import YouTubeTranscriptApi
-api = YouTubeTranscriptApi()
-video_id = sys.argv[1]
-try:
-    t = api.fetch(video_id, languages=['fr', 'en'])
-except Exception:
-    t = api.fetch(video_id)
-print(json.dumps([{'text': s.text, 'start': s.start} for s in t]))
-`.trim();
-
-    // Candidates for python3 binary — Next.js may have a restricted PATH
-    const pythonCandidates = [
-      process.env.PYTHON3_PATH,
-      "/usr/local/opt/python@3.13/bin/python3.13",
-      "/usr/local/opt/python@3.12/bin/python3.12",
-      "/usr/local/bin/python3",
-      "/usr/bin/python3",
-      "python3",
-    ].filter(Boolean) as string[];
-
-    let stdout = "";
-    let lastError = "";
-    for (const py of pythonCandidates) {
-      try {
-        const result = await execFileAsync(py, ["-c", pyScript, videoId], {
-          timeout: 30000,
-          env: { ...process.env, PATH: `/usr/local/opt/python@3.13/bin:/usr/local/opt/python@3.12/bin:/usr/local/bin:/usr/bin:/bin:${process.env.PATH || ""}` },
-        });
-        stdout = result.stdout;
-        console.log(`[YouTube] Python transcript OK with ${py}, segments: ${stdout.substring(0, 100)}`);
-        break;
-      } catch (e) {
-        lastError = String(e);
-        console.warn(`[YouTube] Python candidate ${py} failed:`, lastError.substring(0, 200));
-      }
-    }
-
-    if (stdout.trim()) {
-      const segments: { text: string; start: number }[] = JSON.parse(stdout.trim());
-      if (segments.length > 0) {
-        const lines = segments.map((s) => s.text.trim()).filter(Boolean);
-        const text = `# ${videoTitle}\n\nTranscription complète de la vidéo YouTube\nSource : ${originalUrl}\n\n${linesToParagraphs(lines)}`;
-        return {
-          text,
-          metadata: { type: "youtube", video_id: videoId, title: videoTitle, segment_count: segments.length, char_count: text.length },
-        };
-      }
-    }
-    console.warn("[YouTube] Python method returned no segments, trying page-based method");
   } catch (e) {
-    console.warn("[YouTube] Python method error:", String(e).substring(0, 200));
+    console.warn("[YouTube] Page fetch failed:", e instanceof Error ? e.message : String(e));
   }
 
-  // Method 2: parse ytInitialPlayerResponse from page HTML
+  // Method 1: youtube-transcript npm package (try fr -> en -> default)
   try {
-    const pageRes = await fetch(`https://www.youtube.com/watch?v=${videoId}`, { headers: YT_HEADERS });
-    const pageHtml = await pageRes.text();
-
-    const marker = "ytInitialPlayerResponse = ";
-    const idx = pageHtml.indexOf(marker);
-    if (idx !== -1) {
-      const start = idx + marker.length;
-      let depth = 0, end = start;
-      for (let i = start; i < pageHtml.length; i++) {
-        if (pageHtml[i] === "{") depth++;
-        else if (pageHtml[i] === "}") { depth--; if (depth === 0) { end = i + 1; break; } }
-      }
-      const playerData = JSON.parse(pageHtml.substring(start, end));
-      const tracks: { baseUrl: string; languageCode: string; name?: { simpleText?: string } }[] =
-        playerData?.captions?.playerCaptionsTracklistRenderer?.captionTracks ?? [];
-
-      const frTrack = tracks.find((t) => t.languageCode === "fr" && !t.name?.simpleText?.toLowerCase().includes("auto"));
-      const frAutoTrack = tracks.find((t) => t.languageCode === "fr");
-      const enTrack = tracks.find((t) => t.languageCode === "en");
-      const track = frTrack || frAutoTrack || enTrack || tracks[0];
-
-      if (track) {
-        let lines: string[] = [];
-
+    let segments = null;
+    try {
+      segments = await YoutubeTranscript.fetchTranscript(videoId, { lang: "fr" });
+    } catch (e) {
+      if (e instanceof YoutubeTranscriptNotAvailableLanguageError) {
         try {
-          const res = await fetch(track.baseUrl + "&fmt=json3", { headers: YT_HEADERS });
-          const json = await res.json() as { events?: { segs?: { utf8: string }[] }[] };
-          if (json.events) {
-            lines = json.events
-              .filter((e) => e.segs)
-              .flatMap((e) => e.segs!.map((s) => s.utf8.trim()))
-              .filter(Boolean);
+          segments = await YoutubeTranscript.fetchTranscript(videoId, { lang: "en" });
+        } catch (e2) {
+          if (e2 instanceof YoutubeTranscriptNotAvailableLanguageError) {
+            segments = await YoutubeTranscript.fetchTranscript(videoId);
+          } else {
+            throw e2;
           }
-        } catch { /* try xml */ }
-
-        if (lines.length === 0) {
-          try {
-            const res = await fetch(track.baseUrl, { headers: YT_HEADERS });
-            lines = parseXmlTranscript(await res.text());
-          } catch { /* xml also failed */ }
         }
-
-        if (lines.length > 0) {
-          const text = `# ${videoTitle}\n\nTranscription de la vidéo YouTube\nSource : ${originalUrl}\n\n${linesToParagraphs(lines)}`;
-          return {
-            text,
-            metadata: { type: "youtube", video_id: videoId, title: videoTitle, language: track.languageCode, char_count: text.length },
-          };
-        }
+      } else {
+        throw e;
       }
     }
-  } catch { /* Method 2 failed */ }
+
+    if (segments && segments.length > 0) {
+      const lines = segments.map((s) => decodeHtmlEntities(s.text.trim())).filter(Boolean);
+      const text = `# ${videoTitle}\n\nTranscription complète de la vidéo YouTube\nSource : ${originalUrl}\n\n${linesToParagraphs(lines)}`;
+      return {
+        text,
+        metadata: { type: "youtube", video_id: videoId, title: videoTitle, segment_count: segments.length, char_count: text.length },
+      };
+    }
+    console.warn("[YouTube] npm method returned no segments");
+  } catch (e) {
+    console.warn("[YouTube] npm youtube-transcript failed:", e instanceof Error ? e.message : String(e));
+  }
+
+  // Method 2: parse ytInitialPlayerResponse from cached page HTML
+  if (cachedPageHtml) {
+    try {
+      const marker = "ytInitialPlayerResponse = ";
+      const idx = cachedPageHtml.indexOf(marker);
+      if (idx !== -1) {
+        const start = idx + marker.length;
+        let depth = 0, end = start;
+        for (let i = start; i < cachedPageHtml.length; i++) {
+          if (cachedPageHtml[i] === "{") depth++;
+          else if (cachedPageHtml[i] === "}") { depth--; if (depth === 0) { end = i + 1; break; } }
+        }
+        const playerData = JSON.parse(cachedPageHtml.substring(start, end));
+        const tracks: { baseUrl: string; languageCode: string; name?: { simpleText?: string } }[] =
+          playerData?.captions?.playerCaptionsTracklistRenderer?.captionTracks ?? [];
+
+        const frTrack = tracks.find((t) => t.languageCode === "fr" && !t.name?.simpleText?.toLowerCase().includes("auto"));
+        const frAutoTrack = tracks.find((t) => t.languageCode === "fr");
+        const enTrack = tracks.find((t) => t.languageCode === "en");
+        const track = frTrack || frAutoTrack || enTrack || tracks[0];
+
+        if (track) {
+          let lines: string[] = [];
+
+          try {
+            const res = await fetch(track.baseUrl + "&fmt=json3", { headers: YT_HEADERS });
+            const json = await res.json() as { events?: { segs?: { utf8: string }[] }[] };
+            if (json.events) {
+              lines = json.events
+                .filter((e) => e.segs)
+                .flatMap((e) => e.segs!.map((s) => s.utf8.trim()))
+                .filter(Boolean);
+            }
+          } catch (e) {
+            console.warn("[YouTube] json3 caption fetch failed:", e instanceof Error ? e.message : String(e));
+          }
+
+          if (lines.length === 0) {
+            try {
+              const res = await fetch(track.baseUrl, { headers: YT_HEADERS });
+              lines = parseXmlTranscript(await res.text());
+            } catch (e) {
+              console.warn("[YouTube] XML caption fetch failed:", e instanceof Error ? e.message : String(e));
+            }
+          }
+
+          if (lines.length > 0) {
+            const text = `# ${videoTitle}\n\nTranscription de la vidéo YouTube\nSource : ${originalUrl}\n\n${linesToParagraphs(lines)}`;
+            return {
+              text,
+              metadata: { type: "youtube", video_id: videoId, title: videoTitle, language: track.languageCode, char_count: text.length },
+            };
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[YouTube] ytInitialPlayerResponse method failed:", e instanceof Error ? e.message : String(e));
+    }
+  }
 
   // Final fallback: description only
-  if (descriptionFallback && descriptionFallback.length > 50) {
+  if (descriptionFallback && descriptionFallback.length > 20) {
+    console.warn(`[YouTube] All transcript methods failed for ${videoId}, falling back to description`);
     const text = `# ${videoTitle}\n\nDescription de la vidéo YouTube\nSource : ${originalUrl}\n\n${descriptionFallback}`;
     return {
       text,
@@ -288,7 +281,7 @@ print(json.dumps([{'text': s.text, 'start': s.start} for s in t]))
     };
   }
 
-  throw new Error("Impossible d'extraire la transcription YouTube. Vérifiez que la vidéo a des sous-titres activés.");
+  throw new Error(`Impossible d'extraire la transcription YouTube pour la vidéo ${videoId}. Vérifiez que la vidéo a des sous-titres activés et qu'elle est accessible publiquement.`);
 }
 
 /**

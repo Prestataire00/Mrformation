@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
+import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 
 export async function GET(
   request: NextRequest,
@@ -32,10 +33,10 @@ export async function GET(
     if (tag) query = query.contains("tags", [tag]);
 
     const { data, error } = await query;
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return NextResponse.json({ error: sanitizeDbError(error, "fetching global flashcards") }, { status: 500 });
 
     return NextResponse.json({ data });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Erreur" }, { status: 500 });
+    return NextResponse.json({ error: sanitizeError(error, "fetching global flashcards") }, { status: 500 });
   }
 }

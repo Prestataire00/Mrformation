@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
+import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 
 /**
  * GET /api/elearning/scores?course_id=xxx
@@ -23,7 +24,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ data: data || null });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Erreur" }, { status: 500 });
+    return NextResponse.json({ error: sanitizeError(error, "fetching scores") }, { status: 500 });
   }
 }
 
@@ -74,10 +75,10 @@ export async function POST(request: NextRequest) {
       .select()
       .single();
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return NextResponse.json({ error: sanitizeDbError(error, "saving scores") }, { status: 500 });
 
     return NextResponse.json({ data });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Erreur" }, { status: 500 });
+    return NextResponse.json({ error: sanitizeError(error, "saving scores") }, { status: 500 });
   }
 }

@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 
 export async function POST(request: Request) {
@@ -45,7 +46,7 @@ export async function POST(request: Request) {
   });
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: sanitizeDbError(error, "change user password") }, { status: 500 });
   }
 
   return NextResponse.json({ success: true });

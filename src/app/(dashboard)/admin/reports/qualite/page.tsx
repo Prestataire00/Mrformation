@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
-import { Filter, Download, Loader2, FileText, BarChart3, Shield } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, Loader2, FileText, BarChart3, Shield } from "lucide-react";
 import { downloadXlsx } from "@/lib/export-xlsx";
 import { exportTableToPDF } from "@/lib/pdf-export";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
@@ -124,9 +124,9 @@ type ViewMode = "table" | "qualiopi";
 export default function SuiviQualitePage() {
   const supabase = createClient();
   const { entityId } = useEntity();
-  const year = new Date().getFullYear();
-  const [dateFrom, setDateFrom] = useState(`${year}-01-01`);
-  const [dateTo, setDateTo] = useState(`${year}-12-31`);
+  const [year, setYear] = useState<number>(2026);
+  const dateFrom = `${year}-01-01`;
+  const dateTo = `${year}-12-31`;
   const [searchName, setSearchName] = useState("");
   const [detailed, setDetailed] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("table");
@@ -136,7 +136,42 @@ export default function SuiviQualitePage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
 
-    // 1. Load sessions in date range
+    // 1. Load pre-computed quality scores from quality_scores table
+    let qsQuery = supabase
+      .from("quality_scores")
+      .select("*")
+      .eq("year", year)
+      .order("formation", { ascending: true });
+
+    if (entityId) qsQuery = qsQuery.eq("entity_id", entityId);
+
+    const { data: qualityScores } = await qsQuery;
+
+    if (qualityScores && qualityScores.length > 0) {
+      const mapped: QualiteRow[] = qualityScores.map((qs: Record<string, unknown>) => ({
+        id: qs.id as string,
+        formation: qs.formation as string,
+        annee: qs.year as number,
+        month: (qs.month as string) || `${qs.year}-01`,
+        eval_preformation: qs.eval_preformation as number | null,
+        eval_pendant: qs.eval_pendant as number | null,
+        eval_postformation: qs.eval_postformation as number | null,
+        auto_eval_pre: qs.auto_eval_pre as number | null,
+        auto_eval_post: qs.auto_eval_post as number | null,
+        satisfaction_chaud: qs.satisfaction_chaud as number | null,
+        satisfaction_froid: qs.satisfaction_froid as number | null,
+        quest_financeurs: qs.quest_financeurs as number | null,
+        quest_formateurs: qs.quest_formateurs as number | null,
+        quest_managers: qs.quest_managers as number | null,
+        quest_entreprises: qs.quest_entreprises as number | null,
+        autres_quest: qs.autres_quest as number | null,
+      }));
+      setRows(mapped);
+      setLoading(false);
+      return;
+    }
+
+    // 2. Fallback: compute from sessions + questionnaire_responses
     let query = supabase
       .from("sessions")
       .select("id, title, start_date, training:trainings(title)")
@@ -157,16 +192,12 @@ export default function SuiviQualitePage() {
 
     const sessionIds = sessions.map((s) => s.id as string);
 
-    // 2. Load questionnaire_responses for those sessions, with questionnaire quality_indicator_type and questions
     const { data: responses } = await supabase
       .from("questionnaire_responses")
       .select("session_id, responses, questionnaire:questionnaires(quality_indicator_type, questions(id, type))")
       .in("session_id", sessionIds);
 
-    // 3. Compute average scores per (session_id, quality_indicator_type)
-    // responses field is JSONB: { question_id: answer, ... }
-    // For rating questions, answer is a number (1-5 typically)
-    const scoreMap: Record<string, Record<string, number[]>> = {}; // session_id -> indicator -> [scores]
+    const scoreMap: Record<string, Record<string, number[]>> = {};
 
     if (responses) {
       for (const resp of responses) {
@@ -196,7 +227,6 @@ export default function SuiviQualitePage() {
 
         if (ratingValues.length > 0) {
           const avgRating = ratingValues.reduce((a, b) => a + b, 0) / ratingValues.length;
-          // Convert to percentage (assuming 1-5 scale)
           const maxScale = 5;
           const percentage = ((avgRating - 1) / (maxScale - 1)) * 100;
 
@@ -207,7 +237,6 @@ export default function SuiviQualitePage() {
       }
     }
 
-    // 4. Map sessions to QualiteRow with computed scores
     const mapped: QualiteRow[] = sessions.map((s: Record<string, unknown>) => {
       const training = Array.isArray(s.training)
         ? (s.training as { title: string }[])[0]
@@ -245,7 +274,7 @@ export default function SuiviQualitePage() {
 
     setRows(mapped);
     setLoading(false);
-  }, [supabase, entityId, dateFrom, dateTo]);
+  }, [supabase, entityId, year]);
 
   useEffect(() => {
     fetchData();
@@ -356,7 +385,7 @@ export default function SuiviQualitePage() {
       fmt(moyenneSat(r)),
       fmt(moyenneGen(r)),
     ]);
-    downloadXlsx(headers, dataRows, "suivi_qualite.xlsx");
+    downloadXlsx(headers, dataRows, `suivi_qualite_${year}.xlsx`);
   };
 
   const handleDownloadPDF = () => {
@@ -369,7 +398,7 @@ export default function SuiviQualitePage() {
       fmt(moyenneSat(r)),
       fmt(moyenneGen(r)),
     ]);
-    exportTableToPDF("Suivi Qualité — Évaluation & Satisfaction", headers, dataRows, "suivi_qualite.pdf");
+    exportTableToPDF("Suivi Qualité — Évaluation & Satisfaction", headers, dataRows, `suivi_qualite_${year}.pdf`);
   };
 
   return (
@@ -416,28 +445,23 @@ export default function SuiviQualitePage() {
             placeholder="Nom de la formation"
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-56 focus:outline-none focus:border-[#3DB5C5]"
           />
-          <span className="text-sm text-gray-600">De</span>
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#3DB5C5]"
-          />
-          <span className="text-sm text-gray-600">À</span>
-          <input
-            type="date"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#3DB5C5]"
-          />
-          <button
-            onClick={fetchData}
-            className="text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5"
-            style={{ background: "#3DB5C5" }}
-          >
-            <Filter className="h-4 w-4" />
-            Filtrer
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setYear((y) => y - 1)}
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 transition"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <span className="min-w-[56px] text-center text-sm font-semibold text-gray-800">
+              {year}
+            </span>
+            <button
+              onClick={() => setYear((y) => y + 1)}
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 transition"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -513,24 +537,6 @@ export default function SuiviQualitePage() {
             })}
           </div>
 
-          {/* Global Qualiopi score */}
-          {(() => {
-            const globalScores = qualiopiScores.filter((c) => c.score !== null).map((c) => c.score!);
-            const globalAvg = globalScores.length > 0 ? globalScores.reduce((a, b) => a + b, 0) / globalScores.length : null;
-            const globalColor = globalAvg === null ? "text-gray-400" : globalAvg >= 80 ? "text-green-600" : globalAvg >= 50 ? "text-yellow-600" : "text-red-600";
-
-            return (
-              <div className="bg-white border border-gray-200 rounded-xl p-6 text-center">
-                <p className="text-sm text-gray-500 mb-1">Score global Qualiopi</p>
-                <p className={`text-4xl font-bold ${globalColor}`}>
-                  {globalAvg !== null ? `${globalAvg.toFixed(1)} %` : "Pas de données"}
-                </p>
-                <p className="text-xs text-gray-400 mt-2">
-                  Basé sur {globalScores.length} / 7 critères avec données
-                </p>
-              </div>
-            );
-          })()}
         </div>
       ) : (
         /* ─── TABLE VIEW ─── */

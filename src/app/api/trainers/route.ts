@@ -1,4 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
+import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
+import { parsePagination, createTrainerSchema } from "@/lib/validations";
+import { logAudit } from "@/lib/audit-log";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
@@ -37,9 +40,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const search = searchParams.get("search") ?? "";
     const status = searchParams.get("status") ?? "";
-    const page = parseInt(searchParams.get("page") ?? "1", 10);
-    const perPage = parseInt(searchParams.get("per_page") ?? "20", 10);
-    const offset = (page - 1) * perPage;
+    const { page, perPage, offset } = parsePagination(searchParams);
 
     let query = supabase
       .from("trainers")
@@ -71,7 +72,7 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       return NextResponse.json(
-        { data: null, error: error.message },
+        { data: null, error: sanitizeDbError(error, "fetch trainers") },
         { status: 500 }
       );
     }
@@ -87,8 +88,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Internal server error";
-    return NextResponse.json({ data: null, error: message }, { status: 500 });
+    return NextResponse.json({ data: null, error: sanitizeError(err, "fetch trainers") }, { status: 500 });
   }
 }
 
@@ -127,29 +127,16 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
 
-    const {
-      first_name,
-      last_name,
-      email,
-      phone,
-      address,
-      city,
-      postal_code,
-      country,
-      siret,
-      status,
-      bio,
-      hourly_rate,
-      contract_type,
-      competency_ids,
-    } = body;
-
-    if (!first_name || !last_name) {
+    const parsed = createTrainerSchema.safeParse(body);
+    if (!parsed.success) {
       return NextResponse.json(
-        { data: null, error: "Le prénom et le nom du formateur sont requis" },
+        { data: null, error: parsed.error.issues[0].message },
         { status: 400 }
       );
     }
+
+    const { first_name, last_name, email, phone, bio, status, hourly_rate } = parsed.data;
+    const { competency_ids } = body;
 
     const { data: trainer, error: insertError } = await supabase
       .from("trainers")
@@ -159,15 +146,15 @@ export async function POST(request: NextRequest) {
         last_name,
         email: email ?? null,
         phone: phone ?? null,
-        address: address ?? null,
-        city: city ?? null,
-        postal_code: postal_code ?? null,
-        country: country ?? "France",
-        siret: siret ?? null,
+        address: body.address ?? null,
+        city: body.city ?? null,
+        postal_code: body.postal_code ?? null,
+        country: body.country ?? "France",
+        siret: body.siret ?? null,
         status: status ?? "active",
         bio: bio ?? null,
         hourly_rate: hourly_rate ?? null,
-        contract_type: contract_type ?? null,
+        contract_type: body.contract_type ?? null,
         created_by: user.id,
       })
       .select()
@@ -175,7 +162,7 @@ export async function POST(request: NextRequest) {
 
     if (insertError) {
       return NextResponse.json(
-        { data: null, error: insertError.message },
+        { data: null, error: sanitizeDbError(insertError, "create trainer") },
         { status: 500 }
       );
     }
@@ -195,9 +182,18 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    logAudit({
+      supabase,
+      entityId: profile.entity_id,
+      userId: user.id,
+      action: "create",
+      resourceType: "trainers",
+      resourceId: trainer.id,
+      details: { first_name: trainer.first_name, last_name: trainer.last_name },
+    });
+
     return NextResponse.json({ data: trainer, error: null }, { status: 201 });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Internal server error";
-    return NextResponse.json({ data: null, error: message }, { status: 500 });
+    return NextResponse.json({ data: null, error: sanitizeError(err, "create trainer") }, { status: 500 });
   }
 }

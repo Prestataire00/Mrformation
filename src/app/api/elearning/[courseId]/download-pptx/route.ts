@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { exportGammaDeckFresh } from "@/lib/services/gamma";
+import { sanitizeError } from "@/lib/api-error";
 
 export const maxDuration = 30;
 
@@ -71,7 +72,6 @@ export async function GET(
 
     return NextResponse.redirect(downloadUrl, { status: 302 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Erreur interne";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: sanitizeError(error, "downloading PPTX from Gamma") }, { status: 500 });
   }
 }

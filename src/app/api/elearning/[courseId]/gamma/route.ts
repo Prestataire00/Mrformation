@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { generateGammaChapterDeck } from "@/lib/services/gamma";
 import type { GammaGenerateOptions } from "@/lib/services/gamma";
+import { sanitizeError } from "@/lib/api-error";
 
 export const maxDuration = 300;
 
@@ -134,8 +135,7 @@ export async function POST(
       },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Erreur interne";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: sanitizeError(error, "generating Gamma decks") }, { status: 500 });
   }
 }
 
@@ -170,7 +170,6 @@ export async function GET(
       },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Erreur interne";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: sanitizeError(error, "fetching Gamma chapter decks") }, { status: 500 });
   }
 }

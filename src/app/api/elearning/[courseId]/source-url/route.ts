@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
+import { sanitizeError } from "@/lib/api-error";
 
 export const maxDuration = 10;
 
@@ -66,7 +67,6 @@ export async function GET(
 
     return NextResponse.redirect(signedData.signedUrl);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Erreur interne";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: sanitizeError(error, "generating source file URL") }, { status: 500 });
   }
 }

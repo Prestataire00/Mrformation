@@ -1,4 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
+import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
+import { parsePagination, createClientSchema } from "@/lib/validations";
+import { logAudit } from "@/lib/audit-log";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
@@ -37,9 +40,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const search = searchParams.get("search") ?? "";
     const status = searchParams.get("status") ?? "";
-    const page = parseInt(searchParams.get("page") ?? "1", 10);
-    const perPage = parseInt(searchParams.get("per_page") ?? "20", 10);
-    const offset = (page - 1) * perPage;
+    const { page, perPage, offset } = parsePagination(searchParams);
 
     let query = supabase
       .from("clients")
@@ -60,7 +61,7 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       return NextResponse.json(
-        { data: null, error: error.message },
+        { data: null, error: sanitizeDbError(error, "fetch clients") },
         { status: 500 }
       );
     }
@@ -76,8 +77,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Internal server error";
-    return NextResponse.json({ data: null, error: message }, { status: 500 });
+    return NextResponse.json({ data: null, error: sanitizeError(err, "fetch clients") }, { status: 500 });
   }
 }
 
@@ -116,46 +116,36 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
 
-    const {
-      name,
-      siret,
-      address,
-      city,
-      postal_code,
-      country,
-      phone,
-      email,
-      website,
-      status,
-      notes,
-      opco,
-      funding_type,
-    } = body;
-
-    if (!name) {
+    const parsed = createClientSchema.safeParse({
+      ...body,
+      company_name: body.company_name ?? body.name,
+    });
+    if (!parsed.success) {
       return NextResponse.json(
-        { data: null, error: "Le nom du client est requis" },
+        { data: null, error: parsed.error.issues[0].message },
         { status: 400 }
       );
     }
+
+    const { company_name, siret, address, city, postal_code, phone, email, website, status, notes } = parsed.data;
 
     const { data, error } = await supabase
       .from("clients")
       .insert({
         entity_id: profile.entity_id,
-        company_name: name,
+        company_name,
         siret: siret ?? null,
         address: address ?? null,
         city: city ?? null,
         postal_code: postal_code ?? null,
-        country: country ?? "France",
+        country: body.country ?? "France",
         phone: phone ?? null,
         email: email ?? null,
         website: website ?? null,
         status: status ?? "active",
         notes: notes ?? null,
-        opco: opco ?? null,
-        funding_type: funding_type ?? null,
+        opco: body.opco ?? null,
+        funding_type: body.funding_type ?? null,
         created_by: user.id,
       })
       .select()
@@ -163,14 +153,23 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       return NextResponse.json(
-        { data: null, error: error.message },
+        { data: null, error: sanitizeDbError(error, "create client") },
         { status: 500 }
       );
     }
 
+    logAudit({
+      supabase,
+      entityId: profile.entity_id,
+      userId: user.id,
+      action: "create",
+      resourceType: "clients",
+      resourceId: data.id,
+      details: { company_name: data.company_name },
+    });
+
     return NextResponse.json({ data, error: null }, { status: 201 });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Internal server error";
-    return NextResponse.json({ data: null, error: message }, { status: 500 });
+    return NextResponse.json({ data: null, error: sanitizeError(err, "create client") }, { status: 500 });
   }
 }

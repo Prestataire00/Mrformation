@@ -1,5 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
+import { createUserSchema } from "@/lib/validations";
+import { logAudit } from "@/lib/audit-log";
 import { NextRequest, NextResponse } from "next/server";
 
 function createAdminClient() {
@@ -53,7 +56,7 @@ export async function GET() {
   ]);
 
   if (profilesRes.error) {
-    return NextResponse.json({ error: profilesRes.error.message }, { status: 500 });
+    return NextResponse.json({ error: sanitizeDbError(profilesRes.error, "fetch users") }, { status: 500 });
   }
 
   // Start with profiles (auth users)
@@ -134,29 +137,14 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { email, password, first_name, last_name, role, phone } = body;
-
-  if (!email || !password || !first_name || !last_name || !role) {
+  const parsed = createUserSchema.safeParse(body);
+  if (!parsed.success) {
     return NextResponse.json(
-      { error: "Tous les champs obligatoires doivent être remplis (email, mot de passe, prénom, nom, rôle)" },
+      { error: parsed.error.issues[0].message },
       { status: 400 }
     );
   }
-
-  if (password.length < 6) {
-    return NextResponse.json(
-      { error: "Le mot de passe doit contenir au moins 6 caractères" },
-      { status: 400 }
-    );
-  }
-
-  const validRoles = ["admin", "trainer", "client", "learner"];
-  if (!validRoles.includes(role)) {
-    return NextResponse.json(
-      { error: `Rôle invalide. Rôles acceptés : ${validRoles.join(", ")}` },
-      { status: 400 }
-    );
-  }
+  const { email, password, first_name, last_name, role, phone } = parsed.data;
 
   const adminClient = createAdminClient();
 
@@ -168,7 +156,7 @@ export async function POST(request: NextRequest) {
   });
 
   if (createError) {
-    return NextResponse.json({ error: createError.message }, { status: 500 });
+    return NextResponse.json({ error: sanitizeDbError(createError, "create user auth account") }, { status: 500 });
   }
 
   if (!newUser.user) {
@@ -191,8 +179,18 @@ export async function POST(request: NextRequest) {
   if (profileError) {
     // Try to clean up the auth user if profile creation fails
     await adminClient.auth.admin.deleteUser(newUser.user.id);
-    return NextResponse.json({ error: profileError.message }, { status: 500 });
+    return NextResponse.json({ error: sanitizeDbError(profileError, "create user profile") }, { status: 500 });
   }
+
+  logAudit({
+    supabase,
+    entityId: profile.entity_id,
+    userId: user.id,
+    action: "create",
+    resourceType: "profiles",
+    resourceId: newUser.user.id,
+    details: { email, role, first_name, last_name },
+  });
 
   return NextResponse.json({
     data: {

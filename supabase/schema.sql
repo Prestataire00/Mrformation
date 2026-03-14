@@ -340,8 +340,29 @@ CREATE TABLE IF NOT EXISTS email_history (
   status TEXT DEFAULT 'sent' CHECK (status IN ('sent', 'failed', 'pending')),
   sent_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
   sent_at TIMESTAMPTZ DEFAULT NOW(),
-  error_message TEXT
+  error_message TEXT,
+  trainer_id UUID REFERENCES trainers(id) ON DELETE SET NULL,
+  sent_via TEXT DEFAULT 'resend' CHECK (sent_via IN ('resend', 'gmail'))
 );
+
+-- ============================================================
+-- TABLE: gmail_connections (connexions Gmail OAuth2 des formateurs)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS gmail_connections (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  trainer_id UUID REFERENCES trainers(id) ON DELETE CASCADE NOT NULL UNIQUE,
+  profile_id UUID REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
+  gmail_address TEXT NOT NULL,
+  encrypted_refresh_token TEXT NOT NULL,
+  token_iv TEXT NOT NULL,
+  token_auth_tag TEXT NOT NULL,
+  is_active BOOLEAN DEFAULT TRUE,
+  connected_at TIMESTAMPTZ DEFAULT NOW(),
+  last_used_at TIMESTAMPTZ,
+  last_error TEXT
+);
+
+ALTER TABLE gmail_connections ENABLE ROW LEVEL SECURITY;
 
 -- ============================================================
 -- TABLE: signatures (signatures électroniques)
@@ -391,7 +412,8 @@ CREATE TABLE IF NOT EXISTS crm_tasks (
   prospect_id UUID REFERENCES crm_prospects(id) ON DELETE SET NULL,
   client_id UUID REFERENCES clients(id) ON DELETE SET NULL,
   created_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- ============================================================
@@ -474,92 +496,8 @@ ALTER TABLE crm_quotes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE crm_campaigns ENABLE ROW LEVEL SECURITY;
 ALTER TABLE activity_log ENABLE ROW LEVEL SECURITY;
 
--- Politique: les utilisateurs authentifiés peuvent tout voir (à affiner selon les besoins)
--- Pour la phase de développement, permettre l'accès aux utilisateurs authentifiés
-
-CREATE POLICY "Authenticated users can read entities" ON entities
-  FOR SELECT TO authenticated USING (true);
-
-CREATE POLICY "Users can read own profile" ON profiles
-  FOR SELECT TO authenticated USING (true);
-
-CREATE POLICY "Users can update own profile" ON profiles
-  FOR UPDATE TO authenticated USING (auth.uid() = id);
-
--- Politiques pour les tables principales (lecture/écriture pour les utilisateurs auth)
-CREATE POLICY "Auth users full access clients" ON clients
-  FOR ALL TO authenticated USING (true);
-
-CREATE POLICY "Auth users full access contacts" ON contacts
-  FOR ALL TO authenticated USING (true);
-
-CREATE POLICY "Auth users full access learners" ON learners
-  FOR ALL TO authenticated USING (true);
-
-CREATE POLICY "Auth users full access trainers" ON trainers
-  FOR ALL TO authenticated USING (true);
-
-CREATE POLICY "Auth users full access trainer_competencies" ON trainer_competencies
-  FOR ALL TO authenticated USING (true);
-
-CREATE POLICY "Auth users full access trainings" ON trainings
-  FOR ALL TO authenticated USING (true);
-
-CREATE POLICY "Auth users full access sessions" ON sessions
-  FOR ALL TO authenticated USING (true);
-
-CREATE POLICY "Auth users full access enrollments" ON enrollments
-  FOR ALL TO authenticated USING (true);
-
-CREATE POLICY "Auth users full access programs" ON programs
-  FOR ALL TO authenticated USING (true);
-
-CREATE POLICY "Auth users full access program_versions" ON program_versions
-  FOR ALL TO authenticated USING (true);
-
-CREATE POLICY "Auth users full access questionnaires" ON questionnaires
-  FOR ALL TO authenticated USING (true);
-
-CREATE POLICY "Auth users full access questions" ON questions
-  FOR ALL TO authenticated USING (true);
-
-CREATE POLICY "Auth users full access responses" ON questionnaire_responses
-  FOR ALL TO authenticated USING (true);
-
-CREATE POLICY "Auth users full access doc_templates" ON document_templates
-  FOR ALL TO authenticated USING (true);
-
-CREATE POLICY "Auth users full access gen_docs" ON generated_documents
-  FOR ALL TO authenticated USING (true);
-
-CREATE POLICY "Auth users full access email_templates" ON email_templates
-  FOR ALL TO authenticated USING (true);
-
-CREATE POLICY "Auth users full access email_history" ON email_history
-  FOR ALL TO authenticated USING (true);
-
-CREATE POLICY "Auth users full access signatures" ON signatures
-  FOR ALL TO authenticated USING (true);
-
-CREATE POLICY "Auth users full access crm_prospects" ON crm_prospects
-  FOR ALL TO authenticated USING (true);
-
-CREATE POLICY "Auth users full access crm_tasks" ON crm_tasks
-  FOR ALL TO authenticated USING (true);
-
-CREATE POLICY "Auth users full access crm_quotes" ON crm_quotes
-  FOR ALL TO authenticated USING (true);
-
-CREATE POLICY "Auth users full access crm_campaigns" ON crm_campaigns
-  FOR ALL TO authenticated USING (true);
-
-CREATE POLICY "Auth users full access activity_log" ON activity_log
-  FOR ALL TO authenticated USING (true);
-
 -- ============================================================
 -- GRANULAR ROLE-BASED RLS POLICIES
--- Added: 2026-03-01
--- See also: supabase/migrations/rls-granular.sql
 -- ============================================================
 
 -- Helper functions in auth schema
@@ -573,7 +511,7 @@ RETURNS UUID AS $$
   SELECT entity_id FROM public.profiles WHERE id = auth.uid()
 $$ LANGUAGE sql SECURITY DEFINER STABLE;
 
--- Drop old permissive policies
+-- Drop any legacy permissive policies (idempotent cleanup)
 DROP POLICY IF EXISTS "Authenticated users can read entities" ON entities;
 DROP POLICY IF EXISTS "Users can read own profile" ON profiles;
 DROP POLICY IF EXISTS "Users can update own profile" ON profiles;
@@ -983,6 +921,19 @@ CREATE POLICY "email_history_trainer_read" ON email_history
   FOR SELECT TO authenticated
   USING (auth.user_role() = 'trainer' AND entity_id = auth.user_entity_id());
 
+-- ===== GMAIL_CONNECTIONS =====
+CREATE POLICY "gmail_connections_trainer_own" ON gmail_connections
+  FOR ALL TO authenticated
+  USING (profile_id = auth.uid())
+  WITH CHECK (profile_id = auth.uid());
+
+CREATE POLICY "gmail_connections_admin_read" ON gmail_connections
+  FOR SELECT TO authenticated
+  USING (
+    auth.user_role() = 'admin'
+    AND trainer_id IN (SELECT id FROM trainers WHERE entity_id = auth.user_entity_id())
+  );
+
 -- ===== SIGNATURES =====
 CREATE POLICY "signatures_admin_all" ON signatures
   FOR ALL TO authenticated
@@ -1168,6 +1119,59 @@ ALTER TABLE questionnaires ADD COLUMN IF NOT EXISTS quality_indicator_type TEXT
     'quest_financeurs', 'quest_formateurs', 'quest_managers',
     'quest_entreprises', 'autres_quest'
   ));
+
+-- ============================================================
+-- TABLE: quality_scores (scores qualité pré-calculés par session)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS quality_scores (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  entity_id UUID REFERENCES entities(id) ON DELETE CASCADE NOT NULL,
+  formation TEXT NOT NULL,
+  year INTEGER NOT NULL,
+  month TEXT, -- YYYY-MM for chart grouping
+  eval_preformation NUMERIC(5,4),
+  eval_pendant NUMERIC(5,4),
+  eval_postformation NUMERIC(5,4),
+  auto_eval_pre NUMERIC(5,4),
+  auto_eval_post NUMERIC(5,4),
+  satisfaction_chaud NUMERIC(5,4),
+  satisfaction_froid NUMERIC(5,4),
+  quest_financeurs NUMERIC(5,4),
+  quest_formateurs NUMERIC(5,4),
+  quest_managers NUMERIC(5,4),
+  quest_entreprises NUMERIC(5,4),
+  autres_quest NUMERIC(5,4),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ============================================================
+-- TABLE: signing_tokens (tokens d'émargement publics)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS signing_tokens (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  token UUID DEFAULT gen_random_uuid() UNIQUE NOT NULL,
+  session_id UUID REFERENCES sessions(id) ON DELETE CASCADE NOT NULL,
+  enrollment_id UUID REFERENCES enrollments(id) ON DELETE CASCADE,
+  learner_id UUID REFERENCES learners(id) ON DELETE CASCADE,
+  entity_id UUID REFERENCES entities(id) ON DELETE CASCADE NOT NULL,
+  token_type TEXT DEFAULT 'individual' CHECK (token_type IN ('session', 'individual')),
+  expires_at TIMESTAMPTZ NOT NULL,
+  used_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_signing_tokens_token ON signing_tokens(token);
+CREATE INDEX IF NOT EXISTS idx_signing_tokens_session ON signing_tokens(session_id);
+
+-- Contrainte unique pour éviter les doublons de signatures
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'unique_session_signer'
+  ) THEN
+    ALTER TABLE signatures ADD CONSTRAINT unique_session_signer
+      UNIQUE (session_id, signer_id, signer_type);
+  END IF;
+END $$;
 
 -- ============================================================
 -- DONNÉES DE DÉMONSTRATION

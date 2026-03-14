@@ -1,5 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
+import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
+import { parsePagination, createProspectSchema } from "@/lib/validations";
+import { logAudit } from "@/lib/audit-log";
 
 export async function GET(request: NextRequest) {
   try {
@@ -40,9 +43,7 @@ export async function GET(request: NextRequest) {
     const assignedTo = searchParams.get("assigned_to") ?? "";
     const dateFrom = searchParams.get("date_from") ?? "";
     const dateTo = searchParams.get("date_to") ?? "";
-    const page = parseInt(searchParams.get("page") ?? "1", 10);
-    const perPage = parseInt(searchParams.get("per_page") ?? "20", 10);
-    const offset = (page - 1) * perPage;
+    const { page, perPage, offset } = parsePagination(searchParams);
 
     let query = supabase
       .from("crm_prospects")
@@ -83,7 +84,7 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       return NextResponse.json(
-        { data: null, error: error.message },
+        { data: null, error: sanitizeDbError(error, "fetching prospects") },
         { status: 500 }
       );
     }
@@ -99,8 +100,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Internal server error";
-    return NextResponse.json({ data: null, error: message }, { status: 500 });
+    return NextResponse.json({ data: null, error: sanitizeError(err, "fetching prospects") }, { status: 500 });
   }
 }
 
@@ -139,52 +139,52 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
 
-    const {
-      company_name,
-      contact_name,
-      email,
-      phone,
-      status,
-      source,
-      notes,
-      assigned_to,
-      siret,
-    } = body;
-
-    if (!company_name && !contact_name) {
+    const parsed = createProspectSchema.safeParse(body);
+    if (!parsed.success) {
       return NextResponse.json(
-        { data: null, error: "Le nom de la société ou du contact est requis" },
+        { data: null, error: parsed.error.issues[0].message },
         { status: 400 }
       );
     }
+
+    const { company_name, contact_name, contact_email, contact_phone, status, source, notes } = parsed.data;
 
     const { data, error } = await supabase
       .from("crm_prospects")
       .insert({
         entity_id: profile.entity_id,
-        company_name: company_name ?? "",
+        company_name,
         contact_name: contact_name ?? null,
-        email: email ?? null,
-        phone: phone ?? null,
+        email: contact_email ?? body.email ?? null,
+        phone: contact_phone ?? body.phone ?? null,
         status: status ?? "new",
         source: source ?? null,
         notes: notes ?? null,
-        assigned_to: assigned_to ?? user.id,
-        siret: siret ?? null,
+        assigned_to: body.assigned_to ?? user.id,
+        siret: body.siret ?? null,
       })
       .select()
       .single();
 
     if (error) {
       return NextResponse.json(
-        { data: null, error: error.message },
+        { data: null, error: sanitizeDbError(error, "creating prospect") },
         { status: 500 }
       );
     }
 
+    logAudit({
+      supabase,
+      entityId: profile.entity_id,
+      userId: user.id,
+      action: "create",
+      resourceType: "prospect",
+      resourceId: data.id,
+      details: { name: data.company_name },
+    });
+
     return NextResponse.json({ data, error: null }, { status: 201 });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Internal server error";
-    return NextResponse.json({ data: null, error: message }, { status: 500 });
+    return NextResponse.json({ data: null, error: sanitizeError(err, "creating prospect") }, { status: 500 });
   }
 }

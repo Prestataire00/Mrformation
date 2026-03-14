@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { listGammaThemes } from "@/lib/services/gamma";
+import { sanitizeError } from "@/lib/api-error";
 
 /**
  * GET /api/elearning/gamma-themes
@@ -16,7 +17,7 @@ export async function GET() {
     return NextResponse.json({ data: themes });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Erreur" },
+      { error: sanitizeError(error, "fetching Gamma themes") },
       { status: 500 }
     );
   }

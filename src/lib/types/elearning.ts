@@ -9,6 +9,7 @@ export type EnrollmentStatus = "enrolled" | "in_progress" | "completed";
 export interface ElearningCourse {
   id: string;
   entity_id: string;
+  program_id: string | null;
   created_by: string | null;
   source_file_name: string | null;
   source_file_url: string | null;

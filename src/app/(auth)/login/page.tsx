@@ -219,7 +219,7 @@ function LoginContent() {
                 </p>
 
                 {error && (
-                  <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg text-sm mb-4">
+                  <div role="alert" className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg text-sm mb-4">
                     {error}
                   </div>
                 )}
@@ -233,6 +233,7 @@ function LoginContent() {
                     <input
                       type="email"
                       placeholder="Adresse email"
+                      aria-label="Adresse email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       required
@@ -276,7 +277,7 @@ function LoginContent() {
                 </p>
 
                 {error && (
-                  <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg text-sm mb-4">
+                  <div id="login-error" role="alert" className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg text-sm mb-4">
                     {error}
                   </div>
                 )}
@@ -285,10 +286,12 @@ function LoginContent() {
                   <input
                     type="email"
                     placeholder="Adresse email"
+                    aria-label="Adresse email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
                     autoComplete="email"
+                    aria-describedby={error ? "login-error" : undefined}
                     className="w-full px-4 py-3 bg-blue-50 border border-blue-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#3DB5C5] focus:border-transparent placeholder:text-gray-400"
                   />
 
@@ -296,15 +299,18 @@ function LoginContent() {
                     <input
                       type={showPassword ? "text" : "password"}
                       placeholder="Mot de passe"
+                      aria-label="Mot de passe"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       required
                       autoComplete="current-password"
+                      aria-describedby={error ? "login-error" : undefined}
                       className="w-full px-4 py-3 bg-blue-50 border border-blue-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#3DB5C5] focus:border-transparent placeholder:text-gray-400 pr-10"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
+                      aria-label={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                     >
                       {showPassword ? (

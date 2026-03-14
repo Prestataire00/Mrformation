@@ -1,5 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
+import { createTaskSchema } from "@/lib/validations/crm-tasks";
+import { parsePagination } from "@/lib/validations";
+import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
+import { logAudit } from "@/lib/audit-log";
 
 export async function GET(request: NextRequest) {
   try {
@@ -30,7 +34,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    if (profile.role !== "admin") {
+    if (!["admin", "trainer"].includes(profile.role)) {
       return NextResponse.json({ data: null, error: "Accès non autorisé" }, { status: 403 });
     }
 
@@ -43,9 +47,7 @@ export async function GET(request: NextRequest) {
     const overdue = searchParams.get("overdue") ?? "";
     const prospectId = searchParams.get("prospect_id") ?? "";
     const clientId = searchParams.get("client_id") ?? "";
-    const page = parseInt(searchParams.get("page") ?? "1", 10);
-    const perPage = parseInt(searchParams.get("per_page") ?? "20", 10);
-    const offset = (page - 1) * perPage;
+    const { page, perPage, offset } = parsePagination(searchParams);
 
     let query = supabase
       .from("crm_tasks")
@@ -60,6 +62,11 @@ export async function GET(request: NextRequest) {
       .order("due_date", { ascending: true, nullsFirst: false })
       .range(offset, offset + perPage - 1);
 
+    // Trainers can only see their own tasks
+    if (profile.role === "trainer") {
+      query = query.eq("assigned_to", user.id);
+    }
+
     if (taskStatus) {
       query = query.eq("status", taskStatus);
     }
@@ -68,7 +75,7 @@ export async function GET(request: NextRequest) {
       query = query.eq("priority", priority);
     }
 
-    if (assignedTo) {
+    if (assignedTo && profile.role === "admin") {
       query = query.eq("assigned_to", assignedTo);
     }
 
@@ -100,7 +107,7 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       return NextResponse.json(
-        { data: null, error: error.message },
+        { data: null, error: sanitizeDbError(error, "fetching tasks") },
         { status: 500 }
       );
     }
@@ -116,8 +123,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Internal server error";
-    return NextResponse.json({ data: null, error: message }, { status: 500 });
+    return NextResponse.json({ data: null, error: sanitizeError(err, "fetching tasks") }, { status: 500 });
   }
 }
 
@@ -150,29 +156,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (profile.role !== "admin") {
+    if (!["admin", "trainer"].includes(profile.role)) {
       return NextResponse.json({ data: null, error: "Accès non autorisé" }, { status: 403 });
     }
 
     const body = await request.json();
 
-    const {
-      title,
-      description,
-      status,
-      priority,
-      due_date,
-      assigned_to,
-      prospect_id,
-      client_id,
-    } = body;
-
-    if (!title) {
+    const parsed = createTaskSchema.safeParse(body);
+    if (!parsed.success) {
       return NextResponse.json(
-        { data: null, error: "Le titre de la tâche est requis" },
+        { data: null, error: parsed.error.issues[0].message },
         { status: 400 }
       );
     }
+
+    const { title, description, status, priority, due_date, assigned_to, prospect_id, client_id } = parsed.data;
 
     const { data, error } = await supabase
       .from("crm_tasks")
@@ -180,10 +178,11 @@ export async function POST(request: NextRequest) {
         entity_id: profile.entity_id,
         title,
         description: description ?? null,
-        status: status ?? "pending",
-        priority: priority ?? "medium",
+        status,
+        priority,
         due_date: due_date ?? null,
-        assigned_to: assigned_to ?? user.id,
+        // Trainers can only create tasks assigned to themselves
+        assigned_to: profile.role === "trainer" ? user.id : (assigned_to ?? user.id),
         prospect_id: prospect_id ?? null,
         client_id: client_id ?? null,
         created_by: user.id,
@@ -193,14 +192,23 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       return NextResponse.json(
-        { data: null, error: error.message },
+        { data: null, error: sanitizeDbError(error, "creating task") },
         { status: 500 }
       );
     }
 
+    logAudit({
+      supabase,
+      entityId: profile.entity_id,
+      userId: user.id,
+      action: "create",
+      resourceType: "task",
+      resourceId: data.id,
+      details: { name: data.title },
+    });
+
     return NextResponse.json({ data, error: null }, { status: 201 });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Internal server error";
-    return NextResponse.json({ data: null, error: message }, { status: 500 });
+    return NextResponse.json({ data: null, error: sanitizeError(err, "creating task") }, { status: 500 });
   }
 }
