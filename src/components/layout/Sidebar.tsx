@@ -392,8 +392,50 @@ const clientNavItems: NavItem[] = [
   },
 ];
 
+// Commercial : accès CRM + consultation clients/formations/planning
+const commercialNavItems: NavItem[] = [
+  {
+    label: "Tableau de Bord",
+    href: "/admin/crm",
+    icon: LayoutDashboard,
+  },
+  {
+    label: "CRM",
+    icon: TrendingUp,
+    children: [
+      { label: "Tunnel de Vente", href: "/admin/crm/prospects", icon: TrendingUp },
+      { label: "Tâches", href: "/admin/crm/tasks", icon: ClipboardList },
+      { label: "Devis", href: "/admin/crm/quotes", icon: FileText },
+      { label: "Campagnes", href: "/admin/crm/campaigns", icon: Repeat },
+    ],
+  },
+  {
+    label: "Clients & Financeurs",
+    icon: Users,
+    children: [
+      { label: "Toutes les Entreprises", href: "/admin/clients", icon: Building2 },
+      { label: "Tous les Financeurs", href: "/admin/clients/financeurs", icon: Banknote },
+    ],
+  },
+  {
+    label: "Formations",
+    icon: BookOpen,
+    children: [
+      { label: "Toutes les Formations", href: "/admin/trainings", icon: BookOpen },
+      { label: "Sessions", href: "/admin/sessions", icon: Calendar },
+    ],
+  },
+  {
+    label: "Planning",
+    href: "/admin/planning",
+    icon: Calendar,
+  },
+];
+
 const ROLE_NAV_ITEMS: Record<string, NavItem[]> = {
+  super_admin: navItems,
   admin: navItems,
+  commercial: commercialNavItems,
   learner: learnerNavItems,
   trainer: trainerNavItems,
   client: clientNavItems,

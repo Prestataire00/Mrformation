@@ -5,7 +5,7 @@ import { logAudit } from "@/lib/audit-log";
 
 // GET — fetch linked Stripe account status
 export async function GET() {
-  const auth = await requireRole(["admin"]);
+  const auth = await requireRole(["super_admin", "admin"]);
   if (auth.error) return auth.error;
 
   try {
@@ -33,7 +33,7 @@ export async function GET() {
 
 // POST — create Stripe Connect onboarding link
 export async function POST(request: NextRequest) {
-  const auth = await requireRole(["admin"]);
+  const auth = await requireRole(["super_admin", "admin"]);
   if (auth.error) return auth.error;
 
   try {
@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
     }
 
     const Stripe = (await import("stripe")).default;
-    const stripe = new Stripe(stripeSecretKey, { apiVersion: "2024-12-18.acacia" as "2025-04-30.basil" });
+    const stripe = new Stripe(stripeSecretKey, { apiVersion: "2026-02-25.clover" });
 
     // Check if an account already exists
     const { data: existing } = await auth.supabase
@@ -119,7 +119,7 @@ export async function POST(request: NextRequest) {
 
 // DELETE — disconnect Stripe account
 export async function DELETE() {
-  const auth = await requireRole(["admin"]);
+  const auth = await requireRole(["super_admin", "admin"]);
   if (auth.error) return auth.error;
 
   try {

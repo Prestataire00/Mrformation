@@ -39,7 +39,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ data: null, error }, { status });
     }
 
-    if (!["admin", "trainer"].includes(profile.role)) {
+    if (!["super_admin", "admin", "trainer"].includes(profile.role)) {
       return NextResponse.json({ data: null, error: "Accès non autorisé" }, { status: 403 });
     }
 
@@ -83,13 +83,13 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
 export async function PUT(request: NextRequest, { params }: RouteContext) {
   try {
     const supabase = createClient();
-    const { profile, error, status } = await getAuthenticatedProfile(supabase);
+    const { user, profile, error, status } = await getAuthenticatedProfile(supabase);
 
     if (error || !profile) {
       return NextResponse.json({ data: null, error }, { status });
     }
 
-    if (profile.role !== "admin") {
+    if (!["super_admin", "admin"].includes(profile.role)) {
       return NextResponse.json({ data: null, error: "Accès non autorisé" }, { status: 403 });
     }
 
@@ -246,7 +246,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 export async function DELETE(request: NextRequest, { params }: RouteContext) {
   try {
     const supabase = createClient();
-    const { profile, error, status } = await getAuthenticatedProfile(supabase);
+    const { user, profile, error, status } = await getAuthenticatedProfile(supabase);
 
     if (error || !profile) {
       return NextResponse.json({ data: null, error }, { status });

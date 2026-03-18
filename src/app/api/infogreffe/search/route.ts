@@ -4,7 +4,7 @@ import { requireRole } from "@/lib/auth/require-role";
 import { sanitizeError } from "@/lib/api-error";
 
 export async function GET(request: NextRequest) {
-  const auth = await requireRole(["admin"]);
+  const auth = await requireRole(["super_admin", "admin"]);
   if (auth.error) return auth.error;
 
   try {

@@ -5,7 +5,7 @@ import { parsePagination } from "@/lib/validations";
 
 // GET — list payments for entity
 export async function GET(request: NextRequest) {
-  const auth = await requireRole(["admin"]);
+  const auth = await requireRole(["super_admin", "admin"]);
   if (auth.error) return auth.error;
 
   try {

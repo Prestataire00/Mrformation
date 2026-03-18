@@ -13,7 +13,7 @@ function createServiceClient() {
 }
 
 export async function GET(request: NextRequest) {
-  const auth = await requireRole(["trainer", "admin"]);
+  const auth = await requireRole(["super_admin", "admin", "trainer"]);
   if (auth.error) return auth.error;
 
   // Find the trainer record for this profile

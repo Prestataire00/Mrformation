@@ -45,18 +45,28 @@ interface EnrollmentEntry {
 }
 
 const ROLE_LABELS: Record<string, string> = {
+  super_admin: "Organisme",
   admin: "Administrateur",
+  commercial: "Commercial",
   trainer: "Formateur",
   client: "Entreprise",
   learner: "Apprenant",
 };
 
 const ROLE_COLORS: Record<string, string> = {
+  super_admin: "bg-indigo-100 text-indigo-700",
   admin: "bg-blue-100 text-blue-700",
+  commercial: "bg-pink-100 text-pink-700",
   trainer: "bg-green-100 text-green-700",
   client: "bg-purple-100 text-purple-700",
   learner: "bg-orange-100 text-orange-700",
 };
+
+function getCookie(name: string): string | null {
+  if (typeof document === "undefined") return null;
+  const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : null;
+}
 
 const STATUS_LABELS: Record<string, string> = {
   registered: "Inscrit",
@@ -116,6 +126,10 @@ export default function UsersPage() {
 
   // Delete
   const [deleting, setDeleting] = useState<string | null>(null);
+
+  // Rôle de l'utilisateur connecté (pour hiérarchie)
+  const currentUserRole = getCookie("user_role") || "admin";
+  const isSuperAdmin = currentUserRole === "super_admin";
 
   // Sections collapsées par rôle
   const [collapsedRoles, setCollapsedRoles] = useState<Record<string, boolean>>({});
@@ -267,7 +281,22 @@ export default function UsersPage() {
     setLoadingFormations(false);
   }
 
+  // Un admin ne peut pas supprimer un autre admin ou super_admin
+  function canDeleteUser(u: UserProfile): boolean {
+    if (isSuperAdmin) return true; // super_admin peut tout supprimer
+    if (u.role === "super_admin" || u.role === "admin") return false; // admin ne peut pas supprimer admin/super_admin
+    return true;
+  }
+
+  // Un admin ne peut pas modifier le rôle d'un admin ou super_admin
+  function canEditUser(u: UserProfile): boolean {
+    if (isSuperAdmin) return true;
+    if (u.role === "super_admin" || u.role === "admin") return false;
+    return true;
+  }
+
   async function handleDelete(u: UserProfile) {
+    if (!canDeleteUser(u)) return;
     if (!confirm(`Supprimer l'utilisateur ${u.first_name} ${u.last_name} ? Cette action est irréversible.`)) return;
     setDeleting(u.id);
 
@@ -284,7 +313,7 @@ export default function UsersPage() {
     setDeleting(null);
   }
 
-  const ROLE_ORDER: Record<string, number> = { admin: 0, trainer: 1, client: 2, learner: 3 };
+  const ROLE_ORDER: Record<string, number> = { super_admin: 0, admin: 1, commercial: 2, trainer: 3, client: 4, learner: 5 };
 
   const filtered = users
     .filter((u) => {
@@ -304,7 +333,9 @@ export default function UsersPage() {
 
   const counts = {
     total: users.length,
+    super_admin: users.filter((u) => u.role === "super_admin").length,
     admin: users.filter((u) => u.role === "admin").length,
+    commercial: users.filter((u) => u.role === "commercial").length,
     trainer: users.filter((u) => u.role === "trainer").length,
     client: users.filter((u) => u.role === "client").length,
     learner: users.filter((u) => u.role === "learner").length,
@@ -440,7 +471,9 @@ export default function UsersPage() {
                 <option value="learner">Apprenant</option>
                 <option value="trainer">Formateur</option>
                 <option value="client">Entreprise</option>
-                <option value="admin">Administrateur</option>
+                <option value="commercial">Commercial</option>
+                {isSuperAdmin && <option value="admin">Administrateur</option>}
+                {isSuperAdmin && <option value="super_admin">Organisme</option>}
               </select>
             </div>
             <div className="col-span-2 flex justify-end gap-3">
@@ -482,7 +515,9 @@ export default function UsersPage() {
           className="px-3 py-2 border rounded-lg text-sm"
         >
           <option value="">Tous les rôles</option>
+          {isSuperAdmin && <option value="super_admin">Organisme</option>}
           <option value="admin">Administrateur</option>
+          <option value="commercial">Commercial</option>
           <option value="trainer">Formateur</option>
           <option value="client">Entreprise</option>
           <option value="learner">Apprenant</option>
@@ -504,13 +539,15 @@ export default function UsersPage() {
         <div className="space-y-3">
           {(() => {
             const ROLE_SECTION_STYLES: Record<string, { bg: string; border: string; text: string; headerBg: string }> = {
-              admin:   { bg: "bg-white", border: "border-blue-200",   text: "text-blue-800",   headerBg: "bg-blue-50" },
-              trainer: { bg: "bg-white", border: "border-green-200",  text: "text-green-800",  headerBg: "bg-green-50" },
-              client:  { bg: "bg-white", border: "border-purple-200", text: "text-purple-800", headerBg: "bg-purple-50" },
-              learner: { bg: "bg-white", border: "border-orange-200", text: "text-orange-800", headerBg: "bg-orange-50" },
+              super_admin: { bg: "bg-white", border: "border-indigo-200", text: "text-indigo-800", headerBg: "bg-indigo-50" },
+              admin:       { bg: "bg-white", border: "border-blue-200",   text: "text-blue-800",   headerBg: "bg-blue-50" },
+              commercial:  { bg: "bg-white", border: "border-pink-200",   text: "text-pink-800",   headerBg: "bg-pink-50" },
+              trainer:     { bg: "bg-white", border: "border-green-200",  text: "text-green-800",  headerBg: "bg-green-50" },
+              client:      { bg: "bg-white", border: "border-purple-200", text: "text-purple-800", headerBg: "bg-purple-50" },
+              learner:     { bg: "bg-white", border: "border-orange-200", text: "text-orange-800", headerBg: "bg-orange-50" },
             };
 
-            const roleOrder = ["admin", "trainer", "client", "learner"];
+            const roleOrder = ["super_admin", "admin", "commercial", "trainer", "client", "learner"];
             const groups = roleOrder
               .map((role) => ({
                 role,
@@ -559,13 +596,15 @@ export default function UsersPage() {
                             <td className="px-4 py-3 text-right">
                               <div className="flex items-center justify-end gap-1">
                                 {/* Modifier les informations */}
-                                <button
-                                  onClick={() => openEditModal(u)}
-                                  title="Modifier les informations"
-                                  className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
-                                >
-                                  <Pencil className="w-4 h-4" />
-                                </button>
+                                {canEditUser(u) && (
+                                  <button
+                                    onClick={() => openEditModal(u)}
+                                    title="Modifier les informations"
+                                    className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
+                                  >
+                                    <Pencil className="w-4 h-4" />
+                                  </button>
+                                )}
 
                                 {/* Envoyer un email */}
                                 <a
@@ -603,19 +642,21 @@ export default function UsersPage() {
                                   </button>
                                 )}
 
-                                {/* Supprimer */}
-                                <button
-                                  onClick={() => handleDelete(u)}
-                                  disabled={deleting === u.id}
-                                  title="Supprimer"
-                                  className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded disabled:opacity-50"
-                                >
-                                  {deleting === u.id ? (
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                  ) : (
-                                    <Trash2 className="w-4 h-4" />
-                                  )}
-                                </button>
+                                {/* Supprimer — masqué si l'admin courant n'a pas les droits */}
+                                {canDeleteUser(u) && (
+                                  <button
+                                    onClick={() => handleDelete(u)}
+                                    disabled={deleting === u.id}
+                                    title="Supprimer"
+                                    className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded disabled:opacity-50"
+                                  >
+                                    {deleting === u.id ? (
+                                      <Loader2 className="w-4 h-4 animate-spin" />
+                                    ) : (
+                                      <Trash2 className="w-4 h-4" />
+                                    )}
+                                  </button>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -785,10 +826,15 @@ export default function UsersPage() {
                   <option value="learner">Apprenant</option>
                   <option value="trainer">Formateur</option>
                   <option value="client">Entreprise</option>
-                  <option value="admin">Administrateur</option>
+                  <option value="commercial">Commercial</option>
+                  {isSuperAdmin && <option value="admin">Administrateur</option>}
+                  {isSuperAdmin && <option value="super_admin">Organisme</option>}
                 </select>
                 {editModal.source !== "profile" && (
                   <p className="text-xs text-gray-400 mt-1">Le rôle ne peut être modifié que pour les utilisateurs avec un compte.</p>
+                )}
+                {!isSuperAdmin && (editModal.role === "admin" || editModal.role === "super_admin") && (
+                  <p className="text-xs text-amber-600 mt-1">Seul un Organisme peut modifier le rôle d&apos;un administrateur.</p>
                 )}
               </div>
             </div>

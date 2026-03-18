@@ -78,11 +78,31 @@ interface TrainingGroup {
   elearning_assignments: ElearningAssignment[];
 }
 
+interface ProgramEnrollmentData {
+  id: string;
+  program_id: string;
+  status: string;
+  completion_rate: number;
+  enrolled_at: string;
+  program: {
+    id: string;
+    title: string;
+    description: string | null;
+    content: { modules?: { id: number; title: string; duration_hours?: number }[] } | null;
+  };
+  module_progress: {
+    id: string;
+    module_id: number;
+    is_completed: boolean;
+  }[];
+}
+
 export default function LearnerMyTrainingsPage() {
   const supabase = createClient();
   const { entityId } = useEntity();
 
   const [trainingGroups, setTrainingGroups] = useState<TrainingGroup[]>([]);
+  const [programEnrollments, setProgramEnrollments] = useState<ProgramEnrollmentData[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -109,6 +129,16 @@ export default function LearnerMyTrainingsPage() {
       setLoading(false);
       return;
     }
+
+    // Get program enrollments
+    const { data: progEnrollments } = await supabase
+      .from("program_enrollments")
+      .select(
+        "id, program_id, status, completion_rate, enrolled_at, program:programs(id, title, description, content), module_progress:program_module_progress(id, module_id, is_completed)"
+      )
+      .eq("learner_id", learner.id);
+
+    setProgramEnrollments((progEnrollments as unknown as ProgramEnrollmentData[]) ?? []);
 
     // Get all enrollments with session and training info
     const { data: enrollments } = await supabase
@@ -285,11 +315,102 @@ export default function LearnerMyTrainingsPage() {
         </Link>
       </div>
 
+      {/* Parcours de formation */}
+      {!loading && programEnrollments.length > 0 && (
+        <div className="mb-8">
+          <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2 mb-4">
+            <GraduationCap className="w-5 h-5 text-[#3DB5C5]" />
+            Mes Parcours de formation
+          </h2>
+          <div className="space-y-4">
+            {programEnrollments.map((pe) => {
+              const program = Array.isArray(pe.program) ? pe.program[0] : pe.program;
+              if (!program) return null;
+              const content = program.content as { modules?: { id: number; title: string; duration_hours?: number }[] } | null;
+              const modules = content?.modules ?? [];
+              const moduleProgress = pe.module_progress ?? [];
+
+              return (
+                <div key={pe.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                  <div className="p-5">
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                      <div>
+                        <h3 className="text-base font-semibold text-gray-900">{program.title}</h3>
+                        {program.description && (
+                          <p className="text-sm text-gray-500 mt-1 line-clamp-2">{program.description}</p>
+                        )}
+                      </div>
+                      {pe.status === "completed" ? (
+                        <span className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-50 text-green-700 text-xs font-medium rounded-lg">
+                          <CheckCircle className="w-4 h-4" />
+                          Terminé
+                        </span>
+                      ) : pe.status === "in_progress" ? (
+                        <span className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-700 text-xs font-medium rounded-lg">
+                          En cours
+                        </span>
+                      ) : (
+                        <span className="shrink-0 text-xs text-gray-400">Inscrit</span>
+                      )}
+                    </div>
+
+                    {/* Progress bar */}
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all"
+                          style={{ width: `${pe.completion_rate}%`, backgroundColor: "#3DB5C5" }}
+                        />
+                      </div>
+                      <span className="text-sm font-medium text-gray-600">{pe.completion_rate}%</span>
+                    </div>
+
+                    {/* Module checklist */}
+                    {modules.length > 0 && (
+                      <div className="space-y-1.5">
+                        {modules.map((mod) => {
+                          const progress = moduleProgress.find((mp) => mp.module_id === mod.id);
+                          const completed = progress?.is_completed ?? false;
+                          return (
+                            <div
+                              key={mod.id}
+                              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm ${
+                                completed ? "bg-green-50 text-green-800" : "bg-gray-50 text-gray-600"
+                              }`}
+                            >
+                              <div
+                                className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${
+                                  completed
+                                    ? "bg-green-500 text-white"
+                                    : "border-2 border-gray-300"
+                                }`}
+                              >
+                                {completed && <CheckCircle className="w-3 h-3" />}
+                              </div>
+                              <span className={completed ? "line-through opacity-70" : ""}>
+                                {mod.title}
+                              </span>
+                              {mod.duration_hours && (
+                                <span className="text-xs text-gray-400 ml-auto">{mod.duration_hours}h</span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div className="flex items-center justify-center py-20">
           <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
         </div>
-      ) : trainingGroups.length === 0 ? (
+      ) : trainingGroups.length === 0 && programEnrollments.length === 0 ? (
         <div className="text-center py-20 text-gray-400">
           <GraduationCap className="w-12 h-12 mx-auto mb-3 opacity-40" />
           <p className="font-medium">Aucune formation</p>

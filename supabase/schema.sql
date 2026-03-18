@@ -30,7 +30,7 @@ ON CONFLICT (slug) DO NOTHING;
 CREATE TABLE IF NOT EXISTS profiles (
   id UUID REFERENCES auth.users(id) ON DELETE CASCADE PRIMARY KEY,
   entity_id UUID REFERENCES entities(id) ON DELETE SET NULL,
-  role TEXT NOT NULL DEFAULT 'learner' CHECK (role IN ('admin', 'trainer', 'client', 'learner')),
+  role TEXT NOT NULL DEFAULT 'learner' CHECK (role IN ('super_admin', 'admin', 'commercial', 'trainer', 'client', 'learner')),
   first_name TEXT,
   last_name TEXT,
   email TEXT,
@@ -152,6 +152,7 @@ CREATE TABLE IF NOT EXISTS trainings (
   certification TEXT,
   prerequisites TEXT,
   classification TEXT CHECK (classification IN ('reglementaire', 'certifiant', 'qualifiant')),
+  program_id UUID REFERENCES programs(id) ON DELETE SET NULL,
   is_active BOOLEAN DEFAULT TRUE,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()

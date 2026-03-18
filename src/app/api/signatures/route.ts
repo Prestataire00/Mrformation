@@ -4,7 +4,7 @@ import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 import { logAudit } from "@/lib/audit-log";
 
 export async function GET(request: NextRequest) {
-  const auth = await requireRole(["admin", "trainer", "learner"]);
+  const auth = await requireRole(["super_admin", "admin", "trainer", "learner"]);
   if (auth.error) return auth.error;
 
   const { searchParams } = new URL(request.url);
@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await requireRole(["admin", "trainer", "learner"]);
+  const auth = await requireRole(["super_admin", "admin", "trainer", "learner"]);
   if (auth.error) return auth.error;
 
   try {
@@ -150,7 +150,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const auth = await requireRole(["admin"]);
+  const auth = await requireRole(["super_admin", "admin"]);
   if (auth.error) return auth.error;
 
   const { searchParams } = new URL(request.url);

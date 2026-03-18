@@ -5,7 +5,7 @@ import { sanitizeError } from "@/lib/api-error";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
 export async function POST(request: NextRequest) {
-  const auth = await requireRole(["admin"]);
+  const auth = await requireRole(["super_admin", "admin"]);
   if (auth.error) return auth.error;
 
   const { allowed, resetAt } = checkRateLimit(`ai-program:${auth.profile.id}`, { limit: 5, windowSeconds: 60 });

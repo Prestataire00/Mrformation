@@ -29,8 +29,12 @@ export default async function HomePage() {
     }
 
     switch (profile.role) {
+      case "super_admin":
+        redirect("/admin");
       case "admin":
         redirect("/admin");
+      case "commercial":
+        redirect("/admin/crm");
       case "trainer":
         redirect("/trainer");
       case "client":

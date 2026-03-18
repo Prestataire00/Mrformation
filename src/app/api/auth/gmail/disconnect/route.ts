@@ -13,7 +13,7 @@ function createServiceClient() {
 }
 
 export async function POST() {
-  const auth = await requireRole(["trainer", "admin"]);
+  const auth = await requireRole(["super_admin", "admin", "trainer"]);
   if (auth.error) return auth.error;
 
   const supabase = createServiceClient();

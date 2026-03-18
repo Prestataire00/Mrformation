@@ -42,6 +42,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/use-toast";
+import ProgramEnrollments from "./_components/ProgramEnrollments";
 
 // ── Simple markdown → HTML (bold, italic, lists, line breaks) ─────────────────
 function renderMarkdown(text: string): string {
@@ -745,6 +746,10 @@ export default function ProgramDetailPage() {
           </InfoCard>
         </div>
       </div>
+
+      {/* ── Apprenants inscrits ─────────────────────────────────────────────── */}
+      <SectionDivider label="Apprenants inscrits au parcours" />
+      <ProgramEnrollments programId={program.id} modules={meta.modules ?? []} />
 
       {/* ── Edit Dialog ─────────────────────────────────────────────────────── */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>

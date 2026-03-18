@@ -142,7 +142,7 @@ export async function GET(request: NextRequest) {
 
 // POST: Generate signing tokens (admin/trainer only)
 export async function POST(request: NextRequest) {
-  const auth = await requireRole(["admin", "trainer"]);
+  const auth = await requireRole(["super_admin", "admin", "trainer"]);
   if (auth.error) return auth.error;
 
   const { session_id, type } = await request.json();

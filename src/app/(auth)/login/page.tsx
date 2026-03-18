@@ -37,12 +37,12 @@ const ROLE_LABELS: Record<string, string> = {
 
 // Map UI role keys to the DB roles they correspond to
 const ROLE_KEY_TO_DB_ROLE: Record<string, string> = {
-  organisme: "admin",
+  organisme: "super_admin",
   learner: "learner",
   company: "client",
   trainer: "trainer",
   admin: "admin",
-  commercial: "admin",
+  commercial: "commercial",
 };
 
 export default function LoginPage() {
@@ -127,7 +127,9 @@ function LoginContent() {
           await supabase.auth.signOut();
           const expectedLabel = ROLE_LABELS[roleKey] || roleKey;
           const DB_ROLE_LABELS: Record<string, string> = {
+            super_admin: "Organisme de formation",
             admin: "Administrateur",
+            commercial: "Commercial",
             learner: "Apprenant",
             client: "Entreprise",
             trainer: "Formateur",

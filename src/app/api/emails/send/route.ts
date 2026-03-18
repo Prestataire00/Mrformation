@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
   const { allowed, resetAt } = checkRateLimit(`emails-send:${ip}`, { limit: 20, windowSeconds: 60 });
   if (!allowed) return rateLimitResponse(resetAt);
 
-  const auth = await requireRole(["admin"]);
+  const auth = await requireRole(["super_admin", "admin"]);
   if (auth.error) return auth.error;
 
   try {

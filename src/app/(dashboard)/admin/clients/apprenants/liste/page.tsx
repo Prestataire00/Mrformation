@@ -32,8 +32,26 @@ export default function ApprenantsListePage() {
   const [nameFilter, setNameFilter] = useState("");
   const [companyFilter, setCompanyFilter] = useState("");
   const [sessionsMin, setSessionsMin] = useState("");
-  const [appliedName, setAppliedName] = useState("");
-  const [appliedCompany, setAppliedCompany] = useState("");
+  const [debouncedName, setDebouncedName] = useState("");
+  const [debouncedCompany, setDebouncedCompany] = useState("");
+
+  // Debounce name filter (300ms)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedName(nameFilter);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [nameFilter]);
+
+  // Debounce company filter (300ms)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedCompany(companyFilter);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [companyFilter]);
 
   const fetchLearners = useCallback(async () => {
     setLoading(true);
@@ -43,8 +61,8 @@ export default function ApprenantsListePage() {
         .select("id, first_name, last_name, email, phone, client_id, clients(company_name)", { count: "exact" })
         .order("last_name", { ascending: true });
 
-      if (appliedName.trim()) {
-        query = query.or(`first_name.ilike.%${appliedName.trim()}%,last_name.ilike.%${appliedName.trim()}%`);
+      if (debouncedName.trim()) {
+        query = query.or(`first_name.ilike.%${debouncedName.trim()}%,last_name.ilike.%${debouncedName.trim()}%`);
       }
 
       const from = (page - 1) * PAGE_SIZE;
@@ -59,15 +77,9 @@ export default function ApprenantsListePage() {
     } finally {
       setLoading(false);
     }
-  }, [supabase, appliedName, page, toast]);
+  }, [supabase, debouncedName, page, toast]);
 
   useEffect(() => { fetchLearners(); }, [fetchLearners]);
-
-  const handleFilter = () => {
-    setAppliedName(nameFilter);
-    setAppliedCompany(companyFilter);
-    setPage(1);
-  };
 
   const handleDownloadExcel = () => {
     const headers = ["Nom", "Entreprise", "Téléphone", "Email", "Sessions"];
@@ -94,9 +106,9 @@ export default function ApprenantsListePage() {
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
-  const filteredLearners = appliedCompany.trim()
+  const filteredLearners = debouncedCompany.trim()
     ? learners.filter((l) =>
-        l.clients?.company_name?.toLowerCase().includes(appliedCompany.toLowerCase())
+        l.clients?.company_name?.toLowerCase().includes(debouncedCompany.toLowerCase())
       )
     : learners;
 
@@ -164,13 +176,6 @@ export default function ApprenantsListePage() {
               className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#3DB5C5] w-32"
             />
           </div>
-          <button
-            onClick={handleFilter}
-            className="text-white px-4 py-2 rounded-lg text-sm font-medium uppercase"
-            style={{ background: "#3DB5C5" }}
-          >
-            Filtrer plus avancé
-          </button>
         </div>
       </div>
 

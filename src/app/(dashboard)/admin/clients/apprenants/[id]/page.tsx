@@ -37,6 +37,11 @@ interface LearnerDetail {
   avatar_url?: string | null;
 }
 
+interface ClientOption {
+  id: string;
+  company_name: string;
+}
+
 interface Enrollment {
   id: string;
   status: string;
@@ -69,9 +74,10 @@ export default function LearnerDetailPage() {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ first_name: "", last_name: "", email: "", phone: "" });
+  const [form, setForm] = useState({ first_name: "", last_name: "", email: "", phone: "", client_id: "" });
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   const [sessions, setSessions] = useState<SessionAttendance[]>([]);
+  const [clientOptions, setClientOptions] = useState<ClientOption[]>([]);
 
   const fetchLearner = useCallback(async () => {
     setLoading(true);
@@ -103,7 +109,15 @@ export default function LearnerDetailPage() {
       last_name: l.last_name,
       email: l.email,
       phone: l.phone ?? "",
+      client_id: l.client_id ?? "",
     });
+
+    // Fetch client options for the dropdown
+    const { data: clientsData } = await supabase
+      .from("clients")
+      .select("id, company_name")
+      .order("company_name");
+    setClientOptions((clientsData as ClientOption[]) ?? []);
 
     // Fetch enrollments
     const { data: enrollData } = await supabase
@@ -134,6 +148,7 @@ export default function LearnerDetailPage() {
         last_name: form.last_name.trim(),
         email: form.email.trim(),
         phone: form.phone.trim() || null,
+        client_id: form.client_id || null,
       })
       .eq("id", learner.id);
     if (error) {
@@ -216,6 +231,19 @@ export default function LearnerDetailPage() {
                     <div className="space-y-1">
                       <Label className="text-xs">Téléphone</Label>
                       <Input value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} />
+                    </div>
+                    <div className="space-y-1 col-span-2">
+                      <Label className="text-xs flex items-center gap-1"><Building2 className="h-3 w-3" /> Entreprise</Label>
+                      <select
+                        value={form.client_id}
+                        onChange={(e) => setForm((f) => ({ ...f, client_id: e.target.value }))}
+                        className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[#3DB5C5] bg-white"
+                      >
+                        <option value="">— Aucune entreprise —</option>
+                        {clientOptions.map((c) => (
+                          <option key={c.id} value={c.id}>{c.company_name}</option>
+                        ))}
+                      </select>
                     </div>
                   </div>
                 ) : (

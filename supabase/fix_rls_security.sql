@@ -17,7 +17,7 @@
 REVOKE UPDATE ON profiles FROM authenticated;
 
 -- 2. Ne re-donner que les colonnes "safe" (infos personnelles uniquement)
-GRANT UPDATE (first_name, last_name, phone, avatar_url, updated_at) ON profiles TO authenticated;
+GRANT UPDATE (first_name, last_name, phone, avatar_url, address, updated_at) ON profiles TO authenticated;
 
 -- ============================================================
 -- VÉRIFICATION (facultatif) : exécuter cette requête pour confirmer

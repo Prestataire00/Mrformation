@@ -83,6 +83,15 @@ export default function ClientPage() {
   const [loading, setLoading] = useState(true);
   const [client, setClient] = useState<ClientWithDetails | null>(null);
   const [allEnrollments, setAllEnrollments] = useState<EnrollmentWithSession[]>([]);
+  const [programEnrollments, setProgramEnrollments] = useState<{
+    id: string;
+    program_id: string;
+    learner_id: string;
+    status: string;
+    completion_rate: number;
+    program: { title: string } | null;
+    learner: { first_name: string; last_name: string } | null;
+  }[]>([]);
 
   const now = new Date();
 
@@ -184,29 +193,38 @@ export default function ClientPage() {
         }
       }
 
-      // Second attempt: find via entity_id matching and role=client
-      if (!clientData && profile.entity_id) {
-        const { data } = await supabase
-          .from("clients")
-          .select(
-            `
-            *,
-            learners(
-              *,
-              enrollments(
-                *,
-                session:sessions(
-                  *,
-                  training:trainings(title, description)
-                )
-              )
-            )
-          `
-          )
-          .eq("entity_id", profile.entity_id)
+      // Second attempt: find via learners table (profile_id → client_id)
+      if (!clientData) {
+        const { data: learnerData } = await supabase
+          .from("learners")
+          .select("client_id")
+          .eq("profile_id", user.id)
+          .not("client_id", "is", null)
           .limit(1)
           .single();
-        clientData = data as ClientWithDetails | null;
+
+        if (learnerData?.client_id) {
+          const { data } = await supabase
+            .from("clients")
+            .select(
+              `
+              *,
+              learners(
+                *,
+                enrollments(
+                  *,
+                  session:sessions(
+                    *,
+                    training:trainings(title, description)
+                  )
+                )
+              )
+            `
+            )
+            .eq("id", learnerData.client_id)
+            .single();
+          clientData = data as ClientWithDetails | null;
+        }
       }
 
       if (!clientData) {
@@ -224,6 +242,16 @@ export default function ClientPage() {
         }
       }
       setAllEnrollments(allEnrolls);
+
+      // Fetch program enrollments for all learners
+      const learnerIds = (clientData.learners ?? []).map((l) => l.id);
+      if (learnerIds.length > 0) {
+        const { data: progEnrolls } = await supabase
+          .from("program_enrollments")
+          .select("id, program_id, learner_id, status, completion_rate, program:programs(title), learner:learners(first_name, last_name)")
+          .in("learner_id", learnerIds);
+        setProgramEnrollments((progEnrolls as unknown as typeof programEnrollments) ?? []);
+      }
     } catch (err) {
       console.error("ClientPage fetch error:", err);
     } finally {
@@ -496,6 +524,68 @@ export default function ClientPage() {
               )}
             </CardContent>
           </Card>
+          {/* Program enrollments */}
+          {programEnrollments.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <GraduationCap className="h-5 w-5 text-primary" />
+                  Parcours de formation
+                </CardTitle>
+                <CardDescription>
+                  Progression de vos apprenants sur les parcours
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {(() => {
+                  // Group by program
+                  const byProgram = new Map<string, { title: string; enrollments: typeof programEnrollments }>();
+                  for (const pe of programEnrollments) {
+                    const program = Array.isArray(pe.program) ? pe.program[0] : pe.program;
+                    const title = program?.title ?? "Parcours";
+                    if (!byProgram.has(pe.program_id)) {
+                      byProgram.set(pe.program_id, { title, enrollments: [] });
+                    }
+                    byProgram.get(pe.program_id)!.enrollments.push(pe);
+                  }
+
+                  return (
+                    <div className="space-y-4">
+                      {Array.from(byProgram.entries()).map(([progId, { title, enrollments: progEnrolls }]) => {
+                        const avgRate = Math.round(
+                          progEnrolls.reduce((acc, e) => acc + e.completion_rate, 0) / progEnrolls.length
+                        );
+                        const completedCount = progEnrolls.filter((e) => e.status === "completed").length;
+
+                        return (
+                          <div key={progId} className="rounded-lg border p-4 space-y-3">
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="font-semibold text-sm">{title}</p>
+                              <Badge className="bg-blue-100 text-blue-800 text-xs shrink-0">
+                                {progEnrolls.length} apprenant{progEnrolls.length > 1 ? "s" : ""}
+                              </Badge>
+                            </div>
+                            <div className="space-y-1">
+                              <div className="flex justify-between text-xs">
+                                <span className="text-muted-foreground">Progression moyenne</span>
+                                <span className="font-medium">{avgRate}%</span>
+                              </div>
+                              <Progress value={avgRate} className="h-2" />
+                            </div>
+                            <div className="flex gap-2 text-xs text-muted-foreground">
+                              <span>{completedCount} terminé{completedCount > 1 ? "s" : ""}</span>
+                              <span>·</span>
+                              <span>{progEnrolls.length - completedCount} en cours</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {/* ── Right column — Learners ── */}

@@ -136,70 +136,89 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Accès non autorisé" }, { status: 403 });
   }
 
-  const body = await request.json();
-  const parsed = createUserSchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json(
-      { error: parsed.error.issues[0].message },
-      { status: 400 }
-    );
-  }
-  const { email, password, first_name, last_name, role, phone } = parsed.data;
+  try {
+    const body = await request.json();
+    const parsed = createUserSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: parsed.error.issues[0].message },
+        { status: 400 }
+      );
+    }
+    const { email, password, first_name, last_name, role, phone } = parsed.data;
 
-  const adminClient = createAdminClient();
+    const adminClient = createAdminClient();
 
-  // Create the auth user
-  const { data: newUser, error: createError } = await adminClient.auth.admin.createUser({
-    email,
-    password,
-    email_confirm: true,
-  });
-
-  if (createError) {
-    return NextResponse.json({ error: sanitizeDbError(createError, "create user auth account") }, { status: 500 });
-  }
-
-  if (!newUser.user) {
-    return NextResponse.json({ error: "Erreur lors de la création de l'utilisateur" }, { status: 500 });
-  }
-
-  // Create/update the profile
-  const { error: profileError } = await adminClient
-    .from("profiles")
-    .upsert({
-      id: newUser.user.id,
+    // Create the auth user
+    const { data: newUser, error: createError } = await adminClient.auth.admin.createUser({
       email,
-      first_name,
-      last_name,
-      role,
-      phone: phone || null,
-      entity_id: profile.entity_id,
+      password,
+      email_confirm: true,
     });
 
-  if (profileError) {
-    // Try to clean up the auth user if profile creation fails
-    await adminClient.auth.admin.deleteUser(newUser.user.id);
-    return NextResponse.json({ error: sanitizeDbError(profileError, "create user profile") }, { status: 500 });
+    if (createError) {
+      console.error("[Create User Auth Error]:", createError.message, createError);
+      const msg = createError.message || "";
+      let userMessage = "Erreur lors de la création du compte";
+      if (msg.includes("already been registered") || msg.includes("already exists")) {
+        userMessage = "Un utilisateur avec cet email existe déjà";
+      } else if (msg.includes("invalid") && msg.includes("email")) {
+        userMessage = "Adresse email invalide";
+      } else if (msg.includes("password")) {
+        userMessage = "Mot de passe invalide : " + msg;
+      } else {
+        userMessage = "Erreur Supabase Auth : " + msg;
+      }
+      return NextResponse.json({ error: userMessage }, { status: 400 });
+    }
+
+    if (!newUser.user) {
+      return NextResponse.json({ error: "Erreur lors de la création de l'utilisateur" }, { status: 500 });
+    }
+
+    // Create/update the profile
+    const { error: profileError } = await adminClient
+      .from("profiles")
+      .upsert({
+        id: newUser.user.id,
+        email,
+        first_name,
+        last_name,
+        role,
+        phone: phone || null,
+        entity_id: profile.entity_id,
+      });
+
+    if (profileError) {
+      // Try to clean up the auth user if profile creation fails
+      await adminClient.auth.admin.deleteUser(newUser.user.id);
+      console.error("[Create User Profile Error]:", profileError.message, profileError);
+      return NextResponse.json({ error: "Erreur lors de la création du profil : " + profileError.message }, { status: 500 });
+    }
+
+    logAudit({
+      supabase,
+      entityId: profile.entity_id,
+      userId: user.id,
+      action: "create",
+      resourceType: "profiles",
+      resourceId: newUser.user.id,
+      details: { email, role, first_name, last_name },
+    });
+
+    return NextResponse.json({
+      data: {
+        id: newUser.user.id,
+        email,
+        first_name,
+        last_name,
+        role,
+        phone: phone || null,
+      },
+    }, { status: 201 });
+  } catch (err) {
+    console.error("[Create User Unexpected Error]:", err);
+    const message = err instanceof Error ? err.message : "Erreur inconnue";
+    return NextResponse.json({ error: "Erreur serveur : " + message }, { status: 500 });
   }
-
-  logAudit({
-    supabase,
-    entityId: profile.entity_id,
-    userId: user.id,
-    action: "create",
-    resourceType: "profiles",
-    resourceId: newUser.user.id,
-    details: { email, role, first_name, last_name },
-  });
-
-  return NextResponse.json({
-    data: {
-      id: newUser.user.id,
-      email,
-      first_name,
-      last_name,
-      role,
-      phone: phone || null,
-    },
-  }, { status: 201 });
 }

@@ -9,7 +9,10 @@ export const uuidField = z.string().regex(UUID_REGEX, "UUID invalide").optional(
 export const requiredUuid = z.string().regex(UUID_REGEX, "UUID invalide");
 
 export const emailField = z.string().email("Email invalide").max(255);
-export const phoneField = z.string().regex(PHONE_REGEX, "Numéro de téléphone invalide").max(20).optional().nullable();
+export const phoneField = z.preprocess(
+  (val) => (val === "" ? null : val),
+  z.string().regex(PHONE_REGEX, "Numéro de téléphone invalide").max(20).optional().nullable()
+);
 export const siretField = z.string().regex(SIRET_REGEX, "Le SIRET doit contenir exactement 14 chiffres").optional().nullable();
 export const urlField = z.string().url("URL invalide").max(500).optional().nullable().or(z.literal(""));
 export const dateField = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Format de date invalide (YYYY-MM-DD)").optional().nullable();

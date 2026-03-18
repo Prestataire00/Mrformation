@@ -1,4 +1,4 @@
-export type Role = "admin" | "trainer" | "client" | "learner";
+export type Role = "super_admin" | "admin" | "commercial" | "trainer" | "client" | "learner";
 
 /**
  * Règles de pages UI — premier match gagne, du plus spécifique au plus large.
@@ -6,13 +6,17 @@ export type Role = "admin" | "trainer" | "client" | "learner";
  */
 export const PAGE_PERMISSIONS: Array<[string, Role[]]> = [
   // Exception dans /admin : les trainers peuvent accéder à la signature
-  ["/admin/signatures", ["admin", "trainer"]],
-  // Reste du /admin : admin uniquement
-  ["/admin",            ["admin"]],
+  ["/admin/signatures", ["super_admin", "admin", "trainer"]],
+  // CRM : accessible par super_admin, admin et commercial
+  ["/admin/crm",        ["super_admin", "admin", "commercial"]],
+  // Users management : super_admin et admin (restrictions fines dans le composant)
+  ["/admin/users",      ["super_admin", "admin"]],
+  // Reste du /admin : super_admin et admin uniquement
+  ["/admin",            ["super_admin", "admin"]],
   // Portails utilisateurs
-  ["/trainer",          ["admin", "trainer"]],
-  ["/client",           ["admin", "client"]],
-  ["/learner",          ["admin", "learner"]],
+  ["/trainer",          ["super_admin", "admin", "trainer"]],
+  ["/client",           ["super_admin", "admin", "client"]],
+  ["/learner",          ["super_admin", "admin", "learner"]],
 ];
 
 /**
@@ -25,34 +29,36 @@ export const PAGE_PERMISSIONS: Array<[string, Role[]]> = [
  */
 export const API_PERMISSIONS: Array<[string, Role[]]> = [
   // ── Admin uniquement ───────────────────────────────────────────────────────
-  ["/api/admin",                   ["admin"]],
-  ["/api/ai",                      ["admin"]],
-  ["/api/emails",                  ["admin"]],
-  ["/api/infogreffe",              ["admin"]],
-  ["/api/pappers",                 ["admin"]],
-  ["/api/clients",                 ["admin"]],
-  ["/api/trainers",                ["admin"]],
-  ["/api/trainings",               ["admin"]],
-  ["/api/crm/tasks",               ["admin", "trainer"]],
-  ["/api/crm",                     ["admin"]],
+  ["/api/admin",                   ["super_admin", "admin"]],
+  ["/api/ai",                      ["super_admin", "admin"]],
+  ["/api/emails",                  ["super_admin", "admin"]],
+  ["/api/infogreffe",              ["super_admin", "admin"]],
+  ["/api/pappers",                 ["super_admin", "admin"]],
+  ["/api/clients",                 ["super_admin", "admin"]],
+  ["/api/trainers",                ["super_admin", "admin"]],
+  ["/api/trainings",               ["super_admin", "admin"]],
+
+  // ── CRM : admin + commercial + trainer (tasks) ──────────────────────────────
+  ["/api/crm/tasks",               ["super_admin", "admin", "commercial", "trainer"]],
+  ["/api/crm",                     ["super_admin", "admin", "commercial"]],
 
   // ── Admin + Trainer ────────────────────────────────────────────────────────
-  ["/api/sessions",                ["admin", "trainer"]],
-  ["/api/programs",                ["admin", "trainer"]],
+  ["/api/sessions",                ["super_admin", "admin", "trainer"]],
+  ["/api/programs",                ["super_admin", "admin", "trainer"]],
 
   // ── Admin + Trainer + Learner ──────────────────────────────────────────────
-  ["/api/signatures",              ["admin", "trainer", "learner"]],
-  ["/api/questionnaires",          ["admin", "trainer", "learner"]],
+  ["/api/signatures",              ["super_admin", "admin", "trainer", "learner"]],
+  ["/api/questionnaires",          ["super_admin", "admin", "trainer", "learner"]],
 
   // ── Tous les rôles authentifiés ────────────────────────────────────────────
-  ["/api/documents",               ["admin", "trainer", "client", "learner"]],
+  ["/api/documents",               ["super_admin", "admin", "commercial", "trainer", "client", "learner"]],
 
   // ── E-learning : sous-règles spécifiques en premier, catch-all en dernier ──
-  ["/api/elearning/final-exam",    ["admin", "learner"]],
-  ["/api/elearning/quiz",          ["admin", "learner"]],
-  ["/api/elearning/progress",      ["admin", "learner"]],
-  ["/api/elearning/scores",        ["admin", "learner"]],
-  ["/api/elearning",               ["admin", "learner"]],
+  ["/api/elearning/final-exam",    ["super_admin", "admin", "learner"]],
+  ["/api/elearning/quiz",          ["super_admin", "admin", "learner"]],
+  ["/api/elearning/progress",      ["super_admin", "admin", "learner"]],
+  ["/api/elearning/scores",        ["super_admin", "admin", "learner"]],
+  ["/api/elearning",               ["super_admin", "admin", "learner"]],
 
   // ── Auto-inscription ───────────────────────────────────────────────────────
   ["/api/enrollments/self-enroll", ["learner"]],

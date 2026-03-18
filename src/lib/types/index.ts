@@ -9,7 +9,7 @@ export interface Entity {
 }
 
 // ===== USERS / PROFILES =====
-export type UserRole = "admin" | "trainer" | "client" | "learner";
+export type UserRole = "super_admin" | "admin" | "commercial" | "trainer" | "client" | "learner";
 
 export interface Profile {
   id: string;
@@ -413,6 +413,34 @@ export interface ProgramVersion {
   content: Record<string, unknown> | null;
   created_by: string | null;
   created_at: string;
+}
+
+// ===== PROGRAM ENROLLMENTS =====
+export type ProgramEnrollmentStatus = "enrolled" | "in_progress" | "completed";
+
+export interface ProgramEnrollment {
+  id: string;
+  program_id: string;
+  learner_id: string;
+  client_id: string | null;
+  status: ProgramEnrollmentStatus;
+  completion_rate: number;
+  started_at: string | null;
+  completed_at: string | null;
+  enrolled_at: string;
+  learner?: { id: string; first_name: string; last_name: string; email: string | null; client_id: string | null; clients?: { company_name: string } | null };
+  program?: Program;
+  module_progress?: ProgramModuleProgress[];
+}
+
+export interface ProgramModuleProgress {
+  id: string;
+  enrollment_id: string;
+  module_id: number;
+  is_completed: boolean;
+  started_at: string | null;
+  completed_at: string | null;
+  notes: string | null;
 }
 
 // ===== QUESTIONNAIRES =====

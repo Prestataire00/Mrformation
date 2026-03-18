@@ -377,7 +377,7 @@ export default function ClientsPage() {
         </div>
         <Button onClick={openAddDialog} className="gap-2">
           <Plus className="h-4 w-4" />
-          Ajouter un client
+          Ajouter une entreprise
         </Button>
       </div>
 
@@ -481,7 +481,7 @@ export default function ClientsPage() {
               {!search && statusFilter === "all" && (
                 <Button onClick={openAddDialog} className="mt-4 gap-2">
                   <Plus className="h-4 w-4" />
-                  Ajouter un client
+                  Ajouter une entreprise
                 </Button>
               )}
             </div>
@@ -635,9 +635,9 @@ export default function ClientsPage() {
       <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Ajouter un client</DialogTitle>
+            <DialogTitle>Ajouter une entreprise</DialogTitle>
             <DialogDescription>
-              Renseignez les informations du nouveau client. Le nom de l&apos;entreprise est obligatoire.
+              Renseignez les informations de la nouvelle entreprise. Le nom est obligatoire.
             </DialogDescription>
           </DialogHeader>
           <ClientForm
@@ -662,7 +662,7 @@ export default function ClientsPage() {
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Modifier le client</DialogTitle>
+            <DialogTitle>Modifier l&apos;entreprise</DialogTitle>
             <DialogDescription>
               Mettez à jour les informations de {selectedClient?.company_name}.
             </DialogDescription>

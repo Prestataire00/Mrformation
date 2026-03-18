@@ -1096,7 +1096,7 @@ export default function ClientDetailPage() {
                   <p className="text-sm text-muted-foreground mt-1">
                     Les apprenants s&apos;ajoutent depuis le module Apprenants.
                   </p>
-                  <Link href="/admin/learners">
+                  <Link href="/admin/clients/apprenants">
                     <Button variant="outline" size="sm" className="mt-4">
                       Gérer les apprenants
                     </Button>
