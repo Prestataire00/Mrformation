@@ -109,7 +109,54 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 3. Quotes expiring soon (within 3 days)
+    // 3. Task reminders (reminder_at reached)
+    const now = new Date().toISOString();
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+    const { data: reminderTasks } = await supabase
+      .from("crm_tasks")
+      .select("id, title, due_date, assigned_to, prospect_id, reminder_at")
+      .eq("entity_id", profile.entity_id)
+      .not("reminder_at", "is", null)
+      .lte("reminder_at", now)
+      .in("status", ["pending", "in_progress"]);
+
+    if (reminderTasks) {
+      for (const task of reminderTasks) {
+        const targetUser = task.assigned_to || user.id;
+
+        // Deduplicate: skip if a task_reminder was created in the last 24h
+        const { count } = await supabase
+          .from("crm_notifications")
+          .select("id", { count: "exact", head: true })
+          .eq("resource_type", "task")
+          .eq("resource_id", task.id)
+          .eq("type", "task_reminder")
+          .eq("user_id", targetUser)
+          .gte("created_at", twentyFourHoursAgo);
+
+        if (!count || count === 0) {
+          const message = task.due_date
+            ? `Rappel : "${task.title}" — échéance le ${task.due_date}`
+            : `Rappel : "${task.title}"`;
+
+          notifications.push({
+            entity_id: profile.entity_id,
+            user_id: targetUser,
+            type: "task_reminder",
+            title: "Rappel de tâche",
+            message,
+            link: task.prospect_id
+              ? `/admin/crm/prospects/${task.prospect_id}`
+              : "/admin/crm/tasks",
+            resource_type: "task",
+            resource_id: task.id,
+          });
+        }
+      }
+    }
+
+    // 4. Quotes expiring soon (within 3 days)
     const { data: expiringQuotes } = await supabase
       .from("crm_quotes")
       .select("id, reference, valid_until, created_by")

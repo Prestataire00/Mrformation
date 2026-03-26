@@ -10,6 +10,7 @@ import {
   AlertTriangle,
   CheckCircle,
   Clock,
+  Bell,
   Target,
   BarChart3,
 } from "lucide-react";
@@ -46,6 +47,7 @@ interface DashboardData {
 
   // Tasks
   overdueTasks: number;
+  activeReminders: number;
   todayTasks: number;
   completedThisWeek: number;
 
@@ -104,6 +106,7 @@ export default function CrmDashboardPage() {
     quotesByStatus: [],
     pipelineValue: 0,
     overdueTasks: 0,
+    activeReminders: 0,
     todayTasks: 0,
     completedThisWeek: 0,
     monthlyRevenue: [],
@@ -172,11 +175,16 @@ export default function CrmDashboardPage() {
       const weekStart = startOfWeek.toISOString().split("T")[0];
 
       let overdueTasks = 0;
+      let activeReminders = 0;
       let todayTasks = 0;
       let completedThisWeek = 0;
+      const nowIso = new Date().toISOString();
       for (const t of tasks) {
         if (t.due_date && t.due_date < today && t.status !== "completed" && t.status !== "cancelled") {
           overdueTasks++;
+        }
+        if (t.reminder_at && t.reminder_at <= nowIso && t.status !== "completed" && t.status !== "cancelled") {
+          activeReminders++;
         }
         if (t.due_date === today && t.status !== "completed" && t.status !== "cancelled") {
           todayTasks++;
@@ -225,6 +233,7 @@ export default function CrmDashboardPage() {
         quotesByStatus,
         pipelineValue,
         overdueTasks,
+        activeReminders,
         todayTasks,
         completedThisWeek,
         monthlyRevenue,
@@ -320,7 +329,7 @@ export default function CrmDashboardPage() {
       </div>
 
       {/* Task quick stats */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-4 gap-4">
         <Card>
           <CardContent className="p-4 flex items-center gap-3">
             <Clock className="h-5 w-5 text-amber-500" />
@@ -336,6 +345,15 @@ export default function CrmDashboardPage() {
             <div>
               <p className="text-xs text-muted-foreground">Tâches en retard</p>
               <p className="text-xl font-bold text-red-600">{data.overdueTasks}</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 flex items-center gap-3">
+            <Bell className="h-5 w-5 text-amber-500" />
+            <div>
+              <p className="text-xs text-muted-foreground">Rappels actifs</p>
+              <p className="text-xl font-bold text-amber-600">{data.activeReminders}</p>
             </div>
           </CardContent>
         </Card>

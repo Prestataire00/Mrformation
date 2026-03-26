@@ -13,6 +13,7 @@ import {
   AlertCircle,
   CheckCircle2,
   Clock,
+  Bell,
   MoreHorizontal,
   Calendar,
   Building2,
@@ -97,6 +98,7 @@ const EMPTY_FORM: TaskFormData = {
 interface TaskStats {
   dueToday: number;
   overdue: number;
+  activeReminders: number;
   completedThisWeek: number;
 }
 
@@ -112,7 +114,7 @@ export default function TasksPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [stats, setStats] = useState<TaskStats>({ dueToday: 0, overdue: 0, completedThisWeek: 0 });
+  const [stats, setStats] = useState<TaskStats>({ dueToday: 0, overdue: 0, activeReminders: 0, completedThisWeek: 0 });
 
   // Filters
   const [search, setSearch] = useState("");
@@ -183,12 +185,13 @@ export default function TasksPage() {
       setTasks(list);
 
       // Compute stats (from all tasks, not filtered)
-      let allQuery = supabase.from("crm_tasks").select("status, due_date, priority");
+      let allQuery = supabase.from("crm_tasks").select("status, due_date, priority, reminder_at");
       if (entityId) allQuery = allQuery.eq("entity_id", entityId);
       const { data: allData } = await allQuery;
       if (allData) {
         const now = new Date();
         const todayStr = now.toISOString().split("T")[0];
+        const nowIso = now.toISOString();
         const startOfWeek = new Date(now);
         startOfWeek.setDate(now.getDate() - now.getDay());
         const startOfWeekStr = startOfWeek.toISOString().split("T")[0];
@@ -199,10 +202,13 @@ export default function TasksPage() {
         const overdue = allData.filter(
           (t) => t.due_date && t.due_date < todayStr && t.status !== "completed" && t.status !== "cancelled"
         ).length;
+        const activeReminders = allData.filter(
+          (t) => t.reminder_at && t.reminder_at <= nowIso && t.status !== "completed" && t.status !== "cancelled"
+        ).length;
         const completedThisWeek = allData.filter(
           (t) => t.status === "completed" && t.due_date && t.due_date >= startOfWeekStr
         ).length;
-        setStats({ dueToday, overdue, completedThisWeek });
+        setStats({ dueToday, overdue, activeReminders, completedThisWeek });
       }
     } catch (err) {
       console.error("fetchTasks error:", err);
@@ -372,6 +378,10 @@ export default function TasksPage() {
   const overdueTasks = tasks.filter(
     (t) => t.due_date && t.due_date < todayStr && t.status !== "completed" && t.status !== "cancelled"
   );
+  const nowIso = now.toISOString();
+  const reminderTasks = tasks.filter(
+    (t) => t.reminder_at && t.reminder_at <= nowIso && t.status !== "completed" && t.status !== "cancelled"
+  );
 
   const hasActiveFilters = search || priorityFilter !== "all" || statusFilter !== "all";
 
@@ -514,6 +524,31 @@ export default function TasksPage() {
                     onEdit={() => openEditDialog(task)}
                     onDelete={() => openDeleteDialog(task)}
                     isOverdue
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Reminders */}
+          {reminderTasks.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Bell className="h-4 w-4 text-amber-500" />
+                <h2 className="text-sm font-semibold text-amber-600">Rappels</h2>
+                <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-700 text-xs">
+                  {reminderTasks.length}
+                </Badge>
+              </div>
+              <div className="space-y-2">
+                {reminderTasks.map((task) => (
+                  <TaskRow
+                    key={`reminder-${task.id}`}
+                    task={task}
+                    getProfileName={getProfileName}
+                    onToggleComplete={() => handleToggleComplete(task)}
+                    onEdit={() => openEditDialog(task)}
+                    onDelete={() => openDeleteDialog(task)}
                   />
                 ))}
               </div>
