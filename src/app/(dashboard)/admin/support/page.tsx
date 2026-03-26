@@ -1,8 +1,6 @@
 "use client";
 
-import { LifeBuoy, ExternalLink } from "lucide-react";
-
-const IA_INFINITY_URL = "#"; // TODO: Remplacer par l'URL du portail IA Infinity
+import { LifeBuoy, Mail } from "lucide-react";
 
 export default function SupportPage() {
   return (
@@ -31,13 +29,11 @@ export default function SupportPage() {
         </p>
 
         <a
-          href={IA_INFINITY_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+          href="mailto:acces.prestataires@i-a-infinity.com"
+          className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#3DB5C5] text-white rounded-lg hover:bg-[#2ea3b3] transition-colors font-medium"
         >
-          Ouvrir un ticket
-          <ExternalLink className="h-4 w-4" />
+          Contacter le support
+          <Mail className="h-4 w-4" />
         </a>
       </div>
     </div>
