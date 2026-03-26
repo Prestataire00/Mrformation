@@ -17,14 +17,14 @@ const ENTITIES: EntityOption[] = [
     slug: "mr-formation",
     name: "MR FORMATION",
     initials: "MR",
-    gradient: "linear-gradient(135deg, #2563EB, #1D4ED8)",
+    gradient: "linear-gradient(135deg, #DC2626, #B91C1C)",
     description: "Organisme de formation professionnelle",
   },
   {
     slug: "c3v-formation",
     name: "C3V FORMATION",
     initials: "C3V",
-    gradient: "linear-gradient(135deg, #7C3AED, #6D28D9)",
+    gradient: "linear-gradient(135deg, #2563EB, #1D4ED8)",
     description: "Organisme de formation professionnelle",
   },
 ];

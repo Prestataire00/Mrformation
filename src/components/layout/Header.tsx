@@ -84,8 +84,8 @@ function useBreadcrumb() {
 }
 
 const ENTITY_COLORS: Record<string, string> = {
-  "mr-formation": "#2563EB",
-  "c3v-formation": "#7C3AED",
+  "mr-formation": "#DC2626",
+  "c3v-formation": "#2563EB",
 };
 
 interface HeaderProps {

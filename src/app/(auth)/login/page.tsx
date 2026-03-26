@@ -18,11 +18,11 @@ function setCookie(name: string, value: string, days = 365) {
 const ENTITY_CONFIG: Record<string, { name: string; gradient: string }> = {
   "mr-formation": {
     name: "MR FORMATION",
-    gradient: "linear-gradient(135deg, #2563EB, #1D4ED8)",
+    gradient: "linear-gradient(135deg, #DC2626, #B91C1C)",
   },
   "c3v-formation": {
     name: "C3V FORMATION",
-    gradient: "linear-gradient(135deg, #7C3AED, #6D28D9)",
+    gradient: "linear-gradient(135deg, #2563EB, #1D4ED8)",
   },
 };
 

@@ -177,12 +177,12 @@ const navItems: NavItem[] = [
 const ENTITY_STYLES: Record<string, { initials: string; gradient: string; logo?: string }> = {
   "mr-formation": {
     initials: "MR",
-    gradient: "linear-gradient(135deg, #2563EB, #1D4ED8)",
+    gradient: "linear-gradient(135deg, #DC2626, #B91C1C)",
     logo: "/logo-mr-formation.png",
   },
   "c3v-formation": {
     initials: "C3V",
-    gradient: "linear-gradient(135deg, #7C3AED, #6D28D9)",
+    gradient: "linear-gradient(135deg, #2563EB, #1D4ED8)",
   },
 };
 
