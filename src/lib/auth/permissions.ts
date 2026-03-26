@@ -39,6 +39,7 @@ export const API_PERMISSIONS: Array<[string, Role[]]> = [
   ["/api/trainings",               ["super_admin", "admin"]],
 
   // ── CRM : admin + commercial + trainer (tasks) ──────────────────────────────
+  ["/api/crm/suivi",               ["super_admin", "admin"]],
   ["/api/crm/tasks",               ["super_admin", "admin", "commercial", "trainer"]],
   ["/api/crm",                     ["super_admin", "admin", "commercial"]],
 
@@ -60,6 +61,4 @@ export const API_PERMISSIONS: Array<[string, Role[]]> = [
   ["/api/elearning/scores",        ["super_admin", "admin", "learner"]],
   ["/api/elearning",               ["super_admin", "admin", "learner"]],
 
-  // ── Auto-inscription ───────────────────────────────────────────────────────
-  ["/api/enrollments/self-enroll", ["learner"]],
 ];

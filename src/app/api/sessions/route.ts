@@ -144,7 +144,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (profile.role !== "admin") {
+    if (!["admin","super_admin"].includes(profile.role)) {
       return NextResponse.json({ data: null, error: "Accès non autorisé" }, { status: 403 });
     }
 
@@ -158,13 +158,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { training_id, trainer_id, client_id, start_date, end_date, location, status, max_participants, notes } = parsed.data;
+    const { training_id, program_id, trainer_id, client_id, start_date, end_date, location, status, max_participants, notes } = parsed.data;
 
     const { data, error } = await supabase
       .from("sessions")
       .insert({
         entity_id: profile.entity_id,
-        training_id,
+        training_id: training_id ?? null,
+        program_id: program_id ?? null,
         trainer_id: trainer_id ?? null,
         client_id: client_id ?? null,
         start_date: start_date ?? null,

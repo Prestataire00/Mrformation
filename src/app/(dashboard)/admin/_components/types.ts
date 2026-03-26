@@ -35,12 +35,11 @@ export interface RecentActivity {
   resource_type: string | null;
   details: Record<string, unknown>;
   created_at: string;
-}
-
-export interface MonthlyChartData {
-  month: string;
-  apprenants: number;
-  terminees: number;
+  profiles?: {
+    first_name: string | null;
+    last_name: string | null;
+    role: string | null;
+  } | null;
 }
 
 export interface CalendarSession {

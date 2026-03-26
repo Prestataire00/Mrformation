@@ -19,7 +19,6 @@ import {
   Globe,
   MapPin,
   Star,
-  StarOff,
   Calendar,
   BookOpen,
   CheckCircle,
@@ -31,6 +30,12 @@ import {
   File,
   FolderOpen,
   Loader2,
+  ListTodo,
+  MessageSquare,
+  Send,
+  TrendingUp,
+  Clock,
+  Target,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -68,13 +73,23 @@ import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/components/ui/use-toast";
 import { cn, formatDate, getInitials, STATUS_COLORS, SESSION_STATUS_LABELS } from "@/lib/utils";
-import type { Client, Contact, ClientStatus, Enrollment } from "@/lib/types";
+import type { Client, Contact, ClientStatus } from "@/lib/types";
+
+import TasksSection from "./_components/TasksSection";
+import CommentsSection from "./_components/CommentsSection";
+import EmailSection from "./_components/EmailSection";
 
 // ---- Types ----
 const STATUS_LABELS: Record<ClientStatus, string> = {
   active: "Actif",
   inactive: "Inactif",
   prospect: "Prospect",
+};
+
+const STATUS_ICONS: Record<ClientStatus, string> = {
+  active: "bg-green-500",
+  inactive: "bg-gray-400",
+  prospect: "bg-amber-500",
 };
 
 const SECTOR_OPTIONS = [
@@ -146,6 +161,7 @@ interface ClientFormData {
   postal_code: string;
   website: string;
   sector: string;
+  naf_code: string;
   status: ClientStatus;
   notes: string;
 }
@@ -186,6 +202,7 @@ export default function ClientDetailPage() {
     postal_code: "",
     website: "",
     sector: "",
+    naf_code: "",
     status: "active",
     notes: "",
   });
@@ -249,6 +266,7 @@ export default function ClientDetailPage() {
       postal_code: data.postal_code ?? "",
       website: data.website ?? "",
       sector: data.sector ?? "",
+      naf_code: data.naf_code ?? "",
       status: data.status as ClientStatus,
       notes: data.notes ?? "",
     });
@@ -368,7 +386,6 @@ export default function ClientDetailPage() {
     if (!error && data) {
       setDocuments(data as ClientDocument[]);
     }
-    // Table might not exist yet — graceful fallback
   }, [supabase, clientId]);
 
   async function handleAddDocument() {
@@ -445,6 +462,7 @@ export default function ClientDetailPage() {
           postal_code: clientForm.postal_code.trim() || null,
           website: clientForm.website.trim() || null,
           sector: clientForm.sector || null,
+          naf_code: clientForm.naf_code.trim() || null,
           status: clientForm.status,
           notes: clientForm.notes.trim() || null,
           updated_at: new Date().toISOString(),
@@ -475,6 +493,7 @@ export default function ClientDetailPage() {
       postal_code: client.postal_code ?? "",
       website: client.website ?? "",
       sector: client.sector ?? "",
+      naf_code: client.naf_code ?? "",
       status: client.status,
       notes: client.notes ?? "",
     });
@@ -498,7 +517,6 @@ export default function ClientDetailPage() {
     if (!validateContactForm()) return;
     setSavingContact(true);
     try {
-      // If new contact is primary, unset existing primary
       if (contactForm.is_primary) {
         await supabase
           .from("contacts")
@@ -635,60 +653,223 @@ export default function ClientDetailPage() {
 
   if (!client) return null;
 
+  const primaryContact = contacts.find((c) => c.is_primary);
+  const upcomingSessions = sessions.filter((s) => new Date(s.start_date) >= new Date());
+
   return (
     <div className="space-y-6 p-6">
-      {/* Breadcrumb + header */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <Link href="/admin/clients">
-            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full">
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-          </Link>
-          <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-violet-100 text-violet-700 text-lg font-bold">
-              {client.company_name.charAt(0).toUpperCase()}
+      {/* ===== HERO HEADER ===== */}
+      <div className="relative rounded-2xl bg-gradient-to-br from-violet-600 via-violet-700 to-indigo-800 p-6 text-white overflow-hidden">
+        {/* Background decoration */}
+        <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/3" />
+        <div className="absolute bottom-0 left-1/4 w-32 h-32 bg-white/5 rounded-full translate-y-1/2" />
+
+        <div className="relative z-10">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <Link href="/admin/clients">
+                <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full text-white/70 hover:text-white hover:bg-white/10">
+                  <ArrowLeft className="h-4 w-4" />
+                </Button>
+              </Link>
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/20 backdrop-blur text-2xl font-bold">
+                {client.company_name.charAt(0).toUpperCase()}
+              </div>
+              <div>
+                <div className="flex items-center gap-3">
+                  <h1 className="text-2xl font-bold">{client.company_name}</h1>
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/15 backdrop-blur text-xs font-medium">
+                    <span className={cn("h-2 w-2 rounded-full", STATUS_ICONS[client.status])} />
+                    {STATUS_LABELS[client.status]}
+                  </div>
+                </div>
+                <div className="flex items-center gap-4 mt-1.5 text-sm text-white/70">
+                  {client.city && (
+                    <span className="flex items-center gap-1">
+                      <MapPin className="h-3.5 w-3.5" />
+                      {client.city}{client.postal_code ? ` (${client.postal_code})` : ""}
+                    </span>
+                  )}
+                  {client.sector && <span>{client.sector}</span>}
+                  {client.siret && (
+                    <span className="font-mono text-xs bg-white/10 px-2 py-0.5 rounded">
+                      SIRET: {client.siret}
+                    </span>
+                  )}
+                  {client.website && (
+                    <a
+                      href={client.website.startsWith("http") ? client.website : `https://${client.website}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 hover:text-white transition-colors"
+                    >
+                      <Globe className="h-3.5 w-3.5" />
+                      {client.website}
+                    </a>
+                  )}
+                </div>
+              </div>
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-2xl font-bold text-gray-900">{client.company_name}</h1>
-                <Badge className={cn("border-0 font-medium", STATUS_COLORS[client.status])}>
-                  {STATUS_LABELS[client.status]}
-                </Badge>
-              </div>
-              <div className="flex items-center gap-3 mt-0.5 text-sm text-muted-foreground">
-                {client.city && (
-                  <span className="flex items-center gap-1">
-                    <MapPin className="h-3.5 w-3.5" />
-                    {client.city}
-                  </span>
-                )}
-                {client.sector && (
-                  <span>• {client.sector}</span>
-                )}
-                {client.siret && (
-                  <span className="font-mono text-xs">SIRET: {client.siret}</span>
-                )}
-              </div>
+
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setEditingClient(true)}
+                className="text-white/70 hover:text-white hover:bg-white/10 gap-1.5"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+                Modifier
+              </Button>
             </div>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">
-            Créé le {formatDate(client.created_at)}
-          </span>
+
+          {/* KPI Cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6">
+            {[
+              { label: "Contacts", value: contacts.length, icon: User, color: "from-blue-400/20 to-blue-500/20" },
+              { label: "Apprenants", value: learners.length, icon: Users, color: "from-emerald-400/20 to-emerald-500/20" },
+              { label: "Sessions", value: sessions.length, icon: Calendar, color: "from-amber-400/20 to-amber-500/20" },
+              { label: "Documents", value: documents.length, icon: FileText, color: "from-rose-400/20 to-rose-500/20" },
+            ].map(({ label, value, icon: Icon, color }) => (
+              <div
+                key={label}
+                className={cn("rounded-xl bg-gradient-to-br p-4 backdrop-blur border border-white/10", color)}
+              >
+                <div className="flex items-center justify-between">
+                  <Icon className="h-5 w-5 text-white/60" />
+                  <span className="text-2xl font-bold">{value}</span>
+                </div>
+                <p className="text-xs text-white/60 mt-1">{label}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* Tabs */}
-      <Tabs defaultValue="info">
-        <TabsList className="w-full justify-start border-b rounded-none h-auto p-0 bg-transparent gap-0">
+      {/* ===== QUICK INFO BAR ===== */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {/* Primary contact */}
+        <Card className="border-0 shadow-sm">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              {primaryContact ? (
+                <>
+                  <Avatar className="h-10 w-10">
+                    <AvatarFallback className="bg-violet-100 text-violet-700 text-sm font-semibold">
+                      {getInitials(primaryContact.first_name, primaryContact.last_name)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Star className="h-3 w-3 text-amber-500 fill-amber-400" />
+                      Contact principal
+                    </p>
+                    <p className="text-sm font-semibold text-gray-900 truncate">
+                      {primaryContact.first_name} {primaryContact.last_name}
+                    </p>
+                    <div className="flex items-center gap-3 mt-0.5">
+                      {primaryContact.email && (
+                        <a href={`mailto:${primaryContact.email}`} className="text-[11px] text-violet-600 hover:underline truncate">
+                          {primaryContact.email}
+                        </a>
+                      )}
+                      {primaryContact.phone && (
+                        <a href={`tel:${primaryContact.phone}`} className="text-[11px] text-muted-foreground hover:text-gray-900">
+                          {primaryContact.phone}
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="flex items-center gap-3 text-muted-foreground">
+                  <div className="h-10 w-10 rounded-full bg-gray-100 flex items-center justify-center">
+                    <User className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Contact principal</p>
+                    <p className="text-sm font-medium">Aucun défini</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Next session */}
+        <Card className="border-0 shadow-sm">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              {upcomingSessions.length > 0 ? (
+                <>
+                  <div className="h-10 w-10 rounded-xl bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                    <Calendar className="h-5 w-5 text-emerald-600" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Clock className="h-3 w-3" />
+                      Prochaine session
+                    </p>
+                    <p className="text-sm font-semibold text-gray-900 truncate">
+                      {upcomingSessions[upcomingSessions.length - 1].title}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      {formatDate(upcomingSessions[upcomingSessions.length - 1].start_date)}
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="h-10 w-10 rounded-xl bg-gray-100 flex items-center justify-center flex-shrink-0">
+                    <Calendar className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Prochaine session</p>
+                    <p className="text-sm font-medium text-gray-500">Aucune planifiée</p>
+                  </div>
+                </>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Quick stats */}
+        <Card className="border-0 shadow-sm">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-blue-100 flex items-center justify-center flex-shrink-0">
+                <TrendingUp className="h-5 w-5 text-blue-600" />
+              </div>
+              <div className="flex-1">
+                <p className="text-xs text-muted-foreground">Activité récente</p>
+                <div className="flex items-center gap-4 mt-0.5">
+                  <div>
+                    <span className="text-lg font-bold text-gray-900">{activity.length}</span>
+                    <span className="text-[11px] text-muted-foreground ml-1">actions</span>
+                  </div>
+                  <div className="text-[11px] text-muted-foreground">
+                    Créé le {formatDate(client.created_at)}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ===== MAIN TABS ===== */}
+      <Tabs defaultValue="tasks">
+        <TabsList className="w-full justify-start border-b rounded-none h-auto p-0 bg-transparent gap-0 flex-wrap">
           {[
-            { value: "info", label: "Informations", icon: Building2 },
+            { value: "tasks", label: "Tâches", icon: ListTodo },
+            { value: "comments", label: "Commentaires", icon: MessageSquare },
+            { value: "emails", label: "Emails", icon: Send },
             { value: "contacts", label: `Contacts (${contacts.length})`, icon: User },
             { value: "learners", label: `Apprenants (${learners.length})`, icon: Users },
             { value: "sessions", label: `Sessions (${sessions.length})`, icon: Calendar },
             { value: "documents", label: `Documents (${documents.length})`, icon: FolderOpen },
+            { value: "info", label: "Infos", icon: Building2 },
             { value: "history", label: "Historique", icon: History },
           ].map(({ value, label, icon: Icon }) => (
             <TabsTrigger
@@ -702,275 +883,27 @@ export default function ClientDetailPage() {
           ))}
         </TabsList>
 
-        {/* ---- Tab: Informations ---- */}
-        <TabsContent value="info" className="mt-6">
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-            {/* Main info form */}
-            <div className="lg:col-span-2">
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between pb-3">
-                  <CardTitle className="text-base font-semibold">Informations générales</CardTitle>
-                  {!editingClient ? (
-                    <Button variant="outline" size="sm" onClick={() => setEditingClient(true)} className="gap-1.5">
-                      <Pencil className="h-3.5 w-3.5" />
-                      Modifier
-                    </Button>
-                  ) : (
-                    <div className="flex gap-2">
-                      <Button variant="ghost" size="sm" onClick={cancelEditClient} disabled={savingClient} className="gap-1.5">
-                        <X className="h-3.5 w-3.5" />
-                        Annuler
-                      </Button>
-                      <Button size="sm" onClick={handleSaveClient} disabled={savingClient} className="gap-1.5">
-                        {savingClient
-                          ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                          : <Save className="h-3.5 w-3.5" />
-                        }
-                        Enregistrer
-                      </Button>
-                    </div>
-                  )}
-                </CardHeader>
-                <CardContent className="space-y-5">
-                  <div className="space-y-1.5">
-                    <Label>Nom de l&apos;entreprise <span className="text-red-500">*</span></Label>
-                    {editingClient ? (
-                      <>
-                        <Input
-                          value={clientForm.company_name}
-                          onChange={(e) => setClientForm((f) => ({ ...f, company_name: e.target.value }))}
-                          className={cn(clientErrors.company_name && "border-red-500")}
-                        />
-                        {clientErrors.company_name && <p className="text-xs text-red-500">{clientErrors.company_name}</p>}
-                      </>
-                    ) : (
-                      <p className="text-sm font-medium text-gray-900">{client.company_name}</p>
-                    )}
-                  </div>
+        {/* ---- Tab: Tâches ---- */}
+        <TabsContent value="tasks" className="mt-6">
+          <TasksSection clientId={clientId} clientName={client.company_name} />
+        </TabsContent>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <Label>SIRET</Label>
-                      {editingClient ? (
-                        <Input
-                          value={clientForm.siret}
-                          onChange={(e) => setClientForm((f) => ({ ...f, siret: e.target.value }))}
-                          placeholder="14 chiffres"
-                          maxLength={14}
-                        />
-                      ) : (
-                        <p className="text-sm text-gray-700 font-mono">{client.siret ?? "—"}</p>
-                      )}
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>Statut</Label>
-                      {editingClient ? (
-                        <Select
-                          value={clientForm.status}
-                          onValueChange={(v) => setClientForm((f) => ({ ...f, status: v as ClientStatus }))}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="active">Actif</SelectItem>
-                            <SelectItem value="inactive">Inactif</SelectItem>
-                            <SelectItem value="prospect">Prospect</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <Badge className={cn("border-0", STATUS_COLORS[client.status])}>
-                          {STATUS_LABELS[client.status]}
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
+        {/* ---- Tab: Commentaires ---- */}
+        <TabsContent value="comments" className="mt-6">
+          <CommentsSection clientId={clientId} />
+        </TabsContent>
 
-                  <Separator />
-
-                  <div className="space-y-1.5">
-                    <Label>Adresse</Label>
-                    {editingClient ? (
-                      <Input
-                        value={clientForm.address}
-                        onChange={(e) => setClientForm((f) => ({ ...f, address: e.target.value }))}
-                        placeholder="Rue, numéro…"
-                      />
-                    ) : (
-                      <p className="text-sm text-gray-700">{client.address ?? "—"}</p>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <Label>Ville</Label>
-                      {editingClient ? (
-                        <Input
-                          value={clientForm.city}
-                          onChange={(e) => setClientForm((f) => ({ ...f, city: e.target.value }))}
-                        />
-                      ) : (
-                        <p className="text-sm text-gray-700">{client.city ?? "—"}</p>
-                      )}
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>Code postal</Label>
-                      {editingClient ? (
-                        <Input
-                          value={clientForm.postal_code}
-                          onChange={(e) => setClientForm((f) => ({ ...f, postal_code: e.target.value }))}
-                          maxLength={5}
-                        />
-                      ) : (
-                        <p className="text-sm text-gray-700">{client.postal_code ?? "—"}</p>
-                      )}
-                    </div>
-                  </div>
-
-                  <Separator />
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <Label>Site web</Label>
-                      {editingClient ? (
-                        <Input
-                          value={clientForm.website}
-                          onChange={(e) => setClientForm((f) => ({ ...f, website: e.target.value }))}
-                          placeholder="www.exemple.fr"
-                        />
-                      ) : client.website ? (
-                        <a
-                          href={client.website.startsWith("http") ? client.website : `https://${client.website}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-sm text-violet-600 hover:underline flex items-center gap-1"
-                        >
-                          <Globe className="h-3.5 w-3.5" />
-                          {client.website}
-                        </a>
-                      ) : (
-                        <p className="text-sm text-gray-700">—</p>
-                      )}
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>Secteur d&apos;activité</Label>
-                      {editingClient ? (
-                        <Select
-                          value={clientForm.sector}
-                          onValueChange={(v) => setClientForm((f) => ({ ...f, sector: v }))}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Choisir un secteur" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {SECTOR_OPTIONS.map((s) => (
-                              <SelectItem key={s} value={s}>{s}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <p className="text-sm text-gray-700">{client.sector ?? "—"}</p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label>Notes</Label>
-                    {editingClient ? (
-                      <Textarea
-                        value={clientForm.notes}
-                        onChange={(e) => setClientForm((f) => ({ ...f, notes: e.target.value }))}
-                        rows={4}
-                        className="resize-none"
-                        placeholder="Notes internes sur ce client…"
-                      />
-                    ) : (
-                      <p className="text-sm text-gray-700 whitespace-pre-wrap">
-                        {client.notes ?? <span className="text-muted-foreground italic">Aucune note.</span>}
-                      </p>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Sidebar summary */}
-            <div className="space-y-4">
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base font-semibold">Résumé</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {[
-                    { label: "Contacts", value: contacts.length, icon: User },
-                    { label: "Apprenants", value: learners.length, icon: Users },
-                    { label: "Sessions", value: sessions.length, icon: Calendar },
-                  ].map(({ label, value, icon: Icon }) => (
-                    <div key={label} className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Icon className="h-4 w-4" />
-                        {label}
-                      </div>
-                      <span className="font-semibold text-gray-900">{value}</span>
-                    </div>
-                  ))}
-
-                  <Separator />
-
-                  <div className="text-xs text-muted-foreground space-y-1">
-                    <p>Créé le {formatDate(client.created_at)}</p>
-                    {client.updated_at && client.updated_at !== client.created_at && (
-                      <p>Modifié le {formatDate(client.updated_at)}</p>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Primary contact card */}
-              {contacts.find((c) => c.is_primary) && (() => {
-                const primary = contacts.find((c) => c.is_primary)!;
-                return (
-                  <Card>
-                    <CardHeader className="pb-3">
-                      <CardTitle className="text-base font-semibold flex items-center gap-2">
-                        <Star className="h-4 w-4 text-amber-500 fill-amber-400" />
-                        Contact principal
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-2">
-                      <div className="flex items-center gap-2.5">
-                        <Avatar className="h-9 w-9">
-                          <AvatarFallback className="bg-violet-100 text-violet-700 text-xs font-semibold">
-                            {getInitials(primary.first_name, primary.last_name)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <p className="font-medium text-sm text-gray-900">
-                            {primary.first_name} {primary.last_name}
-                          </p>
-                          {primary.job_title && (
-                            <p className="text-xs text-muted-foreground">{primary.job_title}</p>
-                          )}
-                        </div>
-                      </div>
-                      {primary.email && (
-                        <a href={`mailto:${primary.email}`} className="flex items-center gap-1.5 text-xs text-violet-600 hover:underline">
-                          <Mail className="h-3.5 w-3.5" />
-                          {primary.email}
-                        </a>
-                      )}
-                      {primary.phone && (
-                        <a href={`tel:${primary.phone}`} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-gray-900">
-                          <Phone className="h-3.5 w-3.5" />
-                          {primary.phone}
-                        </a>
-                      )}
-                    </CardContent>
-                  </Card>
-                );
-              })()}
-            </div>
-          </div>
+        {/* ---- Tab: Emails ---- */}
+        <TabsContent value="emails" className="mt-6">
+          <EmailSection
+            clientId={clientId}
+            clientName={client.company_name}
+            contacts={contacts.map((c) => ({
+              email: c.email,
+              first_name: c.first_name,
+              last_name: c.last_name,
+            }))}
+          />
         </TabsContent>
 
         {/* ---- Tab: Contacts ---- */}
@@ -1347,6 +1280,243 @@ export default function ClientDetailPage() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+        </TabsContent>
+
+        {/* ---- Tab: Informations ---- */}
+        <TabsContent value="info" className="mt-6">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <div className="lg:col-span-2">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-3">
+                  <CardTitle className="text-base font-semibold">Informations générales</CardTitle>
+                  {!editingClient ? (
+                    <Button variant="outline" size="sm" onClick={() => setEditingClient(true)} className="gap-1.5">
+                      <Pencil className="h-3.5 w-3.5" />
+                      Modifier
+                    </Button>
+                  ) : (
+                    <div className="flex gap-2">
+                      <Button variant="ghost" size="sm" onClick={cancelEditClient} disabled={savingClient} className="gap-1.5">
+                        <X className="h-3.5 w-3.5" />
+                        Annuler
+                      </Button>
+                      <Button size="sm" onClick={handleSaveClient} disabled={savingClient} className="gap-1.5">
+                        {savingClient
+                          ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                          : <Save className="h-3.5 w-3.5" />
+                        }
+                        Enregistrer
+                      </Button>
+                    </div>
+                  )}
+                </CardHeader>
+                <CardContent className="space-y-5">
+                  <div className="space-y-1.5">
+                    <Label>Nom de l&apos;entreprise <span className="text-red-500">*</span></Label>
+                    {editingClient ? (
+                      <>
+                        <Input
+                          value={clientForm.company_name}
+                          onChange={(e) => setClientForm((f) => ({ ...f, company_name: e.target.value }))}
+                          className={cn(clientErrors.company_name && "border-red-500")}
+                        />
+                        {clientErrors.company_name && <p className="text-xs text-red-500">{clientErrors.company_name}</p>}
+                      </>
+                    ) : (
+                      <p className="text-sm font-medium text-gray-900">{client.company_name}</p>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <Label>SIRET</Label>
+                      {editingClient ? (
+                        <Input
+                          value={clientForm.siret}
+                          onChange={(e) => setClientForm((f) => ({ ...f, siret: e.target.value }))}
+                          placeholder="14 chiffres"
+                          maxLength={14}
+                        />
+                      ) : (
+                        <p className="text-sm text-gray-700 font-mono">{client.siret ?? "—"}</p>
+                      )}
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Statut</Label>
+                      {editingClient ? (
+                        <Select
+                          value={clientForm.status}
+                          onValueChange={(v) => setClientForm((f) => ({ ...f, status: v as ClientStatus }))}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="active">Actif</SelectItem>
+                            <SelectItem value="inactive">Inactif</SelectItem>
+                            <SelectItem value="prospect">Prospect</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Badge className={cn("border-0", STATUS_COLORS[client.status])}>
+                          {STATUS_LABELS[client.status]}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  <div className="space-y-1.5">
+                    <Label>Adresse</Label>
+                    {editingClient ? (
+                      <Input
+                        value={clientForm.address}
+                        onChange={(e) => setClientForm((f) => ({ ...f, address: e.target.value }))}
+                        placeholder="Rue, numéro…"
+                      />
+                    ) : (
+                      <p className="text-sm text-gray-700">{client.address ?? "—"}</p>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <Label>Ville</Label>
+                      {editingClient ? (
+                        <Input
+                          value={clientForm.city}
+                          onChange={(e) => setClientForm((f) => ({ ...f, city: e.target.value }))}
+                        />
+                      ) : (
+                        <p className="text-sm text-gray-700">{client.city ?? "—"}</p>
+                      )}
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Code postal</Label>
+                      {editingClient ? (
+                        <Input
+                          value={clientForm.postal_code}
+                          onChange={(e) => setClientForm((f) => ({ ...f, postal_code: e.target.value }))}
+                          maxLength={5}
+                        />
+                      ) : (
+                        <p className="text-sm text-gray-700">{client.postal_code ?? "—"}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <Label>Site web</Label>
+                      {editingClient ? (
+                        <Input
+                          value={clientForm.website}
+                          onChange={(e) => setClientForm((f) => ({ ...f, website: e.target.value }))}
+                          placeholder="www.exemple.fr"
+                        />
+                      ) : client.website ? (
+                        <a
+                          href={client.website.startsWith("http") ? client.website : `https://${client.website}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-violet-600 hover:underline flex items-center gap-1"
+                        >
+                          <Globe className="h-3.5 w-3.5" />
+                          {client.website}
+                        </a>
+                      ) : (
+                        <p className="text-sm text-gray-700">—</p>
+                      )}
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Secteur d&apos;activité</Label>
+                      {editingClient ? (
+                        <Select
+                          value={clientForm.sector}
+                          onValueChange={(v) => setClientForm((f) => ({ ...f, sector: v }))}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Choisir un secteur" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {SECTOR_OPTIONS.map((s) => (
+                              <SelectItem key={s} value={s}>{s}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <p className="text-sm text-gray-700">{client.sector ?? "—"}</p>
+                      )}
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Code NAF</Label>
+                      {editingClient ? (
+                        <Input
+                          value={clientForm.naf_code}
+                          onChange={(e) => setClientForm((f) => ({ ...f, naf_code: e.target.value }))}
+                          placeholder="Ex : 8559A"
+                        />
+                      ) : (
+                        <p className="text-sm text-gray-700">{client.naf_code ?? "—"}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label>Notes</Label>
+                    {editingClient ? (
+                      <Textarea
+                        value={clientForm.notes}
+                        onChange={(e) => setClientForm((f) => ({ ...f, notes: e.target.value }))}
+                        rows={4}
+                        className="resize-none"
+                        placeholder="Notes internes sur ce client…"
+                      />
+                    ) : (
+                      <p className="text-sm text-gray-700 whitespace-pre-wrap">
+                        {client.notes ?? <span className="text-muted-foreground italic">Aucune note.</span>}
+                      </p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="space-y-4">
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base font-semibold">Résumé</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {[
+                    { label: "Contacts", value: contacts.length, icon: User },
+                    { label: "Apprenants", value: learners.length, icon: Users },
+                    { label: "Sessions", value: sessions.length, icon: Calendar },
+                  ].map(({ label, value, icon: Icon }) => (
+                    <div key={label} className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Icon className="h-4 w-4" />
+                        {label}
+                      </div>
+                      <span className="font-semibold text-gray-900">{value}</span>
+                    </div>
+                  ))}
+
+                  <Separator />
+
+                  <div className="text-xs text-muted-foreground space-y-1">
+                    <p>Créé le {formatDate(client.created_at)}</p>
+                    {client.updated_at && client.updated_at !== client.created_at && (
+                      <p>Modifié le {formatDate(client.updated_at)}</p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
         </TabsContent>
 
         {/* ---- Tab: Historique ---- */}

@@ -50,24 +50,20 @@ function avg(values: (number | null)[]): number | null {
   return valid.reduce((a, b) => a + b, 0) / valid.length;
 }
 
-// Simple view columns
-const SIMPLE_COLUMNS: { key: IndicatorKey; label: string }[] = [
-  { key: "eval_preformation", label: "Évaluation Préformation" },
-  { key: "eval_pendant", label: "Évaluation Pendant la formation" },
-  { key: "eval_postformation", label: "Évaluation Postformation" },
-  { key: "satisfaction_chaud", label: "Satisfaction à chaud" },
-  { key: "satisfaction_froid", label: "Satisfaction à froid" },
-];
-
-// Detailed view adds more columns
-const DETAILED_EXTRA_COLUMNS: { key: IndicatorKey; label: string }[] = [
-  { key: "auto_eval_pre", label: "Auto-Évaluation Préformation" },
-  { key: "auto_eval_post", label: "Auto-Évaluation Postformation" },
-  { key: "quest_financeurs", label: "Questionnaires aux financeurs" },
-  { key: "quest_formateurs", label: "Questionnaires aux formateurs" },
-  { key: "quest_managers", label: "Questionnaires aux managers" },
-  { key: "quest_entreprises", label: "Questionnaires aux entreprises" },
-  { key: "autres_quest", label: "Autres Questionnaires" },
+// All indicator columns — simpleView=true for the essential ones, ordered thematically
+const ALL_INDICATOR_COLUMNS: { key: IndicatorKey; label: string; pdfLabel: string; simpleView: boolean }[] = [
+  { key: "eval_preformation", label: "Éval. Préformation", pdfLabel: "Éval. Pré", simpleView: true },
+  { key: "auto_eval_pre", label: "Auto-Éval. Pré", pdfLabel: "Auto Pré", simpleView: false },
+  { key: "eval_pendant", label: "Éval. Pendant", pdfLabel: "Éval. Pend.", simpleView: true },
+  { key: "eval_postformation", label: "Éval. Postformation", pdfLabel: "Éval. Post", simpleView: true },
+  { key: "auto_eval_post", label: "Auto-Éval. Post", pdfLabel: "Auto Post", simpleView: false },
+  { key: "satisfaction_chaud", label: "Satisfaction à chaud", pdfLabel: "Sat. Chaud", simpleView: true },
+  { key: "satisfaction_froid", label: "Satisfaction à froid", pdfLabel: "Sat. Froid", simpleView: true },
+  { key: "quest_financeurs", label: "Quest. Financeurs", pdfLabel: "Q. Financ.", simpleView: false },
+  { key: "quest_formateurs", label: "Quest. Formateurs", pdfLabel: "Q. Format.", simpleView: false },
+  { key: "quest_managers", label: "Quest. Managers", pdfLabel: "Q. Manag.", simpleView: false },
+  { key: "quest_entreprises", label: "Quest. Entreprises", pdfLabel: "Q. Entrep.", simpleView: false },
+  { key: "autres_quest", label: "Autres Questionnaires", pdfLabel: "Autres Q.", simpleView: false },
 ];
 
 // ─── Qualiopi criteria ───────────────────────────────
@@ -122,7 +118,7 @@ const QUALIOPI_CRITERIA = [
 type ViewMode = "table" | "qualiopi";
 
 export default function SuiviQualitePage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const { entityId } = useEntity();
   const [year, setYear] = useState<number>(2026);
   const dateFrom = `${year}-01-01`;
@@ -287,13 +283,13 @@ export default function SuiviQualitePage() {
   });
 
   // Column config
-  const allEvalColumns = detailed
-    ? [...SIMPLE_COLUMNS, ...DETAILED_EXTRA_COLUMNS]
-    : SIMPLE_COLUMNS;
+  const visibleColumns = detailed
+    ? ALL_INDICATOR_COLUMNS
+    : ALL_INDICATOR_COLUMNS.filter(c => c.simpleView);
 
   // Compute averages for the "Moyenne Finale" row
   const colAverages: Record<string, number | null> = {};
-  for (const col of allEvalColumns) {
+  for (const col of visibleColumns) {
     colAverages[col.key] = avg(filtered.map((r) => r[col.key]));
   }
 
@@ -348,7 +344,7 @@ export default function SuiviQualitePage() {
   const qualiopiScores = useMemo(() => {
     // Compute global averages for all indicators across all rows
     const allIndicators: Record<string, number[]> = {};
-    const allColumns = [...SIMPLE_COLUMNS, ...DETAILED_EXTRA_COLUMNS];
+    const allColumns = ALL_INDICATOR_COLUMNS;
 
     for (const row of filtered) {
       for (const col of allColumns) {
@@ -376,11 +372,11 @@ export default function SuiviQualitePage() {
 
   // ─── Exports ───
   const handleDownloadExcel = () => {
-    const headers = ["Formation", "Année", ...allEvalColumns.map((c) => c.label), "Moyenne Évaluation", "Moyenne Satisfaction", "Moyenne Générale"];
+    const headers = ["Formation", "Année", ...visibleColumns.map((c) => c.label), "Moyenne Évaluation", "Moyenne Satisfaction", "Moyenne Générale"];
     const dataRows = filtered.map((r) => [
       r.formation,
       r.annee.toString(),
-      ...allEvalColumns.map((c) => fmt(r[c.key])),
+      ...visibleColumns.map((c) => fmt(r[c.key])),
       fmt(moyenneEval(r)),
       fmt(moyenneSat(r)),
       fmt(moyenneGen(r)),
@@ -389,16 +385,21 @@ export default function SuiviQualitePage() {
   };
 
   const handleDownloadPDF = () => {
-    const headers = ["Formation", "Année", ...allEvalColumns.map((c) => c.label), "Moy. Éval.", "Moy. Sat.", "Moy. Gén."];
+    const headers = ["Formation", "Année", ...visibleColumns.map((c) => c.pdfLabel), "Moy. Éval.", "Moy. Sat.", "Moy. Gén."];
     const dataRows = filtered.map((r) => [
       r.formation,
       r.annee.toString(),
-      ...allEvalColumns.map((c) => fmt(r[c.key])),
+      ...visibleColumns.map((c) => fmt(r[c.key])),
       fmt(moyenneEval(r)),
       fmt(moyenneSat(r)),
       fmt(moyenneGen(r)),
     ]);
-    exportTableToPDF("Suivi Qualité — Évaluation & Satisfaction", headers, dataRows, `suivi_qualite_${year}.pdf`);
+    const isWide = headers.length > 10;
+    exportTableToPDF("Suivi Qualité — Évaluation & Satisfaction", headers, dataRows, `suivi_qualite_${year}.pdf`, "MR FORMATION", {
+      orientation: isWide ? "landscape" : "portrait",
+      firstColWidth: 40,
+      fontSize: isWide ? 6.5 : 7.5,
+    });
   };
 
   return (
@@ -430,7 +431,7 @@ export default function SuiviQualitePage() {
 
           {viewMode === "table" && (
             <button
-              onClick={() => setDetailed(!detailed)}
+              onClick={() => setDetailed(d => !d)}
               className="text-white px-4 py-2 rounded-lg text-sm font-medium"
               style={{ background: "#3DB5C5" }}
             >
@@ -547,7 +548,7 @@ export default function SuiviQualitePage() {
                 <tr className="bg-gray-50 border-b border-gray-200">
                   <th className="px-3 py-3 text-left font-semibold text-gray-600 sticky left-0 bg-gray-50 min-w-[250px]">Formation</th>
                   <th className="px-3 py-3 text-center font-semibold text-gray-600 w-16">Année</th>
-                  {allEvalColumns.map((col) => (
+                  {visibleColumns.map((col) => (
                     <th key={col.key} className="px-3 py-3 text-center font-semibold text-gray-600 min-w-[100px]">
                       {col.label}
                     </th>
@@ -560,7 +561,7 @@ export default function SuiviQualitePage() {
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={allEvalColumns.length + 4} className="px-4 py-16 text-center text-gray-400">
+                    <td colSpan={visibleColumns.length + 4} className="px-4 py-16 text-center text-gray-400">
                       Aucune formation trouvée sur cette période
                     </td>
                   </tr>
@@ -574,7 +575,7 @@ export default function SuiviQualitePage() {
                         <tr key={row.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
                           <td className="px-3 py-2.5 text-[#3DB5C5] font-medium sticky left-0 bg-white">{row.formation}</td>
                           <td className="px-3 py-2.5 text-center text-gray-600">{row.annee}</td>
-                          {allEvalColumns.map((col) => {
+                          {visibleColumns.map((col) => {
                             const val = row[col.key];
                             const { text, bg } = fmtCell(val);
                             return (
@@ -598,7 +599,7 @@ export default function SuiviQualitePage() {
                     <tr className="bg-gray-50 border-t-2 border-gray-300 font-semibold">
                       <td className="px-3 py-3 sticky left-0 bg-gray-50 text-gray-800">Moyenne Finale</td>
                       <td className="px-3 py-3"></td>
-                      {allEvalColumns.map((col) => {
+                      {visibleColumns.map((col) => {
                         const val = colAverages[col.key];
                         const { text, bg } = fmtCell(val);
                         return (

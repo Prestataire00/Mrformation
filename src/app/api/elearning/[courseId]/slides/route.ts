@@ -17,7 +17,7 @@ export async function GET(
       .eq("id", user.id)
       .single();
 
-    if (profile?.role !== "admin") {
+    if (!["admin","super_admin"].includes(profile?.role ?? "")) {
       return NextResponse.json({ data: null, error: "Accès non autorisé" }, { status: 403 });
     }
 

@@ -37,7 +37,6 @@ import { cn, formatDate } from "@/lib/utils";
 import type { CrmProspect, CrmTag, ProspectStatus } from "@/lib/types";
 import { CompanySearch, type CompanySearchResult } from "@/components/crm/CompanySearch";
 import { createFirstContactTask, createProposalPrepTask } from "@/lib/crm/automations";
-import { updateProspectScore } from "@/lib/crm/lead-scoring";
 import { TagBadges } from "@/components/crm/TagManager";
 import { Badge } from "@/components/ui/badge";
 
@@ -52,6 +51,7 @@ interface KanbanColumn {
 interface ProspectForm {
   company_name: string;
   siret: string;
+  naf_code: string;
   contact_name: string;
   email: string;
   phone: string;
@@ -86,6 +86,7 @@ const SOURCE_OPTIONS = [
 const EMPTY_FORM: ProspectForm = {
   company_name: "",
   siret: "",
+  naf_code: "",
   contact_name: "",
   email: "",
   phone: "",
@@ -264,9 +265,7 @@ export default function CrmProspectsPage() {
 
   // ── Groupement par colonne ────────────────────────────────────────────────
   function getProspectsForColumn(colId: string): CrmProspect[] {
-    return filtered
-      .filter((p) => p.status === colId)
-      .sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+    return filtered.filter((p) => p.status === colId);
   }
 
   // ── Ajout ─────────────────────────────────────────────────────────────────
@@ -282,6 +281,7 @@ export default function CrmProspectsPage() {
     const payload = {
       company_name: form.company_name.trim(),
       siret:        form.siret.trim()        || null,
+      naf_code:     form.naf_code.trim()     || null,
       contact_name: form.contact_name.trim() || null,
       email:        form.email.trim()        || null,
       phone:        form.phone.trim()        || null,
@@ -302,7 +302,6 @@ export default function CrmProspectsPage() {
             supabase, inserted.id, form.company_name.trim(), entityId, null, user.id
           );
         }
-        await updateProspectScore(supabase, inserted.id);
       }
       setAddOpen(false);
       setForm(EMPTY_FORM);
@@ -317,6 +316,7 @@ export default function CrmProspectsPage() {
     setForm({
       company_name: p.company_name,
       siret:        p.siret        ?? "",
+      naf_code:     p.naf_code     ?? "",
       contact_name: p.contact_name ?? "",
       email:        p.email        ?? "",
       phone:        p.phone        ?? "",
@@ -333,6 +333,7 @@ export default function CrmProspectsPage() {
     const payload = {
       company_name: form.company_name.trim(),
       siret:        form.siret.trim()        || null,
+      naf_code:     form.naf_code.trim()     || null,
       contact_name: form.contact_name.trim() || null,
       email:        form.email.trim()        || null,
       phone:        form.phone.trim()        || null,
@@ -438,8 +439,6 @@ export default function CrmProspectsPage() {
       }
     }
 
-    // Recalculate lead score after status change
-    await updateProspectScore(supabase, cardId);
   }
   function handleCardDragEnd() {
     setDraggedCardId(null);
@@ -645,19 +644,6 @@ export default function CrmProspectsPage() {
                             </p>
                             <p className="text-[11px] text-gray-400 mt-0.5">Entreprise</p>
                           </div>
-                          {(p.score ?? 0) > 0 && (
-                            <span
-                              className={cn(
-                                "flex h-6 min-w-[24px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold text-white",
-                                (p.score ?? 0) >= 80 ? "bg-green-500" :
-                                (p.score ?? 0) >= 50 ? "bg-amber-500" :
-                                "bg-gray-400"
-                              )}
-                              title={`Score : ${p.score}/120`}
-                            >
-                              {p.score}
-                            </span>
-                          )}
                         </div>
 
                         {/* Tags */}
@@ -941,6 +927,16 @@ function ProspectFormFields({ form, setForm, columns, onCompanySelect }: Prospec
             className="font-mono text-sm"
           />
         </div>
+      </div>
+
+      <div>
+        <label className="mb-1 block text-xs font-medium text-gray-600">Code NAF</label>
+        <Input
+          placeholder="Ex : 8559A"
+          value={form.naf_code}
+          onChange={(e) => setForm((f) => ({ ...f, naf_code: e.target.value }))}
+          className="max-w-[200px]"
+        />
       </div>
 
       <div>

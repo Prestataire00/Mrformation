@@ -5,7 +5,6 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
 import {
-  BookOpen,
   Clock,
   Loader2,
   Calendar,
@@ -14,7 +13,6 @@ import {
   CheckCircle,
   GraduationCap,
   Play,
-  ArrowRight,
   AlertCircle,
   PenLine,
 } from "lucide-react";
@@ -306,13 +304,6 @@ export default function LearnerMyTrainingsPage() {
             Retrouvez vos formations, sessions et cours e-learning assignés
           </p>
         </div>
-        <Link
-          href="/learner/catalog"
-          className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <BookOpen className="w-4 h-4" />
-          Voir le catalogue
-        </Link>
       </div>
 
       {/* Parcours de formation */}
@@ -417,13 +408,6 @@ export default function LearnerMyTrainingsPage() {
           <p className="text-sm mt-1">
             Vous n&apos;êtes inscrit à aucune formation pour le moment.
           </p>
-          <Link
-            href="/learner/catalog"
-            className="inline-flex items-center gap-1 text-blue-600 hover:underline text-sm mt-3"
-          >
-            Parcourir le catalogue
-            <ArrowRight className="w-4 h-4" />
-          </Link>
         </div>
       ) : (
         <div className="space-y-6">

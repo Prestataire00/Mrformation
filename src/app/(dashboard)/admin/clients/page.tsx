@@ -37,7 +37,9 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -86,9 +88,32 @@ interface ClientFormData {
   postal_code: string;
   website: string;
   sector: string;
+  naf_code: string;
+  bpf_category: string;
   status: ClientStatus;
   notes: string;
 }
+
+const BPF_CATEGORY_LABELS: Record<string, string> = {
+  entreprise_privee: "Entreprise privée",
+  apprentissage: "Contrats d'apprentissage",
+  professionnalisation: "Contrats de professionnalisation",
+  reconversion_alternance: "Reconversion / alternance",
+  conge_transition: "Congé / transition professionnelle",
+  cpf: "Compte personnel de formation (CPF)",
+  dispositif_chomeurs: "Dispositifs demandeurs d'emploi",
+  non_salaries: "Dispositifs travailleurs non-salariés",
+  plan_developpement: "Plan de développement des compétences",
+  pouvoir_public_agents: "Pouvoirs publics (formation agents)",
+  instances_europeennes: "Instances européennes",
+  etat: "État",
+  conseil_regional: "Conseils régionaux",
+  pole_emploi: "Pôle emploi",
+  autres_publics: "Autres ressources publiques",
+  individuel: "Particulier / Individuel",
+  organisme_formation: "Organisme de formation",
+  autre: "Autre",
+};
 
 const EMPTY_FORM: ClientFormData = {
   company_name: "",
@@ -98,6 +123,8 @@ const EMPTY_FORM: ClientFormData = {
   postal_code: "",
   website: "",
   sector: "",
+  naf_code: "",
+  bpf_category: "entreprise_privee",
   status: "prospect",
   notes: "",
 };
@@ -226,6 +253,8 @@ export default function ClientsPage() {
         postal_code: formData.postal_code.trim() || null,
         website: formData.website.trim() || null,
         sector: formData.sector || null,
+        naf_code: formData.naf_code.trim() || null,
+        bpf_category: formData.bpf_category || null,
         status: formData.status,
         notes: formData.notes.trim() || null,
       };
@@ -263,6 +292,8 @@ export default function ClientsPage() {
           postal_code: formData.postal_code.trim() || null,
           website: formData.website.trim() || null,
           sector: formData.sector || null,
+          naf_code: formData.naf_code.trim() || null,
+          bpf_category: formData.bpf_category || null,
           status: formData.status,
           notes: formData.notes.trim() || null,
           updated_at: new Date().toISOString(),
@@ -340,6 +371,8 @@ export default function ClientsPage() {
       postal_code: client.postal_code ?? "",
       website: client.website ?? "",
       sector: client.sector ?? "",
+      naf_code: client.naf_code ?? "",
+      bpf_category: client.bpf_category || "entreprise_privee",
       status: client.status,
       notes: client.notes ?? "",
     });
@@ -495,6 +528,7 @@ export default function ClientsPage() {
                       <th className="px-4 py-3 text-left font-medium text-gray-600">SIRET</th>
                       <th className="px-4 py-3 text-left font-medium text-gray-600">Ville</th>
                       <th className="px-4 py-3 text-left font-medium text-gray-600">Secteur</th>
+                      <th className="px-4 py-3 text-left font-medium text-gray-600">Catégorie BPF</th>
                       <th className="px-4 py-3 text-left font-medium text-gray-600">Statut</th>
                       <th className="px-4 py-3 text-left font-medium text-gray-600">Contacts</th>
                       <th className="px-4 py-3 text-left font-medium text-gray-600">Ajouté le</th>
@@ -544,6 +578,15 @@ export default function ClientsPage() {
                           </div>
                         </td>
                         <td className="px-4 py-3 text-gray-700">{client.sector ?? "—"}</td>
+                        <td className="px-4 py-3">
+                          {client.bpf_category ? (
+                            <Badge variant="outline" className="font-normal text-xs">
+                              {BPF_CATEGORY_LABELS[client.bpf_category] ?? client.bpf_category}
+                            </Badge>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </td>
                         <td className="px-4 py-3">
                           <Badge className={cn("border-0 font-medium", STATUS_COLORS[client.status])}>
                             {STATUS_LABELS[client.status]}
@@ -825,6 +868,56 @@ function ClientForm({ formData, formErrors, onUpdate, onCompanySelect }: ClientF
             </SelectContent>
           </Select>
         </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="naf_code">Code NAF</Label>
+          <Input
+            id="naf_code"
+            value={formData.naf_code}
+            onChange={(e) => onUpdate("naf_code", e.target.value)}
+            placeholder="Ex : 8559A"
+          />
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="bpf_category">Catégorie BPF</Label>
+        <Select value={formData.bpf_category} onValueChange={(v) => onUpdate("bpf_category", v)}>
+          <SelectTrigger id="bpf_category">
+            <SelectValue placeholder="Choisir une catégorie BPF" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              <SelectLabel>Entreprises</SelectLabel>
+              <SelectItem value="entreprise_privee">Entreprise privée</SelectItem>
+            </SelectGroup>
+            <SelectGroup>
+              <SelectLabel>Fonds de formation</SelectLabel>
+              <SelectItem value="apprentissage">Contrats d&apos;apprentissage</SelectItem>
+              <SelectItem value="professionnalisation">Contrats de professionnalisation</SelectItem>
+              <SelectItem value="reconversion_alternance">Reconversion / alternance</SelectItem>
+              <SelectItem value="conge_transition">Congé / transition professionnelle</SelectItem>
+              <SelectItem value="cpf">Compte personnel de formation (CPF)</SelectItem>
+              <SelectItem value="dispositif_chomeurs">Dispositifs demandeurs d&apos;emploi</SelectItem>
+              <SelectItem value="non_salaries">Dispositifs travailleurs non-salariés</SelectItem>
+              <SelectItem value="plan_developpement">Plan de développement des compétences</SelectItem>
+            </SelectGroup>
+            <SelectGroup>
+              <SelectLabel>Pouvoirs publics</SelectLabel>
+              <SelectItem value="pouvoir_public_agents">Pouvoirs publics (formation agents)</SelectItem>
+              <SelectItem value="instances_europeennes">Instances européennes</SelectItem>
+              <SelectItem value="etat">État</SelectItem>
+              <SelectItem value="conseil_regional">Conseils régionaux</SelectItem>
+              <SelectItem value="pole_emploi">Pôle emploi</SelectItem>
+              <SelectItem value="autres_publics">Autres ressources publiques</SelectItem>
+            </SelectGroup>
+            <SelectGroup>
+              <SelectLabel>Autres</SelectLabel>
+              <SelectItem value="individuel">Particulier / Individuel</SelectItem>
+              <SelectItem value="organisme_formation">Organisme de formation</SelectItem>
+              <SelectItem value="autre">Autre</SelectItem>
+            </SelectGroup>
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="space-y-1.5">

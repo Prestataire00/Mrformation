@@ -52,7 +52,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn, formatDate } from "@/lib/utils";
+import { logCommercialAction } from "@/lib/crm/log-commercial-action";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { CrmProspect, CrmQuote, ProspectStatus, Training } from "@/lib/types";
+import ProspectTasksSection from "../liste/_components/ProspectTasksSection";
+import ProspectCommentsSection from "../liste/_components/ProspectCommentsSection";
+import ProspectEmailSection from "../liste/_components/ProspectEmailSection";
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
@@ -100,6 +105,7 @@ export default function ProspectDetailPage() {
   const [editForm, setEditForm] = useState({
     company_name: "",
     siret: "",
+    naf_code: "",
     contact_name: "",
     email: "",
     phone: "",
@@ -241,6 +247,7 @@ export default function ProspectDetailPage() {
     setEditForm({
       company_name: prospect.company_name,
       siret: prospect.siret ?? "",
+      naf_code: prospect.naf_code ?? "",
       contact_name: prospect.contact_name ?? "",
       email: prospect.email ?? "",
       phone: prospect.phone ?? "",
@@ -258,6 +265,7 @@ export default function ProspectDetailPage() {
       .update({
         company_name: editForm.company_name.trim(),
         siret: editForm.siret.trim() || null,
+        naf_code: editForm.naf_code.trim() || null,
         contact_name: editForm.contact_name.trim() || null,
         email: editForm.email.trim() || null,
         phone: editForm.phone.trim() || null,
@@ -277,6 +285,7 @@ export default function ProspectDetailPage() {
 
   async function handleChangeStatus() {
     if (!prospect) return;
+    const oldStatus = prospect.status;
     setSaving(true);
     const { error } = await supabase
       .from("crm_prospects")
@@ -287,6 +296,21 @@ export default function ProspectDetailPage() {
       console.error("handleChangeStatus error:", error);
       return;
     }
+
+    // Log commercial action
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user && entityId) {
+      logCommercialAction({
+        supabase,
+        entityId,
+        authorId: user.id,
+        actionType: "status_change",
+        prospectId: prospect.id,
+        subject: `${STATUS_CONFIG[oldStatus]?.label ?? oldStatus} → ${STATUS_CONFIG[newStatus]?.label ?? newStatus}`,
+        metadata: { from: oldStatus, to: newStatus },
+      });
+    }
+
     setStatusOpen(false);
     fetchProspect();
   }
@@ -653,32 +677,82 @@ export default function ProspectDetailPage() {
             </Button>
           </div>
 
-          {/* Timeline */}
-          <div className="space-y-3">
-            {activities.map((a) => (
-              <div
-                key={a.id}
-                className="flex items-start gap-3 bg-muted/40 rounded-lg px-4 py-3"
+          {/* Tabbed tracking: Tâches / Commentaires / Emails / Historique */}
+          <Tabs defaultValue="tasks" className="w-full">
+            <TabsList className="w-full justify-start border-b rounded-none bg-transparent h-auto p-0 gap-6 mb-4">
+              <TabsTrigger
+                value="tasks"
+                className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-600 data-[state=active]:text-blue-600 data-[state=active]:shadow-none bg-transparent px-1 pb-2.5 text-sm font-medium"
               >
-                <div className="mt-0.5">
-                  {a.type === "creation" && <CheckCircle className="w-4 h-4 text-green-500" />}
-                  {a.type === "status_change" && <TrendingUp className="w-4 h-4 text-blue-500" />}
-                  {a.type === "note" && <MessageSquare className="w-4 h-4 text-amber-500" />}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium uppercase">{a.content}</p>
-                </div>
-                <div className="text-right shrink-0">
-                  <p className="text-xs text-muted-foreground">
-                    {formatDate(a.date)}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {a.author}
-                  </p>
-                </div>
+                <ClipboardList className="h-4 w-4 mr-1.5" />
+                Tâches
+              </TabsTrigger>
+              <TabsTrigger
+                value="comments"
+                className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-600 data-[state=active]:text-blue-600 data-[state=active]:shadow-none bg-transparent px-1 pb-2.5 text-sm font-medium"
+              >
+                <MessageSquare className="h-4 w-4 mr-1.5" />
+                Commentaires
+              </TabsTrigger>
+              <TabsTrigger
+                value="emails"
+                className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-600 data-[state=active]:text-blue-600 data-[state=active]:shadow-none bg-transparent px-1 pb-2.5 text-sm font-medium"
+              >
+                <Send className="h-4 w-4 mr-1.5" />
+                Emails
+              </TabsTrigger>
+              <TabsTrigger
+                value="timeline"
+                className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-600 data-[state=active]:text-blue-600 data-[state=active]:shadow-none bg-transparent px-1 pb-2.5 text-sm font-medium"
+              >
+                <Clock className="h-4 w-4 mr-1.5" />
+                Historique
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="tasks">
+              <ProspectTasksSection
+                prospectId={prospect.id}
+                prospectName={prospect.company_name}
+              />
+            </TabsContent>
+            <TabsContent value="comments">
+              <ProspectCommentsSection prospectId={prospect.id} />
+            </TabsContent>
+            <TabsContent value="emails">
+              <ProspectEmailSection
+                prospectId={prospect.id}
+                prospect={prospect}
+              />
+            </TabsContent>
+            <TabsContent value="timeline">
+              <div className="space-y-3">
+                {activities.map((a) => (
+                  <div
+                    key={a.id}
+                    className="flex items-start gap-3 bg-muted/40 rounded-lg px-4 py-3"
+                  >
+                    <div className="mt-0.5">
+                      {a.type === "creation" && <CheckCircle className="w-4 h-4 text-green-500" />}
+                      {a.type === "status_change" && <TrendingUp className="w-4 h-4 text-blue-500" />}
+                      {a.type === "note" && <MessageSquare className="w-4 h-4 text-amber-500" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium uppercase">{a.content}</p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-xs text-muted-foreground">
+                        {formatDate(a.date)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {a.author}
+                      </p>
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
 
@@ -817,6 +891,15 @@ export default function ProspectDetailPage() {
                   placeholder="14 chiffres"
                 />
               </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">Code NAF</label>
+              <Input
+                value={editForm.naf_code}
+                onChange={(e) => setEditForm((f) => ({ ...f, naf_code: e.target.value }))}
+                placeholder="Ex : 8559A"
+                className="max-w-[200px]"
+              />
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-gray-600">Contact</label>

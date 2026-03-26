@@ -72,7 +72,8 @@ export const updateTrainingSchema = createTrainingSchema.partial();
 
 // Session schemas
 export const createSessionSchema = z.object({
-  training_id: requiredUuid,
+  training_id: uuidField,
+  program_id: uuidField,
   trainer_id: uuidField,
   client_id: uuidField,
   start_date: dateField,

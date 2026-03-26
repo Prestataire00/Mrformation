@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
 import { Training } from "@/lib/types";
@@ -262,8 +263,16 @@ function StepCard({
 
 export default function ParcoursPage() {
   const supabase = createClient();
-  const { entityId } = useEntity();
+  const { entity, entityId } = useEntity();
   const { toast } = useToast();
+  const router = useRouter();
+
+  // Parcours réservé à C3V Formation
+  useEffect(() => {
+    if (entity && entity.slug !== "c3v-formation") {
+      router.replace("/admin/trainings");
+    }
+  }, [entity, router]);
 
   // Data
   const [parcoursList, setParcoursList] = useState<Parcours[]>([]);

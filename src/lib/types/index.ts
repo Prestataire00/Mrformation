@@ -27,6 +27,22 @@ export interface Profile {
   entity?: Entity;
 }
 
+// ===== BPF TYPES =====
+export type BpfFundingType =
+  | "entreprise_privee" | "apprentissage" | "professionnalisation"
+  | "reconversion_alternance" | "conge_transition" | "cpf"
+  | "dispositif_chomeurs" | "non_salaries" | "plan_developpement"
+  | "pouvoir_public_agents" | "instances_europeennes" | "etat"
+  | "conseil_regional" | "pole_emploi" | "autres_publics"
+  | "individuel" | "organisme_formation" | "autre";
+
+export type BpfObjective =
+  | "rncp_6_8" | "rncp_5" | "rncp_4" | "rncp_3" | "rncp_2" | "rncp_cqp"
+  | "certification_rs" | "cqp_non_enregistre" | "autre_pro"
+  | "bilan_competences" | "vae";
+
+export type BpfCategory = BpfFundingType;
+
 // ===== CLIENTS =====
 export type ClientStatus = "active" | "inactive" | "prospect";
 
@@ -40,6 +56,8 @@ export interface Client {
   postal_code: string | null;
   website: string | null;
   sector: string | null;
+  naf_code: string | null;
+  bpf_category: BpfCategory | null;
   status: ClientStatus;
   notes: string | null;
   created_at: string;
@@ -137,6 +155,8 @@ export interface Training {
   classification: TrainingClassification;
   nsf_code: string | null;
   nsf_label: string | null;
+  bpf_objective: BpfObjective | null;
+  bpf_funding_type: BpfFundingType | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -221,6 +241,7 @@ export interface FormationTrainer {
   session_id: string;
   trainer_id: string;
   role: string;
+  hourly_rate: number | null;
   created_at: string;
   trainer?: Trainer;
 }
@@ -238,7 +259,11 @@ export interface FormationCompany {
 }
 
 // ===== FORMATION FINANCIERS =====
-export type FinancierType = "opco" | "pole_emploi" | "cpf" | "entreprise" | "region" | "autre";
+export type FinancierType =
+  | "opco" | "pole_emploi" | "cpf" | "entreprise" | "region" | "autre"
+  | "apprentissage" | "professionnalisation" | "reconversion_alternance" | "conge_transition"
+  | "dispositif_chomeurs" | "non_salaries" | "plan_developpement"
+  | "instances_europeennes" | "etat" | "conseil_regional" | "autres_publics";
 
 export interface FormationFinancier {
   id: string;
@@ -401,6 +426,14 @@ export interface Program {
   version: number;
   is_active: boolean;
   content: Record<string, unknown> | null;
+  price: number | null;
+  tva_rate: number | null;
+  duration_hours: number | null;
+  nsf_code: string | null;
+  nsf_label: string | null;
+  is_apprenticeship: boolean;
+  bpf_objective: BpfObjective | null;
+  bpf_funding_type: BpfFundingType | null;
   created_at: string;
   updated_at: string;
   versions?: ProgramVersion[];
@@ -564,8 +597,11 @@ export interface SigningToken {
   session_id: string;
   enrollment_id: string | null;
   learner_id: string | null;
+  trainer_id: string | null;
   entity_id: string;
   token_type: "session" | "individual";
+  signer_type: "learner" | "trainer";
+  time_slot_id: string | null;
   expires_at: string;
   used_at: string | null;
   created_at: string;
@@ -596,7 +632,8 @@ export interface CrmProspect {
   assigned_to: string | null;
   converted_client_id: string | null;
   linked_training_id: string | null;
-  score: number;
+  score?: number;
+  naf_code: string | null;
   created_at: string;
   updated_at: string;
   assignee?: Profile;
@@ -614,6 +651,7 @@ export interface CrmTask {
   status: TaskStatus;
   priority: TaskPriority;
   due_date: string | null;
+  reminder_at: string | null;
   assigned_to: string | null;
   prospect_id: string | null;
   client_id: string | null;
@@ -623,6 +661,15 @@ export interface CrmTask {
   assignee?: Profile;
   prospect?: CrmProspect;
   client?: Client;
+}
+
+export interface ProspectComment {
+  id: string;
+  prospect_id: string;
+  author_id: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export type QuoteStatus = "draft" | "sent" | "accepted" | "rejected" | "expired";
@@ -637,10 +684,44 @@ export interface CrmQuote {
   status: QuoteStatus;
   valid_until: string | null;
   notes: string | null;
+  bpf_funding_type: BpfFundingType | null;
+  training_id: string | null;
+  program_id: string | null;
   created_by: string | null;
   created_at: string;
   client?: Client;
   prospect?: CrmProspect;
+  program?: Program;
+}
+
+// ===== COMMERCIAL ACTIONS =====
+
+export type CommercialActionType =
+  | "call"
+  | "email"
+  | "meeting"
+  | "comment"
+  | "status_change"
+  | "quote_sent"
+  | "quote_accepted"
+  | "quote_rejected"
+  | "task_created"
+  | "document_sent"
+  | "relance";
+
+export interface CrmCommercialAction {
+  id: string;
+  entity_id: string;
+  prospect_id: string | null;
+  client_id: string | null;
+  author_id: string;
+  action_type: CommercialActionType;
+  subject: string | null;
+  content: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  author?: { id: string; first_name: string | null; last_name: string | null };
+  prospect?: { id: string; company_name: string; contact_name: string | null };
 }
 
 // ===== SEGMENT CRITERIA =====
@@ -723,7 +804,8 @@ export interface CrmCampaign {
   subject: string | null;
   body: string | null;
   status: "draft" | "scheduled" | "sent" | "cancelled";
-  target_type: "all_clients" | "all_prospects" | "segment" | null;
+  target_type: "all_clients" | "all_prospects" | "by_naf_code" | "segment" | null;
+  naf_code?: string | null;
   sent_count: number;
   created_by: string | null;
   scheduled_at: string | null;

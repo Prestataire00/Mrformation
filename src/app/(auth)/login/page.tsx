@@ -355,15 +355,6 @@ function LoginContent() {
                   Cliquez ici
                 </button>
               </p>
-              <p className="text-sm text-gray-500">
-                Pas encore de compte ?{" "}
-                <button
-                  onClick={() => router.push(`/inscription${entitySlug ? `?entity=${entitySlug}` : ""}`)}
-                  className="text-[#3DB5C5] hover:underline font-medium"
-                >
-                  S&apos;inscrire
-                </button>
-              </p>
             </div>
           )}
         </div>

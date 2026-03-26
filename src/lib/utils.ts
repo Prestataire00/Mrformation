@@ -56,7 +56,9 @@ export function truncate(text: string, maxLength = 50): string {
 }
 
 export const ROLE_LABELS: Record<string, string> = {
+  super_admin: "Super Admin",
   admin: "Administrateur",
+  commercial: "Commercial",
   trainer: "Formateur",
   client: "Client",
   learner: "Apprenant",

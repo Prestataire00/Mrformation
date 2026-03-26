@@ -30,6 +30,17 @@ export async function GET(
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
 
+    // Block learners from downloading PDF files
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+
+    if (profile?.role === "learner") {
+      return NextResponse.json({ error: "Accès non autorisé" }, { status: 403 });
+    }
+
     const chapterId = request.nextUrl.searchParams.get("chapterId");
 
     let cachedPdfUrl: string | null = null;

@@ -66,15 +66,68 @@ export async function GET(request: NextRequest) {
     trainingTitle = training?.title || null;
   }
 
-  // Fetch existing signatures for this session
-  const { data: existingSignatures } = await supabase
+  // Fetch time slot info if token is slot-aware
+  let timeSlot: { id: string; title: string | null; start_time: string; end_time: string } | null = null;
+  if (tokenData.time_slot_id) {
+    const { data: slot } = await supabase
+      .from("formation_time_slots")
+      .select("id, title, start_time, end_time")
+      .eq("id", tokenData.time_slot_id)
+      .single();
+    timeSlot = slot || null;
+  }
+
+  // Fetch existing signatures for this session (slot-aware)
+  let sigQuery = supabase
     .from("signatures")
     .select("signer_id, signer_type")
     .eq("session_id", tokenData.session_id);
 
+  if (tokenData.time_slot_id) {
+    sigQuery = sigQuery.eq("time_slot_id", tokenData.time_slot_id);
+  }
+
+  const { data: existingSignatures } = await sigQuery;
+
   const signedLearnerIds = (existingSignatures || [])
     .filter((s: { signer_type: string }) => s.signer_type === "learner")
     .map((s: { signer_id: string }) => s.signer_id);
+
+  const signedTrainerIds = (existingSignatures || [])
+    .filter((s: { signer_type: string }) => s.signer_type === "trainer")
+    .map((s: { signer_id: string }) => s.signer_id);
+
+  // Handle trainer individual tokens
+  if (tokenData.signer_type === "trainer" && tokenData.trainer_id) {
+    const { data: trainer } = await supabase
+      .from("trainers")
+      .select("id, first_name, last_name")
+      .eq("id", tokenData.trainer_id)
+      .single();
+
+    return NextResponse.json({
+      token_type: "individual",
+      signer_type: "trainer",
+      session: {
+        id: session.id,
+        title: session.title,
+        start_date: session.start_date,
+        end_date: session.end_date,
+        location: session.location,
+        mode: session.mode,
+        training_title: trainingTitle,
+      },
+      time_slot: timeSlot,
+      trainer: trainer
+        ? {
+            id: trainer.id,
+            first_name: trainer.first_name,
+            last_name: trainer.last_name,
+            already_signed: signedTrainerIds.includes(trainer.id),
+          }
+        : null,
+    });
+  }
 
   if (tokenData.token_type === "session") {
     // For session tokens, return the list of enrolled learners
@@ -98,6 +151,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       token_type: "session",
+      signer_type: "learner",
       session: {
         id: session.id,
         title: session.title,
@@ -107,6 +161,7 @@ export async function GET(request: NextRequest) {
         mode: session.mode,
         training_title: trainingTitle,
       },
+      time_slot: timeSlot,
       learners,
     });
   } else {
@@ -119,6 +174,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       token_type: "individual",
+      signer_type: tokenData.signer_type || "learner",
       session: {
         id: session.id,
         title: session.title,
@@ -128,6 +184,7 @@ export async function GET(request: NextRequest) {
         mode: session.mode,
         training_title: trainingTitle,
       },
+      time_slot: timeSlot,
       learner: learner
         ? {
             id: learner.id,
@@ -145,7 +202,7 @@ export async function POST(request: NextRequest) {
   const auth = await requireRole(["super_admin", "admin", "trainer"]);
   if (auth.error) return auth.error;
 
-  const { session_id, type } = await request.json();
+  const { session_id, type, time_slot_id } = await request.json();
 
   if (!session_id || !type || !["session", "individual"].includes(type)) {
     return NextResponse.json(
@@ -159,13 +216,20 @@ export async function POST(request: NextRequest) {
 
   if (type === "session") {
     // Check if a non-expired session token already exists
-    const { data: existing } = await supabase
+    let existingQuery = supabase
       .from("signing_tokens")
       .select("*")
       .eq("session_id", session_id)
       .eq("token_type", "session")
-      .gt("expires_at", new Date().toISOString())
-      .single();
+      .gt("expires_at", new Date().toISOString());
+
+    if (time_slot_id) {
+      existingQuery = existingQuery.eq("time_slot_id", time_slot_id);
+    } else {
+      existingQuery = existingQuery.is("time_slot_id", null);
+    }
+
+    const { data: existing } = await existingQuery.single();
 
     if (existing) {
       return NextResponse.json({ tokens: [existing] });
@@ -178,6 +242,7 @@ export async function POST(request: NextRequest) {
         session_id,
         entity_id: auth.profile.entity_id,
         token_type: "session",
+        time_slot_id: time_slot_id || null,
         expires_at: expiresAt,
       })
       .select()

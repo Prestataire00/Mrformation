@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { SignaturePad } from "@/components/signatures/SignaturePad";
@@ -40,10 +40,17 @@ interface SessionInfo {
   trainer: { first_name: string; last_name: string } | null;
 }
 
-interface ExistingSignature {
+interface TimeSlot {
   id: string;
-  signature_data: string;
-  signed_at: string;
+  title: string | null;
+  start_time: string;
+  end_time: string;
+  slot_order: number;
+}
+
+interface SlotSignState {
+  signed: boolean;
+  signature: { id: string; signature_data: string; signed_at: string } | null;
 }
 
 export default function LearnerSignPage() {
@@ -54,23 +61,30 @@ export default function LearnerSignPage() {
   const sessionId = params.id as string;
 
   const [session, setSession] = useState<SessionInfo | null>(null);
-  const [existingSignature, setExistingSignature] = useState<ExistingSignature | null>(null);
+  const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([]);
+  const [slotStates, setSlotStates] = useState<Map<string, SlotSignState>>(new Map());
   const [loading, setLoading] = useState(true);
-  const [signing, setSigning] = useState(false);
-  const [isSigned, setIsSigned] = useState(false);
+  const [signingSlot, setSigningSlot] = useState<string | null>(null);
+  const [learnerId, setLearnerId] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId]);
+  const formatTime = (dateStr: string) =>
+    new Date(dateStr).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
 
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true);
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
+
+    // Get learner ID from profile
+    const { data: learnerData } = await supabase
+      .from("learners")
+      .select("id")
+      .eq("profile_id", user.id)
+      .single();
+
+    const lId = learnerData?.id || user.id;
+    setLearnerId(lId);
 
     // Load session info
     const { data: sessionData } = await supabase
@@ -93,25 +107,54 @@ export default function LearnerSignPage() {
       } as SessionInfo);
     }
 
-    // Check existing signature
-    const { data: sigData } = await supabase
-      .from("signatures")
-      .select("id, signature_data, signed_at")
+    // Load time slots
+    const { data: slots } = await supabase
+      .from("formation_time_slots")
+      .select("id, title, start_time, end_time, slot_order")
       .eq("session_id", sessionId)
-      .eq("signer_id", user.id)
-      .eq("signer_type", "learner")
-      .single();
+      .order("slot_order", { ascending: true });
 
-    if (sigData) {
-      setExistingSignature(sigData);
-      setIsSigned(true);
+    const slotList = slots || [];
+    setTimeSlots(slotList);
+
+    // Load all learner signatures for this session
+    const { data: allSigs } = await supabase
+      .from("signatures")
+      .select("id, signature_data, signed_at, time_slot_id")
+      .eq("session_id", sessionId)
+      .eq("signer_id", lId)
+      .eq("signer_type", "learner");
+
+    // Build state
+    const stateMap = new Map<string, SlotSignState>();
+
+    if (slotList.length > 0) {
+      for (const slot of slotList) {
+        const sig = (allSigs || []).find(s => s.time_slot_id === slot.id);
+        stateMap.set(slot.id, {
+          signed: !!sig,
+          signature: sig || null,
+        });
+      }
+    } else {
+      // Legacy: session-level
+      const sig = (allSigs || []).find(s => !s.time_slot_id);
+      stateMap.set("session", {
+        signed: !!sig,
+        signature: sig || null,
+      });
     }
 
+    setSlotStates(stateMap);
     setLoading(false);
-  }
+  }, [sessionId]);
 
-  async function handleSign(svgData: string) {
-    setSigning(true);
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  async function handleSign(svgData: string, slotId: string) {
+    setSigningSlot(slotId);
     try {
       const res = await fetch("/api/signatures", {
         method: "POST",
@@ -119,35 +162,24 @@ export default function LearnerSignPage() {
         body: JSON.stringify({
           session_id: sessionId,
           signature_data: svgData,
+          time_slot_id: slotId === "session" ? undefined : slotId,
         }),
       });
 
       const result = await res.json();
 
       if (!res.ok) {
-        toast({
-          title: "Erreur",
-          description: result.error || "Impossible de sauvegarder la signature.",
-          variant: "destructive",
-        });
-        setSigning(false);
+        toast({ title: "Erreur", description: result.error || "Impossible de sauvegarder.", variant: "destructive" });
+        setSigningSlot(null);
         return;
       }
 
-      setIsSigned(true);
-      setExistingSignature(result.signature);
-      toast({
-        title: "Signature enregistrée",
-        description: "Votre signature vaut validation des heures de formation réalisées.",
-      });
+      toast({ title: "Signature enregistrée", description: "Votre présence a été validée." });
+      await loadData();
     } catch {
-      toast({
-        title: "Erreur",
-        description: "Une erreur est survenue.",
-        variant: "destructive",
-      });
+      toast({ title: "Erreur", description: "Une erreur est survenue.", variant: "destructive" });
     }
-    setSigning(false);
+    setSigningSlot(null);
   }
 
   if (loading) {
@@ -162,17 +194,16 @@ export default function LearnerSignPage() {
     return (
       <div className="p-6 text-center">
         <p className="text-gray-500">Session introuvable.</p>
-        <Button
-          variant="outline"
-          className="mt-4"
-          onClick={() => router.back()}
-        >
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Retour
+        <Button variant="outline" className="mt-4" onClick={() => router.back()}>
+          <ArrowLeft className="h-4 w-4 mr-2" /> Retour
         </Button>
       </div>
     );
   }
+
+  const allSlotIds = timeSlots.length > 0 ? timeSlots.map(s => s.id) : ["session"];
+  const signedCount = allSlotIds.filter(id => slotStates.get(id)?.signed).length;
+  const totalSlots = allSlotIds.length;
 
   return (
     <div className="p-6 max-w-2xl mx-auto space-y-6">
@@ -215,9 +246,7 @@ export default function LearnerSignPage() {
             {session.trainer && (
               <div className="flex items-center gap-2 text-gray-600">
                 <User className="h-4 w-4" />
-                <span>
-                  {session.trainer.first_name} {session.trainer.last_name}
-                </span>
+                <span>{session.trainer.first_name} {session.trainer.last_name}</span>
               </div>
             )}
             {session.duration_hours && (
@@ -227,86 +256,139 @@ export default function LearnerSignPage() {
               </div>
             )}
           </div>
-
-          <Badge
-            variant="outline"
-            className={
-              session.status === "in_progress"
-                ? "border-green-300 text-green-700 bg-green-50"
-                : session.status === "completed"
-                ? "border-blue-300 text-blue-700 bg-blue-50"
-                : "border-yellow-300 text-yellow-700 bg-yellow-50"
-            }
-          >
-            {session.status === "in_progress"
-              ? "En cours"
-              : session.status === "completed"
-              ? "Terminée"
-              : "À venir"}
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="text-xs">
+              {signedCount}/{totalSlots} créneau(x) signé(s)
+            </Badge>
+          </div>
         </CardContent>
       </Card>
 
-      {/* Signature section */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg flex items-center gap-2">
-            {isSigned ? (
-              <CheckCircle2 className="h-5 w-5 text-green-500" />
-            ) : (
-              <PenLine className="h-5 w-5 text-blue-600" />
-            )}
-            {isSigned ? "Présence validée" : "Apposer votre signature"}
-          </CardTitle>
-          <CardDescription>
-            {isSigned
-              ? "Votre signature a été enregistrée et vaut validation des heures de formation réalisées."
-              : "Votre signature vaudra validation des heures de formation réalisées, en conformité avec le planning de la session."}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {isSigned && existingSignature ? (
-            <div className="space-y-4">
-              <div className="border-2 border-green-400 rounded-lg bg-green-50 p-4">
-                <div
-                  className="w-full h-32 flex items-center justify-center"
-                  dangerouslySetInnerHTML={{
-                    __html: existingSignature.signature_data,
-                  }}
-                />
-              </div>
-              <div className="flex items-center gap-2 text-sm text-gray-600">
-                <FileCheck className="h-4 w-4 text-green-600" />
-                <span>
-                  Signé le {formatDate(existingSignature.signed_at)}
-                  {session.duration_hours &&
-                    ` — ${session.duration_hours}h validées`}
-                </span>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <SignaturePad
-                label="Dessinez votre signature ci-dessous"
-                isSigned={false}
-                onSign={handleSign}
-                onClear={() => {}}
-                disabled={signing}
-              />
-              {signing && (
-                <div className="flex items-center gap-2 text-sm text-blue-600">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Enregistrement de votre signature...
+      {/* Signature per slot */}
+      {timeSlots.length > 0 ? (
+        timeSlots.map((slot, index) => {
+          const state = slotStates.get(slot.id);
+          const isSigned = state?.signed || false;
+          const sig = state?.signature;
+
+          return (
+            <Card key={slot.id}>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    {isSigned ? (
+                      <CheckCircle2 className="h-4 w-4 text-green-500" />
+                    ) : (
+                      <PenLine className="h-4 w-4 text-blue-600" />
+                    )}
+                    Créneau {index + 1}{slot.title ? ` : ${slot.title}` : ""}
+                  </CardTitle>
+                  {isSigned && (
+                    <Badge className="bg-green-100 text-green-700 hover:bg-green-100">Signé</Badge>
+                  )}
                 </div>
-              )}
-              <p className="text-xs text-gray-400 italic">
-                En signant, vous confirmez votre présence et validez les heures
-                de formation conformément au planning de cette session.
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                <p className="text-sm text-muted-foreground">
+                  {new Date(slot.start_time).toLocaleDateString("fr-FR")}{" "}
+                  {formatTime(slot.start_time)} - {formatTime(slot.end_time)}
+                </p>
+              </CardHeader>
+              <CardContent>
+                {isSigned && sig ? (
+                  <div className="space-y-2">
+                    <div className="border-2 border-green-400 rounded-lg bg-green-50 p-3">
+                      <div
+                        className="w-full h-20 flex items-center justify-center"
+                        dangerouslySetInnerHTML={{ __html: sig.signature_data }}
+                      />
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                      <FileCheck className="h-4 w-4 text-green-600" />
+                      <span>Signé le {formatDate(sig.signed_at)}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <SignaturePad
+                      label="Dessinez votre signature"
+                      isSigned={false}
+                      onSign={(svg) => handleSign(svg, slot.id)}
+                      onClear={() => {}}
+                      disabled={signingSlot === slot.id}
+                    />
+                    {signingSlot === slot.id && (
+                      <div className="flex items-center gap-2 text-sm text-blue-600">
+                        <Loader2 className="h-4 w-4 animate-spin" /> Enregistrement...
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })
+      ) : (
+        // Legacy: single session signature
+        (() => {
+          const state = slotStates.get("session");
+          const isSigned = state?.signed || false;
+          const sig = state?.signature;
+
+          return (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  {isSigned ? (
+                    <CheckCircle2 className="h-5 w-5 text-green-500" />
+                  ) : (
+                    <PenLine className="h-5 w-5 text-blue-600" />
+                  )}
+                  {isSigned ? "Présence validée" : "Apposer votre signature"}
+                </CardTitle>
+                <CardDescription>
+                  {isSigned
+                    ? "Votre signature a été enregistrée."
+                    : "Dessinez votre signature pour valider votre présence."}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {isSigned && sig ? (
+                  <div className="space-y-4">
+                    <div className="border-2 border-green-400 rounded-lg bg-green-50 p-4">
+                      <div
+                        className="w-full h-32 flex items-center justify-center"
+                        dangerouslySetInnerHTML={{ __html: sig.signature_data }}
+                      />
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                      <FileCheck className="h-4 w-4 text-green-600" />
+                      <span>Signé le {formatDate(sig.signed_at)}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <SignaturePad
+                      label="Dessinez votre signature ci-dessous"
+                      isSigned={false}
+                      onSign={(svg) => handleSign(svg, "session")}
+                      onClear={() => {}}
+                      disabled={signingSlot === "session"}
+                    />
+                    {signingSlot === "session" && (
+                      <div className="flex items-center gap-2 text-sm text-blue-600">
+                        <Loader2 className="h-4 w-4 animate-spin" /> Enregistrement...
+                      </div>
+                    )}
+                    <p className="text-xs text-gray-400 italic">
+                      En signant, vous confirmez votre présence et validez les heures
+                      de formation conformément au planning de cette session.
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })()
+      )}
     </div>
   );
 }

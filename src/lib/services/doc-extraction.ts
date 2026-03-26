@@ -233,12 +233,15 @@ async function extractFromYouTube(
 
           try {
             const res = await fetch(track.baseUrl + "&fmt=json3", { headers: YT_HEADERS });
-            const json = await res.json() as { events?: { segs?: { utf8: string }[] }[] };
-            if (json.events) {
-              lines = json.events
-                .filter((e) => e.segs)
-                .flatMap((e) => e.segs!.map((s) => s.utf8.trim()))
-                .filter(Boolean);
+            const rawText = await res.text();
+            if (rawText && rawText.trim().length > 2) {
+              const json = JSON.parse(rawText) as { events?: { segs?: { utf8: string }[] }[] };
+              if (json.events) {
+                lines = json.events
+                  .filter((e) => e.segs)
+                  .flatMap((e) => e.segs!.map((s) => s.utf8.trim()))
+                  .filter(Boolean);
+              }
             }
           } catch (e) {
             console.warn("[YouTube] json3 caption fetch failed:", e instanceof Error ? e.message : String(e));
@@ -247,7 +250,10 @@ async function extractFromYouTube(
           if (lines.length === 0) {
             try {
               const res = await fetch(track.baseUrl, { headers: YT_HEADERS });
-              lines = parseXmlTranscript(await res.text());
+              const xmlText = await res.text();
+              if (xmlText && xmlText.trim().length > 10) {
+                lines = parseXmlTranscript(xmlText);
+              }
             } catch (e) {
               console.warn("[YouTube] XML caption fetch failed:", e instanceof Error ? e.message : String(e));
             }

@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Entity not found" }, { status: 403 });
     }
 
-    if (profile.role !== "admin") {
+    if (!["admin","super_admin"].includes(profile.role)) {
       return NextResponse.json({ data: null, error: "Accès non autorisé" }, { status: 403 });
     }
 
@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Entity not found" }, { status: 403 });
     }
 
-    if (profile.role !== "admin") {
+    if (!["admin","super_admin"].includes(profile.role)) {
       return NextResponse.json({ data: null, error: "Accès non autorisé" }, { status: 403 });
     }
 

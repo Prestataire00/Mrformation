@@ -8,6 +8,7 @@ import {
   notifyQuoteStatusChange,
   notifyProspectWon,
 } from "@/lib/crm/automations";
+import { logCommercialAction } from "@/lib/crm/log-commercial-action";
 import {
   Plus,
   Search,
@@ -45,7 +46,9 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -64,7 +67,7 @@ import {
   STATUS_COLORS,
   QUOTE_STATUS_LABELS,
 } from "@/lib/utils";
-import type { CrmQuote, Client, CrmProspect, Profile, QuoteStatus } from "@/lib/types";
+import type { CrmQuote, Client, CrmProspect, Profile, Program, QuoteStatus } from "@/lib/types";
 
 const QUOTE_STATUSES: QuoteStatus[] = ["draft", "sent", "accepted", "rejected", "expired"];
 
@@ -92,6 +95,8 @@ interface QuoteFormData {
   status: QuoteStatus;
   valid_until: string;
   notes: string;
+  bpf_funding_type: string;
+  program_id: string;
 }
 
 const EMPTY_FORM: QuoteFormData = {
@@ -102,6 +107,8 @@ const EMPTY_FORM: QuoteFormData = {
   status: "draft",
   valid_until: "",
   notes: "",
+  bpf_funding_type: "",
+  program_id: "",
 };
 
 interface QuoteStats {
@@ -126,6 +133,7 @@ export default function QuotesPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [prospects, setProspects] = useState<CrmProspect[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [programs, setPrograms] = useState<Program[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -151,6 +159,7 @@ export default function QuotesPage() {
     fetchClients();
     fetchProspects();
     fetchProfiles();
+    fetchPrograms();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entityId, search, statusFilter]);
 
@@ -173,6 +182,13 @@ export default function QuotesPage() {
     if (entityId) query = query.eq("entity_id", entityId);
     const { data } = await query;
     setProfiles((data as Profile[]) ?? []);
+  }, [supabase, entityId]);
+
+  const fetchPrograms = useCallback(async () => {
+    let query = supabase.from("programs").select("id, title, bpf_funding_type").eq("is_active", true).order("title");
+    if (entityId) query = query.eq("entity_id", entityId);
+    const { data } = await query;
+    setPrograms((data as Program[]) ?? []);
   }, [supabase, entityId]);
 
   const fetchQuotes = useCallback(async () => {
@@ -243,6 +259,8 @@ export default function QuotesPage() {
         status: formData.status,
         valid_until: formData.valid_until || null,
         notes: formData.notes.trim() || null,
+        bpf_funding_type: formData.bpf_funding_type || null,
+        program_id: formData.program_id || null,
       };
       if (entityId) payload.entity_id = entityId;
 
@@ -284,6 +302,8 @@ export default function QuotesPage() {
           status: formData.status,
           valid_until: formData.valid_until || null,
           notes: formData.notes.trim() || null,
+          bpf_funding_type: formData.bpf_funding_type || null,
+          program_id: formData.program_id || null,
         })
         .eq("id", selectedQuote.id);
       if (error) throw error;
@@ -328,6 +348,28 @@ export default function QuotesPage() {
       if (error) throw error;
 
       const { data: { user } } = await supabase.auth.getUser();
+
+      // Log commercial action for quote status change
+      if (user && entityId) {
+        const actionTypeMap: Record<string, "quote_sent" | "quote_accepted" | "quote_rejected"> = {
+          sent: "quote_sent",
+          accepted: "quote_accepted",
+          rejected: "quote_rejected",
+        };
+        const commercialActionType = actionTypeMap[newStatus];
+        if (commercialActionType) {
+          logCommercialAction({
+            supabase,
+            entityId,
+            authorId: user.id,
+            actionType: commercialActionType,
+            prospectId: quote.prospect_id,
+            clientId: quote.client_id,
+            subject: `Devis ${quote.reference}`,
+            metadata: { quote_id: quote.id, amount: quote.amount },
+          });
+        }
+      }
 
       // Auto-create follow-up task when quote is sent
       if (newStatus === "sent") {
@@ -487,6 +529,8 @@ export default function QuotesPage() {
       status: quote.status,
       valid_until: quote.valid_until ?? "",
       notes: quote.notes ?? "",
+      bpf_funding_type: quote.bpf_funding_type ?? "",
+      program_id: quote.program_id ?? "",
     });
     setFormErrors({});
     setEditDialogOpen(true);
@@ -500,6 +544,29 @@ export default function QuotesPage() {
   function updateField(field: keyof QuoteFormData, value: string) {
     setFormData((prev) => ({ ...prev, [field]: value }));
     if (formErrors[field]) setFormErrors((prev) => ({ ...prev, [field]: undefined }));
+  }
+
+  async function handleProgramChange(programId: string) {
+    updateField("program_id", programId);
+    if (programId) {
+      // Auto-derive bpf_funding_type from selected program
+      const program = programs.find((p) => p.id === programId);
+      if (program?.bpf_funding_type) {
+        updateField("bpf_funding_type", program.bpf_funding_type);
+        return;
+      }
+    }
+    // Fallback: if client is selected and no program funding type, try client's bpf_category
+    if (!programId && formData.client_id) {
+      const { data: client } = await supabase
+        .from("clients")
+        .select("bpf_category")
+        .eq("id", formData.client_id)
+        .single();
+      if (client?.bpf_category) {
+        updateField("bpf_funding_type", client.bpf_category);
+      }
+    }
   }
 
   const getProfileName = (profileId: string | null | undefined) => {
@@ -810,7 +877,7 @@ export default function QuotesPage() {
             <DialogTitle>Créer un devis</DialogTitle>
             <DialogDescription>Renseignez les informations du nouveau devis.</DialogDescription>
           </DialogHeader>
-          <QuoteForm formData={formData} formErrors={formErrors} onUpdate={updateField} clients={clients} prospects={prospects} />
+          <QuoteForm formData={formData} formErrors={formErrors} onUpdate={updateField} clients={clients} prospects={prospects} programs={programs} onProgramChange={handleProgramChange} />
           <DialogFooter>
             <DialogClose asChild><Button variant="outline" disabled={saving}>Annuler</Button></DialogClose>
             <Button onClick={handleCreate} disabled={saving} className="gap-2">
@@ -828,7 +895,7 @@ export default function QuotesPage() {
             <DialogTitle>Modifier le devis</DialogTitle>
             <DialogDescription>Mettez à jour les informations du devis {selectedQuote?.reference}.</DialogDescription>
           </DialogHeader>
-          <QuoteForm formData={formData} formErrors={formErrors} onUpdate={updateField} clients={clients} prospects={prospects} />
+          <QuoteForm formData={formData} formErrors={formErrors} onUpdate={updateField} clients={clients} prospects={prospects} programs={programs} onProgramChange={handleProgramChange} />
           <DialogFooter>
             <DialogClose asChild><Button variant="outline" disabled={saving}>Annuler</Button></DialogClose>
             <Button onClick={handleUpdate} disabled={saving} className="gap-2">
@@ -871,9 +938,11 @@ interface QuoteFormProps {
   onUpdate: (field: keyof QuoteFormData, value: string) => void;
   clients: Client[];
   prospects: CrmProspect[];
+  programs: Program[];
+  onProgramChange: (programId: string) => void;
 }
 
-function QuoteForm({ formData, formErrors, onUpdate, clients, prospects }: QuoteFormProps) {
+function QuoteForm({ formData, formErrors, onUpdate, clients, prospects, programs, onProgramChange }: QuoteFormProps) {
   return (
     <div className="space-y-4 py-2">
       <div className="grid grid-cols-2 gap-4">
@@ -947,6 +1016,61 @@ function QuoteForm({ formData, formErrors, onUpdate, clients, prospects }: Quote
         <div className="space-y-1.5">
           <Label htmlFor="valid_until">Valide jusqu&apos;au</Label>
           <Input id="valid_until" type="date" value={formData.valid_until} onChange={(e) => onUpdate("valid_until", e.target.value)} />
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="program_id">Programme lié</Label>
+          <Select value={formData.program_id || "none"} onValueChange={(v) => { const val = v === "none" ? "" : v; onProgramChange(val); }}>
+            <SelectTrigger id="program_id">
+              <SelectValue placeholder="Choisir un programme" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Aucun</SelectItem>
+              {programs.map((p) => <SelectItem key={p.id} value={p.id}>{p.title}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="bpf_funding_type">Source de financement (BPF)</Label>
+          <Select value={formData.bpf_funding_type || "none"} onValueChange={(v) => onUpdate("bpf_funding_type", v === "none" ? "" : v)}>
+            <SelectTrigger id="bpf_funding_type">
+              <SelectValue placeholder="Sélectionner une source..." />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Aucune</SelectItem>
+              <SelectGroup>
+                <SelectLabel>Entreprises</SelectLabel>
+                <SelectItem value="entreprise_privee">Entreprise privée</SelectItem>
+              </SelectGroup>
+              <SelectGroup>
+                <SelectLabel>Fonds de formation</SelectLabel>
+                <SelectItem value="apprentissage">Contrats d&apos;apprentissage</SelectItem>
+                <SelectItem value="professionnalisation">Contrats de professionnalisation</SelectItem>
+                <SelectItem value="reconversion_alternance">Reconversion / alternance</SelectItem>
+                <SelectItem value="conge_transition">Congé / transition pro</SelectItem>
+                <SelectItem value="cpf">CPF</SelectItem>
+                <SelectItem value="dispositif_chomeurs">Dispositifs demandeurs d&apos;emploi</SelectItem>
+                <SelectItem value="non_salaries">Travailleurs non-salariés</SelectItem>
+                <SelectItem value="plan_developpement">Plan de développement</SelectItem>
+              </SelectGroup>
+              <SelectGroup>
+                <SelectLabel>Pouvoirs publics</SelectLabel>
+                <SelectItem value="pouvoir_public_agents">Pouvoirs publics (agents)</SelectItem>
+                <SelectItem value="instances_europeennes">Instances européennes</SelectItem>
+                <SelectItem value="etat">État</SelectItem>
+                <SelectItem value="conseil_regional">Conseils régionaux</SelectItem>
+                <SelectItem value="pole_emploi">Pôle emploi</SelectItem>
+                <SelectItem value="autres_publics">Autres publics</SelectItem>
+              </SelectGroup>
+              <SelectGroup>
+                <SelectLabel>Autres</SelectLabel>
+                <SelectItem value="individuel">Particulier</SelectItem>
+                <SelectItem value="organisme_formation">Organisme de formation</SelectItem>
+                <SelectItem value="autre">Autre</SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
         </div>
       </div>
 

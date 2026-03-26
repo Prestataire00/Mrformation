@@ -1036,44 +1036,24 @@ CREATE POLICY "client_documents_admin_all" ON client_documents
   WITH CHECK (true);
 
 -- ============================================================
--- TABLE: referrals (programme de parrainage)
+-- TABLE: client_comments (commentaires internes sur les clients)
 -- ============================================================
-CREATE TABLE IF NOT EXISTS referrals (
+CREATE TABLE IF NOT EXISTS client_comments (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  referral_code TEXT NOT NULL,
-  referrer_user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
-  referred_user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
-  referred_name TEXT,
-  referred_email TEXT,
-  company_name TEXT,
-  is_subscribed BOOLEAN DEFAULT FALSE,
-  reward_paid BOOLEAN DEFAULT FALSE,
+  client_id UUID REFERENCES clients(id) ON DELETE CASCADE NOT NULL,
+  author_id UUID REFERENCES auth.users(id) ON DELETE SET NULL NOT NULL,
+  content TEXT NOT NULL,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-ALTER TABLE referrals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE client_comments ENABLE ROW LEVEL SECURITY;
 
--- Admins can view all referrals for their entity
-CREATE POLICY "referrals_admin_read" ON referrals
-  FOR SELECT TO authenticated
-  USING (true);
-
--- Anyone authenticated can insert a referral (during signup)
-CREATE POLICY "referrals_insert" ON referrals
-  FOR INSERT TO authenticated
-  WITH CHECK (true);
-
--- Admins can update referrals (mark as subscribed, reward paid, etc.)
-CREATE POLICY "referrals_admin_update" ON referrals
-  FOR UPDATE TO authenticated
+CREATE POLICY "client_comments_admin_all" ON client_comments
+  FOR ALL TO authenticated
   USING (true)
   WITH CHECK (true);
 
--- Allow anonymous inserts for signup flow (user just created, not yet fully authenticated)
-CREATE POLICY "referrals_anon_insert" ON referrals
-  FOR INSERT TO anon
-  WITH CHECK (true);
 
 -- ============================================================
 -- TABLE: bpf_financial_data (données financières BPF manuelles)
@@ -1173,6 +1153,83 @@ DO $$ BEGIN
       UNIQUE (session_id, signer_id, signer_type);
   END IF;
 END $$;
+
+-- ============================================================
+-- TABLE: trainer_courses (supports de cours formateurs)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS trainer_courses (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  trainer_id UUID REFERENCES trainers(id) ON DELETE CASCADE NOT NULL,
+  entity_id UUID REFERENCES entities(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  description TEXT,
+  category TEXT,
+  files JSONB DEFAULT '[]'::jsonb,
+  status TEXT DEFAULT 'draft' CHECK (status IN ('draft', 'published')),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_trainer_courses_trainer ON trainer_courses(trainer_id);
+
+ALTER TABLE trainer_courses ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "trainer_courses_admin_all" ON trainer_courses
+  FOR ALL TO authenticated
+  USING (auth.user_role() = 'admin' AND entity_id = auth.user_entity_id())
+  WITH CHECK (auth.user_role() = 'admin' AND entity_id = auth.user_entity_id());
+
+CREATE POLICY "trainer_courses_trainer_own" ON trainer_courses
+  FOR ALL TO authenticated
+  USING (
+    auth.user_role() = 'trainer'
+    AND trainer_id IN (SELECT id FROM trainers WHERE profile_id = auth.uid())
+  )
+  WITH CHECK (
+    auth.user_role() = 'trainer'
+    AND trainer_id IN (SELECT id FROM trainers WHERE profile_id = auth.uid())
+  );
+
+-- ============================================================
+-- TABLE: trainer_documents (documents formateurs — session & admin)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS trainer_documents (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  trainer_id UUID REFERENCES trainers(id) ON DELETE CASCADE NOT NULL,
+  entity_id UUID REFERENCES entities(id) ON DELETE CASCADE,
+  scope TEXT NOT NULL CHECK (scope IN ('session', 'admin')),
+  session_id UUID REFERENCES sessions(id) ON DELETE SET NULL,
+  doc_type TEXT NOT NULL,
+  file_name TEXT NOT NULL,
+  file_type TEXT NOT NULL,
+  file_size BIGINT NOT NULL,
+  file_path TEXT NOT NULL,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  CONSTRAINT session_required CHECK (scope != 'session' OR session_id IS NOT NULL)
+);
+
+CREATE INDEX IF NOT EXISTS idx_trainer_docs_trainer ON trainer_documents(trainer_id);
+CREATE INDEX IF NOT EXISTS idx_trainer_docs_scope ON trainer_documents(trainer_id, scope);
+
+ALTER TABLE trainer_documents ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "trainer_documents_admin_all" ON trainer_documents
+  FOR ALL TO authenticated
+  USING (auth.user_role() = 'admin' AND entity_id = auth.user_entity_id())
+  WITH CHECK (auth.user_role() = 'admin' AND entity_id = auth.user_entity_id());
+
+CREATE POLICY "trainer_documents_trainer_own" ON trainer_documents
+  FOR ALL TO authenticated
+  USING (
+    auth.user_role() = 'trainer'
+    AND trainer_id IN (SELECT id FROM trainers WHERE profile_id = auth.uid())
+  )
+  WITH CHECK (
+    auth.user_role() = 'trainer'
+    AND trainer_id IN (SELECT id FROM trainers WHERE profile_id = auth.uid())
+  );
 
 -- ============================================================
 -- DONNÉES DE DÉMONSTRATION

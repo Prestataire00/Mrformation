@@ -29,6 +29,7 @@ import {
   ChevronUp,
   GraduationCap,
   Monitor,
+  CalendarPlus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,6 +42,13 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 import ProgramEnrollments from "./_components/ProgramEnrollments";
 
@@ -154,6 +162,18 @@ export default function ProgramDetailPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
+
+  // Session creation
+  const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
+  const [creatingSession, setCreatingSession] = useState(false);
+  const [trainers, setTrainers] = useState<{ id: string; first_name: string; last_name: string }[]>([]);
+  const [sessionForm, setSessionForm] = useState({
+    startDate: "",
+    endDate: "",
+    mode: "presentiel" as "presentiel" | "distanciel" | "hybride",
+    location: "",
+    trainerId: "",
+  });
 
   // Edit form - modules
   interface EditModule {
@@ -372,6 +392,116 @@ export default function ProgramDetailPage() {
     setGenerating(false);
   }
 
+  // ── Open session dialog ─────────────────────────────────────────────────────
+  async function openSessionDialog() {
+    if (!program) return;
+    setSessionForm({
+      startDate: "",
+      endDate: "",
+      mode: "presentiel",
+      location: "",
+      trainerId: "",
+    });
+    // Fetch trainers for this entity
+    const { data } = await supabase
+      .from("trainers")
+      .select("id, first_name, last_name")
+      .eq("entity_id", program.entity_id)
+      .order("last_name");
+    setTrainers(data ?? []);
+    setSessionDialogOpen(true);
+  }
+
+  // ── Create session from program ─────────────────────────────────────────────
+  async function handleCreateSession() {
+    if (!program) return;
+    if (!sessionForm.startDate || !sessionForm.endDate) {
+      toast({ title: "Erreur", description: "Les dates de début et de fin sont requises.", variant: "destructive" });
+      return;
+    }
+    setCreatingSession(true);
+
+    try {
+      // 1. Check if a training already exists for this program
+      const { data: existingTrainings, error: fetchError } = await supabase
+        .from("trainings")
+        .select("id")
+        .eq("program_id", program.id)
+        .eq("entity_id", program.entity_id)
+        .limit(1);
+
+      if (fetchError) {
+        toast({ title: "Erreur", description: fetchError.message, variant: "destructive" });
+        setCreatingSession(false);
+        return;
+      }
+
+      let trainingId: string;
+
+      if (existingTrainings && existingTrainings.length > 0) {
+        trainingId = existingTrainings[0].id;
+      } else {
+        // 2. Create a training from this program
+        const { data: newTraining, error: trainingError } = await supabase
+          .from("trainings")
+          .insert({
+            entity_id: program.entity_id,
+            title: program.title,
+            program_id: program.id,
+            duration_hours: program.duration_hours || null,
+            price_per_person: program.price || null,
+            nsf_code: program.nsf_code || null,
+            nsf_label: program.nsf_label || null,
+            bpf_objective: program.bpf_objective || null,
+            bpf_funding_type: program.bpf_funding_type || null,
+            is_active: true,
+          })
+          .select("id")
+          .single();
+
+        if (trainingError || !newTraining) {
+          toast({ title: "Erreur", description: trainingError?.message || "Impossible de créer la formation.", variant: "destructive" });
+          setCreatingSession(false);
+          return;
+        }
+        trainingId = newTraining.id;
+      }
+
+      // 3. Create the session
+      const { data: newSession, error: sessionError } = await supabase
+        .from("sessions")
+        .insert({
+          entity_id: program.entity_id,
+          training_id: trainingId,
+          program_id: program.id,
+          title: program.title,
+          start_date: sessionForm.startDate,
+          end_date: sessionForm.endDate,
+          mode: sessionForm.mode,
+          location: sessionForm.location || null,
+          status: "upcoming",
+          trainer_id: sessionForm.trainerId || null,
+        })
+        .select("id")
+        .single();
+
+      if (sessionError || !newSession) {
+        toast({ title: "Erreur", description: sessionError?.message || "Impossible de créer la session.", variant: "destructive" });
+        setCreatingSession(false);
+        return;
+      }
+
+      toast({ title: "Session créée avec succès" });
+      setSessionDialogOpen(false);
+      router.push(`/admin/formations/${newSession.id}`);
+    } catch (err) {
+      console.error("Session creation error:", err);
+      toast({ title: "Erreur", description: "Une erreur inattendue est survenue.", variant: "destructive" });
+    }
+
+    setCreatingSession(false);
+  }
+
   // ── Render ─────────────────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -537,6 +667,15 @@ export default function ProgramDetailPage() {
               >
                 <GraduationCap className="w-3.5 h-3.5" />
                 Créer une formation
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="rounded-full gap-2 border-green-300 text-green-700 hover:bg-green-50"
+                onClick={openSessionDialog}
+              >
+                <CalendarPlus className="w-3.5 h-3.5" />
+                Créer une session
               </Button>
               <Button
                 size="sm"
@@ -750,6 +889,123 @@ export default function ProgramDetailPage() {
       {/* ── Apprenants inscrits ─────────────────────────────────────────────── */}
       <SectionDivider label="Apprenants inscrits au parcours" />
       <ProgramEnrollments programId={program.id} modules={meta.modules ?? []} />
+
+      {/* ── Create Session Dialog ──────────────────────────────────────────── */}
+      <Dialog open={sessionDialogOpen} onOpenChange={setSessionDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Créer une session</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* Date de début */}
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">
+                Date de début <span className="text-red-500">*</span>
+              </label>
+              <Input
+                type="datetime-local"
+                value={sessionForm.startDate}
+                onChange={(e) =>
+                  setSessionForm((p) => ({ ...p, startDate: e.target.value }))
+                }
+              />
+            </div>
+
+            {/* Date de fin */}
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">
+                Date de fin <span className="text-red-500">*</span>
+              </label>
+              <Input
+                type="datetime-local"
+                value={sessionForm.endDate}
+                onChange={(e) =>
+                  setSessionForm((p) => ({ ...p, endDate: e.target.value }))
+                }
+              />
+            </div>
+
+            {/* Mode */}
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Mode</label>
+              <Select
+                value={sessionForm.mode}
+                onValueChange={(value) =>
+                  setSessionForm((p) => ({
+                    ...p,
+                    mode: value as "presentiel" | "distanciel" | "hybride",
+                  }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="presentiel">Présentiel</SelectItem>
+                  <SelectItem value="distanciel">Distanciel</SelectItem>
+                  <SelectItem value="hybride">Hybride</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Lieu (only for presentiel or hybride) */}
+            {(sessionForm.mode === "presentiel" || sessionForm.mode === "hybride") && (
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Lieu</label>
+                <Input
+                  value={sessionForm.location}
+                  onChange={(e) =>
+                    setSessionForm((p) => ({ ...p, location: e.target.value }))
+                  }
+                  placeholder="Adresse ou salle de formation"
+                />
+              </div>
+            )}
+
+            {/* Formateur */}
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Formateur</label>
+              <Select
+                value={sessionForm.trainerId}
+                onValueChange={(value) =>
+                  setSessionForm((p) => ({ ...p, trainerId: value }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Sélectionner un formateur" />
+                </SelectTrigger>
+                <SelectContent>
+                  {trainers.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.first_name} {t.last_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSessionDialogOpen(false)}>
+              Annuler
+            </Button>
+            <Button
+              onClick={handleCreateSession}
+              disabled={creatingSession}
+              style={{ backgroundColor: BRAND }}
+              className="text-white"
+            >
+              {creatingSession ? (
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              ) : (
+                <CalendarPlus className="w-4 h-4 mr-2" />
+              )}
+              {creatingSession ? "Création..." : "Créer la session"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Edit Dialog ─────────────────────────────────────────────────────── */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>

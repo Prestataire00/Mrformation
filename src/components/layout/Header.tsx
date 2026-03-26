@@ -13,7 +13,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import Image from "next/image";
 import { LogOut, User, Search, ChevronRight, Building2, Check, ChevronsUpDown } from "lucide-react";
 import { NotificationPanel } from "@/components/layout/NotificationPanel";
 import { getInitials, ROLE_LABELS } from "@/lib/utils";
@@ -41,12 +40,17 @@ const BREADCRUMB_MAP: Record<string, string> = {
   quotes: "Devis",
   campaigns: "Campagnes",
   lieux: "Lieux",
-  veille: "La Veille",
-  affacturage: "Affacturage",
-  parrainage: "Programme de Parrainage",
   support: "Support",
   elearning: "E-Learning",
   bpf: "Bilan Pédagogique et Financier",
+};
+
+// Context-aware labels for segments that appear under different parents
+const CONTEXT_LABELS: Record<string, Record<string, string>> = {
+  liste: {
+    prospects: "Tous les Prospects",
+    apprenants: "Tous les Apprenants",
+  },
 };
 
 function useBreadcrumb() {
@@ -56,11 +60,23 @@ function useBreadcrumb() {
   const crumbs: { label: string; href: string }[] = [];
   let currentPath = "";
 
-  for (const part of parts) {
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
     currentPath += `/${part}`;
-    const label = BREADCRUMB_MAP[part];
-    if (label) {
-      crumbs.push({ label, href: currentPath });
+
+    // Check context-aware labels first
+    const contextMap = CONTEXT_LABELS[part];
+    if (contextMap) {
+      const prevPart = parts[i - 1];
+      const label = (prevPart && contextMap[prevPart]) || BREADCRUMB_MAP[part];
+      if (label) {
+        crumbs.push({ label, href: currentPath });
+      }
+    } else {
+      const label = BREADCRUMB_MAP[part];
+      if (label) {
+        crumbs.push({ label, href: currentPath });
+      }
     }
   }
 
@@ -104,22 +120,7 @@ export function Header({ profile, entity }: HeaderProps) {
 
   return (
     <header className="h-14 flex items-center px-5 gap-4 shrink-0" style={{ background: "#3DB5C5" }}>
-      {/* Platform logo — VF VisioFORMATION */}
-      <div className="flex items-center gap-2 shrink-0">
-        <Image
-          src="/logo-visioformation.png"
-          alt="VisioFORMATION"
-          width={36}
-          height={36}
-          className="h-8 w-auto object-contain"
-          priority
-        />
-        <span className="text-white font-bold text-lg tracking-tight">
-          Visio<span className="font-extrabold">FORMATION</span>
-        </span>
-      </div>
-
-      <div className="w-px h-6 bg-white/30 shrink-0" />
+      {/* Entity Switcher separator */}
 
       {/* Entity Switcher */}
       <DropdownMenu>

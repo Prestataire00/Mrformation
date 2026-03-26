@@ -62,7 +62,7 @@ import type {
 } from "@/lib/types";
 
 type CampaignStatus = "draft" | "scheduled" | "sent" | "cancelled";
-type TargetType = "all_clients" | "all_prospects" | "segment";
+type TargetType = "all_clients" | "all_prospects" | "by_naf_code" | "segment";
 
 interface CrmCampaignWithTags extends CrmCampaign {
   segment_tags?: string[];
@@ -174,16 +174,18 @@ const CAMPAIGN_STATUS_LABELS: Record<CampaignStatus, string> = {
 const TARGET_TYPE_LABELS: Record<TargetType, string> = {
   all_clients: "Tous les clients",
   all_prospects: "Tous les prospects",
+  by_naf_code: "Par code NAF",
   segment: "Segment personnalisé",
 };
 
-const TARGET_TYPE_OPTIONS: TargetType[] = ["all_clients", "all_prospects", "segment"];
+const TARGET_TYPE_OPTIONS: TargetType[] = ["all_clients", "all_prospects", "by_naf_code", "segment"];
 
 interface CampaignFormData {
   name: string;
   subject: string;
   body: string;
   target_type: TargetType;
+  naf_code: string;
   status: CampaignStatus;
   scheduled_at: string;
   segment_tags: string[];
@@ -195,6 +197,7 @@ const EMPTY_FORM: CampaignFormData = {
   subject: "",
   body: "",
   target_type: "all_clients",
+  naf_code: "",
   status: "draft",
   scheduled_at: "",
   segment_tags: [],
@@ -321,6 +324,7 @@ export default function CampaignsPage() {
         subject: formData.subject.trim(),
         body: formData.body.trim(),
         target_type: formData.target_type,
+        naf_code: formData.target_type === "by_naf_code" ? formData.naf_code.trim() || null : null,
         status: formData.status,
         scheduled_at: formData.scheduled_at || null,
         sent_count: 0,
@@ -361,6 +365,7 @@ export default function CampaignsPage() {
           subject: formData.subject.trim(),
           body: formData.body.trim(),
           target_type: formData.target_type,
+          naf_code: formData.target_type === "by_naf_code" ? formData.naf_code.trim() || null : null,
           status: formData.status,
           scheduled_at: formData.scheduled_at || null,
           segment_tags: formData.target_type === "segment" ? formData.segment_tags : [],
@@ -420,6 +425,19 @@ export default function CampaignsPage() {
         if (entityId) q = q.eq("entity_id", entityId);
         const { count } = await q;
         recipientCount = count ?? 0;
+      } else if (targetType === "by_naf_code") {
+        const nafCode = selectedCampaign.naf_code;
+        if (nafCode) {
+          let qClients = supabase.from("clients").select("id", { count: "exact", head: true }).eq("naf_code", nafCode);
+          if (entityId) qClients = qClients.eq("entity_id", entityId);
+          const { count: clientCount } = await qClients;
+
+          let qProspects = supabase.from("crm_prospects").select("id", { count: "exact", head: true }).eq("naf_code", nafCode);
+          if (entityId) qProspects = qProspects.eq("entity_id", entityId);
+          const { count: prospectCount } = await qProspects;
+
+          recipientCount = (clientCount ?? 0) + (prospectCount ?? 0);
+        }
       } else if (targetType === "segment") {
         const campaignWithTags = selectedCampaign as CrmCampaignWithTags;
         if (campaignWithTags.segment_criteria && campaignWithTags.segment_criteria.criteria.length > 0) {
@@ -483,6 +501,7 @@ export default function CampaignsPage() {
       subject: campaign.subject ?? "",
       body: campaign.body ?? "",
       target_type: (campaign.target_type as TargetType) ?? "all_clients",
+      naf_code: campaign.naf_code ?? "",
       status: campaign.status as CampaignStatus,
       scheduled_at: campaign.scheduled_at ?? "",
       segment_tags: campaignWithTags.segment_tags ?? [],
@@ -1041,6 +1060,22 @@ function CampaignForm({ formData, formErrors, onUpdate, allTags, onToggleSegment
               value={formData.scheduled_at}
               onChange={(e) => onUpdate("scheduled_at", e.target.value)}
             />
+          </div>
+        )}
+
+        {formData.target_type === "by_naf_code" && (
+          <div className="col-span-2 space-y-1.5">
+            <Label htmlFor="naf_code">Code NAF</Label>
+            <Input
+              id="naf_code"
+              value={formData.naf_code}
+              onChange={(e) => onUpdate("naf_code", e.target.value)}
+              placeholder="Ex : 8559A"
+              className="max-w-xs"
+            />
+            <p className="text-xs text-muted-foreground">
+              Cible tous les clients et prospects ayant ce code NAF.
+            </p>
           </div>
         )}
 

@@ -44,7 +44,7 @@ export async function POST(
           .eq("id", user.id)
           .single();
 
-        if (profile?.role !== "admin") {
+        if (!["admin","super_admin"].includes(profile?.role ?? "")) {
           send("error", 0, "Accès non autorisé");
           controller.close();
           return;

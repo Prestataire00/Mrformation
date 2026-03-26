@@ -16,24 +16,20 @@ import {
   ClipboardList,
   BarChart3,
   MapPin,
-  Newspaper,
-  Settings,
+  LifeBuoy,
   ChevronDown,
   ChevronRight,
   GraduationCap,
   Building2,
-  CreditCard,
   Banknote,
   Calendar,
+  Monitor,
   FileText,
   Star,
-  Monitor,
   AlertTriangle,
   TrendingDown,
   Activity,
   Repeat,
-  Handshake,
-  Phone,
   RefreshCw,
   ShoppingBag,
   Database,
@@ -65,7 +61,9 @@ const navItems: NavItem[] = [
     children: [
       { label: "Dashboard CRM", href: "/admin/crm", icon: BarChart3 },
       { label: "Tunnel de Vente", href: "/admin/crm/prospects", icon: TrendingUp },
+      { label: "Tous les Prospects", href: "/admin/crm/prospects/liste", icon: Users },
       { label: "Tâches", href: "/admin/crm/tasks", icon: ClipboardList },
+      { label: "Suivi Commercial", href: "/admin/crm/suivi", icon: Activity },
       { label: "Devis", href: "/admin/crm/quotes", icon: FileText },
       { label: "Campagnes", href: "/admin/crm/campaigns", icon: Repeat },
     ],
@@ -99,8 +97,6 @@ const navItems: NavItem[] = [
     icon: BookOpen,
     children: [
       { label: "Toutes les Formations", href: "/admin/trainings", icon: BookOpen },
-      { label: "Sessions", href: "/admin/sessions", icon: Calendar },
-      { label: "Emargement", href: "/admin/signatures", icon: PenLine },
       { label: "Parcours", href: "/admin/trainings/parcours", icon: Route },
       { label: "Automatisation", href: "/admin/trainings/automation", icon: RefreshCw },
     ],
@@ -111,19 +107,15 @@ const navItems: NavItem[] = [
     children: [
       { label: "Tous les Programmes", href: "/admin/programs", icon: Library },
       { label: "Migration PDF", href: "/admin/library-migration", icon: Upload },
-      { label: "Catalogue en Ligne", href: "/admin/programs/catalogue", icon: Monitor },
-      { label: "Paiements en Ligne", href: "/admin/programs/payments", icon: CreditCard },
     ],
   },
   {
     label: "Évaluations",
-    href: "/admin/questionnaires",
     icon: ClipboardList,
-  },
-  {
-    label: "Satisfaction & Qualité",
-    href: "/admin/questionnaires/dashboard",
-    icon: Star,
+    children: [
+      { label: "Questionnaires", href: "/admin/questionnaires", icon: ClipboardList },
+      { label: "Satisfaction & Qualité", href: "/admin/questionnaires/dashboard", icon: Star },
+    ],
   },
   {
     label: "E-Learning",
@@ -131,7 +123,6 @@ const navItems: NavItem[] = [
     children: [
       { label: "Mes Cours", href: "/admin/elearning", icon: Monitor },
       { label: "Doc → Cours IA", href: "/admin/elearning/create", icon: Sparkles },
-      { label: "LMS & SCORM", href: "/admin/elearning/lms", icon: Settings },
     ],
   },
   {
@@ -172,32 +163,14 @@ const navItems: NavItem[] = [
     icon: MapPin,
   },
   {
-    label: "La Veille",
-    href: "/admin/veille",
-    icon: Newspaper,
-  },
-  {
-    label: "Affacturage",
-    href: "/admin/affacturage",
-    icon: Banknote,
-  },
-  {
-    label: "Parrainage",
-    href: "/admin/parrainage",
-    icon: Handshake,
-  },
-  {
     label: "Migration",
     href: "/admin/migration",
     icon: Database,
   },
   {
     label: "Support",
-    icon: Phone,
-    children: [
-      { label: "Demander un appel", href: "/admin/support/appel", icon: Phone },
-      { label: "Demander une démo", href: "/admin/support/demo", icon: Monitor },
-    ],
+    href: "/admin/support",
+    icon: LifeBuoy,
   },
 ];
 
@@ -300,11 +273,6 @@ const learnerNavItems: NavItem[] = [
     icon: LayoutDashboard,
   },
   {
-    label: "Catalogue de Formations",
-    href: "/learner/catalog",
-    icon: BookOpen,
-  },
-  {
     label: "Mes Formations",
     href: "/learner/my-trainings",
     icon: GraduationCap,
@@ -404,7 +372,9 @@ const commercialNavItems: NavItem[] = [
     icon: TrendingUp,
     children: [
       { label: "Tunnel de Vente", href: "/admin/crm/prospects", icon: TrendingUp },
+      { label: "Tous les Prospects", href: "/admin/crm/prospects/liste", icon: Users },
       { label: "Tâches", href: "/admin/crm/tasks", icon: ClipboardList },
+      { label: "Suivi Commercial", href: "/admin/crm/suivi", icon: Activity },
       { label: "Devis", href: "/admin/crm/quotes", icon: FileText },
       { label: "Campagnes", href: "/admin/crm/campaigns", icon: Repeat },
     ],
@@ -422,7 +392,6 @@ const commercialNavItems: NavItem[] = [
     icon: BookOpen,
     children: [
       { label: "Toutes les Formations", href: "/admin/trainings", icon: BookOpen },
-      { label: "Sessions", href: "/admin/sessions", icon: Calendar },
     ],
   },
   {
@@ -448,6 +417,7 @@ const trainerCrmNavItems: NavItem[] = [
     children: [
       { label: "Dashboard CRM", href: "/admin/crm", icon: BarChart3 },
       { label: "Mes Prospects", href: "/admin/crm/prospects", icon: TrendingUp },
+      { label: "Tous les Prospects", href: "/admin/crm/prospects/liste", icon: Users },
       { label: "Mes Tâches", href: "/trainer/tasks", icon: ClipboardList },
       { label: "Mes Devis", href: "/admin/crm/quotes", icon: FileText },
     ],
@@ -469,6 +439,16 @@ export function Sidebar({ entity, role = "admin", hasCrmAccess = false }: Sideba
     initials: entityName.charAt(0),
     gradient: `linear-gradient(135deg, ${entity?.theme_color ?? "#3DB5C5"}, ${entity?.theme_color ?? "#3DB5C5"})`,
   };
+
+  // Parcours de formation uniquement pour C3V Formation
+  const roleItems = ROLE_NAV_ITEMS[role] ?? navItems;
+  const filteredNavItems = slug !== "c3v-formation"
+    ? roleItems.map(item =>
+        item.label === "Formations"
+          ? { ...item, children: item.children?.filter(child => child.label !== "Parcours") }
+          : item
+      )
+    : roleItems;
 
   return (
     <aside className="flex flex-col bg-sidebar border-r border-sidebar-border shrink-0 w-60">
@@ -500,7 +480,7 @@ export function Sidebar({ entity, role = "admin", hasCrmAccess = false }: Sideba
 
       {/* Navigation */}
       <nav role="navigation" aria-label="Menu principal" className="flex-1 overflow-y-auto px-2 py-3 space-y-0.5">
-        {(ROLE_NAV_ITEMS[role] ?? navItems).map((item) => (
+        {filteredNavItems.map((item) => (
           <NavItemComponent key={item.label} item={item} collapsed={collapsed} />
         ))}
         {role === "trainer" && hasCrmAccess && trainerCrmNavItems.map((item) => (

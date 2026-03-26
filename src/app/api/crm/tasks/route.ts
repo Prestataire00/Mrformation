@@ -4,6 +4,7 @@ import { createTaskSchema } from "@/lib/validations/crm-tasks";
 import { parsePagination } from "@/lib/validations";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 import { logAudit } from "@/lib/audit-log";
+import { logCommercialAction } from "@/lib/crm/log-commercial-action";
 
 export async function GET(request: NextRequest) {
   try {
@@ -170,7 +171,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { title, description, status, priority, due_date, assigned_to, prospect_id, client_id } = parsed.data;
+    const { title, description, status, priority, due_date, reminder_at, assigned_to, prospect_id, client_id } = parsed.data;
 
     const { data, error } = await supabase
       .from("crm_tasks")
@@ -181,6 +182,7 @@ export async function POST(request: NextRequest) {
         status,
         priority,
         due_date: due_date ?? null,
+        reminder_at: reminder_at ?? null,
         // Trainers can only create tasks assigned to themselves
         assigned_to: profile.role === "trainer" ? user.id : (assigned_to ?? user.id),
         prospect_id: prospect_id ?? null,
@@ -206,6 +208,18 @@ export async function POST(request: NextRequest) {
       resourceId: data.id,
       details: { name: data.title },
     });
+
+    // Log commercial action if linked to a prospect
+    if (data.prospect_id) {
+      logCommercialAction({
+        supabase,
+        entityId: profile.entity_id,
+        authorId: user.id,
+        actionType: "task_created",
+        prospectId: data.prospect_id,
+        subject: data.title,
+      });
+    }
 
     return NextResponse.json({ data, error: null }, { status: 201 });
   } catch (err) {

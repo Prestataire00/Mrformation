@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
       .select("entity_id, role")
       .eq("id", user.id)
       .single();
-    if (!profile?.entity_id || profile.role !== "admin") {
+    if (!profile?.entity_id || !["admin","super_admin"].includes(profile.role)) {
       return NextResponse.json({ error: "Accès non autorisé" }, { status: 403 });
     }
 
@@ -97,7 +97,7 @@ export async function GET() {
       .select("entity_id, role")
       .eq("id", user.id)
       .single();
-    if (!profile?.entity_id || profile.role !== "admin") {
+    if (!profile?.entity_id || !["admin","super_admin"].includes(profile.role)) {
       return NextResponse.json({ error: "Accès non autorisé" }, { status: 403 });
     }
 
@@ -179,7 +179,7 @@ export async function PUT(request: NextRequest) {
       .select("entity_id, role")
       .eq("id", user.id)
       .single();
-    if (!profile?.entity_id || profile.role !== "admin") {
+    if (!profile?.entity_id || !["admin","super_admin"].includes(profile.role)) {
       return NextResponse.json({ error: "Accès non autorisé" }, { status: 403 });
     }
 

@@ -44,10 +44,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Ce lien a déjà été utilisé" }, { status: 410 });
     }
 
-    // Determine the signer
+    // Determine the signer and signer type
+    const signerType: "learner" | "trainer" = tokenData.signer_type || "learner";
     let signerId: string;
 
-    if (tokenData.token_type === "individual") {
+    if (signerType === "trainer" && tokenData.trainer_id) {
+      // Trainer token
+      signerId = tokenData.trainer_id;
+    } else if (tokenData.token_type === "individual") {
       signerId = tokenData.learner_id;
     } else {
       // Session token — learner_id must be provided
@@ -76,31 +80,40 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Check if already signed
-    const { data: existing } = await supabase
+    // Check if already signed (slot-aware)
+    let existingQuery = supabase
       .from("signatures")
       .select("id")
       .eq("session_id", tokenData.session_id)
       .eq("signer_id", signerId)
-      .eq("signer_type", "learner")
-      .maybeSingle();
+      .eq("signer_type", signerType);
+
+    if (tokenData.time_slot_id) {
+      existingQuery = existingQuery.eq("time_slot_id", tokenData.time_slot_id);
+    }
+
+    const { data: existing } = await existingQuery.maybeSingle();
 
     if (existing) {
       return NextResponse.json(
-        { error: "Vous avez déjà signé pour cette session" },
+        { error: tokenData.time_slot_id
+            ? "Vous avez déjà signé pour ce créneau"
+            : "Vous avez déjà signé pour cette session"
+        },
         { status: 409 }
       );
     }
 
-    // Insert signature
+    // Insert signature (with time_slot_id if present)
     const { data: signature, error: sigError } = await supabase
       .from("signatures")
       .insert({
         session_id: tokenData.session_id,
         signer_id: signerId,
-        signer_type: "learner",
+        signer_type: signerType,
         signature_data,
         signed_at: new Date().toISOString(),
+        time_slot_id: tokenData.time_slot_id || null,
       })
       .select()
       .single();
@@ -120,17 +133,28 @@ export async function POST(request: NextRequest) {
         .eq("id", tokenData.id);
     }
 
-    // Get session title for confirmation
+    // Get session title and time slot info for confirmation
     const { data: session } = await supabase
       .from("sessions")
       .select("title")
       .eq("id", tokenData.session_id)
       .single();
 
+    let timeSlotInfo: { start_time: string; end_time: string } | null = null;
+    if (tokenData.time_slot_id) {
+      const { data: slot } = await supabase
+        .from("formation_time_slots")
+        .select("start_time, end_time")
+        .eq("id", tokenData.time_slot_id)
+        .single();
+      timeSlotInfo = slot || null;
+    }
+
     return NextResponse.json({
       success: true,
       signature,
       session_title: session?.title || "Session",
+      time_slot: timeSlotInfo,
     });
   } catch (err) {
     return NextResponse.json(

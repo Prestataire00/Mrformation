@@ -45,6 +45,7 @@ import {
   Send,
 } from "lucide-react";
 import QRCode from "qrcode";
+import { downloadQRCodesPDF, type QRSlotData } from "@/lib/qr-pdf-export";
 
 // ──────────────────────────────────────────────
 // Types
@@ -535,6 +536,63 @@ export default function SignaturesPage() {
       toast({ title: "Erreur", description: "Erreur lors de l'envoi des emails.", variant: "destructive" });
     }
     setSendingEmails(false);
+  };
+
+  // ── Export PDF QR codes ──
+  const [exportingPdf, setExportingPdf] = useState(false);
+
+  const handleExportPdf = async () => {
+    if (!selectedSession) return;
+    setExportingPdf(true);
+    try {
+      // Generate slot tokens
+      const res = await fetch("/api/emargement/slots", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: selectedSession.id, include_trainers: true }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.slots?.length) {
+        // Fallback: no slots, skip PDF
+        toast({ title: "Info", description: "Aucun créneau planifié pour l'export PDF." });
+        setExportingPdf(false);
+        return;
+      }
+
+      const baseUrl = window.location.origin;
+      const pdfSlots: QRSlotData[] = data.slots.map((s: any) => ({
+        id: s.slot.id,
+        title: s.slot.title,
+        start_time: s.slot.start_time,
+        end_time: s.slot.end_time,
+        learners: s.learner_tokens.map((t: any) => ({
+          id: t.person.id,
+          first_name: t.person.first_name,
+          last_name: t.person.last_name,
+          token: t.token,
+        })),
+        trainers: s.trainer_tokens.map((t: any) => ({
+          id: t.person.id,
+          first_name: t.person.first_name,
+          last_name: t.person.last_name,
+          token: t.token,
+        })),
+      }));
+
+      await downloadQRCodesPDF({
+        sessionTitle: selectedSession.title,
+        trainingTitle: null,
+        entityName: "MR FORMATION",
+        location: selectedSession.location || null,
+        baseUrl,
+        slots: pdfSlots,
+      }, `qr-emargements-${selectedSession.title.replace(/\s+/g, "-")}.pdf`);
+
+      toast({ title: "PDF exporté avec succès" });
+    } catch {
+      toast({ title: "Erreur", description: "Erreur lors de l'export PDF", variant: "destructive" });
+    }
+    setExportingPdf(false);
   };
 
   // ── Statistics ──
@@ -1120,6 +1178,16 @@ export default function SignaturesPage() {
                     Envoyer par email
                   </>
                 )}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 text-xs"
+                onClick={handleExportPdf}
+                disabled={exportingPdf}
+              >
+                {exportingPdf ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileSignature className="h-3.5 w-3.5" />}
+                Exporter PDF
               </Button>
               <div className="flex-1" />
               <Button variant="outline" onClick={() => setDialogOpen(false)}>

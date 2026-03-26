@@ -39,7 +39,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ data: null, error }, { status });
     }
 
-    if (profile.role !== "admin") {
+    if (!["admin","super_admin"].includes(profile.role)) {
       return NextResponse.json({ data: null, error: "Accès non autorisé" }, { status: 403 });
     }
 
@@ -92,7 +92,7 @@ export async function PUT(request: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ data: null, error }, { status });
     }
 
-    if (profile.role !== "admin") {
+    if (!["admin","super_admin"].includes(profile.role)) {
       return NextResponse.json({ data: null, error: "Accès non autorisé" }, { status: 403 });
     }
 
@@ -213,7 +213,7 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ data: null, error }, { status });
     }
 
-    if (profile.role !== "admin") {
+    if (!["admin","super_admin"].includes(profile.role)) {
       return NextResponse.json({ data: null, error: "Accès non autorisé" }, { status: 403 });
     }
 

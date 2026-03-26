@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Users, Plus, Pencil, Trash2, Loader2 } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +30,7 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedTrainerId, setSelectedTrainerId] = useState("");
   const [selectedRole, setSelectedRole] = useState("formateur");
+  const [selectedHourlyRate, setSelectedHourlyRate] = useState("");
   const [saving, setSaving] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
@@ -53,6 +55,7 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
       session_id: formation.id,
       trainer_id: selectedTrainerId,
       role: selectedRole,
+      hourly_rate: parseFloat(selectedHourlyRate) || null,
     });
     setSaving(false);
     if (error) {
@@ -61,6 +64,7 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
       toast({ title: "Formateur ajouté" });
       setDialogOpen(false);
       setSelectedTrainerId("");
+      setSelectedHourlyRate("");
       onRefresh();
     }
   };
@@ -110,6 +114,9 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
                     )}
                   </div>
                   <Badge variant="outline" className="text-xs">{ft.role}</Badge>
+                  {ft.hourly_rate != null && (
+                    <span className="text-xs text-muted-foreground">{ft.hourly_rate} €/h</span>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   <Button size="sm" variant="ghost" className="text-red-600 hover:text-red-700" onClick={() => setDeleteId(ft.id)}>
@@ -131,14 +138,28 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
       </Card>
 
       {/* Add Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <Dialog open={dialogOpen} onOpenChange={(open) => {
+          setDialogOpen(open);
+          if (!open) {
+            setSelectedTrainerId("");
+            setSelectedHourlyRate("");
+          }
+        }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Ajouter un Formateur</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Select value={selectedTrainerId} onValueChange={setSelectedTrainerId}>
+              <Select value={selectedTrainerId} onValueChange={(id) => {
+                  setSelectedTrainerId(id);
+                  const trainer = allTrainers.find((t) => t.id === id);
+                  if (trainer?.hourly_rate != null) {
+                    setSelectedHourlyRate(String(trainer.hourly_rate));
+                  } else {
+                    setSelectedHourlyRate("");
+                  }
+                }}>
                 <SelectTrigger>
                   <SelectValue placeholder="Sélectionner un formateur" />
                 </SelectTrigger>
@@ -162,6 +183,17 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
                   <SelectItem value="intervenant">Intervenant</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1.5 block">Taux horaire (€/h)</label>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="Ex : 50"
+                value={selectedHourlyRate}
+                onChange={(e) => setSelectedHourlyRate(e.target.value)}
+              />
             </div>
           </div>
           <DialogFooter>

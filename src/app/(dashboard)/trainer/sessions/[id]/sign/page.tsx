@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { SignaturePad } from "@/components/signatures/SignaturePad";
@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/components/ui/use-toast";
 import { formatDate, getInitials } from "@/lib/utils";
 import {
@@ -27,6 +28,8 @@ import {
   Loader2,
   PenLine,
   FileCheck,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 
 interface SessionInfo {
@@ -41,18 +44,24 @@ interface SessionInfo {
   training: { title: string } | null;
 }
 
-interface LearnerSignatureStatus {
-  learner_id: string;
-  first_name: string;
-  last_name: string;
-  signed: boolean;
-  signed_at: string | null;
+interface TimeSlot {
+  id: string;
+  title: string | null;
+  start_time: string;
+  end_time: string;
+  slot_order: number;
 }
 
-interface ExistingSignature {
-  id: string;
-  signature_data: string;
-  signed_at: string;
+interface SlotSignatureState {
+  slotId: string;
+  trainerSigned: boolean;
+  trainerSignature: { id: string; signature_data: string; signed_at: string } | null;
+  learnerStatuses: {
+    learner_id: string;
+    first_name: string;
+    last_name: string;
+    signed: boolean;
+  }[];
 }
 
 export default function TrainerSignPage() {
@@ -63,91 +72,131 @@ export default function TrainerSignPage() {
   const sessionId = params.id as string;
 
   const [session, setSession] = useState<SessionInfo | null>(null);
-  const [trainerSignature, setTrainerSignature] = useState<ExistingSignature | null>(null);
-  const [learnerStatuses, setLearnerStatuses] = useState<LearnerSignatureStatus[]>([]);
+  const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([]);
+  const [slotStates, setSlotStates] = useState<Map<string, SlotSignatureState>>(new Map());
   const [loading, setLoading] = useState(true);
-  const [signing, setSigning] = useState(false);
-  const [isSigned, setIsSigned] = useState(false);
+  const [signingSlot, setSigningSlot] = useState<string | null>(null);
+  const [expandedSlots, setExpandedSlots] = useState<Set<string>>(new Set());
+  const [trainerId, setTrainerId] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId]);
+  const formatTime = (dateStr: string) =>
+    new Date(dateStr).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
 
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true);
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // Load session info
+    // Get trainer ID from profile
+    const { data: trainerData } = await supabase
+      .from("trainers")
+      .select("id")
+      .eq("profile_id", user.id)
+      .single();
+
+    const tId = trainerData?.id || user.id;
+    setTrainerId(tId);
+
+    // Load session
     const { data: sessionData } = await supabase
       .from("sessions")
-      .select(
-        "id, title, start_date, end_date, location, mode, status, duration_hours, training:trainings(title)"
-      )
+      .select("id, title, start_date, end_date, location, mode, status, duration_hours, training:trainings(title)")
       .eq("id", sessionId)
       .single();
 
     if (sessionData) {
       setSession({
         ...sessionData,
-        training: Array.isArray(sessionData.training)
-          ? sessionData.training[0] || null
-          : sessionData.training,
+        training: Array.isArray(sessionData.training) ? sessionData.training[0] || null : sessionData.training,
       } as SessionInfo);
     }
 
-    // Check trainer's own signature
-    const { data: sigData } = await supabase
-      .from("signatures")
-      .select("id, signature_data, signed_at")
+    // Load time slots
+    const { data: slots } = await supabase
+      .from("formation_time_slots")
+      .select("id, title, start_time, end_time, slot_order")
       .eq("session_id", sessionId)
-      .eq("signer_id", user.id)
-      .eq("signer_type", "trainer")
-      .single();
+      .order("slot_order", { ascending: true });
 
-    if (sigData) {
-      setTrainerSignature(sigData);
-      setIsSigned(true);
-    }
+    const slotList = slots || [];
+    setTimeSlots(slotList);
 
-    // Load learner enrollment + signature status
-    const { data: enrollments } = await supabase
-      .from("enrollments")
-      .select("learner_id, learner:learners(first_name, last_name, profile_id)")
-      .eq("session_id", sessionId)
-      .eq("status", "active");
-
+    // Load all signatures for this session
     const { data: allSigs } = await supabase
       .from("signatures")
-      .select("signer_id, signed_at")
-      .eq("session_id", sessionId)
-      .eq("signer_type", "learner");
+      .select("id, signer_id, signer_type, signature_data, signed_at, time_slot_id")
+      .eq("session_id", sessionId);
 
-    if (enrollments) {
-      const statuses: LearnerSignatureStatus[] = enrollments.map((e: any) => {
+    // Load enrollments
+    const { data: enrollments } = await supabase
+      .from("enrollments")
+      .select("learner_id, learner:learners(id, first_name, last_name)")
+      .eq("session_id", sessionId)
+      .in("status", ["registered", "confirmed"]);
+
+    // Build state per slot
+    const stateMap = new Map<string, SlotSignatureState>();
+
+    if (slotList.length > 0) {
+      for (const slot of slotList) {
+        const slotSigs = (allSigs || []).filter(s => s.time_slot_id === slot.id);
+        const trainerSig = slotSigs.find(s => s.signer_id === tId && s.signer_type === "trainer");
+
+        const learnerStatuses = (enrollments || []).map((e: any) => {
+          const learner = Array.isArray(e.learner) ? e.learner[0] : e.learner;
+          const sig = slotSigs.find(s => s.signer_id === learner?.id && s.signer_type === "learner");
+          return {
+            learner_id: e.learner_id,
+            first_name: learner?.first_name || "",
+            last_name: learner?.last_name || "",
+            signed: !!sig,
+          };
+        });
+
+        stateMap.set(slot.id, {
+          slotId: slot.id,
+          trainerSigned: !!trainerSig,
+          trainerSignature: trainerSig || null,
+          learnerStatuses,
+        });
+      }
+      // Auto-expand first unsigned slot
+      const firstUnsigned = slotList.find(s => !stateMap.get(s.id)?.trainerSigned);
+      if (firstUnsigned) {
+        setExpandedSlots(new Set([firstUnsigned.id]));
+      }
+    } else {
+      // No slots — legacy mode: single session signature
+      const trainerSig = (allSigs || []).find(s => s.signer_id === tId && s.signer_type === "trainer" && !s.time_slot_id);
+      const learnerStatuses = (enrollments || []).map((e: any) => {
         const learner = Array.isArray(e.learner) ? e.learner[0] : e.learner;
-        const profileId = learner?.profile_id;
-        const sig = allSigs?.find((s: any) => s.signer_id === profileId);
+        const sig = (allSigs || []).find(s => s.signer_id === learner?.id && s.signer_type === "learner" && !s.time_slot_id);
         return {
           learner_id: e.learner_id,
           first_name: learner?.first_name || "",
           last_name: learner?.last_name || "",
           signed: !!sig,
-          signed_at: sig?.signed_at || null,
         };
       });
-      setLearnerStatuses(statuses);
+      stateMap.set("session", {
+        slotId: "session",
+        trainerSigned: !!trainerSig,
+        trainerSignature: trainerSig || null,
+        learnerStatuses,
+      });
     }
 
+    setSlotStates(stateMap);
     setLoading(false);
-  }
+  }, [sessionId]);
 
-  async function handleSign(svgData: string) {
-    setSigning(true);
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  async function handleSign(svgData: string, slotId: string) {
+    setSigningSlot(slotId);
     try {
       const res = await fetch("/api/signatures", {
         method: "POST",
@@ -155,39 +204,34 @@ export default function TrainerSignPage() {
         body: JSON.stringify({
           session_id: sessionId,
           signature_data: svgData,
+          time_slot_id: slotId === "session" ? undefined : slotId,
         }),
       });
 
       const result = await res.json();
 
       if (!res.ok) {
-        toast({
-          title: "Erreur",
-          description: result.error || "Impossible de sauvegarder la signature.",
-          variant: "destructive",
-        });
-        setSigning(false);
+        toast({ title: "Erreur", description: result.error || "Impossible de sauvegarder.", variant: "destructive" });
+        setSigningSlot(null);
         return;
       }
 
-      setIsSigned(true);
-      setTrainerSignature(result.signature);
-      toast({
-        title: "Signature enregistrée",
-        description: "Votre signature vaut validation des heures de formation dispensées.",
-      });
+      toast({ title: "Signature enregistrée", description: "Votre présence a été validée." });
+      await loadData();
     } catch {
-      toast({
-        title: "Erreur",
-        description: "Une erreur est survenue.",
-        variant: "destructive",
-      });
+      toast({ title: "Erreur", description: "Une erreur est survenue.", variant: "destructive" });
     }
-    setSigning(false);
+    setSigningSlot(null);
   }
 
-  const signedCount = learnerStatuses.filter((l) => l.signed).length;
-  const totalLearners = learnerStatuses.length;
+  const toggleSlot = (slotId: string) => {
+    setExpandedSlots(prev => {
+      const next = new Set(prev);
+      if (next.has(slotId)) next.delete(slotId);
+      else next.add(slotId);
+      return next;
+    });
+  };
 
   if (loading) {
     return (
@@ -202,12 +246,132 @@ export default function TrainerSignPage() {
       <div className="p-6 text-center">
         <p className="text-gray-500">Session introuvable.</p>
         <Button variant="outline" className="mt-4" onClick={() => router.back()}>
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Retour
+          <ArrowLeft className="h-4 w-4 mr-2" /> Retour
         </Button>
       </div>
     );
   }
+
+  // Render a single slot's signature section
+  const renderSlotSection = (slotId: string, label: string, sublabel: string | null) => {
+    const state = slotStates.get(slotId);
+    if (!state) return null;
+
+    const isExpanded = expandedSlots.has(slotId);
+    const signedCount = state.learnerStatuses.filter(l => l.signed).length;
+    const totalLearners = state.learnerStatuses.length;
+    const pct = totalLearners > 0 ? Math.round((signedCount / totalLearners) * 100) : 0;
+
+    return (
+      <Card key={slotId}>
+        <CardHeader
+          className="pb-3 cursor-pointer"
+          onClick={() => toggleSlot(slotId)}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex-1">
+              <CardTitle className="text-base flex items-center gap-2">
+                {state.trainerSigned ? (
+                  <CheckCircle2 className="h-4 w-4 text-green-500" />
+                ) : (
+                  <PenLine className="h-4 w-4 text-blue-600" />
+                )}
+                {label}
+              </CardTitle>
+              {sublabel && <p className="text-sm text-muted-foreground mt-1">{sublabel}</p>}
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="text-right">
+                <Badge
+                  className={state.trainerSigned
+                    ? "bg-green-100 text-green-700 hover:bg-green-100"
+                    : "bg-orange-100 text-orange-700 hover:bg-orange-100"
+                  }
+                >
+                  {state.trainerSigned ? "Signé" : "À signer"}
+                </Badge>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Apprenants: {signedCount}/{totalLearners}
+                </p>
+              </div>
+              {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </div>
+          </div>
+          <Progress value={pct} className="h-1.5 mt-2" />
+        </CardHeader>
+
+        {isExpanded && (
+          <CardContent className="space-y-4">
+            {/* Trainer signature */}
+            {state.trainerSigned && state.trainerSignature ? (
+              <div className="space-y-2">
+                <div className="border-2 border-green-400 rounded-lg bg-green-50 p-3">
+                  <div
+                    className="w-full h-24 flex items-center justify-center"
+                    dangerouslySetInnerHTML={{ __html: state.trainerSignature.signature_data }}
+                  />
+                </div>
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <FileCheck className="h-4 w-4 text-green-600" />
+                  <span>Signé le {formatDate(state.trainerSignature.signed_at)}</span>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  Dessinez votre signature pour valider ce créneau
+                </p>
+                <SignaturePad
+                  label="Signature formateur"
+                  isSigned={false}
+                  onSign={(svg) => handleSign(svg, slotId)}
+                  onClear={() => {}}
+                  disabled={signingSlot === slotId}
+                />
+                {signingSlot === slotId && (
+                  <div className="flex items-center gap-2 text-sm text-blue-600">
+                    <Loader2 className="h-4 w-4 animate-spin" /> Enregistrement...
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Learner statuses */}
+            {totalLearners > 0 && (
+              <div className="pt-3 border-t">
+                <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                  <Users className="h-4 w-4" />
+                  Apprenants ({signedCount}/{totalLearners})
+                </h4>
+                <div className="space-y-1.5">
+                  {state.learnerStatuses.map(l => (
+                    <div
+                      key={l.learner_id}
+                      className="flex items-center justify-between py-2 px-3 rounded-lg bg-gray-50"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Avatar className="h-7 w-7">
+                          <AvatarFallback className="text-xs">
+                            {getInitials(`${l.first_name} ${l.last_name}`)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="text-sm">{l.first_name} {l.last_name}</span>
+                      </div>
+                      {l.signed ? (
+                        <CheckCircle2 className="h-4 w-4 text-green-500" />
+                      ) : (
+                        <XCircle className="h-4 w-4 text-gray-300" />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        )}
+      </Card>
+    );
+  };
 
   return (
     <div className="p-6 max-w-2xl mx-auto space-y-6">
@@ -232,7 +396,7 @@ export default function TrainerSignPage() {
             <CardDescription>{session.training.title}</CardDescription>
           )}
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent>
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div className="flex items-center gap-2 text-gray-600">
               <CalendarDays className="h-4 w-4" />
@@ -255,119 +419,24 @@ export default function TrainerSignPage() {
             )}
             <div className="flex items-center gap-2 text-gray-600">
               <Users className="h-4 w-4" />
-              <span>{totalLearners} apprenant(s)</span>
+              <span>{timeSlots.length} créneau(x)</span>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Learner signatures overview */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Users className="h-4 w-4" />
-            Signatures des apprenants ({signedCount}/{totalLearners})
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {totalLearners === 0 ? (
-            <p className="text-sm text-gray-400">Aucun apprenant inscrit.</p>
-          ) : (
-            <div className="space-y-2">
-              {learnerStatuses.map((l) => (
-                <div
-                  key={l.learner_id}
-                  className="flex items-center justify-between py-2 px-3 rounded-lg bg-gray-50"
-                >
-                  <div className="flex items-center gap-3">
-                    <Avatar className="h-8 w-8">
-                      <AvatarFallback className="text-xs">
-                        {getInitials(`${l.first_name} ${l.last_name}`)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <span className="text-sm font-medium">
-                      {l.first_name} {l.last_name}
-                    </span>
-                  </div>
-                  {l.signed ? (
-                    <Badge className="bg-green-100 text-green-700 border-green-300">
-                      <CheckCircle2 className="h-3 w-3 mr-1" />
-                      Signé
-                      {l.signed_at && ` le ${formatDate(l.signed_at)}`}
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline" className="text-gray-400">
-                      <XCircle className="h-3 w-3 mr-1" />
-                      Non signé
-                    </Badge>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Trainer signature section */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg flex items-center gap-2">
-            {isSigned ? (
-              <CheckCircle2 className="h-5 w-5 text-green-500" />
-            ) : (
-              <PenLine className="h-5 w-5 text-blue-600" />
-            )}
-            {isSigned ? "Heures validées" : "Apposer votre signature"}
-          </CardTitle>
-          <CardDescription>
-            {isSigned
-              ? "Votre signature a été enregistrée et vaut validation des heures de formation dispensées."
-              : "Votre signature vaudra validation des heures de formation dispensées, en conformité avec le planning de la session."}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {isSigned && trainerSignature ? (
-            <div className="space-y-4">
-              <div className="border-2 border-green-400 rounded-lg bg-green-50 p-4">
-                <div
-                  className="w-full h-32 flex items-center justify-center"
-                  dangerouslySetInnerHTML={{
-                    __html: trainerSignature.signature_data,
-                  }}
-                />
-              </div>
-              <div className="flex items-center gap-2 text-sm text-gray-600">
-                <FileCheck className="h-4 w-4 text-green-600" />
-                <span>
-                  Signé le {formatDate(trainerSignature.signed_at)}
-                  {session.duration_hours &&
-                    ` — ${session.duration_hours}h validées`}
-                </span>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <SignaturePad
-                label="Dessinez votre signature ci-dessous"
-                isSigned={false}
-                onSign={handleSign}
-                onClear={() => {}}
-                disabled={signing}
-              />
-              {signing && (
-                <div className="flex items-center gap-2 text-sm text-blue-600">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Enregistrement de votre signature...
-                </div>
-              )}
-              <p className="text-xs text-gray-400 italic">
-                En signant, vous confirmez avoir dispensé les heures de
-                formation conformément au planning de cette session.
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {/* Slots or session-level signature */}
+      {timeSlots.length > 0 ? (
+        timeSlots.map((slot, index) =>
+          renderSlotSection(
+            slot.id,
+            `Créneau ${index + 1}${slot.title ? ` : ${slot.title}` : ""}`,
+            `${new Date(slot.start_time).toLocaleDateString("fr-FR")} ${formatTime(slot.start_time)} - ${formatTime(slot.end_time)}`
+          )
+        )
+      ) : (
+        renderSlotSection("session", "Signature de la session", null)
+      )}
     </div>
   );
 }

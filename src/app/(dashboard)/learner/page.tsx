@@ -45,8 +45,6 @@ import {
   Mail,
   Briefcase,
   Star,
-  ArrowRight,
-  Calendar,
   PenLine,
 } from "lucide-react";
 import { isAfter, parseISO } from "date-fns";
@@ -478,25 +476,6 @@ export default function LearnerPage() {
         </Card>
       </div>
 
-      {/* ── Browse available sessions ── */}
-      <Link href="/learner/catalog" className="mt-6 block">
-        <Card className="border-dashed border-2 border-blue-200 bg-blue-50/50 hover:bg-blue-50 transition-colors cursor-pointer">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                  <Calendar className="w-5 h-5 text-blue-600" />
-                </div>
-                <div>
-                  <p className="font-semibold text-gray-900">Parcourir les formations disponibles</p>
-                  <p className="text-sm text-gray-500">Découvrez et inscrivez-vous aux sessions ouvertes</p>
-                </div>
-              </div>
-              <ArrowRight className="w-5 h-5 text-blue-400" />
-            </div>
-          </CardContent>
-        </Card>
-      </Link>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* ── Main column ── */}

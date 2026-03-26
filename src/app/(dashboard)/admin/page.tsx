@@ -9,7 +9,6 @@ import {
   AdminAlerts,
   AdminOverdueTasks,
   AdminKPICards,
-  AdminAnnualChart,
   AdminRecentActivity,
   AdminSessionCalendar,
   AdminUpcomingSessions,
@@ -17,29 +16,35 @@ import {
   AdminDashboardSettings,
 } from "./_components";
 import {
-  MONTHS_FR,
   DEFAULT_WIDGET_CONFIG,
   DEFAULT_KPI_CONFIG,
-  OFFICIAL_STATS,
 } from "./_components/constants";
 import type {
   UpcomingSession,
   MissingReportAlert,
   OverdueTask,
   RecentActivity,
-  MonthlyChartData,
   CalendarSession,
   WidgetConfigItem,
   KpiConfigItem,
 } from "./_components/types";
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+function getCookie(name: string): string | null {
+  if (typeof document === "undefined") return null;
+  const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : null;
+}
 
 // ─── Composant principal ─────────────────────────────────────────────────────
 
 export default function AdminDashboardPage() {
   const supabase = createClient();
   const { entityId } = useEntity();
+  const isSuperAdmin = getCookie("user_role") === "super_admin";
 
-  const [year,           setYear]           = useState<number>(new Date().getFullYear());
+  const year = new Date().getFullYear();
   const [loading,        setLoading]        = useState(true);
 
   // KPIs
@@ -56,9 +61,6 @@ export default function AdminDashboardPage() {
 
   // Activités récentes
   const [activities,     setActivities]     = useState<RecentActivity[]>([]);
-
-  // Chart annuel
-  const [chartData,      setChartData]      = useState<MonthlyChartData[]>([]);
 
   // Prochaines sessions
   const [upcoming,       setUpcoming]       = useState<UpcomingSession[]>([]);
@@ -150,7 +152,7 @@ export default function AdminDashboardPage() {
     if (entityId === undefined) return;
     fetchAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entityId, year]);
+  }, [entityId]);
 
   // ── orchestrateur ─────────────────────────────────────────────────────────
   async function fetchAll() {
@@ -160,7 +162,6 @@ export default function AdminDashboardPage() {
       fetchAlerts(),
       fetchOverdueTasks(),
       fetchActivities(),
-      fetchChartData(),
       fetchUpcoming(),
       fetchExtraKPIs(),
     ]);
@@ -409,32 +410,13 @@ export default function AdminDashboardPage() {
   async function fetchActivities() {
     let q = supabase
       .from("activity_log")
-      .select("id, action, resource_type, details, created_at")
+      .select("id, action, resource_type, details, created_at, profiles(first_name, last_name, role)")
       .order("created_at", { ascending: false })
       .limit(10);
     if (entityId) q = q.eq("entity_id", entityId);
 
     const { data } = await q;
-    setActivities((data as RecentActivity[]) ?? []);
-  }
-
-  // ── Chart annuel (données officielles) ────────────────────────────────────
-  function fetchChartData() {
-    const stats = OFFICIAL_STATS[year];
-    if (stats) {
-      setChartData(
-        stats.map(([apprenants, terminees], i) => ({
-          month: MONTHS_FR[i],
-          apprenants,
-          terminees,
-        }))
-      );
-    } else {
-      // Année sans données officielles -> tout à 0
-      setChartData(
-        MONTHS_FR.map((month) => ({ month, apprenants: 0, terminees: 0 }))
-      );
-    }
+    setActivities((data as unknown as RecentActivity[]) ?? []);
   }
 
   // ── Prochaines sessions ───────────────────────────────────────────────────
@@ -618,14 +600,9 @@ export default function AdminDashboardPage() {
         />
       )}
 
-      {/* Graphique annuel */}
-      {isWidgetVisible("chart") && (
-        <AdminAnnualChart year={year} setYear={setYear} chartData={chartData} />
-      )}
-
       {/* Activités récentes */}
       {isWidgetVisible("activity") && (
-        <AdminRecentActivity activities={activities} />
+        <AdminRecentActivity activities={activities} isSuperAdmin={isSuperAdmin} />
       )}
 
       {/* Calendrier des sessions */}

@@ -5,7 +5,6 @@ import {
   createExpiringQuoteTasks,
   notifyOverdueTasks,
 } from "@/lib/crm/automations";
-import { recalculateAllScores } from "@/lib/crm/lead-scoring";
 import { sanitizeError } from "@/lib/api-error";
 
 export async function POST(request: NextRequest) {
@@ -27,7 +26,7 @@ export async function POST(request: NextRequest) {
       .eq("id", user.id)
       .single();
 
-    if (!profile?.entity_id || profile.role !== "admin") {
+    if (!profile?.entity_id || !["admin","super_admin"].includes(profile.role)) {
       return NextResponse.json({ data: null, error: "Admin access required" }, { status: 403 });
     }
 
@@ -58,11 +57,6 @@ export async function POST(request: NextRequest) {
     if (enabledTriggers.has("task_overdue_3d")) {
       const count = await notifyOverdueTasks(supabase, entityId);
       results.overdue_notifications = `${count} notification(s) créée(s)`;
-    }
-
-    if (enabledTriggers.has("recalculate_scores")) {
-      const count = await recalculateAllScores(supabase, entityId);
-      results.scores_updated = `${count} score(s) recalculé(s)`;
     }
 
     // Daily digest and weekly summary are handled by their respective API routes

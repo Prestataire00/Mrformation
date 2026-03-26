@@ -53,7 +53,6 @@ export const MODE_LABELS: Record<string, string> = {
 export const DEFAULT_WIDGET_CONFIG: WidgetConfigItem[] = [
   { id: "alerts",      label: "Alertes et notifications",   visible: true,  order: 0 },
   { id: "kpis",        label: "Indicateurs clés (KPIs)",    visible: true,  order: 1 },
-  { id: "chart",       label: "Statistiques annuelles",     visible: true,  order: 2 },
   { id: "activity",    label: "Activités récentes",         visible: true,  order: 3 },
   { id: "calendar",    label: "Calendrier des sessions",    visible: true,  order: 4 },
   { id: "upcoming",    label: "Sessions à venir",           visible: true,  order: 5 },
@@ -71,34 +70,3 @@ export const DEFAULT_KPI_CONFIG: KpiConfigItem[] = [
   { id: "nb_questionnaires",      label: "Réponses Questionnaires",    visible: false, order: 7 },
 ];
 
-// Official chart statistics data by year
-export const OFFICIAL_STATS: Record<number, [number, number][]> = {
-  2025: [
-    [0, 0],       // Jan
-    [0, 0],       // Fév
-    [0, 0],       // Mar
-    [0, 0],       // Avr
-    [1686, 9],    // Mai
-    [61, 13],     // Juin
-    [33, 3],      // Juil
-    [9, 0],       // Aoû
-    [76, 14],     // Sep
-    [35, 8],      // Oct
-    [33, 7],      // Nov
-    [9, 5],       // Déc
-  ],
-  2026: [
-    [19, 1],      // Jan
-    [26, 2],      // Fév
-    [35, 1],      // Mar
-    [0, 0],       // Avr
-    [0, 0],       // Mai
-    [0, 0],       // Juin
-    [0, 0],       // Juil
-    [0, 0],       // Aoû
-    [0, 0],       // Sep
-    [0, 0],       // Oct
-    [0, 0],       // Nov
-    [0, 0],       // Déc
-  ],
-};

@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
       .eq("id", user.id)
       .single();
 
-    if (!profile?.entity_id || profile.role !== "admin") {
+    if (!profile?.entity_id || !["admin","super_admin"].includes(profile.role)) {
       return NextResponse.json({ data: null, error: "Accès non autorisé" }, { status: 403 });
     }
 
@@ -113,7 +113,7 @@ export async function DELETE(request: NextRequest) {
       .eq("id", user.id)
       .single();
 
-    if (!profile?.entity_id || profile.role !== "admin") {
+    if (!profile?.entity_id || !["admin","super_admin"].includes(profile.role)) {
       return NextResponse.json({ data: null, error: "Accès non autorisé" }, { status: 403 });
     }
 

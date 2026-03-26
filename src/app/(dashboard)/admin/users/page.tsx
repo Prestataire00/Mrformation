@@ -626,8 +626,8 @@ export default function UsersPage() {
                                   </button>
                                 )}
 
-                                {/* Changer le mot de passe (utilisateurs auth uniquement) */}
-                                {u.source === "profile" && (
+                                {/* Changer le mot de passe (utilisateurs auth uniquement, respect hiérarchie) */}
+                                {u.source === "profile" && (isSuperAdmin || (u.role !== "admin" && u.role !== "super_admin")) && (
                                   <button
                                     onClick={() => {
                                       setPasswordModal({ userId: u.id, name: `${u.first_name} ${u.last_name}` });

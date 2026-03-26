@@ -540,12 +540,6 @@ export default function ELearningPage() {
             <Sparkles className="h-4 w-4" />
             Doc → Cours IA
           </Link>
-          <Link
-            href="/admin/elearning/lms"
-            className="border border-[#3DB5C5] text-[#3DB5C5] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#3DB5C5]/5 transition-colors"
-          >
-            LMS & SCORM
-          </Link>
           <Button onClick={openAddDialog} className="gap-2">
             <Plus className="h-4 w-4" />
             Nouveau cours

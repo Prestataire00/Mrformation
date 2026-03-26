@@ -1,7 +1,6 @@
 export { AdminAlerts } from "./AdminAlerts";
 export { AdminOverdueTasks } from "./AdminOverdueTasks";
 export { AdminKPICards } from "./AdminKPICards";
-export { AdminAnnualChart } from "./AdminAnnualChart";
 export { AdminRecentActivity } from "./AdminRecentActivity";
 export { AdminSessionCalendar } from "./AdminSessionCalendar";
 export { AdminUpcomingSessions } from "./AdminUpcomingSessions";

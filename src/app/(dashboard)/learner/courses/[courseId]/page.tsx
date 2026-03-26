@@ -13,7 +13,6 @@ import {
   CheckCircle2,
   ChevronLeft,
   Clock,
-  Download,
   FileText,
   Loader2,
   RotateCcw,
@@ -725,22 +724,6 @@ export default function CoursePlayerPage() {
                   <p className="text-sm font-semibold text-gray-900">{ch.title}</p>
                   <p className="text-xs text-gray-500">{ch.estimated_duration_minutes} min</p>
                 </div>
-              </div>
-              <div className="flex items-center gap-2">
-                {ch.gamma_deck_id && (
-                  <a href={`/api/elearning/${courseId}/download-pptx?chapterId=${ch.id}`} target="_blank" rel="noopener noreferrer">
-                    <Button variant="outline" size="sm" className="gap-1.5 text-xs h-8 text-orange-600 border-orange-200 hover:bg-orange-50">
-                      <Download className="h-3.5 w-3.5" /> PPTX
-                    </Button>
-                  </a>
-                )}
-                {ch.gamma_deck_id && (
-                  <a href={`/api/elearning/${courseId}/download-pdf?chapterId=${ch.id}`} target="_blank" rel="noopener noreferrer">
-                    <Button variant="outline" size="sm" className="gap-1.5 text-xs h-8 text-red-600 border-red-200 hover:bg-red-50">
-                      <Download className="h-3.5 w-3.5" /> PDF
-                    </Button>
-                  </a>
-                )}
               </div>
             </div>
 

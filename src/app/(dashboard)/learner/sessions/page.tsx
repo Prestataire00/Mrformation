@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 export default function LearnerSessionsRedirect() {
   const router = useRouter();
   useEffect(() => {
-    router.replace("/learner/catalog");
+    router.replace("/learner/my-trainings");
   }, [router]);
   return null;
 }

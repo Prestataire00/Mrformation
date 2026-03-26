@@ -11,6 +11,15 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 import {
   Card,
@@ -48,6 +57,7 @@ import {
   Filter,
   Eye,
   Upload,
+  ChevronDown,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -57,6 +67,14 @@ interface ProgramFormData {
   description: string;
   objectives: string;
   content: string;
+  price: string;
+  tva_rate: string;
+  duration_hours: string;
+  nsf_code: string;
+  nsf_label: string;
+  is_apprenticeship: boolean;
+  bpf_objective: string;
+  bpf_funding_type: string;
 }
 
 const emptyForm: ProgramFormData = {
@@ -78,6 +96,14 @@ const emptyForm: ProgramFormData = {
     null,
     2
   ),
+  price: "",
+  tva_rate: "20",
+  duration_hours: "",
+  nsf_code: "",
+  nsf_label: "",
+  is_apprenticeship: false,
+  bpf_objective: "",
+  bpf_funding_type: "",
 };
 
 export default function ProgramsPage() {
@@ -97,6 +123,9 @@ export default function ProgramsPage() {
   const [formData, setFormData] = useState<ProgramFormData>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [contentError, setContentError] = useState("");
+
+  // BPF section toggle
+  const [bpfSectionOpen, setBpfSectionOpen] = useState(false);
 
   // Version history dialog
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
@@ -160,6 +189,7 @@ export default function ProgramsPage() {
     setEditingProgram(null);
     setFormData(emptyForm);
     setContentError("");
+    setBpfSectionOpen(false);
     setDialogOpen(true);
   };
 
@@ -170,8 +200,17 @@ export default function ProgramsPage() {
       description: program.description || "",
       objectives: program.objectives || "",
       content: program.content ? JSON.stringify(program.content, null, 2) : emptyForm.content,
+      price: program.price != null ? String(program.price) : "",
+      tva_rate: program.tva_rate != null ? String(program.tva_rate) : "20",
+      duration_hours: program.duration_hours != null ? String(program.duration_hours) : "",
+      nsf_code: program.nsf_code || "",
+      nsf_label: program.nsf_label || "",
+      is_apprenticeship: !!program.is_apprenticeship,
+      bpf_objective: program.bpf_objective || "",
+      bpf_funding_type: program.bpf_funding_type || "",
     });
     setContentError("");
+    setBpfSectionOpen(false);
     setDialogOpen(true);
   };
 
@@ -191,6 +230,14 @@ export default function ProgramsPage() {
       objectives: formData.objectives.trim() || null,
       content: contentParsed,
       updated_at: new Date().toISOString(),
+      price: formData.price ? parseFloat(formData.price) : null,
+      tva_rate: formData.tva_rate ? parseFloat(formData.tva_rate) : null,
+      duration_hours: formData.duration_hours ? parseFloat(formData.duration_hours) : null,
+      nsf_code: formData.nsf_code.trim() || null,
+      nsf_label: formData.nsf_label.trim() || null,
+      is_apprenticeship: formData.is_apprenticeship,
+      bpf_objective: formData.bpf_objective || null,
+      bpf_funding_type: formData.bpf_funding_type || null,
     };
 
     if (editingProgram) {
@@ -566,27 +613,166 @@ export default function ProgramsPage() {
               />
             </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="p_content">
-                Contenu (JSON)
-              </Label>
-              <p className="text-xs text-gray-500">
-                Structure JSON avec une clé{" "}
-                <code className="bg-gray-100 px-1 rounded">modules</code> contenant un tableau de modules.
-              </p>
-              <Textarea
-                id="p_content"
-                value={formData.content}
-                onChange={(e) => {
-                  setFormData((prev) => ({ ...prev, content: e.target.value }));
-                  if (contentError) validateContent(e.target.value);
-                }}
-                rows={12}
-                className="font-mono text-xs"
-                placeholder='{"modules": [...]}'
-              />
-              {contentError && (
-                <p className="text-xs text-red-600">{contentError}</p>
+
+            {/* BPF & Financial Section */}
+            <div className="border rounded-lg">
+              <button
+                type="button"
+                onClick={() => setBpfSectionOpen((prev) => !prev)}
+                className="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors rounded-lg"
+              >
+                <span>Paramètres BPF & Financier</span>
+                <ChevronDown
+                  className={cn(
+                    "h-4 w-4 text-gray-400 transition-transform",
+                    bpfSectionOpen && "rotate-180"
+                  )}
+                />
+              </button>
+              {bpfSectionOpen && (
+                <div className="px-4 pb-4 space-y-4 border-t">
+                  <div className="grid grid-cols-2 gap-4 pt-4">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="p_price">Prix HT (€)</Label>
+                      <Input
+                        id="p_price"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={formData.price}
+                        onChange={(e) => setFormData((prev) => ({ ...prev, price: e.target.value }))}
+                        placeholder="Ex: 1500"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="p_tva">Taux TVA (%)</Label>
+                      <Input
+                        id="p_tva"
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.1"
+                        value={formData.tva_rate}
+                        onChange={(e) => setFormData((prev) => ({ ...prev, tva_rate: e.target.value }))}
+                        placeholder="20"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="p_duration">Durée (heures)</Label>
+                    <Input
+                      id="p_duration"
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      value={formData.duration_hours}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, duration_hours: e.target.value }))}
+                      placeholder="Ex: 14"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="p_nsf_code">Code NSF</Label>
+                      <Input
+                        id="p_nsf_code"
+                        value={formData.nsf_code}
+                        onChange={(e) => setFormData((prev) => ({ ...prev, nsf_code: e.target.value }))}
+                        placeholder="Ex: 413"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="p_nsf_label">Libellé NSF</Label>
+                      <Input
+                        id="p_nsf_label"
+                        value={formData.nsf_label}
+                        onChange={(e) => setFormData((prev) => ({ ...prev, nsf_label: e.target.value }))}
+                        placeholder="Ex: Développement des capacités comportementales"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 py-1">
+                    <Switch
+                      id="p_apprenticeship"
+                      checked={formData.is_apprenticeship}
+                      onCheckedChange={(checked) => setFormData((prev) => ({ ...prev, is_apprenticeship: checked }))}
+                    />
+                    <Label htmlFor="p_apprenticeship" className="cursor-pointer">
+                      Formation par apprentissage
+                    </Label>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="p_funding">Source de financement BPF</Label>
+                    <Select
+                      value={formData.bpf_funding_type}
+                      onValueChange={(value) => setFormData((prev) => ({ ...prev, bpf_funding_type: value }))}
+                    >
+                      <SelectTrigger id="p_funding">
+                        <SelectValue placeholder="Sélectionner une source..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectLabel>Entreprises</SelectLabel>
+                          <SelectItem value="entreprise_privee">Entreprise privée</SelectItem>
+                        </SelectGroup>
+                        <SelectGroup>
+                          <SelectLabel>Fonds de formation</SelectLabel>
+                          <SelectItem value="apprentissage">Contrats d&apos;apprentissage</SelectItem>
+                          <SelectItem value="professionnalisation">Contrats de professionnalisation</SelectItem>
+                          <SelectItem value="reconversion_alternance">Reconversion / alternance</SelectItem>
+                          <SelectItem value="conge_transition">Congé / transition pro</SelectItem>
+                          <SelectItem value="cpf">CPF</SelectItem>
+                          <SelectItem value="dispositif_chomeurs">Dispositifs demandeurs d&apos;emploi</SelectItem>
+                          <SelectItem value="non_salaries">Travailleurs non-salariés</SelectItem>
+                          <SelectItem value="plan_developpement">Plan de développement</SelectItem>
+                        </SelectGroup>
+                        <SelectGroup>
+                          <SelectLabel>Pouvoirs publics</SelectLabel>
+                          <SelectItem value="pouvoir_public_agents">Pouvoirs publics (agents)</SelectItem>
+                          <SelectItem value="instances_europeennes">Instances européennes</SelectItem>
+                          <SelectItem value="etat">État</SelectItem>
+                          <SelectItem value="conseil_regional">Conseils régionaux</SelectItem>
+                          <SelectItem value="pole_emploi">Pôle emploi</SelectItem>
+                          <SelectItem value="autres_publics">Autres publics</SelectItem>
+                        </SelectGroup>
+                        <SelectGroup>
+                          <SelectLabel>Autres</SelectLabel>
+                          <SelectItem value="individuel">Particulier</SelectItem>
+                          <SelectItem value="organisme_formation">Organisme de formation</SelectItem>
+                          <SelectItem value="autre">Autre</SelectItem>
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="p_bpf_objective">Objectif BPF (F-3)</Label>
+                    <Select
+                      value={formData.bpf_objective}
+                      onValueChange={(value) => setFormData((prev) => ({ ...prev, bpf_objective: value }))}
+                    >
+                      <SelectTrigger id="p_bpf_objective">
+                        <SelectValue placeholder="Sélectionner un objectif..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="rncp_6_8">RNCP niveau 6-8 (Licence, Master, Doctorat...)</SelectItem>
+                        <SelectItem value="rncp_5">RNCP niveau 5 (BTS, DUT...)</SelectItem>
+                        <SelectItem value="rncp_4">RNCP niveau 4 (BAC pro, BT, BP...)</SelectItem>
+                        <SelectItem value="rncp_3">RNCP niveau 3 (BEP, CAP...)</SelectItem>
+                        <SelectItem value="rncp_2">RNCP niveau 2</SelectItem>
+                        <SelectItem value="rncp_cqp">CQP sans niveau de qualification</SelectItem>
+                        <SelectItem value="certification_rs">Certification / habilitation RS</SelectItem>
+                        <SelectItem value="cqp_non_enregistre">CQP non enregistré RNCP/RS</SelectItem>
+                        <SelectItem value="autre_pro">Autres formations professionnelles</SelectItem>
+                        <SelectItem value="bilan_competences">Bilans de compétences</SelectItem>
+                        <SelectItem value="vae">VAE (validation acquis expérience)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
               )}
             </div>
           </div>

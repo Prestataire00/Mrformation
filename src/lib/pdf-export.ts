@@ -71,8 +71,9 @@ function setColor(doc: jsPDF, hex: string) {
 
 /** Add page header with branding */
 function addPageHeader(doc: jsPDF, entityName: string) {
+  const pageWidth = doc.internal.pageSize.width;
   // Top blue bar
-  fillRect(doc, 0, 0, 210, 18, BRAND_BLUE);
+  fillRect(doc, 0, 0, pageWidth, 18, BRAND_BLUE);
 
   // Entity name in white
   doc.setFontSize(11);
@@ -83,22 +84,23 @@ function addPageHeader(doc: jsPDF, entityName: string) {
   // Right: date
   doc.setFontSize(8);
   doc.setFont("helvetica", "normal");
-  doc.text(formatDateFr(), 196, 11.5, { align: "right" });
+  doc.text(formatDateFr(), pageWidth - 14, 11.5, { align: "right" });
 
   doc.setTextColor(0, 0, 0);
 }
 
 /** Add page footer */
 function addPageFooter(doc: jsPDF, pageNumber: number, totalPages: number) {
+  const pageWidth = doc.internal.pageSize.width;
   const pageHeight = doc.internal.pageSize.height;
-  fillRect(doc, 0, pageHeight - 10, 210, 10, "#f1f5f9");
-  hLine(doc, pageHeight - 10, BORDER_COLOR);
+  fillRect(doc, 0, pageHeight - 10, pageWidth, 10, "#f1f5f9");
+  hLine(doc, pageHeight - 10, BORDER_COLOR, 0, pageWidth);
 
   doc.setFontSize(7);
   setColor(doc, MUTED_TEXT);
   doc.setFont("helvetica", "normal");
   doc.text("Document généré automatiquement — MR FORMATION", 14, pageHeight - 3.5);
-  doc.text(`Page ${pageNumber} / ${totalPages}`, 196, pageHeight - 3.5, { align: "right" });
+  doc.text(`Page ${pageNumber} / ${totalPages}`, pageWidth - 14, pageHeight - 3.5, { align: "right" });
 }
 
 // ──────────────────────────────────────────────
@@ -172,16 +174,32 @@ export function exportToPDF(
 /**
  * Export tabular data as PDF with a styled table.
  */
+export interface TablePDFOptions {
+  orientation?: "portrait" | "landscape";
+  firstColWidth?: number;
+  fontSize?: number;
+  rowHeight?: number;
+}
+
 export function exportTableToPDF(
   title: string,
   headers: string[],
   rows: string[][],
   filename: string,
-  entityName = "MR FORMATION"
+  entityName = "MR FORMATION",
+  options?: TablePDFOptions
 ): void {
-  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const orientation = options?.orientation || "portrait";
+  const doc = new jsPDF({ orientation, unit: "mm", format: "a4" });
   const pageWidth = doc.internal.pageSize.width;
-  const usableWidth = pageWidth - 28;
+  const margin = 14;
+  const usableWidth = pageWidth - margin * 2;
+  const fontSize = options?.fontSize || 8;
+  const minRowHeight = options?.rowHeight || 7;
+  // Line spacing in mm (font pt → mm × line height factor)
+  const lineSpacing = fontSize * 0.3528 * 1.15;
+  const cellPadTop = 2;
+  const cellPadBot = 1.5;
   let y = 28;
 
   addPageHeader(doc, entityName);
@@ -190,42 +208,70 @@ export function exportTableToPDF(
   doc.setFontSize(16);
   doc.setFont("helvetica", "bold");
   setColor(doc, DARK_TEXT);
-  doc.text(title, 14, y);
+  doc.text(title, margin, y);
   y += 7;
 
-  hLine(doc, y, BRAND_BLUE);
+  hLine(doc, y, BRAND_BLUE, margin, pageWidth - margin);
   y += 5;
 
   doc.setFontSize(8);
   doc.setFont("helvetica", "italic");
   setColor(doc, MUTED_TEXT);
-  doc.text(`Généré le ${formatDateFr()}`, 14, y);
+  doc.text(`Généré le ${formatDateFr()}`, margin, y);
   y += 8;
 
-  // Table dimensions
-  const colWidth = usableWidth / headers.length;
-  const rowHeight = 7;
+  // Column widths
+  let colWidths: number[];
+  if (options?.firstColWidth && headers.length > 1) {
+    const firstW = Math.min(options.firstColWidth, usableWidth * 0.35);
+    const remainingW = usableWidth - firstW;
+    const otherW = remainingW / (headers.length - 1);
+    colWidths = [firstW, ...Array(headers.length - 1).fill(otherW)];
+  } else {
+    const w = usableWidth / headers.length;
+    colWidths = Array(headers.length).fill(w);
+  }
+
   const pageHeight = doc.internal.pageSize.height;
   const bottomMargin = 18;
 
-  const drawTableHeader = () => {
-    fillRect(doc, 14, y, usableWidth, rowHeight, BRAND_BLUE);
-    doc.setFontSize(8);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(255, 255, 255);
-    headers.forEach((h, i) => {
-      doc.text(h, 14 + i * colWidth + 2, y + 4.5, { maxWidth: colWidth - 4 });
+  // Calculate needed row height based on text wrapping
+  const calcRowHeight = (cells: string[], bold: boolean): number => {
+    doc.setFontSize(fontSize);
+    doc.setFont("helvetica", bold ? "bold" : "normal");
+    let maxLines = 1;
+    cells.forEach((cell, i) => {
+      const lines = doc.splitTextToSize(String(cell ?? ""), colWidths[i] - 3);
+      if (Array.isArray(lines)) maxLines = Math.max(maxLines, lines.length);
     });
-    y += rowHeight;
+    return Math.max(minRowHeight, cellPadTop + maxLines * lineSpacing + cellPadBot);
+  };
+
+  // Y offset for first text baseline inside a cell
+  const textY = (top: number) => top + cellPadTop + lineSpacing * 0.75;
+
+  const drawTableHeader = () => {
+    doc.setFontSize(fontSize);
+    doc.setFont("helvetica", "bold");
+    const hh = calcRowHeight(headers, true);
+    fillRect(doc, margin, y, usableWidth, hh, BRAND_BLUE);
+    doc.setTextColor(255, 255, 255);
+    let x = margin;
+    headers.forEach((h, i) => {
+      doc.text(h, x + 1.5, textY(y), { maxWidth: colWidths[i] - 3 });
+      x += colWidths[i];
+    });
+    y += hh;
   };
 
   drawTableHeader();
 
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "normal");
-
   rows.forEach((row, rowIdx) => {
-    if (y + rowHeight > pageHeight - bottomMargin) {
+    doc.setFontSize(fontSize);
+    doc.setFont("helvetica", "normal");
+    const rh = calcRowHeight(row, false);
+
+    if (y + rh > pageHeight - bottomMargin) {
       doc.addPage();
       addPageHeader(doc, entityName);
       y = 28;
@@ -234,26 +280,24 @@ export function exportTableToPDF(
 
     // Alternating row background
     if (rowIdx % 2 === 0) {
-      fillRect(doc, 14, y, usableWidth, rowHeight, LIGHT_BG);
+      fillRect(doc, margin, y, usableWidth, rh, LIGHT_BG);
     }
 
+    doc.setFontSize(fontSize);
+    doc.setFont("helvetica", "normal");
     setColor(doc, DARK_TEXT);
+    let x = margin;
     row.forEach((cell, i) => {
-      doc.text(String(cell ?? ""), 14 + i * colWidth + 2, y + 4.5, {
-        maxWidth: colWidth - 4,
+      doc.text(String(cell ?? ""), x + 1.5, textY(y), {
+        maxWidth: colWidths[i] - 3,
       });
+      x += colWidths[i];
     });
 
     // Row bottom border
-    hLine(doc, y + rowHeight, BORDER_COLOR);
-    y += rowHeight;
+    hLine(doc, y + rh, BORDER_COLOR, margin, pageWidth - margin);
+    y += rh;
   });
-
-  // Outer border
-  const [br, bg, bb] = hexToRgb(BORDER_COLOR);
-  doc.setDrawColor(br, bg, bb);
-  doc.setLineWidth(0.3);
-  doc.rect(14, y - rows.length * rowHeight - rowHeight, usableWidth, rows.length * rowHeight + rowHeight);
 
   const totalPages = (doc as jsPDF & { internal: { getNumberOfPages(): number } }).internal.getNumberOfPages();
   for (let p = 1; p <= totalPages; p++) {

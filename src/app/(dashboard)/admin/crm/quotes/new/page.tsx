@@ -8,6 +8,16 @@ import { ArrowLeft, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import type { Program } from "@/lib/types";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -28,6 +38,8 @@ interface QuoteFormState {
   duration: string;
   notes: string;
   mention: string;
+  bpf_funding_type: string;
+  program_id: string;
   lines: QuoteLine[];
 }
 
@@ -55,6 +67,7 @@ export default function NewQuotePage() {
   const prospectId = searchParams.get("prospect_id");
   const learnerName = searchParams.get("learner_name");
   const [prospectName, setProspectName] = useState("");
+  const [programs, setPrograms] = useState<Program[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -69,6 +82,8 @@ export default function NewQuotePage() {
     duration: "",
     notes: "",
     mention: DEFAULT_MENTION,
+    bpf_funding_type: "",
+    program_id: "",
     lines: [{ description: "", quantity: "1", unit_price: "" }],
   });
 
@@ -114,10 +129,44 @@ export default function NewQuotePage() {
     generateRef();
   }, [entityId, generateRef]);
 
+  // Fetch programs for the program_id select
+  useEffect(() => {
+    if (entityId === undefined) return;
+    (async () => {
+      let query = supabase.from("programs").select("id, title, bpf_funding_type").eq("is_active", true).order("title");
+      if (entityId) query = query.eq("entity_id", entityId);
+      const { data } = await query;
+      setPrograms((data as Program[]) ?? []);
+    })();
+  }, [entityId, supabase]);
+
   // ─── Handlers ─────────────────────────────────────────────────────────────
 
   function updateField(field: keyof QuoteFormState, value: string) {
     setForm((f) => ({ ...f, [field]: value }));
+  }
+
+  async function handleProgramChange(programId: string) {
+    setForm((f) => ({ ...f, program_id: programId }));
+    if (programId) {
+      // Auto-derive bpf_funding_type from selected program
+      const program = programs.find((p) => p.id === programId);
+      if (program?.bpf_funding_type) {
+        setForm((f) => ({ ...f, program_id: programId, bpf_funding_type: program.bpf_funding_type! }));
+        return;
+      }
+    }
+    // Fallback: if prospect is selected and no program funding type, try client's bpf_category
+    if (!programId && prospectId) {
+      const { data: prospect } = await supabase
+        .from("crm_prospects")
+        .select("bpf_category")
+        .eq("id", prospectId)
+        .single();
+      if (prospect?.bpf_category) {
+        setForm((f) => ({ ...f, bpf_funding_type: prospect.bpf_category }));
+      }
+    }
   }
 
   function addLine() {
@@ -193,6 +242,8 @@ export default function NewQuotePage() {
         status: "draft",
         valid_until: form.date_echeance || null,
         notes: JSON.stringify(metadata),
+        bpf_funding_type: form.bpf_funding_type || null,
+        program_id: form.program_id || null,
       };
       if (entityId) payload.entity_id = entityId;
 
@@ -342,6 +393,67 @@ export default function NewQuotePage() {
               value={form.duration}
               onChange={(e) => updateField("duration", e.target.value)}
             />
+          </div>
+
+          {/* Programme lié */}
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-gray-700">
+              Programme lié
+            </label>
+            <Select value={form.program_id || "none"} onValueChange={(v) => handleProgramChange(v === "none" ? "" : v)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Choisir un programme" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Aucun</SelectItem>
+                {programs.map((p) => <SelectItem key={p.id} value={p.id}>{p.title}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Source de financement (BPF) */}
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-gray-700">
+              Source de financement (BPF)
+            </label>
+            <Select value={form.bpf_funding_type || "none"} onValueChange={(v) => updateField("bpf_funding_type", v === "none" ? "" : v)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Sélectionner une source..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Aucune</SelectItem>
+                <SelectGroup>
+                  <SelectLabel>Entreprises</SelectLabel>
+                  <SelectItem value="entreprise_privee">Entreprise privée</SelectItem>
+                </SelectGroup>
+                <SelectGroup>
+                  <SelectLabel>Fonds de formation</SelectLabel>
+                  <SelectItem value="apprentissage">Contrats d&apos;apprentissage</SelectItem>
+                  <SelectItem value="professionnalisation">Contrats de professionnalisation</SelectItem>
+                  <SelectItem value="reconversion_alternance">Reconversion / alternance</SelectItem>
+                  <SelectItem value="conge_transition">Congé / transition pro</SelectItem>
+                  <SelectItem value="cpf">CPF</SelectItem>
+                  <SelectItem value="dispositif_chomeurs">Dispositifs demandeurs d&apos;emploi</SelectItem>
+                  <SelectItem value="non_salaries">Travailleurs non-salariés</SelectItem>
+                  <SelectItem value="plan_developpement">Plan de développement</SelectItem>
+                </SelectGroup>
+                <SelectGroup>
+                  <SelectLabel>Pouvoirs publics</SelectLabel>
+                  <SelectItem value="pouvoir_public_agents">Pouvoirs publics (agents)</SelectItem>
+                  <SelectItem value="instances_europeennes">Instances européennes</SelectItem>
+                  <SelectItem value="etat">État</SelectItem>
+                  <SelectItem value="conseil_regional">Conseils régionaux</SelectItem>
+                  <SelectItem value="pole_emploi">Pôle emploi</SelectItem>
+                  <SelectItem value="autres_publics">Autres publics</SelectItem>
+                </SelectGroup>
+                <SelectGroup>
+                  <SelectLabel>Autres</SelectLabel>
+                  <SelectItem value="individuel">Particulier</SelectItem>
+                  <SelectItem value="organisme_formation">Organisme de formation</SelectItem>
+                  <SelectItem value="autre">Autre</SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Notes */}

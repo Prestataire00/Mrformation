@@ -22,6 +22,7 @@ import {
   AlertCircle,
   User,
   FileSignature,
+  Clock,
 } from "lucide-react";
 
 interface SessionInfo {
@@ -34,7 +35,14 @@ interface SessionInfo {
   training_title: string | null;
 }
 
-interface LearnerInfo {
+interface TimeSlotInfo {
+  id: string;
+  title: string | null;
+  start_time: string;
+  end_time: string;
+}
+
+interface PersonInfo {
   id: string;
   first_name: string;
   last_name: string;
@@ -43,9 +51,25 @@ interface LearnerInfo {
 
 interface TokenData {
   token_type: "session" | "individual";
+  signer_type?: "learner" | "trainer";
   session: SessionInfo;
-  learners?: LearnerInfo[];
-  learner?: LearnerInfo | null;
+  time_slot?: TimeSlotInfo | null;
+  learners?: PersonInfo[];
+  learner?: PersonInfo | null;
+  trainer?: PersonInfo | null;
+}
+
+function formatTimeFr(dateStr: string): string {
+  return new Date(dateStr).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+}
+
+function formatSlotDateFr(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString("fr-FR", {
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
 }
 
 export default function EmargementPage() {
@@ -55,7 +79,7 @@ export default function EmargementPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<TokenData | null>(null);
-  const [selectedLearnerId, setSelectedLearnerId] = useState<string | null>(null);
+  const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
   const [signing, setSigning] = useState(false);
   const [signed, setSigned] = useState(false);
   const [signedName, setSignedName] = useState("");
@@ -74,13 +98,23 @@ export default function EmargementPage() {
 
         setData(result);
 
-        // For individual tokens, auto-select the learner
-        if (result.token_type === "individual" && result.learner) {
+        // For individual learner tokens, auto-select
+        if (result.token_type === "individual" && result.signer_type !== "trainer" && result.learner) {
           if (result.learner.already_signed) {
             setSignedName(`${result.learner.first_name} ${result.learner.last_name}`);
             setSigned(true);
           } else {
-            setSelectedLearnerId(result.learner.id);
+            setSelectedPersonId(result.learner.id);
+          }
+        }
+
+        // For individual trainer tokens, auto-select
+        if (result.token_type === "individual" && result.signer_type === "trainer" && result.trainer) {
+          if (result.trainer.already_signed) {
+            setSignedName(`${result.trainer.first_name} ${result.trainer.last_name}`);
+            setSigned(true);
+          } else {
+            setSelectedPersonId(result.trainer.id);
           }
         }
       } catch {
@@ -92,7 +126,7 @@ export default function EmargementPage() {
   }, [token]);
 
   async function handleSign(svgData: string) {
-    if (!selectedLearnerId) return;
+    if (!selectedPersonId) return;
     setSigning(true);
     setError(null);
 
@@ -103,7 +137,7 @@ export default function EmargementPage() {
         body: JSON.stringify({
           token,
           signature_data: svgData,
-          learner_id: data?.token_type === "session" ? selectedLearnerId : undefined,
+          learner_id: data?.token_type === "session" ? selectedPersonId : undefined,
         }),
       });
 
@@ -115,12 +149,14 @@ export default function EmargementPage() {
         return;
       }
 
-      // Find the learner name
+      // Find the signer name
       let name = "";
-      if (data?.token_type === "individual" && data.learner) {
+      if (data?.signer_type === "trainer" && data.trainer) {
+        name = `${data.trainer.first_name} ${data.trainer.last_name}`;
+      } else if (data?.token_type === "individual" && data.learner) {
         name = `${data.learner.first_name} ${data.learner.last_name}`;
       } else if (data?.learners) {
-        const l = data.learners.find((l) => l.id === selectedLearnerId);
+        const l = data.learners.find((l) => l.id === selectedPersonId);
         if (l) name = `${l.first_name} ${l.last_name}`;
       }
 
@@ -131,6 +167,11 @@ export default function EmargementPage() {
     }
     setSigning(false);
   }
+
+  // Time slot display helper
+  const slotLabel = data?.time_slot
+    ? `${formatTimeFr(data.time_slot.start_time)} → ${formatTimeFr(data.time_slot.end_time)}, ${formatSlotDateFr(data.time_slot.start_time)}`
+    : null;
 
   // Loading
   if (loading) {
@@ -166,14 +207,22 @@ export default function EmargementPage() {
             <CheckCircle2 className="h-10 w-10 text-green-600" />
           </div>
           <div className="text-center">
-            <p className="font-bold text-gray-900 text-xl">Signature enregistree</p>
+            <p className="font-bold text-gray-900 text-xl">Signature enregistrée</p>
             {signedName && (
               <p className="text-sm text-gray-600 mt-1">Merci {signedName}</p>
             )}
             <p className="text-sm text-gray-500 mt-2">
-              Votre presence a la session{" "}
-              <span className="font-medium">{data?.session.title}</span>{" "}
-              a ete validee.
+              {slotLabel ? (
+                <>
+                  Votre présence au créneau <span className="font-medium">{slotLabel}</span> a été validée.
+                </>
+              ) : (
+                <>
+                  Votre présence à la session{" "}
+                  <span className="font-medium">{data?.session.title}</span>{" "}
+                  a été validée.
+                </>
+              )}
             </p>
           </div>
           {data?.session && (
@@ -196,10 +245,12 @@ export default function EmargementPage() {
 
   if (!data) return null;
 
-  const selectedLearner =
-    data.token_type === "individual"
-      ? data.learner
-      : data.learners?.find((l) => l.id === selectedLearnerId);
+  const isTrainerToken = data.signer_type === "trainer";
+  const selectedPerson = isTrainerToken
+    ? data.trainer
+    : data.token_type === "individual"
+    ? data.learner
+    : data.learners?.find((l) => l.id === selectedPersonId);
 
   return (
     <div className="w-full max-w-lg space-y-4">
@@ -208,8 +259,8 @@ export default function EmargementPage() {
         <div className="h-12 w-12 rounded-xl bg-blue-100 flex items-center justify-center mx-auto mb-3">
           <FileSignature className="h-6 w-6 text-blue-600" />
         </div>
-        <h1 className="text-xl font-bold text-gray-900">Emargement</h1>
-        <p className="text-sm text-gray-500">Signez pour valider votre presence</p>
+        <h1 className="text-xl font-bold text-gray-900">Émargement</h1>
+        <p className="text-sm text-gray-500">Signez pour valider votre présence</p>
       </div>
 
       {/* Session info */}
@@ -220,7 +271,7 @@ export default function EmargementPage() {
             <CardDescription>{data.session.training_title}</CardDescription>
           )}
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-3">
           <div className="flex flex-wrap gap-3 text-sm text-gray-600">
             <div className="flex items-center gap-1.5">
               <CalendarDays className="h-4 w-4" />
@@ -236,12 +287,25 @@ export default function EmargementPage() {
             )}
             <Badge variant="outline" className="text-xs">
               {data.session.mode === "presentiel"
-                ? "Presentiel"
+                ? "Présentiel"
                 : data.session.mode === "distanciel"
                 ? "Distanciel"
                 : "Hybride"}
             </Badge>
           </div>
+
+          {/* Time slot info */}
+          {data.time_slot && (
+            <div className="flex items-center gap-2 p-2.5 bg-blue-50 rounded-lg border border-blue-100">
+              <Clock className="h-4 w-4 text-blue-600" />
+              <span className="text-sm font-medium text-blue-800">
+                Créneau : {formatTimeFr(data.time_slot.start_time)} → {formatTimeFr(data.time_slot.end_time)}
+              </span>
+              <span className="text-xs text-blue-600">
+                ({formatSlotDateFr(data.time_slot.start_time)})
+              </span>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -258,12 +322,12 @@ export default function EmargementPage() {
       )}
 
       {/* Learner selection (session token) */}
-      {data.token_type === "session" && data.learners && !selectedLearnerId && (
+      {data.token_type === "session" && data.learners && !selectedPersonId && (
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <User className="h-5 w-5 text-blue-600" />
-              Selectionnez votre nom
+              Sélectionnez votre nom
             </CardTitle>
             <CardDescription>
               Choisissez votre nom dans la liste pour signer
@@ -276,7 +340,7 @@ export default function EmargementPage() {
                 disabled={learner.already_signed}
                 onClick={() => {
                   setError(null);
-                  setSelectedLearnerId(learner.id);
+                  setSelectedPersonId(learner.id);
                 }}
                 className={`w-full flex items-center justify-between p-3 rounded-lg border text-left transition-colors ${
                   learner.already_signed
@@ -296,7 +360,7 @@ export default function EmargementPage() {
                 {learner.already_signed && (
                   <Badge className="bg-green-100 text-green-700 text-xs gap-1">
                     <CheckCircle2 className="h-3 w-3" />
-                    Deja signe
+                    Déjà signé
                   </Badge>
                 )}
               </button>
@@ -306,18 +370,18 @@ export default function EmargementPage() {
       )}
 
       {/* Signature pad */}
-      {selectedLearnerId &&
-        selectedLearner &&
-        !selectedLearner.already_signed && (
+      {selectedPersonId &&
+        selectedPerson &&
+        !selectedPerson.already_signed && (
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
                 <PenLine className="h-5 w-5 text-blue-600" />
-                Signature de {selectedLearner.first_name}{" "}
-                {selectedLearner.last_name}
+                Signature de {selectedPerson.first_name}{" "}
+                {selectedPerson.last_name}
               </CardTitle>
               <CardDescription>
-                Dessinez votre signature pour valider votre presence
+                Dessinez votre signature pour valider votre présence
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -327,7 +391,7 @@ export default function EmargementPage() {
                   size="sm"
                   className="text-xs text-gray-500"
                   onClick={() => {
-                    setSelectedLearnerId(null);
+                    setSelectedPersonId(null);
                     setError(null);
                   }}
                 >
@@ -351,8 +415,8 @@ export default function EmargementPage() {
               )}
 
               <p className="text-xs text-gray-400 italic">
-                En signant, vous confirmez votre presence et validez les heures
-                de formation conformement au planning de cette session.
+                En signant, vous confirmez votre présence et validez les heures
+                de formation conformément au planning de cette session.
               </p>
             </CardContent>
           </Card>

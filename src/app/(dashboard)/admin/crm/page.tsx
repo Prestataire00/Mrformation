@@ -116,7 +116,7 @@ export default function CrmDashboardPage() {
     try {
       // Fetch all data in parallel
       const [prospectsRes, quotesRes, tasksRes] = await Promise.all([
-        supabase.from("crm_prospects").select("id, status").eq("entity_id", entityId),
+        supabase.from("crm_prospects").select("id, status, notes, created_at").eq("entity_id", entityId),
         supabase.from("crm_quotes").select("status, amount, created_at, prospect_id").eq("entity_id", entityId),
         supabase.from("crm_tasks").select("status, due_date").eq("entity_id", entityId),
       ]);
@@ -186,24 +186,33 @@ export default function CrmDashboardPage() {
         }
       }
 
-      // Quotes from won prospects only (for revenue)
-      const wonQuotes = quotes.filter(
-        (q) => q.prospect_id && wonProspectIds.has(q.prospect_id)
-      );
+      // Won revenue from prospect notes (same source as kanban tunnel)
+      function extractAmountFromNotes(notes: string | null): number {
+        if (!notes) return 0;
+        const match = notes.match(/Montant HT[^:]*:\s*([\d\s.,]+)/);
+        if (!match) return 0;
+        return parseFloat(match[1].replace(/\s/g, "").replace(",", ".")) || 0;
+      }
 
-      // Total won revenue
-      const wonRevenue = wonQuotes.reduce((sum, q) => sum + Number(q.amount ?? 0), 0);
+      const currentYear = new Date().getFullYear();
+      const wonProspects = prospects.filter(
+        (p) => p.status === "won" && p.created_at?.startsWith(String(currentYear))
+      );
+      const wonRevenue = wonProspects.reduce(
+        (sum, p) => sum + extractAmountFromNotes(p.notes ?? null), 0
+      );
 
       // Monthly revenue from won prospects (last 6 months)
       const now = new Date();
+      const allWonProspects = prospects.filter((p) => p.status === "won");
       const monthlyRevenue: { month: string; amount: number }[] = [];
       for (let i = 5; i >= 0; i--) {
         const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
         const yearMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
         const label = `${MONTH_LABELS[d.getMonth()]} ${d.getFullYear()}`;
-        const monthAmount = wonQuotes
-          .filter((q) => q.created_at.startsWith(yearMonth))
-          .reduce((sum, q) => sum + Number(q.amount ?? 0), 0);
+        const monthAmount = allWonProspects
+          .filter((p) => p.created_at?.startsWith(yearMonth))
+          .reduce((sum, p) => sum + extractAmountFromNotes(p.notes ?? null), 0);
         monthlyRevenue.push({ month: label, amount: monthAmount });
       }
 
@@ -291,7 +300,7 @@ export default function CrmDashboardPage() {
               <TrendingUp className="h-5 w-5 text-emerald-600" />
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">CA Gagné</p>
+              <p className="text-xs text-muted-foreground">CA Gagné {new Date().getFullYear()}</p>
               <p className="text-lg font-bold text-emerald-600">{formatCurrency(data.wonRevenue)}</p>
               <p className="text-[10px] text-muted-foreground">{data.wonCount} lead{data.wonCount > 1 ? "s" : ""} gagné{data.wonCount > 1 ? "s" : ""}</p>
             </div>

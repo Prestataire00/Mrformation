@@ -21,7 +21,7 @@ export async function POST(request: Request) {
     .eq("id", user.id)
     .single();
 
-  if (!profile || profile.role !== "admin") {
+  if (!profile || !["admin", "super_admin"].includes(profile.role)) {
     return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
   }
 
@@ -32,6 +32,23 @@ export async function POST(request: Request) {
       { error: "Paramètres invalides. Le mot de passe doit contenir au moins 6 caractères." },
       { status: 400 }
     );
+  }
+
+  // Vérifier la hiérarchie : un admin ne peut pas changer le mdp d'un admin ou super_admin
+  const { data: targetProfile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", userId)
+    .single();
+
+  if (targetProfile) {
+    const targetRole = targetProfile.role;
+    if (profile.role === "admin" && (targetRole === "admin" || targetRole === "super_admin")) {
+      return NextResponse.json(
+        { error: "Seul un organisme (super_admin) peut modifier le mot de passe d'un administrateur." },
+        { status: 403 }
+      );
+    }
   }
 
   // Use the service role client to update another user's password

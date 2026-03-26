@@ -22,6 +22,7 @@ export const createTaskSchema = z.object({
     .regex(/^\d{4}-\d{2}-\d{2}$/, "Format de date invalide (YYYY-MM-DD)")
     .optional()
     .nullable(),
+  reminder_at: z.string().optional().nullable(),
   assigned_to: uuidField,
   prospect_id: uuidField,
   client_id: uuidField,

@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
   if (auth.error) return auth.error;
 
   try {
-    const { session_id, signature_data } = await request.json();
+    const { session_id, signature_data, time_slot_id, signer_id: bodySignerId, signer_type: bodySignerType } = await request.json();
 
     if (!session_id || !signature_data) {
       return NextResponse.json(
@@ -52,10 +52,9 @@ export async function POST(request: NextRequest) {
       signerType = "learner";
     } else if (role === "trainer") {
       signerType = "trainer";
-    } else if (role === "admin") {
-      // Admin can sign on behalf — require signer_type in body
-      const body = await request.clone().json();
-      signerType = body.signer_type || "learner";
+    } else if (["admin", "super_admin"].includes(role)) {
+      // Admin can sign on behalf — use signer_type from body
+      signerType = bodySignerType || "learner";
     } else {
       return NextResponse.json({ error: "Rôle non autorisé" }, { status: 403 });
     }
@@ -92,32 +91,44 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Check if already signed
-    if (role !== "admin") {
-      const { data: existing } = await auth.supabase
-        .from("signatures")
-        .select("id")
-        .eq("session_id", session_id)
-        .eq("signer_id", userId)
-        .eq("signer_type", signerType)
-        .single();
+    // Admin can sign on behalf of a specific person
+    const effectiveSignerId = (["admin", "super_admin"].includes(role) && bodySignerId)
+      ? bodySignerId
+      : userId;
 
-      if (existing) {
-        return NextResponse.json(
-          { error: "Vous avez déjà signé pour cette session." },
-          { status: 409 }
-        );
-      }
+    // Check if already signed (slot-aware)
+    let existingQuery = auth.supabase
+      .from("signatures")
+      .select("id")
+      .eq("session_id", session_id)
+      .eq("signer_id", effectiveSignerId)
+      .eq("signer_type", signerType);
+
+    if (time_slot_id) {
+      existingQuery = existingQuery.eq("time_slot_id", time_slot_id);
+    }
+
+    const { data: existing } = await existingQuery.maybeSingle();
+
+    if (existing) {
+      return NextResponse.json(
+        { error: time_slot_id
+            ? "Déjà signé pour ce créneau."
+            : "Déjà signé pour cette session."
+        },
+        { status: 409 }
+      );
     }
 
     const { data, error } = await auth.supabase
       .from("signatures")
       .insert({
         session_id,
-        signer_id: userId,
+        signer_id: effectiveSignerId,
         signer_type: signerType,
         signature_data,
         signed_at: new Date().toISOString(),
+        time_slot_id: time_slot_id || null,
       })
       .select()
       .single();

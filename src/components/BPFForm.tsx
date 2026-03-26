@@ -21,6 +21,8 @@ import {
   SectionF4,
   SectionG,
 } from "./bpf";
+import { computeSectionC, computeSectionD, getF3Index, isRncpIndex } from "@/lib/bpf-calculator";
+import type { SectionDResult } from "@/lib/bpf-calculator";
 
 // ─── Component ──────────────────────────────────────
 
@@ -36,24 +38,23 @@ export function BPFForm({ title }: BPFFormProps) {
   const entityId = entity?.id;
   const entityName = entity?.name ?? "MR FORMATION";
 
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
-  const [filteredFrom, setFilteredFrom] = useState("");
-  const [filteredTo, setFilteredTo] = useState("");
+  const currentYear = new Date().getFullYear();
+  const [dateFrom, setDateFrom] = useState(`${currentYear}-01-01`);
+  const [dateTo, setDateTo] = useState(`${currentYear}-12-31`);
+  const [filteredFrom, setFilteredFrom] = useState(`${currentYear}-01-01`);
+  const [filteredTo, setFilteredTo] = useState(`${currentYear}-12-31`);
   const [showFinancier, setShowFinancier] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [editingFinancial, setEditingFinancial] = useState(false);
-  const [savingFinancial, setSavingFinancial] = useState(false);
 
   // Computed BPF data
   const [bpf, setBpf] = useState<BPFData>(defaultBPF);
 
-  // Financial data (editable)
+  // Financial data (auto-calculated, read-only)
   const [sectionC, setSectionC] = useState<Record<string, number>>({});
   const [sectionD, setSectionD] = useState<Record<string, number>>({});
   const [sectionGManual, setSectionGManual] = useState<{ stagiaires: number; heures: number }>({ stagiaires: 0, heures: 0 });
 
-  const fiscalYear = dateFrom ? new Date(dateFrom).getFullYear() : new Date().getFullYear();
+  const fiscalYear = dateFrom ? new Date(dateFrom).getFullYear() : currentYear;
 
   const fetchData = useCallback(async () => {
     if (!entityId) return;
@@ -73,10 +74,10 @@ export function BPFForm({ title }: BPFFormProps) {
         .eq("entity_id", entityId)
         .eq("type", "external");
 
-      // Get sessions with trainer type and training hours
+      // Get sessions with trainer type, training hours, and bpf_objective
       const sessionQuery = supabase
         .from("sessions")
-        .select("id, mode, trainer:trainers(type), training:trainings(duration_hours, classification, nsf_code, nsf_label)")
+        .select("id, mode, trainer:trainers(type), training:trainings(duration_hours, classification, nsf_code, nsf_label, bpf_objective, bpf_funding_type)")
         .eq("entity_id", entityId)
         .neq("status", "cancelled");
 
@@ -88,8 +89,15 @@ export function BPFForm({ title }: BPFFormProps) {
       let internalHours = 0;
       let externalHours = 0;
 
-      // Map session_id -> { duration_hours, mode, classification, nsf_code, nsf_label }
-      const sessionMap: Record<string, { duration: number; mode: string; classification: string | null; nsf_code: string | null; nsf_label: string | null }> = {};
+      // Map session_id -> session info
+      const sessionMap: Record<string, {
+        duration: number;
+        mode: string;
+        classification: string | null;
+        bpfObjective: string | null;
+        nsf_code: string | null;
+        nsf_label: string | null;
+      }> = {};
 
       if (sessions) {
         for (const s of sessions) {
@@ -104,6 +112,7 @@ export function BPFForm({ title }: BPFFormProps) {
           const trainerType = (trainer?.type as string) || "internal";
           const mode = (s.mode as string) || "presentiel";
           const classification = (training?.classification as string | null) || null;
+          const bpfObjective = (training?.bpf_objective as string | null) || null;
           const nsfCode = (training?.nsf_code as string | null) || null;
           const nsfLabel = (training?.nsf_label as string | null) || null;
 
@@ -113,9 +122,83 @@ export function BPFForm({ title }: BPFFormProps) {
             internalHours += hours;
           }
 
-          sessionMap[s.id as string] = { duration: hours, mode, classification, nsf_code: nsfCode, nsf_label: nsfLabel };
+          sessionMap[s.id as string] = {
+            duration: hours,
+            mode,
+            classification,
+            bpfObjective,
+            nsf_code: nsfCode,
+            nsf_label: nsfLabel,
+          };
         }
       }
+
+      const sessionIds = sessions ? sessions.map((s) => s.id as string) : [];
+
+      // ─── Section C: Auto-calculate revenue from accepted quotes ───
+      const quoteQuery = supabase
+        .from("crm_quotes")
+        .select("id, amount, bpf_funding_type, program_id, program:programs(bpf_funding_type), client:clients(bpf_category), created_at")
+        .eq("entity_id", entityId)
+        .eq("status", "accepted");
+
+      if (dateFrom) quoteQuery.gte("created_at", dateFrom);
+      if (dateTo) quoteQuery.lte("created_at", dateTo + "T23:59:59");
+
+      const { data: acceptedQuotes } = await quoteQuery;
+
+      const quotesForCalc = (acceptedQuotes || []).map((q) => {
+        const program = Array.isArray(q.program)
+          ? (q.program as Record<string, unknown>[])[0]
+          : (q.program as Record<string, unknown> | null);
+        const client = Array.isArray(q.client)
+          ? (q.client as Record<string, unknown>[])[0]
+          : (q.client as Record<string, unknown> | null);
+
+        return {
+          amount: q.amount as number | null,
+          bpf_funding_type: q.bpf_funding_type as string | null,
+          program: program ? { bpf_funding_type: program.bpf_funding_type as string | null } : null,
+          client: client ? { bpf_category: client.bpf_category as string | null } : null,
+        };
+      });
+
+      const computedSectionC = computeSectionC(quotesForCalc);
+      setSectionC(computedSectionC);
+
+      // ─── Section D: Auto-calculate charges from formation_trainers ───
+      let computedD: SectionDResult = { total_charges: 0, salaires_formateurs: 0, achats_prestation: 0 };
+
+      if (sessionIds.length > 0) {
+        const { data: sessionTrainers } = await supabase
+          .from("formation_trainers")
+          .select("id, session_id, hourly_rate, trainer:trainers(type)")
+          .in("session_id", sessionIds);
+
+        if (sessionTrainers) {
+          const durationMap: Record<string, number> = {};
+          for (const [sid, info] of Object.entries(sessionMap)) {
+            durationMap[sid] = info.duration;
+          }
+
+          computedD = computeSectionD(
+            sessionTrainers.map((st) => ({
+              hourly_rate: st.hourly_rate as number | null,
+              session_id: st.session_id as string,
+              trainer: Array.isArray(st.trainer)
+                ? (st.trainer as Record<string, unknown>[])[0] as { type: string } | null
+                : st.trainer as { type: string } | null,
+            })),
+            durationMap
+          );
+        }
+      }
+
+      setSectionD({
+        total_charges: computedD.total_charges,
+        salaires_formateurs: computedD.salaires_formateurs,
+        achats_prestation: computedD.achats_prestation,
+      });
 
       // ─── Section F-1: Learner types ───
       const enrollQuery = supabase
@@ -123,7 +206,6 @@ export function BPFForm({ title }: BPFFormProps) {
         .select("id, session_id, learner_id, learner:learners(id, client_id, learner_type)")
         .neq("status", "cancelled");
 
-      const sessionIds = sessions ? sessions.map((s) => s.id as string) : [];
       if (sessionIds.length > 0) {
         enrollQuery.in("session_id", sessionIds);
       }
@@ -147,13 +229,11 @@ export function BPFForm({ title }: BPFFormProps) {
       };
       const distanceLearners = new Set<string>();
 
-      // F-3: aggregate by classification
-      const f3Counts: Record<string, { learners: Set<string>; heures: number }> = {
-        certifiant: { learners: new Set(), heures: 0 },
-        reglementaire: { learners: new Set(), heures: 0 },
-        qualifiant: { learners: new Set(), heures: 0 },
-        other: { learners: new Set(), heures: 0 },
-      };
+      // F-3: aggregate by bpf_objective (new) with classification fallback
+      const f3IndexCounts: Record<number, { learners: Set<string>; heures: number }> = {};
+      for (let i = 0; i <= 12; i++) {
+        f3IndexCounts[i] = { learners: new Set(), heures: 0 };
+      }
 
       // F-4: aggregate by NSF code
       const f4Map: Record<string, { label: string; learners: Set<string>; heures: number }> = {};
@@ -193,15 +273,24 @@ export function BPFForm({ title }: BPFFormProps) {
             distanceLearners.add(learnerId);
           }
 
-          // F-3 classification
-          const classif = sessionInfo?.classification;
-          if (classif && f3Counts[classif]) {
-            f3Counts[classif].learners.add(learnerId);
-            f3Counts[classif].heures += hours;
+          // F-3: Use bpf_objective (new) with classification fallback
+          let f3Idx: number;
+          if (sessionInfo?.bpfObjective) {
+            f3Idx = getF3Index(sessionInfo.bpfObjective);
           } else {
-            f3Counts.other.learners.add(learnerId);
-            f3Counts.other.heures += hours;
+            // Legacy fallback from classification
+            const classif = sessionInfo?.classification;
+            if (classif === "certifiant") {
+              f3Idx = 0; // RNCP total row (a)
+            } else if (classif === "reglementaire") {
+              f3Idx = 7; // Certifications RS (b)
+            } else {
+              f3Idx = 9; // Autres formations (d)
+            }
           }
+
+          f3IndexCounts[f3Idx].learners.add(learnerId);
+          f3IndexCounts[f3Idx].heures += hours;
 
           // F-4 NSF
           if (sessionInfo?.nsf_code) {
@@ -226,18 +315,33 @@ export function BPFForm({ title }: BPFFormProps) {
       const totalF1Hours = f1Rows.reduce((s, r) => s + r.heures, 0);
       f1Rows.push({ label: "Total", stagiaires: totalF1Learners, heures: totalF1Hours });
 
-      // Build F-3 rows
-      const f3Rows = [...defaultBPF.f3];
-      // Row 0 (a): certifiant
-      f3Rows[0] = { ...f3Rows[0], stagiaires: f3Counts.certifiant.learners.size, heures: f3Counts.certifiant.heures };
-      // Row 7 (b): reglementaire -> RS
-      f3Rows[7] = { ...f3Rows[7], stagiaires: f3Counts.reglementaire.learners.size, heures: f3Counts.reglementaire.heures };
-      // Row 9 (d): qualifiant + other
-      f3Rows[9] = {
-        ...f3Rows[9],
-        stagiaires: f3Counts.qualifiant.learners.size + f3Counts.other.learners.size,
-        heures: f3Counts.qualifiant.heures + f3Counts.other.heures,
-      };
+      // Build F-3 rows with bpf_objective-based mapping
+      const f3Rows = [...defaultBPF.f3.map((r) => ({ ...r }))];
+
+      // Aggregate RNCP sub-levels (indices 1-6) into parent row 0
+      let rncpTotalLearners = new Set<string>();
+      let rncpTotalHeures = 0;
+
+      for (let i = 0; i < f3Rows.length - 1; i++) {
+        const counts = f3IndexCounts[i];
+        if (counts && i > 0) {
+          f3Rows[i] = { ...f3Rows[i], stagiaires: counts.learners.size, heures: counts.heures };
+          // Accumulate RNCP sub-levels into parent
+          if (isRncpIndex(i)) {
+            counts.learners.forEach((l) => rncpTotalLearners.add(l));
+            rncpTotalHeures += counts.heures;
+          }
+        }
+      }
+
+      // Row 0 (a) = RNCP total + any directly assigned to index 0
+      const directRow0 = f3IndexCounts[0];
+      if (directRow0) {
+        directRow0.learners.forEach((l) => rncpTotalLearners.add(l));
+        rncpTotalHeures += directRow0.heures;
+      }
+      f3Rows[0] = { ...f3Rows[0], stagiaires: rncpTotalLearners.size, heures: rncpTotalHeures };
+
       // Total row (last)
       const totalF3Learners = f3Rows.slice(0, -1).filter((r) => !r.indent).reduce((s, r) => s + r.stagiaires, 0);
       const totalF3Hours = f3Rows.slice(0, -1).filter((r) => !r.indent).reduce((s, r) => s + r.heures, 0);
@@ -251,6 +355,18 @@ export function BPFForm({ title }: BPFFormProps) {
         heures: data.heures,
       }));
 
+      // ─── Section G: Manual (from bpf_financial_data) ───
+      const { data: finData } = await supabase
+        .from("bpf_financial_data")
+        .select("*")
+        .eq("entity_id", entityId)
+        .eq("fiscal_year", fiscalYear)
+        .maybeSingle();
+
+      const gData = finData ? ((finData.section_g as Record<string, number>) || {}) : {};
+      const gManual = { stagiaires: gData.stagiaires || 0, heures: gData.heures || 0 };
+      setSectionGManual(gManual);
+
       setBpf({
         personnesInternes: { nombre: internalCount ?? 0, heures: internalHours },
         personnesExternes: { nombre: externalCount ?? 0, heures: externalHours },
@@ -259,27 +375,8 @@ export function BPFForm({ title }: BPFFormProps) {
         f2: { stagiaires: 0, heures: 0 },
         f3: f3Rows,
         f4: f4Rows,
-        g: sectionGManual,
+        g: gManual,
       });
-
-      // ─── Financial data (Sections C/D/G) ───
-      const { data: finData } = await supabase
-        .from("bpf_financial_data")
-        .select("*")
-        .eq("entity_id", entityId)
-        .eq("fiscal_year", fiscalYear)
-        .maybeSingle();
-
-      if (finData) {
-        setSectionC((finData.section_c as Record<string, number>) || {});
-        setSectionD((finData.section_d as Record<string, number>) || {});
-        const gData = (finData.section_g as Record<string, number>) || {};
-        setSectionGManual({ stagiaires: gData.stagiaires || 0, heures: gData.heures || 0 });
-      } else {
-        setSectionC({});
-        setSectionD({});
-        setSectionGManual({ stagiaires: 0, heures: 0 });
-      }
 
       if (dateFrom || dateTo) {
         setFilteredFrom(dateFrom);
@@ -298,9 +395,9 @@ export function BPFForm({ title }: BPFFormProps) {
 
   const handleFilter = () => fetchData();
 
-  const handleSaveFinancial = async () => {
+  // Section G is the only manually-saveable section now
+  const handleSaveG = async () => {
     if (!entityId) return;
-    setSavingFinancial(true);
 
     const { error } = await supabase
       .from("bpf_financial_data")
@@ -308,21 +405,16 @@ export function BPFForm({ title }: BPFFormProps) {
         {
           entity_id: entityId,
           fiscal_year: fiscalYear,
-          section_c: sectionC,
-          section_d: sectionD,
           section_g: sectionGManual,
           updated_at: new Date().toISOString(),
         },
         { onConflict: "entity_id,fiscal_year" }
       );
 
-    setSavingFinancial(false);
-
     if (error) {
-      toast({ title: "Erreur", description: "Impossible de sauvegarder les données financières.", variant: "destructive" });
+      toast({ title: "Erreur", description: "Impossible de sauvegarder.", variant: "destructive" });
     } else {
-      toast({ title: "Succès", description: "Données financières sauvegardées." });
-      setEditingFinancial(false);
+      toast({ title: "Succès", description: "Données sauvegardées." });
     }
   };
 
@@ -430,21 +522,14 @@ export function BPFForm({ title }: BPFFormProps) {
       />
 
       <SectionC
-        editingFinancial={editingFinancial}
-        savingFinancial={savingFinancial}
         sectionC={sectionC}
-        onSectionCChange={setSectionC}
-        onSaveFinancial={handleSaveFinancial}
-        onStartEditing={() => setEditingFinancial(true)}
         getLineValue={getLineValue}
         totalProduits={totalProduits()}
         fmtEur={fmtEur}
       />
 
       <SectionD
-        editingFinancial={editingFinancial}
         sectionD={sectionD}
-        onSectionDChange={setSectionD}
         fmtEur={fmtEur}
       />
 
@@ -459,9 +544,10 @@ export function BPFForm({ title }: BPFFormProps) {
       <SectionF4 bpf={bpf} />
 
       <SectionG
-        editingFinancial={editingFinancial}
+        editingFinancial={true}
         sectionGManual={sectionGManual}
         onSectionGChange={setSectionGManual}
+        onSaveG={handleSaveG}
       />
     </div>
   );
