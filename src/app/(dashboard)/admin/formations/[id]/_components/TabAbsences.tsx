@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Plus, Trash2, Loader2 } from "lucide-react";
+import { Plus, Trash2, Loader2, ScanSearch } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -41,6 +41,8 @@ export function TabAbsences({ formation, onRefresh }: Props) {
   const [showAdd, setShowAdd] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [showAutoDetect, setShowAutoDetect] = useState(false);
+  const [autoDetecting, setAutoDetecting] = useState(false);
 
   // Form state
   const [learnerId, setLearnerId] = useState("");
@@ -101,6 +103,40 @@ export function TabAbsences({ formation, onRefresh }: Props) {
     }
   };
 
+  const handleAutoDetect = async () => {
+    setAutoDetecting(true);
+    try {
+      const res = await fetch(`/api/sessions/${formation.id}/auto-absences`, {
+        method: "POST",
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        toast({
+          title: "Erreur",
+          description: data.error || "Une erreur est survenue",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      toast({
+        title: "Détection terminée",
+        description: `${data.created} nouvelle${data.created !== 1 ? "s" : ""} absence${data.created !== 1 ? "s" : ""} créée${data.created !== 1 ? "s" : ""}, ${data.skipped} déjà existante${data.skipped !== 1 ? "s" : ""} ignorée${data.skipped !== 1 ? "s" : ""}`,
+      });
+      onRefresh();
+    } catch {
+      toast({
+        title: "Erreur",
+        description: "Impossible de contacter le serveur",
+        variant: "destructive",
+      });
+    } finally {
+      setAutoDetecting(false);
+      setShowAutoDetect(false);
+    }
+  };
+
   const handleUpdateStatus = async (id: string, newStatus: string) => {
     const { error } = await supabase
       .from("formation_absences")
@@ -123,9 +159,23 @@ export function TabAbsences({ formation, onRefresh }: Props) {
             {absences.length} Absence{absences.length !== 1 ? "s" : ""}
           </p>
         </div>
-        <Button onClick={() => setShowAdd(true)}>
-          <Plus className="h-4 w-4 mr-2" /> Ajouter une absence
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setShowAutoDetect(true)}
+            disabled={autoDetecting}
+          >
+            {autoDetecting ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <ScanSearch className="h-4 w-4 mr-2" />
+            )}
+            Détecter les absences automatiquement
+          </Button>
+          <Button onClick={() => setShowAdd(true)}>
+            <Plus className="h-4 w-4 mr-2" /> Ajouter une absence
+          </Button>
+        </div>
       </div>
 
       {/* Liste des absences */}
@@ -201,6 +251,32 @@ export function TabAbsences({ formation, onRefresh }: Props) {
           })}
         </div>
       )}
+
+      {/* Dialog Détection automatique */}
+      <Dialog open={showAutoDetect} onOpenChange={setShowAutoDetect}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Détecter les absences automatiquement</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Cette action va scanner <strong>{timeSlots.length} créneau{timeSlots.length !== 1 ? "x" : ""}</strong> pour{" "}
+            <strong>{enrollments.length} apprenant{enrollments.length !== 1 ? "s" : ""}</strong> inscrit{enrollments.length !== 1 ? "s" : ""}.
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Tout créneau non signé sera enregistré comme absence non justifiée.
+            Les absences déjà existantes ne seront pas dupliquées.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAutoDetect(false)}>
+              Annuler
+            </Button>
+            <Button onClick={handleAutoDetect} disabled={autoDetecting}>
+              {autoDetecting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Confirmer la détection
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Dialog Ajout */}
       <Dialog open={showAdd} onOpenChange={setShowAdd}>
