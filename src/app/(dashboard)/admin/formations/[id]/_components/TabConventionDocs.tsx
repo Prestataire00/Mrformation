@@ -4,15 +4,23 @@ import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   Loader2, Eye, CheckCircle, Send, Copy, Clock, Download,
-  ChevronDown, ChevronUp, Plus,
+  ChevronDown, ChevronUp, Plus, FileDown,
 } from "lucide-react";
+import DOMPurify from "dompurify";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from "@/components/ui/dialog";
+import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
+import { useEntity } from "@/contexts/EntityContext";
+import { getDefaultTemplate } from "@/lib/document-templates-defaults";
+import { resolveVariables } from "@/lib/utils/resolve-variables";
+import { exportHtmlToPDF } from "@/lib/pdf-export";
 import type {
   Session, ConventionDocType, ConventionOwnerType,
   FormationConventionDocument, DocumentTemplate,
@@ -83,6 +91,17 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
 
   // Custom doc template selections
   const [customSelections, setCustomSelections] = useState<Record<string, string>>({});
+
+  // Preview state
+  const [previewDoc, setPreviewDoc] = useState<{
+    open: boolean;
+    html: string;
+    title: string;
+    filename: string;
+  } | null>(null);
+
+  const { entity } = useEntity();
+  const entityName = entity?.name || "MR FORMATION";
 
   const docs = formation.formation_convention_documents || [];
   const enrollments = formation.enrollments || [];
@@ -182,6 +201,55 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
       initializeDefaultDocs();
     }
   }, [loadingTemplates, initializeDefaultDocs, enrollments.length]);
+
+  // ===== VIEW DOCUMENT =====
+
+  const handleView = async (doc: FormationConventionDocument) => {
+    let htmlContent: string | null = null;
+
+    if (doc.template_id) {
+      const { data: template } = await supabase
+        .from("document_templates")
+        .select("content")
+        .eq("id", doc.template_id)
+        .single();
+
+      if (template?.content) {
+        const learner = enrollments.find((e) => e.learner?.id === doc.owner_id)?.learner;
+        htmlContent = resolveVariables(template.content, {
+          session: formation,
+          learner: learner || null,
+          client: null,
+          trainer: null,
+        });
+      }
+    } else {
+      const learner = enrollments.find((e) => e.learner?.id === doc.owner_id)?.learner;
+      const company = companies.find((c) => c.client_id === doc.owner_id)?.client;
+      const trainerData = trainers.find((t) => t.trainer_id === doc.owner_id)?.trainer;
+
+      htmlContent = getDefaultTemplate(doc.doc_type, {
+        formation,
+        learner: learner || undefined,
+        company: company || undefined,
+        trainer: trainerData || undefined,
+        entityName,
+      });
+    }
+
+    if (!htmlContent) {
+      toast({ title: "Aucun modèle disponible pour ce type de document", variant: "destructive" });
+      return;
+    }
+
+    const label = doc.custom_label || DOC_LABELS[doc.doc_type] || doc.doc_type;
+    setPreviewDoc({
+      open: true,
+      html: DOMPurify.sanitize(htmlContent),
+      title: label,
+      filename: `${doc.doc_type}_${Date.now()}`,
+    });
+  };
 
   // ===== HELPERS =====
 
@@ -460,7 +528,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
           <Button
             size="sm"
             className="bg-teal-500 hover:bg-teal-600 text-white"
-            onClick={() => toast({ title: "Aperçu du document (à implémenter)" })}
+            onClick={() => handleView(doc)}
           >
             <Eye className="h-4 w-4 mr-1" /> Voir
           </Button>
@@ -514,7 +582,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
           <Button
             size="sm"
             className="bg-teal-500 hover:bg-teal-600 text-white"
-            onClick={() => toast({ title: "Téléchargement (à implémenter)" })}
+            onClick={() => handleView(doc)}
           >
             <Download className="h-4 w-4 mr-1" /> Voir/Télécharger
           </Button>
@@ -1010,6 +1078,39 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
             Aucun formateur attribué.
           </CardContent>
         </Card>
+      )}
+
+      {/* ── Dialog: Document preview ── */}
+      {previewDoc && (
+        <Dialog open={previewDoc.open} onOpenChange={(open) => { if (!open) setPreviewDoc(null); }}>
+          <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>{previewDoc.title}</DialogTitle>
+            </DialogHeader>
+            <div
+              className="prose prose-sm max-w-none"
+              dangerouslySetInnerHTML={{ __html: previewDoc.html }}
+            />
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={async () => {
+                  await exportHtmlToPDF(
+                    previewDoc.title,
+                    previewDoc.html,
+                    previewDoc.filename,
+                    entityName
+                  );
+                }}
+              >
+                <FileDown className="h-4 w-4 mr-2" /> Télécharger PDF
+              </Button>
+              <Button variant="outline" onClick={() => setPreviewDoc(null)}>
+                Fermer
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );
