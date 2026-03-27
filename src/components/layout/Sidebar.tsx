@@ -298,6 +298,11 @@ const learnerNavItems: NavItem[] = [
     icon: ClipboardList,
   },
   {
+    label: "Mes Documents",
+    href: "/learner/documents",
+    icon: FileText,
+  },
+  {
     label: "Mon Profil",
     href: "/learner/profile",
     icon: UserCheck,
