@@ -42,6 +42,7 @@ import {
   CalendarDays,
   Receipt,
   Rss,
+  HelpCircle,
 } from "lucide-react";
 
 interface NavItem {
@@ -175,6 +176,11 @@ const navItems: NavItem[] = [
     label: "La Veille",
     href: "/admin/veille",
     icon: Rss,
+  },
+  {
+    label: "Contact & Conseils",
+    href: "/admin/contact-conseils",
+    icon: HelpCircle,
   },
   {
     label: "Support",
