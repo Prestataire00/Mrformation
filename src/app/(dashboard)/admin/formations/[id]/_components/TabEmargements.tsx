@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import {
   QrCode, Send, Printer, CheckSquare, Loader2, Copy, Download,
   FileDown, UserCheck, AlertTriangle, PenLine, Trash2, CheckCircle2,
-  XCircle, Mail,
+  XCircle, Mail, CheckCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -423,6 +423,64 @@ export function TabEmargements({ formation, onRefresh }: Props) {
     }
   };
 
+  // ── Bulk sign all unsigned on a slot ──
+
+  const [bulkSignSlot, setBulkSignSlot] = useState<{
+    open: boolean;
+    slotId: string;
+    unsignedLearners: { id: string; name: string }[];
+    unsignedTrainers: { id: string; name: string }[];
+  }>({ open: false, slotId: "", unsignedLearners: [], unsignedTrainers: [] });
+  const [bulkSigning, setBulkSigning] = useState(false);
+
+  const openBulkSign = (slot: FormationTimeSlot) => {
+    const slotSigs = getSignaturesForSlot(slot);
+    const unsignedLearners = enrollments
+      .filter(e => e.learner && !slotSigs.find(s => s.signer_id === e.learner!.id && s.signer_type === "learner"))
+      .map(e => ({ id: e.learner!.id, name: `${e.learner!.first_name} ${e.learner!.last_name}` }));
+    const unsignedTrainers = trainers
+      .filter(ft => ft.trainer && !slotSigs.find(s => s.signer_id === ft.trainer!.id && s.signer_type === "trainer"))
+      .map(ft => ({ id: ft.trainer!.id, name: `${ft.trainer!.first_name} ${ft.trainer!.last_name}` }));
+    setBulkSignSlot({ open: true, slotId: slot.id, unsignedLearners, unsignedTrainers });
+  };
+
+  const handleBulkSign = async () => {
+    setBulkSigning(true);
+    let signed = 0;
+    const all = [
+      ...bulkSignSlot.unsignedTrainers.map(t => ({ id: t.id, type: "trainer" as const })),
+      ...bulkSignSlot.unsignedLearners.map(l => ({ id: l.id, type: "learner" as const })),
+    ];
+
+    for (const person of all) {
+      try {
+        const res = await fetch("/api/signatures", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session_id: formation.id,
+            signature_data: "admin_bulk",
+            time_slot_id: bulkSignSlot.slotId,
+            signer_id: person.id,
+            signer_type: person.type,
+          }),
+        });
+        if (res.ok) signed++;
+      } catch {
+        // continue on error
+      }
+    }
+
+    if (signed > 0) {
+      toast({ title: `${signed} présence${signed !== 1 ? "s" : ""} cochée${signed !== 1 ? "s" : ""} sur ce créneau` });
+    } else {
+      toast({ title: "Tous déjà signés" });
+    }
+    setBulkSignSlot(prev => ({ ...prev, open: false }));
+    setBulkSigning(false);
+    await onRefresh();
+  };
+
   // ── Print empty attendance sheet ──
 
   const handlePrintEmpty = () => {
@@ -586,6 +644,16 @@ export function TabEmargements({ formation, onRefresh }: Props) {
                 <div className="flex items-center gap-3 mt-1">
                   <Progress value={slotPct} className="flex-1 h-1.5" />
                   <span className="text-xs text-muted-foreground font-medium">{slotSigned}/{slotTotal}</span>
+                  {slotPct < 100 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="ml-auto h-7 text-xs gap-1"
+                      onClick={() => openBulkSign(slot)}
+                    >
+                      <CheckCheck className="h-3 w-3" /> Cocher les présences
+                    </Button>
+                  )}
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -733,6 +801,30 @@ export function TabEmargements({ formation, onRefresh }: Props) {
           );
         })
       )}
+
+      {/* ── Dialog: Bulk sign ── */}
+      <Dialog open={bulkSignSlot.open} onOpenChange={(open) => setBulkSignSlot(prev => ({ ...prev, open }))}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cocher les présences en masse</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Marquer {bulkSignSlot.unsignedLearners.length} apprenant{bulkSignSlot.unsignedLearners.length !== 1 ? "s" : ""} et{" "}
+            {bulkSignSlot.unsignedTrainers.length} formateur{bulkSignSlot.unsignedTrainers.length !== 1 ? "s" : ""} non
+            encore signé{(bulkSignSlot.unsignedLearners.length + bulkSignSlot.unsignedTrainers.length) !== 1 ? "s" : ""} comme
+            présent{(bulkSignSlot.unsignedLearners.length + bulkSignSlot.unsignedTrainers.length) !== 1 ? "s" : ""} sur ce créneau ?
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkSignSlot(prev => ({ ...prev, open: false }))}>
+              Annuler
+            </Button>
+            <Button onClick={handleBulkSign} disabled={bulkSigning}>
+              {bulkSigning && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Confirmer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Dialog: Sign on behalf ── */}
       <Dialog open={signDialog.open} onOpenChange={(open) => setSignDialog(prev => ({ ...prev, open }))}>
