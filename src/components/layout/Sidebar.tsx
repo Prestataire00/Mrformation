@@ -336,6 +336,11 @@ const trainerNavItems: NavItem[] = [
     icon: FileText,
   },
   {
+    label: "Évaluations",
+    href: "/trainer/evaluations",
+    icon: Star,
+  },
+  {
     label: "Mon Profil",
     href: "/trainer/profile",
     icon: UserCheck,
