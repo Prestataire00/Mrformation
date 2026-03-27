@@ -230,7 +230,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
 
       htmlContent = getDefaultTemplate(doc.doc_type, {
         formation,
-        learner: learner || undefined,
+        learner: learner ? { first_name: learner.first_name, last_name: learner.last_name, email: learner.email ?? undefined } : undefined,
         company: company || undefined,
         trainer: trainerData || undefined,
         entityName,

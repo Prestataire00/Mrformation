@@ -121,7 +121,7 @@ export default function CrmDashboardPage() {
       const [prospectsRes, quotesRes, tasksRes] = await Promise.all([
         supabase.from("crm_prospects").select("id, status, notes, created_at").eq("entity_id", entityId),
         supabase.from("crm_quotes").select("status, amount, created_at, prospect_id").eq("entity_id", entityId),
-        supabase.from("crm_tasks").select("status, due_date").eq("entity_id", entityId),
+        supabase.from("crm_tasks").select("status, due_date, reminder_at").eq("entity_id", entityId),
       ]);
 
       const prospects = prospectsRes.data ?? [];

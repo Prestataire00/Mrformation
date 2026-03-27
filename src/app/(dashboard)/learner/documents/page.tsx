@@ -153,7 +153,7 @@ export default function LearnerDocumentsPage() {
       if (template?.content) {
         htmlContent = resolveVariables(template.content, {
           session: { title: doc.session_title, start_date: doc.session_start_date, end_date: doc.session_end_date } as any,
-          learner: learner || null,
+          learner: learner ? { ...learner, email: learner.email ?? undefined } as any : null,
           client: null,
           trainer: null,
         });
@@ -161,7 +161,7 @@ export default function LearnerDocumentsPage() {
     } else {
       htmlContent = getDefaultTemplate(doc.doc_type, {
         formation: { title: doc.session_title, start_date: doc.session_start_date, end_date: doc.session_end_date } as any,
-        learner: learner || undefined,
+        learner: learner ? { first_name: learner.first_name, last_name: learner.last_name, email: learner.email ?? undefined } : undefined,
         entityName,
       });
     }
