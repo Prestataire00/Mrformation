@@ -40,6 +40,7 @@ import {
   PenLine,
   Upload,
   CalendarDays,
+  Receipt,
 } from "lucide-react";
 
 interface NavItem {
@@ -156,6 +157,7 @@ const navItems: NavItem[] = [
       { label: "Incidents Qualité", href: "/admin/reports/incidents", icon: AlertTriangle },
       { label: "Bilan Pédagogique et Financier", href: "/admin/reports/bpf", icon: BarChart3 },
       { label: "BPF + E-Learning", href: "/admin/reports/bpf-elearning", icon: BarChart3 },
+      { label: "Suivi des Factures", href: "/admin/reports/factures", icon: Receipt },
     ],
   },
   {
