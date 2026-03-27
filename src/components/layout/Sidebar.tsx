@@ -43,6 +43,7 @@ import {
   Receipt,
   Rss,
   HelpCircle,
+  Award,
 } from "lucide-react";
 
 interface NavItem {
@@ -88,6 +89,7 @@ const navItems: NavItem[] = [
       { label: "Profils des Formateurs", href: "/admin/trainers", icon: UserCheck },
       { label: "Tous les Formateurs", href: "/admin/trainers/liste", icon: Users },
       { label: "CVthèque", href: "/admin/trainers/cvtheque", icon: FolderSearch },
+      { label: "Certificateurs", href: "/admin/certificateurs", icon: Award },
     ],
   },
   {
