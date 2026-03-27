@@ -151,6 +151,7 @@ const navItems: NavItem[] = [
     children: [
       { label: "Suivi des Absences", href: "/admin/reports/absences", icon: AlertTriangle },
       { label: "Suivi Qualité", href: "/admin/reports/qualite", icon: Star },
+      { label: "Amélioration Continue", href: "/admin/reports/amelioration", icon: TrendingUp },
       { label: "Suivi Commercial", href: "/admin/reports/commercial", icon: TrendingDown },
       { label: "Incidents Qualité", href: "/admin/reports/incidents", icon: AlertTriangle },
       { label: "Bilan Pédagogique et Financier", href: "/admin/reports/bpf", icon: BarChart3 },
