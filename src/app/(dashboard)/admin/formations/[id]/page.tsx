@@ -23,6 +23,7 @@ import { TabEvaluation } from "./_components/TabEvaluation";
 import { TabSatisfaction } from "./_components/TabSatisfaction";
 import { TabConventionDocs } from "./_components/TabConventionDocs";
 import { TabElearning } from "./_components/TabElearning";
+import { TabFinances } from "./_components/TabFinances";
 
 const MODE_LABELS: Record<string, string> = {
   presentiel: "Présentiel",
@@ -163,6 +164,7 @@ export default function FormationDetailPage() {
             { value: "evaluation", label: "Évaluation" },
             { value: "satisfaction", label: "Satisfaction & Qualité" },
             { value: "convention", label: "Convention & Documents" },
+            { value: "finances", label: "Finances" },
             { value: "elearning", label: "e-Learning" },
           ].map((tab) => (
             <TabsTrigger
@@ -218,6 +220,10 @@ export default function FormationDetailPage() {
 
         <TabsContent value="convention" className="mt-6">
           <TabConventionDocs formation={formation} onRefresh={fetchFormation} />
+        </TabsContent>
+
+        <TabsContent value="finances" className="mt-6">
+          <TabFinances formation={formation} onRefresh={fetchFormation} />
         </TabsContent>
 
         <TabsContent value="elearning" className="mt-6">
