@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import QRCode from "qrcode";
 import { createClient } from "@/lib/supabase/client";
 import {
   QrCode, Send, Printer, CheckSquare, Loader2, Copy, Download,
@@ -174,6 +175,23 @@ export function TabEmargements({ formation, onRefresh }: Props) {
   // QR dialog state
   const [qrDialog, setQrDialog] = useState(false);
   const [qrSlotTokens, setQrSlotTokens] = useState<SlotTokensResponse | null>(null);
+  const [qrImages, setQrImages] = useState<Record<string, string>>({});
+
+  const generateQRImages = useCallback(async (tokens: SlotTokensResponse) => {
+    const images: Record<string, string> = {};
+    const baseUrl = window.location.origin;
+    for (const slotData of tokens.slots) {
+      for (const t of [...slotData.trainer_tokens, ...slotData.learner_tokens]) {
+        const url = `${baseUrl}/emargement/${t.token}`;
+        images[t.token] = await QRCode.toDataURL(url, {
+          width: 200,
+          margin: 1,
+          color: { dark: "#000000", light: "#ffffff" },
+        });
+      }
+    }
+    setQrImages(images);
+  }, []);
 
   const timeSlots = formation.formation_time_slots || [];
   const signatures = formation.signatures || [];
@@ -216,6 +234,7 @@ export function TabEmargements({ formation, onRefresh }: Props) {
       if (res.ok && data.slots) {
         setQrSlotTokens(data);
         setQrDialog(true);
+        generateQRImages(data);
         toast({ title: `${data.total_tokens} QR code(s) générés` });
       } else {
         toast({ title: "Erreur", description: "Impossible de générer les tokens", variant: "destructive" });
@@ -875,9 +894,11 @@ export function TabEmargements({ formation, onRefresh }: Props) {
                             <p className="text-xs font-medium mb-1 truncate">
                               {t.person.last_name} {t.person.first_name}
                             </p>
-                            <code className="text-[10px] text-muted-foreground break-all">
-                              {`${window.location.origin}/emargement/${t.token}`}
-                            </code>
+                            {qrImages[t.token] ? (
+                              <img src={qrImages[t.token]} alt={`QR ${t.person.last_name}`} className="w-32 h-32 mx-auto" />
+                            ) : (
+                              <div className="w-32 h-32 mx-auto bg-gray-100 animate-pulse rounded" />
+                            )}
                           </div>
                         ))}
                       </div>
@@ -891,9 +912,11 @@ export function TabEmargements({ formation, onRefresh }: Props) {
                         <p className="text-xs font-medium mb-1 truncate">
                           {t.person.last_name} {t.person.first_name}
                         </p>
-                        <code className="text-[10px] text-muted-foreground break-all">
-                          {`${window.location.origin}/emargement/${t.token}`}
-                        </code>
+                        {qrImages[t.token] ? (
+                          <img src={qrImages[t.token]} alt={`QR ${t.person.last_name}`} className="w-32 h-32 mx-auto" />
+                        ) : (
+                          <div className="w-32 h-32 mx-auto bg-gray-100 animate-pulse rounded" />
+                        )}
                       </div>
                     ))}
                   </div>
