@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
+import DOMPurify from "dompurify";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
 import { EmailTemplate, EmailHistory, Session, Client, Learner } from "@/lib/types";
@@ -107,6 +108,32 @@ const AVAILABLE_VARIABLES = [
   { key: "{{date_limite}}", label: "Date limite de réponse" },
 ];
 
+const PREVIEW_VARS: Record<string, string> = {
+  "{{nom_apprenant}}": "DUPONT Jean",
+  "{{prenom_apprenant}}": "Jean",
+  "{{nom_client}}": "Entreprise ABC",
+  "{{titre_formation}}": "Formation IA Générative",
+  "{{date_formation}}": "15/04/2026",
+  "{{date_debut}}": "15/04/2026",
+  "{{date_fin}}": "16/04/2026",
+  "{{lieu}}": "Paris 8ème",
+  "{{duree_heures}}": "14",
+  "{{nom_formateur}}": "Marie MARTIN",
+  "{{email_apprenant}}": "jean.dupont@exemple.fr",
+  "{{telephone_apprenant}}": "06 12 34 56 78",
+  "{{date_today}}": new Date().toLocaleDateString("fr-FR"),
+  "{{lien_connexion}}": "https://formation.exemple.fr/login",
+  "{{date_limite}}": "10/04/2026",
+};
+
+function getPreview(text: string): string {
+  let result = text;
+  Object.entries(PREVIEW_VARS).forEach(([key, val]) => {
+    result = result.replaceAll(key, val);
+  });
+  return result;
+}
+
 interface TemplateFormData {
   name: string;
   type: EmailType;
@@ -158,6 +185,8 @@ export default function EmailsPage() {
   const [templateForm, setTemplateForm] = useState<TemplateFormData>(emptyTemplateForm);
   const [saving, setSaving] = useState(false);
   const [activeField, setActiveField] = useState<"subject" | "body">("body");
+  const subjectRef = useRef<HTMLInputElement>(null);
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
 
   // Preview dialog
   const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
@@ -348,10 +377,30 @@ export default function EmailsPage() {
   };
 
   const insertVariable = (variable: string) => {
-    if (activeField === "subject") {
-      setTemplateForm((prev) => ({ ...prev, subject: prev.subject + variable }));
+    const el = activeField === "subject" ? subjectRef.current : bodyRef.current;
+    const currentValue = activeField === "subject" ? templateForm.subject : templateForm.body;
+
+    if (el) {
+      const start = el.selectionStart ?? currentValue.length;
+      const end = el.selectionEnd ?? currentValue.length;
+      const newValue = currentValue.slice(0, start) + variable + currentValue.slice(end);
+
+      if (activeField === "subject") {
+        setTemplateForm((f) => ({ ...f, subject: newValue }));
+      } else {
+        setTemplateForm((f) => ({ ...f, body: newValue }));
+      }
+
+      setTimeout(() => {
+        el.focus();
+        el.setSelectionRange(start + variable.length, start + variable.length);
+      }, 0);
     } else {
-      setTemplateForm((prev) => ({ ...prev, body: prev.body + variable }));
+      if (activeField === "subject") {
+        setTemplateForm((prev) => ({ ...prev, subject: prev.subject + variable }));
+      } else {
+        setTemplateForm((prev) => ({ ...prev, body: prev.body + variable }));
+      }
     }
   };
 
@@ -828,7 +877,7 @@ export default function EmailsPage() {
 
       {/* Template Add/Edit Dialog */}
       <Dialog open={templateDialogOpen} onOpenChange={setTemplateDialogOpen}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {editingTemplate ? "Modifier le modèle d'email" : "Nouveau modèle d'email"}
@@ -865,57 +914,78 @@ export default function EmailsPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
-              {/* Variables panel */}
-              <div className="space-y-2">
-                <Label>Variables disponibles</Label>
-                <div className="border rounded-lg p-2 space-y-1 max-h-64 overflow-y-auto bg-gray-50">
-                  {AVAILABLE_VARIABLES.map((v) => (
-                    <button
-                      key={v.key}
-                      onClick={() => insertVariable(v.key)}
-                      className="w-full text-left px-2 py-1.5 rounded text-xs hover:bg-white hover:shadow-sm transition-all group"
-                    >
-                      <p className="font-mono text-blue-700 group-hover:text-blue-800">{v.key}</p>
-                      <p className="text-gray-500 text-xs">{v.label}</p>
-                    </button>
-                  ))}
+            <div className="grid grid-cols-2 gap-6">
+              {/* Left: Form */}
+              <div className="space-y-3">
+                <div className="grid grid-cols-3 gap-4">
+                  {/* Variables panel */}
+                  <div className="space-y-2 col-span-1">
+                    <Label>Variables disponibles</Label>
+                    <div className="border rounded-lg p-2 space-y-1 max-h-48 overflow-y-auto bg-gray-50">
+                      {AVAILABLE_VARIABLES.map((v) => (
+                        <button
+                          key={v.key}
+                          onClick={() => insertVariable(v.key)}
+                          className="w-full text-left px-2 py-1.5 rounded text-xs hover:bg-white hover:shadow-sm transition-all group"
+                        >
+                          <p className="font-mono text-blue-700 group-hover:text-blue-800">{v.key}</p>
+                          <p className="text-gray-500 text-xs">{v.label}</p>
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-xs text-gray-400">
+                      Champ actif:{" "}
+                      <span className="font-medium text-gray-600">
+                        {activeField === "subject" ? "Objet" : "Corps"}
+                      </span>
+                    </p>
+                  </div>
+
+                  {/* Subject + Body */}
+                  <div className="col-span-2 space-y-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="et_subject">
+                        Objet <span className="text-red-500">*</span>
+                      </Label>
+                      <Input
+                        id="et_subject"
+                        ref={subjectRef}
+                        value={templateForm.subject}
+                        onChange={(e) => setTemplateForm((p) => ({ ...p, subject: e.target.value }))}
+                        onFocus={() => setActiveField("subject")}
+                        placeholder="Ex: Convocation — {{titre_formation}} du {{date_formation}}"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="et_body">
+                        Corps de l&apos;email <span className="text-red-500">*</span>
+                      </Label>
+                      <Textarea
+                        id="et_body"
+                        ref={bodyRef}
+                        value={templateForm.body}
+                        onChange={(e) => setTemplateForm((p) => ({ ...p, body: e.target.value }))}
+                        onFocus={() => setActiveField("body")}
+                        rows={12}
+                        className="text-sm resize-none"
+                        placeholder={`Bonjour {{prenom_apprenant}},\n\nNous avons le plaisir de vous convoquer à la formation {{titre_formation}}...\n\nCordialement,`}
+                      />
+                    </div>
+                  </div>
                 </div>
-                <p className="text-xs text-gray-400">
-                  Champ actif:{" "}
-                  <span className="font-medium text-gray-600">
-                    {activeField === "subject" ? "Objet" : "Corps"}
-                  </span>
-                </p>
               </div>
 
-              {/* Subject + Body */}
-              <div className="col-span-2 space-y-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="et_subject">
-                    Objet <span className="text-red-500">*</span>
-                  </Label>
-                  <Input
-                    id="et_subject"
-                    value={templateForm.subject}
-                    onChange={(e) => setTemplateForm((p) => ({ ...p, subject: e.target.value }))}
-                    onFocus={() => setActiveField("subject")}
-                    placeholder="Ex: Convocation — {{titre_formation}} du {{date_formation}}"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="et_body">
-                    Corps de l&apos;email <span className="text-red-500">*</span>
-                  </Label>
-                  <Textarea
-                    id="et_body"
-                    value={templateForm.body}
-                    onChange={(e) => setTemplateForm((p) => ({ ...p, body: e.target.value }))}
-                    onFocus={() => setActiveField("body")}
-                    rows={12}
-                    className="text-sm resize-none"
-                    placeholder={`Bonjour {{prenom_apprenant}},\n\nNous avons le plaisir de vous convoquer à la formation {{titre_formation}}...\n\nCordialement,`}
-                  />
+              {/* Right: Preview */}
+              <div className="space-y-2">
+                <Label>Prévisualisation</Label>
+                <div className="border rounded-lg bg-white p-4 min-h-[300px]">
+                  <div className="text-xs text-muted-foreground mb-3 pb-2 border-b space-y-1">
+                    <p>De: <span className="font-medium">MR Formation &lt;noreply@mrformation.fr&gt;</span></p>
+                    <p>Objet: <span className="font-medium text-gray-800">{getPreview(templateForm.subject) || "—"}</span></p>
+                  </div>
+                  <div className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
+                    {getPreview(templateForm.body) || <span className="italic text-gray-400">Le contenu apparaîtra ici...</span>}
+                  </div>
                 </div>
               </div>
             </div>
@@ -1180,9 +1250,16 @@ export default function EmailsPage() {
               {/* Body */}
               <div className="p-4 bg-white rounded-lg border min-h-[150px]">
                 <p className="text-xs font-medium text-gray-500 mb-3">Corps de l&apos;email</p>
-                <div className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
-                  {detailItem.body || <span className="italic text-gray-400">Aucun contenu</span>}
-                </div>
+                {detailItem.body?.includes("<") ? (
+                  <div
+                    className="text-sm prose prose-sm max-w-none"
+                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(detailItem.body) }}
+                  />
+                ) : (
+                  <div className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
+                    {detailItem.body || <span className="italic text-gray-400">Aucun contenu</span>}
+                  </div>
+                )}
               </div>
 
               {/* Error message */}
@@ -1195,7 +1272,7 @@ export default function EmailsPage() {
             </div>
           )}
           <DialogFooter>
-            {detailItem?.status === "failed" && (
+            {(detailItem?.status === "failed" || detailItem?.status === "pending") && (
               <Button
                 variant="outline"
                 className="gap-2 text-orange-600 hover:text-orange-700"
@@ -1205,7 +1282,7 @@ export default function EmailsPage() {
                 }}
               >
                 <RefreshCw className="h-4 w-4" />
-                Renvoyer
+                {detailItem?.status === "pending" ? "Envoyer maintenant" : "Renvoyer"}
               </Button>
             )}
             <Button variant="outline" onClick={() => setDetailDialogOpen(false)}>Fermer</Button>
