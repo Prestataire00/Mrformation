@@ -26,6 +26,7 @@ import {
   CheckCircle,
   AlertTriangle,
   Download,
+  FileDown,
 } from "lucide-react";
 import { downloadDevisPDF, type DevisData } from "@/lib/devis-pdf";
 import { Button } from "@/components/ui/button";
@@ -127,7 +128,7 @@ function generateReference(existingCount: number): string {
 export default function QuotesPage() {
   const supabase = createClient();
   const { toast } = useToast();
-  const { entityId } = useEntity();
+  const { entityId, entity } = useEntity();
 
   const [quotes, setQuotes] = useState<CrmQuote[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
@@ -501,11 +502,35 @@ export default function QuotesPage() {
         devisData.lines = [{ description: "Formation", quantity: 1, unit_price: Math.round(amountHT * 100) / 100 }];
       }
 
-      await downloadDevisPDF(devisData);
+      await downloadDevisPDF(devisData, entity?.name);
     } catch (err) {
       console.error("PDF download error:", err);
       toast({ title: "Erreur", description: "Impossible de générer le PDF.", variant: "destructive" });
     }
+  }
+
+  async function handleSendByEmail(quote: CrmQuote) {
+    await handleDownloadDevis(quote);
+
+    let recipientEmail = "";
+    if (quote.prospect_id) {
+      const { data } = await supabase
+        .from("crm_prospects").select("email").eq("id", quote.prospect_id).single();
+      recipientEmail = data?.email ?? "";
+    } else if (quote.client_id) {
+      const { data } = await supabase
+        .from("clients").select("email").eq("id", quote.client_id).single();
+      recipientEmail = data?.email ?? "";
+    }
+
+    const entityName = entity?.name || "MR FORMATION";
+    const subject = encodeURIComponent(`Devis ${quote.reference} - ${entityName}`);
+    const body = encodeURIComponent(
+      `Bonjour,\n\nVeuillez trouver ci-joint notre devis ${quote.reference}.\n\nN'hésitez pas à nous contacter pour toute question.\n\nCordialement,\n${entityName}`
+    );
+
+    window.open(`mailto:${recipientEmail}?subject=${subject}&body=${body}`, "_blank");
+    toast({ title: "PDF téléchargé — attachez-le à votre email" });
   }
 
   async function openAddDialogWithRef() {
@@ -824,6 +849,15 @@ export default function QuotesPage() {
                         <td className="px-4 py-3 text-gray-600">{getProfileName(quote.created_by)}</td>
                         <td className="px-4 py-3 text-xs text-muted-foreground">{formatDate(quote.created_at)}</td>
                         <td className="px-4 py-3 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs gap-1"
+                            onClick={() => handleDownloadDevis(quote)}
+                          >
+                            <FileDown className="h-3 w-3" /> PDF
+                          </Button>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -835,6 +869,10 @@ export default function QuotesPage() {
                               <DropdownMenuItem onClick={() => handleDownloadDevis(quote)} className="gap-2">
                                 <Download className="h-4 w-4" />
                                 Télécharger PDF
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleSendByEmail(quote)} className="gap-2">
+                                <Send className="h-4 w-4" />
+                                Envoyer par email
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => openEditDialog(quote)} className="gap-2">
                                 <Pencil className="h-4 w-4" />
@@ -859,6 +897,7 @@ export default function QuotesPage() {
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
+                          </div>
                         </td>
                       </tr>
                     );

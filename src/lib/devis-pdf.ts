@@ -34,16 +34,32 @@ export interface DevisData {
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const COMPANY = {
-  name: "MR FORMATION",
-  address: "24/26 Boulevard Gay Lussac 13014 Marseille",
-  email: "contact@mrformation.fr",
-  tel: "0750461245",
-  website: "http://www.mrformation.fr",
-  siret: "91311329600036",
-  nda: "93132013113",
-  region: "PACA",
-};
+function getCompanyInfo(entityName?: string) {
+  if (entityName?.toLowerCase().includes("c3v")) {
+    return {
+      name: "C3V FORMATION",
+      address: "24/26 Boulevard Gay Lussac 13014 Marseille",
+      email: "contact@c3vformation.fr",
+      tel: "0750461245",
+      website: "http://www.c3vformation.fr",
+      siret: "à compléter",
+      nda: "à compléter",
+      region: "PACA",
+      logo: "/logo-c3v-formation.png",
+    };
+  }
+  return {
+    name: "MR FORMATION",
+    address: "24/26 Boulevard Gay Lussac 13014 Marseille",
+    email: "contact@mrformation.fr",
+    tel: "0750461245",
+    website: "http://www.mrformation.fr",
+    siret: "91311329600036",
+    nda: "93132013113",
+    region: "PACA",
+    logo: "/logo-mr-formation.png",
+  };
+}
 
 const DARK = "#1a1a1a";
 const GRAY = "#666666";
@@ -209,7 +225,8 @@ Conform\u00e9ment \u00e0 l'exigence essentielle de s\u00e9curit\u00e9 des donn\u
 
 // ── Main export ──────────────────────────────────────────────────────────────
 
-export async function generateDevisPDF(data: DevisData): Promise<jsPDF> {
+export async function generateDevisPDF(data: DevisData, entityName?: string): Promise<jsPDF> {
+  const COMPANY = getCompanyInfo(entityName);
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const pageWidth = 210;
   const margin = 15;
@@ -218,7 +235,7 @@ export async function generateDevisPDF(data: DevisData): Promise<jsPDF> {
   // Try to load logo
   let logoImg: string | null = null;
   try {
-    const response = await fetch("/logo-mr-formation.png");
+    const response = await fetch(COMPANY.logo);
     const blob = await response.blob();
     logoImg = await new Promise<string>((resolve) => {
       const reader = new FileReader();
@@ -476,7 +493,7 @@ export async function generateDevisPDF(data: DevisData): Promise<jsPDF> {
 
   // Check if we need more space for signatures (at least 30mm before footer)
   if (y > 250) {
-    addFooter(doc, pageWidth, contentWidth);
+    addFooter(doc, pageWidth, contentWidth, COMPANY);
     doc.addPage();
     y = margin + 20;
   }
@@ -503,7 +520,7 @@ export async function generateDevisPDF(data: DevisData): Promise<jsPDF> {
 
   // ── Footer ─────────────────────────────────────────────────────────────────
 
-  addFooter(doc, pageWidth, contentWidth);
+  addFooter(doc, pageWidth, contentWidth, COMPANY);
 
   // ── Pages 2+: CGV ─────────────────────────────────────────────────────────
 
@@ -543,7 +560,7 @@ export async function generateDevisPDF(data: DevisData): Promise<jsPDF> {
   for (const section of CGV_SECTIONS) {
     // Check if we need a new page
     if (y > 265) {
-      addFooter(doc, pageWidth, contentWidth);
+      addFooter(doc, pageWidth, contentWidth, COMPANY);
       doc.addPage();
       y = margin;
     }
@@ -565,7 +582,7 @@ export async function generateDevisPDF(data: DevisData): Promise<jsPDF> {
   // Add mention/penalties if provided
   if (data.mention) {
     if (y > 250) {
-      addFooter(doc, pageWidth, contentWidth);
+      addFooter(doc, pageWidth, contentWidth, COMPANY);
       doc.addPage();
       y = margin;
     }
@@ -577,23 +594,23 @@ export async function generateDevisPDF(data: DevisData): Promise<jsPDF> {
   }
 
   // Footer on last page
-  addFooter(doc, pageWidth, contentWidth);
+  addFooter(doc, pageWidth, contentWidth, COMPANY);
 
   return doc;
 }
 
-function addFooter(doc: jsPDF, pageWidth: number, contentWidth: number) {
+function addFooter(doc: jsPDF, pageWidth: number, contentWidth: number, company: ReturnType<typeof getCompanyInfo>) {
   doc.setFontSize(6);
   doc.setTextColor(GRAY);
   doc.setFont("helvetica", "italic");
   doc.text(
-    `${COMPANY.name}, ${COMPANY.address} , Num\u00e9ro SIRET: ${COMPANY.siret}, Num\u00e9ro de d\u00e9claration d'activit\u00e9: ${COMPANY.nda}`,
+    `${company.name}, ${company.address} , Num\u00e9ro SIRET: ${company.siret}, Num\u00e9ro de d\u00e9claration d'activit\u00e9: ${company.nda}`,
     pageWidth / 2,
     282,
     { align: "center", maxWidth: contentWidth }
   );
   doc.text(
-    `(aupr\u00e8s du pr\u00e9fet de r\u00e9gion de: ${COMPANY.region})`,
+    `(aupr\u00e8s du pr\u00e9fet de r\u00e9gion de: ${company.region})`,
     pageWidth / 2,
     286,
     { align: "center" }
@@ -607,7 +624,7 @@ function addFooter(doc: jsPDF, pageWidth: number, contentWidth: number) {
 
 // ── Convenience: download directly ──────────────────────────────────────────
 
-export async function downloadDevisPDF(data: DevisData): Promise<void> {
-  const doc = await generateDevisPDF(data);
+export async function downloadDevisPDF(data: DevisData, entityName?: string): Promise<void> {
+  const doc = await generateDevisPDF(data, entityName);
   doc.save(`Devis_${data.reference}.pdf`);
 }
