@@ -45,7 +45,9 @@ import {
   FileText,
   Loader2,
   ExternalLink,
+  Mail,
 } from "lucide-react";
+import { useEntity } from "@/contexts/EntityContext";
 
 type TrainerWithCompetencies = Trainer & { competencies: TrainerCompetency[] };
 
@@ -118,6 +120,54 @@ export default function TrainerProfilePage() {
   const [uploading, setUploading] = useState(false);
   const [cvUrl, setCvUrl] = useState<string | null>(null);
   const [cvTextLength, setCvTextLength] = useState(0);
+
+  // Email
+  const { entityId } = useEntity();
+  const [emailDialog, setEmailDialog] = useState(false);
+  const [emailForm, setEmailForm] = useState({ subject: "", body: "", templateId: "" });
+  const [emailTemplates, setEmailTemplates] = useState<Array<{ id: string; name: string; subject: string; body: string }>>([]);
+  const [sendingEmail, setSendingEmail] = useState(false);
+
+  useEffect(() => {
+    if (!entityId) return;
+    supabase
+      .from("email_templates")
+      .select("id, name, subject, body")
+      .eq("entity_id", entityId)
+      .order("created_at", { ascending: false })
+      .then(({ data }) => setEmailTemplates(data ?? []));
+  }, [supabase, entityId]);
+
+  const handleSendEmail = async () => {
+    if (!trainer?.email) return;
+    if (!emailForm.subject.trim() || !emailForm.body.trim()) {
+      toast({ title: "Objet et message requis", variant: "destructive" });
+      return;
+    }
+    setSendingEmail(true);
+    try {
+      const res = await fetch("/api/emails/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: trainer.email,
+          subject: emailForm.subject,
+          body: emailForm.body,
+        }),
+      });
+      if (res.ok) {
+        toast({ title: "Email envoyé" });
+        setEmailDialog(false);
+        setEmailForm({ subject: "", body: "", templateId: "" });
+      } else {
+        toast({ title: "Erreur d'envoi", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Erreur réseau", variant: "destructive" });
+    } finally {
+      setSendingEmail(false);
+    }
+  };
 
   // Competencies
   const [newCompetency, setNewCompetency] = useState({ competency: "", level: "intermediate" as "beginner" | "intermediate" | "expert" });
@@ -376,6 +426,11 @@ export default function TrainerProfilePage() {
             </div>
           </div>
         </div>
+        {trainer.email && (
+          <Button variant="outline" onClick={() => setEmailDialog(true)}>
+            <Mail className="h-4 w-4 mr-2" /> Envoyer un email
+          </Button>
+        )}
       </div>
 
       {/* Stats Cards */}
@@ -914,6 +969,66 @@ export default function TrainerProfilePage() {
             <Button variant="outline" onClick={() => setCompToDelete(null)}>Annuler</Button>
             <Button variant="destructive" onClick={() => compToDelete && handleDeleteCompetency(compToDelete)}>
               Supprimer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Email Dialog */}
+      <Dialog open={emailDialog} onOpenChange={setEmailDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Envoyer un email à {trainer?.first_name} {trainer?.last_name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="p-2 bg-muted/30 rounded-lg text-sm text-muted-foreground">
+              Destinataire : <span className="font-medium text-gray-800">{trainer?.email}</span>
+            </div>
+            {emailTemplates.length > 0 && (
+              <div className="space-y-1.5">
+                <Label>Utiliser un modèle</Label>
+                <select
+                  value={emailForm.templateId}
+                  onChange={(e) => {
+                    const t = emailTemplates.find((t) => t.id === e.target.value);
+                    if (t) {
+                      setEmailForm({ subject: t.subject, body: t.body, templateId: t.id });
+                    } else {
+                      setEmailForm({ subject: "", body: "", templateId: "" });
+                    }
+                  }}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[#3DB5C5] bg-white"
+                >
+                  <option value="">— Email libre —</option>
+                  {emailTemplates.map((t) => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <Label>Objet *</Label>
+              <Input
+                value={emailForm.subject}
+                onChange={(e) => setEmailForm((f) => ({ ...f, subject: e.target.value }))}
+                placeholder="Objet de l'email"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Message *</Label>
+              <Textarea
+                value={emailForm.body}
+                onChange={(e) => setEmailForm((f) => ({ ...f, body: e.target.value }))}
+                rows={8}
+                placeholder="Contenu de l'email..."
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEmailDialog(false)}>Annuler</Button>
+            <Button onClick={handleSendEmail} disabled={sendingEmail}>
+              {sendingEmail && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              <Mail className="h-4 w-4 mr-2" /> Envoyer
             </Button>
           </DialogFooter>
         </DialogContent>
