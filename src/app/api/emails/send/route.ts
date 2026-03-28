@@ -44,6 +44,11 @@ interface SendEmailPayload {
   session_id?: string;
   recipient_type?: string;
   recipient_id?: string;
+  attachments?: Array<{
+    filename: string;
+    content: string;
+    type?: string;
+  }>;
 }
 
 // Convert plain-text body to simple HTML (preserve line breaks)
@@ -190,6 +195,10 @@ export async function POST(request: NextRequest) {
             subject: subject.trim(),
             html: htmlBody,
             text: body.trim(),
+            attachments: payload.attachments?.map((a) => ({
+              filename: a.filename,
+              content: Buffer.from(a.content, "base64"),
+            })),
           });
 
           if (result.error) {

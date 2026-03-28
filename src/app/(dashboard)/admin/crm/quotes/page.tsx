@@ -31,7 +31,7 @@ import {
   GraduationCap,
   Loader2,
 } from "lucide-react";
-import { downloadDevisPDF, type DevisData } from "@/lib/devis-pdf";
+import { downloadDevisPDF, generateDevisPDF, type DevisData } from "@/lib/devis-pdf";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -140,6 +140,12 @@ export default function QuotesPage() {
   const [convertDialog, setConvertDialog] = useState(false);
   const [convertQuote, setConvertQuote] = useState<CrmQuote | null>(null);
   const [converting, setConverting] = useState(false);
+
+  // Email dialog
+  const [emailDialog, setEmailDialog] = useState(false);
+  const [emailForm, setEmailForm] = useState({ to: "", subject: "", body: "" });
+  const [emailAttachment, setEmailAttachment] = useState<{ filename: string; content: string } | null>(null);
+  const [sendingEmail, setSendingEmail] = useState(false);
   const [clients, setClients] = useState<Client[]>([]);
   const [prospects, setProspects] = useState<CrmProspect[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -519,27 +525,97 @@ export default function QuotesPage() {
   }
 
   async function handleSendByEmail(quote: CrmQuote) {
-    await handleDownloadDevis(quote);
+    try {
+      let meta: Record<string, unknown> = {};
+      try { meta = quote.notes ? JSON.parse(quote.notes) : {}; } catch { /* */ }
 
-    let recipientEmail = "";
-    if (quote.prospect_id) {
-      const { data } = await supabase
-        .from("crm_prospects").select("email").eq("id", quote.prospect_id).single();
-      recipientEmail = data?.email ?? "";
-    } else if (quote.client_id) {
-      const { data } = await supabase
-        .from("clients").select("email").eq("id", quote.client_id).single();
-      recipientEmail = data?.email ?? "";
+      let prospectName = "";
+      let prospectEmail = "";
+      if (quote.prospect_id) {
+        const { data: p } = await supabase
+          .from("crm_prospects").select("company_name, email").eq("id", quote.prospect_id).single();
+        if (p) { prospectName = p.company_name; prospectEmail = p.email ?? ""; }
+      } else if (quote.client_id) {
+        const { data: c } = await supabase
+          .from("clients").select("company_name, email").eq("id", quote.client_id).single();
+        if (c) { prospectName = c.company_name; prospectEmail = c.email ?? ""; }
+      }
+
+      const lines = Array.isArray(meta.lines) ? meta.lines : [];
+      let tvaRate = 20;
+      if (typeof meta.tva === "number") tvaRate = meta.tva;
+      else if (typeof meta.tva === "string") tvaRate = parseFloat(String(meta.tva).replace(",", ".")) || 20;
+
+      const devisData: DevisData = {
+        reference: quote.reference ?? "",
+        date_creation: quote.created_at?.slice(0, 10) ?? new Date().toISOString().slice(0, 10),
+        date_echeance: quote.valid_until ?? "",
+        tva: tvaRate,
+        lines: lines.map((l: Record<string, unknown>) => ({
+          description: String(l.description ?? ""),
+          quantity: Number(l.quantity ?? 1),
+          unit_price: Number(l.unit_price ?? 0),
+        })),
+        prospect_name: prospectName,
+        prospect_email: prospectEmail,
+      };
+
+      if (devisData.lines.length === 0 && quote.amount && quote.amount > 0) {
+        const amountHT = quote.amount / (1 + tvaRate / 100);
+        devisData.lines = [{ description: "Formation", quantity: 1, unit_price: Math.round(amountHT * 100) / 100 }];
+      }
+
+      const doc = await generateDevisPDF(devisData, entity?.name);
+      const blob = doc.output("blob");
+      const base64 = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve((reader.result as string).split(",")[1]);
+        reader.readAsDataURL(blob);
+      });
+
+      const entityName = entity?.name || "MR FORMATION";
+      setEmailAttachment({ filename: `devis-${quote.reference}.pdf`, content: base64 });
+      setEmailForm({
+        to: prospectEmail,
+        subject: `Devis ${quote.reference} - ${entityName}`,
+        body: `Bonjour,\n\nVeuillez trouver ci-joint notre devis ${quote.reference}.\n\nN'hésitez pas à nous contacter pour toute question.\n\nCordialement,\n${entityName}`,
+      });
+      setEmailDialog(true);
+    } catch (err) {
+      console.error("handleSendByEmail error:", err);
+      toast({ title: "Erreur", description: "Impossible de préparer l'email", variant: "destructive" });
     }
+  }
 
-    const entityName = entity?.name || "MR FORMATION";
-    const subject = encodeURIComponent(`Devis ${quote.reference} - ${entityName}`);
-    const body = encodeURIComponent(
-      `Bonjour,\n\nVeuillez trouver ci-joint notre devis ${quote.reference}.\n\nN'hésitez pas à nous contacter pour toute question.\n\nCordialement,\n${entityName}`
-    );
-
-    window.open(`mailto:${recipientEmail}?subject=${subject}&body=${body}`, "_blank");
-    toast({ title: "PDF téléchargé — attachez-le à votre email" });
+  async function confirmSendEmail() {
+    if (!emailForm.to.trim()) {
+      toast({ title: "L'adresse email est requise", variant: "destructive" });
+      return;
+    }
+    setSendingEmail(true);
+    try {
+      const res = await fetch("/api/emails/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: emailForm.to.trim(),
+          subject: emailForm.subject,
+          body: emailForm.body,
+          attachments: emailAttachment ? [{ ...emailAttachment, type: "application/pdf" }] : undefined,
+        }),
+      });
+      const result = await res.json();
+      if (res.ok && result.success) {
+        toast({ title: "Devis envoyé par email" });
+        setEmailDialog(false);
+      } else {
+        toast({ title: "Erreur d'envoi", description: result.error ?? "Échec", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Erreur réseau", variant: "destructive" });
+    } finally {
+      setSendingEmail(false);
+    }
   }
 
   function handleConvertToFormation(quote: CrmQuote) {
@@ -1063,6 +1139,54 @@ export default function QuotesPage() {
               {converting && <Loader2 className="h-4 w-4 animate-spin" />}
               <GraduationCap className="h-4 w-4" />
               Confirmer et créer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Email Dialog */}
+      <Dialog open={emailDialog} onOpenChange={setEmailDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Envoyer le devis par email</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label>Destinataire *</Label>
+              <Input
+                type="email"
+                value={emailForm.to}
+                onChange={(e) => setEmailForm((f) => ({ ...f, to: e.target.value }))}
+                placeholder="email@exemple.fr"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Objet</Label>
+              <Input
+                value={emailForm.subject}
+                onChange={(e) => setEmailForm((f) => ({ ...f, subject: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Message</Label>
+              <Textarea
+                value={emailForm.body}
+                onChange={(e) => setEmailForm((f) => ({ ...f, body: e.target.value }))}
+                rows={5}
+              />
+            </div>
+            {emailAttachment && (
+              <div className="flex items-center gap-2 p-2 bg-muted/30 rounded-lg text-xs text-muted-foreground">
+                <FileText className="h-4 w-4" />
+                {emailAttachment.filename}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEmailDialog(false)}>Annuler</Button>
+            <Button onClick={confirmSendEmail} disabled={sendingEmail}>
+              {sendingEmail && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              <Send className="h-4 w-4 mr-2" /> Envoyer
             </Button>
           </DialogFooter>
         </DialogContent>
