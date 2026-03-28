@@ -164,6 +164,12 @@ interface ClientFormData {
   naf_code: string;
   status: ClientStatus;
   notes: string;
+  phone: string;
+  email: string;
+  opco: string;
+  funding_type: string;
+  country: string;
+  bpf_category: string;
 }
 
 const EMPTY_CONTACT_FORM: ContactFormData = {
@@ -205,6 +211,12 @@ export default function ClientDetailPage() {
     naf_code: "",
     status: "active",
     notes: "",
+    phone: "",
+    email: "",
+    opco: "",
+    funding_type: "",
+    country: "France",
+    bpf_category: "",
   });
   const [clientErrors, setClientErrors] = useState<Partial<Record<keyof ClientFormData, string>>>({});
 
@@ -269,6 +281,12 @@ export default function ClientDetailPage() {
       naf_code: data.naf_code ?? "",
       status: data.status as ClientStatus,
       notes: data.notes ?? "",
+      phone: data.phone ?? "",
+      email: data.email ?? "",
+      opco: data.opco ?? "",
+      funding_type: data.funding_type ?? "",
+      country: data.country ?? "France",
+      bpf_category: data.bpf_category ?? "",
     });
   }, [supabase, clientId, router, toast]);
 
@@ -465,6 +483,12 @@ export default function ClientDetailPage() {
           naf_code: clientForm.naf_code.trim() || null,
           status: clientForm.status,
           notes: clientForm.notes.trim() || null,
+          phone: clientForm.phone.trim() || null,
+          email: clientForm.email.trim() || null,
+          opco: clientForm.opco.trim() || null,
+          funding_type: clientForm.funding_type || null,
+          country: clientForm.country.trim() || "France",
+          bpf_category: clientForm.bpf_category || null,
           updated_at: new Date().toISOString(),
         })
         .eq("id", clientId)
@@ -496,6 +520,12 @@ export default function ClientDetailPage() {
       naf_code: client.naf_code ?? "",
       status: client.status,
       notes: client.notes ?? "",
+      phone: (client as any).phone ?? "",
+      email: (client as any).email ?? "",
+      opco: (client as any).opco ?? "",
+      funding_type: (client as any).funding_type ?? "",
+      country: (client as any).country ?? "France",
+      bpf_category: (client as any).bpf_category ?? "",
     });
     setClientErrors({});
     setEditingClient(false);
@@ -1406,6 +1436,34 @@ export default function ClientDetailPage() {
                     </div>
                   </div>
 
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <Label>Téléphone</Label>
+                      {editingClient ? (
+                        <Input
+                          value={clientForm.phone}
+                          onChange={(e) => setClientForm((f) => ({ ...f, phone: e.target.value }))}
+                          placeholder="01 23 45 67 89"
+                        />
+                      ) : (
+                        <p className="text-sm text-gray-700">{(client as any).phone ?? "—"}</p>
+                      )}
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Email</Label>
+                      {editingClient ? (
+                        <Input
+                          type="email"
+                          value={clientForm.email}
+                          onChange={(e) => setClientForm((f) => ({ ...f, email: e.target.value }))}
+                          placeholder="contact@entreprise.fr"
+                        />
+                      ) : (
+                        <p className="text-sm text-gray-700">{(client as any).email ?? "—"}</p>
+                      )}
+                    </div>
+                  </div>
+
                   <Separator />
 
                   <div className="grid grid-cols-2 gap-4">
@@ -1480,6 +1538,84 @@ export default function ClientDetailPage() {
                         {client.notes ?? <span className="text-muted-foreground italic">Aucune note.</span>}
                       </p>
                     )}
+                  </div>
+
+                  <Separator />
+
+                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Financement</h3>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <Label>OPCO</Label>
+                      {editingClient ? (
+                        <Input
+                          value={clientForm.opco}
+                          onChange={(e) => setClientForm((f) => ({ ...f, opco: e.target.value }))}
+                          placeholder="Nom de l'OPCO"
+                        />
+                      ) : (
+                        <p className="text-sm text-gray-700">{(client as any).opco ?? "—"}</p>
+                      )}
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Type de financement</Label>
+                      {editingClient ? (
+                        <Select
+                          value={clientForm.funding_type}
+                          onValueChange={(v) => setClientForm((f) => ({ ...f, funding_type: v }))}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Sélectionner..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="entreprise">Entreprise</SelectItem>
+                            <SelectItem value="opco">OPCO</SelectItem>
+                            <SelectItem value="cpf">CPF</SelectItem>
+                            <SelectItem value="pole_emploi">Pôle Emploi</SelectItem>
+                            <SelectItem value="region">Région</SelectItem>
+                            <SelectItem value="autre">Autre</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <p className="text-sm text-gray-700">{(client as any).funding_type ?? "—"}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <Label>Catégorie BPF</Label>
+                      {editingClient ? (
+                        <Select
+                          value={clientForm.bpf_category}
+                          onValueChange={(v) => setClientForm((f) => ({ ...f, bpf_category: v }))}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Sélectionner..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="entreprise_privee">Entreprise privée</SelectItem>
+                            <SelectItem value="administration_publique">Administration publique</SelectItem>
+                            <SelectItem value="association">Association</SelectItem>
+                            <SelectItem value="particulier">Particulier</SelectItem>
+                            <SelectItem value="autre">Autre</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <p className="text-sm text-gray-700">{(client as any).bpf_category ?? "—"}</p>
+                      )}
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Pays</Label>
+                      {editingClient ? (
+                        <Input
+                          value={clientForm.country}
+                          onChange={(e) => setClientForm((f) => ({ ...f, country: e.target.value }))}
+                        />
+                      ) : (
+                        <p className="text-sm text-gray-700">{(client as any).country ?? "France"}</p>
+                      )}
+                    </div>
                   </div>
                 </CardContent>
               </Card>
