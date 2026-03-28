@@ -3,13 +3,14 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { Download, ChevronLeft, ChevronRight, Plus, Loader2 } from "lucide-react";
+import { Download, ChevronLeft, ChevronRight, Plus, Loader2, Mail } from "lucide-react";
 import { downloadXlsx } from "@/lib/export-xlsx";
 import { useToast } from "@/components/ui/use-toast";
 import { useEntity } from "@/contexts/EntityContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -52,6 +53,13 @@ export default function ApprenantsListePage() {
   const [addSaving, setAddSaving] = useState(false);
   const [clients, setClients] = useState<Array<{ id: string; company_name: string }>>([]);
 
+  // Mass email
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [massEmailDialog, setMassEmailDialog] = useState(false);
+  const [massEmailForm, setMassEmailForm] = useState({ subject: "", body: "", templateId: "" });
+  const [massTemplates, setMassTemplates] = useState<Array<{ id: string; name: string; subject: string; body: string }>>([]);
+  const [sendingMass, setSendingMass] = useState(false);
+
   useEffect(() => {
     if (!entityId) return;
     supabase
@@ -60,6 +68,11 @@ export default function ApprenantsListePage() {
       .eq("entity_id", entityId)
       .order("company_name")
       .then(({ data }) => setClients(data ?? []));
+    supabase
+      .from("email_templates")
+      .select("id, name, subject, body")
+      .eq("entity_id", entityId)
+      .then(({ data }) => setMassTemplates(data ?? []));
   }, [supabase, entityId]);
 
   // Debounce name filter (300ms)
@@ -156,6 +169,34 @@ export default function ApprenantsListePage() {
     }
   };
 
+  async function handleMassEmail() {
+    const targets = displayLearners.filter((l) => selected.has(l.id) && l.email);
+    if (targets.length === 0) {
+      toast({ title: "Aucun apprenant avec email sélectionné", variant: "destructive" });
+      return;
+    }
+    setSendingMass(true);
+    let sent = 0;
+    for (const learner of targets) {
+      try {
+        const res = await fetch("/api/emails/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ to: learner.email, subject: massEmailForm.subject, body: massEmailForm.body }),
+        });
+        if (res.ok) sent++;
+      } catch { /* continue */ }
+    }
+    setSendingMass(false);
+    const ignored = selected.size - targets.length;
+    toast({
+      title: `${sent} email${sent > 1 ? "s" : ""} envoyé${sent > 1 ? "s" : ""}${ignored > 0 ? `, ${ignored} sans email ignoré${ignored > 1 ? "s" : ""}` : ""}`,
+    });
+    setMassEmailDialog(false);
+    setSelected(new Set());
+    setMassEmailForm({ subject: "", body: "", templateId: "" });
+  }
+
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
   const filteredLearners = debouncedCompany.trim()
@@ -251,6 +292,17 @@ export default function ApprenantsListePage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
+                <th className="px-4 py-3 w-10">
+                  <input
+                    type="checkbox"
+                    checked={selected.size === displayLearners.length && displayLearners.length > 0}
+                    onChange={(e) => {
+                      if (e.target.checked) setSelected(new Set(displayLearners.map((l) => l.id)));
+                      else setSelected(new Set());
+                    }}
+                    className="rounded border-gray-300"
+                  />
+                </th>
                 <th className="px-4 py-3 text-left font-semibold text-gray-600">Nom</th>
                 <th className="px-4 py-3 text-left font-semibold text-gray-600">Entreprise</th>
                 <th className="px-4 py-3 text-left font-semibold text-gray-600">Tél</th>
@@ -262,7 +314,7 @@ export default function ApprenantsListePage() {
             <tbody className="divide-y divide-gray-100">
               {displayLearners.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-gray-400">
+                  <td colSpan={7} className="px-4 py-12 text-center text-gray-400">
                     Aucun apprenant trouvé
                   </td>
                 </tr>
@@ -271,6 +323,19 @@ export default function ApprenantsListePage() {
                   const fullName = `${learner.first_name} ${learner.last_name}`;
                   return (
                     <tr key={learner.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-3">
+                        <input
+                          type="checkbox"
+                          checked={selected.has(learner.id)}
+                          onChange={(e) => {
+                            const next = new Set(selected);
+                            if (e.target.checked) next.add(learner.id);
+                            else next.delete(learner.id);
+                            setSelected(next);
+                          }}
+                          className="rounded border-gray-300"
+                        />
+                      </td>
                       <td className="px-4 py-3 font-medium text-gray-800">{fullName}</td>
                       <td className="px-4 py-3 text-gray-600">{learner.clients?.company_name ?? "—"}</td>
                       <td className="px-4 py-3 text-gray-600">{learner.phone ?? "—"}</td>
@@ -278,6 +343,15 @@ export default function ApprenantsListePage() {
                       <td className="px-4 py-3 text-gray-600">{learner.sessions_count ?? 0}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
+                          {learner.email && (
+                            <button
+                              onClick={() => { setSelected(new Set([learner.id])); setMassEmailDialog(true); }}
+                              className="text-[#3DB5C5] hover:text-teal-700"
+                              title="Envoyer un email"
+                            >
+                              <Mail className="h-3.5 w-3.5" />
+                            </button>
+                          )}
                           <Link
                             href={`/admin/clients/apprenants/${learner.id}`}
                             className="text-[#3DB5C5] hover:underline text-xs font-medium"
@@ -409,6 +483,86 @@ export default function ApprenantsListePage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Mass email dialog */}
+      <Dialog open={massEmailDialog} onOpenChange={setMassEmailDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Envoyer un email à {selected.size} apprenant{selected.size > 1 ? "s" : ""}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {massTemplates.length > 0 && (
+              <div className="space-y-1.5">
+                <Label>Utiliser un modèle</Label>
+                <select
+                  value={massEmailForm.templateId}
+                  onChange={(e) => {
+                    const t = massTemplates.find((t) => t.id === e.target.value);
+                    if (t) setMassEmailForm({ templateId: t.id, subject: t.subject, body: t.body });
+                    else setMassEmailForm((f) => ({ ...f, templateId: "" }));
+                  }}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-white focus:outline-none focus:border-[#3DB5C5]"
+                >
+                  <option value="">— Email libre —</option>
+                  {massTemplates.map((t) => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <Label>Objet *</Label>
+              <Input
+                value={massEmailForm.subject}
+                onChange={(e) => setMassEmailForm((f) => ({ ...f, subject: e.target.value }))}
+                placeholder="Objet de l'email"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Message *</Label>
+              <Textarea
+                value={massEmailForm.body}
+                onChange={(e) => setMassEmailForm((f) => ({ ...f, body: e.target.value }))}
+                rows={6}
+                placeholder="Votre message..."
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Les apprenants sans adresse email seront ignorés automatiquement.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMassEmailDialog(false)}>Annuler</Button>
+            <Button
+              onClick={handleMassEmail}
+              disabled={sendingMass || !massEmailForm.subject.trim() || !massEmailForm.body.trim()}
+            >
+              {sendingMass && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              <Mail className="h-4 w-4 mr-2" /> Envoyer à tous
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Floating selection bar */}
+      {selected.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-white border border-gray-200 rounded-xl shadow-lg px-6 py-3 flex items-center gap-4 z-50">
+          <span className="text-sm font-medium text-gray-700">
+            {selected.size} apprenant{selected.size > 1 ? "s" : ""} sélectionné{selected.size > 1 ? "s" : ""}
+          </span>
+          <Button
+            size="sm"
+            onClick={() => setMassEmailDialog(true)}
+            style={{ background: "#3DB5C5" }}
+            className="text-white hover:opacity-90"
+          >
+            <Mail className="h-4 w-4 mr-1" /> Envoyer un email
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setSelected(new Set())}>
+            Désélectionner tout
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
