@@ -99,6 +99,19 @@ export default function TrainerProfilePage() {
     bio: "",
     hourly_rate: "",
     availability_notes: "",
+    siret: "",
+    contract_type: "",
+    status: "active",
+    legal_status: "",
+    company_name: "",
+    tva_number: "",
+    address: "",
+    city: "",
+    postal_code: "",
+    country: "France",
+    iban: "",
+    bic: "",
+    bank_name: "",
   });
 
   // CV upload
@@ -152,6 +165,19 @@ export default function TrainerProfilePage() {
       bio: t.bio || "",
       hourly_rate: t.hourly_rate?.toString() || "",
       availability_notes: t.availability_notes || "",
+      siret: (t as any).siret || "",
+      contract_type: (t as any).contract_type || "",
+      status: (t as any).status || "active",
+      legal_status: (t as any).legal_status || "",
+      company_name: (t as any).company_name || "",
+      tva_number: (t as any).tva_number || "",
+      address: (t as any).address || "",
+      city: (t as any).city || "",
+      postal_code: (t as any).postal_code || "",
+      country: (t as any).country || "France",
+      iban: (t as any).iban || "",
+      bic: (t as any).bic || "",
+      bank_name: (t as any).bank_name || "",
     });
     // CV fields
     const raw = t as unknown as Record<string, unknown>;
@@ -202,6 +228,19 @@ export default function TrainerProfilePage() {
         bio: formData.bio.trim() || null,
         hourly_rate: formData.hourly_rate ? parseFloat(formData.hourly_rate) : null,
         availability_notes: formData.availability_notes.trim() || null,
+        siret: formData.siret.trim() || null,
+        contract_type: formData.contract_type || null,
+        status: formData.status || "active",
+        legal_status: formData.legal_status || null,
+        company_name: formData.company_name.trim() || null,
+        tva_number: formData.tva_number.trim() || null,
+        address: formData.address.trim() || null,
+        city: formData.city.trim() || null,
+        postal_code: formData.postal_code.trim() || null,
+        country: formData.country.trim() || "France",
+        iban: formData.iban.trim() || null,
+        bic: formData.bic.trim() || null,
+        bank_name: formData.bank_name.trim() || null,
       })
       .eq("id", id);
 
@@ -532,6 +571,194 @@ export default function TrainerProfilePage() {
                 </div>
               </div>
 
+              <div className="flex justify-end">
+                <Button onClick={handleSaveProfile} disabled={saving} className="gap-2">
+                  <Save className="h-4 w-4" />
+                  {saving ? "Enregistrement..." : "Enregistrer"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Informations juridiques */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Informations juridiques</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label>SIRET</Label>
+                  <Input
+                    value={formData.siret}
+                    onChange={(e) => setFormData((p) => ({ ...p, siret: e.target.value }))}
+                    placeholder="12345678901234"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Statut juridique</Label>
+                  <Select
+                    value={formData.legal_status}
+                    onValueChange={(v) => setFormData((p) => ({ ...p, legal_status: v }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Sélectionner..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="auto_entrepreneur">Auto-entrepreneur</SelectItem>
+                      <SelectItem value="sasu">SASU</SelectItem>
+                      <SelectItem value="eurl">EURL</SelectItem>
+                      <SelectItem value="sarl">SARL</SelectItem>
+                      <SelectItem value="portage_salarial">Portage salarial</SelectItem>
+                      <SelectItem value="salarie">Salarié</SelectItem>
+                      <SelectItem value="autre">Autre</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              {formData.legal_status && formData.legal_status !== "salarie" && (
+                <div className="space-y-1.5">
+                  <Label>Nom de la société</Label>
+                  <Input
+                    value={formData.company_name}
+                    onChange={(e) => setFormData((p) => ({ ...p, company_name: e.target.value }))}
+                    placeholder="Raison sociale"
+                  />
+                </div>
+              )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label>Numéro TVA</Label>
+                  <Input
+                    value={formData.tva_number}
+                    onChange={(e) => setFormData((p) => ({ ...p, tva_number: e.target.value }))}
+                    placeholder="FR12345678901"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Type de contrat</Label>
+                  <Select
+                    value={formData.contract_type}
+                    onValueChange={(v) => setFormData((p) => ({ ...p, contract_type: v }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Sélectionner..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="freelance">Freelance</SelectItem>
+                      <SelectItem value="employee">Salarié</SelectItem>
+                      <SelectItem value="contractor">Prestataire</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Statut</Label>
+                <Select
+                  value={formData.status}
+                  onValueChange={(v) => setFormData((p) => ({ ...p, status: v }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Actif</SelectItem>
+                    <SelectItem value="inactive">Inactif</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex justify-end">
+                <Button onClick={handleSaveProfile} disabled={saving} className="gap-2">
+                  <Save className="h-4 w-4" />
+                  {saving ? "Enregistrement..." : "Enregistrer"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Adresse */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Adresse</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-1.5">
+                <Label>Adresse complète</Label>
+                <Input
+                  value={formData.address}
+                  onChange={(e) => setFormData((p) => ({ ...p, address: e.target.value }))}
+                  placeholder="Numéro et rue"
+                />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="space-y-1.5">
+                  <Label>Ville</Label>
+                  <Input
+                    value={formData.city}
+                    onChange={(e) => setFormData((p) => ({ ...p, city: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Code postal</Label>
+                  <Input
+                    value={formData.postal_code}
+                    onChange={(e) => setFormData((p) => ({ ...p, postal_code: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Pays</Label>
+                  <Input
+                    value={formData.country}
+                    onChange={(e) => setFormData((p) => ({ ...p, country: e.target.value }))}
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <Button onClick={handleSaveProfile} disabled={saving} className="gap-2">
+                  <Save className="h-4 w-4" />
+                  {saving ? "Enregistrement..." : "Enregistrer"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Coordonnées bancaires */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Coordonnées bancaires</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <span className="text-amber-600 text-xs font-medium">
+                  Informations confidentielles — usage paiements uniquement
+                </span>
+              </div>
+              <div className="space-y-1.5">
+                <Label>IBAN</Label>
+                <Input
+                  value={formData.iban}
+                  onChange={(e) => setFormData((p) => ({ ...p, iban: e.target.value }))}
+                  placeholder="FR76 1234 5678 9012 3456 7890 123"
+                />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label>BIC</Label>
+                  <Input
+                    value={formData.bic}
+                    onChange={(e) => setFormData((p) => ({ ...p, bic: e.target.value }))}
+                    placeholder="BNPAFRPP"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Nom de la banque</Label>
+                  <Input
+                    value={formData.bank_name}
+                    onChange={(e) => setFormData((p) => ({ ...p, bank_name: e.target.value }))}
+                    placeholder="BNP Paribas"
+                  />
+                </div>
+              </div>
               <div className="flex justify-end">
                 <Button onClick={handleSaveProfile} disabled={saving} className="gap-2">
                   <Save className="h-4 w-4" />
