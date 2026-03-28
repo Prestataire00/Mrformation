@@ -74,7 +74,13 @@ export default function LearnerDetailPage() {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ first_name: "", last_name: "", email: "", phone: "", client_id: "" });
+  const [form, setForm] = useState({
+    first_name: "", last_name: "", email: "", phone: "", client_id: "",
+    job_title: "", birth_date: "", gender: "", nationality: "",
+    address: "", city: "", postal_code: "",
+    social_security_number: "", education_level: "",
+  });
+  const [showSSN, setShowSSN] = useState(false);
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   const [sessions, setSessions] = useState<SessionAttendance[]>([]);
   const [clientOptions, setClientOptions] = useState<ClientOption[]>([]);
@@ -83,7 +89,7 @@ export default function LearnerDetailPage() {
     setLoading(true);
     const { data, error } = await supabase
       .from("learners")
-      .select("id, first_name, last_name, email, phone, client_id, clients(company_name)")
+      .select("id, first_name, last_name, email, phone, client_id, job_title, birth_date, gender, nationality, address, city, postal_code, social_security_number, education_level, clients(company_name)")
       .eq("id", learnerId)
       .single();
 
@@ -110,6 +116,15 @@ export default function LearnerDetailPage() {
       email: l.email,
       phone: l.phone ?? "",
       client_id: l.client_id ?? "",
+      job_title: (l as any).job_title ?? "",
+      birth_date: (l as any).birth_date ?? "",
+      gender: (l as any).gender ?? "",
+      nationality: (l as any).nationality ?? "",
+      address: (l as any).address ?? "",
+      city: (l as any).city ?? "",
+      postal_code: (l as any).postal_code ?? "",
+      social_security_number: (l as any).social_security_number ?? "",
+      education_level: (l as any).education_level ?? "",
     });
 
     // Fetch client options for the dropdown
@@ -149,6 +164,15 @@ export default function LearnerDetailPage() {
         email: form.email.trim(),
         phone: form.phone.trim() || null,
         client_id: form.client_id || null,
+        job_title: form.job_title.trim() || null,
+        birth_date: form.birth_date || null,
+        gender: form.gender || null,
+        nationality: form.nationality.trim() || null,
+        address: form.address.trim() || null,
+        city: form.city.trim() || null,
+        postal_code: form.postal_code.trim() || null,
+        social_security_number: form.social_security_number.trim() || null,
+        education_level: form.education_level || null,
       })
       .eq("id", learner.id);
     if (error) {
@@ -271,6 +295,119 @@ export default function LearnerDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Informations personnelles */}
+      {editing && (
+        <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-4">
+          <h2 className="text-base font-semibold text-gray-900">Informations personnelles</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label>Poste / Fonction</Label>
+              <Input
+                value={form.job_title}
+                onChange={(e) => setForm((f) => ({ ...f, job_title: e.target.value }))}
+                placeholder="Ex: Aide-soignant(e)"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Genre</Label>
+              <select
+                value={form.gender}
+                onChange={(e) => setForm((f) => ({ ...f, gender: e.target.value }))}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[#3DB5C5] bg-white"
+              >
+                <option value="">— Non renseigné —</option>
+                <option value="M">Homme</option>
+                <option value="F">Femme</option>
+                <option value="autre">Autre</option>
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label>Date de naissance</Label>
+              <Input
+                type="date"
+                value={form.birth_date}
+                onChange={(e) => setForm((f) => ({ ...f, birth_date: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Nationalité</Label>
+              <Input
+                value={form.nationality}
+                onChange={(e) => setForm((f) => ({ ...f, nationality: e.target.value }))}
+                placeholder="Française"
+              />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Numéro de sécurité sociale</Label>
+            <div className="relative">
+              <Input
+                type={showSSN ? "text" : "password"}
+                value={form.social_security_number}
+                onChange={(e) => setForm((f) => ({ ...f, social_security_number: e.target.value }))}
+                placeholder="1 23 45 67 890 123 45"
+              />
+              <button
+                type="button"
+                onClick={() => setShowSSN(!showSSN)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-500 hover:text-gray-700"
+              >
+                {showSSN ? "Masquer" : "Afficher"}
+              </button>
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Niveau de formation</Label>
+            <select
+              value={form.education_level}
+              onChange={(e) => setForm((f) => ({ ...f, education_level: e.target.value }))}
+              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[#3DB5C5] bg-white"
+            >
+              <option value="">— Non renseigné —</option>
+              <option value="bac_moins">Inférieur au Bac</option>
+              <option value="bac">Bac</option>
+              <option value="bac_plus_2">Bac+2</option>
+              <option value="bac_plus_3">Bac+3 (Licence)</option>
+              <option value="bac_plus_5">Bac+5 (Master)</option>
+              <option value="bac_plus_8">Bac+8 (Doctorat)</option>
+            </select>
+          </div>
+        </div>
+      )}
+
+      {/* Adresse */}
+      {editing && (
+        <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-4">
+          <h2 className="text-base font-semibold text-gray-900">Adresse</h2>
+          <div className="space-y-1.5">
+            <Label>Adresse complète</Label>
+            <Input
+              value={form.address}
+              onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
+              placeholder="Numéro et rue"
+            />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label>Ville</Label>
+              <Input
+                value={form.city}
+                onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Code postal</Label>
+              <Input
+                value={form.postal_code}
+                onChange={(e) => setForm((f) => ({ ...f, postal_code: e.target.value }))}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* E-Learning Enrollments */}
       <div className="bg-white border border-gray-200 rounded-xl p-6">
