@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
 import {
@@ -27,6 +28,8 @@ import {
   AlertTriangle,
   Download,
   FileDown,
+  GraduationCap,
+  Loader2,
 } from "lucide-react";
 import { downloadDevisPDF, type DevisData } from "@/lib/devis-pdf";
 import { Button } from "@/components/ui/button";
@@ -129,8 +132,14 @@ export default function QuotesPage() {
   const supabase = createClient();
   const { toast } = useToast();
   const { entityId, entity } = useEntity();
+  const router = useRouter();
 
   const [quotes, setQuotes] = useState<CrmQuote[]>([]);
+
+  // Convert to formation
+  const [convertDialog, setConvertDialog] = useState(false);
+  const [convertQuote, setConvertQuote] = useState<CrmQuote | null>(null);
+  const [converting, setConverting] = useState(false);
   const [clients, setClients] = useState<Client[]>([]);
   const [prospects, setProspects] = useState<CrmProspect[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -533,6 +542,64 @@ export default function QuotesPage() {
     toast({ title: "PDF téléchargé — attachez-le à votre email" });
   }
 
+  function handleConvertToFormation(quote: CrmQuote) {
+    if ((quote as any).converted_session_id) {
+      router.push(`/admin/formations/${(quote as any).converted_session_id}`);
+      return;
+    }
+    setConvertQuote(quote);
+    setConvertDialog(true);
+  }
+
+  async function confirmConvert() {
+    if (!convertQuote) return;
+    setConverting(true);
+    try {
+      let meta: Record<string, unknown> = {};
+      try { meta = convertQuote.notes ? JSON.parse(convertQuote.notes) : {}; } catch { /* plain text */ }
+
+      const sessionPayload = {
+        training_id: convertQuote.training_id || undefined,
+        program_id: convertQuote.program_id || undefined,
+        client_id: convertQuote.client_id || undefined,
+        start_date: (convertQuote as any).training_start || (meta.training_start as string) || undefined,
+        end_date: (convertQuote as any).training_end || (meta.training_end as string) || undefined,
+        max_participants: (convertQuote as any).effectifs || (meta.effectifs ? Number(meta.effectifs) : undefined),
+        price: convertQuote.amount || undefined,
+        status: "planned",
+        mode: "presentiel",
+        notes: `Créé depuis le devis ${convertQuote.reference}`,
+      };
+
+      const res = await fetch("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(sessionPayload),
+      });
+
+      const result = await res.json();
+      if (!res.ok || !result.data) {
+        toast({ title: "Erreur", description: result.error || "Impossible de créer la formation", variant: "destructive" });
+        setConverting(false);
+        return;
+      }
+
+      await supabase
+        .from("crm_quotes")
+        .update({ converted_session_id: result.data.id })
+        .eq("id", convertQuote.id);
+
+      toast({ title: "Formation créée !", description: `Session créée depuis le devis ${convertQuote.reference}` });
+      setConvertDialog(false);
+      setConvertQuote(null);
+      router.push(`/admin/formations/${result.data.id}`);
+    } catch {
+      toast({ title: "Erreur réseau", variant: "destructive" });
+    } finally {
+      setConverting(false);
+    }
+  }
+
   async function openAddDialogWithRef() {
     // Auto-generate reference
     let countQuery = supabase.from("crm_quotes").select("id", { count: "exact", head: true });
@@ -890,6 +957,15 @@ export default function QuotesPage() {
                                   Marquer comme refusé
                                 </DropdownMenuItem>
                               )}
+                              {quote.status === "accepted" && (
+                                <DropdownMenuItem
+                                  onClick={() => handleConvertToFormation(quote)}
+                                  className="gap-2 text-green-600 focus:text-green-600"
+                                >
+                                  <GraduationCap className="h-4 w-4" />
+                                  {(quote as any).converted_session_id ? "Voir la formation créée" : "Créer une formation"}
+                                </DropdownMenuItem>
+                              )}
                               <DropdownMenuSeparator />
                               <DropdownMenuItem onClick={() => openDeleteDialog(quote)} className="gap-2 text-red-600 focus:text-red-600">
                                 <Trash2 className="h-4 w-4" />
@@ -940,6 +1016,53 @@ export default function QuotesPage() {
             <Button onClick={handleUpdate} disabled={saving} className="gap-2">
               {saving && <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />}
               Enregistrer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Convert to formation Dialog */}
+      <Dialog open={convertDialog} onOpenChange={setConvertDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Créer une formation depuis ce devis</DialogTitle>
+          </DialogHeader>
+          {convertQuote && (() => {
+            let meta: Record<string, unknown> = {};
+            try { meta = convertQuote.notes ? JSON.parse(convertQuote.notes) : {}; } catch { /* */ }
+            const start = (convertQuote as any).training_start || meta.training_start;
+            const end = (convertQuote as any).training_end || meta.training_end;
+            const eff = (convertQuote as any).effectifs || meta.effectifs;
+            return (
+              <div className="space-y-3 text-sm">
+                <div className="p-3 bg-muted/30 rounded-lg space-y-1">
+                  <p><span className="font-medium text-gray-600">Devis :</span> {convertQuote.reference}</p>
+                  {convertQuote.prospect && (
+                    <p><span className="font-medium text-gray-600">Client :</span> {convertQuote.prospect.company_name}</p>
+                  )}
+                  {convertQuote.client && (
+                    <p><span className="font-medium text-gray-600">Client :</span> {convertQuote.client.company_name}</p>
+                  )}
+                  {start && (
+                    <p><span className="font-medium text-gray-600">Dates :</span> {formatDate(start as string)} → {end ? formatDate(end as string) : "—"}</p>
+                  )}
+                  {eff && (
+                    <p><span className="font-medium text-gray-600">Participants :</span> {String(eff)}</p>
+                  )}
+                  <p><span className="font-medium text-gray-600">Montant :</span> {formatCurrency(convertQuote.amount)}</p>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Une nouvelle session de formation sera créée avec ces informations pré-remplies.
+                </p>
+              </div>
+            );
+          })()}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConvertDialog(false)}>Annuler</Button>
+            <Button onClick={confirmConvert} disabled={converting} className="gap-2">
+              {converting && <Loader2 className="h-4 w-4 animate-spin" />}
+              <GraduationCap className="h-4 w-4" />
+              Confirmer et créer
             </Button>
           </DialogFooter>
         </DialogContent>
