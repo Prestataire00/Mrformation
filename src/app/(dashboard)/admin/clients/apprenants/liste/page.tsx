@@ -3,9 +3,16 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { Download, ChevronLeft, ChevronRight } from "lucide-react";
+import { Download, ChevronLeft, ChevronRight, Plus, Loader2 } from "lucide-react";
 import { downloadXlsx } from "@/lib/export-xlsx";
 import { useToast } from "@/components/ui/use-toast";
+import { useEntity } from "@/contexts/EntityContext";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from "@/components/ui/dialog";
 
 interface Learner {
   id: string;
@@ -34,6 +41,26 @@ export default function ApprenantsListePage() {
   const [sessionsMin, setSessionsMin] = useState("");
   const [debouncedName, setDebouncedName] = useState("");
   const [debouncedCompany, setDebouncedCompany] = useState("");
+
+  const { entityId } = useEntity();
+
+  // Add learner dialog
+  const [addDialog, setAddDialog] = useState(false);
+  const [addForm, setAddForm] = useState({
+    first_name: "", last_name: "", email: "", phone: "", client_id: "",
+  });
+  const [addSaving, setAddSaving] = useState(false);
+  const [clients, setClients] = useState<Array<{ id: string; company_name: string }>>([]);
+
+  useEffect(() => {
+    if (!entityId) return;
+    supabase
+      .from("clients")
+      .select("id, company_name")
+      .eq("entity_id", entityId)
+      .order("company_name")
+      .then(({ data }) => setClients(data ?? []));
+  }, [supabase, entityId]);
 
   // Debounce name filter (300ms)
   useEffect(() => {
@@ -104,6 +131,31 @@ export default function ApprenantsListePage() {
     }
   };
 
+  const handleAddLearner = async () => {
+    if (!addForm.first_name.trim() || !addForm.last_name.trim()) {
+      toast({ title: "Prénom et nom sont requis", variant: "destructive" });
+      return;
+    }
+    setAddSaving(true);
+    const { error } = await supabase.from("learners").insert({
+      entity_id: entityId,
+      first_name: addForm.first_name.trim(),
+      last_name: addForm.last_name.trim(),
+      email: addForm.email.trim() || null,
+      phone: addForm.phone.trim() || null,
+      client_id: addForm.client_id || null,
+    });
+    setAddSaving(false);
+    if (error) {
+      toast({ title: "Erreur", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Apprenant ajouté" });
+      setAddDialog(false);
+      setAddForm({ first_name: "", last_name: "", email: "", phone: "", client_id: "" });
+      fetchLearners();
+    }
+  };
+
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
   const filteredLearners = debouncedCompany.trim()
@@ -140,6 +192,13 @@ export default function ApprenantsListePage() {
             <Download className="h-4 w-4" />
             Télécharger en Excel
           </button>
+          <Button
+            onClick={() => setAddDialog(true)}
+            style={{ background: "#3DB5C5" }}
+            className="text-white hover:opacity-90"
+          >
+            <Plus className="h-4 w-4 mr-2" /> Ajouter un apprenant
+          </Button>
         </div>
       </div>
 
@@ -285,6 +344,71 @@ export default function ApprenantsListePage() {
           </div>
         </div>
       )}
+      {/* Dialog — Ajouter un apprenant */}
+      <Dialog open={addDialog} onOpenChange={setAddDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Ajouter un apprenant</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label>Prénom *</Label>
+                <Input
+                  value={addForm.first_name}
+                  onChange={(e) => setAddForm((f) => ({ ...f, first_name: e.target.value }))}
+                  placeholder="Jean"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Nom *</Label>
+                <Input
+                  value={addForm.last_name}
+                  onChange={(e) => setAddForm((f) => ({ ...f, last_name: e.target.value }))}
+                  placeholder="Dupont"
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Email</Label>
+              <Input
+                type="email"
+                value={addForm.email}
+                onChange={(e) => setAddForm((f) => ({ ...f, email: e.target.value }))}
+                placeholder="jean.dupont@exemple.fr"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Téléphone</Label>
+              <Input
+                value={addForm.phone}
+                onChange={(e) => setAddForm((f) => ({ ...f, phone: e.target.value }))}
+                placeholder="06 00 00 00 00"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Entreprise</Label>
+              <select
+                value={addForm.client_id}
+                onChange={(e) => setAddForm((f) => ({ ...f, client_id: e.target.value }))}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[#3DB5C5] bg-white"
+              >
+                <option value="">— Aucune entreprise —</option>
+                {clients.map((c) => (
+                  <option key={c.id} value={c.id}>{c.company_name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddDialog(false)}>Annuler</Button>
+            <Button onClick={handleAddLearner} disabled={addSaving}>
+              {addSaving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Ajouter
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
