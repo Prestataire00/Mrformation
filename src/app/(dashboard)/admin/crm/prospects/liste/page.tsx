@@ -18,7 +18,9 @@ import {
   MessageSquare,
   Send,
   X,
+  Download,
 } from "lucide-react";
+import { downloadXlsx } from "@/lib/export-xlsx";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -91,6 +93,24 @@ export default function ProspectListePage() {
   const [sourceFilter, setSourceFilter] = useState<string>("all");
   const [page, setPage] = useState(1);
 
+  // Extra filters
+  const [assignedFilter, setAssignedFilter] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [amountMin, setAmountMin] = useState("");
+  const [profiles, setProfiles] = useState<Array<{ id: string; first_name: string; last_name: string }>>([]);
+
+  useEffect(() => {
+    if (!entityId) return;
+    supabase
+      .from("profiles")
+      .select("id, first_name, last_name")
+      .eq("entity_id", entityId)
+      .in("role", ["admin", "commercial", "trainer"])
+      .order("first_name")
+      .then(({ data }) => setProfiles(data ?? []));
+  }, [supabase, entityId]);
+
   // Selection
   const [selectedProspect, setSelectedProspect] = useState<CrmProspect | null>(null);
 
@@ -142,6 +162,36 @@ export default function ProspectListePage() {
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
+  function extractAmount(notes: string | null): number {
+    if (!notes) return 0;
+    const match = notes.match(/Montant HT[^:]*:\s*([\d\s.,]+)/);
+    if (!match) return 0;
+    return parseFloat(match[1].replace(/\s/g, "").replace(",", ".")) || 0;
+  }
+
+  const extraFiltered = prospects.filter((p) => {
+    if (assignedFilter !== "all" && p.assigned_to !== assignedFilter) return false;
+    if (dateFrom && p.created_at < dateFrom) return false;
+    if (dateTo && p.created_at > dateTo + "T23:59:59") return false;
+    if (amountMin && extractAmount(p.notes) < parseFloat(amountMin)) return false;
+    return true;
+  });
+
+  const handleExportExcel = () => {
+    const headers = ["Entreprise", "Contact", "Email", "Téléphone", "Statut", "Source", "Montant", "Date de création"];
+    const rows = extraFiltered.map((p) => [
+      p.company_name,
+      p.contact_name ?? "",
+      p.email ?? "",
+      p.phone ?? "",
+      STATUS_CONFIG[p.status]?.label ?? p.status,
+      p.source ?? "",
+      extractAmount(p.notes).toFixed(2),
+      new Date(p.created_at).toLocaleDateString("fr-FR"),
+    ]);
+    downloadXlsx(headers, rows, `prospects_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
+
   function handleSelectProspect(p: CrmProspect) {
     setSelectedProspect((prev) => (prev?.id === p.id ? null : p));
   }
@@ -158,6 +208,12 @@ export default function ProspectListePage() {
             {totalCount} prospect{totalCount > 1 ? "s" : ""} au total
           </p>
         </div>
+        <button
+          onClick={handleExportExcel}
+          className="border border-[#3DB5C5] text-[#3DB5C5] px-4 py-2 rounded-lg text-sm flex items-center gap-1"
+        >
+          <Download className="h-4 w-4" /> Télécharger en Excel
+        </button>
       </div>
 
       {/* Filters */}
@@ -193,6 +249,41 @@ export default function ProspectListePage() {
             ))}
           </SelectContent>
         </Select>
+        <Select value={assignedFilter} onValueChange={setAssignedFilter}>
+          <SelectTrigger className="w-[170px]">
+            <SelectValue placeholder="Assigné à" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Tous les commerciaux</SelectItem>
+            {profiles.map((p) => (
+              <SelectItem key={p.id} value={p.id}>
+                {p.first_name} {p.last_name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <div className="flex items-center gap-2">
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#3DB5C5]"
+          />
+          <span className="text-xs text-gray-400">→</span>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#3DB5C5]"
+          />
+        </div>
+        <input
+          type="number"
+          placeholder="Montant min €"
+          value={amountMin}
+          onChange={(e) => setAmountMin(e.target.value)}
+          className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#3DB5C5] w-[130px]"
+        />
       </div>
 
       {/* Table */}
@@ -202,7 +293,7 @@ export default function ProspectListePage() {
             <div className="flex items-center justify-center py-20">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
-          ) : prospects.length === 0 ? (
+          ) : extraFiltered.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <Building2 className="h-12 w-12 text-muted-foreground/30 mb-3" />
               <p className="font-medium text-gray-700">Aucun prospect trouvé</p>
@@ -228,7 +319,7 @@ export default function ProspectListePage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {prospects.map((p) => {
+                  {extraFiltered.map((p) => {
                     const st = STATUS_CONFIG[p.status] ?? { label: p.status, color: "#6b7280" };
                     const isSelected = selectedProspect?.id === p.id;
 

@@ -53,6 +53,11 @@ interface DashboardData {
 
   // Monthly revenue (quotes from won prospects)
   monthlyRevenue: { month: string; amount: number }[];
+
+  // Advanced metrics
+  avgDealSize: number;
+  avgSalesCycle: number;
+  lossRate: number;
 }
 
 const DEFAULT_PROSPECT_STATUS_MAP: Record<string, { label: string; color: string }> = {
@@ -110,6 +115,9 @@ export default function CrmDashboardPage() {
     todayTasks: 0,
     completedThisWeek: 0,
     monthlyRevenue: [],
+    avgDealSize: 0,
+    avgSalesCycle: 0,
+    lossRate: 0,
   });
 
   const fetchDashboard = useCallback(async () => {
@@ -119,7 +127,7 @@ export default function CrmDashboardPage() {
     try {
       // Fetch all data in parallel
       const [prospectsRes, quotesRes, tasksRes] = await Promise.all([
-        supabase.from("crm_prospects").select("id, status, notes, created_at").eq("entity_id", entityId),
+        supabase.from("crm_prospects").select("id, status, notes, created_at, updated_at").eq("entity_id", entityId),
         supabase.from("crm_quotes").select("status, amount, created_at, prospect_id").eq("entity_id", entityId),
         supabase.from("crm_tasks").select("status, due_date, reminder_at").eq("entity_id", entityId),
       ]);
@@ -224,6 +232,28 @@ export default function CrmDashboardPage() {
         monthlyRevenue.push({ month: label, amount: monthAmount });
       }
 
+      // Advanced metrics
+      const wonProspectsList = prospects.filter((p) => p.status === "won");
+      const lostCount = prospects.filter((p) => p.status === "lost").length;
+
+      const avgDealSize = wonProspectsList.length > 0
+        ? wonProspectsList.reduce((sum, p) => sum + extractAmountFromNotes(p.notes ?? null), 0) / wonProspectsList.length
+        : 0;
+
+      const avgSalesCycle = wonProspectsList.length > 0
+        ? Math.round(wonProspectsList.reduce((sum, p) => {
+            const days = Math.floor(
+              (new Date(p.updated_at).getTime() - new Date(p.created_at).getTime()) / (1000 * 60 * 60 * 24)
+            );
+            return sum + days;
+          }, 0) / wonProspectsList.length)
+        : 0;
+
+      const totalProcessed = wonProspectsList.length + lostCount;
+      const lossRate = totalProcessed > 0
+        ? Math.round((lostCount / totalProcessed) * 100)
+        : 0;
+
       setData({
         prospectsByStatus,
         totalProspects,
@@ -237,6 +267,9 @@ export default function CrmDashboardPage() {
         todayTasks,
         completedThisWeek,
         monthlyRevenue,
+        avgDealSize,
+        avgSalesCycle,
+        lossRate,
       });
     } catch (err) {
       console.error("CRM Dashboard fetch error:", err);
@@ -363,6 +396,43 @@ export default function CrmDashboardPage() {
             <div>
               <p className="text-xs text-muted-foreground">Complétées cette semaine</p>
               <p className="text-xl font-bold text-green-600">{data.completedThisWeek}</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Advanced CRM metrics */}
+      <div className="grid grid-cols-3 gap-4">
+        <Card>
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100">
+              <TrendingUp className="h-5 w-5 text-emerald-600" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Taille moyenne deal</p>
+              <p className="text-2xl font-bold text-gray-900">{formatCurrency(data.avgDealSize)}</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-100">
+              <Clock className="h-5 w-5 text-violet-600" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Cycle de vente moyen</p>
+              <p className="text-2xl font-bold text-gray-900">{data.avgSalesCycle}j</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-100">
+              <AlertTriangle className="h-5 w-5 text-red-600" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Taux de perte</p>
+              <p className="text-2xl font-bold text-red-600">{data.lossRate}%</p>
             </div>
           </CardContent>
         </Card>
