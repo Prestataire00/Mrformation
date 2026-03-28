@@ -119,6 +119,19 @@ function formatEUR(amount: number): string {
   return amount.toLocaleString("fr-FR", { maximumFractionDigits: 0 }) + " EUR";
 }
 
+function getQuoteAmount(quotes: Array<{amount: number; status: string}> | null): number {
+  if (!quotes || quotes.length === 0) return 0;
+  return quotes
+    .filter(q => q.status !== "rejected" && q.status !== "expired")
+    .reduce((sum, q) => sum + Number(q.amount), 0);
+}
+
+function getProspectAmount(p: any): number {
+  const fromQuotes = getQuoteAmount(p.quotes);
+  if (fromQuotes > 0) return fromQuotes;
+  return extractAmount(p.notes);
+}
+
 function extractField(notes: string | null, field: string): string | null {
   if (!notes) return null;
   const regex = new RegExp(`${field}\\s*:\\s*([^|]+)`);
@@ -236,7 +249,7 @@ export default function CrmProspectsPage() {
     setLoading(true);
     let q = supabase
       .from("crm_prospects")
-      .select("*")
+      .select("*, quotes:crm_quotes(amount, status)")
       .order("created_at", { ascending: false });
     if (entityId) q = q.eq("entity_id", entityId);
 
@@ -602,7 +615,7 @@ export default function CrmProspectsPage() {
                     </span>
                   </div>
                   <p className="text-xs font-semibold text-white/80 mt-1">
-                    Total : {formatEUR(cards.reduce((sum, p) => sum + extractAmount(p.notes), 0))}
+                    Total : {formatEUR(cards.reduce((sum, p) => sum + getProspectAmount(p), 0))}
                   </p>
                 </div>
 
@@ -615,7 +628,7 @@ export default function CrmProspectsPage() {
                   )}
 
                   {cards.map((p) => {
-                    const amount = extractAmount(p.notes);
+                    const amount = getProspectAmount(p);
                     const product = extractField(p.notes, "Produit");
                     const isBeingDragged = draggedCardId === p.id;
                     return (
@@ -671,7 +684,9 @@ export default function CrmProspectsPage() {
                           </p>
                           <p>
                             <span className="font-medium text-gray-600">Prix:</span>{" "}
-                            {amount > 0 ? formatEUR(amount) : "0 EUR"}
+                            <span className={amount > 0 ? "text-green-600 font-medium" : "text-gray-400"}>
+                              {amount > 0 ? formatEUR(amount) : "0 EUR"}
+                            </span>
                           </p>
                         </div>
                       </div>
