@@ -12,7 +12,11 @@ const resend = isResendConfigured
   ? new Resend(process.env.RESEND_API_KEY)
   : null;
 
-const FROM_ADDRESS = "LMS Formation <noreply@resend.dev>";
+function getFromAddress(entityName: string): string {
+  return entityName.toLowerCase().includes("c3v")
+    ? "C3V Formation <noreply@c3vformation.fr>"
+    : "MR Formation <noreply@mrformation.fr>";
+}
 
 const DOCUMENT_TYPE_SUBJECTS: Record<string, string> = {
   convention_entreprise: "Convention de formation",
@@ -34,6 +38,9 @@ export async function POST() {
   if (auth.error) return auth.error;
 
   const entityId = auth.profile.entity_id;
+  const { data: entityData } = await auth.supabase
+    .from("entities").select("name").eq("id", entityId).single();
+  const FROM_ADDRESS = getFromAddress(entityData?.name || "");
   const today = new Date().toISOString().split("T")[0];
   let emailsSent = 0;
   let processed = 0;

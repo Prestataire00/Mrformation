@@ -10,7 +10,11 @@ const resend = isResendConfigured
   ? new Resend(process.env.RESEND_API_KEY)
   : null;
 
-const FROM_ADDRESS = "LMS Formation <noreply@resend.dev>";
+function getFromAddress(entityName: string): string {
+  return entityName.toLowerCase().includes("c3v")
+    ? "C3V Formation <noreply@c3vformation.fr>"
+    : "MR Formation <noreply@mrformation.fr>";
+}
 
 function createServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -51,7 +55,7 @@ export async function POST(request: NextRequest) {
     // Fetch all pending emails whose scheduled time has passed
     const { data: pendingEmails, error: fetchError } = await supabase
       .from("email_history")
-      .select("id, recipient_email, subject, body")
+      .select("id, recipient_email, subject, body, entity_id, entities:entities(name)")
       .eq("status", "pending")
       .lte("sent_at", now);
 
@@ -74,7 +78,7 @@ export async function POST(request: NextRequest) {
       if (resend) {
         try {
           const result = await resend.emails.send({
-            from: FROM_ADDRESS,
+            from: getFromAddress((email as any).entities?.name || ""),
             to: [email.recipient_email],
             subject: email.subject,
             html: toHtmlBody(email.body || ""),

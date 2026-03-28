@@ -179,7 +179,11 @@ export async function POST(request: NextRequest) {
     if (!sentViaGmail) {
       if (resend) {
         try {
-          const FROM_ADDRESS = "LMS Formation <noreply@resend.dev>";
+          const { data: entityData } = await auth.supabase
+            .from("entities").select("name").eq("id", auth.profile.entity_id).single();
+          const FROM_ADDRESS = (entityData?.name || "").toLowerCase().includes("c3v")
+            ? "C3V Formation <noreply@c3vformation.fr>"
+            : "MR Formation <noreply@mrformation.fr>";
           const result = await resend.emails.send({
             from: FROM_ADDRESS,
             to: [recipientEmail],
