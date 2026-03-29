@@ -44,6 +44,7 @@ import {
   Rss,
   HelpCircle,
   Award,
+  FileQuestion,
 } from "lucide-react";
 
 interface NavItem {
@@ -69,6 +70,7 @@ const navItems: NavItem[] = [
       { label: "Tâches", href: "/admin/crm/tasks", icon: ClipboardList },
       { label: "Suivi Commercial", href: "/admin/crm/suivi", icon: Activity },
       { label: "Devis", href: "/admin/crm/quotes", icon: FileText },
+      { label: "Formulaires", href: "/admin/crm/formulaires", icon: FileQuestion },
       { label: "Campagnes", href: "/admin/crm/campaigns", icon: Repeat },
     ],
   },
@@ -404,6 +406,7 @@ const commercialNavItems: NavItem[] = [
       { label: "Tâches", href: "/admin/crm/tasks", icon: ClipboardList },
       { label: "Suivi Commercial", href: "/admin/crm/suivi", icon: Activity },
       { label: "Devis", href: "/admin/crm/quotes", icon: FileText },
+      { label: "Formulaires", href: "/admin/crm/formulaires", icon: FileQuestion },
       { label: "Campagnes", href: "/admin/crm/campaigns", icon: Repeat },
     ],
   },
