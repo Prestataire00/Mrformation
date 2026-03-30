@@ -447,12 +447,10 @@ export default function EmailsPage() {
     // Warn about unresolved variables
     const unresolved = findUnresolvedVariables(sendForm.subject + " " + sendForm.body);
     if (unresolved.length > 0) {
-      toast({
-        title: "Variables non résolues",
-        description: `${unresolved.join(", ")} — sélectionnez un contexte (formation, client, apprenant) ou retirez les variables.`,
-        variant: "destructive",
-      });
-      return;
+      const proceed = window.confirm(
+        `⚠️ ${unresolved.length} variable(s) non résolue(s) :\n${unresolved.join(", ")}\n\nLes variables apparaîtront en l'état dans l'email.\n\nEnvoyer quand même ?`
+      );
+      if (!proceed) return;
     }
 
     setSending(true);
@@ -1086,6 +1084,11 @@ export default function EmailsPage() {
                       ))}
                     </SelectContent>
                   </Select>
+                  {!selectedSessionId && findUnresolvedVariables(sendForm.subject + " " + sendForm.body).some(v =>
+                    v.includes("titre_formation") || v.includes("date_") || v.includes("lieu") || v.includes("formateur")
+                  ) && (
+                    <p className="text-[10px] text-amber-600">↑ Requis pour résoudre les variables formation</p>
+                  )}
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs text-blue-600">Client</Label>
@@ -1105,6 +1108,11 @@ export default function EmailsPage() {
                       ))}
                     </SelectContent>
                   </Select>
+                  {!selectedClientId && findUnresolvedVariables(sendForm.subject + " " + sendForm.body).some(v =>
+                    v.includes("nom_client") || v.includes("entreprise") || v.includes("client")
+                  ) && (
+                    <p className="text-[10px] text-amber-600">{"↑ Requis pour résoudre {{nom_client}}"}</p>
+                  )}
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs text-blue-600">Apprenant</Label>
@@ -1121,6 +1129,11 @@ export default function EmailsPage() {
                       ))}
                     </SelectContent>
                   </Select>
+                  {!selectedLearnerId && findUnresolvedVariables(sendForm.subject + " " + sendForm.body).some(v =>
+                    v.includes("apprenant") || v.includes("prenom")
+                  ) && (
+                    <p className="text-[10px] text-amber-600">{"↑ Requis pour résoudre {{nom_apprenant}}"}</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -1159,19 +1172,19 @@ export default function EmailsPage() {
 
             {/* Unresolved variables warning */}
             {findUnresolvedVariables(sendForm.subject + " " + sendForm.body).length > 0 && (
-              <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
-                <AlertTriangle className="h-4 w-4 text-red-600 shrink-0 mt-0.5" />
+              <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-xs font-medium text-red-700">Variables non résolues — l&apos;envoi est bloqué</p>
+                  <p className="text-xs font-medium text-amber-700">Variables non résolues — sélectionnez un contexte ci-dessus</p>
                   <div className="flex flex-wrap gap-1 mt-1">
                     {findUnresolvedVariables(sendForm.subject + " " + sendForm.body).map((v) => (
-                      <span key={v} className="text-xs font-mono bg-red-100 text-red-700 px-1.5 py-0.5 rounded">
+                      <span key={v} className="text-xs font-mono bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">
                         {v}
                       </span>
                     ))}
                   </div>
-                  <p className="text-xs text-red-600 mt-1">
-                    Sélectionnez un contexte ci-dessus ou remplacez manuellement.
+                  <p className="text-xs text-amber-600 mt-1">
+                    L&apos;envoi est possible mais les variables apparaîtront telles quelles.
                   </p>
                 </div>
               </div>
