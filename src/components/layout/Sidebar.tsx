@@ -45,6 +45,7 @@ import {
   HelpCircle,
   Award,
   FileQuestion,
+  Mail,
 } from "lucide-react";
 
 interface NavItem {
@@ -54,145 +55,256 @@ interface NavItem {
   children?: NavItem[];
 }
 
-const navItems: NavItem[] = [
+interface NavSection {
+  section?: string;
+  items: NavItem[];
+}
+
+// ── Admin / Super Admin navigation ──────────────────────────────────────────
+
+const adminNavSections: NavSection[] = [
   {
-    label: "Tableau de Bord",
-    href: "/admin",
-    icon: LayoutDashboard,
+    items: [
+      { label: "Tableau de Bord", href: "/admin", icon: LayoutDashboard },
+    ],
   },
+  {
+    section: "Commercial",
+    items: [
+      {
+        label: "CRM",
+        icon: TrendingUp,
+        children: [
+          { label: "Dashboard CRM", href: "/admin/crm", icon: BarChart3 },
+          { label: "Tunnel de Vente", href: "/admin/crm/prospects", icon: TrendingUp },
+          { label: "Tous les Prospects", href: "/admin/crm/prospects/liste", icon: Users },
+          { label: "Tâches", href: "/admin/crm/tasks", icon: ClipboardList },
+          { label: "Suivi Commercial", href: "/admin/crm/suivi", icon: Activity },
+          { label: "Devis", href: "/admin/crm/quotes", icon: FileText },
+          { label: "Formulaires", href: "/admin/crm/formulaires", icon: FileQuestion },
+          { label: "Campagnes", href: "/admin/crm/campaigns", icon: Repeat },
+        ],
+      },
+      {
+        label: "Clients & Financeurs",
+        icon: Users,
+        children: [
+          { label: "Profils des Apprenants", href: "/admin/clients/apprenants", icon: GraduationCap },
+          { label: "Tous les Apprenants", href: "/admin/clients/apprenants/liste", icon: Users },
+          { label: "Toutes les Entreprises", href: "/admin/clients", icon: Building2 },
+          { label: "Tous les Financeurs", href: "/admin/clients/financeurs", icon: Banknote },
+        ],
+      },
+    ],
+  },
+  {
+    section: "Pédagogie",
+    items: [
+      {
+        label: "Formations",
+        icon: BookOpen,
+        children: [
+          { label: "Toutes les Formations", href: "/admin/trainings", icon: BookOpen },
+          { label: "Parcours", href: "/admin/trainings/parcours", icon: Route },
+          { label: "Automatisation", href: "/admin/trainings/automation", icon: RefreshCw },
+        ],
+      },
+      { label: "Programmes", href: "/admin/programs", icon: Library },
+      {
+        label: "E-Learning",
+        icon: Monitor,
+        children: [
+          { label: "Mes Cours", href: "/admin/elearning", icon: Monitor },
+          { label: "Doc → Cours IA", href: "/admin/elearning/create", icon: Sparkles },
+        ],
+      },
+      {
+        label: "Évaluations",
+        icon: ClipboardList,
+        children: [
+          { label: "Questionnaires", href: "/admin/questionnaires", icon: ClipboardList },
+          { label: "Satisfaction & Qualité", href: "/admin/questionnaires/dashboard", icon: Star },
+        ],
+      },
+      { label: "Planning", href: "/admin/planning", icon: Calendar },
+    ],
+  },
+  {
+    section: "Formateurs",
+    items: [
+      {
+        label: "Formateurs",
+        icon: UserCheck,
+        children: [
+          { label: "Profils des Formateurs", href: "/admin/trainers", icon: UserCheck },
+          { label: "Tous les Formateurs", href: "/admin/trainers/liste", icon: Users },
+          { label: "CVthèque", href: "/admin/trainers/cvtheque", icon: FolderSearch },
+        ],
+      },
+    ],
+  },
+  {
+    section: "Administratif",
+    items: [
+      { label: "Documents", href: "/admin/documents", icon: FileText },
+      { label: "Emails", href: "/admin/emails", icon: Mail },
+      { label: "Signatures", href: "/admin/signatures", icon: PenLine },
+      { label: "Lieux de Formations", href: "/admin/lieux", icon: MapPin },
+    ],
+  },
+  {
+    section: "Pilotage",
+    items: [
+      {
+        label: "Suivis & Bilans",
+        icon: Activity,
+        children: [
+          { label: "Suivi des Absences", href: "/admin/reports/absences", icon: AlertTriangle },
+          { label: "Suivi Qualité", href: "/admin/reports/qualite", icon: Star },
+          { label: "Amélioration Continue", href: "/admin/reports/amelioration", icon: TrendingUp },
+          { label: "Suivi Commercial", href: "/admin/reports/commercial", icon: TrendingDown },
+          { label: "Incidents Qualité", href: "/admin/reports/incidents", icon: AlertTriangle },
+        ],
+      },
+      {
+        label: "Finances",
+        icon: Banknote,
+        children: [
+          { label: "Bilan Pédagogique et Financier", href: "/admin/reports/bpf", icon: BarChart3 },
+          { label: "BPF + E-Learning", href: "/admin/reports/bpf-elearning", icon: BarChart3 },
+          { label: "Suivi des Factures", href: "/admin/reports/factures", icon: Receipt },
+          { label: "Affacturage", href: "/admin/affacturage", icon: Banknote },
+        ],
+      },
+      { label: "Certificateurs", href: "/admin/certificateurs", icon: Award },
+    ],
+  },
+  {
+    section: "Système",
+    items: [
+      { label: "Utilisateurs", href: "/admin/users", icon: Users },
+      { label: "Migration", href: "/admin/migration", icon: Database },
+      { label: "Migration PDF", href: "/admin/library-migration", icon: Upload },
+      { label: "La Veille", href: "/admin/veille", icon: Rss },
+      { label: "Contact & Conseils", href: "/admin/contact-conseils", icon: HelpCircle },
+      { label: "Support", href: "/admin/support", icon: LifeBuoy },
+    ],
+  },
+];
+
+// ── Other role navigations ──────────────────────────────────────────────────
+
+const learnerNavSections: NavSection[] = [
+  {
+    items: [
+      { label: "Tableau de Bord", href: "/learner", icon: LayoutDashboard },
+      { label: "Mes Formations", href: "/learner/my-trainings", icon: GraduationCap },
+      { label: "E-Learning", href: "/learner/courses", icon: Monitor },
+      { label: "Calendrier", href: "/learner/calendar", icon: CalendarDays },
+      { label: "Contacts", href: "/learner/contacts", icon: Users },
+      { label: "Questionnaires", href: "/learner/questionnaires", icon: ClipboardList },
+      { label: "Mes Documents", href: "/learner/documents", icon: FileText },
+      { label: "Mon Profil", href: "/learner/profile", icon: UserCheck },
+    ],
+  },
+];
+
+const trainerNavSections: NavSection[] = [
+  {
+    items: [
+      { label: "Tableau de Bord", href: "/trainer", icon: LayoutDashboard },
+      { label: "Mes Cours", href: "/trainer/courses", icon: BookOpen },
+      { label: "Mes Sessions", href: "/trainer/sessions", icon: Calendar },
+      { label: "Mon Planning", href: "/trainer/planning", icon: ClipboardList },
+      { label: "Mes Contrats", href: "/trainer/contracts", icon: FileText },
+      { label: "Évaluations", href: "/trainer/evaluations", icon: Star },
+      { label: "Mon Profil", href: "/trainer/profile", icon: UserCheck },
+    ],
+  },
+];
+
+const clientNavSections: NavSection[] = [
+  {
+    items: [
+      { label: "Tableau de Bord", href: "/client", icon: LayoutDashboard },
+      { label: "Mes Apprenants", href: "/client/learners", icon: GraduationCap },
+      { label: "Formations", href: "/client/formations", icon: BookOpen },
+      { label: "Mon Profil", href: "/client/profile", icon: UserCheck },
+    ],
+  },
+];
+
+const commercialNavSections: NavSection[] = [
+  {
+    items: [
+      { label: "Tableau de Bord", href: "/admin/crm", icon: LayoutDashboard },
+    ],
+  },
+  {
+    section: "Commercial",
+    items: [
+      {
+        label: "CRM",
+        icon: TrendingUp,
+        children: [
+          { label: "Tunnel de Vente", href: "/admin/crm/prospects", icon: TrendingUp },
+          { label: "Tous les Prospects", href: "/admin/crm/prospects/liste", icon: Users },
+          { label: "Tâches", href: "/admin/crm/tasks", icon: ClipboardList },
+          { label: "Suivi Commercial", href: "/admin/crm/suivi", icon: Activity },
+          { label: "Devis", href: "/admin/crm/quotes", icon: FileText },
+          { label: "Formulaires", href: "/admin/crm/formulaires", icon: FileQuestion },
+          { label: "Campagnes", href: "/admin/crm/campaigns", icon: Repeat },
+        ],
+      },
+      {
+        label: "Clients & Financeurs",
+        icon: Users,
+        children: [
+          { label: "Toutes les Entreprises", href: "/admin/clients", icon: Building2 },
+          { label: "Tous les Financeurs", href: "/admin/clients/financeurs", icon: Banknote },
+        ],
+      },
+    ],
+  },
+  {
+    section: "Pédagogie",
+    items: [
+      {
+        label: "Formations",
+        icon: BookOpen,
+        children: [
+          { label: "Toutes les Formations", href: "/admin/trainings", icon: BookOpen },
+        ],
+      },
+      { label: "Planning", href: "/admin/planning", icon: Calendar },
+    ],
+  },
+];
+
+const ROLE_NAV_SECTIONS: Record<string, NavSection[]> = {
+  super_admin: adminNavSections,
+  admin: adminNavSections,
+  commercial: commercialNavSections,
+  learner: learnerNavSections,
+  trainer: trainerNavSections,
+  client: clientNavSections,
+};
+
+const trainerCrmNavItems: NavItem[] = [
   {
     label: "CRM",
     icon: TrendingUp,
     children: [
       { label: "Dashboard CRM", href: "/admin/crm", icon: BarChart3 },
-      { label: "Tunnel de Vente", href: "/admin/crm/prospects", icon: TrendingUp },
+      { label: "Mes Prospects", href: "/admin/crm/prospects", icon: TrendingUp },
       { label: "Tous les Prospects", href: "/admin/crm/prospects/liste", icon: Users },
-      { label: "Tâches", href: "/admin/crm/tasks", icon: ClipboardList },
-      { label: "Suivi Commercial", href: "/admin/crm/suivi", icon: Activity },
-      { label: "Devis", href: "/admin/crm/quotes", icon: FileText },
-      { label: "Formulaires", href: "/admin/crm/formulaires", icon: FileQuestion },
-      { label: "Campagnes", href: "/admin/crm/campaigns", icon: Repeat },
+      { label: "Mes Tâches", href: "/trainer/tasks", icon: ClipboardList },
+      { label: "Mes Devis", href: "/admin/crm/quotes", icon: FileText },
     ],
-  },
-  {
-    label: "Clients & Financeurs",
-    icon: Users,
-    children: [
-      { label: "Profils des Apprenants", href: "/admin/clients/apprenants", icon: GraduationCap },
-      { label: "Tous les Apprenants", href: "/admin/clients/apprenants/liste", icon: Users },
-      { label: "Toutes les Entreprises", href: "/admin/clients", icon: Building2 },
-      { label: "Tous les Financeurs", href: "/admin/clients/financeurs", icon: Banknote },
-    ],
-  },
-  {
-    label: "Formateurs",
-    icon: UserCheck,
-    children: [
-      { label: "Profils des Formateurs", href: "/admin/trainers", icon: UserCheck },
-      { label: "Tous les Formateurs", href: "/admin/trainers/liste", icon: Users },
-      { label: "CVthèque", href: "/admin/trainers/cvtheque", icon: FolderSearch },
-      { label: "Certificateurs", href: "/admin/certificateurs", icon: Award },
-    ],
-  },
-  {
-    label: "Planning",
-    href: "/admin/planning",
-    icon: Calendar,
-  },
-  {
-    label: "Formations",
-    icon: BookOpen,
-    children: [
-      { label: "Toutes les Formations", href: "/admin/trainings", icon: BookOpen },
-      { label: "Parcours", href: "/admin/trainings/parcours", icon: Route },
-      { label: "Automatisation", href: "/admin/trainings/automation", icon: RefreshCw },
-    ],
-  },
-  {
-    label: "Programmes",
-    icon: Library,
-    children: [
-      { label: "Tous les Programmes", href: "/admin/programs", icon: Library },
-      { label: "Migration PDF", href: "/admin/library-migration", icon: Upload },
-    ],
-  },
-  {
-    label: "Évaluations",
-    icon: ClipboardList,
-    children: [
-      { label: "Questionnaires", href: "/admin/questionnaires", icon: ClipboardList },
-      { label: "Satisfaction & Qualité", href: "/admin/questionnaires/dashboard", icon: Star },
-    ],
-  },
-  {
-    label: "E-Learning",
-    icon: Monitor,
-    children: [
-      { label: "Mes Cours", href: "/admin/elearning", icon: Monitor },
-      { label: "Doc → Cours IA", href: "/admin/elearning/create", icon: Sparkles },
-    ],
-  },
-  {
-    label: "Documents",
-    href: "/admin/documents",
-    icon: FileText,
-  },
-  {
-    label: "Emails",
-    href: "/admin/emails",
-    icon: Repeat,
-  },
-  {
-    label: "Signatures",
-    href: "/admin/signatures",
-    icon: FileText,
-  },
-  {
-    label: "Utilisateurs",
-    href: "/admin/users",
-    icon: Users,
-  },
-  {
-    label: "Suivis & Bilans",
-    icon: Activity,
-    children: [
-      { label: "Suivi des Absences", href: "/admin/reports/absences", icon: AlertTriangle },
-      { label: "Suivi Qualité", href: "/admin/reports/qualite", icon: Star },
-      { label: "Amélioration Continue", href: "/admin/reports/amelioration", icon: TrendingUp },
-      { label: "Suivi Commercial", href: "/admin/reports/commercial", icon: TrendingDown },
-      { label: "Incidents Qualité", href: "/admin/reports/incidents", icon: AlertTriangle },
-      { label: "Bilan Pédagogique et Financier", href: "/admin/reports/bpf", icon: BarChart3 },
-      { label: "BPF + E-Learning", href: "/admin/reports/bpf-elearning", icon: BarChart3 },
-      { label: "Suivi des Factures", href: "/admin/reports/factures", icon: Receipt },
-      { label: "Affacturage", href: "/admin/affacturage", icon: Banknote },
-    ],
-  },
-  {
-    label: "Lieux de Formations",
-    href: "/admin/lieux",
-    icon: MapPin,
-  },
-  {
-    label: "Migration",
-    href: "/admin/migration",
-    icon: Database,
-  },
-  {
-    label: "La Veille",
-    href: "/admin/veille",
-    icon: Rss,
-  },
-  {
-    label: "Contact & Conseils",
-    href: "/admin/contact-conseils",
-    icon: HelpCircle,
-  },
-  {
-    label: "Support",
-    href: "/admin/support",
-    icon: LifeBuoy,
   },
 ];
+
+// ── Entity styles ───────────────────────────────────────────────────────────
 
 const ENTITY_STYLES: Record<string, { initials: string; gradient: string; logo?: string }> = {
   "mr-formation": {
@@ -205,6 +317,8 @@ const ENTITY_STYLES: Record<string, { initials: string; gradient: string; logo?:
     gradient: "linear-gradient(135deg, #2563EB, #1D4ED8)",
   },
 };
+
+// ── NavItem renderer ────────────────────────────────────────────────────────
 
 function NavItemComponent({ item, collapsed, siblingHrefs = [] }: { item: NavItem; collapsed: boolean; siblingHrefs?: string[] }) {
   const pathname = usePathname();
@@ -219,7 +333,6 @@ function NavItemComponent({ item, collapsed, siblingHrefs = [] }: { item: NavIte
       : (() => {
           const matchesThis = pathname === item.href || pathname.startsWith(item.href + "/");
           if (!matchesThis) return false;
-          // Ne pas highlighter si un sibling a un href plus spécifique qui match aussi
           const hasBetterMatch = siblingHrefs.some(
             (h) => h !== item.href && h.length > item.href!.length && (pathname === h || pathname.startsWith(h + "/"))
           );
@@ -286,174 +399,7 @@ function NavItemComponent({ item, collapsed, siblingHrefs = [] }: { item: NavIte
   );
 }
 
-const learnerNavItems: NavItem[] = [
-  {
-    label: "Tableau de Bord",
-    href: "/learner",
-    icon: LayoutDashboard,
-  },
-  {
-    label: "Mes Formations",
-    href: "/learner/my-trainings",
-    icon: GraduationCap,
-  },
-  {
-    label: "E-Learning",
-    href: "/learner/courses",
-    icon: Monitor,
-  },
-  {
-    label: "Calendrier",
-    href: "/learner/calendar",
-    icon: CalendarDays,
-  },
-  {
-    label: "Contacts",
-    href: "/learner/contacts",
-    icon: Users,
-  },
-  {
-    label: "Questionnaires",
-    href: "/learner/questionnaires",
-    icon: ClipboardList,
-  },
-  {
-    label: "Mes Documents",
-    href: "/learner/documents",
-    icon: FileText,
-  },
-  {
-    label: "Mon Profil",
-    href: "/learner/profile",
-    icon: UserCheck,
-  },
-];
-
-const trainerNavItems: NavItem[] = [
-  {
-    label: "Tableau de Bord",
-    href: "/trainer",
-    icon: LayoutDashboard,
-  },
-  {
-    label: "Mes Cours",
-    href: "/trainer/courses",
-    icon: BookOpen,
-  },
-  {
-    label: "Mes Sessions",
-    href: "/trainer/sessions",
-    icon: Calendar,
-  },
-  {
-    label: "Mon Planning",
-    href: "/trainer/planning",
-    icon: ClipboardList,
-  },
-  {
-    label: "Mes Contrats",
-    href: "/trainer/contracts",
-    icon: FileText,
-  },
-  {
-    label: "Évaluations",
-    href: "/trainer/evaluations",
-    icon: Star,
-  },
-  {
-    label: "Mon Profil",
-    href: "/trainer/profile",
-    icon: UserCheck,
-  },
-];
-
-const clientNavItems: NavItem[] = [
-  {
-    label: "Tableau de Bord",
-    href: "/client",
-    icon: LayoutDashboard,
-  },
-  {
-    label: "Mes Apprenants",
-    href: "/client/learners",
-    icon: GraduationCap,
-  },
-  {
-    label: "Formations",
-    href: "/client/formations",
-    icon: BookOpen,
-  },
-  {
-    label: "Mon Profil",
-    href: "/client/profile",
-    icon: UserCheck,
-  },
-];
-
-// Commercial : accès CRM + consultation clients/formations/planning
-const commercialNavItems: NavItem[] = [
-  {
-    label: "Tableau de Bord",
-    href: "/admin/crm",
-    icon: LayoutDashboard,
-  },
-  {
-    label: "CRM",
-    icon: TrendingUp,
-    children: [
-      { label: "Tunnel de Vente", href: "/admin/crm/prospects", icon: TrendingUp },
-      { label: "Tous les Prospects", href: "/admin/crm/prospects/liste", icon: Users },
-      { label: "Tâches", href: "/admin/crm/tasks", icon: ClipboardList },
-      { label: "Suivi Commercial", href: "/admin/crm/suivi", icon: Activity },
-      { label: "Devis", href: "/admin/crm/quotes", icon: FileText },
-      { label: "Formulaires", href: "/admin/crm/formulaires", icon: FileQuestion },
-      { label: "Campagnes", href: "/admin/crm/campaigns", icon: Repeat },
-    ],
-  },
-  {
-    label: "Clients & Financeurs",
-    icon: Users,
-    children: [
-      { label: "Toutes les Entreprises", href: "/admin/clients", icon: Building2 },
-      { label: "Tous les Financeurs", href: "/admin/clients/financeurs", icon: Banknote },
-    ],
-  },
-  {
-    label: "Formations",
-    icon: BookOpen,
-    children: [
-      { label: "Toutes les Formations", href: "/admin/trainings", icon: BookOpen },
-    ],
-  },
-  {
-    label: "Planning",
-    href: "/admin/planning",
-    icon: Calendar,
-  },
-];
-
-const ROLE_NAV_ITEMS: Record<string, NavItem[]> = {
-  super_admin: navItems,
-  admin: navItems,
-  commercial: commercialNavItems,
-  learner: learnerNavItems,
-  trainer: trainerNavItems,
-  client: clientNavItems,
-};
-
-const trainerCrmNavItems: NavItem[] = [
-  {
-    label: "CRM",
-    icon: TrendingUp,
-    children: [
-      { label: "Dashboard CRM", href: "/admin/crm", icon: BarChart3 },
-      { label: "Mes Prospects", href: "/admin/crm/prospects", icon: TrendingUp },
-      { label: "Tous les Prospects", href: "/admin/crm/prospects/liste", icon: Users },
-      { label: "Mes Tâches", href: "/trainer/tasks", icon: ClipboardList },
-      { label: "Mes Devis", href: "/admin/crm/quotes", icon: FileText },
-    ],
-  },
-];
+// ── Sidebar component ───────────────────────────────────────────────────────
 
 interface SidebarProps {
   entity: Entity | null;
@@ -472,14 +418,17 @@ export function Sidebar({ entity, role = "admin", hasCrmAccess = false }: Sideba
   };
 
   // Parcours de formation uniquement pour C3V Formation
-  const roleItems = ROLE_NAV_ITEMS[role] ?? navItems;
-  const filteredNavItems = slug !== "c3v-formation"
-    ? roleItems.map(item =>
-        item.label === "Formations"
-          ? { ...item, children: item.children?.filter(child => child.label !== "Parcours") }
-          : item
-      )
-    : roleItems;
+  const roleSections = ROLE_NAV_SECTIONS[role] ?? adminNavSections;
+  const filteredNavSections = slug !== "c3v-formation"
+    ? roleSections.map((section) => ({
+        ...section,
+        items: section.items.map((item) =>
+          item.label === "Formations"
+            ? { ...item, children: item.children?.filter((child) => child.label !== "Parcours") }
+            : item
+        ),
+      }))
+    : roleSections;
 
   return (
     <aside className="flex flex-col bg-sidebar border-r border-sidebar-border shrink-0 w-60">
@@ -510,9 +459,20 @@ export function Sidebar({ entity, role = "admin", hasCrmAccess = false }: Sideba
       </div>
 
       {/* Navigation */}
-      <nav role="navigation" aria-label="Menu principal" className="flex-1 overflow-y-auto px-2 py-3 space-y-0.5">
-        {filteredNavItems.map((item) => (
-          <NavItemComponent key={item.label} item={item} collapsed={collapsed} />
+      <nav role="navigation" aria-label="Menu principal" className="flex-1 overflow-y-auto px-2 py-3 space-y-1">
+        {filteredNavSections.map((section, idx) => (
+          <div key={section.section ?? idx}>
+            {section.section && (
+              <p className="px-3 pt-4 pb-1 text-[10px] font-semibold tracking-wider text-sidebar-foreground/40 uppercase first:pt-0">
+                {section.section}
+              </p>
+            )}
+            <div className="space-y-0.5">
+              {section.items.map((item) => (
+                <NavItemComponent key={item.label} item={item} collapsed={collapsed} />
+              ))}
+            </div>
+          </div>
         ))}
         {role === "trainer" && hasCrmAccess && trainerCrmNavItems.map((item) => (
           <NavItemComponent key={item.label} item={item} collapsed={collapsed} />
