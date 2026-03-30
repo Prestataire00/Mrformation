@@ -151,6 +151,156 @@ function getTemplatePreview(html: string): string {
   return preview;
 }
 
+interface StarterTemplate {
+  id: string;
+  name: string;
+  description: string;
+  type: DocumentType;
+  variableCount: number;
+  content: string;
+}
+
+function starterWrap(title: string, body: string): string {
+  return `<h1>${title}</h1>\n${body}`;
+}
+
+const STARTER_TEMPLATES: StarterTemplate[] = [
+  {
+    id: "convocation",
+    name: "Convocation à la formation",
+    description: "Convoque un apprenant avec les détails pratiques",
+    type: "certificate",
+    variableCount: 9,
+    content: starterWrap("CONVOCATION À LA FORMATION", `
+<p>Madame, Monsieur <strong>{{nom_apprenant}}</strong>,</p>
+<p>Nous avons le plaisir de vous confirmer votre inscription à la formation suivante :</p>
+<table>
+  <tr><td><strong>Formation</strong></td><td>{{titre_formation}}</td></tr>
+  <tr><td><strong>Date de début</strong></td><td>{{date_debut}}</td></tr>
+  <tr><td><strong>Date de fin</strong></td><td>{{date_fin}}</td></tr>
+  <tr><td><strong>Lieu</strong></td><td>{{lieu}}</td></tr>
+  <tr><td><strong>Durée</strong></td><td>{{duree_heures}} heure(s)</td></tr>
+  <tr><td><strong>Formateur</strong></td><td>{{nom_formateur}}</td></tr>
+</table>
+<p>Merci de vous présenter 15 minutes avant le début de la formation muni(e) d'une pièce d'identité.</p>
+<p>Cordialement,</p>
+<p>Le service formation</p>
+<p><em>Fait le {{date_today}}</em></p>`),
+  },
+  {
+    id: "certificat",
+    name: "Certificat de réalisation",
+    description: "Atteste la réalisation d'une formation par un apprenant",
+    type: "certificate",
+    variableCount: 7,
+    content: starterWrap("CERTIFICAT DE RÉALISATION", `
+<p>Je soussigné(e), <strong>{{nom_formateur}}</strong>, formateur, certifie que :</p>
+<p><strong>{{nom_apprenant}}</strong></p>
+<p>a suivi l'action de formation suivante :</p>
+<table>
+  <tr><td><strong>Intitulé</strong></td><td>{{titre_formation}}</td></tr>
+  <tr><td><strong>Du</strong></td><td>{{date_debut}}</td></tr>
+  <tr><td><strong>Au</strong></td><td>{{date_fin}}</td></tr>
+  <tr><td><strong>Durée totale</strong></td><td>{{duree_heures}} heure(s)</td></tr>
+</table>
+<p>En foi de quoi, le présent certificat est établi pour servir et valoir ce que de droit.</p>
+<p><em>Fait le {{date_today}}</em></p>
+<p><br/></p>
+<p><strong>Le formateur</strong></p>
+<p>{{signature_formateur}}</p>`),
+  },
+  {
+    id: "attestation",
+    name: "Attestation d'assiduité",
+    description: "Atteste la présence et l'assiduité d'un apprenant",
+    type: "attendance",
+    variableCount: 8,
+    content: starterWrap("ATTESTATION D'ASSIDUITÉ", `
+<p>Je soussigné(e) atteste que :</p>
+<p><strong>{{nom_apprenant}}</strong></p>
+<p>a fait preuve d'assiduité lors de la formation :</p>
+<table>
+  <tr><td><strong>Intitulé</strong></td><td>{{titre_formation}}</td></tr>
+  <tr><td><strong>Du</strong></td><td>{{date_debut}}</td></tr>
+  <tr><td><strong>Au</strong></td><td>{{date_fin}}</td></tr>
+  <tr><td><strong>Durée</strong></td><td>{{duree_heures}} heure(s)</td></tr>
+</table>
+<p><em>Fait le {{date_today}}</em></p>
+<p><br/></p>
+<table>
+  <tr>
+    <td><strong>Signature de l'apprenant</strong><br/>{{signature_apprenant}}</td>
+    <td><strong>Signature du formateur</strong><br/>{{signature_formateur}}</td>
+  </tr>
+</table>`),
+  },
+  {
+    id: "emargement",
+    name: "Feuille d'émargement",
+    description: "Feuille de présence avec signatures",
+    type: "attendance",
+    variableCount: 7,
+    content: starterWrap("FEUILLE D'ÉMARGEMENT", `
+<table>
+  <tr><td><strong>Formation</strong></td><td>{{titre_formation}}</td></tr>
+  <tr><td><strong>Dates</strong></td><td>Du {{date_debut}} au {{date_fin}}</td></tr>
+  <tr><td><strong>Lieu</strong></td><td>{{lieu}}</td></tr>
+  <tr><td><strong>Formateur</strong></td><td>{{nom_formateur}}</td></tr>
+</table>
+<p><br/></p>
+<table>
+  <tr>
+    <th>Nom et prénom</th>
+    <th>Matin</th>
+    <th>Après-midi</th>
+    <th>Signature</th>
+  </tr>
+  <tr>
+    <td>{{nom_apprenant}}</td>
+    <td></td>
+    <td></td>
+    <td>{{signature_apprenant}}</td>
+  </tr>
+</table>
+<p><em>Fait le {{date_today}}</em></p>`),
+  },
+  {
+    id: "convention",
+    name: "Convention de formation",
+    description: "Convention entre l'organisme et l'entreprise cliente",
+    type: "agreement",
+    variableCount: 8,
+    content: starterWrap("CONVENTION DE FORMATION PROFESSIONNELLE", `
+<p>Entre les soussignés :</p>
+<p><strong>L'organisme de formation</strong>, ci-après dénommé « le prestataire »,</p>
+<p>et</p>
+<p><strong>{{nom_client}}</strong>, ci-après dénommé « le client »,</p>
+<p>Il a été convenu ce qui suit :</p>
+<h2>Article 1 — Objet</h2>
+<p>Le prestataire s'engage à organiser l'action de formation suivante :</p>
+<table>
+  <tr><td><strong>Intitulé</strong></td><td>{{titre_formation}}</td></tr>
+  <tr><td><strong>Du</strong></td><td>{{date_debut}}</td></tr>
+  <tr><td><strong>Au</strong></td><td>{{date_fin}}</td></tr>
+  <tr><td><strong>Durée</strong></td><td>{{duree_heures}} heure(s)</td></tr>
+  <tr><td><strong>Lieu</strong></td><td>{{lieu}}</td></tr>
+  <tr><td><strong>Formateur</strong></td><td>{{nom_formateur}}</td></tr>
+</table>
+<h2>Article 2 — Tarif</h2>
+<p>Le coût de la formation est fixé à <strong>{{montant}}</strong> HT.</p>
+<h2>Article 3 — Modalités</h2>
+<p>La formation sera réalisée conformément au programme annexé à la présente convention.</p>
+<p><em>Fait le {{date_today}}</em></p>
+<p><br/></p>
+<table>
+  <tr>
+    <td><strong>Pour le prestataire</strong><br/><br/>Signature</td>
+    <td><strong>Pour le client</strong><br/><br/>Signature</td>
+  </tr>
+</table>`),
+  },
+];
+
 interface TemplateFormData {
   name: string;
   type: DocumentType;
@@ -220,6 +370,7 @@ export default function DocumentsPage() {
 
   // Template dialog
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
+  const [showStarterPicker, setShowStarterPicker] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<DocumentTemplate | null>(null);
   const [templateForm, setTemplateForm] = useState<TemplateFormData>(emptyTemplateForm);
   const [saving, setSaving] = useState(false);
@@ -359,7 +510,19 @@ export default function DocumentsPage() {
   const openAddTemplate = () => {
     setEditingTemplate(null);
     setTemplateForm(emptyTemplateForm);
+    setShowStarterPicker(true);
     setTemplateDialogOpen(true);
+  };
+
+  const handlePickStarter = (starter: StarterTemplate | null) => {
+    if (starter) {
+      setTemplateForm({
+        name: starter.name,
+        type: starter.type,
+        content: starter.content,
+      });
+    }
+    setShowStarterPicker(false);
   };
 
   const openEditTemplate = (t: DocumentTemplate) => {
@@ -997,90 +1160,133 @@ export default function DocumentsPage() {
       </Tabs>
 
       {/* Template Add/Edit Dialog — Split Screen */}
-      <Dialog open={templateDialogOpen} onOpenChange={setTemplateDialogOpen}>
+      <Dialog open={templateDialogOpen} onOpenChange={(open) => { setTemplateDialogOpen(open); if (!open) setShowStarterPicker(false); }}>
         <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>
-              {editingTemplate ? "Modifier le modèle" : "Nouveau modèle de document"}
+              {editingTemplate
+                ? "Modifier le modèle"
+                : showStarterPicker
+                  ? "Nouveau modèle — choisir un point de départ"
+                  : "Nouveau modèle de document"}
             </DialogTitle>
           </DialogHeader>
 
-          {/* Champs nom + type en haut pleine largeur */}
-          <div className="grid grid-cols-2 gap-4 px-1 pt-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="t_name">Nom <span className="text-red-500">*</span></Label>
-              <Input
-                id="t_name"
-                value={templateForm.name}
-                onChange={(e) => setTemplateForm((p) => ({ ...p, name: e.target.value }))}
-                placeholder="Ex: Contrat de formation standard"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="t_type">Type</Label>
-              <Select value={templateForm.type} onValueChange={(v) => setTemplateForm((p) => ({ ...p, type: v as DocumentType }))}>
-                <SelectTrigger id="t_type">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="agreement">Contrat</SelectItem>
-                  <SelectItem value="certificate">Certificat</SelectItem>
-                  <SelectItem value="attendance">Émargement</SelectItem>
-                  <SelectItem value="invoice">Facture</SelectItem>
-                  <SelectItem value="other">Autre</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {/* Split screen */}
-          <div className="flex flex-1 gap-4 px-1 pb-2 overflow-hidden min-h-0" style={{ minHeight: "400px" }}>
-            {/* Gauche — Éditeur */}
-            <div className="flex-1 flex flex-col overflow-hidden">
-              <p className="text-xs font-medium text-gray-500 mb-2">Éditeur</p>
-              <div className="flex-1 overflow-y-auto border rounded-lg">
-                <RichTextEditor
-                  content={templateForm.content}
-                  onChange={(html) => setTemplateForm((p) => ({ ...p, content: html }))}
-                  variables={AVAILABLE_VARIABLES}
-                  placeholder="Saisissez le contenu du document..."
-                />
-              </div>
-              <p className="text-xs text-gray-400 mt-1">
-                {templateForm.content.match(/\{\{[^}]+\}\}/g)?.length || 0} variable{(templateForm.content.match(/\{\{[^}]+\}\}/g)?.length || 0) !== 1 ? "s" : ""} détectée{(templateForm.content.match(/\{\{[^}]+\}\}/g)?.length || 0) !== 1 ? "s" : ""}
-              </p>
-            </div>
-
-            {/* Droite — Preview live */}
-            <div className="flex-1 flex flex-col overflow-hidden">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-medium text-gray-500">Aperçu</p>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => handleExportTemplateAsPDF()}
-                  className="h-6 text-xs gap-1"
+          {showStarterPicker && !editingTemplate ? (
+            <div className="flex-1 overflow-y-auto px-1 py-4">
+              <div className="grid grid-cols-3 gap-4">
+                {/* Page vierge */}
+                <button
+                  onClick={() => handlePickStarter(null)}
+                  className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-[#3DB5C5] hover:bg-[#3DB5C5]/5 transition-colors cursor-pointer group"
                 >
-                  <Download className="h-3 w-3" /> Exporter PDF
-                </Button>
-              </div>
-              <div className="flex-1 overflow-y-auto border rounded-lg bg-white p-4">
-                <div
-                  className="prose prose-sm max-w-none text-gray-700 leading-relaxed"
-                  dangerouslySetInnerHTML={{
-                    __html: DOMPurify.sanitize(getTemplatePreview(templateForm.content)),
-                  }}
-                />
+                  <Plus className="h-8 w-8 mx-auto mb-3 text-gray-400 group-hover:text-[#3DB5C5]" />
+                  <p className="font-medium text-gray-700">Page vierge</p>
+                  <p className="text-sm text-gray-400 mt-1">Partir de zéro</p>
+                </button>
+
+                {/* Starter cards */}
+                {STARTER_TEMPLATES.map((starter) => (
+                  <button
+                    key={starter.id}
+                    onClick={() => handlePickStarter(starter)}
+                    className="border border-gray-200 rounded-xl p-6 text-left hover:border-[#3DB5C5] hover:bg-[#3DB5C5]/5 transition-colors cursor-pointer group"
+                  >
+                    <div className="flex items-start justify-between mb-3">
+                      <div className={cn("p-2 rounded-lg", TYPE_COLORS[starter.type])}>
+                        <TypeIcon type={starter.type} />
+                      </div>
+                      <Badge className={cn("text-xs font-normal", TYPE_COLORS[starter.type])}>
+                        {TYPE_LABELS[starter.type]}
+                      </Badge>
+                    </div>
+                    <p className="font-medium text-gray-700">{starter.name}</p>
+                    <p className="text-sm text-gray-400 mt-1">{starter.description}</p>
+                    <p className="text-xs text-gray-400 mt-3">{starter.variableCount} variables incluses</p>
+                  </button>
+                ))}
               </div>
             </div>
-          </div>
+          ) : (
+            <>
+              {/* Champs nom + type en haut pleine largeur */}
+              <div className="grid grid-cols-2 gap-4 px-1 pt-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="t_name">Nom <span className="text-red-500">*</span></Label>
+                  <Input
+                    id="t_name"
+                    value={templateForm.name}
+                    onChange={(e) => setTemplateForm((p) => ({ ...p, name: e.target.value }))}
+                    placeholder="Ex: Contrat de formation standard"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="t_type">Type</Label>
+                  <Select value={templateForm.type} onValueChange={(v) => setTemplateForm((p) => ({ ...p, type: v as DocumentType }))}>
+                    <SelectTrigger id="t_type">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="agreement">Contrat</SelectItem>
+                      <SelectItem value="certificate">Certificat</SelectItem>
+                      <SelectItem value="attendance">Émargement</SelectItem>
+                      <SelectItem value="invoice">Facture</SelectItem>
+                      <SelectItem value="other">Autre</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
 
-          <DialogFooter className="px-1 pb-2">
-            <Button variant="outline" onClick={() => setTemplateDialogOpen(false)}>Annuler</Button>
-            <Button onClick={handleSaveTemplate} disabled={saving}>
-              {saving ? "Enregistrement..." : editingTemplate ? "Mettre à jour" : "Créer le modèle"}
-            </Button>
-          </DialogFooter>
+              {/* Split screen */}
+              <div className="flex flex-1 gap-4 px-1 pb-2 overflow-hidden min-h-0" style={{ minHeight: "400px" }}>
+                {/* Gauche — Éditeur */}
+                <div className="flex-1 flex flex-col overflow-hidden">
+                  <p className="text-xs font-medium text-gray-500 mb-2">Éditeur</p>
+                  <div className="flex-1 overflow-y-auto border rounded-lg">
+                    <RichTextEditor
+                      content={templateForm.content}
+                      onChange={(html) => setTemplateForm((p) => ({ ...p, content: html }))}
+                      variables={AVAILABLE_VARIABLES}
+                      placeholder="Saisissez le contenu du document..."
+                    />
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {templateForm.content.match(/\{\{[^}]+\}\}/g)?.length || 0} variable{(templateForm.content.match(/\{\{[^}]+\}\}/g)?.length || 0) !== 1 ? "s" : ""} détectée{(templateForm.content.match(/\{\{[^}]+\}\}/g)?.length || 0) !== 1 ? "s" : ""}
+                  </p>
+                </div>
+
+                {/* Droite — Preview live */}
+                <div className="flex-1 flex flex-col overflow-hidden">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-medium text-gray-500">Aperçu</p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleExportTemplateAsPDF()}
+                      className="h-6 text-xs gap-1"
+                    >
+                      <Download className="h-3 w-3" /> Exporter PDF
+                    </Button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto border rounded-lg bg-white p-4">
+                    <div
+                      className="prose prose-sm max-w-none text-gray-700 leading-relaxed"
+                      dangerouslySetInnerHTML={{
+                        __html: DOMPurify.sanitize(getTemplatePreview(templateForm.content)),
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <DialogFooter className="px-1 pb-2">
+                <Button variant="outline" onClick={() => setTemplateDialogOpen(false)}>Annuler</Button>
+                <Button onClick={handleSaveTemplate} disabled={saving}>
+                  {saving ? "Enregistrement..." : editingTemplate ? "Mettre à jour" : "Créer le modèle"}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
 
