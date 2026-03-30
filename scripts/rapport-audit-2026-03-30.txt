@@ -1,0 +1,70 @@
+========================================
+RAPPORT D'AUDIT — MR FORMATION LMS
+Date : 30/03/2026 10:31:51
+========================================
+
+─── 1. VARIABLES EMAIL ───
+
+⚠️  WARN — 10 fichier(s) appellent /api/emails/send sans resolveVariables()
+  → src/app/(dashboard)/admin/clients/[id]/_components/EmailSection.tsx
+  → src/app/(dashboard)/admin/clients/apprenants/liste/page.tsx
+  → src/app/(dashboard)/admin/crm/formulaires/page.tsx
+  → src/app/(dashboard)/admin/crm/prospects/[id]/email/page.tsx
+  → src/app/(dashboard)/admin/crm/prospects/liste/_components/ProspectEmailSection.tsx
+  → src/app/(dashboard)/admin/crm/quotes/page.tsx
+  → src/app/(dashboard)/admin/formations/[id]/_components/TabEmargements.tsx
+  → src/app/(dashboard)/admin/sessions/page.tsx
+  → src/app/(dashboard)/admin/signatures/page.tsx
+  → src/app/(dashboard)/admin/trainers/[id]/page.tsx
+
+─── 2. VARIABLES NON SUPPORTÉES ───
+
+⚠️  WARN — 2 variable(s) utilisées mais non définies
+  → {{variable}}
+    dans: src/lib/migrate-templates.ts
+    dans: src/lib/utils/resolve-variables.ts
+  → {{variables}}
+    dans: src/lib/utils/resolve-variables.ts
+  Variables supportées (23) : {{nom_client}}, {{nom_apprenant}}, {{prenom_apprenant}}, {{nom_formateur}}, {{titre_formation}}, {{date_formation}}, {{date_debut}}, {{date_fin}}, {{lieu}}, {{duree_heures}}, {{date_today}}, {{numero_facture}}, {{montant}}, {{signature_apprenant}}, {{signature_formateur}}, {{email_apprenant}}, {{telephone_apprenant}}, {{entreprise_contact}}, {{telephone_client}}, {{email_client}}, {{nom_commercial}}, {{lien_connexion}}, {{date_limite}}
+
+─── 3. MIGRATIONS SQL ───
+
+✅ PASS — 56 migrations toutes tracées
+
+─── 4. VARIABLES D'ENVIRONNEMENT ───
+
+⚠️  WARN — Pas de .env.local — les variables doivent être dans Netlify Dashboard
+  Requis : NEXT_PUBLIC_SUPABASE_URL
+  Requis : NEXT_PUBLIC_SUPABASE_ANON_KEY
+  Requis : SUPABASE_SERVICE_ROLE_KEY
+  Requis : RESEND_API_KEY
+  Requis : CRON_SECRET
+
+─── 5. CLÉS API EXPOSÉES ───
+
+✅ PASS — Aucune clé API exposée dans src/
+
+─── 6. CONSOLE.LOG EN PROD ───
+
+⚠️  WARN — 12 fichier(s) avec plus de 3 console.log/warn/error
+  → src/lib/services/gamma.ts (20)
+  → src/app/(dashboard)/admin/crm/quotes/page.tsx (7)
+  → src/lib/services/doc-extraction.ts (7)
+  → src/app/(dashboard)/admin/crm/prospects/[id]/page.tsx (6)
+  → src/app/(dashboard)/admin/crm/campaigns/page.tsx (5)
+  → src/app/(dashboard)/admin/crm/tasks/page.tsx (5)
+  → src/app/(dashboard)/trainer/tasks/page.tsx (5)
+  → src/app/(dashboard)/admin/clients/[id]/page.tsx (4)
+  → src/app/(dashboard)/admin/clients/page.tsx (4)
+  → src/app/(dashboard)/admin/programs/import/page.tsx (4)
+
+─── 7. ROUTES API SANS AUTH ───
+
+❌ FAIL — 3 route(s) API sans protection
+  → src/app/api/auth/gmail/callback/route.ts
+  → src/app/api/emargement/sign/route.ts
+  → src/app/api/programs/import-pdf/route.ts
+
+========================================
+RÉSUMÉ : 2 PASS / 1 FAIL / 4 WARN
+========================================
