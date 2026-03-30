@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import pdf from "pdf-parse";
 import { sanitizeError } from "@/lib/api-error";
+import { requireRole } from "@/lib/auth/require-role";
 
 interface ParsedProgram {
   title: string;
@@ -220,6 +221,9 @@ function parsePdfText(text: string): ParsedProgram {
 }
 
 export async function POST(request: NextRequest) {
+  const auth = await requireRole(["super_admin", "admin"]);
+  if (auth.error) return auth.error;
+
   try {
     const formData = await request.formData();
     const file = formData.get("pdf") as File | null;

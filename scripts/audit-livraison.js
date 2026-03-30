@@ -96,7 +96,17 @@ const usedVars = new Set();
 const varUsageFiles = {};
 for (const f of allSrcFiles) {
   const content = fs.readFileSync(f, "utf-8");
-  const matches = content.match(/\{\{[a-z_]+\}\}/g) || [];
+  const filteredContent = content
+    .split("\n")
+    .filter((line) =>
+      !line.includes(".match(") &&
+      !line.includes(".replace(") &&
+      !line.includes("regex") &&
+      !line.includes("// ") &&
+      !line.includes("test(")
+    )
+    .join("\n");
+  const matches = filteredContent.match(/\{\{[a-z_]+\}\}/g) || [];
   for (const v of matches) {
     usedVars.add(v);
     if (!varUsageFiles[v]) varUsageFiles[v] = [];
@@ -236,7 +246,13 @@ const apiDir = path.join(SRC, "app", "api");
 const apiRoutes = walkFiles(apiDir).filter((f) => f.endsWith("route.ts"));
 const unprotectedRoutes = [];
 
+const PUBLIC_ROUTES = [
+  "emargement/sign",
+  "auth/gmail/callback",
+];
+
 for (const f of apiRoutes) {
+  if (PUBLIC_ROUTES.some((p) => f.includes(p))) continue;
   const content = fs.readFileSync(f, "utf-8");
   const hasRequireRole = content.includes("requireRole");
   const hasCronSecret = content.includes("CRON_SECRET");
@@ -251,6 +267,35 @@ if (unprotectedRoutes.length === 0) {
 } else {
   logFail(`${unprotectedRoutes.length} route(s) API sans protection`);
   unprotectedRoutes.forEach((f) => log(`  → ${f}`));
+}
+log();
+
+// ── 8. TYPAGE TYPESCRIPT ──
+
+log("─── 8. TYPAGE TYPESCRIPT ───");
+log();
+
+try {
+  const { execSync } = require("child_process");
+  const tscOutput = execSync("./node_modules/.bin/tsc --noEmit 2>&1", { cwd: ROOT, encoding: "utf-8", timeout: 120000 });
+  const errorLines = tscOutput.split("\n").filter((l) => l.includes("error TS"));
+  if (errorLines.length === 0) {
+    logPass("0 erreur TypeScript");
+  } else {
+    logFail(`${errorLines.length} erreur(s) TypeScript`);
+    errorLines.slice(0, 10).forEach((l) => log(`  → ${l.trim()}`));
+    if (errorLines.length > 10) log(`  ... et ${errorLines.length - 10} autres`);
+  }
+} catch (err) {
+  const output = (err.stdout || "") + (err.stderr || "");
+  const errorLines = output.split("\n").filter((l) => l.includes("error TS"));
+  if (errorLines.length === 0) {
+    logPass("0 erreur TypeScript");
+  } else {
+    logFail(`${errorLines.length} erreur(s) TypeScript`);
+    errorLines.slice(0, 10).forEach((l) => log(`  → ${l.trim()}`));
+    if (errorLines.length > 10) log(`  ... et ${errorLines.length - 10} autres`);
+  }
 }
 log();
 

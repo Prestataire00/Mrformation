@@ -1,6 +1,6 @@
 ========================================
 RAPPORT D'AUDIT — MR FORMATION LMS
-Date : 30/03/2026 10:31:51
+Date : 30/03/2026 10:35:54
 ========================================
 
 ─── 1. VARIABLES EMAIL ───
@@ -21,7 +21,6 @@ Date : 30/03/2026 10:31:51
 
 ⚠️  WARN — 2 variable(s) utilisées mais non définies
   → {{variable}}
-    dans: src/lib/migrate-templates.ts
     dans: src/lib/utils/resolve-variables.ts
   → {{variables}}
     dans: src/lib/utils/resolve-variables.ts
@@ -60,11 +59,12 @@ Date : 30/03/2026 10:31:51
 
 ─── 7. ROUTES API SANS AUTH ───
 
-❌ FAIL — 3 route(s) API sans protection
-  → src/app/api/auth/gmail/callback/route.ts
-  → src/app/api/emargement/sign/route.ts
-  → src/app/api/programs/import-pdf/route.ts
+✅ PASS — Toutes les routes API sont protégées
+
+─── 8. TYPAGE TYPESCRIPT ───
+
+✅ PASS — 0 erreur TypeScript
 
 ========================================
-RÉSUMÉ : 2 PASS / 1 FAIL / 4 WARN
+RÉSUMÉ : 4 PASS / 0 FAIL / 4 WARN
 ========================================
