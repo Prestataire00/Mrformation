@@ -118,6 +118,39 @@ const AVAILABLE_VARIABLES = [
   { key: "telephone_apprenant", label: "Téléphone de l'apprenant" },
 ];
 
+const PREVIEW_VALUES: Record<string, string> = {
+  "{{nom_client}}": "Entreprise DUPONT SAS",
+  "{{nom_apprenant}}": "MARTIN Jean",
+  "{{prenom_apprenant}}": "Jean",
+  "{{nom_formateur}}": "Marie LECLERC",
+  "{{titre_formation}}": "Formation IA Générative",
+  "{{date_formation}}": "15/04/2026",
+  "{{date_debut}}": "15/04/2026",
+  "{{date_fin}}": "17/04/2026",
+  "{{lieu}}": "Paris 8ème",
+  "{{duree_heures}}": "21",
+  "{{date_today}}": new Date().toLocaleDateString("fr-FR"),
+  "{{numero_facture}}": "F-2026-042",
+  "{{montant}}": "2 400,00 €",
+  "{{signature_apprenant}}": "[Signature apprenant]",
+  "{{signature_formateur}}": "[Signature formateur]",
+  "{{email_apprenant}}": "jean.martin@exemple.fr",
+  "{{telephone_apprenant}}": "06 12 34 56 78",
+};
+
+function getTemplatePreview(html: string): string {
+  if (!html || html.replace(/<[^>]*>/g, "").trim() === "")
+    return '<p style="color:#9ca3af;font-style:italic">Le contenu apparaîtra ici...</p>';
+  let preview = html;
+  Object.entries(PREVIEW_VALUES).forEach(([key, val]) => {
+    preview = preview.replaceAll(
+      key,
+      `<span style="background:#dbeafe;color:#1d4ed8;padding:1px 4px;border-radius:3px;font-size:0.85em">${val}</span>`
+    );
+  });
+  return preview;
+}
+
 interface TemplateFormData {
   name: string;
   type: DocumentType;
@@ -167,7 +200,7 @@ interface ClientDocument {
 export default function DocumentsPage() {
   const supabase = createClient();
   const { toast } = useToast();
-  const { entityId } = useEntity();
+  const { entity, entityId } = useEntity();
 
   // Templates state
   const [templates, setTemplates] = useState<DocumentTemplate[]>([]);
@@ -392,6 +425,23 @@ export default function DocumentsPage() {
       await fetchTemplates();
     }
     setDeleting(false);
+  };
+
+  const handleExportTemplateAsPDF = async (tpl?: DocumentTemplate) => {
+    const content = tpl?.content || templateForm.content;
+    const name = tpl?.name || templateForm.name || "Document";
+    if (!content || content.replace(/<[^>]*>/g, "").trim() === "") {
+      toast({ title: "Aucun contenu à exporter", variant: "destructive" });
+      return;
+    }
+    const preview = getTemplatePreview(content);
+    await exportHtmlToPDF(
+      name,
+      preview,
+      `modele-${name.toLowerCase().replace(/\s+/g, "-")}.pdf`,
+      entity?.name || "MR FORMATION"
+    );
+    toast({ title: "PDF exporté" });
   };
 
   // insertVariable is now handled by the RichTextEditor toolbar
@@ -660,6 +710,10 @@ export default function DocumentsPage() {
                           <DropdownMenuItem onClick={() => { setPreviewTemplate(template); setPreviewDialogOpen(true); }} className="gap-2">
                             <Eye className="h-4 w-4" />
                             Aperçu
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleExportTemplateAsPDF(template)} className="gap-2">
+                            <Download className="h-4 w-4" />
+                            Exporter PDF
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => openEditTemplate(template)} className="gap-2">
                             <Pencil className="h-4 w-4" />
@@ -957,59 +1011,86 @@ export default function DocumentsPage() {
         </TabsContent>
       </Tabs>
 
-      {/* Template Add/Edit Dialog */}
+      {/* Template Add/Edit Dialog — Split Screen */}
       <Dialog open={templateDialogOpen} onOpenChange={setTemplateDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>
               {editingTemplate ? "Modifier le modèle" : "Nouveau modèle de document"}
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="t_name">Nom <span className="text-red-500">*</span></Label>
-                <Input
-                  id="t_name"
-                  value={templateForm.name}
-                  onChange={(e) => setTemplateForm((p) => ({ ...p, name: e.target.value }))}
-                  placeholder="Ex: Contrat de formation standard"
+
+          {/* Champs nom + type en haut pleine largeur */}
+          <div className="grid grid-cols-2 gap-4 px-1 pt-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="t_name">Nom <span className="text-red-500">*</span></Label>
+              <Input
+                id="t_name"
+                value={templateForm.name}
+                onChange={(e) => setTemplateForm((p) => ({ ...p, name: e.target.value }))}
+                placeholder="Ex: Contrat de formation standard"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="t_type">Type</Label>
+              <Select value={templateForm.type} onValueChange={(v) => setTemplateForm((p) => ({ ...p, type: v as DocumentType }))}>
+                <SelectTrigger id="t_type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="agreement">Contrat</SelectItem>
+                  <SelectItem value="certificate">Certificat</SelectItem>
+                  <SelectItem value="attendance">Émargement</SelectItem>
+                  <SelectItem value="invoice">Facture</SelectItem>
+                  <SelectItem value="other">Autre</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Split screen */}
+          <div className="flex flex-1 gap-4 px-1 pb-2 overflow-hidden min-h-0" style={{ minHeight: "400px" }}>
+            {/* Gauche — Éditeur */}
+            <div className="flex-1 flex flex-col overflow-hidden">
+              <p className="text-xs font-medium text-gray-500 mb-2">Éditeur</p>
+              <div className="flex-1 overflow-y-auto border rounded-lg">
+                <RichTextEditor
+                  content={templateForm.content}
+                  onChange={(html) => setTemplateForm((p) => ({ ...p, content: html }))}
+                  variables={AVAILABLE_VARIABLES}
+                  placeholder="Saisissez le contenu du document..."
                 />
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="t_type">Type</Label>
-                <Select value={templateForm.type} onValueChange={(v) => setTemplateForm((p) => ({ ...p, type: v as DocumentType }))}>
-                  <SelectTrigger id="t_type">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="agreement">Contrat</SelectItem>
-                    <SelectItem value="certificate">Certificat</SelectItem>
-                    <SelectItem value="attendance">Émargement</SelectItem>
-                    <SelectItem value="invoice">Facture</SelectItem>
-                    <SelectItem value="other">Autre</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Rich Text Editor */}
-            <div className="space-y-1.5">
-              <Label>
-                Contenu <span className="text-red-500">*</span>
-              </Label>
-              <RichTextEditor
-                content={templateForm.content}
-                onChange={(html) => setTemplateForm((p) => ({ ...p, content: html }))}
-                variables={AVAILABLE_VARIABLES}
-                placeholder="Saisissez le contenu du document..."
-              />
-              <p className="text-xs text-gray-400">
+              <p className="text-xs text-gray-400 mt-1">
                 {templateForm.content.match(/\{\{[^}]+\}\}/g)?.length || 0} variable{(templateForm.content.match(/\{\{[^}]+\}\}/g)?.length || 0) !== 1 ? "s" : ""} détectée{(templateForm.content.match(/\{\{[^}]+\}\}/g)?.length || 0) !== 1 ? "s" : ""}
               </p>
             </div>
+
+            {/* Droite — Preview live */}
+            <div className="flex-1 flex flex-col overflow-hidden">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-medium text-gray-500">Aperçu</p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleExportTemplateAsPDF()}
+                  className="h-6 text-xs gap-1"
+                >
+                  <Download className="h-3 w-3" /> Exporter PDF
+                </Button>
+              </div>
+              <div className="flex-1 overflow-y-auto border rounded-lg bg-white p-4">
+                <div
+                  className="prose prose-sm max-w-none text-gray-700 leading-relaxed"
+                  dangerouslySetInnerHTML={{
+                    __html: DOMPurify.sanitize(getTemplatePreview(templateForm.content)),
+                  }}
+                />
+              </div>
+            </div>
           </div>
-          <DialogFooter>
+
+          <DialogFooter className="px-1 pb-2">
             <Button variant="outline" onClick={() => setTemplateDialogOpen(false)}>Annuler</Button>
             <Button onClick={handleSaveTemplate} disabled={saving}>
               {saving ? "Enregistrement..." : editingTemplate ? "Mettre à jour" : "Créer le modèle"}
