@@ -6,6 +6,7 @@ export interface ResolveContext {
   client?: Client | null;
   learner?: Learner | null;
   trainer?: Trainer | null;
+  profile?: { first_name: string; last_name: string } | null;
 }
 
 /**
@@ -46,6 +47,12 @@ export function resolveVariables(content: string, data: ResolveContext): string 
     "{{signature_formateur}}": "[Signature formateur]",
     "{{email_apprenant}}": data.learner?.email || "[Email apprenant]",
     "{{telephone_apprenant}}": data.learner?.phone || "[Téléphone apprenant]",
+    "{{entreprise_contact}}": (data.client as any)?.contact_name || "[Contact entreprise]",
+    "{{telephone_client}}": (data.client as any)?.phone || "[Téléphone client]",
+    "{{email_client}}": (data.client as any)?.email || "[Email client]",
+    "{{nom_commercial}}": data.profile
+      ? `${data.profile.first_name} ${data.profile.last_name}`
+      : "[Nom commercial]",
     "{{lien_connexion}}": "[Lien de connexion]",
     "{{date_limite}}": "[Date limite]",
   };
