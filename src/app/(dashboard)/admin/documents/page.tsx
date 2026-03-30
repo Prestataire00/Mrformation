@@ -13,7 +13,9 @@ import { Badge } from "@/components/ui/badge";
 import { RichTextEditor } from "@/components/editor/RichTextEditor";
 import { plainTextToHtml, isHtmlContent } from "@/lib/migrate-templates";
 import { exportHtmlToPDF } from "@/lib/pdf-export";
-import DOMPurify from "dompurify";
+import DOMPurifyLib from "dompurify";
+
+const DOMPurify = typeof window !== "undefined" ? DOMPurifyLib : { sanitize: (html: string) => html };
 import { useToast } from "@/components/ui/use-toast";
 import {
   Card,
