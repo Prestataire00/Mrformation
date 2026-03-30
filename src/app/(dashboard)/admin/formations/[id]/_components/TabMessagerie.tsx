@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Send, Clock, Mail, Loader2 } from "lucide-react";
+import { Send, Clock, Mail, Loader2, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -48,6 +48,68 @@ export function TabMessagerie({ formation, onRefresh }: Props) {
   const supabase = createClient();
 
   const [emailHistory, setEmailHistory] = useState<EmailHistory[]>([]);
+
+  // Automation
+  const [automationRules, setAutomationRules] = useState<Array<{
+    id: string; name: string | null; trigger_type: string; days_offset: number;
+    is_enabled: boolean; recipient_type: string; template_id: string | null;
+    document_type: string; template?: { name: string } | null;
+  }>>([]);
+  const [automationHistory, setAutomationHistory] = useState<Array<{
+    subject: string; status: string; sent_at: string; recipient_email: string;
+  }>>([]);
+
+  useEffect(() => {
+    if (!formation.entity_id) return;
+    supabase
+      .from("formation_automation_rules")
+      .select("*, template:email_templates(name)")
+      .eq("entity_id", formation.entity_id)
+      .eq("is_enabled", true)
+      .then(({ data }) => setAutomationRules(data ?? []));
+    supabase
+      .from("email_history")
+      .select("subject, status, sent_at, recipient_email")
+      .eq("session_id", formation.id)
+      .order("sent_at", { ascending: false })
+      .limit(20)
+      .then(({ data }) => setAutomationHistory(data ?? []));
+  }, [supabase, formation.entity_id, formation.id]);
+
+  function getRuleTargetDate(rule: typeof automationRules[0]): string {
+    if (rule.trigger_type === "session_start_minus_days") {
+      const start = new Date(formation.start_date);
+      start.setDate(start.getDate() - rule.days_offset);
+      return start.toLocaleDateString("fr-FR");
+    } else {
+      const end = new Date(formation.end_date);
+      end.setDate(end.getDate() + rule.days_offset);
+      return end.toLocaleDateString("fr-FR");
+    }
+  }
+
+  function getRuleStatus(rule: typeof automationRules[0]): { label: string; color: string } {
+    const targetDate = rule.trigger_type === "session_start_minus_days"
+      ? new Date(formation.start_date)
+      : new Date(formation.end_date);
+    if (rule.trigger_type === "session_start_minus_days") {
+      targetDate.setDate(targetDate.getDate() - rule.days_offset);
+    } else {
+      targetDate.setDate(targetDate.getDate() + rule.days_offset);
+    }
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    targetDate.setHours(0, 0, 0, 0);
+
+    const sent = automationHistory.some((h) =>
+      h.subject.includes(rule.name || rule.document_type) && h.status === "sent"
+    );
+
+    if (sent) return { label: "✅ Envoyé", color: "bg-green-100 text-green-700" };
+    if (targetDate < today) return { label: "⏰ Date passée", color: "bg-gray-100 text-gray-500" };
+    if (targetDate.getTime() === today.getTime()) return { label: "🔔 Aujourd'hui", color: "bg-orange-100 text-orange-700" };
+    return { label: `📅 ${getRuleTargetDate(rule)}`, color: "bg-blue-100 text-blue-700" };
+  }
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
 
@@ -450,6 +512,62 @@ export function TabMessagerie({ formation, onRefresh }: Props) {
         </div>
       ) : (
         <>
+          {/* Section Automatisation */}
+          {automationRules.length > 0 && (
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold text-gray-800 flex items-center gap-2">
+                  <Zap className="h-4 w-4 text-yellow-500" />
+                  Emails automatiques
+                </h3>
+                <a href="/admin/trainings/automation" className="text-xs text-[#3DB5C5] hover:underline">
+                  Configurer →
+                </a>
+              </div>
+              <div className="space-y-2">
+                {automationRules.map((rule) => {
+                  const status = getRuleStatus(rule);
+                  const label = rule.name || rule.template?.name || rule.document_type;
+                  const recipient = rule.recipient_type === "trainers" ? "Formateurs" : rule.recipient_type === "all" ? "Tous" : "Apprenants";
+                  const trigger = rule.trigger_type === "session_start_minus_days"
+                    ? `J-${rule.days_offset} avant début`
+                    : `J+${rule.days_offset} après fin`;
+                  return (
+                    <div key={rule.id} className="flex items-center justify-between p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <Zap className="h-3.5 w-3.5 text-yellow-500 shrink-0" />
+                        <div>
+                          <p className="text-sm font-medium text-gray-800">{label}</p>
+                          <p className="text-xs text-gray-500">{trigger} · {recipient}</p>
+                        </div>
+                      </div>
+                      <span className={`text-xs px-2 py-1 rounded-full font-medium ${status.color}`}>
+                        {status.label}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+              {automationHistory.length > 0 && (
+                <details className="mt-2">
+                  <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-700">
+                    Voir l&apos;historique ({automationHistory.length})
+                  </summary>
+                  <div className="mt-2 space-y-1">
+                    {automationHistory.slice(0, 5).map((h, i) => (
+                      <div key={i} className="flex items-center justify-between text-xs text-gray-500 py-1 border-b border-gray-100">
+                        <span className="truncate max-w-[200px]">{h.subject}</span>
+                        <span className={h.status === "sent" ? "text-green-600" : "text-red-500"}>
+                          {h.status === "sent" ? "✅" : "❌"} {new Date(h.sent_at).toLocaleDateString("fr-FR")}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
+            </div>
+          )}
+
           {/* APPRENANTS */}
           {renderRecipientSection("Apprenants", learnerRecipients, true)}
 
