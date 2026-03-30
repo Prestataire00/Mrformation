@@ -17,6 +17,9 @@ import {
   Mail,
   BookOpen,
 } from "lucide-react";
+import { useEntity } from "@/contexts/EntityContext";
+import { useToast } from "@/components/ui/use-toast";
+import { Badge } from "@/components/ui/badge";
 
 interface UserProfile {
   id: string;
@@ -113,6 +116,15 @@ export default function UsersPage() {
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
+  // Email dialog
+  const { entityId } = useEntity();
+  const { toast } = useToast();
+  const [emailUserDialog, setEmailUserDialog] = useState(false);
+  const [emailUserTarget, setEmailUserTarget] = useState<UserProfile | null>(null);
+  const [emailUserForm, setEmailUserForm] = useState({ subject: "", body: "", templateId: "" });
+  const [sendingUserEmail, setSendingUserEmail] = useState(false);
+  const [userTemplates, setUserTemplates] = useState<Array<{ id: string; name: string; subject: string; body: string }>>([]);
+
   // Edit user modal
   const [editModal, setEditModal] = useState<UserProfile | null>(null);
   const [editForm, setEditForm] = useState({ first_name: "", last_name: "", email: "", phone: "", role: "" });
@@ -138,6 +150,36 @@ export default function UsersPage() {
     loadUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!entityId) return;
+    supabase.from("email_templates").select("id, name, subject, body").eq("entity_id", entityId)
+      .then(({ data }) => setUserTemplates(data ?? []));
+  }, [supabase, entityId]);
+
+  async function handleSendUserEmail() {
+    if (!emailUserTarget?.email || !emailUserForm.subject.trim()) return;
+    setSendingUserEmail(true);
+    try {
+      const res = await fetch("/api/emails/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to: emailUserTarget.email, subject: emailUserForm.subject, body: emailUserForm.body }),
+      });
+      const result = await res.json();
+      if (res.ok && result.success) {
+        if (result.simulated) {
+          toast({ title: "⚠️ Email non envoyé", description: "RESEND_API_KEY non configurée", variant: "destructive" });
+        } else {
+          toast({ title: "Email envoyé" });
+        }
+        setEmailUserDialog(false);
+      } else {
+        toast({ title: "Erreur", description: result.error, variant: "destructive" });
+      }
+    } catch { toast({ title: "Erreur réseau", variant: "destructive" }); }
+    finally { setSendingUserEmail(false); }
+  }
 
   async function loadUsers() {
     setLoading(true);
@@ -371,12 +413,23 @@ export default function UsersPage() {
           { label: "Formateurs", count: counts.trainer, color: "bg-green-50 text-green-700" },
           { label: "Entreprises", count: counts.client, color: "bg-purple-50 text-purple-700" },
           { label: "Apprenants", count: counts.learner, color: "bg-orange-50 text-orange-700" },
-        ].map((stat) => (
-          <div key={stat.label} className={`rounded-lg p-4 ${stat.color}`}>
-            <p className="text-2xl font-bold">{stat.count}</p>
-            <p className="text-xs font-medium opacity-70">{stat.label}</p>
-          </div>
-        ))}
+        ].map((stat) => {
+          const roleMap: Record<string, string> = { "Administrateurs": "admin", "Formateurs": "trainer", "Entreprises": "client", "Apprenants": "learner" };
+          const role = roleMap[stat.label];
+          const isActive = role && roleFilter === role;
+          return (
+            <div
+              key={stat.label}
+              onClick={() => { if (role) setRoleFilter(roleFilter === role ? "" : role); }}
+              className={`rounded-lg p-4 cursor-pointer transition-all border-2 ${
+                isActive ? "border-[#3DB5C5]" : "border-transparent hover:border-gray-300"
+              } ${stat.color}`}
+            >
+              <p className="text-2xl font-bold">{stat.count}</p>
+              <p className="text-xs font-medium opacity-70">{stat.label}</p>
+            </div>
+          );
+        })}
       </div>
 
       {/* Create Form */}
@@ -460,21 +513,28 @@ export default function UsersPage() {
                 </button>
               </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Rôle *</label>
-              <select
-                required
-                value={form.role}
-                onChange={(e) => setForm({ ...form, role: e.target.value })}
-                className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="learner">Apprenant</option>
-                <option value="trainer">Formateur</option>
-                <option value="client">Entreprise</option>
-                <option value="commercial">Commercial</option>
-                {isSuperAdmin && <option value="admin">Administrateur</option>}
-                {isSuperAdmin && <option value="super_admin">Organisme</option>}
-              </select>
+            <div className="col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Type d&apos;utilisateur *</label>
+              <div className="grid grid-cols-4 gap-3">
+                {[
+                  { role: "admin", label: "Administrateur", icon: "👤", desc: "Accès complet" },
+                  { role: "trainer", label: "Formateur", icon: "🎓", desc: "Gère les formations" },
+                  { role: "learner", label: "Apprenant", icon: "📚", desc: "Suit les formations" },
+                  { role: "client", label: "Entreprise", icon: "🏢", desc: "Accès entreprise" },
+                ].map(({ role, label, icon, desc }) => (
+                  <div
+                    key={role}
+                    onClick={() => setForm((f) => ({ ...f, role }))}
+                    className={`p-3 border rounded-lg cursor-pointer transition-all text-center ${
+                      form.role === role ? "border-[#3DB5C5] bg-teal-50" : "hover:border-gray-300"
+                    }`}
+                  >
+                    <p className="text-2xl mb-1">{icon}</p>
+                    <p className="font-medium text-sm">{label}</p>
+                    <p className="text-xs text-gray-400">{desc}</p>
+                  </div>
+                ))}
+              </div>
             </div>
             <div className="col-span-2 flex justify-end gap-3">
               <button
@@ -576,6 +636,7 @@ export default function UsersPage() {
                       <thead className="bg-gray-50 border-t border-b">
                         <tr>
                           <th className="text-left px-4 py-2.5 font-medium text-gray-500 text-xs">Nom</th>
+                          <th className="text-left px-4 py-2.5 font-medium text-gray-500 text-xs">Rôle</th>
                           <th className="text-left px-4 py-2.5 font-medium text-gray-500 text-xs">Email</th>
                           <th className="text-left px-4 py-2.5 font-medium text-gray-500 text-xs">Téléphone</th>
                           <th className="text-left px-4 py-2.5 font-medium text-gray-500 text-xs">Créé le</th>
@@ -588,6 +649,11 @@ export default function UsersPage() {
                             <td className="px-4 py-3 font-medium text-gray-900">
                               {u.first_name} {u.last_name}
                             </td>
+                            <td className="px-4 py-3">
+                              <Badge className={`${ROLE_COLORS[u.role] ?? "bg-gray-100 text-gray-700"} text-xs`}>
+                                {ROLE_LABELS[u.role] ?? u.role}
+                              </Badge>
+                            </td>
                             <td className="px-4 py-3 text-gray-600">{u.email}</td>
                             <td className="px-4 py-3 text-gray-600">{u.phone || "—"}</td>
                             <td className="px-4 py-3 text-gray-500">
@@ -595,34 +661,35 @@ export default function UsersPage() {
                             </td>
                             <td className="px-4 py-3 text-right">
                               <div className="flex items-center justify-end gap-1">
-                                {/* Modifier les informations */}
+                                {/* Modifier */}
                                 {canEditUser(u) && (
                                   <button
                                     onClick={() => openEditModal(u)}
-                                    title="Modifier les informations"
-                                    className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
+                                    className="inline-flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded"
                                   >
-                                    <Pencil className="w-4 h-4" />
+                                    <Pencil className="w-3.5 h-3.5" /> Modifier
                                   </button>
                                 )}
 
-                                {/* Envoyer un email */}
-                                <a
-                                  href={`mailto:${u.email}`}
-                                  title="Envoyer un email"
-                                  className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded"
+                                {/* Email via Resend */}
+                                <button
+                                  onClick={() => {
+                                    setEmailUserTarget(u);
+                                    setEmailUserForm({ subject: "", body: "", templateId: "" });
+                                    setEmailUserDialog(true);
+                                  }}
+                                  className="inline-flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded"
                                 >
-                                  <Mail className="w-4 h-4" />
-                                </a>
+                                  <Mail className="w-3.5 h-3.5" /> Email
+                                </button>
 
-                                {/* Voir les formations (apprenants uniquement) */}
+                                {/* Formations */}
                                 {u.role === "learner" && (
                                   <button
                                     onClick={() => openFormationsModal(u)}
-                                    title="Voir les formations inscrites"
-                                    className="p-1.5 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded"
+                                    className="inline-flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-orange-600 hover:bg-orange-50 rounded"
                                   >
-                                    <BookOpen className="w-4 h-4" />
+                                    <BookOpen className="w-3.5 h-3.5" /> Formations
                                   </button>
                                 )}
 
@@ -635,25 +702,22 @@ export default function UsersPage() {
                                       setConfirmPassword("");
                                       setPasswordError(null);
                                     }}
-                                    title="Changer le mot de passe"
-                                    className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
+                                    className="inline-flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded"
                                   >
-                                    <KeyRound className="w-4 h-4" />
+                                    <KeyRound className="w-3.5 h-3.5" /> Mot de passe
                                   </button>
                                 )}
 
-                                {/* Supprimer — masqué si l'admin courant n'a pas les droits */}
                                 {canDeleteUser(u) && (
                                   <button
                                     onClick={() => handleDelete(u)}
                                     disabled={deleting === u.id}
-                                    title="Supprimer"
-                                    className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded disabled:opacity-50"
+                                    className="inline-flex items-center gap-1 px-2 py-1 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 rounded disabled:opacity-50"
                                   >
                                     {deleting === u.id ? (
-                                      <Loader2 className="w-4 h-4 animate-spin" />
+                                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
                                     ) : (
-                                      <Trash2 className="w-4 h-4" />
+                                      <><Trash2 className="w-3.5 h-3.5" /> Supprimer</>
                                     )}
                                   </button>
                                 )}
@@ -904,6 +968,65 @@ export default function UsersPage() {
             <div className="flex justify-end mt-4">
               <button onClick={() => setFormationsModal(null)} className="px-4 py-2 text-sm text-gray-600">
                 Fermer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Email User Dialog */}
+      {emailUserDialog && emailUserTarget && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 space-y-4">
+            <h2 className="text-lg font-semibold">Envoyer un email à {emailUserTarget.first_name} {emailUserTarget.last_name}</h2>
+            <p className="text-sm text-gray-500">Destinataire : {emailUserTarget.email}</p>
+            {userTemplates.length > 0 && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Modèle</label>
+                <select
+                  value={emailUserForm.templateId}
+                  onChange={(e) => {
+                    const t = userTemplates.find((t) => t.id === e.target.value);
+                    if (t) setEmailUserForm({ templateId: t.id, subject: t.subject, body: t.body });
+                    else setEmailUserForm((f) => ({ ...f, templateId: "" }));
+                  }}
+                  className="w-full px-3 py-2 border rounded-lg text-sm"
+                >
+                  <option value="">— Email libre —</option>
+                  {userTemplates.map((t) => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Objet *</label>
+              <input
+                value={emailUserForm.subject}
+                onChange={(e) => setEmailUserForm((f) => ({ ...f, subject: e.target.value }))}
+                className="w-full px-3 py-2 border rounded-lg text-sm"
+                placeholder="Objet de l'email"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Message</label>
+              <textarea
+                value={emailUserForm.body}
+                onChange={(e) => setEmailUserForm((f) => ({ ...f, body: e.target.value }))}
+                rows={6}
+                className="w-full px-3 py-2 border rounded-lg text-sm resize-none"
+                placeholder="Contenu de l'email..."
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setEmailUserDialog(false)} className="px-4 py-2 border rounded-lg text-sm">Annuler</button>
+              <button
+                onClick={handleSendUserEmail}
+                disabled={sendingUserEmail || !emailUserForm.subject.trim()}
+                className="px-4 py-2 bg-[#3DB5C5] text-white rounded-lg text-sm disabled:opacity-50 flex items-center gap-2"
+              >
+                {sendingUserEmail && <Loader2 className="h-4 w-4 animate-spin" />}
+                <Mail className="h-4 w-4" /> Envoyer
               </button>
             </div>
           </div>
