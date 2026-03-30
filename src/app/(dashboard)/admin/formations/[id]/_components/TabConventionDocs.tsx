@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import {
   Loader2, Eye, CheckCircle, Send, Copy, Clock, Download,
@@ -615,7 +616,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
           {" | "}
           <span className="text-muted-foreground text-xs">
             Vous pouvez créer d&apos;autres modèles de documents {withSignature ? "avec" : "sans"} e-signature en{" "}
-            <span className="text-teal-600 underline cursor-pointer">cliquant ici</span>
+            <Link href="/admin/documents" className="text-teal-600 underline cursor-pointer" target="_blank">cliquant ici</Link>
           </span>
         </p>
         <div className="flex items-center gap-2">
@@ -766,7 +767,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
               {" | "}
               <span className="text-muted-foreground text-xs">
                 Vous pouvez créer d&apos;autres modèles de documents sans e-signature en{" "}
-                <span className="text-teal-600 underline cursor-pointer">cliquant ici</span>
+                <Link href="/admin/documents" className="text-teal-600 underline cursor-pointer" target="_blank">cliquant ici</Link>
               </span>
             </p>
             <div className="flex items-center gap-2">
