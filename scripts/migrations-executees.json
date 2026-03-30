@@ -54,5 +54,6 @@
   "link-program-training-elearning.sql",
   "rls-granular.sql",
   "sessions-direct-program-link.sql",
-  "update_program_secretariat_medical.sql"
+  "update_program_secretariat_medical.sql",
+  "add_sent_via_column.sql"
 ]
