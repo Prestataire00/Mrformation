@@ -734,21 +734,6 @@ export default function DocumentsPage() {
                         {truncate(template.content.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " "), 100)}
                       </CardDescription>
                     )}
-                    {template.variables && template.variables.length > 0 && (
-                      <div>
-                        <p className="text-xs font-medium text-gray-500 mb-1.5">Variables utilisées</p>
-                        <div className="flex flex-wrap gap-1">
-                          {template.variables.slice(0, 5).map((v) => (
-                            <span key={v} className="text-xs font-mono bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">
-                              {v}
-                            </span>
-                          ))}
-                          {template.variables.length > 5 && (
-                            <span className="text-xs text-gray-400">+{template.variables.length - 5}</span>
-                          )}
-                        </div>
-                      </div>
-                    )}
                     <div className="flex items-center justify-between pt-2 border-t text-xs text-gray-400">
                       <span>Créé le {formatDate(template.created_at)}</span>
                       <Button
