@@ -731,7 +731,7 @@ export default function DocumentsPage() {
                   <CardContent className="space-y-3">
                     {template.content && (
                       <CardDescription className="text-xs leading-relaxed">
-                        {truncate(template.content, 100)}
+                        {truncate(template.content.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " "), 100)}
                       </CardDescription>
                     )}
                     {template.variables && template.variables.length > 0 && (
