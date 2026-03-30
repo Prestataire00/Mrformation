@@ -2,10 +2,16 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { CheckCircle, Info, Loader2, Play, Save, AlertTriangle } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
+import { useEntity } from "@/contexts/EntityContext";
+import { CheckCircle, Info, Loader2, Play, Save, AlertTriangle, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -18,6 +24,16 @@ interface AutomationRule {
   document_type: string;
   days_offset: number;
   is_enabled: boolean;
+  template_id: string | null;
+  recipient_type: string;
+  name: string | null;
+}
+
+interface EmailTemplate {
+  id: string;
+  name: string;
+  subject: string;
+  body: string;
 }
 
 const DOCUMENT_TYPE_LABELS: Record<string, string> = {
@@ -32,9 +48,19 @@ const TRIGGER_TYPE_LABELS: Record<string, string> = {
   session_end_plus_days: "jours après la fin",
 };
 
+const RECIPIENT_LABELS: Record<string, string> = {
+  learners: "📚 Apprenants",
+  trainers: "🎓 Formateurs",
+  all: "👥 Tous",
+};
+
 export default function AutomationPage() {
   const { toast } = useToast();
+  const supabase = createClient();
+  const { entityId } = useEntity();
+
   const [rules, setRules] = useState<AutomationRule[]>([]);
+  const [templates, setTemplates] = useState<EmailTemplate[]>([]);
   const [isDefault, setIsDefault] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -64,8 +90,32 @@ export default function AutomationPage() {
     fetchRules();
   }, [fetchRules]);
 
+  useEffect(() => {
+    if (!entityId) return;
+    supabase.from("email_templates").select("id, name, subject, body").eq("entity_id", entityId)
+      .then(({ data }) => setTemplates(data ?? []));
+  }, [supabase, entityId]);
+
   const updateRule = (index: number, field: keyof AutomationRule, value: unknown) => {
     setRules((prev) => prev.map((r, i) => (i === index ? { ...r, [field]: value } : r)));
+  };
+
+  const addRule = () => {
+    setRules((prev) => [...prev, {
+      id: null,
+      entity_id: entityId || "",
+      trigger_type: "session_start_minus_days",
+      document_type: "convocation",
+      days_offset: 5,
+      is_enabled: true,
+      template_id: null,
+      recipient_type: "learners",
+      name: "",
+    }]);
+  };
+
+  const removeRule = (index: number) => {
+    setRules((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleSave = async () => {
@@ -116,7 +166,7 @@ export default function AutomationPage() {
   };
 
   return (
-    <div className="p-6 max-w-3xl">
+    <div className="p-6 max-w-4xl">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm mb-4">
         <Link href="/admin" className="text-[#3DB5C5] hover:underline">Accueil</Link>
@@ -126,10 +176,8 @@ export default function AutomationPage() {
         <span className="text-gray-500">Automatisation</span>
       </div>
 
-      {/* Title */}
       <h1 className="text-gray-700 text-xl font-bold mb-6">Formations / Réglages d&apos;Automatisation</h1>
 
-      {/* Default banner */}
       {isDefault && (
         <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl p-4 mb-8">
           <Info className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
@@ -139,7 +187,6 @@ export default function AutomationPage() {
         </div>
       )}
 
-      {/* Success banner */}
       {!isDefault && !loading && (
         <div className="flex items-start gap-3 bg-green-50 border border-green-200 rounded-xl p-4 mb-8">
           <CheckCircle className="h-5 w-5 text-green-500 flex-shrink-0 mt-0.5" />
@@ -151,9 +198,9 @@ export default function AutomationPage() {
 
       {/* Rules section */}
       <div className="bg-white border border-gray-200 rounded-xl p-6">
-        <h2 className="text-gray-700 font-semibold text-base mb-1">Réglages des relances :</h2>
+        <h2 className="text-gray-700 font-semibold text-base mb-1">Règles d&apos;automatisation</h2>
         <p className="text-sm text-gray-500 mb-6">
-          Configurez le délai en jours et activez ou désactivez chaque règle d&apos;envoi automatique.
+          Configurez les envois automatiques liés aux formations. Vous pouvez lier un modèle email pour personnaliser le contenu.
         </p>
 
         {loading ? (
@@ -163,39 +210,120 @@ export default function AutomationPage() {
         ) : (
           <div className="space-y-6">
             {rules.map((rule, index) => (
-              <div key={`${rule.trigger_type}-${rule.document_type}`}>
-                <div className="flex flex-wrap items-center gap-3">
-                  <span
-                    className="w-6 h-6 rounded-full text-white text-xs flex items-center justify-center font-bold flex-shrink-0"
-                    style={{ background: "#3DB5C5" }}
-                  >
+              <div key={`${rule.trigger_type}-${rule.document_type}-${index}`} className="p-4 border border-gray-100 rounded-lg space-y-3">
+                <div className="flex items-center gap-3">
+                  <span className="w-6 h-6 rounded-full text-white text-xs flex items-center justify-center font-bold flex-shrink-0" style={{ background: "#3DB5C5" }}>
                     {index + 1}
                   </span>
                   <Switch
                     checked={rule.is_enabled}
                     onCheckedChange={(checked) => updateRule(index, "is_enabled", checked)}
                   />
-                  <span className="text-sm text-gray-700 flex-1 min-w-[200px]">
-                    {DOCUMENT_TYPE_LABELS[rule.document_type] ?? rule.document_type}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="number"
-                      min={1}
-                      max={365}
-                      value={rule.days_offset}
-                      onChange={(e) => updateRule(index, "days_offset", parseInt(e.target.value) || 1)}
-                      className="w-20 text-center"
+                  <Input
+                    value={rule.name || ""}
+                    onChange={(e) => updateRule(index, "name", e.target.value)}
+                    placeholder={DOCUMENT_TYPE_LABELS[rule.document_type] ?? "Nom de la règle"}
+                    className="flex-1 h-8 text-sm"
+                    disabled={!rule.is_enabled}
+                  />
+                  <button
+                    onClick={() => removeRule(index)}
+                    className="text-xs text-red-400 hover:text-red-600 px-2"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-4 gap-3 pl-9">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500">Document</Label>
+                    <Select
+                      value={rule.document_type}
+                      onValueChange={(v) => updateRule(index, "document_type", v)}
                       disabled={!rule.is_enabled}
-                    />
-                    <span className="text-sm text-gray-500 whitespace-nowrap">
-                      {TRIGGER_TYPE_LABELS[rule.trigger_type] ?? rule.trigger_type}
-                    </span>
+                    >
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(DOCUMENT_TYPE_LABELS).map(([k, v]) => (
+                          <SelectItem key={k} value={k}>{v}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500">Déclencheur</Label>
+                    <div className="flex items-center gap-1">
+                      <Input
+                        type="number"
+                        min={1}
+                        max={365}
+                        value={rule.days_offset}
+                        onChange={(e) => updateRule(index, "days_offset", parseInt(e.target.value) || 1)}
+                        className="w-16 h-8 text-xs text-center"
+                        disabled={!rule.is_enabled}
+                      />
+                      <Select
+                        value={rule.trigger_type}
+                        onValueChange={(v) => updateRule(index, "trigger_type", v)}
+                        disabled={!rule.is_enabled}
+                      >
+                        <SelectTrigger className="h-8 text-xs flex-1">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="session_start_minus_days">avant début</SelectItem>
+                          <SelectItem value="session_end_plus_days">après fin</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500">Template email</Label>
+                    <Select
+                      value={rule.template_id || "none"}
+                      onValueChange={(v) => updateRule(index, "template_id", v === "none" ? null : v)}
+                      disabled={!rule.is_enabled}
+                    >
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue placeholder="— Défaut —" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">— Email automatique —</SelectItem>
+                        {templates.map((t) => (
+                          <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500">Destinataires</Label>
+                    <Select
+                      value={rule.recipient_type || "learners"}
+                      onValueChange={(v) => updateRule(index, "recipient_type", v)}
+                      disabled={!rule.is_enabled}
+                    >
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(RECIPIENT_LABELS).map(([k, v]) => (
+                          <SelectItem key={k} value={k}>{v}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
-                {index < rules.length - 1 && <hr className="mt-6 border-gray-100" />}
               </div>
             ))}
+
+            <Button variant="outline" onClick={addRule} className="w-full gap-2">
+              <Plus className="h-4 w-4" /> Ajouter une règle
+            </Button>
           </div>
         )}
 
@@ -229,16 +357,23 @@ export default function AutomationPage() {
           </div>
         ) : (
           <div className="space-y-2">
-            {rules.filter((r) => r.is_enabled).map((rule) => (
-              <div key={`summary-${rule.trigger_type}-${rule.document_type}`} className="flex items-center justify-between text-sm">
-                <span className="text-gray-600">
-                  {DOCUMENT_TYPE_LABELS[rule.document_type] ?? rule.document_type}
-                </span>
-                <span className="font-medium text-gray-800 bg-white border border-gray-200 px-2 py-0.5 rounded">
-                  {rule.trigger_type === "session_start_minus_days" ? `J-${rule.days_offset}` : `J+${rule.days_offset}`}
-                </span>
-              </div>
-            ))}
+            {rules.filter((r) => r.is_enabled).map((rule, i) => {
+              const tpl = rule.template_id ? templates.find((t) => t.id === rule.template_id) : null;
+              return (
+                <div key={`summary-${i}`} className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">
+                    {rule.name || DOCUMENT_TYPE_LABELS[rule.document_type] || rule.document_type}
+                    {tpl && <span className="text-xs text-gray-400 ml-2">({tpl.name})</span>}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-400">{RECIPIENT_LABELS[rule.recipient_type] || "📚"}</span>
+                    <span className="font-medium text-gray-800 bg-white border border-gray-200 px-2 py-0.5 rounded">
+                      {rule.trigger_type === "session_start_minus_days" ? `J-${rule.days_offset}` : `J+${rule.days_offset}`}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
             {rules.filter((r) => r.is_enabled).length === 0 && (
               <p className="text-sm text-gray-400 italic">Aucune règle active</p>
             )}

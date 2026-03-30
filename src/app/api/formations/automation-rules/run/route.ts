@@ -3,6 +3,7 @@ import { Resend } from "resend";
 import { requireRole } from "@/lib/auth/require-role";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 import { logAudit } from "@/lib/audit-log";
+import { resolveVariables } from "@/lib/utils/resolve-variables";
 
 const isResendConfigured =
   !!process.env.RESEND_API_KEY &&
@@ -65,6 +66,19 @@ export async function POST() {
       return NextResponse.json({ processed: 0, emails_sent: 0, errors: [] });
     }
 
+    // Pre-load templates for rules that have template_id
+    const templateIds = rules.filter((r) => r.template_id).map((r) => r.template_id);
+    let templateMap: Record<string, { subject: string; body: string }> = {};
+    if (templateIds.length > 0) {
+      const { data: tplData } = await auth.supabase
+        .from("email_templates")
+        .select("id, subject, body")
+        .in("id", templateIds);
+      if (tplData) {
+        templateMap = Object.fromEntries(tplData.map((t) => [t.id, t]));
+      }
+    }
+
     for (const rule of rules) {
       // 2. Compute target date based on trigger type
       let targetDate: string;
@@ -85,7 +99,7 @@ export async function POST() {
       // 3. Find matching sessions
       const { data: sessions, error: sessionsError } = await auth.supabase
         .from("sessions")
-        .select("id, title")
+        .select("id, title, start_date, end_date, location")
         .eq("entity_id", entityId)
         .eq(dateField, targetDate)
         .in("status", ["upcoming", "in_progress", "completed"]);
@@ -97,31 +111,49 @@ export async function POST() {
 
       if (!sessions || sessions.length === 0) continue;
 
-      for (const session of sessions) {
-        // 4. Get enrolled learners with email
-        const { data: enrollments, error: enrollError } = await auth.supabase
-          .from("enrollments")
-          .select("learner_id, learner:learners!enrollments_learner_id_fkey(id, email, first_name, last_name)")
-          .eq("session_id", session.id)
-          .in("status", ["registered", "confirmed", "completed"]);
+      const recipientType = rule.recipient_type || "learners";
 
-        if (enrollError) {
-          errors.push(`Session ${session.title}: ${enrollError.message}`);
-          continue;
+      for (const session of sessions) {
+        // 4. Build recipient list based on recipient_type
+        type Recipient = { id: string; email: string; first_name: string; last_name: string; type: "learner" | "trainer" };
+        const recipients: Recipient[] = [];
+
+        if (recipientType === "learners" || recipientType === "all") {
+          const { data: enrollments, error: enrollError } = await auth.supabase
+            .from("enrollments")
+            .select("learner_id, learner:learners!enrollments_learner_id_fkey(id, email, first_name, last_name)")
+            .eq("session_id", session.id)
+            .in("status", ["registered", "confirmed", "completed"]);
+
+          if (enrollError) {
+            errors.push(`Session ${session.title}: ${enrollError.message}`);
+            continue;
+          }
+
+          for (const e of enrollments ?? []) {
+            const l = e.learner as unknown as { id: string; email: string | null; first_name: string; last_name: string } | null;
+            if (l?.email) recipients.push({ id: l.id, email: l.email, first_name: l.first_name, last_name: l.last_name, type: "learner" });
+          }
         }
 
-        if (!enrollments || enrollments.length === 0) continue;
+        if (recipientType === "trainers" || recipientType === "all") {
+          const { data: trainerLinks } = await auth.supabase
+            .from("formation_trainers")
+            .select("trainer:trainers!formation_trainers_trainer_id_fkey(id, email, first_name, last_name)")
+            .eq("session_id", session.id);
 
-        for (const enrollment of enrollments) {
-          const learner = enrollment.learner as unknown as {
-            id: string;
-            email: string | null;
-            first_name: string;
-            last_name: string;
-          } | null;
+          for (const tl of trainerLinks ?? []) {
+            const t = tl.trainer as unknown as { id: string; email: string | null; first_name: string; last_name: string } | null;
+            if (t?.email) recipients.push({ id: t.id, email: t.email, first_name: t.first_name, last_name: t.last_name, type: "trainer" });
+          }
+        }
 
-          if (!learner?.email) continue;
+        if (recipients.length === 0) continue;
 
+        // Get template if linked
+        const tpl = rule.template_id ? templateMap[rule.template_id] : null;
+
+        for (const recipient of recipients) {
           processed++;
 
           // 5. Anti-duplicate: check email_history for today
@@ -129,25 +161,41 @@ export async function POST() {
             .from("email_history")
             .select("id", { count: "exact", head: true })
             .eq("session_id", session.id)
-            .eq("recipient_id", learner.id)
-            .eq("recipient_type", "learner")
-            .ilike("subject", `%${DOCUMENT_TYPE_SUBJECTS[rule.document_type] ?? rule.document_type}%`)
-            .gte("created_at", today);
+            .eq("recipient_id", recipient.id)
+            .eq("recipient_type", recipient.type)
+            .ilike("subject", `%${rule.name || DOCUMENT_TYPE_SUBJECTS[rule.document_type] || rule.document_type}%`)
+            .gte("sent_at", today);
 
           if (count && count > 0) continue;
 
-          // 6. Build email content
-          const subject = `${DOCUMENT_TYPE_SUBJECTS[rule.document_type] ?? rule.document_type} — ${session.title}`;
-          const textBody = [
-            `Bonjour ${learner.first_name} ${learner.last_name},`,
-            "",
-            `Veuillez trouver ci-joint votre document : ${DOCUMENT_TYPE_SUBJECTS[rule.document_type] ?? rule.document_type}.`,
-            "",
-            `Formation : ${session.title}`,
-            "",
-            "Cordialement,",
-            "L'équipe de formation",
-          ].join("\n");
+          // 6. Build email content — use template or fallback
+          let subject: string;
+          let textBody: string;
+
+          if (tpl) {
+            subject = resolveVariables(tpl.subject, {
+              session: session as any,
+              learner: recipient.type === "learner" ? recipient as any : null,
+              trainer: recipient.type === "trainer" ? recipient as any : null,
+            });
+            textBody = resolveVariables(tpl.body, {
+              session: session as any,
+              learner: recipient.type === "learner" ? recipient as any : null,
+              trainer: recipient.type === "trainer" ? recipient as any : null,
+            });
+          } else {
+            subject = `${DOCUMENT_TYPE_SUBJECTS[rule.document_type] ?? rule.document_type} — ${session.title}`;
+            textBody = [
+              `Bonjour ${recipient.first_name} ${recipient.last_name},`,
+              "",
+              `Veuillez trouver ci-joint votre document : ${DOCUMENT_TYPE_SUBJECTS[rule.document_type] ?? rule.document_type}.`,
+              "",
+              `Formation : ${session.title}`,
+              "",
+              "Cordialement,",
+              "L'équipe de formation",
+            ].join("\n");
+          }
 
           let emailStatus: "sent" | "failed" | "pending" = "pending";
           let errorMessage: string | null = null;
@@ -157,7 +205,7 @@ export async function POST() {
             try {
               const result = await resend.emails.send({
                 from: FROM_ADDRESS,
-                to: [learner.email],
+                to: [recipient.email],
                 subject,
                 html: toHtmlBody(textBody),
                 text: textBody,
@@ -174,15 +222,14 @@ export async function POST() {
               errorMessage = sendErr instanceof Error ? sendErr.message : "Erreur inconnue";
             }
           } else {
-            // Simulated mode — no RESEND_API_KEY
-            console.log("Simulated email to:", learner.email, "—", subject);
+            console.log("Simulated email to:", recipient.email, "—", subject);
             emailStatus = "sent";
           }
 
           // 8. Log to email_history
           await auth.supabase.from("email_history").insert({
             entity_id: entityId,
-            recipient_email: learner.email,
+            recipient_email: recipient.email,
             subject,
             body: textBody,
             status: emailStatus,
@@ -190,8 +237,8 @@ export async function POST() {
             sent_by: auth.user.id,
             sent_via: "resend",
             session_id: session.id,
-            recipient_type: "learner",
-            recipient_id: learner.id,
+            recipient_type: recipient.type,
+            recipient_id: recipient.id,
             error_message: errorMessage,
           });
 
@@ -199,7 +246,7 @@ export async function POST() {
             emailsSent++;
           } else {
             errors.push(
-              `${learner.first_name} ${learner.last_name} (${rule.document_type}): ${errorMessage}`
+              `${recipient.first_name} ${recipient.last_name} (${rule.document_type}): ${errorMessage}`
             );
           }
         }

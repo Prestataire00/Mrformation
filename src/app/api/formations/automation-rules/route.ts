@@ -4,10 +4,10 @@ import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 import { logAudit } from "@/lib/audit-log";
 
 const DEFAULT_RULES = [
-  { trigger_type: "session_start_minus_days", document_type: "convention_entreprise", days_offset: 5, is_enabled: true },
-  { trigger_type: "session_start_minus_days", document_type: "convocation", days_offset: 2, is_enabled: true },
-  { trigger_type: "session_end_plus_days", document_type: "certificat_realisation", days_offset: 5, is_enabled: true },
-  { trigger_type: "session_end_plus_days", document_type: "questionnaire_satisfaction", days_offset: 7, is_enabled: true },
+  { trigger_type: "session_start_minus_days", document_type: "convention_entreprise", days_offset: 5, is_enabled: true, template_id: null, recipient_type: "learners", name: "Convention J-5" },
+  { trigger_type: "session_start_minus_days", document_type: "convocation", days_offset: 2, is_enabled: true, template_id: null, recipient_type: "learners", name: "Convocation J-2" },
+  { trigger_type: "session_end_plus_days", document_type: "certificat_realisation", days_offset: 5, is_enabled: true, template_id: null, recipient_type: "learners", name: "Certificat J+5" },
+  { trigger_type: "session_end_plus_days", document_type: "questionnaire_satisfaction", days_offset: 7, is_enabled: true, template_id: null, recipient_type: "learners", name: "Satisfaction J+7" },
 ];
 
 export async function GET() {
@@ -76,12 +76,15 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const rows = rules.map((r: { trigger_type: string; document_type: string; days_offset: number; is_enabled: boolean }) => ({
+    const rows = rules.map((r: { trigger_type: string; document_type: string; days_offset: number; is_enabled: boolean; template_id?: string | null; recipient_type?: string; name?: string | null }) => ({
       entity_id: entityId,
       trigger_type: r.trigger_type,
       document_type: r.document_type,
       days_offset: r.days_offset,
       is_enabled: r.is_enabled,
+      template_id: r.template_id || null,
+      recipient_type: r.recipient_type || "learners",
+      name: r.name || null,
     }));
 
     const { data, error: insertError } = await auth.supabase
