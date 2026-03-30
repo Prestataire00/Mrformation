@@ -104,26 +104,120 @@ export function TabProgramme({ formation, onRefresh }: Props) {
     }
   };
 
-  const handleDownloadPdf = () => {
+  const handleDownloadPdf = async () => {
     if (!program) return;
-    // Navigate to program detail page where PDF generation exists
-    // For now, generate a simple text export
-    const content = [
-      `PROGRAMME: ${program.title}`,
-      "",
-      program.description || "",
-      "",
-      program.objectives ? `OBJECTIFS:\n${program.objectives}` : "",
-    ]
-      .filter(Boolean)
-      .join("\n");
-    const blob = new Blob([content], { type: "text/plain;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `programme-${program.title}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
+
+    const { jsPDF } = await import("jspdf");
+    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+
+    const margin = 15;
+    const pageWidth = 210;
+    const maxW = pageWidth - margin * 2;
+    let y = 20;
+
+    doc.setFontSize(18);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(30, 30, 30);
+    doc.text("PROGRAMME DE FORMATION", pageWidth / 2, y, { align: "center" });
+    y += 12;
+
+    doc.setFontSize(14);
+    doc.setTextColor(59, 181, 197);
+    const titleLines = doc.splitTextToSize(program.title || "", maxW);
+    doc.text(titleLines, pageWidth / 2, y, { align: "center" });
+    y += titleLines.length * 7 + 8;
+
+    doc.setDrawColor(59, 181, 197);
+    doc.setLineWidth(0.5);
+    doc.line(margin, y, pageWidth - margin, y);
+    y += 8;
+
+    const checkPage = (needed: number) => {
+      if (y + needed > 275) { doc.addPage(); y = 20; }
+    };
+
+    if (program.description) {
+      checkPage(20);
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(60, 60, 60);
+      const descLines = doc.splitTextToSize(program.description, maxW);
+      doc.text(descLines, margin, y);
+      y += descLines.length * 5 + 8;
+    }
+
+    if (program.objectives) {
+      checkPage(20);
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(30, 30, 30);
+      doc.text("Objectifs", margin, y);
+      y += 6;
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(60, 60, 60);
+      const objLines = doc.splitTextToSize(program.objectives, maxW - 5);
+      doc.text(objLines, margin + 3, y);
+      y += objLines.length * 5 + 8;
+    }
+
+    if (program.content && typeof program.content === "object") {
+      checkPage(20);
+      const contentStr = JSON.stringify(program.content, null, 2)
+        .replace(/[{}"[\]]/g, "")
+        .replace(/,\n/g, "\n")
+        .trim();
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(30, 30, 30);
+      doc.text("Contenu", margin, y);
+      y += 6;
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(60, 60, 60);
+      const contentLines = doc.splitTextToSize(contentStr, maxW - 5);
+      for (const line of contentLines) {
+        checkPage(6);
+        doc.text(line, margin + 3, y);
+        y += 5;
+      }
+      y += 8;
+    }
+
+    if (program.duration_hours) {
+      checkPage(10);
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(30, 30, 30);
+      doc.text(`Durée : ${program.duration_hours}h`, margin, y);
+      y += 8;
+    }
+
+    if (program.price) {
+      checkPage(10);
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "bold");
+      doc.text(`Prix : ${Number(program.price).toFixed(2)} € HT`, margin, y);
+      y += 8;
+    }
+
+    if (program.nsf_code || program.nsf_label) {
+      checkPage(10);
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(100, 100, 100);
+      doc.text(`Code NSF : ${program.nsf_code || "—"} — ${program.nsf_label || ""}`, margin, y);
+      y += 8;
+    }
+
+    const today = new Date().toLocaleDateString("fr-FR");
+    doc.setFontSize(8);
+    doc.setTextColor(150, 150, 150);
+    doc.text(`Document généré le ${today} — MR FORMATION`, pageWidth / 2, 285, { align: "center" });
+
+    const filename = `programme-${(program.title || "formation")
+      .toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "")}.pdf`;
+    doc.save(filename);
   };
 
   return (
