@@ -105,16 +105,22 @@ export default function EmailSection({ clientId, clientName, contacts }: EmailSe
   }));
 
   const fetchHistory = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("email_history")
-      .select("id, recipient_email, subject, body, status, sent_at, template_id")
-      .eq("recipient_type", "client")
-      .eq("recipient_id", clientId)
-      .order("sent_at", { ascending: false })
-      .limit(50);
-
-    if (!error && data) {
-      setEmailHistory(data as EmailHistoryItem[]);
+    try {
+      const res = await fetch(`/api/emails/history?recipient_type=client&recipient_id=${clientId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setEmailHistory(data.history ?? []);
+      }
+    } catch {
+      // Fallback to direct query (works for admin role)
+      const { data } = await supabase
+        .from("email_history")
+        .select("id, recipient_email, subject, body, status, sent_at, template_id")
+        .eq("recipient_type", "client")
+        .eq("recipient_id", clientId)
+        .order("sent_at", { ascending: false })
+        .limit(50);
+      if (data) setEmailHistory(data as EmailHistoryItem[]);
     }
   }, [supabase, clientId]);
 

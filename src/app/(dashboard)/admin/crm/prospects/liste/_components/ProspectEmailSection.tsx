@@ -104,14 +104,22 @@ export default function ProspectEmailSection({ prospectId, prospect }: ProspectE
 
   const fetchHistory = useCallback(async () => {
     setLoadingHistory(true);
-    const { data } = await supabase
-      .from("email_history")
-      .select("id, subject, body, status, sent_at, recipient_email")
-      .eq("recipient_type", "prospect")
-      .eq("recipient_id", prospectId)
-      .order("sent_at", { ascending: false })
-      .limit(50);
-    setHistory((data as EmailHistoryEntry[]) ?? []);
+    try {
+      const res = await fetch(`/api/emails/history?recipient_type=prospect&recipient_id=${prospectId}`);
+      if (res.ok) {
+        const json = await res.json();
+        setHistory((json.history as EmailHistoryEntry[]) ?? []);
+      }
+    } catch {
+      const { data } = await supabase
+        .from("email_history")
+        .select("id, subject, body, status, sent_at, recipient_email")
+        .eq("recipient_type", "prospect")
+        .eq("recipient_id", prospectId)
+        .order("sent_at", { ascending: false })
+        .limit(50);
+      setHistory((data as EmailHistoryEntry[]) ?? []);
+    }
     setLoadingHistory(false);
   }, [supabase, prospectId]);
 
