@@ -9,6 +9,9 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:report": "playwright show-report",
     "db:generate": "echo 'To regenerate the DB schema: copy supabase/schema.sql content into the Supabase SQL Editor and run it. For seed data, use supabase/seed.sql'"
   },
   "dependencies": {
@@ -81,6 +84,7 @@
   },
   "devDependencies": {
     "@netlify/plugin-nextjs": "^5.15.9",
+    "@playwright/test": "^1.58.2",
     "@types/node": "^20",
     "@types/react": "^18.3.28",
     "@types/react-dom": "^18.3.7",
