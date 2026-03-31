@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useEntity } from "@/contexts/EntityContext";
 import { Session, Trainer, Learner, Enrollment, Signature } from "@/lib/types";
 import { cn, formatDate, formatDateTime, STATUS_COLORS, SESSION_STATUS_LABELS } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -234,6 +235,7 @@ function SignaturePad({ label, isSigned, onSign, onClear, disabled }: SignatureP
 
 export default function SignaturesPage() {
   const supabase = createClient();
+  const { entityId } = useEntity();
   const { toast } = useToast();
 
   const [sessions, setSessions] = useState<SessionFull[]>([]);
@@ -273,6 +275,7 @@ export default function SignaturesPage() {
       `
       )
       .in("status", ["upcoming", "in_progress"])
+      .eq("entity_id", entityId!)
       .order("start_date", { ascending: true });
 
     if (error) {
@@ -281,11 +284,26 @@ export default function SignaturesPage() {
       setSessions((data as SessionFull[]) || []);
     }
     setLoading(false);
-  }, []);
+  }, [entityId]);
 
   // ── Fetch all signatures (collected tab) ──
   const fetchSignatures = useCallback(async () => {
+    if (!entityId) return;
     setSignaturesLoading(true);
+
+    // Get session IDs for this entity first
+    const { data: entitySessions } = await supabase
+      .from("sessions")
+      .select("id")
+      .eq("entity_id", entityId);
+    const sessionIds = (entitySessions || []).map((s: { id: string }) => s.id);
+
+    if (sessionIds.length === 0) {
+      setAllSignatures([]);
+      setSignaturesLoading(false);
+      return;
+    }
+
     const { data, error } = await supabase
       .from("signatures")
       .select(
@@ -294,6 +312,7 @@ export default function SignaturesPage() {
         session:sessions(id, title, training:trainings(duration_hours))
       `
       )
+      .in("session_id", sessionIds)
       .order("signed_at", { ascending: false });
 
     if (error) {
@@ -332,7 +351,7 @@ export default function SignaturesPage() {
       setAllSignatures(enriched);
     }
     setSignaturesLoading(false);
-  }, []);
+  }, [entityId]);
 
   useEffect(() => {
     fetchSessions();
