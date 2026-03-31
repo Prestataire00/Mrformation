@@ -72,6 +72,7 @@ import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/components/ui/use-toast";
+import { useEntity } from "@/contexts/EntityContext";
 import { cn, formatDate, getInitials, STATUS_COLORS, SESSION_STATUS_LABELS } from "@/lib/utils";
 import type { Client, Contact, ClientStatus } from "@/lib/types";
 
@@ -188,6 +189,7 @@ export default function ClientDetailPage() {
   const clientId = params.id as string;
   const supabase = createClient();
   const { toast } = useToast();
+  const { entityId } = useEntity();
 
   // Data
   const [client, setClient] = useState<Client | null>(null);
@@ -258,10 +260,12 @@ export default function ClientDetailPage() {
   }
 
   const fetchClient = useCallback(async () => {
+    if (!entityId) return;
     const { data, error } = await supabase
       .from("clients")
       .select("*")
       .eq("id", clientId)
+      .eq("entity_id", entityId)
       .single();
 
     if (error || !data) {
@@ -288,7 +292,7 @@ export default function ClientDetailPage() {
       country: data.country ?? "France",
       bpf_category: data.bpf_category ?? "",
     });
-  }, [supabase, clientId, router, toast]);
+  }, [supabase, clientId, entityId, router, toast]);
 
   const fetchContacts = useCallback(async () => {
     const { data, error } = await supabase
@@ -302,10 +306,12 @@ export default function ClientDetailPage() {
   }, [supabase, clientId]);
 
   const fetchLearners = useCallback(async () => {
+    if (!entityId) return;
     const { data, error } = await supabase
       .from("learners")
       .select(`*, enrollments(id)`)
       .eq("client_id", clientId)
+      .eq("entity_id", entityId)
       .order("last_name", { ascending: true });
 
     if (!error) {
@@ -321,7 +327,7 @@ export default function ClientDetailPage() {
       }));
       setLearners(mapped);
     }
-  }, [supabase, clientId]);
+  }, [supabase, clientId, entityId]);
 
   const fetchSessions = useCallback(async () => {
     const { data, error } = await supabase

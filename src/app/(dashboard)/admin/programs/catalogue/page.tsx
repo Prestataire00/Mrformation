@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Program } from "@/lib/types";
 import { cn, formatDate, truncate } from "@/lib/utils";
+import { useEntity } from "@/contexts/EntityContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +28,7 @@ export default function CataloguePage() {
   const supabase = createClient();
   const router = useRouter();
   const { toast } = useToast();
+  const { entityId } = useEntity();
 
   const [programs, setPrograms] = useState<Program[]>([]);
   const [loading, setLoading] = useState(true);
@@ -34,10 +36,12 @@ export default function CataloguePage() {
   const [filter, setFilter] = useState<"all" | "published" | "draft">("all");
 
   const fetchPrograms = useCallback(async () => {
+    if (!entityId) return;
     setLoading(true);
     const { data, error } = await supabase
       .from("programs")
       .select("*")
+      .eq("entity_id", entityId)
       .order("updated_at", { ascending: false });
     if (error) {
       toast({ title: "Erreur", description: "Impossible de charger les programmes.", variant: "destructive" });
@@ -45,7 +49,7 @@ export default function CataloguePage() {
       setPrograms((data as Program[]) || []);
     }
     setLoading(false);
-  }, []);
+  }, [entityId]);
 
   useEffect(() => {
     fetchPrograms();

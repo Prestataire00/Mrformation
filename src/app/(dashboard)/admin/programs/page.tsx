@@ -140,10 +140,12 @@ export default function ProgramsPage() {
   const [deleting, setDeleting] = useState(false);
 
   const fetchPrograms = useCallback(async () => {
+    if (!entityId) return;
     setLoading(true);
     const { data, error } = await supabase
       .from("programs")
       .select("*")
+      .eq("entity_id", entityId)
       .order("updated_at", { ascending: false });
     if (error) {
       toast({ title: "Erreur", description: "Impossible de charger les programmes.", variant: "destructive" });
@@ -151,7 +153,7 @@ export default function ProgramsPage() {
       setPrograms((data as Program[]) || []);
     }
     setLoading(false);
-  }, []);
+  }, [entityId]);
 
   useEffect(() => {
     fetchPrograms();

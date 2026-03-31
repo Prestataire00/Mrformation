@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/use-toast";
+import { useEntity } from "@/contexts/EntityContext";
 import { cn, formatDate, SESSION_STATUS_LABELS, STATUS_COLORS } from "@/lib/utils";
 import type { Session } from "@/lib/types";
 import { TabResume } from "./_components/TabResume";
@@ -35,6 +36,7 @@ export default function FormationDetailPage() {
   const params = useParams();
   const router = useRouter();
   const { toast } = useToast();
+  const { entityId } = useEntity();
   const supabase = createClient();
   const formationId = params.id as string;
 
@@ -43,6 +45,7 @@ export default function FormationDetailPage() {
   const [activeTab, setActiveTab] = useState("resume");
 
   const fetchFormation = useCallback(async () => {
+    if (!entityId) return;
     try {
       const { data, error } = await supabase
         .from("sessions")
@@ -66,6 +69,7 @@ export default function FormationDetailPage() {
           formation_elearning_assignments(*, course:elearning_courses(id, title, status, estimated_duration_minutes))
         `)
         .eq("id", formationId)
+        .eq("entity_id", entityId)
         .single();
 
       if (error) throw error;
@@ -88,7 +92,7 @@ export default function FormationDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [formationId, supabase, toast]);
+  }, [formationId, entityId, supabase, toast]);
 
   useEffect(() => {
     fetchFormation();

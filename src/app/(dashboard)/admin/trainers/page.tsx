@@ -110,12 +110,14 @@ export default function TrainersPage() {
   const [deleting, setDeleting] = useState(false);
 
   const fetchTrainers = useCallback(async () => {
+    if (!entityId) return;
     setLoading(true);
 
     // Try with competencies join first
     let { data, error } = await supabase
       .from("trainers")
       .select("*, competencies:trainer_competencies(*)")
+      .eq("entity_id", entityId)
       .order("last_name", { ascending: true });
 
     // Fallback: if join fails (table missing or RLS), fetch trainers alone
@@ -124,6 +126,7 @@ export default function TrainersPage() {
       const fallback = await supabase
         .from("trainers")
         .select("*")
+        .eq("entity_id", entityId)
         .order("last_name", { ascending: true });
       data = fallback.data;
       error = fallback.error;
@@ -138,7 +141,7 @@ export default function TrainersPage() {
       setTrainers((data as TrainerWithCompetencies[]) || []);
     }
     setLoading(false);
-  }, []);
+  }, [entityId]);
 
   useEffect(() => {
     fetchTrainers();

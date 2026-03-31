@@ -61,14 +61,16 @@ export default function SendEmailPage() {
   // ── Fetch prospect ─────────────────────────────────────────────────────────
 
   const fetchProspect = useCallback(async () => {
+    if (!entityId) return;
     const { data } = await supabase
       .from("crm_prospects")
       .select("*")
       .eq("id", prospectId)
+      .eq("entity_id", entityId)
       .single();
     if (data) setProspect(data as CrmProspect);
     setLoading(false);
-  }, [prospectId, supabase]);
+  }, [prospectId, supabase, entityId]);
 
   useEffect(() => {
     fetchProspect();

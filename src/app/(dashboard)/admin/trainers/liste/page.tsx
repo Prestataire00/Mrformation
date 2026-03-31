@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Download, Search, ChevronLeft, ChevronRight } from "lucide-react";
 import { downloadXlsx } from "@/lib/export-xlsx";
 import { useToast } from "@/components/ui/use-toast";
+import { useEntity } from "@/contexts/EntityContext";
 import {
   Dialog,
   DialogContent,
@@ -30,6 +31,7 @@ const PAGE_SIZE = 15;
 export default function TrainersListePage() {
   const supabase = createClient();
   const { toast } = useToast();
+  const { entityId } = useEntity();
 
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,11 +43,13 @@ export default function TrainersListePage() {
   const [saving, setSaving] = useState(false);
 
   const fetchTrainers = useCallback(async () => {
+    if (!entityId) return;
     setLoading(true);
     try {
       let query = supabase
         .from("trainers")
         .select("id, first_name, last_name, email, phone, type, bio, hourly_rate", { count: "exact" })
+        .eq("entity_id", entityId)
         .order("last_name", { ascending: true });
 
       if (search.trim()) {
@@ -64,7 +68,7 @@ export default function TrainersListePage() {
     } finally {
       setLoading(false);
     }
-  }, [supabase, search, page, toast]);
+  }, [supabase, search, page, toast, entityId]);
 
   useEffect(() => { fetchTrainers(); }, [fetchTrainers]);
 
@@ -109,10 +113,12 @@ export default function TrainersListePage() {
   };
 
   const handleDownloadExcel = async () => {
+    if (!entityId) return;
     // Fetch ALL trainers (not just current page)
     const { data } = await supabase
       .from("trainers")
       .select("first_name, last_name, email, phone, type")
+      .eq("entity_id", entityId)
       .order("last_name", { ascending: true });
     const all = data ?? [];
     const headers = ["Nom", "Téléphone", "Email", "Type"];

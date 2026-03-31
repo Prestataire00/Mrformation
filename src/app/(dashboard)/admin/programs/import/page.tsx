@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useEntity } from "@/contexts/EntityContext";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -116,6 +117,7 @@ function titleSimilarity(a: string, b: string): number {
 export default function ImportProgramPage() {
   const supabase = createClient();
   const { toast } = useToast();
+  const { entityId } = useEntity();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [step, setStep] = useState<ImportStep>("upload");
@@ -161,9 +163,15 @@ export default function ImportProgramPage() {
       const parsed: ParsedData = data.parsed;
 
       // 2. Fetch programs client-side (has auth context)
+      if (!entityId) {
+        setError("Entité non sélectionnée.");
+        setLoading(false);
+        return;
+      }
       const { data: programs, error: progError } = await supabase
         .from("programs")
         .select("id, title")
+        .eq("entity_id", entityId)
         .order("title");
 
       console.log("[Import] Programs fetched:", programs?.length, "error:", progError);
@@ -205,7 +213,7 @@ export default function ImportProgramPage() {
     }
 
     setLoading(false);
-  }, [supabase]);
+  }, [supabase, entityId]);
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {

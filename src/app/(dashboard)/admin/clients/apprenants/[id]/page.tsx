@@ -24,6 +24,7 @@ import {
   User,
   X,
 } from "lucide-react";
+import { useEntity } from "@/contexts/EntityContext";
 import { cn, getInitials } from "@/lib/utils";
 
 interface LearnerDetail {
@@ -68,6 +69,7 @@ export default function LearnerDetailPage() {
   const router = useRouter();
   const supabase = createClient();
   const { toast } = useToast();
+  const { entityId } = useEntity();
   const learnerId = params.id as string;
 
   const [learner, setLearner] = useState<LearnerDetail | null>(null);
@@ -86,11 +88,13 @@ export default function LearnerDetailPage() {
   const [clientOptions, setClientOptions] = useState<ClientOption[]>([]);
 
   const fetchLearner = useCallback(async () => {
+    if (!entityId) return;
     setLoading(true);
     const { data, error } = await supabase
       .from("learners")
       .select("id, first_name, last_name, email, phone, client_id, job_title, birth_date, gender, nationality, address, city, postal_code, social_security_number, education_level, clients(company_name)")
       .eq("id", learnerId)
+      .eq("entity_id", entityId)
       .single();
 
     if (error || !data) {
@@ -131,6 +135,7 @@ export default function LearnerDetailPage() {
     const { data: clientsData } = await supabase
       .from("clients")
       .select("id, company_name")
+      .eq("entity_id", entityId)
       .order("company_name");
     setClientOptions((clientsData as ClientOption[]) ?? []);
 
@@ -149,7 +154,7 @@ export default function LearnerDetailPage() {
     setSessions((sessData as unknown as SessionAttendance[]) ?? []);
 
     setLoading(false);
-  }, [learnerId]);
+  }, [learnerId, entityId]);
 
   useEffect(() => { fetchLearner(); }, [fetchLearner]);
 

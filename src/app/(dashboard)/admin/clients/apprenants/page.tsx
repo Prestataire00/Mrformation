@@ -5,6 +5,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Search, ChevronLeft, ChevronRight } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
+import { useEntity } from "@/contexts/EntityContext";
 import { getInitials } from "@/lib/utils";
 
 interface Learner {
@@ -21,6 +22,7 @@ const PAGE_SIZE = 12;
 export default function ApprenantsProfilesPage() {
   const supabase = createClient();
   const { toast } = useToast();
+  const { entityId } = useEntity();
 
   const [learners, setLearners] = useState<Learner[]>([]);
   const [loading, setLoading] = useState(true);
@@ -30,11 +32,13 @@ export default function ApprenantsProfilesPage() {
   const [total, setTotal] = useState(0);
 
   const fetchLearners = useCallback(async () => {
+    if (!entityId) return;
     setLoading(true);
     try {
       let query = supabase
         .from("learners")
         .select("id, first_name, last_name, email, client_id, clients(company_name)", { count: "exact" })
+        .eq("entity_id", entityId)
         .order("last_name", { ascending: true });
 
       if (search.trim()) {
@@ -53,7 +57,7 @@ export default function ApprenantsProfilesPage() {
     } finally {
       setLoading(false);
     }
-  }, [supabase, search, page, toast]);
+  }, [supabase, search, page, toast, entityId]);
 
   useEffect(() => { fetchLearners(); }, [fetchLearners]);
 
