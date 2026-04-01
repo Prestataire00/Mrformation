@@ -17,6 +17,8 @@ import {
   Building2,
   User,
   ClipboardList,
+  List,
+  LayoutGrid,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -101,6 +103,7 @@ export default function TasksPage() {
   const { toast } = useToast();
   const { entityId } = useEntity();
 
+  const [viewMode, setViewMode] = useState<"list" | "kanban">("list");
   const [tasks, setTasks] = useState<CrmTask[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [prospects, setProspects] = useState<CrmProspect[]>([]);
@@ -379,6 +382,12 @@ export default function TasksPage() {
     (t) => t.reminder_at && t.reminder_at <= nowIso && t.status !== "completed" && t.status !== "cancelled"
   );
 
+  // Kanban columns
+  const kanbanOverdue = tasks.filter(t => t.status !== "completed" && t.status !== "cancelled" && t.due_date && t.due_date < todayStr);
+  const kanbanToday = tasks.filter(t => t.status !== "completed" && t.status !== "cancelled" && t.due_date === todayStr);
+  const kanbanUpcoming = tasks.filter(t => t.status !== "completed" && t.status !== "cancelled" && (!t.due_date || t.due_date > todayStr));
+  const kanbanCompleted = tasks.filter(t => t.status === "completed").slice(0, 20);
+
   const hasActiveFilters = search || priorityFilter !== "all" || statusFilter !== "all" || assigneeFilter !== "all";
 
   return (
@@ -393,9 +402,19 @@ export default function TasksPage() {
             <span><span className="font-bold text-green-600 text-sm">{stats.completedThisWeek}</span> terminées</span>
           </div>
         </div>
-        <Button onClick={toggleAddForm} size="sm" style={{ background: "#3DB5C5" }} className="text-white gap-1.5 text-xs">
-          <Plus className="h-3.5 w-3.5" /> Nouvelle tâche
-        </Button>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
+            <button onClick={() => setViewMode("list")} className={cn("px-2 py-1 text-xs rounded-md transition", viewMode === "list" ? "bg-white shadow-sm font-medium" : "text-gray-500")}>
+              <List className="h-3.5 w-3.5" />
+            </button>
+            <button onClick={() => setViewMode("kanban")} className={cn("px-2 py-1 text-xs rounded-md transition", viewMode === "kanban" ? "bg-white shadow-sm font-medium" : "text-gray-500")}>
+              <LayoutGrid className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <Button onClick={toggleAddForm} size="sm" style={{ background: "#3DB5C5" }} className="text-white gap-1.5 text-xs">
+            <Plus className="h-3.5 w-3.5" /> Nouvelle tâche
+          </Button>
+        </div>
       </div>
 
       {/* Filters compact */}
@@ -497,7 +516,7 @@ export default function TasksPage() {
         </Card>
       )}
 
-      {/* Task list */}
+      {/* Task list / Kanban */}
       {loading ? (
         <div className="flex items-center justify-center py-20">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-violet-600 border-t-transparent" />
@@ -512,6 +531,48 @@ export default function TasksPage() {
           <Button onClick={toggleAddForm} size="sm" className="mt-3 gap-1.5 text-xs" style={{ background: "#3DB5C5" }}>
             <Plus className="h-3.5 w-3.5" /> Nouvelle tâche
           </Button>
+        </div>
+      ) : viewMode === "kanban" ? (
+        <div className="grid grid-cols-4 gap-4">
+          {/* Column: En retard */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 pb-2 border-b">
+              <div className="w-2 h-2 rounded-full bg-red-500" />
+              <span className="text-xs font-semibold text-gray-600 uppercase tracking-wider">En retard</span>
+              <span className="text-[10px] text-gray-400">{kanbanOverdue.length}</span>
+            </div>
+            {kanbanOverdue.map(task => <TaskKanbanCard key={task.id} task={task} onToggle={handleToggleComplete} />)}
+          </div>
+
+          {/* Column: Aujourd'hui */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 pb-2 border-b">
+              <div className="w-2 h-2 rounded-full bg-blue-500" />
+              <span className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Aujourd&apos;hui</span>
+              <span className="text-[10px] text-gray-400">{kanbanToday.length}</span>
+            </div>
+            {kanbanToday.map(task => <TaskKanbanCard key={task.id} task={task} onToggle={handleToggleComplete} />)}
+          </div>
+
+          {/* Column: À venir */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 pb-2 border-b">
+              <div className="w-2 h-2 rounded-full bg-gray-400" />
+              <span className="text-xs font-semibold text-gray-600 uppercase tracking-wider">À venir</span>
+              <span className="text-[10px] text-gray-400">{kanbanUpcoming.length}</span>
+            </div>
+            {kanbanUpcoming.map(task => <TaskKanbanCard key={task.id} task={task} onToggle={handleToggleComplete} />)}
+          </div>
+
+          {/* Column: Terminées */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 pb-2 border-b">
+              <div className="w-2 h-2 rounded-full bg-green-500" />
+              <span className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Terminées</span>
+              <span className="text-[10px] text-gray-400">{kanbanCompleted.length}</span>
+            </div>
+            {kanbanCompleted.map(task => <TaskKanbanCard key={task.id} task={task} onToggle={handleToggleComplete} />)}
+          </div>
         </div>
       ) : (
         <div className="space-y-1">
@@ -904,6 +965,28 @@ function TaskRow({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+    </div>
+  );
+}
+
+function TaskKanbanCard({ task, onToggle }: { task: CrmTask; onToggle: (t: CrmTask) => void }) {
+  const priorityColor = task.priority === "high" ? "bg-red-500" : task.priority === "medium" ? "bg-amber-400" : "bg-gray-300";
+  return (
+    <div className="rounded-lg border border-gray-100 bg-white p-3 hover:shadow-sm transition-shadow">
+      <div className="flex items-start gap-2">
+        <Checkbox checked={task.status === "completed"} onCheckedChange={() => onToggle(task)} className="mt-0.5 flex-shrink-0" />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5">
+            <div className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", priorityColor)} />
+            <p className={cn("text-sm font-medium text-gray-900 truncate", task.status === "completed" && "line-through opacity-50")}>{task.title}</p>
+          </div>
+          <div className="flex items-center gap-2 mt-1.5 text-[10px] text-gray-400">
+            {task.due_date && <span>{task.due_date}</span>}
+            {task.assignee && <span>{task.assignee.first_name}</span>}
+            {task.prospect && <span className="truncate">{task.prospect.company_name}</span>}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

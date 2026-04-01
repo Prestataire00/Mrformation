@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import {
   updateTaskSchema,
@@ -6,6 +7,13 @@ import {
 } from "@/lib/validations/crm-tasks";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 import { logAudit } from "@/lib/audit-log";
+
+function createServiceClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) throw new Error("Missing Supabase service role configuration");
+  return createSupabaseClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
+}
 
 async function getAuthenticatedUser(supabase: ReturnType<typeof createClient>) {
   const {
@@ -53,6 +61,9 @@ export async function PATCH(
     if ("error" in auth && auth.error) return auth.error;
     const { user, profile } = auth as { user: any; profile: { entity_id: string; role: string } };
 
+    let dbClient;
+    try { dbClient = createServiceClient(); } catch { dbClient = supabase; }
+
     const body = await request.json();
     const parsed = updateTaskSchema.safeParse(body);
     if (!parsed.success) {
@@ -63,7 +74,7 @@ export async function PATCH(
     }
 
     // Verify task exists and belongs to entity
-    let findQuery = supabase
+    let findQuery = dbClient
       .from("crm_tasks")
       .select("id, assigned_to")
       .eq("id", params.id)
@@ -89,7 +100,7 @@ export async function PATCH(
       delete updateData.assigned_to;
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await dbClient
       .from("crm_tasks")
       .update(updateData)
       .eq("id", params.id)
@@ -139,8 +150,11 @@ export async function DELETE(
     if ("error" in auth && auth.error) return auth.error;
     const { user, profile } = auth as { user: any; profile: { entity_id: string; role: string } };
 
+    let dbClient;
+    try { dbClient = createServiceClient(); } catch { dbClient = supabase; }
+
     // Verify task exists and belongs to entity
-    let delFindQuery = supabase
+    let delFindQuery = dbClient
       .from("crm_tasks")
       .select("id")
       .eq("id", params.id)
@@ -160,7 +174,7 @@ export async function DELETE(
       );
     }
 
-    const { error } = await supabase
+    const { error } = await dbClient
       .from("crm_tasks")
       .delete()
       .eq("id", params.id)
