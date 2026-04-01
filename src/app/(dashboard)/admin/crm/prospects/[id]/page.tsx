@@ -590,12 +590,48 @@ export default function ProspectDetailPage() {
                 onClick={() => router.push(`/admin/crm/prospects/${prospect.id}/email`)}
               >
                 <Send className="w-3 h-3 mr-1.5" />
-                ENVOYER UN EMAIL
+                Email
               </Button>
             )}
-            <Button size="sm" variant="default" className="text-xs h-8" onClick={openEdit}>
+            <Button
+              size="sm"
+              variant="default"
+              className="text-xs h-8"
+              onClick={() => router.push(`/admin/crm/quotes/new?prospect_id=${prospect.id}`)}
+            >
+              <FileText className="w-3 h-3 mr-1.5" />
+              Devis
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-xs h-8"
+              onClick={() => setActionOpen(true)}
+            >
+              <Plus className="w-3 h-3 mr-1.5" />
+              Action
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-xs h-8"
+              onClick={() => setNoteOpen(true)}
+            >
+              <StickyNote className="w-3 h-3 mr-1.5" />
+              Note
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-xs h-8"
+              onClick={() => { setNewStatus(prospect.status as ProspectStatus); setStatusOpen(true); }}
+            >
+              <TrendingUp className="w-3 h-3 mr-1.5" />
+              Statut
+            </Button>
+            <Button size="sm" variant="ghost" className="text-xs h-8" onClick={openEdit}>
               <Pencil className="w-3 h-3 mr-1.5" />
-              MODIFIER LE LEAD
+              Modifier
             </Button>
           </div>
         </CardContent>
