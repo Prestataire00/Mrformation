@@ -22,7 +22,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -95,6 +94,13 @@ const EMPTY_FORM: TaskFormData = {
   client_id: "",
 };
 
+const REMINDER_PRESETS = [
+  { label: "Aujourd'hui", days: 0 },
+  { label: "Demain", days: 1 },
+  { label: "3 jours", days: 3 },
+  { label: "1 semaine", days: 7 },
+];
+
 interface TaskStats {
   dueToday: number;
   overdue: number;
@@ -121,9 +127,9 @@ export default function TasksPage() {
   const [priorityFilter, setPriorityFilter] = useState<TaskPriority | "all">("all");
   const [statusFilter, setStatusFilter] = useState<TaskStatus | "all">("pending");
 
-  // Dialogs
-  const [addDialogOpen, setAddDialogOpen] = useState(false);
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  // Inline forms
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<CrmTask | null>(null);
 
@@ -245,7 +251,7 @@ export default function TasksPage() {
       if (error) throw error;
 
       toast({ title: "Tâche créée", description: `"${formData.title}" a été ajoutée.` });
-      setAddDialogOpen(false);
+      setShowAddForm(false);
       setFormData(EMPTY_FORM);
       fetchTasks();
     } catch (err) {
@@ -278,7 +284,7 @@ export default function TasksPage() {
       if (!res.ok) throw new Error(result.error || "Erreur serveur");
 
       toast({ title: "Tâche modifiée", description: `"${formData.title}" a été mise à jour.` });
-      setEditDialogOpen(false);
+      setEditingTaskId(null);
       setSelectedTask(null);
       setFormData(EMPTY_FORM);
       fetchTasks();
@@ -327,7 +333,7 @@ export default function TasksPage() {
     }
   }
 
-  function openEditDialog(task: CrmTask) {
+  function startEditingTask(task: CrmTask) {
     setSelectedTask(task);
     setFormData({
       title: task.title,
@@ -340,7 +346,7 @@ export default function TasksPage() {
       client_id: task.client_id ?? "",
     });
     setFormErrors({});
-    setEditDialogOpen(true);
+    setEditingTaskId(task.id);
   }
 
   function openDeleteDialog(task: CrmTask) {
@@ -348,10 +354,10 @@ export default function TasksPage() {
     setDeleteDialogOpen(true);
   }
 
-  function openAddDialog() {
+  function toggleAddForm() {
     setFormData(EMPTY_FORM);
     setFormErrors({});
-    setAddDialogOpen(true);
+    setShowAddForm((prev) => !prev);
   }
 
   function updateField(field: keyof TaskFormData, value: string) {
@@ -395,9 +401,9 @@ export default function TasksPage() {
             Organisez et suivez vos actions commerciales
           </p>
         </div>
-        <Button onClick={openAddDialog} className="gap-2">
+        <Button onClick={toggleAddForm} className="gap-2">
           <Plus className="h-4 w-4" />
-          Ajouter une tâche
+          Nouvelle tâche
         </Button>
       </div>
 
@@ -486,6 +492,63 @@ export default function TasksPage() {
         </CardContent>
       </Card>
 
+      {/* Inline Add Form */}
+      {showAddForm && (
+        <Card>
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <Input
+                value={formData.title}
+                onChange={(e) => updateField("title", e.target.value)}
+                placeholder="Titre de la tâche..."
+                autoFocus
+                className={cn("flex-1 text-sm", formErrors.title && "border-red-500")}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && formData.title.trim()) handleCreate();
+                  if (e.key === "Escape") setShowAddForm(false);
+                }}
+              />
+              <Select value={formData.priority} onValueChange={(v) => updateField("priority", v)}>
+                <SelectTrigger className="h-9 w-28 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="low">Basse</SelectItem>
+                  <SelectItem value="medium">Moyenne</SelectItem>
+                  <SelectItem value="high">Haute</SelectItem>
+                </SelectContent>
+              </Select>
+              <Input
+                type="date"
+                value={formData.due_date}
+                onChange={(e) => updateField("due_date", e.target.value)}
+                className="h-9 w-36 text-xs"
+              />
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs text-muted-foreground mr-1">Rappel :</span>
+              {REMINDER_PRESETS.map((preset) => (
+                <button
+                  key={preset.label}
+                  type="button"
+                  onClick={() => updateField("due_date", (() => { const d = new Date(); d.setDate(d.getDate() + preset.days); return d.toISOString().split("T")[0]; })())}
+                  className={cn(
+                    "rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors",
+                    "border-gray-200 text-gray-500 hover:border-gray-400 hover:text-gray-700"
+                  )}
+                >
+                  {preset.label}
+                </button>
+              ))}
+              <div className="flex-1" />
+              <Button size="sm" variant="ghost" className="text-xs h-7" onClick={() => setShowAddForm(false)}>Annuler</Button>
+              <Button size="sm" className="text-xs h-7 gap-1" onClick={handleCreate} disabled={saving || !formData.title.trim()}>
+                {saving && <span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />}
+                Créer
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Task list */}
       {loading ? (
         <div className="flex items-center justify-center py-20">
@@ -499,9 +562,9 @@ export default function TasksPage() {
             <p className="text-sm text-muted-foreground mt-1">
               {hasActiveFilters ? "Modifiez vos filtres ou créez une nouvelle tâche." : "Commencez par créer votre première tâche."}
             </p>
-            <Button onClick={openAddDialog} className="mt-4 gap-2">
+            <Button onClick={toggleAddForm} className="mt-4 gap-2">
               <Plus className="h-4 w-4" />
-              Ajouter une tâche
+              Nouvelle tâche
             </Button>
           </CardContent>
         </Card>
@@ -521,9 +584,19 @@ export default function TasksPage() {
                     task={task}
                     getProfileName={getProfileName}
                     onToggleComplete={() => handleToggleComplete(task)}
-                    onEdit={() => openEditDialog(task)}
+                    onEdit={() => startEditingTask(task)}
                     onDelete={() => openDeleteDialog(task)}
                     isOverdue
+                    isEditing={editingTaskId === task.id}
+                    editFormData={editingTaskId === task.id ? formData : undefined}
+                    editFormErrors={editingTaskId === task.id ? formErrors : undefined}
+                    onUpdateField={editingTaskId === task.id ? updateField : undefined}
+                    onSaveEdit={editingTaskId === task.id ? handleUpdate : undefined}
+                    onCancelEdit={() => { setEditingTaskId(null); setSelectedTask(null); setFormData(EMPTY_FORM); }}
+                    saving={saving}
+                    profiles={profiles}
+                    prospects={prospects}
+                    clients={clients}
                   />
                 ))}
               </div>
@@ -547,8 +620,18 @@ export default function TasksPage() {
                     task={task}
                     getProfileName={getProfileName}
                     onToggleComplete={() => handleToggleComplete(task)}
-                    onEdit={() => openEditDialog(task)}
+                    onEdit={() => startEditingTask(task)}
                     onDelete={() => openDeleteDialog(task)}
+                    isEditing={editingTaskId === task.id}
+                    editFormData={editingTaskId === task.id ? formData : undefined}
+                    editFormErrors={editingTaskId === task.id ? formErrors : undefined}
+                    onUpdateField={editingTaskId === task.id ? updateField : undefined}
+                    onSaveEdit={editingTaskId === task.id ? handleUpdate : undefined}
+                    onCancelEdit={() => { setEditingTaskId(null); setSelectedTask(null); setFormData(EMPTY_FORM); }}
+                    saving={saving}
+                    profiles={profiles}
+                    prospects={prospects}
+                    clients={clients}
                   />
                 ))}
               </div>
@@ -569,8 +652,18 @@ export default function TasksPage() {
                     task={task}
                     getProfileName={getProfileName}
                     onToggleComplete={() => handleToggleComplete(task)}
-                    onEdit={() => openEditDialog(task)}
+                    onEdit={() => startEditingTask(task)}
                     onDelete={() => openDeleteDialog(task)}
+                    isEditing={editingTaskId === task.id}
+                    editFormData={editingTaskId === task.id ? formData : undefined}
+                    editFormErrors={editingTaskId === task.id ? formErrors : undefined}
+                    onUpdateField={editingTaskId === task.id ? updateField : undefined}
+                    onSaveEdit={editingTaskId === task.id ? handleUpdate : undefined}
+                    onCancelEdit={() => { setEditingTaskId(null); setSelectedTask(null); setFormData(EMPTY_FORM); }}
+                    saving={saving}
+                    profiles={profiles}
+                    prospects={prospects}
+                    clients={clients}
                   />
                 ))}
               </div>
@@ -591,8 +684,18 @@ export default function TasksPage() {
                     task={task}
                     getProfileName={getProfileName}
                     onToggleComplete={() => handleToggleComplete(task)}
-                    onEdit={() => openEditDialog(task)}
+                    onEdit={() => startEditingTask(task)}
                     onDelete={() => openDeleteDialog(task)}
+                    isEditing={editingTaskId === task.id}
+                    editFormData={editingTaskId === task.id ? formData : undefined}
+                    editFormErrors={editingTaskId === task.id ? formErrors : undefined}
+                    onUpdateField={editingTaskId === task.id ? updateField : undefined}
+                    onSaveEdit={editingTaskId === task.id ? handleUpdate : undefined}
+                    onCancelEdit={() => { setEditingTaskId(null); setSelectedTask(null); setFormData(EMPTY_FORM); }}
+                    saving={saving}
+                    profiles={profiles}
+                    prospects={prospects}
+                    clients={clients}
                   />
                 ))}
               </div>
@@ -623,8 +726,18 @@ export default function TasksPage() {
                       task={task}
                       getProfileName={getProfileName}
                       onToggleComplete={() => handleToggleComplete(task)}
-                      onEdit={() => openEditDialog(task)}
+                      onEdit={() => startEditingTask(task)}
                       onDelete={() => openDeleteDialog(task)}
+                      isEditing={editingTaskId === task.id}
+                      editFormData={editingTaskId === task.id ? formData : undefined}
+                      editFormErrors={editingTaskId === task.id ? formErrors : undefined}
+                      onUpdateField={editingTaskId === task.id ? updateField : undefined}
+                      onSaveEdit={editingTaskId === task.id ? handleUpdate : undefined}
+                      onCancelEdit={() => { setEditingTaskId(null); setSelectedTask(null); setFormData(EMPTY_FORM); }}
+                      saving={saving}
+                      profiles={profiles}
+                      prospects={prospects}
+                      clients={clients}
                     />
                   ))}
                 </div>
@@ -634,45 +747,9 @@ export default function TasksPage() {
         </div>
       )}
 
-      {/* Add Dialog */}
-      <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Ajouter une tâche</DialogTitle>
-            <DialogDescription>Créez une nouvelle tâche ou action commerciale.</DialogDescription>
-          </DialogHeader>
-          <TaskForm formData={formData} formErrors={formErrors} onUpdate={updateField} profiles={profiles} prospects={prospects} clients={clients} />
-          <DialogFooter>
-            <DialogClose asChild><Button variant="outline" disabled={saving}>Annuler</Button></DialogClose>
-            <Button onClick={handleCreate} disabled={saving} className="gap-2">
-              {saving && <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />}
-              Créer la tâche
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Edit Dialog */}
-      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Modifier la tâche</DialogTitle>
-            <DialogDescription>Mettez à jour les informations de cette tâche.</DialogDescription>
-          </DialogHeader>
-          <TaskForm formData={formData} formErrors={formErrors} onUpdate={updateField} profiles={profiles} prospects={prospects} clients={clients} />
-          <DialogFooter>
-            <DialogClose asChild><Button variant="outline" disabled={saving}>Annuler</Button></DialogClose>
-            <Button onClick={handleUpdate} disabled={saving} className="gap-2">
-              {saving && <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />}
-              Enregistrer
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* Delete Dialog */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>Supprimer la tâche</DialogTitle>
             <DialogDescription>
@@ -703,11 +780,115 @@ interface TaskRowProps {
   onEdit: () => void;
   onDelete: () => void;
   isOverdue?: boolean;
+  isEditing?: boolean;
+  editFormData?: TaskFormData;
+  editFormErrors?: Partial<Record<keyof TaskFormData, string>>;
+  onUpdateField?: (field: keyof TaskFormData, value: string) => void;
+  onSaveEdit?: () => void;
+  onCancelEdit?: () => void;
+  saving?: boolean;
+  profiles?: Profile[];
+  prospects?: CrmProspect[];
+  clients?: Client[];
 }
 
-function TaskRow({ task, getProfileName, onToggleComplete, onEdit, onDelete, isOverdue }: TaskRowProps) {
+function TaskRow({
+  task, getProfileName, onToggleComplete, onEdit, onDelete, isOverdue,
+  isEditing, editFormData, editFormErrors, onUpdateField, onSaveEdit, onCancelEdit, saving,
+  profiles, prospects, clients,
+}: TaskRowProps) {
   const isCompleted = task.status === "completed";
   const profileName = getProfileName(task.assigned_to);
+
+  if (isEditing && editFormData && onUpdateField && onSaveEdit && onCancelEdit) {
+    return (
+      <div
+        className={cn(
+          "rounded-lg border bg-white p-4 border-l-4 shadow-sm space-y-3",
+          PRIORITY_BORDER[editFormData.priority as TaskPriority]
+        )}
+      >
+        <div className="flex items-center gap-2">
+          <Input
+            value={editFormData.title}
+            onChange={(e) => onUpdateField("title", e.target.value)}
+            placeholder="Titre de la tâche..."
+            autoFocus
+            className={cn("flex-1 text-sm", editFormErrors?.title && "border-red-500")}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && editFormData.title.trim()) onSaveEdit();
+              if (e.key === "Escape") onCancelEdit();
+            }}
+          />
+        </div>
+        <Textarea
+          value={editFormData.description}
+          onChange={(e) => onUpdateField("description", e.target.value)}
+          placeholder="Description..."
+          rows={2}
+          className="resize-none text-sm"
+        />
+        <div className="flex items-center gap-2 flex-wrap">
+          <Select value={editFormData.priority} onValueChange={(v) => onUpdateField("priority", v)}>
+            <SelectTrigger className="h-8 w-28 text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="low">Basse</SelectItem>
+              <SelectItem value="medium">Moyenne</SelectItem>
+              <SelectItem value="high">Haute</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={editFormData.status} onValueChange={(v) => onUpdateField("status", v)}>
+            <SelectTrigger className="h-8 w-28 text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="pending">En attente</SelectItem>
+              <SelectItem value="in_progress">En cours</SelectItem>
+              <SelectItem value="completed">Terminée</SelectItem>
+              <SelectItem value="cancelled">Annulée</SelectItem>
+            </SelectContent>
+          </Select>
+          <Input
+            type="date"
+            value={editFormData.due_date}
+            onChange={(e) => onUpdateField("due_date", e.target.value)}
+            className="h-8 w-36 text-xs"
+          />
+          <Select value={editFormData.assigned_to || "_none"} onValueChange={(v) => onUpdateField("assigned_to", v === "_none" ? "" : v)}>
+            <SelectTrigger className="h-8 w-36 text-xs"><SelectValue placeholder="Assigné à" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="_none">Non assigné</SelectItem>
+              {profiles?.map((p) => (
+                <SelectItem key={p.id} value={p.id}>
+                  {[p.first_name, p.last_name].filter(Boolean).join(" ") || p.email}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Select value={editFormData.prospect_id || "_none"} onValueChange={(v) => onUpdateField("prospect_id", v === "_none" ? "" : v)}>
+            <SelectTrigger className="h-8 w-40 text-xs"><SelectValue placeholder="Prospect" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="_none">Aucun prospect</SelectItem>
+              {prospects?.map((p) => <SelectItem key={p.id} value={p.id}>{p.company_name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select value={editFormData.client_id || "_none"} onValueChange={(v) => onUpdateField("client_id", v === "_none" ? "" : v)}>
+            <SelectTrigger className="h-8 w-40 text-xs"><SelectValue placeholder="Client" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="_none">Aucun client</SelectItem>
+              {clients?.map((c) => <SelectItem key={c.id} value={c.id}>{c.company_name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <div className="flex-1" />
+          <Button size="sm" variant="ghost" className="text-xs h-7" onClick={onCancelEdit}>Annuler</Button>
+          <Button size="sm" className="text-xs h-7 gap-1" onClick={onSaveEdit} disabled={saving || !editFormData.title.trim()}>
+            {saving && <span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />}
+            Enregistrer
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -798,103 +979,3 @@ function TaskRow({ task, getProfileName, onToggleComplete, onEdit, onDelete, isO
   );
 }
 
-interface TaskFormProps {
-  formData: TaskFormData;
-  formErrors: Partial<Record<keyof TaskFormData, string>>;
-  onUpdate: (field: keyof TaskFormData, value: string) => void;
-  profiles: Profile[];
-  prospects: CrmProspect[];
-  clients: Client[];
-}
-
-function TaskForm({ formData, formErrors, onUpdate, profiles, prospects, clients }: TaskFormProps) {
-  return (
-    <div className="space-y-4 py-2">
-      <div className="space-y-1.5">
-        <Label htmlFor="title">Titre <span className="text-red-500">*</span></Label>
-        <Input
-          id="title"
-          value={formData.title}
-          onChange={(e) => onUpdate("title", e.target.value)}
-          placeholder="Ex : Rappeler M. Dupont"
-          className={cn(formErrors.title && "border-red-500")}
-        />
-        {formErrors.title && <p className="text-xs text-red-500">{formErrors.title}</p>}
-      </div>
-
-      <div className="space-y-1.5">
-        <Label htmlFor="description">Description</Label>
-        <Textarea id="description" value={formData.description} onChange={(e) => onUpdate("description", e.target.value)} placeholder="Détails de la tâche…" rows={3} className="resize-none" />
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-1.5">
-          <Label htmlFor="priority">Priorité</Label>
-          <Select value={formData.priority} onValueChange={(v) => onUpdate("priority", v)}>
-            <SelectTrigger id="priority"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="high">Haute</SelectItem>
-              <SelectItem value="medium">Moyenne</SelectItem>
-              <SelectItem value="low">Basse</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="status">Statut</Label>
-          <Select value={formData.status} onValueChange={(v) => onUpdate("status", v)}>
-            <SelectTrigger id="status"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="pending">En attente</SelectItem>
-              <SelectItem value="in_progress">En cours</SelectItem>
-              <SelectItem value="completed">Terminée</SelectItem>
-              <SelectItem value="cancelled">Annulée</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="due_date">Date d&apos;échéance</Label>
-          <Input id="due_date" type="date" value={formData.due_date} onChange={(e) => onUpdate("due_date", e.target.value)} />
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="assigned_to">Assigné à</Label>
-          <Select value={formData.assigned_to || "_none"} onValueChange={(v) => onUpdate("assigned_to", v === "_none" ? "" : v)}>
-            <SelectTrigger id="assigned_to"><SelectValue placeholder="Choisir" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="_none">Non assigné</SelectItem>
-              {profiles.map((p) => (
-                <SelectItem key={p.id} value={p.id}>
-                  {[p.first_name, p.last_name].filter(Boolean).join(" ") || p.email}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="prospect_id">Prospect lié</Label>
-          <Select value={formData.prospect_id || "_none"} onValueChange={(v) => onUpdate("prospect_id", v === "_none" ? "" : v)}>
-            <SelectTrigger id="prospect_id"><SelectValue placeholder="Aucun" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="_none">Aucun</SelectItem>
-              {prospects.map((p) => <SelectItem key={p.id} value={p.id}>{p.company_name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="client_id">Client lié</Label>
-          <Select value={formData.client_id || "_none"} onValueChange={(v) => onUpdate("client_id", v === "_none" ? "" : v)}>
-            <SelectTrigger id="client_id"><SelectValue placeholder="Aucun" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="_none">Aucun</SelectItem>
-              {clients.map((c) => <SelectItem key={c.id} value={c.id}>{c.company_name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-    </div>
-  );
-}

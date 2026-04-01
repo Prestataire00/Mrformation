@@ -793,11 +793,11 @@ export default function CrmProspectsPage() {
       {/* Dialogue AJOUTER                                                    */}
       {/* ──────────────────────────────────────────────────────────────────── */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle style={{ color: "#3DB5C5" }}>Ajouter un prospect</DialogTitle>
           </DialogHeader>
-          <ProspectFormFields form={form} setForm={setForm} columns={columns} onCompanySelect={handleCompanySelect} teamMembers={teamMembers} />
+          <ProspectFormFields form={form} setForm={setForm} columns={columns} onCompanySelect={handleCompanySelect} teamMembers={teamMembers} compact />
           {duplicateWarning && (
             <p className="text-xs text-amber-600 bg-amber-50 rounded px-2 py-1">⚠️ {duplicateWarning}</p>
           )}
@@ -989,51 +989,32 @@ interface ProspectFormFieldsProps {
   columns: KanbanColumn[];
   onCompanySelect: (company: CompanySearchResult) => void;
   teamMembers?: { id: string; name: string }[];
+  compact?: boolean;
 }
 
-function ProspectFormFields({ form, setForm, columns, onCompanySelect, teamMembers }: ProspectFormFieldsProps) {
+function ProspectFormFields({ form, setForm, columns, onCompanySelect, teamMembers, compact }: ProspectFormFieldsProps) {
   return (
     <div className="space-y-3">
-      <div>
-        <label className="mb-1 block text-xs font-medium text-gray-600">
-          Recherche entreprise (Pappers)
-        </label>
-        <CompanySearch
-          onSelect={onCompanySelect}
-          placeholder="Tapez le nom ou SIRET pour auto-remplir…"
-        />
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
+      {!compact && (
         <div>
           <label className="mb-1 block text-xs font-medium text-gray-600">
-            Entreprise <span className="text-red-500">*</span>
+            Recherche entreprise (Pappers)
           </label>
-          <Input
-            placeholder="Nom de l'entreprise"
-            value={form.company_name}
-            onChange={(e) => setForm((f) => ({ ...f, company_name: e.target.value }))}
+          <CompanySearch
+            onSelect={onCompanySelect}
+            placeholder="Tapez le nom ou SIRET pour auto-remplir…"
           />
         </div>
-        <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600">SIRET</label>
-          <Input
-            placeholder="14 chiffres"
-            value={form.siret}
-            onChange={(e) => setForm((f) => ({ ...f, siret: e.target.value }))}
-            maxLength={14}
-            className="font-mono text-sm"
-          />
-        </div>
-      </div>
+      )}
 
       <div>
-        <label className="mb-1 block text-xs font-medium text-gray-600">Code NAF</label>
+        <label className="mb-1 block text-xs font-medium text-gray-600">
+          Entreprise <span className="text-red-500">*</span>
+        </label>
         <Input
-          placeholder="Ex : 8559A"
-          value={form.naf_code}
-          onChange={(e) => setForm((f) => ({ ...f, naf_code: e.target.value }))}
-          className="max-w-[200px]"
+          placeholder="Nom de l'entreprise"
+          value={form.company_name}
+          onChange={(e) => setForm((f) => ({ ...f, company_name: e.target.value }))}
         />
       </div>
 
@@ -1045,98 +1026,127 @@ function ProspectFormFields({ form, setForm, columns, onCompanySelect, teamMembe
           onChange={(e) => setForm((f) => ({ ...f, contact_name: e.target.value }))}
         />
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600">Email</label>
-          <Input
-            type="email"
-            placeholder="email@exemple.com"
-            value={form.email}
-            onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-          />
-        </div>
-        <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600">Téléphone</label>
-          <Input
-            placeholder="06 00 00 00 00"
-            value={form.phone}
-            onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-          />
-        </div>
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600">Source</label>
-          <Select
-            value={form.source}
-            onValueChange={(v) => setForm((f) => ({ ...f, source: v }))}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Sélectionner…" />
-            </SelectTrigger>
-            <SelectContent>
-              {SOURCE_OPTIONS.map((s) => (
-                <SelectItem key={s} value={s}>{s}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600">Statut</label>
-          <Select
-            value={form.status}
-            onValueChange={(v) => setForm((f) => ({ ...f, status: v as ProspectStatus }))}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Colonne…" />
-            </SelectTrigger>
-            <SelectContent>
-              {columns.map((col) => (
-                <SelectItem key={col.id} value={col.id}>{col.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+
       <div>
-        <label className="mb-1 block text-xs font-medium text-gray-600">Montant HT (EUR)</label>
-        <Input
-          type="number"
-          placeholder="0.00"
-          step="0.01"
-          min="0"
-          value={form.amount}
-          onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
-        />
+        <label className="mb-1 block text-xs font-medium text-gray-600">Source</label>
+        <Select
+          value={form.source}
+          onValueChange={(v) => setForm((f) => ({ ...f, source: v }))}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Sélectionner…" />
+          </SelectTrigger>
+          <SelectContent>
+            {SOURCE_OPTIONS.map((s) => (
+              <SelectItem key={s} value={s}>{s}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
-      {teamMembers && teamMembers.length > 0 && (
-        <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600">Assigné à</label>
-          <Select
-            value={(form as any).assigned_to || "none"}
-            onValueChange={(v) => setForm((f) => ({ ...f, assigned_to: v === "none" ? "" : v }))}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Non assigné" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">Non assigné</SelectItem>
-              {teamMembers.map((m) => (
-                <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+
+      {!compact && (
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">SIRET</label>
+              <Input
+                placeholder="14 chiffres"
+                value={form.siret}
+                onChange={(e) => setForm((f) => ({ ...f, siret: e.target.value }))}
+                maxLength={14}
+                className="font-mono text-sm"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">Code NAF</label>
+              <Input
+                placeholder="Ex : 8559A"
+                value={form.naf_code}
+                onChange={(e) => setForm((f) => ({ ...f, naf_code: e.target.value }))}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">Email</label>
+              <Input
+                type="email"
+                placeholder="email@exemple.com"
+                value={form.email}
+                onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">Téléphone</label>
+              <Input
+                placeholder="06 00 00 00 00"
+                value={form.phone}
+                onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600">Statut</label>
+            <Select
+              value={form.status}
+              onValueChange={(v) => setForm((f) => ({ ...f, status: v as ProspectStatus }))}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Colonne…" />
+              </SelectTrigger>
+              <SelectContent>
+                {columns.map((col) => (
+                  <SelectItem key={col.id} value={col.id}>{col.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600">Montant HT (EUR)</label>
+            <Input
+              type="number"
+              placeholder="0.00"
+              step="0.01"
+              min="0"
+              value={form.amount}
+              onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
+            />
+          </div>
+
+          {teamMembers && teamMembers.length > 0 && (
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">Assigné à</label>
+              <Select
+                value={(form as any).assigned_to || "none"}
+                onValueChange={(v) => setForm((f) => ({ ...f, assigned_to: v === "none" ? "" : v }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Non assigné" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Non assigné</SelectItem>
+                  {teamMembers.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600">Notes</label>
+            <Textarea
+              placeholder="Notes internes…"
+              rows={3}
+              value={form.notes}
+              onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+            />
+          </div>
+        </>
       )}
-      <div>
-        <label className="mb-1 block text-xs font-medium text-gray-600">Notes</label>
-        <Textarea
-          placeholder="Notes internes…"
-          rows={3}
-          value={form.notes}
-          onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
-        />
-      </div>
     </div>
   );
 }
