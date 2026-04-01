@@ -75,11 +75,36 @@ const STATUS_OPTIONS: ProspectStatus[] = ["new", "contacted", "qualified", "prop
 
 interface ActivityEntry {
   id: string;
-  type: "status_change" | "note" | "creation";
+  type: string;
   content: string;
   date: string;
   author: string;
+  metadata?: Record<string, unknown>;
 }
+
+const ACTION_ICONS: Record<string, { icon: string; color: string }> = {
+  call: { icon: "📞", color: "text-green-600" },
+  email: { icon: "📧", color: "text-blue-600" },
+  meeting: { icon: "🤝", color: "text-purple-600" },
+  comment: { icon: "💬", color: "text-amber-600" },
+  status_change: { icon: "🔄", color: "text-blue-500" },
+  quote_sent: { icon: "📄", color: "text-indigo-600" },
+  quote_accepted: { icon: "✅", color: "text-green-600" },
+  quote_rejected: { icon: "❌", color: "text-red-500" },
+  task_created: { icon: "📋", color: "text-orange-500" },
+  document_sent: { icon: "📎", color: "text-teal-600" },
+  relance: { icon: "🔔", color: "text-amber-500" },
+  creation: { icon: "➕", color: "text-green-500" },
+  note: { icon: "📝", color: "text-gray-500" },
+};
+
+const QUICK_ACTION_TYPES = [
+  { value: "call", label: "Appel" },
+  { value: "email", label: "Email" },
+  { value: "meeting", label: "Rendez-vous" },
+  { value: "relance", label: "Relance" },
+  { value: "comment", label: "Commentaire" },
+];
 
 // ── Page ────────────────────────────────────────────────────────────────────
 
@@ -116,8 +141,10 @@ export default function ProspectDetailPage() {
   const [newNote, setNewNote] = useState("");
   const [newStatus, setNewStatus] = useState<ProspectStatus>("new");
 
-  // Activity log (built from notes)
+  // Activity log (unified timeline)
   const [activities, setActivities] = useState<ActivityEntry[]>([]);
+  const [actionOpen, setActionOpen] = useState(false);
+  const [actionForm, setActionForm] = useState({ type: "call", subject: "", content: "" });
 
   // Training linking
   const [linkTrainingOpen, setLinkTrainingOpen] = useState(false);
@@ -139,7 +166,7 @@ export default function ProspectDetailPage() {
 
     if (data) {
       setProspect(data as CrmProspect);
-      buildActivities(data as CrmProspect);
+      fetchTimeline(data as CrmProspect);
 
       // Fetch linked training if any
       if (data.linked_training_id) {
@@ -169,36 +196,46 @@ export default function ProspectDetailPage() {
     fetchProspect();
   }, [fetchProspect]);
 
-  function buildActivities(p: CrmProspect) {
+  const fetchTimeline = useCallback(async (p: CrmProspect) => {
     const acts: ActivityEntry[] = [];
 
-    // Creation
+    // Creation event
     acts.push({
       id: "creation",
       type: "creation",
-      content: "Création du lead",
+      content: `Lead créé${p.source ? ` — Source: ${p.source}` : ""}`,
       date: p.created_at,
-      author: "MR FORMATION",
+      author: "",
     });
 
-    // Parse notes for Sellsy info
-    if (p.notes) {
-      const parts = p.notes.split("|").map((s) => s.trim());
-      parts.forEach((part, i) => {
-        if (part.startsWith("Statut Sellsy:") || part.startsWith("Étape Sellsy:")) {
-          acts.push({
-            id: `note-${i}`,
-            type: "note",
-            content: part,
-            date: p.created_at,
-            author: "Import Sellsy",
-          });
-        }
-      });
+    // Fetch commercial actions from DB
+    const { data: actions } = await supabase
+      .from("crm_commercial_actions")
+      .select("id, action_type, subject, content, metadata, created_at, author:profiles(first_name, last_name)")
+      .eq("prospect_id", p.id)
+      .order("created_at", { ascending: false })
+      .limit(50);
+
+    if (actions) {
+      for (const a of actions) {
+        const authorName = (a.author as any)?.first_name
+          ? `${(a.author as any).first_name} ${(a.author as any).last_name}`
+          : "";
+        acts.push({
+          id: a.id,
+          type: a.action_type,
+          content: a.subject || a.content || a.action_type,
+          date: a.created_at,
+          author: authorName,
+          metadata: a.metadata as Record<string, unknown> | undefined,
+        });
+      }
     }
 
-    setActivities(acts.reverse());
-  }
+    // Sort by date descending
+    acts.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    setActivities(acts);
+  }, [supabase]);
 
   // ── Fetch trainings for linking dialog ──────────────────────────────────
   async function openLinkTrainingDialog() {
@@ -337,6 +374,27 @@ export default function ProspectDetailPage() {
     setNoteOpen(false);
     setNewNote("");
     fetchProspect();
+  }
+
+  async function handleAddAction() {
+    if (!prospect || !actionForm.subject.trim()) return;
+    setSaving(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user && entityId) {
+      await logCommercialAction({
+        supabase,
+        entityId,
+        authorId: user.id,
+        actionType: actionForm.type as import("@/lib/types").CommercialActionType,
+        prospectId: prospect.id,
+        subject: actionForm.subject.trim(),
+        content: actionForm.content.trim() || undefined,
+      });
+    }
+    setSaving(false);
+    setActionOpen(false);
+    setActionForm({ type: "call", subject: "", content: "" });
+    if (prospect) fetchTimeline(prospect);
   }
 
   async function handleDelete() {
@@ -726,30 +784,43 @@ export default function ProspectDetailPage() {
               />
             </TabsContent>
             <TabsContent value="timeline">
-              <div className="space-y-3">
-                {activities.map((a) => (
-                  <div
-                    key={a.id}
-                    className="flex items-start gap-3 bg-muted/40 rounded-lg px-4 py-3"
-                  >
-                    <div className="mt-0.5">
-                      {a.type === "creation" && <CheckCircle className="w-4 h-4 text-green-500" />}
-                      {a.type === "status_change" && <TrendingUp className="w-4 h-4 text-blue-500" />}
-                      {a.type === "note" && <MessageSquare className="w-4 h-4 text-amber-500" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium uppercase">{a.content}</p>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p className="text-xs text-muted-foreground">
-                        {formatDate(a.date)}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {a.author}
-                      </p>
-                    </div>
-                  </div>
-                ))}
+              <div className="space-y-4">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-xs gap-1.5"
+                  onClick={() => setActionOpen(true)}
+                >
+                  <Plus className="h-3 w-3" /> Ajouter une action
+                </Button>
+                <div className="space-y-2">
+                  {activities.length === 0 && (
+                    <p className="text-sm text-muted-foreground text-center py-8">Aucune activité enregistrée</p>
+                  )}
+                  {activities.map((a) => {
+                    const cfg = ACTION_ICONS[a.type] || ACTION_ICONS.note;
+                    return (
+                      <div
+                        key={a.id}
+                        className="flex items-start gap-3 rounded-lg border border-gray-100 px-4 py-3 hover:bg-muted/30 transition-colors"
+                      >
+                        <span className="text-base mt-0.5">{cfg.icon}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium">{a.content}</p>
+                          {a.metadata && a.type === "status_change" && (
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              {STATUS_CONFIG[(a.metadata.from as string)]?.label ?? a.metadata.from} → {STATUS_CONFIG[(a.metadata.to as string)]?.label ?? a.metadata.to}
+                            </p>
+                          )}
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-xs text-muted-foreground">{formatDate(a.date)}</p>
+                          {a.author && <p className="text-xs text-muted-foreground">{a.author}</p>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </TabsContent>
           </Tabs>
@@ -1108,6 +1179,53 @@ export default function ProspectDetailPage() {
                 ))
             )}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Quick Action Dialog ──────────────────────────────────────── */}
+      <Dialog open={actionOpen} onOpenChange={setActionOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Ajouter une action commerciale</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Type</label>
+              <Select value={actionForm.type} onValueChange={(v) => setActionForm((f) => ({ ...f, type: v }))}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {QUICK_ACTION_TYPES.map((t) => (
+                    <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Sujet <span className="text-red-500">*</span></label>
+              <Input
+                value={actionForm.subject}
+                onChange={(e) => setActionForm((f) => ({ ...f, subject: e.target.value }))}
+                placeholder="Ex: Relance devis, RDV découverte..."
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Détails</label>
+              <Textarea
+                value={actionForm.content}
+                onChange={(e) => setActionForm((f) => ({ ...f, content: e.target.value }))}
+                placeholder="Notes complémentaires..."
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setActionOpen(false)}>Annuler</Button>
+            <Button onClick={handleAddAction} disabled={saving || !actionForm.subject.trim()}>
+              {saving ? "Enregistrement..." : "Enregistrer"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
