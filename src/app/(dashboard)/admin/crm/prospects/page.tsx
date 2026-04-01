@@ -14,6 +14,7 @@ import {
   GripVertical,
   LayoutGrid,
   Trash2,
+  CheckSquare,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -84,7 +85,7 @@ const SOURCE_OPTIONS = [
   "Autre",
 ];
 
-const EMPTY_FORM: ProspectForm = {
+const EMPTY_FORM: ProspectForm & { assigned_to: string } = {
   company_name: "",
   siret: "",
   naf_code: "",
@@ -95,6 +96,7 @@ const EMPTY_FORM: ProspectForm = {
   status: "new",
   notes: "",
   amount: "",
+  assigned_to: "",
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -177,6 +179,18 @@ export default function CrmProspectsPage() {
   const [prospectTags,     setProspectTags]      = useState<Record<string, string[]>>({}); // prospect_id -> tag_id[]
   const [tagFilter,        setTagFilter]         = useState<string>(""); // tag_id to filter by
 
+  // Assignation
+  const [teamMembers, setTeamMembers] = useState<{ id: string; name: string }[]>([]);
+  const [assignFilter, setAssignFilter] = useState<"all" | "mine">("all");
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+  // Duplicate detection
+  const [duplicateWarning, setDuplicateWarning] = useState<string>("");
+
+  // Bulk actions
+  const [selectedCards, setSelectedCards] = useState<Set<string>>(new Set());
+  const [bulkMode, setBulkMode] = useState(false);
+
   // Config tunnel — édition temporaire
   const [tempColumns,      setTempColumns]       = useState<KanbanColumn[]>(DEFAULT_COLUMNS);
 
@@ -217,6 +231,25 @@ export default function CrmProspectsPage() {
     fetchProspects();
     fetchAllTags();
     fetchProspectTags();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entityId]);
+
+  // ── Team members + current user ────────────────────────────────────────
+  useEffect(() => {
+    if (!entityId) return;
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) setCurrentUserId(user.id);
+
+      const { data } = await supabase
+        .from("profiles")
+        .select("id, full_name")
+        .in("role", ["admin", "super_admin", "commercial"])
+        .eq("entity_id", entityId);
+      if (data) {
+        setTeamMembers(data.map((m: any) => ({ id: m.id, name: m.full_name || "Sans nom" })));
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entityId]);
 
@@ -277,7 +310,11 @@ export default function CrmProspectsPage() {
 
   // ── Groupement par colonne ────────────────────────────────────────────────
   function getProspectsForColumn(colId: string): CrmProspect[] {
-    return filtered.filter((p) => p.status === colId);
+    let cards = filtered.filter((p) => p.status === colId);
+    if (assignFilter === "mine" && currentUserId) {
+      cards = cards.filter(p => p.assigned_to === currentUserId);
+    }
+    return cards;
   }
 
   // ── Ajout ─────────────────────────────────────────────────────────────────
@@ -301,6 +338,7 @@ export default function CrmProspectsPage() {
       status:       form.status,
       notes:        form.notes.trim()        || null,
       amount:       form.amount ? parseFloat(form.amount) : null,
+      assigned_to:  (form as any).assigned_to || null,
       entity_id:    entityId ?? undefined,
     };
     const { data: inserted, error } = await supabase.from("crm_prospects").insert([payload]).select("id").single();
@@ -460,6 +498,39 @@ export default function CrmProspectsPage() {
     setDragOverCardCol(null);
   }
 
+  // ─── Duplicate detection ────────────────────────────────────────────────
+  useEffect(() => {
+    if (!form.company_name || form.company_name.length < 3) { setDuplicateWarning(""); return; }
+    const timer = setTimeout(() => {
+      const match = prospects.find(p =>
+        p.company_name.toLowerCase() === form.company_name.toLowerCase() ||
+        (form.email && p.email && p.email.toLowerCase() === form.email.toLowerCase())
+      );
+      setDuplicateWarning(match ? `Un prospect similaire existe: ${match.company_name} (${match.status})` : "");
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [form.company_name, form.email, prospects]);
+
+  // ─── Bulk action handlers ─────────────────────────────────────────────
+  async function handleBulkMove(newStatus: string) {
+    for (const id of selectedCards) {
+      await supabase.from("crm_prospects").update({ status: newStatus, updated_at: new Date().toISOString() }).eq("id", id);
+    }
+    setSelectedCards(new Set());
+    setBulkMode(false);
+    fetchProspects();
+  }
+
+  async function handleBulkDelete() {
+    if (!confirm(`Supprimer ${selectedCards.size} prospect(s) ?`)) return;
+    for (const id of selectedCards) {
+      await supabase.from("crm_prospects").delete().eq("id", id);
+    }
+    setSelectedCards(new Set());
+    setBulkMode(false);
+    fetchProspects();
+  }
+
   // ─── Autofill depuis Pappers ──────────────────────────────────────────────
   function handleCompanySelect(company: CompanySearchResult) {
     setForm((f) => ({
@@ -497,6 +568,9 @@ export default function CrmProspectsPage() {
           </Button>
           <Button size="sm" variant="ghost" asChild className="text-xs gap-1.5">
             <Link href="/admin/crm/prospects/portfolio"><LayoutGrid className="h-3.5 w-3.5" /></Link>
+          </Button>
+          <Button size="sm" variant={bulkMode ? "default" : "outline"} className="text-xs gap-1.5" onClick={() => { setBulkMode(!bulkMode); setSelectedCards(new Set()); }}>
+            <CheckSquare className="h-3.5 w-3.5" /> {bulkMode ? "Annuler" : "Sélection"}
           </Button>
 
           <div className="flex-1" />
@@ -538,6 +612,12 @@ export default function CrmProspectsPage() {
               </SelectContent>
             </Select>
           )}
+
+          {/* Filtre assignation */}
+          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
+            <button onClick={() => setAssignFilter("all")} className={cn("px-2.5 py-1 text-xs rounded-md transition", assignFilter === "all" ? "bg-white shadow-sm font-medium" : "text-gray-500")}>Tous</button>
+            <button onClick={() => setAssignFilter("mine")} className={cn("px-2.5 py-1 text-xs rounded-md transition", assignFilter === "mine" ? "bg-white shadow-sm font-medium" : "text-gray-500")}>Mes leads</button>
+          </div>
 
           {/* Recherche */}
           <div className="relative">
@@ -622,10 +702,32 @@ export default function CrmProspectsPage() {
                         onDragEnd={handleCardDragEnd}
                         onClick={() => !draggedCardId && router.push(`/admin/crm/prospects/${p.id}`)}
                         className={cn(
-                          "group rounded-lg border border-gray-100 bg-white p-3 shadow-sm hover:border-[#3DB5C5] hover:shadow-md transition-all cursor-grab active:cursor-grabbing",
+                          "group relative rounded-lg border border-gray-100 bg-white p-3 shadow-sm hover:border-[#3DB5C5] hover:shadow-md transition-all cursor-grab active:cursor-grabbing",
                           isBeingDragged && "opacity-40 scale-95"
                         )}
                       >
+                        {/* Bulk checkbox */}
+                        {bulkMode && (
+                          <input
+                            type="checkbox"
+                            checked={selectedCards.has(p.id)}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              setSelectedCards(prev => {
+                                const next = new Set(prev);
+                                if (next.has(p.id)) next.delete(p.id); else next.add(p.id);
+                                return next;
+                              });
+                            }}
+                            className="absolute top-2 left-2 h-4 w-4 rounded border-gray-300"
+                          />
+                        )}
+                        {/* Assignee avatar */}
+                        {p.assigned_to && teamMembers.find(m => m.id === p.assigned_to) && (
+                          <div className="absolute top-2 right-2 h-5 w-5 rounded-full bg-gray-200 flex items-center justify-center text-[9px] font-bold text-gray-500" title={teamMembers.find(m => m.id === p.assigned_to)?.name}>
+                            {teamMembers.find(m => m.id === p.assigned_to)?.name.charAt(0)}
+                          </div>
+                        )}
                         <p className="text-sm font-semibold text-gray-900 leading-snug">{p.company_name}</p>
                         {p.contact_name && (
                           <p className="text-xs text-gray-500 mt-0.5">{p.contact_name}</p>
@@ -670,6 +772,23 @@ export default function CrmProspectsPage() {
         </div>
       )}
 
+      {/* ── Floating bulk action bar ────────────────────────────────────── */}
+      {bulkMode && selectedCards.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-gray-900 text-white rounded-xl shadow-2xl px-6 py-3 flex items-center gap-4 z-50">
+          <span className="text-sm font-medium">{selectedCards.size} sélectionné{selectedCards.size > 1 ? "s" : ""}</span>
+          <div className="h-4 w-px bg-gray-600" />
+          {columns.filter(c => !["won","lost","dormant"].includes(c.id)).map(col => (
+            <button key={col.id} onClick={() => handleBulkMove(col.id)} className="text-xs px-2 py-1 rounded hover:bg-gray-700 transition">
+              → {col.label}
+            </button>
+          ))}
+          <div className="h-4 w-px bg-gray-600" />
+          <button onClick={handleBulkDelete} className="text-xs px-2 py-1 rounded text-red-400 hover:bg-gray-700 transition">
+            Supprimer
+          </button>
+        </div>
+      )}
+
       {/* ──────────────────────────────────────────────────────────────────── */}
       {/* Dialogue AJOUTER                                                    */}
       {/* ──────────────────────────────────────────────────────────────────── */}
@@ -678,7 +797,10 @@ export default function CrmProspectsPage() {
           <DialogHeader>
             <DialogTitle style={{ color: "#3DB5C5" }}>Ajouter un prospect</DialogTitle>
           </DialogHeader>
-          <ProspectFormFields form={form} setForm={setForm} columns={columns} onCompanySelect={handleCompanySelect} />
+          <ProspectFormFields form={form} setForm={setForm} columns={columns} onCompanySelect={handleCompanySelect} teamMembers={teamMembers} />
+          {duplicateWarning && (
+            <p className="text-xs text-amber-600 bg-amber-50 rounded px-2 py-1">⚠️ {duplicateWarning}</p>
+          )}
           <DialogFooter className="gap-2">
             <DialogClose asChild>
               <Button variant="outline" size="sm">Annuler</Button>
@@ -705,7 +827,7 @@ export default function CrmProspectsPage() {
               Modifier — {editingProspect?.company_name}
             </DialogTitle>
           </DialogHeader>
-          <ProspectFormFields form={form} setForm={setForm} columns={columns} onCompanySelect={handleCompanySelect} />
+          <ProspectFormFields form={form} setForm={setForm} columns={columns} onCompanySelect={handleCompanySelect} teamMembers={teamMembers} />
           <DialogFooter className="gap-2">
             <DialogClose asChild>
               <Button variant="outline" size="sm">Annuler</Button>
@@ -866,9 +988,10 @@ interface ProspectFormFieldsProps {
   setForm: React.Dispatch<React.SetStateAction<ProspectForm>>;
   columns: KanbanColumn[];
   onCompanySelect: (company: CompanySearchResult) => void;
+  teamMembers?: { id: string; name: string }[];
 }
 
-function ProspectFormFields({ form, setForm, columns, onCompanySelect }: ProspectFormFieldsProps) {
+function ProspectFormFields({ form, setForm, columns, onCompanySelect, teamMembers }: ProspectFormFieldsProps) {
   return (
     <div className="space-y-3">
       <div>
@@ -986,6 +1109,25 @@ function ProspectFormFields({ form, setForm, columns, onCompanySelect }: Prospec
           onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
         />
       </div>
+      {teamMembers && teamMembers.length > 0 && (
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-600">Assigné à</label>
+          <Select
+            value={(form as any).assigned_to || "none"}
+            onValueChange={(v) => setForm((f) => ({ ...f, assigned_to: v === "none" ? "" : v }))}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Non assigné" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Non assigné</SelectItem>
+              {teamMembers.map((m) => (
+                <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
       <div>
         <label className="mb-1 block text-xs font-medium text-gray-600">Notes</label>
         <Textarea
