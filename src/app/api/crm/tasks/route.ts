@@ -1,10 +1,18 @@
 import { createClient } from "@/lib/supabase/server";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { createTaskSchema } from "@/lib/validations/crm-tasks";
 import { parsePagination } from "@/lib/validations";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 import { logAudit } from "@/lib/audit-log";
 import { logCommercialAction } from "@/lib/crm/log-commercial-action";
+
+function createServiceClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) throw new Error("Missing Supabase service role configuration");
+  return createSupabaseClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -173,7 +181,8 @@ export async function POST(request: NextRequest) {
 
     const { title, description, status, priority, due_date, reminder_at, assigned_to, prospect_id, client_id } = parsed.data;
 
-    const { data, error } = await supabase
+    const serviceClient = createServiceClient();
+    const { data, error } = await serviceClient
       .from("crm_tasks")
       .insert({
         entity_id: profile.entity_id,
@@ -183,7 +192,6 @@ export async function POST(request: NextRequest) {
         priority,
         due_date: due_date ?? null,
         reminder_at: reminder_at ?? null,
-        // Trainers can only create tasks assigned to themselves
         assigned_to: profile.role === "trainer" ? user.id : (assigned_to ?? user.id),
         prospect_id: prospect_id ?? null,
         client_id: client_id ?? null,
