@@ -58,6 +58,13 @@ interface DashboardData {
   avgDealSize: number;
   avgSalesCycle: number;
   lossRate: number;
+
+  // Pipeline analytics
+  conversionRates: { from: string; to: string; rate: number; color: string }[];
+  avgTimePerStage: { stage: string; days: number; color: string }[];
+  winLossBySource: { source: string; won: number; lost: number; rate: number }[];
+  weightedPipeline: { stage: string; count: number; totalAmount: number; weighted: number; probability: number; color: string }[];
+  weightedPipelineTotal: number;
 }
 
 const DEFAULT_PROSPECT_STATUS_MAP: Record<string, { label: string; color: string }> = {
@@ -118,6 +125,11 @@ export default function CrmDashboardPage() {
     avgDealSize: 0,
     avgSalesCycle: 0,
     lossRate: 0,
+    conversionRates: [],
+    avgTimePerStage: [],
+    winLossBySource: [],
+    weightedPipeline: [],
+    weightedPipelineTotal: 0,
   });
 
   const fetchDashboard = useCallback(async () => {
@@ -127,7 +139,7 @@ export default function CrmDashboardPage() {
     try {
       // Fetch all data in parallel
       const [prospectsRes, quotesRes, tasksRes] = await Promise.all([
-        supabase.from("crm_prospects").select("id, status, notes, amount, created_at, updated_at").eq("entity_id", entityId),
+        supabase.from("crm_prospects").select("id, status, notes, amount, source, created_at, updated_at").eq("entity_id", entityId),
         supabase.from("crm_quotes").select("status, amount, created_at, prospect_id").eq("entity_id", entityId),
         supabase.from("crm_tasks").select("status, due_date, reminder_at").eq("entity_id", entityId),
       ]);
@@ -251,6 +263,85 @@ export default function CrmDashboardPage() {
         ? Math.round((lostCount / totalProcessed) * 100)
         : 0;
 
+      // --- Pipeline Analytics ---
+
+      // 1. Conversion rates between stages
+      // Using cumulative approach: a prospect that reached "won" also passed through all prior stages
+      const stageOrder = ["new", "contacted", "qualified", "proposal", "won"];
+      const stageLabels: Record<string, string> = { new: "Lead", contacted: "Contacté", qualified: "Qualifié", proposal: "Proposition", won: "Gagné" };
+      const stageColors = ["#3DB5C5", "#f97316", "#8b5cf6", "#2563EB"];
+      // Count prospects that reached at least each stage (current status or later)
+      const reachedStage: Record<string, number> = {};
+      for (const s of stageOrder) reachedStage[s] = 0;
+      for (const p of prospects) {
+        const idx = stageOrder.indexOf(p.status);
+        if (idx === -1) continue; // lost/dormant excluded
+        for (let i = 0; i <= idx; i++) {
+          reachedStage[stageOrder[i]]++;
+        }
+      }
+      const conversionRates: { from: string; to: string; rate: number; color: string }[] = [];
+      for (let i = 0; i < stageOrder.length - 1; i++) {
+        const from = stageOrder[i];
+        const to = stageOrder[i + 1];
+        const rate = reachedStage[from] > 0 ? (reachedStage[to] / reachedStage[from]) * 100 : 0;
+        conversionRates.push({ from: stageLabels[from], to: stageLabels[to], rate, color: stageColors[i] });
+      }
+
+      // 2. Average time per stage (approximate from created_at to updated_at per status group)
+      const stageDays: Record<string, number[]> = {};
+      for (const p of prospects) {
+        if (!p.created_at || !p.updated_at) continue;
+        const days = Math.max(0, Math.floor(
+          (new Date(p.updated_at).getTime() - new Date(p.created_at).getTime()) / (1000 * 60 * 60 * 24)
+        ));
+        if (!stageDays[p.status]) stageDays[p.status] = [];
+        stageDays[p.status].push(days);
+      }
+      const avgTimePerStage = stageOrder.map((s, i) => ({
+        stage: stageLabels[s] ?? s,
+        days: stageDays[s] && stageDays[s].length > 0
+          ? Math.round(stageDays[s].reduce((a, b) => a + b, 0) / stageDays[s].length)
+          : 0,
+        color: columns.find(c => c.id === s)?.color ?? "#9ca3af",
+      }));
+
+      // 3. Win/Loss by source
+      const sourceStats: Record<string, { won: number; lost: number }> = {};
+      for (const p of prospects) {
+        if (p.status !== "won" && p.status !== "lost") continue;
+        const src = p.source || "Non défini";
+        if (!sourceStats[src]) sourceStats[src] = { won: 0, lost: 0 };
+        if (p.status === "won") sourceStats[src].won++;
+        else sourceStats[src].lost++;
+      }
+      const winLossBySource = Object.entries(sourceStats)
+        .map(([source, s]) => ({
+          source,
+          won: s.won,
+          lost: s.lost,
+          rate: (s.won + s.lost) > 0 ? Math.round((s.won / (s.won + s.lost)) * 100) : 0,
+        }))
+        .sort((a, b) => (b.won + b.lost) - (a.won + a.lost));
+
+      // 4. Weighted pipeline
+      const stageProbabilities: Record<string, number> = { new: 0.1, contacted: 0.2, qualified: 0.4, proposal: 0.6 };
+      const activeStages = ["new", "contacted", "qualified", "proposal"];
+      const weightedPipeline = activeStages.map((s) => {
+        const stageProspects = prospects.filter((p) => p.status === s);
+        const totalAmount = stageProspects.reduce((sum, p) => sum + getProspectAmount(p), 0);
+        const probability = stageProbabilities[s];
+        return {
+          stage: stageLabels[s],
+          count: stageProspects.length,
+          totalAmount,
+          weighted: totalAmount * probability,
+          probability,
+          color: columns.find(c => c.id === s)?.color ?? "#9ca3af",
+        };
+      });
+      const weightedPipelineTotal = weightedPipeline.reduce((sum, s) => sum + s.weighted, 0);
+
       setData({
         prospectsByStatus,
         totalProspects,
@@ -267,6 +358,11 @@ export default function CrmDashboardPage() {
         avgDealSize,
         avgSalesCycle,
         lossRate,
+        conversionRates,
+        avgTimePerStage,
+        winLossBySource,
+        weightedPipeline,
+        weightedPipelineTotal,
       });
     } catch (err) {
       console.error("CRM Dashboard fetch error:", err);
@@ -534,6 +630,137 @@ export default function CrmDashboardPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Pipeline Analytics */}
+      <div className="grid grid-cols-2 gap-6">
+        {/* Conversion par étape */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-semibold text-gray-700">Taux de conversion par étape</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {data.conversionRates.map((stage) => (
+                <div key={stage.from} className="flex items-center gap-3">
+                  <span className="text-xs text-gray-500 w-32 shrink-0">{stage.from} &rarr; {stage.to}</span>
+                  <div className="flex-1 bg-gray-100 rounded-full h-5 overflow-hidden">
+                    <div className="h-full rounded-full" style={{ width: `${stage.rate}%`, backgroundColor: stage.color }} />
+                  </div>
+                  <span className="text-xs font-semibold text-gray-700 w-12 text-right">{stage.rate.toFixed(0)}%</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Temps moyen par étape */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-semibold text-gray-700">Temps moyen par étape</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {data.avgTimePerStage.map((stage) => (
+                <div key={stage.stage} className="flex items-center gap-3">
+                  <span className="text-xs text-gray-500 w-24 shrink-0">{stage.stage}</span>
+                  <div className="flex-1 bg-gray-100 rounded-full h-5 overflow-hidden">
+                    <div
+                      className="h-full rounded-full"
+                      style={{
+                        width: `${Math.min(100, (stage.days / Math.max(1, ...data.avgTimePerStage.map((s) => s.days))) * 100)}%`,
+                        backgroundColor: stage.color,
+                      }}
+                    />
+                  </div>
+                  <span className="text-xs font-semibold text-gray-700 w-14 text-right">{stage.days}j</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Win/Loss par source */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-semibold text-gray-700">Win/Loss par source</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {data.winLossBySource.length === 0 ? (
+              <p className="text-xs text-muted-foreground">Aucune donnée disponible</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b text-left text-muted-foreground">
+                      <th className="pb-2 font-medium">Source</th>
+                      <th className="pb-2 font-medium text-center">Gagné</th>
+                      <th className="pb-2 font-medium text-center">Perdu</th>
+                      <th className="pb-2 font-medium text-right">Taux</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.winLossBySource.map((row) => (
+                      <tr key={row.source} className="border-b last:border-0">
+                        <td className="py-2 font-medium text-gray-700">{row.source}</td>
+                        <td className="py-2 text-center text-green-600 font-semibold">{row.won}</td>
+                        <td className="py-2 text-center text-red-600 font-semibold">{row.lost}</td>
+                        <td className="py-2 text-right">
+                          <span className={cn(
+                            "inline-block rounded px-1.5 py-0.5 text-[10px] font-bold",
+                            row.rate >= 50 ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                          )}>
+                            {row.rate}%
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Pipeline Pondéré */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-semibold text-gray-700">
+              Pipeline pondéré
+              <span className="ml-2 text-xs font-normal text-muted-foreground">
+                Total: {formatCurrency(data.weightedPipelineTotal)}
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {data.weightedPipeline.map((stage) => (
+                <div key={stage.stage} className="flex items-center gap-3">
+                  <span className="text-xs text-gray-500 w-24 shrink-0">
+                    {stage.stage}
+                    <span className="text-[10px] text-muted-foreground ml-1">({(stage.probability * 100).toFixed(0)}%)</span>
+                  </span>
+                  <div className="flex-1 bg-gray-100 rounded-full h-5 overflow-hidden">
+                    <div
+                      className="h-full rounded-full flex items-center justify-end pr-1"
+                      style={{
+                        width: data.weightedPipelineTotal > 0
+                          ? `${Math.max(2, (stage.weighted / data.weightedPipelineTotal) * 100)}%`
+                          : "0%",
+                        backgroundColor: stage.color,
+                      }}
+                    >
+                      {stage.weighted > 0 && (
+                        <span className="text-[9px] text-white font-bold drop-shadow">{stage.count}</span>
+                      )}
+                    </div>
+                  </div>
+                  <span className="text-xs font-semibold text-gray-700 w-20 text-right">{formatCurrency(stage.weighted)}</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

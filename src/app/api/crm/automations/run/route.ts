@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import {
   checkDormantProspects,
+  relanceInactiveProspects,
   createExpiringQuoteTasks,
   notifyOverdueTasks,
 } from "@/lib/crm/automations";
@@ -45,8 +46,10 @@ export async function POST(request: NextRequest) {
 
     // Run applicable automations
     if (enabledTriggers.has("prospect_inactive_30d")) {
-      const count = await checkDormantProspects(supabase, entityId);
-      results.dormant_prospects = `${count} prospect(s) marqué(s) dormant`;
+      const relanceCount = await relanceInactiveProspects(supabase, entityId);
+      results.inactive_prospect_relances = `${relanceCount} tâche(s) de relance créée(s)`;
+      const dormantCount = await checkDormantProspects(supabase, entityId);
+      results.dormant_prospects = `${dormantCount} prospect(s) marqué(s) dormant`;
     }
 
     if (enabledTriggers.has("quote_expiring_3d")) {

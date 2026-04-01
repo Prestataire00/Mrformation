@@ -56,5 +56,6 @@
   "sessions-direct-program-link.sql",
   "update_program_secretariat_medical.sql",
   "add_sent_via_column.sql",
-  "add_automation_template.sql"
+  "add_automation_template.sql",
+  "add_default_crm_automations.sql"
 ]

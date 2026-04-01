@@ -91,6 +91,102 @@ export async function checkDormantProspects(
   return data?.length ?? 0;
 }
 
+/**
+ * Find prospects with no crm_commercial_actions in the last 30 days
+ * whose status is NOT won/lost/dormant. Create a "Relancer" task
+ * with due_date = today + 3 days, and notify the assigned user
+ * (or all admins if no assignee).
+ */
+export async function relanceInactiveProspects(
+  supabase: SupabaseClient,
+  entityId: string
+): Promise<number> {
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 30);
+  const cutoffStr = cutoff.toISOString();
+
+  const today = new Date();
+  const dueDate = new Date();
+  dueDate.setDate(today.getDate() + 3);
+  const dueDateStr = dueDate.toISOString().split("T")[0];
+
+  // Fetch active prospects (not won/lost/dormant)
+  const { data: prospects } = await supabase
+    .from("crm_prospects")
+    .select("id, company_name, assigned_to")
+    .eq("entity_id", entityId)
+    .not("status", "in", '("won","lost","dormant")');
+
+  if (!prospects || prospects.length === 0) return 0;
+
+  // Pre-fetch admins for notification fallback
+  const { data: admins } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("entity_id", entityId)
+    .in("role", ["admin", "super_admin"]);
+
+  let created = 0;
+  for (const p of prospects) {
+    // Check if any commercial action exists in the last 30 days
+    const { data: recentActions } = await supabase
+      .from("crm_commercial_actions")
+      .select("id")
+      .eq("prospect_id", p.id)
+      .gte("created_at", cutoffStr)
+      .limit(1);
+
+    if (recentActions && recentActions.length > 0) continue;
+
+    // Check if a relance task already exists (avoid duplicates)
+    const taskTitle = `Relancer ${p.company_name}`;
+    const { data: existingTask } = await supabase
+      .from("crm_tasks")
+      .select("id")
+      .eq("entity_id", entityId)
+      .eq("title", taskTitle)
+      .in("status", ["pending", "in_progress"])
+      .limit(1);
+
+    if (existingTask && existingTask.length > 0) continue;
+
+    // Create relance task
+    const assignee = p.assigned_to || (admins && admins.length > 0 ? admins[0].id : null);
+    await supabase.from("crm_tasks").insert({
+      entity_id: entityId,
+      title: taskTitle,
+      description: `Aucune action commerciale depuis 30 jours pour ${p.company_name}. Relancer le prospect.`,
+      due_date: dueDateStr,
+      priority: "medium",
+      status: "pending",
+      assigned_to: assignee,
+      prospect_id: p.id,
+      created_by: assignee,
+    });
+
+    // Create notifications
+    const notifyUsers = p.assigned_to
+      ? [p.assigned_to]
+      : (admins ?? []).map((a) => a.id);
+
+    for (const userId of notifyUsers) {
+      await supabase.from("crm_notifications").insert({
+        entity_id: entityId,
+        user_id: userId,
+        type: "prospect_inactive",
+        title: "Prospect inactif — relance créée",
+        message: `Aucune action depuis 30 jours pour ${p.company_name}. Une tâche de relance a été créée.`,
+        link: `/admin/crm/prospects/${p.id}`,
+        resource_type: "prospect",
+        resource_id: p.id,
+      });
+    }
+
+    created++;
+  }
+  return created;
+}
+
 // ─── Automated Task Creation ────────────────────────────────────────────────
 
 /**
@@ -149,6 +245,7 @@ export async function createProposalPrepTask(
 
 /**
  * Create tasks for quotes expiring within 3 days.
+ * Also creates notifications for the assigned user (or all admins).
  * Returns the number of tasks created.
  */
 export async function createExpiringQuoteTasks(
@@ -162,10 +259,10 @@ export async function createExpiringQuoteTasks(
   const todayStr = today.toISOString().split("T")[0];
   const thresholdStr = threeDaysFromNow.toISOString().split("T")[0];
 
-  // Fetch sent quotes expiring soon
+  // Fetch sent quotes expiring soon, include prospect info
   const { data: quotes } = await supabase
     .from("crm_quotes")
-    .select("id, reference, prospect_id, client_id, created_by, valid_until")
+    .select("id, reference, prospect_id, client_id, created_by, valid_until, prospect:crm_prospects(company_name)")
     .eq("entity_id", entityId)
     .eq("status", "sent")
     .gte("valid_until", todayStr)
@@ -173,23 +270,37 @@ export async function createExpiringQuoteTasks(
 
   if (!quotes || quotes.length === 0) return 0;
 
+  // Pre-fetch admins for notification fallback
+  const { data: admins } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("entity_id", entityId)
+    .in("role", ["admin", "super_admin"]);
+
   let created = 0;
   for (const q of quotes) {
+    const prospectRaw = q.prospect as unknown;
+    const prospectData = Array.isArray(prospectRaw)
+      ? (prospectRaw[0] as { company_name: string } | undefined)
+      : (prospectRaw as { company_name: string } | null);
+    const companyName = prospectData?.company_name ?? "client";
+    const taskTitle = `Devis ${q.reference} expire bientôt — relancer ${companyName}`;
+
     // Check if task already exists for this quote
     const { data: existing } = await supabase
       .from("crm_tasks")
       .select("id")
       .eq("entity_id", entityId)
-      .like("title", `Relance devis expirant : ${q.reference}%`)
+      .like("title", `%${q.reference}%expire%`)
       .limit(1);
 
     if (existing && existing.length > 0) continue;
 
     await supabase.from("crm_tasks").insert({
       entity_id: entityId,
-      title: `Relance devis expirant : ${q.reference}`,
-      description: `Le devis ${q.reference} expire le ${q.valid_until}. Relancer le client/prospect.`,
-      due_date: todayStr,
+      title: taskTitle,
+      description: `Le devis ${q.reference} expire le ${q.valid_until}. Relancer ${companyName}.`,
+      due_date: q.valid_until,
       priority: "high",
       status: "pending",
       assigned_to: q.created_by,
@@ -197,6 +308,25 @@ export async function createExpiringQuoteTasks(
       client_id: q.client_id,
       created_by: q.created_by,
     });
+
+    // Create notifications
+    const notifyUsers = q.created_by
+      ? [q.created_by]
+      : (admins ?? []).map((a) => a.id);
+
+    for (const userId of notifyUsers) {
+      await supabase.from("crm_notifications").insert({
+        entity_id: entityId,
+        user_id: userId,
+        type: "quote_expiring",
+        title: "Devis expirant bientôt",
+        message: `Le devis ${q.reference} expire le ${q.valid_until}. Pensez à relancer ${companyName}.`,
+        link: q.prospect_id ? `/admin/crm/prospects/${q.prospect_id}` : "/admin/crm/quotes",
+        resource_type: "quote",
+        resource_id: q.id,
+      });
+    }
+
     created++;
   }
   return created;
