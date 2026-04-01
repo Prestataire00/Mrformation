@@ -154,6 +154,10 @@ export default function ProspectDetailPage() {
   const [linkedTraining, setLinkedTraining] = useState<Training | null>(null);
   const [linkingSaving, setLinkingSaving] = useState(false);
 
+  // Custom fields
+  const [customFields, setCustomFields] = useState<{id: string; field_name: string; field_type: string; options: string[]}[]>([]);
+  const [customValues, setCustomValues] = useState<Record<string, string>>({});
+
   // ── Fetch ─────────────────────────────────────────────────────────────────
 
   const fetchProspect = useCallback(async () => {
@@ -195,6 +199,29 @@ export default function ProspectDetailPage() {
   useEffect(() => {
     fetchProspect();
   }, [fetchProspect]);
+
+  // Fetch custom fields when entityId is available
+  useEffect(() => {
+    if (!entityId) return;
+    (async () => {
+      const { data: fields } = await supabase
+        .from("crm_custom_fields")
+        .select("id, field_name, field_type, options")
+        .eq("entity_id", entityId)
+        .order("sort_order");
+      if (fields) setCustomFields(fields as {id: string; field_name: string; field_type: string; options: string[]}[]);
+
+      const { data: values } = await supabase
+        .from("crm_custom_field_values")
+        .select("field_id, value")
+        .eq("prospect_id", prospectId);
+      if (values) {
+        const map: Record<string, string> = {};
+        values.forEach((v: { field_id: string; value: string | null }) => { map[v.field_id] = v.value || ""; });
+        setCustomValues(map);
+      }
+    })();
+  }, [entityId, prospectId, supabase]);
 
   const fetchTimeline = useCallback(async (p: CrmProspect) => {
     const acts: ActivityEntry[] = [];
@@ -314,11 +341,23 @@ export default function ProspectDetailPage() {
         updated_at: new Date().toISOString(),
       })
       .eq("id", prospect.id);
-    setSaving(false);
     if (error) {
       console.error("handleSaveEdit error:", error);
+      setSaving(false);
       return;
     }
+
+    // Save custom field values
+    for (const [fieldId, value] of Object.entries(customValues)) {
+      await supabase.from("crm_custom_field_values").upsert({
+        prospect_id: prospect.id,
+        field_id: fieldId,
+        value: value || null,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "prospect_id,field_id" });
+    }
+
+    setSaving(false);
     setEditOpen(false);
     fetchProspect();
   }
@@ -711,6 +750,23 @@ export default function ProspectDetailPage() {
             </div>
           </div>
 
+          {customFields.length > 0 && (
+            <>
+              <hr className="border-gray-100" />
+              <div>
+                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Champs personnalis&#233;s</h3>
+                <div className="space-y-2 text-sm">
+                  {customFields.map(f => (
+                    <div key={f.id} className="flex justify-between">
+                      <span className="text-muted-foreground">{f.field_name}</span>
+                      <span className="font-medium">{customValues[f.id] || "\u2014"}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+
           <hr className="border-gray-100" />
 
           {/* Devis */}
@@ -879,6 +935,26 @@ export default function ProspectDetailPage() {
               />
             </div>
           </div>
+          {customFields.length > 0 && (
+            <div className="space-y-3 pt-3 border-t">
+              <p className="text-xs font-semibold text-gray-500 uppercase">Champs personnalis&#233;s</p>
+              {customFields.map(f => (
+                <div key={f.id} className="space-y-1">
+                  <label className="text-sm font-medium">{f.field_name}</label>
+                  {f.field_type === "select" ? (
+                    <select value={customValues[f.id] || ""} onChange={e => setCustomValues(prev => ({...prev, [f.id]: e.target.value}))} className="w-full h-9 rounded-md border px-3 text-sm">
+                      <option value="">{"\u2014"}</option>
+                      {(f.options || []).map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                    </select>
+                  ) : f.field_type === "boolean" ? (
+                    <input type="checkbox" checked={customValues[f.id] === "true"} onChange={e => setCustomValues(prev => ({...prev, [f.id]: e.target.checked ? "true" : "false"}))} />
+                  ) : (
+                    <Input type={f.field_type === "number" ? "number" : f.field_type === "date" ? "date" : "text"} value={customValues[f.id] || ""} onChange={e => setCustomValues(prev => ({...prev, [f.id]: e.target.value}))} />
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
           <DialogFooter className="gap-2">
             <DialogClose asChild>
               <Button variant="outline" size="sm">Annuler</Button>
