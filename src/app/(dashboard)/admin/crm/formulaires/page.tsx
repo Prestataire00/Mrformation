@@ -89,6 +89,18 @@ export default function FormulairesPage() {
   const [sessions, setSessions] = useState<SessionItem[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Auto-send links
+  interface AutoSendLink {
+    questionnaire_id: string;
+    questionnaire_title: string;
+    session_id: string;
+    session_title: string;
+    session_end_date: string | null;
+    auto_send: boolean;
+  }
+  const [autoSendLinks, setAutoSendLinks] = useState<AutoSendLink[]>([]);
+  const [triggeringAutoSend, setTriggeringAutoSend] = useState(false);
+
   // Filters
   const [typeFilter, setTypeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -138,7 +150,7 @@ export default function FormulairesPage() {
         .order("start_date", { ascending: false }),
       supabase
         .from("questionnaire_sessions")
-        .select("questionnaire_id, session:sessions(title)"),
+        .select("questionnaire_id, session_id, auto_send_on_completion, session:sessions(id, title, end_date)"),
       supabase
         .from("questionnaire_responses")
         .select("questionnaire_id"),
@@ -150,15 +162,29 @@ export default function FormulairesPage() {
       responseCounts[r.questionnaire_id] = (responseCounts[r.questionnaire_id] || 0) + 1;
     });
 
-    // Build assigned sessions
+    // Build assigned sessions + auto-send links
     const assignedMap: Record<string, string[]> = {};
+    const autoLinks: AutoSendLink[] = [];
     (qsRes.data ?? []).forEach((qs: any) => {
-      const title = (qs.session as any)?.title;
+      const session = qs.session as any;
+      const title = session?.title;
       if (title) {
         if (!assignedMap[qs.questionnaire_id]) assignedMap[qs.questionnaire_id] = [];
         assignedMap[qs.questionnaire_id].push(title);
       }
+      if (qs.auto_send_on_completion && session) {
+        const qTitle = (qRes.data ?? []).find((q: any) => q.id === qs.questionnaire_id)?.title ?? "";
+        autoLinks.push({
+          questionnaire_id: qs.questionnaire_id,
+          questionnaire_title: qTitle,
+          session_id: qs.session_id,
+          session_title: title || "",
+          session_end_date: session.end_date,
+          auto_send: true,
+        });
+      }
     });
+    setAutoSendLinks(autoLinks);
 
     setQuestionnaires(
       (qRes.data ?? []).map((q: any) => ({
@@ -205,6 +231,38 @@ export default function FormulairesPage() {
       toast({ title: "Questionnaire créé" });
       setShowCreate(false);
       setCreateTitle("");
+      fetchData();
+    }
+  }
+
+  // Trigger auto-send manually
+  async function handleTriggerAutoSend() {
+    setTriggeringAutoSend(true);
+    try {
+      const res = await fetch("/api/questionnaires/auto-send", { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        toast({ title: `Envoi terminé — ${data.totalSent || 0} email(s) envoyé(s)` });
+      } else {
+        toast({ title: "Erreur", description: data.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Erreur", description: "Impossible de déclencher l'envoi", variant: "destructive" });
+    }
+    setTriggeringAutoSend(false);
+  }
+
+  // Disable auto-send for a specific link
+  async function handleDisableAutoSend(questionnaireId: string, sessionId: string) {
+    const { error } = await supabase
+      .from("questionnaire_sessions")
+      .update({ auto_send_on_completion: false })
+      .eq("questionnaire_id", questionnaireId)
+      .eq("session_id", sessionId);
+    if (error) {
+      toast({ title: "Erreur", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Envoi auto désactivé" });
       fetchData();
     }
   }
@@ -458,6 +516,77 @@ export default function FormulairesPage() {
           </tbody>
         </table>
       </div>
+
+      {/* Auto-send control section */}
+      {autoSendLinks.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+              <Send className="h-4 w-4 text-[#3DB5C5]" />
+              Envois automatiques ({autoSendLinks.length})
+            </h2>
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-xs gap-1.5"
+              onClick={handleTriggerAutoSend}
+              disabled={triggeringAutoSend}
+            >
+              {triggeringAutoSend ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+              Déclencher maintenant
+            </Button>
+          </div>
+          <div className="border rounded-lg bg-white overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 border-b">
+                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Questionnaire</th>
+                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Formation</th>
+                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Fin de session</th>
+                  <th className="px-4 py-2 text-center text-xs font-semibold text-gray-500">Statut</th>
+                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {autoSendLinks.map((link) => {
+                  const today = new Date().toISOString().split("T")[0];
+                  const isEnded = link.session_end_date && link.session_end_date <= today;
+                  const isFuture = link.session_end_date && link.session_end_date > today;
+                  return (
+                    <tr key={`${link.questionnaire_id}-${link.session_id}`} className="border-b border-gray-50 hover:bg-gray-50/50">
+                      <td className="px-4 py-2.5 text-gray-700 font-medium">{link.questionnaire_title}</td>
+                      <td className="px-4 py-2.5 text-gray-600">{link.session_title}</td>
+                      <td className="px-4 py-2.5 text-xs text-gray-500">
+                        {link.session_end_date ? new Date(link.session_end_date).toLocaleDateString("fr-FR") : "—"}
+                      </td>
+                      <td className="px-4 py-2.5 text-center">
+                        {isEnded ? (
+                          <Badge className="bg-green-100 text-green-700 text-[10px]">Terminée — envoi prévu</Badge>
+                        ) : isFuture ? (
+                          <Badge className="bg-blue-100 text-blue-700 text-[10px]">En attente (session pas finie)</Badge>
+                        ) : (
+                          <Badge className="bg-gray-100 text-gray-500 text-[10px]">Pas de date</Badge>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <button
+                          onClick={() => handleDisableAutoSend(link.questionnaire_id, link.session_id)}
+                          className="text-[10px] text-red-400 hover:text-red-600 hover:underline"
+                        >
+                          Désactiver
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-[10px] text-gray-400">
+            Le cron vérifie chaque matin à 8h. Utilisez &quot;Déclencher maintenant&quot; pour envoyer immédiatement. Les apprenants ayant déjà répondu ne sont pas re-contactés.
+          </p>
+        </div>
+      )}
 
       {/* Assign Dialog */}
       <Dialog open={assignDialog} onOpenChange={setAssignDialog}>
