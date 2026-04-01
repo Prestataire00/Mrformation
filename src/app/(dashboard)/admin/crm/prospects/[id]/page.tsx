@@ -25,7 +25,6 @@ import {
   ClipboardList,
   Loader2,
   ExternalLink,
-  TrendingUp,
   Download,
   MoreHorizontal,
   Search,
@@ -120,11 +119,13 @@ export default function ProspectDetailPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  // Dialogs
-  const [editOpen, setEditOpen] = useState(false);
-  const [noteOpen, setNoteOpen] = useState(false);
-  const [statusOpen, setStatusOpen] = useState(false);
+  // Dialogs (kept: delete, link training)
   const [deleteOpen, setDeleteOpen] = useState(false);
+
+  // Inline form toggles
+  const [showNoteForm, setShowNoteForm] = useState(false);
+  const [showActionForm, setShowActionForm] = useState(false);
+  const [editMode, setEditMode] = useState(false);
 
   // Forms
   const [editForm, setEditForm] = useState({
@@ -139,11 +140,9 @@ export default function ProspectDetailPage() {
     amount: "",
   });
   const [newNote, setNewNote] = useState("");
-  const [newStatus, setNewStatus] = useState<ProspectStatus>("new");
 
   // Activity log (unified timeline)
   const [activities, setActivities] = useState<ActivityEntry[]>([]);
-  const [actionOpen, setActionOpen] = useState(false);
   const [actionForm, setActionForm] = useState({ type: "call", subject: "", content: "" });
 
   // Training linking
@@ -320,7 +319,6 @@ export default function ProspectDetailPage() {
       notes: prospect.notes ?? "",
       amount: prospect.amount ? String(prospect.amount) : "",
     });
-    setEditOpen(true);
   }
 
   async function handleSaveEdit() {
@@ -358,39 +356,6 @@ export default function ProspectDetailPage() {
     }
 
     setSaving(false);
-    setEditOpen(false);
-    fetchProspect();
-  }
-
-  async function handleChangeStatus() {
-    if (!prospect) return;
-    const oldStatus = prospect.status;
-    setSaving(true);
-    const { error } = await supabase
-      .from("crm_prospects")
-      .update({ status: newStatus, updated_at: new Date().toISOString() })
-      .eq("id", prospect.id);
-    setSaving(false);
-    if (error) {
-      console.error("handleChangeStatus error:", error);
-      return;
-    }
-
-    // Log commercial action
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user && entityId) {
-      logCommercialAction({
-        supabase,
-        entityId,
-        authorId: user.id,
-        actionType: "status_change",
-        prospectId: prospect.id,
-        subject: `${STATUS_CONFIG[oldStatus]?.label ?? oldStatus} → ${STATUS_CONFIG[newStatus]?.label ?? newStatus}`,
-        metadata: { from: oldStatus, to: newStatus },
-      });
-    }
-
-    setStatusOpen(false);
     fetchProspect();
   }
 
@@ -410,7 +375,7 @@ export default function ProspectDetailPage() {
       console.error("handleAddNote error:", error);
       return;
     }
-    setNoteOpen(false);
+    setShowNoteForm(false);
     setNewNote("");
     fetchProspect();
   }
@@ -431,7 +396,7 @@ export default function ProspectDetailPage() {
       });
     }
     setSaving(false);
-    setActionOpen(false);
+    setShowActionForm(false);
     setActionForm({ type: "call", subject: "", content: "" });
     if (prospect) fetchTimeline(prospect);
   }
@@ -538,7 +503,6 @@ export default function ProspectDetailPage() {
     );
   }
 
-  const statusInfo = STATUS_CONFIG[prospect.status] ?? { label: prospect.status, color: "#6b7280" };
   const amount = Number(prospect.amount) || 0;
 
   return (
@@ -581,9 +545,28 @@ export default function ProspectDetailPage() {
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            <Badge className="text-white text-xs px-3 py-1" style={{ backgroundColor: statusInfo.color }}>
-              {statusInfo.label}
-            </Badge>
+            <Select value={prospect.status} onValueChange={async (v) => {
+              const oldStatus = prospect.status;
+              setProspect(prev => prev ? {...prev, status: v as ProspectStatus} : prev);
+              const { error } = await supabase.from("crm_prospects").update({ status: v, updated_at: new Date().toISOString() }).eq("id", prospectId);
+              if (error) { setProspect(prev => prev ? {...prev, status: oldStatus as ProspectStatus} : prev); return; }
+              const { data: { user } } = await supabase.auth.getUser();
+              if (user && entityId) {
+                logCommercialAction({ supabase, entityId, authorId: user.id, actionType: "status_change", prospectId: prospect.id, subject: `${STATUS_CONFIG[oldStatus]?.label} \u2192 ${STATUS_CONFIG[v]?.label}`, metadata: { from: oldStatus, to: v } });
+              }
+              if (prospect) fetchTimeline(prospect);
+            }}>
+              <SelectTrigger className="h-7 w-auto border-0 bg-transparent p-0 gap-1">
+                <Badge className="text-white text-xs px-3 py-1" style={{ backgroundColor: (STATUS_CONFIG[prospect.status] ?? { color: "#6b7280" }).color }}>
+                  {(STATUS_CONFIG[prospect.status] ?? { label: prospect.status }).label}
+                </Badge>
+              </SelectTrigger>
+              <SelectContent>
+                {STATUS_OPTIONS.map(s => (
+                  <SelectItem key={s} value={s}>{STATUS_CONFIG[s]?.label ?? s}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             {amount > 0 && (
               <span className="text-sm font-bold text-gray-700">{amount.toLocaleString("fr-FR")} €</span>
             )}
@@ -608,21 +591,16 @@ export default function ProspectDetailPage() {
             <FileText className="w-3 h-3" /> Devis
           </Button>
           <Button size="sm" variant="outline" className="text-xs h-8 gap-1.5"
-            onClick={() => setActionOpen(true)}
+            onClick={() => setShowActionForm(true)}
           >
             <Plus className="w-3 h-3" /> Action
           </Button>
           <Button size="sm" variant="outline" className="text-xs h-8 gap-1.5"
-            onClick={() => setNoteOpen(true)}
+            onClick={() => setShowNoteForm(true)}
           >
             <StickyNote className="w-3 h-3" /> Note
           </Button>
-          <Button size="sm" variant="outline" className="text-xs h-8 gap-1.5"
-            onClick={() => { setNewStatus(prospect.status as ProspectStatus); setStatusOpen(true); }}
-          >
-            <TrendingUp className="w-3 h-3" /> Statut
-          </Button>
-          <Button size="sm" variant="ghost" className="text-xs h-8 gap-1.5" onClick={openEdit}>
+          <Button size="sm" variant="ghost" className="text-xs h-8 gap-1.5" onClick={() => { openEdit(); setEditMode(true); }}>
             <Pencil className="w-3 h-3" /> Modifier
           </Button>
           <Button size="sm" variant="ghost" className="text-xs h-8 gap-1.5 text-red-500 hover:text-red-600 hover:bg-red-50"
@@ -687,14 +665,48 @@ export default function ProspectDetailPage() {
             </TabsContent>
             <TabsContent value="timeline">
               <div className="space-y-4">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="text-xs gap-1.5"
-                  onClick={() => setActionOpen(true)}
-                >
-                  <Plus className="h-3 w-3" /> Ajouter une action
-                </Button>
+                {showNoteForm ? (
+                  <div className="border rounded-lg p-3 mb-3 bg-gray-50/50 space-y-2">
+                    <Textarea
+                      value={newNote}
+                      onChange={(e) => setNewNote(e.target.value)}
+                      placeholder="Ajouter une note..."
+                      rows={2}
+                      autoFocus
+                      className="text-sm resize-none"
+                      onKeyDown={(e) => { if (e.key === "Enter" && e.ctrlKey && newNote.trim()) handleAddNote(); if (e.key === "Escape") { setShowNoteForm(false); setNewNote(""); } }}
+                    />
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-gray-400">Ctrl+Enter pour envoyer</span>
+                      <div className="flex-1" />
+                      <Button size="sm" variant="ghost" className="text-xs h-6" onClick={() => { setShowNoteForm(false); setNewNote(""); }}>Annuler</Button>
+                      <Button size="sm" className="text-xs h-6" onClick={handleAddNote} disabled={saving || !newNote.trim()}>Ajouter</Button>
+                    </div>
+                  </div>
+                ) : null}
+                {showActionForm ? (
+                  <div className="border rounded-lg p-3 mb-3 bg-gray-50/50 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Select value={actionForm.type} onValueChange={(v) => setActionForm(f => ({...f, type: v}))}>
+                        <SelectTrigger className="h-8 w-32 text-xs"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {QUICK_ACTION_TYPES.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                      <Input value={actionForm.subject} onChange={(e) => setActionForm(f => ({...f, subject: e.target.value}))} placeholder="Sujet..." className="h-8 text-xs flex-1" onKeyDown={(e) => { if (e.key === "Enter" && actionForm.subject.trim()) handleAddAction(); if (e.key === "Escape") setShowActionForm(false); }} />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-gray-400">Enter pour enregistrer</span>
+                      <div className="flex-1" />
+                      <Button size="sm" variant="ghost" className="text-xs h-6" onClick={() => setShowActionForm(false)}>Annuler</Button>
+                      <Button size="sm" className="text-xs h-6" onClick={handleAddAction} disabled={saving || !actionForm.subject.trim()}>Enregistrer</Button>
+                    </div>
+                  </div>
+                ) : (
+                  <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={() => setShowActionForm(true)}>
+                    <Plus className="h-3 w-3" /> Ajouter une action
+                  </Button>
+                )}
                 <div className="space-y-2">
                   {activities.length === 0 && (
                     <p className="text-sm text-muted-foreground text-center py-8">Aucune activité enregistrée</p>
@@ -731,24 +743,43 @@ export default function ProspectDetailPage() {
         {/* ── DROITE: Infos & Devis (1/3) ── */}
         <div className="w-80 shrink-0 bg-white p-6 space-y-6 overflow-y-auto">
           {/* Infos */}
-          <div>
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Informations</h3>
-            <div className="space-y-2 text-sm">
-              {prospect.siret && (
-                <div className="flex justify-between"><span className="text-muted-foreground">SIRET</span><span className="font-medium">{prospect.siret}</span></div>
-              )}
-              {prospect.naf_code && (
-                <div className="flex justify-between"><span className="text-muted-foreground">NAF</span><span className="font-medium">{prospect.naf_code}</span></div>
-              )}
-              {prospect.source && (
-                <div className="flex justify-between"><span className="text-muted-foreground">Source</span><span className="font-medium">{prospect.source}</span></div>
-              )}
-              <div className="flex justify-between"><span className="text-muted-foreground">Créé le</span><span className="font-medium">{formatDate(prospect.created_at)}</span></div>
-              {amount > 0 && (
-                <div className="flex justify-between"><span className="text-muted-foreground">Montant HT</span><span className="font-bold text-gray-900">{amount.toLocaleString("fr-FR")} €</span></div>
-              )}
+          {editMode ? (
+            <div className="space-y-3">
+              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Modifier</h3>
+              <div className="space-y-2">
+                <Input value={editForm.company_name} onChange={e => setEditForm(f => ({...f, company_name: e.target.value}))} placeholder="Nom entreprise" className="h-8 text-xs" />
+                <Input value={editForm.contact_name} onChange={e => setEditForm(f => ({...f, contact_name: e.target.value}))} placeholder="Contact" className="h-8 text-xs" />
+                <Input value={editForm.email} onChange={e => setEditForm(f => ({...f, email: e.target.value}))} placeholder="Email" className="h-8 text-xs" />
+                <Input value={editForm.phone} onChange={e => setEditForm(f => ({...f, phone: e.target.value}))} placeholder="Téléphone" className="h-8 text-xs" />
+                <Input value={editForm.siret} onChange={e => setEditForm(f => ({...f, siret: e.target.value}))} placeholder="SIRET" className="h-8 text-xs" />
+                <Input value={editForm.source} onChange={e => setEditForm(f => ({...f, source: e.target.value}))} placeholder="Source" className="h-8 text-xs" />
+                <Input type="number" value={editForm.amount} onChange={e => setEditForm(f => ({...f, amount: e.target.value}))} placeholder="Montant HT" className="h-8 text-xs" />
+              </div>
+              <div className="flex gap-2">
+                <Button size="sm" variant="ghost" className="text-xs h-7 flex-1" onClick={() => setEditMode(false)}>Annuler</Button>
+                <Button size="sm" className="text-xs h-7 flex-1" onClick={async () => { await handleSaveEdit(); setEditMode(false); }} disabled={saving}>Sauvegarder</Button>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div>
+              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Informations</h3>
+              <div className="space-y-2 text-sm">
+                {prospect.siret && (
+                  <div className="flex justify-between"><span className="text-muted-foreground">SIRET</span><span className="font-medium">{prospect.siret}</span></div>
+                )}
+                {prospect.naf_code && (
+                  <div className="flex justify-between"><span className="text-muted-foreground">NAF</span><span className="font-medium">{prospect.naf_code}</span></div>
+                )}
+                {prospect.source && (
+                  <div className="flex justify-between"><span className="text-muted-foreground">Source</span><span className="font-medium">{prospect.source}</span></div>
+                )}
+                <div className="flex justify-between"><span className="text-muted-foreground">Créé le</span><span className="font-medium">{formatDate(prospect.created_at)}</span></div>
+                {amount > 0 && (
+                  <div className="flex justify-between"><span className="text-muted-foreground">Montant HT</span><span className="font-bold text-gray-900">{amount.toLocaleString("fr-FR")} €</span></div>
+                )}
+              </div>
+            </div>
+          )}
 
           {customFields.length > 0 && (
             <>
@@ -840,184 +871,6 @@ export default function ProspectDetailPage() {
       {/* DIALOGS                                                          */}
       {/* ══════════════════════════════════════════════════════════════════ */}
 
-      {/* ── Edit Dialog ──────────────────────────────────────────────────── */}
-      <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Modifier le lead</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">Entreprise</label>
-                <Input
-                  value={editForm.company_name}
-                  onChange={(e) => setEditForm((f) => ({ ...f, company_name: e.target.value }))}
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">SIRET</label>
-                <Input
-                  value={editForm.siret}
-                  onChange={(e) => setEditForm((f) => ({ ...f, siret: e.target.value }))}
-                  maxLength={14}
-                  className="font-mono text-sm"
-                  placeholder="14 chiffres"
-                />
-              </div>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-600">Code NAF</label>
-              <Input
-                value={editForm.naf_code}
-                onChange={(e) => setEditForm((f) => ({ ...f, naf_code: e.target.value }))}
-                placeholder="Ex : 8559A"
-                className="max-w-[200px]"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-600">Contact</label>
-              <Input
-                value={editForm.contact_name}
-                onChange={(e) => setEditForm((f) => ({ ...f, contact_name: e.target.value }))}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">Email</label>
-                <Input
-                  type="email"
-                  value={editForm.email}
-                  onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))}
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">Téléphone</label>
-                <Input
-                  value={editForm.phone}
-                  onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))}
-                />
-              </div>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-600">Source</label>
-              <Select
-                value={editForm.source}
-                onValueChange={(v) => setEditForm((f) => ({ ...f, source: v }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Sélectionner…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {["Bouche à oreille", "Réseaux sociaux", "Site web", "Email", "Téléphone", "Événement", "Partenaire", "Autre"].map((s) => (
-                    <SelectItem key={s} value={s}>{s}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-600">Montant HT (EUR)</label>
-              <Input
-                type="number"
-                placeholder="0.00"
-                step="0.01"
-                min="0"
-                value={editForm.amount}
-                onChange={(e) => setEditForm((f) => ({ ...f, amount: e.target.value }))}
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-600">Notes</label>
-              <Textarea
-                rows={4}
-                value={editForm.notes}
-                onChange={(e) => setEditForm((f) => ({ ...f, notes: e.target.value }))}
-              />
-            </div>
-          </div>
-          {customFields.length > 0 && (
-            <div className="space-y-3 pt-3 border-t">
-              <p className="text-xs font-semibold text-gray-500 uppercase">Champs personnalis&#233;s</p>
-              {customFields.map(f => (
-                <div key={f.id} className="space-y-1">
-                  <label className="text-sm font-medium">{f.field_name}</label>
-                  {f.field_type === "select" ? (
-                    <select value={customValues[f.id] || ""} onChange={e => setCustomValues(prev => ({...prev, [f.id]: e.target.value}))} className="w-full h-9 rounded-md border px-3 text-sm">
-                      <option value="">{"\u2014"}</option>
-                      {(f.options || []).map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                    </select>
-                  ) : f.field_type === "boolean" ? (
-                    <input type="checkbox" checked={customValues[f.id] === "true"} onChange={e => setCustomValues(prev => ({...prev, [f.id]: e.target.checked ? "true" : "false"}))} />
-                  ) : (
-                    <Input type={f.field_type === "number" ? "number" : f.field_type === "date" ? "date" : "text"} value={customValues[f.id] || ""} onChange={e => setCustomValues(prev => ({...prev, [f.id]: e.target.value}))} />
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-          <DialogFooter className="gap-2">
-            <DialogClose asChild>
-              <Button variant="outline" size="sm">Annuler</Button>
-            </DialogClose>
-            <Button size="sm" onClick={handleSaveEdit} disabled={saving}>
-              {saving ? "Enregistrement..." : "ENREGISTRER"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ── Status Dialog ────────────────────────────────────────────────── */}
-      <Dialog open={statusOpen} onOpenChange={setStatusOpen}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Modifier le statut du prospect</DialogTitle>
-          </DialogHeader>
-          <Select value={newStatus} onValueChange={(v) => setNewStatus(v as ProspectStatus)}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {STATUS_OPTIONS.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {STATUS_CONFIG[s]?.label ?? s}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <DialogFooter className="gap-2">
-            <DialogClose asChild>
-              <Button variant="outline" size="sm">Annuler</Button>
-            </DialogClose>
-            <Button size="sm" onClick={handleChangeStatus} disabled={saving}>
-              {saving ? "..." : "ENREGISTRER"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ── Note Dialog ──────────────────────────────────────────────────── */}
-      <Dialog open={noteOpen} onOpenChange={setNoteOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Ajouter une note</DialogTitle>
-          </DialogHeader>
-          <Textarea
-            rows={4}
-            placeholder="Saisissez votre note..."
-            value={newNote}
-            onChange={(e) => setNewNote(e.target.value)}
-          />
-          <DialogFooter className="gap-2">
-            <DialogClose asChild>
-              <Button variant="outline" size="sm">Annuler</Button>
-            </DialogClose>
-            <Button size="sm" onClick={handleAddNote} disabled={saving || !newNote.trim()}>
-              {saving ? "..." : "AJOUTER"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* ── Delete Dialog ────────────────────────────────────────────────── */}
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent className="max-w-sm">
@@ -1105,52 +958,6 @@ export default function ProspectDetailPage() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Quick Action Dialog ──────────────────────────────────────── */}
-      <Dialog open={actionOpen} onOpenChange={setActionOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Ajouter une action commerciale</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Type</label>
-              <Select value={actionForm.type} onValueChange={(v) => setActionForm((f) => ({ ...f, type: v }))}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {QUICK_ACTION_TYPES.map((t) => (
-                    <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Sujet <span className="text-red-500">*</span></label>
-              <Input
-                value={actionForm.subject}
-                onChange={(e) => setActionForm((f) => ({ ...f, subject: e.target.value }))}
-                placeholder="Ex: Relance devis, RDV découverte..."
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Détails</label>
-              <Textarea
-                value={actionForm.content}
-                onChange={(e) => setActionForm((f) => ({ ...f, content: e.target.value }))}
-                placeholder="Notes complémentaires..."
-                rows={3}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setActionOpen(false)}>Annuler</Button>
-            <Button onClick={handleAddAction} disabled={saving || !actionForm.subject.trim()}>
-              {saving ? "Enregistrement..." : "Enregistrer"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
