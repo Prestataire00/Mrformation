@@ -18,13 +18,11 @@ import {
   Filter,
   FileText,
   MoreHorizontal,
-  Euro,
   TrendingUp,
   Clock,
   XCircle,
   ChevronRight,
   Send,
-  CheckCircle,
   AlertTriangle,
   Download,
   FileDown,
@@ -50,9 +48,7 @@ import {
 import {
   Select,
   SelectContent,
-  SelectGroup,
   SelectItem,
-  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -71,61 +67,15 @@ import {
   STATUS_COLORS,
   QUOTE_STATUS_LABELS,
 } from "@/lib/utils";
-import type { CrmQuote, Client, CrmProspect, Profile, Program, QuoteStatus } from "@/lib/types";
+import type { CrmQuote, Profile, QuoteStatus } from "@/lib/types";
 
 const QUOTE_STATUSES: QuoteStatus[] = ["draft", "sent", "accepted", "rejected", "expired"];
-
-const STATUS_NEXT: Record<QuoteStatus, QuoteStatus | null> = {
-  draft: "sent",
-  sent: "accepted",
-  accepted: null,
-  rejected: null,
-  expired: null,
-};
-
-const STATUS_NEXT_LABEL: Record<QuoteStatus, string | null> = {
-  draft: "Marquer comme envoyé",
-  sent: "Marquer comme accepté",
-  accepted: null,
-  rejected: null,
-  expired: null,
-};
-
-interface QuoteFormData {
-  reference: string;
-  client_id: string;
-  prospect_id: string;
-  amount: string;
-  status: QuoteStatus;
-  valid_until: string;
-  notes: string;
-  bpf_funding_type: string;
-  program_id: string;
-}
-
-const EMPTY_FORM: QuoteFormData = {
-  reference: "",
-  client_id: "",
-  prospect_id: "",
-  amount: "",
-  status: "draft",
-  valid_until: "",
-  notes: "",
-  bpf_funding_type: "",
-  program_id: "",
-};
 
 interface QuoteStats {
   total: number;
   acceptedAmount: number;
   pendingAmount: number;
   rejectedThisMonth: number;
-}
-
-function generateReference(existingCount: number): string {
-  const year = new Date().getFullYear();
-  const num = String(existingCount + 1).padStart(3, "0");
-  return `DEV-${year}-${num}`;
 }
 
 export default function QuotesPage() {
@@ -146,12 +96,8 @@ export default function QuotesPage() {
   const [emailForm, setEmailForm] = useState({ to: "", subject: "", body: "" });
   const [emailAttachment, setEmailAttachment] = useState<{ filename: string; content: string } | null>(null);
   const [sendingEmail, setSendingEmail] = useState(false);
-  const [clients, setClients] = useState<Client[]>([]);
-  const [prospects, setProspects] = useState<CrmProspect[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [programs, setPrograms] = useState<Program[]>([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [stats, setStats] = useState<QuoteStats>({ total: 0, acceptedAmount: 0, pendingAmount: 0, rejectedThisMonth: 0 });
 
@@ -160,51 +106,23 @@ export default function QuotesPage() {
   const [statusFilter, setStatusFilter] = useState<QuoteStatus | "all">("all");
 
   // Dialogs
-  const [addDialogOpen, setAddDialogOpen] = useState(false);
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedQuote, setSelectedQuote] = useState<CrmQuote | null>(null);
 
-  // Form
-  const [formData, setFormData] = useState<QuoteFormData>(EMPTY_FORM);
-  const [formErrors, setFormErrors] = useState<Partial<Record<keyof QuoteFormData, string>>>({});
+
 
   useEffect(() => {
     if (entityId === undefined) return;
     fetchQuotes();
-    fetchClients();
-    fetchProspects();
     fetchProfiles();
-    fetchPrograms();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entityId, search, statusFilter]);
-
-  const fetchClients = useCallback(async () => {
-    let query = supabase.from("clients").select("id, company_name").order("company_name");
-    if (entityId) query = query.eq("entity_id", entityId);
-    const { data } = await query;
-    setClients((data as Client[]) ?? []);
-  }, [supabase, entityId]);
-
-  const fetchProspects = useCallback(async () => {
-    let query = supabase.from("crm_prospects").select("id, company_name").order("company_name");
-    if (entityId) query = query.eq("entity_id", entityId);
-    const { data } = await query;
-    setProspects((data as CrmProspect[]) ?? []);
-  }, [supabase, entityId]);
 
   const fetchProfiles = useCallback(async () => {
     let query = supabase.from("profiles").select("id, first_name, last_name, email").order("first_name");
     if (entityId) query = query.eq("entity_id", entityId);
     const { data } = await query;
     setProfiles((data as Profile[]) ?? []);
-  }, [supabase, entityId]);
-
-  const fetchPrograms = useCallback(async () => {
-    let query = supabase.from("programs").select("id, title, bpf_funding_type").eq("is_active", true).order("title");
-    if (entityId) query = query.eq("entity_id", entityId);
-    const { data } = await query;
-    setPrograms((data as Program[]) ?? []);
   }, [supabase, entityId]);
 
   const fetchQuotes = useCallback(async () => {
@@ -253,89 +171,6 @@ export default function QuotesPage() {
       setLoading(false);
     }
   }, [supabase, entityId, statusFilter, search, toast]);
-
-  function validateForm(): boolean {
-    const errors: Partial<Record<keyof QuoteFormData, string>> = {};
-    if (!formData.reference.trim()) errors.reference = "La référence est requise.";
-    if (!formData.client_id && !formData.prospect_id) errors.client_id = "Choisissez un client ou un prospect.";
-    if (!formData.amount || isNaN(parseFloat(formData.amount))) errors.amount = "Montant invalide.";
-    setFormErrors(errors);
-    return Object.keys(errors).length === 0;
-  }
-
-  async function handleCreate() {
-    if (!validateForm()) return;
-    setSaving(true);
-    try {
-      const payload: Record<string, unknown> = {
-        reference: formData.reference.trim(),
-        client_id: formData.client_id || null,
-        prospect_id: formData.prospect_id || null,
-        amount: parseFloat(formData.amount),
-        status: formData.status,
-        valid_until: formData.valid_until || null,
-        notes: formData.notes.trim() || null,
-        bpf_funding_type: formData.bpf_funding_type || null,
-        program_id: formData.program_id || null,
-      };
-      if (entityId) payload.entity_id = entityId;
-
-      // Set created_by to current user
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) payload.created_by = user.id;
-
-      const { error } = await supabase.from("crm_quotes").insert([payload]);
-      if (error) throw error;
-
-      // Auto-transition: if prospect is "new", move to "contacted"
-      if (formData.prospect_id && entityId) {
-        await evaluateProspectStatusFromQuotes(supabase, formData.prospect_id, entityId);
-      }
-
-      toast({ title: "Devis créé", description: `Le devis ${formData.reference} a été créé.` });
-      setAddDialogOpen(false);
-      setFormData(EMPTY_FORM);
-      fetchQuotes();
-    } catch (err) {
-      console.error("handleCreate error:", err);
-      toast({ title: "Erreur", description: "Impossible de créer le devis.", variant: "destructive" });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleUpdate() {
-    if (!selectedQuote || !validateForm()) return;
-    setSaving(true);
-    try {
-      const { error } = await supabase
-        .from("crm_quotes")
-        .update({
-          reference: formData.reference.trim(),
-          client_id: formData.client_id || null,
-          prospect_id: formData.prospect_id || null,
-          amount: parseFloat(formData.amount),
-          status: formData.status,
-          valid_until: formData.valid_until || null,
-          notes: formData.notes.trim() || null,
-          bpf_funding_type: formData.bpf_funding_type || null,
-          program_id: formData.program_id || null,
-        })
-        .eq("id", selectedQuote.id);
-      if (error) throw error;
-
-      toast({ title: "Devis modifié", description: `Le devis ${formData.reference} a été mis à jour.` });
-      setEditDialogOpen(false);
-      setSelectedQuote(null);
-      setFormData(EMPTY_FORM);
-      fetchQuotes();
-    } catch (err) {
-      console.error("handleUpdate error:", err);
-      toast({ title: "Erreur", description: "Impossible de modifier le devis.", variant: "destructive" });
-    } finally {
-      setSaving(false);
-    }
-  }
 
   async function handleDelete() {
     if (!selectedQuote) return;
@@ -676,65 +511,9 @@ export default function QuotesPage() {
     }
   }
 
-  async function openAddDialogWithRef() {
-    // Auto-generate reference
-    let countQuery = supabase.from("crm_quotes").select("id", { count: "exact", head: true });
-    if (entityId) countQuery = countQuery.eq("entity_id", entityId);
-    const { count } = await countQuery;
-    const ref = generateReference(count ?? 0);
-    setFormData({ ...EMPTY_FORM, reference: ref });
-    setFormErrors({});
-    setAddDialogOpen(true);
-  }
-
-  function openEditDialog(quote: CrmQuote) {
-    setSelectedQuote(quote);
-    setFormData({
-      reference: quote.reference,
-      client_id: quote.client_id ?? "",
-      prospect_id: quote.prospect_id ?? "",
-      amount: quote.amount != null ? String(quote.amount) : "",
-      status: quote.status,
-      valid_until: quote.valid_until ?? "",
-      notes: quote.notes ?? "",
-      bpf_funding_type: quote.bpf_funding_type ?? "",
-      program_id: quote.program_id ?? "",
-    });
-    setFormErrors({});
-    setEditDialogOpen(true);
-  }
-
   function openDeleteDialog(quote: CrmQuote) {
     setSelectedQuote(quote);
     setDeleteDialogOpen(true);
-  }
-
-  function updateField(field: keyof QuoteFormData, value: string) {
-    setFormData((prev) => ({ ...prev, [field]: value }));
-    if (formErrors[field]) setFormErrors((prev) => ({ ...prev, [field]: undefined }));
-  }
-
-  async function handleProgramChange(programId: string) {
-    updateField("program_id", programId);
-    if (programId) {
-      // Auto-derive bpf_funding_type from selected program
-      const program = programs.find((p) => p.id === programId);
-      if (program?.bpf_funding_type) {
-        updateField("bpf_funding_type", program.bpf_funding_type);
-        return;
-      }
-    }
-    // Fallback: if client is selected and no program funding type, try client's bpf_category
-    if (!programId && formData.client_id) {
-      const { data: client } = await supabase
-        .from("clients")
-        .select("bpf_category")
-        .eq("id", formData.client_id)
-        .single();
-      if (client?.bpf_category) {
-        updateField("bpf_funding_type", client.bpf_category);
-      }
-    }
   }
 
   const getProfileName = (profileId: string | null | undefined) => {
@@ -765,7 +544,7 @@ export default function QuotesPage() {
             Gérez vos propositions commerciales et suivez leur progression
           </p>
         </div>
-        <Button onClick={openAddDialogWithRef} className="gap-2">
+        <Button onClick={() => router.push("/admin/crm/quotes/new")} className="gap-2">
           <Plus className="h-4 w-4" />
           Nouveau devis
         </Button>
@@ -917,7 +696,7 @@ export default function QuotesPage() {
                 {hasActiveFilters ? "Essayez de modifier vos filtres." : "Créez votre premier devis."}
               </p>
               {!hasActiveFilters && (
-                <Button onClick={openAddDialogWithRef} className="mt-4 gap-2">
+                <Button onClick={() => router.push("/admin/crm/quotes/new")} className="mt-4 gap-2">
                   <Plus className="h-4 w-4" />
                   Nouveau devis
                 </Button>
@@ -943,7 +722,6 @@ export default function QuotesPage() {
                     const expired = isExpired(quote.valid_until) && quote.status === "sent";
                     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
                     const needsRelance = quote.status === "sent" && quote.created_at < sevenDaysAgo;
-                    const nextStatus = STATUS_NEXT[quote.status];
                     return (
                       <tr key={quote.id} className="hover:bg-gray-50/50 transition-colors">
                         <td className="px-4 py-3">
@@ -969,9 +747,18 @@ export default function QuotesPage() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1.5">
-                            <Badge className={cn("border-0 text-xs", STATUS_COLORS[quote.status])}>
-                              {QUOTE_STATUS_LABELS[quote.status]}
-                            </Badge>
+                            <Select value={quote.status} onValueChange={(v) => handleStatusChange(quote, v as QuoteStatus)}>
+                              <SelectTrigger className="h-auto w-auto border-0 bg-transparent shadow-none p-0 focus:ring-0">
+                                <Badge className={cn("border-0 text-xs", STATUS_COLORS[quote.status])}>
+                                  {QUOTE_STATUS_LABELS[quote.status]}
+                                </Badge>
+                              </SelectTrigger>
+                              <SelectContent>
+                                {QUOTE_STATUSES.map((s) => (
+                                  <SelectItem key={s} value={s}>{QUOTE_STATUS_LABELS[s]}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
                             {needsRelance && (
                               <Badge className="border-0 text-[10px] bg-amber-100 text-amber-700">
                                 Relance
@@ -1017,22 +804,10 @@ export default function QuotesPage() {
                                 <Send className="h-4 w-4" />
                                 Envoyer par email
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => openEditDialog(quote)} className="gap-2">
+                              <DropdownMenuItem onClick={() => router.push(`/admin/crm/quotes/new?edit=${quote.id}`)} className="gap-2">
                                 <Pencil className="h-4 w-4" />
                                 Modifier
                               </DropdownMenuItem>
-                              {nextStatus && STATUS_NEXT_LABEL[quote.status] && (
-                                <DropdownMenuItem onClick={() => handleStatusChange(quote, nextStatus)} className="gap-2">
-                                  {nextStatus === "sent" ? <Send className="h-4 w-4" /> : <CheckCircle className="h-4 w-4" />}
-                                  {STATUS_NEXT_LABEL[quote.status]}
-                                </DropdownMenuItem>
-                              )}
-                              {quote.status === "sent" && (
-                                <DropdownMenuItem onClick={() => handleStatusChange(quote, "rejected")} className="gap-2 text-red-600 focus:text-red-600">
-                                  <XCircle className="h-4 w-4" />
-                                  Marquer comme refusé
-                                </DropdownMenuItem>
-                              )}
                               {quote.status === "accepted" && (
                                 <DropdownMenuItem
                                   onClick={() => handleConvertToFormation(quote)}
@@ -1060,42 +835,6 @@ export default function QuotesPage() {
           )}
         </CardContent>
       </Card>
-
-      {/* Add Dialog */}
-      <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Créer un devis</DialogTitle>
-            <DialogDescription>Renseignez les informations du nouveau devis.</DialogDescription>
-          </DialogHeader>
-          <QuoteForm formData={formData} formErrors={formErrors} onUpdate={updateField} clients={clients} prospects={prospects} programs={programs} onProgramChange={handleProgramChange} />
-          <DialogFooter>
-            <DialogClose asChild><Button variant="outline" disabled={saving}>Annuler</Button></DialogClose>
-            <Button onClick={handleCreate} disabled={saving} className="gap-2">
-              {saving && <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />}
-              Créer le devis
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Edit Dialog */}
-      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Modifier le devis</DialogTitle>
-            <DialogDescription>Mettez à jour les informations du devis {selectedQuote?.reference}.</DialogDescription>
-          </DialogHeader>
-          <QuoteForm formData={formData} formErrors={formErrors} onUpdate={updateField} clients={clients} prospects={prospects} programs={programs} onProgramChange={handleProgramChange} />
-          <DialogFooter>
-            <DialogClose asChild><Button variant="outline" disabled={saving}>Annuler</Button></DialogClose>
-            <Button onClick={handleUpdate} disabled={saving} className="gap-2">
-              {saving && <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />}
-              Enregistrer
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* Convert to formation Dialog */}
       <Dialog open={convertDialog} onOpenChange={setConvertDialog}>
@@ -1216,154 +955,3 @@ export default function QuotesPage() {
   );
 }
 
-// ---- Sub-components ----
-
-interface QuoteFormProps {
-  formData: QuoteFormData;
-  formErrors: Partial<Record<keyof QuoteFormData, string>>;
-  onUpdate: (field: keyof QuoteFormData, value: string) => void;
-  clients: Client[];
-  prospects: CrmProspect[];
-  programs: Program[];
-  onProgramChange: (programId: string) => void;
-}
-
-function QuoteForm({ formData, formErrors, onUpdate, clients, prospects, programs, onProgramChange }: QuoteFormProps) {
-  return (
-    <div className="space-y-4 py-2">
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-1.5">
-          <Label htmlFor="reference">Référence <span className="text-red-500">*</span></Label>
-          <Input
-            id="reference"
-            value={formData.reference}
-            onChange={(e) => onUpdate("reference", e.target.value)}
-            placeholder="DEV-2026-001"
-            className={cn("font-mono", formErrors.reference && "border-red-500")}
-          />
-          {formErrors.reference && <p className="text-xs text-red-500">{formErrors.reference}</p>}
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="amount">Montant (€) <span className="text-red-500">*</span></Label>
-          <div className="relative">
-            <Euro className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              id="amount"
-              type="number"
-              min="0"
-              step="0.01"
-              value={formData.amount}
-              onChange={(e) => onUpdate("amount", e.target.value)}
-              placeholder="0.00"
-              className={cn("pl-9", formErrors.amount && "border-red-500")}
-            />
-          </div>
-          {formErrors.amount && <p className="text-xs text-red-500">{formErrors.amount}</p>}
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="client_id">Client</Label>
-          <Select value={formData.client_id || "none"} onValueChange={(v) => { const val = v === "none" ? "" : v; onUpdate("client_id", val); if (val) onUpdate("prospect_id", ""); }}>
-            <SelectTrigger id="client_id" className={cn(formErrors.client_id && "border-red-500")}>
-              <SelectValue placeholder="Choisir un client" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">Aucun</SelectItem>
-              {clients.map((c) => <SelectItem key={c.id} value={c.id}>{c.company_name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="prospect_id">Ou prospect</Label>
-          <Select value={formData.prospect_id || "none"} onValueChange={(v) => { const val = v === "none" ? "" : v; onUpdate("prospect_id", val); if (val) onUpdate("client_id", ""); }}>
-            <SelectTrigger id="prospect_id">
-              <SelectValue placeholder="Choisir un prospect" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">Aucun</SelectItem>
-              {prospects.map((p) => <SelectItem key={p.id} value={p.id}>{p.company_name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          {formErrors.client_id && <p className="text-xs text-red-500">{formErrors.client_id}</p>}
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="status">Statut</Label>
-          <Select value={formData.status} onValueChange={(v) => onUpdate("status", v)}>
-            <SelectTrigger id="status"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {QUOTE_STATUSES.map((s) => <SelectItem key={s} value={s}>{QUOTE_STATUS_LABELS[s]}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="valid_until">Valide jusqu&apos;au</Label>
-          <Input id="valid_until" type="date" value={formData.valid_until} onChange={(e) => onUpdate("valid_until", e.target.value)} />
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="program_id">Programme lié</Label>
-          <Select value={formData.program_id || "none"} onValueChange={(v) => { const val = v === "none" ? "" : v; onProgramChange(val); }}>
-            <SelectTrigger id="program_id">
-              <SelectValue placeholder="Choisir un programme" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">Aucun</SelectItem>
-              {programs.map((p) => <SelectItem key={p.id} value={p.id}>{p.title}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="bpf_funding_type">Source de financement (BPF)</Label>
-          <Select value={formData.bpf_funding_type || "none"} onValueChange={(v) => onUpdate("bpf_funding_type", v === "none" ? "" : v)}>
-            <SelectTrigger id="bpf_funding_type">
-              <SelectValue placeholder="Sélectionner une source..." />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">Aucune</SelectItem>
-              <SelectGroup>
-                <SelectLabel>Entreprises</SelectLabel>
-                <SelectItem value="entreprise_privee">Entreprise privée</SelectItem>
-              </SelectGroup>
-              <SelectGroup>
-                <SelectLabel>Fonds de formation</SelectLabel>
-                <SelectItem value="apprentissage">Contrats d&apos;apprentissage</SelectItem>
-                <SelectItem value="professionnalisation">Contrats de professionnalisation</SelectItem>
-                <SelectItem value="reconversion_alternance">Reconversion / alternance</SelectItem>
-                <SelectItem value="conge_transition">Congé / transition pro</SelectItem>
-                <SelectItem value="cpf">CPF</SelectItem>
-                <SelectItem value="dispositif_chomeurs">Dispositifs demandeurs d&apos;emploi</SelectItem>
-                <SelectItem value="non_salaries">Travailleurs non-salariés</SelectItem>
-                <SelectItem value="plan_developpement">Plan de développement</SelectItem>
-              </SelectGroup>
-              <SelectGroup>
-                <SelectLabel>Pouvoirs publics</SelectLabel>
-                <SelectItem value="pouvoir_public_agents">Pouvoirs publics (agents)</SelectItem>
-                <SelectItem value="instances_europeennes">Instances européennes</SelectItem>
-                <SelectItem value="etat">État</SelectItem>
-                <SelectItem value="conseil_regional">Conseils régionaux</SelectItem>
-                <SelectItem value="pole_emploi">Pôle emploi</SelectItem>
-                <SelectItem value="autres_publics">Autres publics</SelectItem>
-              </SelectGroup>
-              <SelectGroup>
-                <SelectLabel>Autres</SelectLabel>
-                <SelectItem value="individuel">Particulier</SelectItem>
-                <SelectItem value="organisme_formation">Organisme de formation</SelectItem>
-                <SelectItem value="autre">Autre</SelectItem>
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      <div className="space-y-1.5">
-        <Label htmlFor="notes">Notes</Label>
-        <Textarea id="notes" value={formData.notes} onChange={(e) => onUpdate("notes", e.target.value)} placeholder="Informations complémentaires sur ce devis…" rows={3} className="resize-none" />
-      </div>
-    </div>
-  );
-}
