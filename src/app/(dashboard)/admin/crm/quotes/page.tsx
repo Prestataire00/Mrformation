@@ -535,155 +535,70 @@ export default function QuotesPage() {
   const hasActiveFilters = search || statusFilter !== "all";
 
   return (
-    <div className="space-y-6 p-6">
-      {/* Header */}
+    <div className="p-6 space-y-4">
+      {/* Header compact */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-gray-900">Devis</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Gérez vos propositions commerciales et suivez leur progression
-          </p>
+        <div className="flex items-center gap-6">
+          <h1 className="text-lg font-bold text-gray-900">Devis</h1>
+          <div className="flex items-center gap-4 text-xs text-gray-500">
+            <span><span className="font-bold text-gray-900 text-sm">{stats.total}</span> total</span>
+            <span><span className="font-bold text-green-600 text-sm">{formatCurrency(stats.acceptedAmount)}</span> accepté</span>
+            {stats.pendingAmount > 0 && <span><span className="font-bold text-amber-600 text-sm">{formatCurrency(stats.pendingAmount)}</span> en attente</span>}
+            {stats.rejectedThisMonth > 0 && <span><span className="font-bold text-red-500 text-sm">{stats.rejectedThisMonth}</span> refusé{stats.rejectedThisMonth > 1 ? "s" : ""}</span>}
+          </div>
         </div>
-        <Button onClick={() => router.push("/admin/crm/quotes/new")} className="gap-2">
-          <Plus className="h-4 w-4" />
-          Nouveau devis
+        <Button onClick={() => router.push("/admin/crm/quotes/new")} size="sm" style={{ background: "#3DB5C5" }} className="text-white gap-1.5 text-xs">
+          <Plus className="h-3.5 w-3.5" /> Nouveau devis
         </Button>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100">
-              <FileText className="h-5 w-5 text-blue-600" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Total devis</p>
-              <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-100">
-              <TrendingUp className="h-5 w-5 text-green-600" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Montant accepté</p>
-              <p className="text-lg font-bold text-green-600">{formatCurrency(stats.acceptedAmount)}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-yellow-100">
-              <Clock className="h-5 w-5 text-yellow-600" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">En attente</p>
-              <p className="text-lg font-bold text-yellow-600">{formatCurrency(stats.pendingAmount)}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-100">
-              <XCircle className="h-5 w-5 text-red-600" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Refusés ce mois</p>
-              <p className="text-2xl font-bold text-red-600">{stats.rejectedThisMonth}</p>
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
       {/* Relance Alert */}
       {(() => {
         const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-        const relanceQuotes = quotes.filter(
-          (q) => q.status === "sent" && q.created_at < sevenDaysAgo
-        );
-        if (relanceQuotes.length === 0) return null;
+        const relanceCount = quotes.filter((q) => q.status === "sent" && q.created_at < sevenDaysAgo).length;
+        if (relanceCount === 0) return null;
         return (
-          <div className="flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-            <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0" />
-            <div className="flex-1">
-              <p className="text-sm font-medium text-amber-800">
-                {relanceQuotes.length} devis en attente de relance
-              </p>
-              <p className="text-xs text-amber-600">
-                Ces devis sont en statut &quot;Envoyé&quot; depuis plus de 7 jours sans réponse.
-              </p>
-            </div>
+          <div className="flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs">
+            <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+            <span className="text-amber-700 font-medium">{relanceCount} devis à relancer</span>
           </div>
         );
       })()}
 
-      {/* Pipeline */}
-      <Card>
-        <CardContent className="p-4">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <span className="font-medium text-gray-700">Pipeline :</span>
-            {QUOTE_STATUSES.map((s, i) => (
-              <div key={s} className="flex items-center gap-2">
-                {i > 0 && <ChevronRight className="h-4 w-4 text-gray-300" />}
-                <button
-                  onClick={() => setStatusFilter(statusFilter === s ? "all" : s)}
-                  className={cn(
-                    "flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-all border",
-                    STATUS_COLORS[s],
-                    statusFilter === s && "ring-2 ring-offset-1 ring-violet-400"
-                  )}
-                >
-                  {QUOTE_STATUS_LABELS[s]}
-                  <span className="font-bold">{quotes.filter((q) => q.status === s).length}</span>
-                </button>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Filters */}
-      <Card>
-        <CardContent className="p-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Rechercher par référence…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <Filter className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-              <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as QuoteStatus | "all")}>
-                <SelectTrigger className="w-40">
-                  <SelectValue placeholder="Statut" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Tous les statuts</SelectItem>
-                  {QUOTE_STATUSES.map((s) => (
-                    <SelectItem key={s} value={s}>{QUOTE_STATUS_LABELS[s]}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {hasActiveFilters && (
-                <Button variant="ghost" size="sm" onClick={() => { setSearch(""); setStatusFilter("all"); }}>
-                  Réinitialiser
-                </Button>
+      {/* Pipeline filter + Search */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-1">
+          {QUOTE_STATUSES.map((s) => (
+            <button
+              key={s}
+              onClick={() => setStatusFilter(statusFilter === s ? "all" : s)}
+              className={cn(
+                "px-2.5 py-1 text-[11px] font-medium rounded-md transition-all",
+                statusFilter === s
+                  ? "bg-gray-900 text-white"
+                  : "text-gray-500 hover:bg-gray-100",
               )}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+            >
+              {QUOTE_STATUS_LABELS[s]} {quotes.filter((q) => q.status === s).length > 0 && <span className="ml-0.5 text-[10px] opacity-60">{quotes.filter((q) => q.status === s).length}</span>}
+            </button>
+          ))}
+          {statusFilter !== "all" && (
+            <button onClick={() => setStatusFilter("all")} className="text-[10px] text-gray-400 hover:text-gray-600 ml-1">Tous</button>
+          )}
+        </div>
+        <div className="relative w-60">
+          <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+          <Input
+            placeholder="Référence..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="h-8 pl-8 text-xs"
+          />
+        </div>
+      </div>
 
       {/* Table */}
-      <Card>
-        <CardContent className="p-0">
+      <div className="border rounded-lg bg-white overflow-hidden">
           {loading ? (
             <div className="flex items-center justify-center py-20">
               <div className="h-8 w-8 animate-spin rounded-full border-4 border-violet-600 border-t-transparent" />
@@ -833,8 +748,7 @@ export default function QuotesPage() {
               </table>
             </div>
           )}
-        </CardContent>
-      </Card>
+      </div>
 
       {/* Convert to formation Dialog */}
       <Dialog open={convertDialog} onOpenChange={setConvertDialog}>
