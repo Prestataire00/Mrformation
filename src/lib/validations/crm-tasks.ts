@@ -26,6 +26,8 @@ export const createTaskSchema = z.object({
   assigned_to: uuidField,
   prospect_id: uuidField,
   client_id: uuidField,
+  completion_notes: z.string().max(5000).optional().nullable(),
+  completed_at: z.string().optional().nullable(),
 });
 
 export const updateTaskSchema = createTaskSchema.partial();

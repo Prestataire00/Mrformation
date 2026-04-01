@@ -656,6 +656,8 @@ export interface CrmTask {
   assigned_to: string | null;
   prospect_id: string | null;
   client_id: string | null;
+  completion_notes: string | null;
+  completed_at: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;

@@ -7,6 +7,7 @@ import {
 } from "@/lib/validations/crm-tasks";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 import { logAudit } from "@/lib/audit-log";
+import { logCommercialAction } from "@/lib/crm/log-commercial-action";
 
 function createServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -95,7 +96,10 @@ export async function PATCH(
     }
 
     // Trainers cannot reassign tasks to others
-    const updateData = { ...parsed.data, updated_at: new Date().toISOString() };
+    const updateData: Record<string, unknown> = { ...parsed.data, updated_at: new Date().toISOString() };
+    if (parsed.data.status === "completed") {
+      updateData.completed_at = new Date().toISOString();
+    }
     if (profile.role === "trainer") {
       delete updateData.assigned_to;
     }
@@ -140,6 +144,19 @@ export async function PATCH(
           resource_id: data.id,
         });
       } catch { /* silent */ }
+    }
+
+    // Log to prospect timeline when task completed
+    if (parsed.data.status === "completed" && data.prospect_id) {
+      logCommercialAction({
+        supabase,
+        entityId: profile.entity_id,
+        authorId: user.id,
+        actionType: "task_created",
+        prospectId: data.prospect_id,
+        subject: `Tâche terminée: ${data.title}`,
+        content: parsed.data.completion_notes || null,
+      });
     }
 
     return NextResponse.json({ data, error: null });

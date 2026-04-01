@@ -125,6 +125,10 @@ export default function TasksPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<CrmTask | null>(null);
 
+  // Completion flow
+  const [completingTask, setCompletingTask] = useState<CrmTask | null>(null);
+  const [completionNotes, setCompletionNotes] = useState("");
+
   // Form
   const [formData, setFormData] = useState<TaskFormData>(EMPTY_FORM);
   const [formErrors, setFormErrors] = useState<Partial<Record<keyof TaskFormData, string>>>({});
@@ -309,20 +313,47 @@ export default function TasksPage() {
   }
 
   async function handleToggleComplete(task: CrmTask) {
-    const newStatus: TaskStatus = task.status === "completed" ? "pending" : "completed";
+    if (task.status === "completed") {
+      // Reopen: just toggle back to pending, no notes needed
+      try {
+        const res = await fetch(`/api/crm/tasks/${task.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "pending", completion_notes: null, completed_at: null }),
+        });
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.error || "Erreur serveur");
+        setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, status: "pending" as TaskStatus, completion_notes: null, completed_at: null } : t));
+        fetchTasks();
+      } catch (err) {
+        console.error("handleToggleComplete error:", err);
+        toast({ title: "Erreur", description: "Impossible de mettre à jour la tâche.", variant: "destructive" });
+      }
+    } else {
+      // Show inline completion form
+      setCompletingTask(task);
+      setCompletionNotes("");
+    }
+  }
+
+  async function handleConfirmComplete() {
+    if (!completingTask) return;
     try {
-      const res = await fetch(`/api/crm/tasks/${task.id}`, {
+      const res = await fetch(`/api/crm/tasks/${completingTask.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: newStatus }),
+        body: JSON.stringify({
+          status: "completed",
+          completion_notes: completionNotes.trim() || null,
+        }),
       });
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.error || "Erreur serveur");
-      setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, status: newStatus } : t));
-      fetchTasks(); // refresh stats
-    } catch (err) {
-      console.error("handleToggleComplete error:", err);
-      toast({ title: "Erreur", description: "Impossible de mettre à jour la tâche.", variant: "destructive" });
+      if (!res.ok) throw new Error("Erreur");
+      setTasks(prev => prev.map(t => t.id === completingTask.id ? { ...t, status: "completed" as TaskStatus, completion_notes: completionNotes.trim() || null } : t));
+      setCompletingTask(null);
+      setCompletionNotes("");
+      fetchTasks();
+    } catch {
+      toast({ title: "Erreur", variant: "destructive" });
     }
   }
 
@@ -548,7 +579,7 @@ export default function TasksPage() {
               <span className="text-xs font-semibold text-gray-600 uppercase tracking-wider">En retard</span>
               <span className="text-[10px] text-gray-400">{kanbanOverdue.length}</span>
             </div>
-            {kanbanOverdue.map(task => <TaskKanbanCard key={task.id} task={task} onToggle={handleToggleComplete} />)}
+            {kanbanOverdue.map(task => <TaskKanbanCard key={task.id} task={task} onToggle={handleToggleComplete} completingTask={completingTask} completionNotes={completionNotes} onCompletionNotesChange={setCompletionNotes} onConfirmComplete={handleConfirmComplete} onCancelComplete={() => { setCompletingTask(null); setCompletionNotes(""); }} />)}
           </div>
 
           {/* Column: Aujourd'hui */}
@@ -558,7 +589,7 @@ export default function TasksPage() {
               <span className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Aujourd&apos;hui</span>
               <span className="text-[10px] text-gray-400">{kanbanToday.length}</span>
             </div>
-            {kanbanToday.map(task => <TaskKanbanCard key={task.id} task={task} onToggle={handleToggleComplete} />)}
+            {kanbanToday.map(task => <TaskKanbanCard key={task.id} task={task} onToggle={handleToggleComplete} completingTask={completingTask} completionNotes={completionNotes} onCompletionNotesChange={setCompletionNotes} onConfirmComplete={handleConfirmComplete} onCancelComplete={() => { setCompletingTask(null); setCompletionNotes(""); }} />)}
           </div>
 
           {/* Column: À venir */}
@@ -568,7 +599,7 @@ export default function TasksPage() {
               <span className="text-xs font-semibold text-gray-600 uppercase tracking-wider">À venir</span>
               <span className="text-[10px] text-gray-400">{kanbanUpcoming.length}</span>
             </div>
-            {kanbanUpcoming.map(task => <TaskKanbanCard key={task.id} task={task} onToggle={handleToggleComplete} />)}
+            {kanbanUpcoming.map(task => <TaskKanbanCard key={task.id} task={task} onToggle={handleToggleComplete} completingTask={completingTask} completionNotes={completionNotes} onCompletionNotesChange={setCompletionNotes} onConfirmComplete={handleConfirmComplete} onCancelComplete={() => { setCompletingTask(null); setCompletionNotes(""); }} />)}
           </div>
 
           {/* Column: Terminées */}
@@ -578,7 +609,7 @@ export default function TasksPage() {
               <span className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Terminées</span>
               <span className="text-[10px] text-gray-400">{kanbanCompleted.length}</span>
             </div>
-            {kanbanCompleted.map(task => <TaskKanbanCard key={task.id} task={task} onToggle={handleToggleComplete} />)}
+            {kanbanCompleted.map(task => <TaskKanbanCard key={task.id} task={task} onToggle={handleToggleComplete} completingTask={completingTask} completionNotes={completionNotes} onCompletionNotesChange={setCompletionNotes} onConfirmComplete={handleConfirmComplete} onCancelComplete={() => { setCompletingTask(null); setCompletionNotes(""); }} />)}
           </div>
         </div>
       ) : (
@@ -609,6 +640,11 @@ export default function TasksPage() {
                     profiles={profiles}
                     prospects={prospects}
                     clients={clients}
+                    completingTask={completingTask}
+                    completionNotes={completionNotes}
+                    onCompletionNotesChange={setCompletionNotes}
+                    onConfirmComplete={handleConfirmComplete}
+                    onCancelComplete={() => { setCompletingTask(null); setCompletionNotes(""); }}
                   />
                 ))}
               </div>
@@ -640,6 +676,11 @@ export default function TasksPage() {
                     profiles={profiles}
                     prospects={prospects}
                     clients={clients}
+                    completingTask={completingTask}
+                    completionNotes={completionNotes}
+                    onCompletionNotesChange={setCompletionNotes}
+                    onConfirmComplete={handleConfirmComplete}
+                    onCancelComplete={() => { setCompletingTask(null); setCompletionNotes(""); }}
                   />
                 ))}
               </div>
@@ -671,6 +712,11 @@ export default function TasksPage() {
                     profiles={profiles}
                     prospects={prospects}
                     clients={clients}
+                    completingTask={completingTask}
+                    completionNotes={completionNotes}
+                    onCompletionNotesChange={setCompletionNotes}
+                    onConfirmComplete={handleConfirmComplete}
+                    onCancelComplete={() => { setCompletingTask(null); setCompletionNotes(""); }}
                   />
                 ))}
               </div>
@@ -702,6 +748,11 @@ export default function TasksPage() {
                     profiles={profiles}
                     prospects={prospects}
                     clients={clients}
+                    completingTask={completingTask}
+                    completionNotes={completionNotes}
+                    onCompletionNotesChange={setCompletionNotes}
+                    onConfirmComplete={handleConfirmComplete}
+                    onCancelComplete={() => { setCompletingTask(null); setCompletionNotes(""); }}
                   />
                 ))}
               </div>
@@ -743,6 +794,11 @@ export default function TasksPage() {
                       profiles={profiles}
                       prospects={prospects}
                       clients={clients}
+                      completingTask={completingTask}
+                      completionNotes={completionNotes}
+                      onCompletionNotesChange={setCompletionNotes}
+                      onConfirmComplete={handleConfirmComplete}
+                      onCancelComplete={() => { setCompletingTask(null); setCompletionNotes(""); }}
                     />
                   ))}
                 </div>
@@ -795,12 +851,18 @@ interface TaskRowProps {
   profiles?: Profile[];
   prospects?: CrmProspect[];
   clients?: Client[];
+  completingTask?: CrmTask | null;
+  completionNotes?: string;
+  onCompletionNotesChange?: (v: string) => void;
+  onConfirmComplete?: () => void;
+  onCancelComplete?: () => void;
 }
 
 function TaskRow({
   task, getProfileName, onToggleComplete, onEdit, onDelete, isOverdue,
   isEditing, editFormData, editFormErrors, onUpdateField, onSaveEdit, onCancelEdit, saving,
   profiles, prospects, clients,
+  completingTask, completionNotes, onCompletionNotesChange, onConfirmComplete, onCancelComplete,
 }: TaskRowProps) {
   const isCompleted = task.status === "completed";
   const profileName = getProfileName(task.assigned_to);
@@ -947,6 +1009,26 @@ function TaskRow({
             </span>
           )}
         </div>
+        {task.completion_notes && task.status === "completed" && (
+          <p className="text-xs text-gray-500 italic mt-1 pl-4">{"\uD83D\uDCDD"} {task.completion_notes}</p>
+        )}
+        {completingTask?.id === task.id && onCompletionNotesChange && onConfirmComplete && onCancelComplete && (
+          <div className="mt-2 border rounded-lg p-3 bg-gray-50/50 space-y-2">
+            <Textarea
+              value={completionNotes ?? ""}
+              onChange={(e) => onCompletionNotesChange(e.target.value)}
+              placeholder="Notes de complétion (ex: résumé de l'appel, décision prise...)"
+              rows={2}
+              autoFocus
+              className="text-sm resize-none"
+            />
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-gray-400 flex-1">Optionnel — ces notes apparaîtront dans la timeline du prospect</span>
+              <Button size="sm" variant="ghost" className="text-xs h-6" onClick={() => onCancelComplete()}>Annuler</Button>
+              <Button size="sm" className="text-xs h-6" onClick={() => onConfirmComplete()}>Terminer</Button>
+            </div>
+          </div>
+        )}
       </div>
 
       <DropdownMenu>
@@ -976,7 +1058,15 @@ function TaskRow({
   );
 }
 
-function TaskKanbanCard({ task, onToggle }: { task: CrmTask; onToggle: (t: CrmTask) => void }) {
+function TaskKanbanCard({ task, onToggle, completingTask, completionNotes, onCompletionNotesChange, onConfirmComplete, onCancelComplete }: {
+  task: CrmTask;
+  onToggle: (t: CrmTask) => void;
+  completingTask?: CrmTask | null;
+  completionNotes?: string;
+  onCompletionNotesChange?: (v: string) => void;
+  onConfirmComplete?: () => void;
+  onCancelComplete?: () => void;
+}) {
   const priorityColor = task.priority === "high" ? "bg-red-500" : task.priority === "medium" ? "bg-amber-400" : "bg-gray-300";
   return (
     <div className="rounded-lg border border-gray-100 bg-white p-3 hover:shadow-sm transition-shadow">
@@ -992,6 +1082,26 @@ function TaskKanbanCard({ task, onToggle }: { task: CrmTask; onToggle: (t: CrmTa
             {task.assignee && <span>{task.assignee.first_name}</span>}
             {task.prospect && <span className="truncate">{task.prospect.company_name}</span>}
           </div>
+          {task.completion_notes && task.status === "completed" && (
+            <p className="text-xs text-gray-500 italic mt-1">{"\uD83D\uDCDD"} {task.completion_notes}</p>
+          )}
+          {completingTask?.id === task.id && onCompletionNotesChange && onConfirmComplete && onCancelComplete && (
+            <div className="mt-2 border rounded-lg p-3 bg-gray-50/50 space-y-2">
+              <Textarea
+                value={completionNotes ?? ""}
+                onChange={(e) => onCompletionNotesChange(e.target.value)}
+                placeholder="Notes de complétion (ex: résumé de l'appel, décision prise...)"
+                rows={2}
+                autoFocus
+                className="text-sm resize-none"
+              />
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-gray-400 flex-1">Optionnel</span>
+                <Button size="sm" variant="ghost" className="text-xs h-6" onClick={() => onCancelComplete()}>Annuler</Button>
+                <Button size="sm" className="text-xs h-6" onClick={() => onConfirmComplete()}>Terminer</Button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
