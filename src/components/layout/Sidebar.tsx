@@ -83,6 +83,7 @@ const adminNavSections: NavSection[] = [
           { label: "Devis", href: "/admin/crm/quotes", icon: FileText },
           { label: "Formulaires", href: "/admin/crm/formulaires", icon: FileQuestion },
           { label: "Campagnes", href: "/admin/crm/campaigns", icon: Repeat },
+          { label: "Séquences", href: "/admin/crm/sequences", icon: Sparkles },
         ],
       },
       {
@@ -254,6 +255,7 @@ const commercialNavSections: NavSection[] = [
           { label: "Devis", href: "/admin/crm/quotes", icon: FileText },
           { label: "Formulaires", href: "/admin/crm/formulaires", icon: FileQuestion },
           { label: "Campagnes", href: "/admin/crm/campaigns", icon: Repeat },
+          { label: "Séquences", href: "/admin/crm/sequences", icon: Sparkles },
         ],
       },
       {
