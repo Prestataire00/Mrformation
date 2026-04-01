@@ -175,7 +175,14 @@ const TARGET_TYPE_LABELS: Record<TargetType, string> = {
   all_clients: "Tous les clients",
   all_prospects: "Tous les prospects",
   by_naf_code: "Par code NAF",
-  segment: "Segment personnalisé",
+  segment: "Avancé — Segment personnalisé",
+};
+
+const TARGET_TYPE_DESCRIPTIONS: Record<TargetType, string> = {
+  all_clients: "Envoyer à toutes les entreprises clientes actives",
+  all_prospects: "Envoyer à tous les prospects du tunnel commercial",
+  by_naf_code: "Cibler par secteur d'activité (code NAF)",
+  segment: "Critères avancés : statut, tags, dates, formations...",
 };
 
 const TARGET_TYPE_OPTIONS: TargetType[] = ["all_clients", "all_prospects", "by_naf_code", "segment"];
@@ -1038,6 +1045,7 @@ function CampaignForm({ formData, formErrors, onUpdate, allTags, onToggleSegment
               ))}
             </SelectContent>
           </Select>
+          <p className="text-xs text-muted-foreground">{TARGET_TYPE_DESCRIPTIONS[formData.target_type]}</p>
         </div>
 
         <div className="space-y-1.5">
