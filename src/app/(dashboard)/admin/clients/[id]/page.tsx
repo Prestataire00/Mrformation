@@ -36,6 +36,7 @@ import {
   TrendingUp,
   Clock,
   Target,
+  UserPlus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -781,6 +782,43 @@ export default function ClientDetailPage() {
             ))}
           </div>
         </div>
+      </div>
+
+      {/* ===== QUICK ACTIONS ===== */}
+      <div className="flex flex-wrap gap-2">
+        <Button
+          size="sm"
+          className="gap-1.5 text-xs"
+          style={{ background: "#3DB5C5" }}
+          onClick={() => {
+            const tabsList = document.querySelector('[data-state="active"][value="emails"]') || document.querySelector('[value="emails"]');
+            if (tabsList) (tabsList as HTMLElement).click();
+          }}
+        >
+          <Send className="h-3.5 w-3.5" />
+          Envoyer un email
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="gap-1.5 text-xs"
+          onClick={() => {
+            const tabsList = document.querySelector('[value="documents"]');
+            if (tabsList) (tabsList as HTMLElement).click();
+          }}
+        >
+          <FileText className="h-3.5 w-3.5" />
+          Documents
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="gap-1.5 text-xs"
+          onClick={() => setContactDialogOpen(true)}
+        >
+          <UserPlus className="h-3.5 w-3.5" />
+          Ajouter un contact
+        </Button>
       </div>
 
       {/* ===== QUICK INFO BAR ===== */}
