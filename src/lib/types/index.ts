@@ -634,6 +634,7 @@ export interface CrmProspect {
   linked_training_id: string | null;
   score?: number;
   naf_code: string | null;
+  amount: number | null;
   created_at: string;
   updated_at: string;
   assignee?: Profile;

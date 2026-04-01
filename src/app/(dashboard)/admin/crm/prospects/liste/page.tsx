@@ -162,18 +162,15 @@ export default function ProspectListePage() {
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
-  function extractAmount(notes: string | null): number {
-    if (!notes) return 0;
-    const match = notes.match(/Montant HT[^:]*:\s*([\d\s.,]+)/);
-    if (!match) return 0;
-    return parseFloat(match[1].replace(/\s/g, "").replace(",", ".")) || 0;
+  function extractAmount(prospect: CrmProspect): number {
+    return Number(prospect.amount) || 0;
   }
 
   const extraFiltered = prospects.filter((p) => {
     if (assignedFilter !== "all" && p.assigned_to !== assignedFilter) return false;
     if (dateFrom && p.created_at < dateFrom) return false;
     if (dateTo && p.created_at > dateTo + "T23:59:59") return false;
-    if (amountMin && extractAmount(p.notes) < parseFloat(amountMin)) return false;
+    if (amountMin && extractAmount(p) < parseFloat(amountMin)) return false;
     return true;
   });
 
@@ -186,7 +183,7 @@ export default function ProspectListePage() {
       p.phone ?? "",
       STATUS_CONFIG[p.status]?.label ?? p.status,
       p.source ?? "",
-      extractAmount(p.notes).toFixed(2),
+      extractAmount(p).toFixed(2),
       new Date(p.created_at).toLocaleDateString("fr-FR"),
     ]);
     downloadXlsx(headers, rows, `prospects_${new Date().toISOString().slice(0, 10)}.xlsx`);

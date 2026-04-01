@@ -111,6 +111,7 @@ export default function ProspectDetailPage() {
     phone: "",
     source: "",
     notes: "",
+    amount: "",
   });
   const [newNote, setNewNote] = useState("");
   const [newStatus, setNewStatus] = useState<ProspectStatus>("new");
@@ -253,6 +254,7 @@ export default function ProspectDetailPage() {
       phone: prospect.phone ?? "",
       source: prospect.source ?? "",
       notes: prospect.notes ?? "",
+      amount: prospect.amount ? String(prospect.amount) : "",
     });
     setEditOpen(true);
   }
@@ -271,6 +273,7 @@ export default function ProspectDetailPage() {
         phone: editForm.phone.trim() || null,
         source: editForm.source || null,
         notes: editForm.notes.trim() || null,
+        amount: editForm.amount ? parseFloat(editForm.amount) : null,
         updated_at: new Date().toISOString(),
       })
       .eq("id", prospect.id);
@@ -345,11 +348,8 @@ export default function ProspectDetailPage() {
     router.push("/admin/crm/prospects");
   }
 
-  function extractAmount(notes: string | null): number {
-    if (!notes) return 0;
-    const match = notes.match(/Montant HT[^:]*:\s*([\d\s.,]+)/);
-    if (!match) return 0;
-    return parseFloat(match[1].replace(/\s/g, "").replace(",", ".")) || 0;
+  function extractAmount(_notes: string | null): number {
+    return 0;
   }
 
   // ── Devis actions ──────────────────────────────────────────────────────────
@@ -397,7 +397,7 @@ export default function ProspectDetailPage() {
 
       // If no lines parsed from JSON, create a single line from the amount or the prospect amount
       if (devisData.lines.length === 0) {
-        const fallbackAmount = q.amount || extractAmount(prospect.notes);
+        const fallbackAmount = q.amount || Number(prospect.amount) || 0;
         if (fallbackAmount > 0) {
           const amountHT = fallbackAmount / (1 + tvaRate / 100);
           devisData.lines = [{ description: "Formation", quantity: 1, unit_price: Math.round(amountHT * 100) / 100 }];
@@ -442,7 +442,7 @@ export default function ProspectDetailPage() {
   }
 
   const statusInfo = STATUS_CONFIG[prospect.status] ?? { label: prospect.status, color: "#6b7280" };
-  const amount = extractAmount(prospect.notes);
+  const amount = Number(prospect.amount) || 0;
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -940,6 +940,17 @@ export default function ProspectDetailPage() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">Montant HT (EUR)</label>
+              <Input
+                type="number"
+                placeholder="0.00"
+                step="0.01"
+                min="0"
+                value={editForm.amount}
+                onChange={(e) => setEditForm((f) => ({ ...f, amount: e.target.value }))}
+              />
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-gray-600">Notes</label>

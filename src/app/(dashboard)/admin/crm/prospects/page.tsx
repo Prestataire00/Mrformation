@@ -58,6 +58,7 @@ interface ProspectForm {
   source: string;
   status: ProspectStatus;
   notes: string;
+  amount: string;
 }
 
 // ─── Colonnes par défaut ──────────────────────────────────────────────────────
@@ -93,6 +94,7 @@ const EMPTY_FORM: ProspectForm = {
   source: "",
   status: "new",
   notes: "",
+  amount: "",
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -108,11 +110,8 @@ function getColumnLabel(columns: KanbanColumn[], status: string): string {
   return columns.find((c) => c.id === status)?.label ?? status;
 }
 
-function extractAmount(notes: string | null): number {
-  if (!notes) return 0;
-  const match = notes.match(/Montant HT[^:]*:\s*([\d\s.,]+)/);
-  if (!match) return 0;
-  return parseFloat(match[1].replace(/\s/g, "").replace(",", ".")) || 0;
+function extractAmount(_notes: string | null): number {
+  return 0;
 }
 
 function formatEUR(amount: number): string {
@@ -129,7 +128,7 @@ function getQuoteAmount(quotes: Array<{amount: number; status: string}> | null):
 function getProspectAmount(p: any): number {
   const fromQuotes = getQuoteAmount(p.quotes);
   if (fromQuotes > 0) return fromQuotes;
-  return extractAmount(p.notes);
+  return Number(p.amount) || 0;
 }
 
 function extractField(notes: string | null, field: string): string | null {
@@ -301,6 +300,7 @@ export default function CrmProspectsPage() {
       source:       form.source              || null,
       status:       form.status,
       notes:        form.notes.trim()        || null,
+      amount:       form.amount ? parseFloat(form.amount) : null,
       entity_id:    entityId ?? undefined,
     };
     const { data: inserted, error } = await supabase.from("crm_prospects").insert([payload]).select("id").single();
@@ -336,6 +336,7 @@ export default function CrmProspectsPage() {
       source:       p.source       ?? "",
       status:       p.status,
       notes:        p.notes        ?? "",
+      amount:       p.amount ? String(p.amount) : "",
     });
     setEditOpen(true);
   }
@@ -353,6 +354,7 @@ export default function CrmProspectsPage() {
       source:       form.source              || null,
       status:       form.status,
       notes:        form.notes.trim()        || null,
+      amount:       form.amount ? parseFloat(form.amount) : null,
       updated_at:   new Date().toISOString(),
     };
     const { error } = await supabase
@@ -1014,6 +1016,17 @@ function ProspectFormFields({ form, setForm, columns, onCompanySelect }: Prospec
             </SelectContent>
           </Select>
         </div>
+      </div>
+      <div>
+        <label className="mb-1 block text-xs font-medium text-gray-600">Montant HT (EUR)</label>
+        <Input
+          type="number"
+          placeholder="0.00"
+          step="0.01"
+          min="0"
+          value={form.amount}
+          onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
+        />
       </div>
       <div>
         <label className="mb-1 block text-xs font-medium text-gray-600">Notes</label>

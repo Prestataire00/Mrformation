@@ -127,7 +127,7 @@ export default function CrmDashboardPage() {
     try {
       // Fetch all data in parallel
       const [prospectsRes, quotesRes, tasksRes] = await Promise.all([
-        supabase.from("crm_prospects").select("id, status, notes, created_at, updated_at").eq("entity_id", entityId),
+        supabase.from("crm_prospects").select("id, status, notes, amount, created_at, updated_at").eq("entity_id", entityId),
         supabase.from("crm_quotes").select("status, amount, created_at, prospect_id").eq("entity_id", entityId),
         supabase.from("crm_tasks").select("status, due_date, reminder_at").eq("entity_id", entityId),
       ]);
@@ -202,12 +202,9 @@ export default function CrmDashboardPage() {
         }
       }
 
-      // Won revenue from prospect notes (same source as kanban tunnel)
-      function extractAmountFromNotes(notes: string | null): number {
-        if (!notes) return 0;
-        const match = notes.match(/Montant HT[^:]*:\s*([\d\s.,]+)/);
-        if (!match) return 0;
-        return parseFloat(match[1].replace(/\s/g, "").replace(",", ".")) || 0;
+      // Won revenue from prospect amount field
+      function getProspectAmount(p: { amount?: number | null }): number {
+        return Number(p.amount) || 0;
       }
 
       const currentYear = new Date().getFullYear();
@@ -215,7 +212,7 @@ export default function CrmDashboardPage() {
         (p) => p.status === "won" && p.created_at?.startsWith(String(currentYear))
       );
       const wonRevenue = wonProspects.reduce(
-        (sum, p) => sum + extractAmountFromNotes(p.notes ?? null), 0
+        (sum, p) => sum + getProspectAmount(p), 0
       );
 
       // Monthly revenue from won prospects (last 6 months)
@@ -228,7 +225,7 @@ export default function CrmDashboardPage() {
         const label = `${MONTH_LABELS[d.getMonth()]} ${d.getFullYear()}`;
         const monthAmount = allWonProspects
           .filter((p) => p.created_at?.startsWith(yearMonth))
-          .reduce((sum, p) => sum + extractAmountFromNotes(p.notes ?? null), 0);
+          .reduce((sum, p) => sum + getProspectAmount(p), 0);
         monthlyRevenue.push({ month: label, amount: monthAmount });
       }
 
@@ -237,7 +234,7 @@ export default function CrmDashboardPage() {
       const lostCount = prospects.filter((p) => p.status === "lost").length;
 
       const avgDealSize = wonProspectsList.length > 0
-        ? wonProspectsList.reduce((sum, p) => sum + extractAmountFromNotes(p.notes ?? null), 0) / wonProspectsList.length
+        ? wonProspectsList.reduce((sum, p) => sum + getProspectAmount(p), 0) / wonProspectsList.length
         : 0;
 
       const avgSalesCycle = wonProspectsList.length > 0
