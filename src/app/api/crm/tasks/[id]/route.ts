@@ -27,7 +27,7 @@ async function getAuthenticatedUser(supabase: ReturnType<typeof createClient>) {
     return { error: NextResponse.json({ data: null, error: "Profile or entity not found" }, { status: 403 }) };
   }
 
-  if (!["admin", "trainer"].includes(profile.role)) {
+  if (!["super_admin", "admin", "trainer", "commercial"].includes(profile.role)) {
     return { error: NextResponse.json({ data: null, error: "Accès non autorisé" }, { status: 403 }) };
   }
 
