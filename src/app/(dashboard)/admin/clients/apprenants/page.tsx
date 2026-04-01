@@ -181,15 +181,22 @@ export default function ApprenantsProfilesPage() {
             <Link
               key={learner.id}
               href={`/admin/clients/apprenants/${learner.id}`}
-              className="border rounded-lg p-4 hover:border-gray-300 hover:shadow-sm transition-all bg-white"
+              className="border rounded-lg p-3.5 hover:border-[#3DB5C5]/40 hover:shadow-sm transition-all bg-white flex items-start gap-3"
             >
-              <p className="text-sm font-semibold text-gray-900">{learner.first_name} {learner.last_name}</p>
-              {learner.clients?.company_name && (
-                <p className="text-xs text-[#3DB5C5] mt-0.5">{learner.clients.company_name}</p>
-              )}
-              {learner.email && (
-                <p className="text-xs text-gray-400 mt-1 truncate">{learner.email}</p>
-              )}
+              <div className="h-9 w-9 rounded-full bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-500 shrink-0">
+                {learner.first_name.charAt(0)}{learner.last_name.charAt(0)}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-gray-900 leading-tight">{learner.first_name} {learner.last_name}</p>
+                {learner.clients?.company_name ? (
+                  <p className="text-xs text-[#3DB5C5] mt-0.5 truncate">{learner.clients.company_name}</p>
+                ) : (
+                  <p className="text-xs text-gray-300 mt-0.5 italic">Sans entreprise</p>
+                )}
+                {learner.email && (
+                  <p className="text-[10px] text-gray-400 mt-1 truncate">{learner.email}</p>
+                )}
+              </div>
             </Link>
           ))}
         </div>
