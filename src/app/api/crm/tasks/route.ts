@@ -181,8 +181,14 @@ export async function POST(request: NextRequest) {
 
     const { title, description, status, priority, due_date, reminder_at, assigned_to, prospect_id, client_id } = parsed.data;
 
-    const serviceClient = createServiceClient();
-    const { data, error } = await serviceClient
+    // Try service-role first (bypasses RLS), fallback to authenticated client
+    let dbClient;
+    try {
+      dbClient = createServiceClient();
+    } catch {
+      dbClient = supabase;
+    }
+    const { data, error } = await dbClient
       .from("crm_tasks")
       .insert({
         entity_id: profile.entity_id,
@@ -201,8 +207,9 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
+      console.error("[POST /api/crm/tasks] Insert error:", error);
       return NextResponse.json(
-        { data: null, error: sanitizeDbError(error, "creating task") },
+        { data: null, error: `Erreur création tâche: ${error.message || error.code || "unknown"}` },
         { status: 500 }
       );
     }
@@ -231,6 +238,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ data, error: null }, { status: 201 });
   } catch (err) {
-    return NextResponse.json({ data: null, error: sanitizeError(err, "creating task") }, { status: 500 });
+    console.error("[POST /api/crm/tasks] Catch error:", err);
+    return NextResponse.json({ data: null, error: err instanceof Error ? err.message : "Une erreur interne est survenue" }, { status: 500 });
   }
 }
