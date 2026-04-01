@@ -13,19 +13,15 @@ import {
   ArrowLeft,
   BookOpen,
   Building2,
-  Calendar,
-  CheckCircle2,
   Clock,
   Loader2,
   Mail,
   Pencil,
   Phone,
   Save,
-  User,
-  X,
 } from "lucide-react";
 import { useEntity } from "@/contexts/EntityContext";
-import { cn, getInitials } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
 interface LearnerDetail {
   id: string;
@@ -43,7 +39,7 @@ interface ClientOption {
   company_name: string;
 }
 
-interface Enrollment {
+interface ElearningEnrollment {
   id: string;
   status: string;
   progress: number;
@@ -54,13 +50,16 @@ interface Enrollment {
   } | null;
 }
 
-interface SessionAttendance {
+interface SessionEnrollment {
   id: string;
-  sessions: {
+  status: string;
+  completion_rate: number;
+  session: {
     id: string;
+    title: string;
     start_date: string;
     end_date: string;
-    trainings: { title: string } | null;
+    training: { title: string } | null;
   } | null;
 }
 
@@ -83,9 +82,10 @@ export default function LearnerDetailPage() {
     social_security_number: "", education_level: "",
   });
   const [showSSN, setShowSSN] = useState(false);
-  const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
-  const [sessions, setSessions] = useState<SessionAttendance[]>([]);
+  const [elearning, setElearning] = useState<ElearningEnrollment[]>([]);
+  const [sessions, setSessions] = useState<SessionEnrollment[]>([]);
   const [clientOptions, setClientOptions] = useState<ClientOption[]>([]);
+  const [company, setCompany] = useState<ClientOption | null>(null);
 
   const fetchLearner = useCallback(async () => {
     if (!entityId) return;
@@ -139,19 +139,28 @@ export default function LearnerDetailPage() {
       .order("company_name");
     setClientOptions((clientsData as ClientOption[]) ?? []);
 
-    // Fetch enrollments
+    // Set company info
+    if (l.client_id && clientsData) {
+      const matched = (clientsData as ClientOption[]).find(c => c.id === l.client_id);
+      setCompany(matched ?? null);
+    } else {
+      setCompany(null);
+    }
+
+    // Fetch e-learning enrollments
     const { data: enrollData } = await supabase
       .from("elearning_enrollments")
       .select("id, status, progress, elearning_courses(id, title, estimated_duration_minutes)")
       .eq("learner_id", learnerId);
-    setEnrollments((enrollData as unknown as Enrollment[]) ?? []);
+    setElearning((enrollData as unknown as ElearningEnrollment[]) ?? []);
 
-    // Fetch session attendance
+    // Fetch session enrollments
     const { data: sessData } = await supabase
-      .from("session_learners")
-      .select("id, sessions(id, start_date, end_date, trainings(title))")
-      .eq("learner_id", learnerId);
-    setSessions((sessData as unknown as SessionAttendance[]) ?? []);
+      .from("enrollments")
+      .select("id, status, completion_rate, session:sessions!inner(id, title, start_date, end_date, training:trainings(title))")
+      .eq("learner_id", learnerId)
+      .neq("status", "cancelled");
+    setSessions((sessData as unknown as SessionEnrollment[]) ?? []);
 
     setLoading(false);
   }, [learnerId, entityId]);
@@ -209,274 +218,251 @@ export default function LearnerDetailPage() {
     );
   }
 
-  const initials = getInitials(learner.first_name, learner.last_name);
+  const toggleEdit = () => setEditing(!editing);
+
+  const formatDate = (d: string | undefined) =>
+    d ? new Date(d).toLocaleDateString("fr-FR") : "—";
 
   return (
-    <div className="p-6 max-w-4xl mx-auto space-y-6">
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-2 text-sm">
-        <Link href="/admin" className="text-[#3DB5C5] hover:underline">Accueil</Link>
-        <span className="text-gray-400">/</span>
-        <Link href="/admin/clients/apprenants" className="text-[#3DB5C5] hover:underline">Apprenants</Link>
-        <span className="text-gray-400">/</span>
-        <span className="text-gray-500">{learner.first_name} {learner.last_name}</span>
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <div className="bg-white border-b px-6 py-5">
+        <button onClick={() => router.back()} className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1 mb-3">
+          <ArrowLeft className="h-3 w-3" /> Retour
+        </button>
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-gray-900">{learner.first_name} {learner.last_name}</h1>
+            <div className="flex items-center gap-3 mt-1 text-sm text-gray-500">
+              {learner.email && <span className="flex items-center gap-1"><Mail className="h-3 w-3" />{learner.email}</span>}
+              {learner.phone && <span className="flex items-center gap-1"><Phone className="h-3 w-3" />{learner.phone}</span>}
+              {company && <Link href={`/admin/clients/${company.id}`} className="flex items-center gap-1 text-[#3DB5C5] hover:underline"><Building2 className="h-3 w-3" />{company.company_name}</Link>}
+            </div>
+          </div>
+          <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={toggleEdit}>
+            <Pencil className="h-3 w-3" /> {editing ? "Annuler" : "Modifier"}
+          </Button>
+        </div>
       </div>
 
-      {/* Back button */}
-      <button onClick={() => router.back()} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#3DB5C5]">
-        <ArrowLeft className="h-4 w-4" /> Retour
-      </button>
-
-      {/* Profile card */}
-      <div className="bg-white border border-gray-200 rounded-xl p-6">
-        <div className="flex items-start gap-5">
-          <div className="w-16 h-16 rounded-full overflow-hidden shrink-0 ring-2 ring-gray-100">
-            {learner.avatar_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={learner.avatar_url} alt={`${learner.first_name} ${learner.last_name}`} className="w-full h-full object-cover" />
+      {/* Two columns */}
+      <div className="flex gap-0 min-h-[calc(100vh-200px)]">
+        {/* LEFT: Formations (2/3) */}
+        <div className="flex-1 p-6 space-y-6">
+          {/* Sessions de formation */}
+          <div>
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Sessions de formation ({sessions.length})</h3>
+            {sessions.length === 0 ? (
+              <p className="text-sm text-gray-400">Aucune session de formation.</p>
             ) : (
-              <div className="w-full h-full flex items-center justify-center text-white font-bold text-xl" style={{ background: "#3DB5C5" }}>
-                {initials}
+              <div className="space-y-2">
+                {sessions.map((enrollment) => (
+                  <div key={enrollment.id} className="border rounded-lg p-3 hover:bg-gray-50 transition">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium">{enrollment.session?.training?.title || enrollment.session?.title}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">{formatDate(enrollment.session?.start_date)} — {formatDate(enrollment.session?.end_date)}</p>
+                      </div>
+                      <Badge className={enrollment.status === "completed" ? "bg-green-100 text-green-700" : enrollment.status === "confirmed" ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-600"}>
+                        {enrollment.status === "completed" ? "Terminée" : enrollment.status === "confirmed" ? "Confirmé" : "Inscrit"}
+                      </Badge>
+                    </div>
+                    {enrollment.completion_rate > 0 && (
+                      <div className="mt-2 bg-gray-100 rounded-full h-1.5">
+                        <div className="bg-[#3DB5C5] h-1.5 rounded-full" style={{ width: `${enrollment.completion_rate}%` }} />
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
           </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center justify-between">
-              <div>
-                {editing ? (
-                  <div className="grid grid-cols-2 gap-3 mb-3">
-                    <div className="space-y-1">
-                      <Label className="text-xs">Prénom</Label>
-                      <Input value={form.first_name} onChange={(e) => setForm((f) => ({ ...f, first_name: e.target.value }))} />
+
+          {/* E-Learning */}
+          <div>
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">E-Learning ({elearning.length})</h3>
+            {elearning.length === 0 ? (
+              <p className="text-sm text-gray-400">Aucun cours inscrit.</p>
+            ) : (
+              <div className="space-y-2">
+                {elearning.map((e) => (
+                  <div key={e.id} className="border rounded-lg p-3 hover:bg-gray-50 transition">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <BookOpen className="h-4 w-4 text-gray-400" />
+                        <div>
+                          <p className="text-sm font-medium">{e.elearning_courses?.title ?? "Cours inconnu"}</p>
+                          <p className="text-xs text-gray-400 mt-0.5">
+                            <Clock className="h-3 w-3 inline mr-1" />
+                            {e.elearning_courses?.estimated_duration_minutes ?? 0} min
+                          </p>
+                        </div>
+                      </div>
+                      <Badge className={cn("text-xs", e.status === "completed" ? "bg-green-100 text-green-700" : e.status === "in_progress" ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-600")}>
+                        {e.status === "completed" ? "Terminé" : e.status === "in_progress" ? "En cours" : "Inscrit"}
+                      </Badge>
                     </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Nom</Label>
-                      <Input value={form.last_name} onChange={(e) => setForm((f) => ({ ...f, last_name: e.target.value }))} />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Email</Label>
-                      <Input type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Téléphone</Label>
-                      <Input value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} />
-                    </div>
-                    <div className="space-y-1 col-span-2">
-                      <Label className="text-xs flex items-center gap-1"><Building2 className="h-3 w-3" /> Entreprise</Label>
-                      <select
-                        value={form.client_id}
-                        onChange={(e) => setForm((f) => ({ ...f, client_id: e.target.value }))}
-                        className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[#3DB5C5] bg-white"
-                      >
-                        <option value="">— Aucune entreprise —</option>
-                        {clientOptions.map((c) => (
-                          <option key={c.id} value={c.id}>{c.company_name}</option>
-                        ))}
-                      </select>
+                    <div className="mt-2 bg-gray-100 rounded-full h-1.5">
+                      <div className="bg-[#3DB5C5] h-1.5 rounded-full transition-all" style={{ width: `${e.progress ?? 0}%` }} />
                     </div>
                   </div>
-                ) : (
-                  <>
-                    <h1 className="text-xl font-bold text-gray-900">{learner.first_name} {learner.last_name}</h1>
-                    <div className="flex flex-wrap gap-4 mt-2 text-sm text-gray-600">
-                      <span className="flex items-center gap-1.5"><Mail className="h-3.5 w-3.5 text-gray-400" />{learner.email}</span>
-                      {learner.phone && <span className="flex items-center gap-1.5"><Phone className="h-3.5 w-3.5 text-gray-400" />{learner.phone}</span>}
-                      {learner.clients?.company_name && <span className="flex items-center gap-1.5"><Building2 className="h-3.5 w-3.5 text-gray-400" />{learner.clients.company_name}</span>}
-                    </div>
-                  </>
-                )}
+                ))}
               </div>
-              <div className="flex items-center gap-2">
-                {editing ? (
-                  <>
-                    <Button variant="outline" size="sm" onClick={() => setEditing(false)} className="gap-1"><X className="h-3.5 w-3.5" /> Annuler</Button>
-                    <Button size="sm" onClick={handleSave} disabled={saving} className="gap-1" style={{ background: "#3DB5C5" }}><Save className="h-3.5 w-3.5" /> {saving ? "..." : "Enregistrer"}</Button>
-                  </>
-                ) : (
-                  <Button variant="outline" size="sm" onClick={() => setEditing(true)} className="gap-1"><Pencil className="h-3.5 w-3.5" /> Modifier</Button>
-                )}
+            )}
+          </div>
+        </div>
+
+        {/* RIGHT: Infos (1/3) */}
+        <div className="w-80 shrink-0 bg-white border-l p-6 space-y-6">
+          {/* Company */}
+          {company && (
+            <div>
+              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Entreprise</h3>
+              <Link href={`/admin/clients/${company.id}`} className="text-sm text-[#3DB5C5] hover:underline flex items-center gap-1.5">
+                <Building2 className="h-3.5 w-3.5" />{company.company_name}
+              </Link>
+            </div>
+          )}
+
+          {/* Personal info */}
+          <div>
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Informations</h3>
+            {editing ? (
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Prénom</Label>
+                  <Input value={form.first_name} onChange={(e) => setForm((f) => ({ ...f, first_name: e.target.value }))} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Nom</Label>
+                  <Input value={form.last_name} onChange={(e) => setForm((f) => ({ ...f, last_name: e.target.value }))} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Email</Label>
+                  <Input type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Téléphone</Label>
+                  <Input value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs flex items-center gap-1"><Building2 className="h-3 w-3" /> Entreprise</Label>
+                  <select
+                    value={form.client_id}
+                    onChange={(e) => setForm((f) => ({ ...f, client_id: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[#3DB5C5] bg-white"
+                  >
+                    <option value="">— Aucune entreprise —</option>
+                    {clientOptions.map((c) => (
+                      <option key={c.id} value={c.id}>{c.company_name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Poste / Fonction</Label>
+                  <Input value={form.job_title} onChange={(e) => setForm((f) => ({ ...f, job_title: e.target.value }))} placeholder="Ex: Aide-soignant(e)" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Genre</Label>
+                  <select
+                    value={form.gender}
+                    onChange={(e) => setForm((f) => ({ ...f, gender: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[#3DB5C5] bg-white"
+                  >
+                    <option value="">— Non renseigné —</option>
+                    <option value="M">Homme</option>
+                    <option value="F">Femme</option>
+                    <option value="autre">Autre</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Date de naissance</Label>
+                  <Input type="date" value={form.birth_date} onChange={(e) => setForm((f) => ({ ...f, birth_date: e.target.value }))} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Nationalité</Label>
+                  <Input value={form.nationality} onChange={(e) => setForm((f) => ({ ...f, nationality: e.target.value }))} placeholder="Française" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">N° Sécurité sociale</Label>
+                  <div className="relative">
+                    <Input
+                      type={showSSN ? "text" : "password"}
+                      value={form.social_security_number}
+                      onChange={(e) => setForm((f) => ({ ...f, social_security_number: e.target.value }))}
+                      placeholder="1 23 45 67 890 123 45"
+                    />
+                    <button type="button" onClick={() => setShowSSN(!showSSN)} className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-500 hover:text-gray-700">
+                      {showSSN ? "Masquer" : "Afficher"}
+                    </button>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Niveau de formation</Label>
+                  <select
+                    value={form.education_level}
+                    onChange={(e) => setForm((f) => ({ ...f, education_level: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[#3DB5C5] bg-white"
+                  >
+                    <option value="">— Non renseigné —</option>
+                    <option value="bac_moins">Inférieur au Bac</option>
+                    <option value="bac">Bac</option>
+                    <option value="bac_plus_2">Bac+2</option>
+                    <option value="bac_plus_3">Bac+3 (Licence)</option>
+                    <option value="bac_plus_5">Bac+5 (Master)</option>
+                    <option value="bac_plus_8">Bac+8 (Doctorat)</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Adresse</Label>
+                  <Input value={form.address} onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))} placeholder="Numéro et rue" />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Ville</Label>
+                    <Input value={form.city} onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Code postal</Label>
+                    <Input value={form.postal_code} onChange={(e) => setForm((f) => ({ ...f, postal_code: e.target.value }))} />
+                  </div>
+                </div>
+                <div className="flex gap-2 pt-2">
+                  <Button size="sm" onClick={handleSave} disabled={saving} className="gap-1 flex-1" style={{ background: "#3DB5C5" }}>
+                    <Save className="h-3.5 w-3.5" /> {saving ? "..." : "Enregistrer"}
+                  </Button>
+                </div>
               </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Informations personnelles */}
-      {editing && (
-        <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-4">
-          <h2 className="text-base font-semibold text-gray-900">Informations personnelles</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label>Poste / Fonction</Label>
-              <Input
-                value={form.job_title}
-                onChange={(e) => setForm((f) => ({ ...f, job_title: e.target.value }))}
-                placeholder="Ex: Aide-soignant(e)"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Genre</Label>
-              <select
-                value={form.gender}
-                onChange={(e) => setForm((f) => ({ ...f, gender: e.target.value }))}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[#3DB5C5] bg-white"
-              >
-                <option value="">— Non renseigné —</option>
-                <option value="M">Homme</option>
-                <option value="F">Femme</option>
-                <option value="autre">Autre</option>
-              </select>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label>Date de naissance</Label>
-              <Input
-                type="date"
-                value={form.birth_date}
-                onChange={(e) => setForm((f) => ({ ...f, birth_date: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Nationalité</Label>
-              <Input
-                value={form.nationality}
-                onChange={(e) => setForm((f) => ({ ...f, nationality: e.target.value }))}
-                placeholder="Française"
-              />
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <Label>Numéro de sécurité sociale</Label>
-            <div className="relative">
-              <Input
-                type={showSSN ? "text" : "password"}
-                value={form.social_security_number}
-                onChange={(e) => setForm((f) => ({ ...f, social_security_number: e.target.value }))}
-                placeholder="1 23 45 67 890 123 45"
-              />
-              <button
-                type="button"
-                onClick={() => setShowSSN(!showSSN)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-500 hover:text-gray-700"
-              >
-                {showSSN ? "Masquer" : "Afficher"}
-              </button>
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <Label>Niveau de formation</Label>
-            <select
-              value={form.education_level}
-              onChange={(e) => setForm((f) => ({ ...f, education_level: e.target.value }))}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[#3DB5C5] bg-white"
-            >
-              <option value="">— Non renseigné —</option>
-              <option value="bac_moins">Inférieur au Bac</option>
-              <option value="bac">Bac</option>
-              <option value="bac_plus_2">Bac+2</option>
-              <option value="bac_plus_3">Bac+3 (Licence)</option>
-              <option value="bac_plus_5">Bac+5 (Master)</option>
-              <option value="bac_plus_8">Bac+8 (Doctorat)</option>
-            </select>
-          </div>
-        </div>
-      )}
-
-      {/* Adresse */}
-      {editing && (
-        <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-4">
-          <h2 className="text-base font-semibold text-gray-900">Adresse</h2>
-          <div className="space-y-1.5">
-            <Label>Adresse complète</Label>
-            <Input
-              value={form.address}
-              onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
-              placeholder="Numéro et rue"
-            />
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label>Ville</Label>
-              <Input
-                value={form.city}
-                onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Code postal</Label>
-              <Input
-                value={form.postal_code}
-                onChange={(e) => setForm((f) => ({ ...f, postal_code: e.target.value }))}
-              />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* E-Learning Enrollments */}
-      <div className="bg-white border border-gray-200 rounded-xl p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-          <BookOpen className="h-5 w-5 text-[#3DB5C5]" />
-          Cours E-Learning ({enrollments.length})
-        </h2>
-        {enrollments.length === 0 ? (
-          <p className="text-sm text-gray-400">Aucun cours inscrit.</p>
-        ) : (
-          <div className="space-y-2">
-            {enrollments.map((e) => (
-              <div key={e.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <BookOpen className="h-4 w-4 text-gray-400" />
+            ) : (
+              <div className="space-y-2 text-sm">
+                {(learner as any).job_title && (
+                  <div><span className="text-gray-400">Poste</span><p className="text-gray-700">{(learner as any).job_title}</p></div>
+                )}
+                {(learner as any).gender && (
+                  <div><span className="text-gray-400">Genre</span><p className="text-gray-700">{(learner as any).gender === "M" ? "Homme" : (learner as any).gender === "F" ? "Femme" : "Autre"}</p></div>
+                )}
+                {(learner as any).birth_date && (
+                  <div><span className="text-gray-400">Date de naissance</span><p className="text-gray-700">{formatDate((learner as any).birth_date)}</p></div>
+                )}
+                {(learner as any).nationality && (
+                  <div><span className="text-gray-400">Nationalité</span><p className="text-gray-700">{(learner as any).nationality}</p></div>
+                )}
+                {(learner as any).education_level && (
+                  <div><span className="text-gray-400">Niveau</span><p className="text-gray-700">{(learner as any).education_level}</p></div>
+                )}
+                {((learner as any).address || (learner as any).city) && (
                   <div>
-                    <p className="text-sm font-medium text-gray-800">{e.elearning_courses?.title ?? "Cours inconnu"}</p>
-                    <p className="text-xs text-gray-400">
-                      <Clock className="h-3 w-3 inline mr-1" />
-                      {e.elearning_courses?.estimated_duration_minutes ?? 0} min
+                    <span className="text-gray-400">Adresse</span>
+                    <p className="text-gray-700">
+                      {(learner as any).address}{(learner as any).address && (learner as any).city ? ", " : ""}
+                      {(learner as any).postal_code} {(learner as any).city}
                     </p>
                   </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
-                    <div className="h-full bg-[#3DB5C5] transition-all" style={{ width: `${e.progress ?? 0}%` }} />
-                  </div>
-                  <Badge className={cn("text-xs", e.status === "completed" ? "bg-green-100 text-green-700" : e.status === "in_progress" ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-600")}>
-                    {e.status === "completed" ? "Terminé" : e.status === "in_progress" ? "En cours" : "Inscrit"}
-                  </Badge>
-                </div>
+                )}
               </div>
-            ))}
+            )}
           </div>
-        )}
-      </div>
-
-      {/* Training Sessions */}
-      <div className="bg-white border border-gray-200 rounded-xl p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-          <Calendar className="h-5 w-5 text-[#3DB5C5]" />
-          Sessions de formation ({sessions.length})
-        </h2>
-        {sessions.length === 0 ? (
-          <p className="text-sm text-gray-400">Aucune session de formation.</p>
-        ) : (
-          <div className="space-y-2">
-            {sessions.map((s) => (
-              <div key={s.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <Calendar className="h-4 w-4 text-gray-400" />
-                  <div>
-                    <p className="text-sm font-medium text-gray-800">{s.sessions?.trainings?.title ?? "Formation"}</p>
-                    <p className="text-xs text-gray-400">
-                      {s.sessions?.start_date ? new Date(s.sessions.start_date).toLocaleDateString("fr-FR") : "—"}
-                      {s.sessions?.end_date ? ` — ${new Date(s.sessions.end_date).toLocaleDateString("fr-FR")}` : ""}
-                    </p>
-                  </div>
-                </div>
-                <CheckCircle2 className="h-4 w-4 text-green-500" />
-              </div>
-            ))}
-          </div>
-        )}
+        </div>
       </div>
     </div>
   );

@@ -1,12 +1,21 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Search, ChevronLeft, ChevronRight } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { useEntity } from "@/contexts/EntityContext";
-import { getInitials } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface Learner {
   id: string;
@@ -23,11 +32,12 @@ export default function ApprenantsProfilesPage() {
   const supabase = createClient();
   const { toast } = useToast();
   const { entityId } = useEntity();
+  const router = useRouter();
 
   const [learners, setLearners] = useState<Learner[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [searchInput, setSearchInput] = useState("");
+  const [companyFilter, setCompanyFilter] = useState("all");
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
 
@@ -61,18 +71,27 @@ export default function ApprenantsProfilesPage() {
 
   useEffect(() => { fetchLearners(); }, [fetchLearners]);
 
-  const totalPages = Math.ceil(total / PAGE_SIZE);
+  // Unique companies from loaded learners for the filter
+  const uniqueCompanies = useMemo(() => {
+    const companies = learners
+      .map((l) => l.clients?.company_name)
+      .filter((c): c is string => !!c);
+    return [...new Set(companies)].sort();
+  }, [learners]);
 
-  const handleSearch = () => {
-    setSearch(searchInput);
-    setPage(1);
-  };
+  // Filter learners by company client-side
+  const filteredLearners = useMemo(() => {
+    if (companyFilter === "all") return learners;
+    return learners.filter((l) => l.clients?.company_name === companyFilter);
+  }, [learners, companyFilter]);
+
+  const totalPages = Math.ceil(total / PAGE_SIZE);
 
   const renderPagination = () => {
     const pages = [];
     const maxVisible = 7;
     let start = Math.max(1, page - 3);
-    let end = Math.min(totalPages, start + maxVisible - 1);
+    const end = Math.min(totalPages, start + maxVisible - 1);
     if (end - start < maxVisible - 1) start = Math.max(1, end - maxVisible + 1);
 
     for (let i = start; i <= end; i++) pages.push(i);
@@ -110,93 +129,69 @@ export default function ApprenantsProfilesPage() {
   };
 
   return (
-    <div className="p-6">
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-2 text-sm mb-4">
-        <Link href="/admin" className="text-[#3DB5C5] hover:underline">Accueil</Link>
-        <span className="text-gray-400">/</span>
-        <Link href="/admin/clients" className="text-[#3DB5C5] hover:underline">Clients</Link>
-        <span className="text-gray-400">/</span>
-        <span className="text-gray-500">Profils des Apprenants</span>
+    <div className="p-6 space-y-4">
+      {/* Header compact */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-6">
+          <h1 className="text-lg font-bold text-gray-900">Apprenants</h1>
+          <span className="text-xs text-gray-500"><span className="font-bold text-sm text-gray-900">{total}</span> profils</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" className="text-xs" onClick={() => router.push("/admin/clients/apprenants/liste")}>Vue liste</Button>
+        </div>
       </div>
 
-      {/* Title */}
-      <h1 className="text-gray-700 text-xl font-bold mb-6">Clients / Profils des Apprenants</h1>
-
-      {/* Search bar */}
-      <div className="flex gap-2 mb-6">
-        <input
-          type="text"
-          placeholder="Rechercher..."
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-          className="border border-gray-300 rounded-lg px-4 py-2 text-sm flex-1 max-w-sm focus:outline-none focus:border-[#3DB5C5]"
-        />
-        <button
-          onClick={handleSearch}
-          className="text-white px-4 py-2 rounded-lg text-sm font-medium uppercase"
-          style={{ background: "#3DB5C5" }}
-        >
-          <Search className="h-4 w-4 inline mr-1" />
-          Rechercher
-        </button>
-        <Link
-          href="/admin/clients/apprenants/liste"
-          className="border border-[#3DB5C5] text-[#3DB5C5] px-4 py-2 rounded-lg text-sm flex items-center"
-        >
-          Voir la liste complète
-        </Link>
+      {/* Filters */}
+      <div className="flex items-center gap-3">
+        <div className="relative flex-1 max-w-xs">
+          <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+          <Input
+            placeholder="Rechercher..."
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            className="h-8 pl-8 text-xs"
+          />
+        </div>
+        <Select value={companyFilter} onValueChange={(v) => { setCompanyFilter(v); setPage(1); }}>
+          <SelectTrigger className="h-8 w-[180px] text-xs">
+            <SelectValue placeholder="Entreprise" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Toutes les entreprises</SelectItem>
+            {uniqueCompanies.map((company) => (
+              <SelectItem key={company} value={company}>{company}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
-
-      {/* Results count */}
-      <p className="text-sm text-gray-500 mb-4">{total} apprenant{total !== 1 ? "s" : ""} trouvé{total !== 1 ? "s" : ""}</p>
 
       {/* Grid */}
       {loading ? (
         <div className="flex justify-center py-20">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#3DB5C5] border-t-transparent" />
         </div>
-      ) : learners.length === 0 ? (
+      ) : filteredLearners.length === 0 ? (
         <div className="text-center py-20 text-gray-400">
           <p className="text-lg font-medium">Aucun apprenant trouvé</p>
           <p className="text-sm mt-1">Modifiez vos critères de recherche ou ajoutez des apprenants.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {learners.map((learner) => {
-            const initials = getInitials(`${learner.first_name} ${learner.last_name}`);
-            const companyName = learner.clients?.company_name ?? "—";
-            return (
-              <Link
-                key={learner.id}
-                href={`/admin/clients/apprenants/${learner.id}`}
-                className="bg-white border border-gray-200 rounded-xl p-5 flex flex-col items-center text-center hover:shadow-md hover:border-[#3DB5C5] transition-all"
-              >
-                {/* Avatar */}
-                <div
-                  className="w-14 h-14 rounded-full flex items-center justify-center text-white font-bold text-lg mb-3"
-                  style={{ background: "#3DB5C5" }}
-                >
-                  {initials}
-                </div>
-                {/* Name */}
-                <p className="font-bold text-gray-800 text-sm">
-                  {learner.first_name} {learner.last_name}
-                </p>
-                {/* Email */}
-                <p className="text-xs text-gray-500 mt-1 truncate w-full" title={learner.email}>
-                  {learner.email}
-                </p>
-                {/* Company */}
-                <p className="text-xs text-gray-400 mt-1">{companyName}</p>
-                {/* Reference */}
-                <span className="mt-2 text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded">
-                  Réf: 0000
-                </span>
-              </Link>
-            );
-          })}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+          {filteredLearners.map((learner) => (
+            <Link
+              key={learner.id}
+              href={`/admin/clients/apprenants/${learner.id}`}
+              className="border rounded-lg p-4 hover:border-gray-300 hover:shadow-sm transition-all bg-white"
+            >
+              <p className="text-sm font-semibold text-gray-900">{learner.first_name} {learner.last_name}</p>
+              {learner.clients?.company_name && (
+                <p className="text-xs text-[#3DB5C5] mt-0.5">{learner.clients.company_name}</p>
+              )}
+              {learner.email && (
+                <p className="text-xs text-gray-400 mt-1 truncate">{learner.email}</p>
+              )}
+            </Link>
+          ))}
         </div>
       )}
 
