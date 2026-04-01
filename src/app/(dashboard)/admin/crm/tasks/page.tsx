@@ -483,6 +483,13 @@ export default function TasksPage() {
                   <SelectItem value="high">Haute</SelectItem>
                 </SelectContent>
               </Select>
+              <Select value={formData.assigned_to || "none"} onValueChange={(v) => updateField("assigned_to", v === "none" ? "" : v)}>
+                <SelectTrigger className="h-8 w-36 text-xs"><SelectValue placeholder="Assigné à..." /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Non assigné</SelectItem>
+                  {profiles.map(p => <SelectItem key={p.id} value={p.id}>{p.first_name} {p.last_name}</SelectItem>)}
+                </SelectContent>
+              </Select>
               <Input
                 type="date"
                 value={formData.due_date}

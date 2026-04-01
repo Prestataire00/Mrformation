@@ -125,6 +125,23 @@ export async function PATCH(
       details: { name: data?.title },
     });
 
+    // Notify new assignee if task reassigned
+    if (data.assigned_to && data.assigned_to !== existing.assigned_to && data.assigned_to !== user.id) {
+      try {
+        const notifClient = createServiceClient();
+        await notifClient.from("crm_notifications").insert({
+          entity_id: profile.entity_id,
+          user_id: data.assigned_to,
+          type: "general",
+          title: "Tâche réassignée",
+          message: `"${data.title}" vous a été assignée`,
+          link: "/admin/crm/tasks",
+          resource_type: "task",
+          resource_id: data.id,
+        });
+      } catch { /* silent */ }
+    }
+
     return NextResponse.json({ data, error: null });
   } catch (err) {
     return NextResponse.json({ data: null, error: sanitizeError(err, "updating task") }, { status: 500 });
