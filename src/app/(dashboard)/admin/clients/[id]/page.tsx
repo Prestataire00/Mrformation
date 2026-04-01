@@ -30,8 +30,6 @@ import {
   File,
   FolderOpen,
   Loader2,
-  ListTodo,
-  MessageSquare,
   Send,
   TrendingUp,
   Clock,
@@ -990,18 +988,13 @@ export default function ClientDetailPage() {
       </div>
 
       {/* ===== MAIN TABS ===== */}
-      <Tabs defaultValue="tasks">
+      <Tabs defaultValue="overview">
         <TabsList className="w-full justify-start border-b rounded-none h-auto p-0 bg-transparent gap-0 flex-wrap">
           {[
-            { value: "tasks", label: "Tâches", icon: ListTodo },
-            { value: "comments", label: "Commentaires", icon: MessageSquare },
-            { value: "emails", label: "Emails", icon: Send },
-            { value: "contacts", label: `Contacts (${contacts.length})`, icon: User },
-            { value: "learners", label: `Apprenants (${learners.length})`, icon: Users },
-            { value: "sessions", label: `Sessions (${sessions.length})`, icon: Calendar },
+            { value: "overview", label: "Vue d'ensemble", icon: Building2 },
+            { value: "formations", label: `Formations (${sessions.length})`, icon: Calendar },
+            { value: "communication", label: "Communication", icon: Send },
             { value: "documents", label: `Documents (${documents.length})`, icon: FolderOpen },
-            { value: "info", label: "Infos", icon: Building2 },
-            { value: "history", label: "Historique", icon: History },
           ].map(({ value, label, icon: Icon }) => (
             <TabsTrigger
               key={value}
@@ -1014,230 +1007,559 @@ export default function ClientDetailPage() {
           ))}
         </TabsList>
 
-        {/* ---- Tab: Tâches ---- */}
-        <TabsContent value="tasks" className="mt-6">
-          <TasksSection clientId={clientId} clientName={client.company_name} />
-        </TabsContent>
+        {/* ════ Tab: Vue d'ensemble ════ */}
+        <TabsContent value="overview" className="mt-6 space-y-8">
 
-        {/* ---- Tab: Commentaires ---- */}
-        <TabsContent value="comments" className="mt-6">
-          <CommentsSection clientId={clientId} />
-        </TabsContent>
-
-        {/* ---- Tab: Emails ---- */}
-        <TabsContent value="emails" className="mt-6">
-          <EmailSection
-            clientId={clientId}
-            clientName={client.company_name}
-            contacts={contacts.map((c) => ({
-              email: c.email,
-              first_name: c.first_name,
-              last_name: c.last_name,
-            }))}
-          />
-        </TabsContent>
-
-        {/* ---- Tab: Contacts ---- */}
-        <TabsContent value="contacts" className="mt-6">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-3">
-              <div>
-                <CardTitle className="text-base font-semibold">Contacts</CardTitle>
-                <CardDescription>{contacts.length} contact{contacts.length !== 1 ? "s" : ""} enregistré{contacts.length !== 1 ? "s" : ""}</CardDescription>
-              </div>
-              <Button onClick={openAddContactDialog} size="sm" className="gap-1.5">
-                <Plus className="h-4 w-4" />
-                Ajouter un contact
+          {/* ── Contacts section ── */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Contacts ({contacts.length})</h3>
+              <Button size="sm" variant="outline" className="text-xs h-7 gap-1" onClick={() => setContactDialogOpen(true)}>
+                <Plus className="h-3 w-3" /> Contact
               </Button>
-            </CardHeader>
-            <CardContent>
-              {contacts.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-14 text-center">
-                  <User className="h-10 w-10 text-muted-foreground/30 mb-3" />
-                  <p className="font-medium text-gray-700">Aucun contact enregistré</p>
-                  <p className="text-sm text-muted-foreground mt-1">Ajoutez le premier contact de ce client.</p>
-                  <Button onClick={openAddContactDialog} className="mt-4 gap-1.5" size="sm">
-                    <Plus className="h-4 w-4" />
-                    Ajouter un contact
-                  </Button>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {contacts.map((contact) => (
-                    <div
-                      key={contact.id}
-                      className={cn(
-                        "rounded-lg border p-4 space-y-3 transition-shadow hover:shadow-sm",
-                        contact.is_primary && "border-amber-200 bg-amber-50/50"
-                      )}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-center gap-2.5">
-                          <Avatar className="h-10 w-10 flex-shrink-0">
-                            <AvatarFallback className={cn(
-                              "text-sm font-semibold",
-                              contact.is_primary ? "bg-amber-100 text-amber-800" : "bg-violet-100 text-violet-700"
-                            )}>
-                              {getInitials(contact.first_name, contact.last_name)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-1.5">
-                              <p className="font-semibold text-sm text-gray-900 truncate">
-                                {contact.first_name} {contact.last_name}
-                              </p>
-                              {contact.is_primary && (
-                                <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-400 flex-shrink-0" />
-                              )}
-                            </div>
-                            {contact.job_title && (
-                              <p className="text-xs text-muted-foreground truncate">{contact.job_title}</p>
+            </div>
+            {contacts.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-14 text-center border rounded-lg border-dashed">
+                <User className="h-10 w-10 text-muted-foreground/30 mb-3" />
+                <p className="font-medium text-gray-700">Aucun contact enregistré</p>
+                <p className="text-sm text-muted-foreground mt-1">Ajoutez le premier contact de ce client.</p>
+                <Button onClick={openAddContactDialog} className="mt-4 gap-1.5" size="sm">
+                  <Plus className="h-4 w-4" />
+                  Ajouter un contact
+                </Button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {contacts.map((contact) => (
+                  <div
+                    key={contact.id}
+                    className={cn(
+                      "rounded-lg border p-4 space-y-3 transition-shadow hover:shadow-sm",
+                      contact.is_primary && "border-amber-200 bg-amber-50/50"
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2.5">
+                        <Avatar className="h-10 w-10 flex-shrink-0">
+                          <AvatarFallback className={cn(
+                            "text-sm font-semibold",
+                            contact.is_primary ? "bg-amber-100 text-amber-800" : "bg-violet-100 text-violet-700"
+                          )}>
+                            {getInitials(contact.first_name, contact.last_name)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <p className="font-semibold text-sm text-gray-900 truncate">
+                              {contact.first_name} {contact.last_name}
+                            </p>
+                            {contact.is_primary && (
+                              <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-400 flex-shrink-0" />
                             )}
                           </div>
-                        </div>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-7 w-7 flex-shrink-0">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-40">
-                            <DropdownMenuItem onClick={() => openEditContactDialog(contact)} className="gap-2">
-                              <Pencil className="h-4 w-4" />
-                              Modifier
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              onClick={() => openDeleteContactDialog(contact)}
-                              className="gap-2 text-red-600 focus:text-red-600"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                              Supprimer
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-
-                      <div className="space-y-1.5">
-                        {contact.email && (
-                          <a href={`mailto:${contact.email}`} className="flex items-center gap-1.5 text-xs text-violet-600 hover:underline">
-                            <Mail className="h-3.5 w-3.5 flex-shrink-0" />
-                            <span className="truncate">{contact.email}</span>
-                          </a>
-                        )}
-                        {contact.phone && (
-                          <a href={`tel:${contact.phone}`} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-gray-900">
-                            <Phone className="h-3.5 w-3.5 flex-shrink-0" />
-                            {contact.phone}
-                          </a>
-                        )}
-                        {!contact.email && !contact.phone && (
-                          <p className="text-xs text-muted-foreground italic">Aucune coordonnée</p>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* ---- Tab: Apprenants ---- */}
-        <TabsContent value="learners" className="mt-6 space-y-4">
-          {/* Add learner inline form */}
-          {showAddLearner ? (
-            <div className="border rounded-lg p-4 bg-gray-50/50 space-y-3">
-              <p className="text-xs font-semibold text-gray-500 uppercase">Ajouter un apprenant</p>
-              <div className="flex items-center gap-3">
-                <Input placeholder="Prénom *" value={newLearner.first_name} onChange={e => setNewLearner(f => ({...f, first_name: e.target.value}))} className="h-8 text-sm flex-1" autoFocus />
-                <Input placeholder="Nom *" value={newLearner.last_name} onChange={e => setNewLearner(f => ({...f, last_name: e.target.value}))} className="h-8 text-sm flex-1" />
-                <Input placeholder="Email" value={newLearner.email} onChange={e => setNewLearner(f => ({...f, email: e.target.value}))} className="h-8 text-sm flex-1" />
-                <Input placeholder="Poste" value={newLearner.job_title} onChange={e => setNewLearner(f => ({...f, job_title: e.target.value}))} className="h-8 text-sm w-32" />
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="flex-1" />
-                <Button size="sm" variant="ghost" className="text-xs h-7" onClick={() => setShowAddLearner(false)}>Annuler</Button>
-                <Button size="sm" className="text-xs h-7" disabled={!newLearner.first_name.trim() || !newLearner.last_name.trim()} onClick={handleAddLearner}>Ajouter</Button>
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-500">{learners.length} apprenant{learners.length !== 1 ? "s" : ""}</span>
-              <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={() => setShowAddLearner(true)}>
-                <UserPlus className="h-3.5 w-3.5" /> Ajouter un apprenant
-              </Button>
-            </div>
-          )}
-
-          {/* Learners list */}
-          {learners.length === 0 && !showAddLearner ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center border rounded-lg border-dashed">
-              <Users className="h-8 w-8 text-gray-300 mb-2" />
-              <p className="text-sm text-gray-500">Aucun apprenant rattaché</p>
-              <p className="text-xs text-gray-400 mt-1">Ajoutez les employés de cette entreprise qui participeront aux formations</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {learners.map((learner) => (
-                <div key={learner.id} className="border rounded-lg p-3 hover:bg-gray-50/50 transition-colors">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="h-8 w-8 rounded-full bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-500 shrink-0">
-                        {learner.first_name.charAt(0)}{learner.last_name.charAt(0)}
-                      </div>
-                      <div className="min-w-0">
-                        <Link href={`/admin/clients/apprenants/${learner.id}`} className="text-sm font-medium text-gray-900 hover:text-[#3DB5C5] hover:underline">
-                          {learner.first_name} {learner.last_name}
-                        </Link>
-                        <div className="flex items-center gap-3 text-xs text-gray-400 mt-0.5">
-                          {learner.email && <span>{learner.email}</span>}
-                          {learner.job_title && <span>{learner.job_title}</span>}
-                          <span>{learner.enrollments_count} formation{learner.enrollments_count !== 1 ? "s" : ""}</span>
+                          {contact.job_title && (
+                            <p className="text-xs text-muted-foreground truncate">{contact.job_title}</p>
+                          )}
                         </div>
                       </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-7 w-7 flex-shrink-0">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-40">
+                          <DropdownMenuItem onClick={() => openEditContactDialog(contact)} className="gap-2">
+                            <Pencil className="h-4 w-4" />
+                            Modifier
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onClick={() => openDeleteContactDialog(contact)}
+                            className="gap-2 text-red-600 focus:text-red-600"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            Supprimer
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button onClick={() => handleEnrollLearner(learner)} className="text-[10px] text-[#3DB5C5] hover:underline px-1.5 py-0.5">Inscrire</button>
-                      <Link href={`/admin/clients/apprenants/${learner.id}`} className="text-[10px] text-gray-500 hover:text-gray-700 px-1.5 py-0.5">Voir</Link>
+
+                    <div className="space-y-1.5">
+                      {contact.email && (
+                        <a href={`mailto:${contact.email}`} className="flex items-center gap-1.5 text-xs text-violet-600 hover:underline">
+                          <Mail className="h-3.5 w-3.5 flex-shrink-0" />
+                          <span className="truncate">{contact.email}</span>
+                        </a>
+                      )}
+                      {contact.phone && (
+                        <a href={`tel:${contact.phone}`} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-gray-900">
+                          <Phone className="h-3.5 w-3.5 flex-shrink-0" />
+                          {contact.phone}
+                        </a>
+                      )}
+                      {!contact.email && !contact.phone && (
+                        <p className="text-xs text-muted-foreground italic">Aucune coordonnée</p>
+                      )}
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
+          </div>
 
-          {/* Enroll dialog */}
-          {enrollDialogOpen && enrollingLearner && (
-            <Dialog open={enrollDialogOpen} onOpenChange={setEnrollDialogOpen}>
-              <DialogContent className="max-w-md">
-                <DialogHeader>
-                  <DialogTitle>Inscrire {enrollingLearner.first_name} {enrollingLearner.last_name}</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-3 py-2">
-                  <Label>Formation</Label>
-                  <Select value={enrollSessionId} onValueChange={setEnrollSessionId}>
-                    <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Sélectionner une session..." /></SelectTrigger>
-                    <SelectContent>
-                      {sessions.map(s => (
-                        <SelectItem key={s.id} value={s.id}>{s.title}{s.start_date ? ` (${formatDate(s.start_date)})` : ""}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+          <hr className="border-gray-100" />
+
+          {/* ── Apprenants section ── */}
+          <div>
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Apprenants ({learners.length})</h3>
+
+            {showAddLearner ? (
+              <div className="border rounded-lg p-4 bg-gray-50/50 space-y-3">
+                <p className="text-xs font-semibold text-gray-500 uppercase">Ajouter un apprenant</p>
+                <div className="flex items-center gap-3">
+                  <Input placeholder="Prénom *" value={newLearner.first_name} onChange={e => setNewLearner(f => ({...f, first_name: e.target.value}))} className="h-8 text-sm flex-1" autoFocus />
+                  <Input placeholder="Nom *" value={newLearner.last_name} onChange={e => setNewLearner(f => ({...f, last_name: e.target.value}))} className="h-8 text-sm flex-1" />
+                  <Input placeholder="Email" value={newLearner.email} onChange={e => setNewLearner(f => ({...f, email: e.target.value}))} className="h-8 text-sm flex-1" />
+                  <Input placeholder="Poste" value={newLearner.job_title} onChange={e => setNewLearner(f => ({...f, job_title: e.target.value}))} className="h-8 text-sm w-32" />
                 </div>
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setEnrollDialogOpen(false)}>Annuler</Button>
-                  <Button onClick={handleConfirmEnroll} disabled={!enrollSessionId || enrolling}>
-                    {enrolling ? "Inscription..." : "Inscrire"}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          )}
+                <div className="flex items-center gap-2">
+                  <div className="flex-1" />
+                  <Button size="sm" variant="ghost" className="text-xs h-7" onClick={() => setShowAddLearner(false)}>Annuler</Button>
+                  <Button size="sm" className="text-xs h-7" disabled={!newLearner.first_name.trim() || !newLearner.last_name.trim()} onClick={handleAddLearner}>Ajouter</Button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm text-gray-500">{learners.length} apprenant{learners.length !== 1 ? "s" : ""}</span>
+                <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={() => setShowAddLearner(true)}>
+                  <UserPlus className="h-3.5 w-3.5" /> Ajouter un apprenant
+                </Button>
+              </div>
+            )}
+
+            {learners.length === 0 && !showAddLearner ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center border rounded-lg border-dashed">
+                <Users className="h-8 w-8 text-gray-300 mb-2" />
+                <p className="text-sm text-gray-500">Aucun apprenant rattaché</p>
+                <p className="text-xs text-gray-400 mt-1">Ajoutez les employés de cette entreprise qui participeront aux formations</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {learners.map((learner) => (
+                  <div key={learner.id} className="border rounded-lg p-3 hover:bg-gray-50/50 transition-colors">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="h-8 w-8 rounded-full bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-500 shrink-0">
+                          {learner.first_name.charAt(0)}{learner.last_name.charAt(0)}
+                        </div>
+                        <div className="min-w-0">
+                          <Link href={`/admin/clients/apprenants/${learner.id}`} className="text-sm font-medium text-gray-900 hover:text-[#3DB5C5] hover:underline">
+                            {learner.first_name} {learner.last_name}
+                          </Link>
+                          <div className="flex items-center gap-3 text-xs text-gray-400 mt-0.5">
+                            {learner.email && <span>{learner.email}</span>}
+                            {learner.job_title && <span>{learner.job_title}</span>}
+                            <span>{learner.enrollments_count} formation{learner.enrollments_count !== 1 ? "s" : ""}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button onClick={() => handleEnrollLearner(learner)} className="text-[10px] text-[#3DB5C5] hover:underline px-1.5 py-0.5">Inscrire</button>
+                        <Link href={`/admin/clients/apprenants/${learner.id}`} className="text-[10px] text-gray-500 hover:text-gray-700 px-1.5 py-0.5">Voir</Link>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Enroll dialog */}
+            {enrollDialogOpen && enrollingLearner && (
+              <Dialog open={enrollDialogOpen} onOpenChange={setEnrollDialogOpen}>
+                <DialogContent className="max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Inscrire {enrollingLearner.first_name} {enrollingLearner.last_name}</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-3 py-2">
+                    <Label>Formation</Label>
+                    <Select value={enrollSessionId} onValueChange={setEnrollSessionId}>
+                      <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Sélectionner une session..." /></SelectTrigger>
+                      <SelectContent>
+                        {sessions.map(s => (
+                          <SelectItem key={s.id} value={s.id}>{s.title}{s.start_date ? ` (${formatDate(s.start_date)})` : ""}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setEnrollDialogOpen(false)}>Annuler</Button>
+                    <Button onClick={handleConfirmEnroll} disabled={!enrollSessionId || enrolling}>
+                      {enrolling ? "Inscription..." : "Inscrire"}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            )}
+          </div>
+
+          <hr className="border-gray-100" />
+
+          {/* ── Info section ── */}
+          <div>
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Informations client</h3>
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+              <div className="lg:col-span-2">
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between pb-3">
+                    <CardTitle className="text-base font-semibold">Informations générales</CardTitle>
+                    {!editingClient ? (
+                      <Button variant="outline" size="sm" onClick={() => setEditingClient(true)} className="gap-1.5">
+                        <Pencil className="h-3.5 w-3.5" />
+                        Modifier
+                      </Button>
+                    ) : (
+                      <div className="flex gap-2">
+                        <Button variant="ghost" size="sm" onClick={cancelEditClient} disabled={savingClient} className="gap-1.5">
+                          <X className="h-3.5 w-3.5" />
+                          Annuler
+                        </Button>
+                        <Button size="sm" onClick={handleSaveClient} disabled={savingClient} className="gap-1.5">
+                          {savingClient
+                            ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                            : <Save className="h-3.5 w-3.5" />
+                          }
+                          Enregistrer
+                        </Button>
+                      </div>
+                    )}
+                  </CardHeader>
+                  <CardContent className="space-y-5">
+                    <div className="space-y-1.5">
+                      <Label>Nom de l&apos;entreprise <span className="text-red-500">*</span></Label>
+                      {editingClient ? (
+                        <>
+                          <Input
+                            value={clientForm.company_name}
+                            onChange={(e) => setClientForm((f) => ({ ...f, company_name: e.target.value }))}
+                            className={cn(clientErrors.company_name && "border-red-500")}
+                          />
+                          {clientErrors.company_name && <p className="text-xs text-red-500">{clientErrors.company_name}</p>}
+                        </>
+                      ) : (
+                        <p className="text-sm font-medium text-gray-900">{client.company_name}</p>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <Label>SIRET</Label>
+                        {editingClient ? (
+                          <Input
+                            value={clientForm.siret}
+                            onChange={(e) => setClientForm((f) => ({ ...f, siret: e.target.value }))}
+                            placeholder="14 chiffres"
+                            maxLength={14}
+                          />
+                        ) : (
+                          <p className="text-sm text-gray-700 font-mono">{client.siret ?? "—"}</p>
+                        )}
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Statut</Label>
+                        {editingClient ? (
+                          <Select
+                            value={clientForm.status}
+                            onValueChange={(v) => setClientForm((f) => ({ ...f, status: v as ClientStatus }))}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="active">Actif</SelectItem>
+                              <SelectItem value="inactive">Inactif</SelectItem>
+                              <SelectItem value="prospect">Prospect</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <Badge className={cn("border-0", STATUS_COLORS[client.status])}>
+                            {STATUS_LABELS[client.status]}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+
+                    <Separator />
+
+                    <div className="space-y-1.5">
+                      <Label>Adresse</Label>
+                      {editingClient ? (
+                        <Input
+                          value={clientForm.address}
+                          onChange={(e) => setClientForm((f) => ({ ...f, address: e.target.value }))}
+                          placeholder="Rue, numéro…"
+                        />
+                      ) : (
+                        <p className="text-sm text-gray-700">{client.address ?? "—"}</p>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <Label>Ville</Label>
+                        {editingClient ? (
+                          <Input
+                            value={clientForm.city}
+                            onChange={(e) => setClientForm((f) => ({ ...f, city: e.target.value }))}
+                          />
+                        ) : (
+                          <p className="text-sm text-gray-700">{client.city ?? "—"}</p>
+                        )}
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Code postal</Label>
+                        {editingClient ? (
+                          <Input
+                            value={clientForm.postal_code}
+                            onChange={(e) => setClientForm((f) => ({ ...f, postal_code: e.target.value }))}
+                            maxLength={5}
+                          />
+                        ) : (
+                          <p className="text-sm text-gray-700">{client.postal_code ?? "—"}</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <Label>Téléphone</Label>
+                        {editingClient ? (
+                          <Input
+                            value={clientForm.phone}
+                            onChange={(e) => setClientForm((f) => ({ ...f, phone: e.target.value }))}
+                            placeholder="01 23 45 67 89"
+                          />
+                        ) : (
+                          <p className="text-sm text-gray-700">{(client as any).phone ?? "—"}</p>
+                        )}
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Email</Label>
+                        {editingClient ? (
+                          <Input
+                            type="email"
+                            value={clientForm.email}
+                            onChange={(e) => setClientForm((f) => ({ ...f, email: e.target.value }))}
+                            placeholder="contact@entreprise.fr"
+                          />
+                        ) : (
+                          <p className="text-sm text-gray-700">{(client as any).email ?? "—"}</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <Separator />
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <Label>Site web</Label>
+                        {editingClient ? (
+                          <Input
+                            value={clientForm.website}
+                            onChange={(e) => setClientForm((f) => ({ ...f, website: e.target.value }))}
+                            placeholder="www.exemple.fr"
+                          />
+                        ) : client.website ? (
+                          <a
+                            href={client.website.startsWith("http") ? client.website : `https://${client.website}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm text-violet-600 hover:underline flex items-center gap-1"
+                          >
+                            <Globe className="h-3.5 w-3.5" />
+                            {client.website}
+                          </a>
+                        ) : (
+                          <p className="text-sm text-gray-700">—</p>
+                        )}
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Secteur d&apos;activité</Label>
+                        {editingClient ? (
+                          <Select
+                            value={clientForm.sector}
+                            onValueChange={(v) => setClientForm((f) => ({ ...f, sector: v }))}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Choisir un secteur" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {SECTOR_OPTIONS.map((s) => (
+                                <SelectItem key={s} value={s}>{s}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <p className="text-sm text-gray-700">{client.sector ?? "—"}</p>
+                        )}
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Code NAF</Label>
+                        {editingClient ? (
+                          <Input
+                            value={clientForm.naf_code}
+                            onChange={(e) => setClientForm((f) => ({ ...f, naf_code: e.target.value }))}
+                            placeholder="Ex : 8559A"
+                          />
+                        ) : (
+                          <p className="text-sm text-gray-700">{client.naf_code ?? "—"}</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label>Notes</Label>
+                      {editingClient ? (
+                        <Textarea
+                          value={clientForm.notes}
+                          onChange={(e) => setClientForm((f) => ({ ...f, notes: e.target.value }))}
+                          rows={4}
+                          className="resize-none"
+                          placeholder="Notes internes sur ce client…"
+                        />
+                      ) : (
+                        <p className="text-sm text-gray-700 whitespace-pre-wrap">
+                          {client.notes ?? <span className="text-muted-foreground italic">Aucune note.</span>}
+                        </p>
+                      )}
+                    </div>
+
+                    <Separator />
+
+                    <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Financement</h3>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <Label>OPCO</Label>
+                        {editingClient ? (
+                          <Input
+                            value={clientForm.opco}
+                            onChange={(e) => setClientForm((f) => ({ ...f, opco: e.target.value }))}
+                            placeholder="Nom de l'OPCO"
+                          />
+                        ) : (
+                          <p className="text-sm text-gray-700">{(client as any).opco ?? "—"}</p>
+                        )}
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Type de financement</Label>
+                        {editingClient ? (
+                          <Select
+                            value={clientForm.funding_type}
+                            onValueChange={(v) => setClientForm((f) => ({ ...f, funding_type: v }))}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Sélectionner..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="entreprise">Entreprise</SelectItem>
+                              <SelectItem value="opco">OPCO</SelectItem>
+                              <SelectItem value="cpf">CPF</SelectItem>
+                              <SelectItem value="pole_emploi">Pôle Emploi</SelectItem>
+                              <SelectItem value="region">Région</SelectItem>
+                              <SelectItem value="autre">Autre</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <p className="text-sm text-gray-700">{(client as any).funding_type ?? "—"}</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <Label>Catégorie BPF</Label>
+                        {editingClient ? (
+                          <Select
+                            value={clientForm.bpf_category}
+                            onValueChange={(v) => setClientForm((f) => ({ ...f, bpf_category: v }))}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Sélectionner..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="entreprise_privee">Entreprise privée</SelectItem>
+                              <SelectItem value="administration_publique">Administration publique</SelectItem>
+                              <SelectItem value="association">Association</SelectItem>
+                              <SelectItem value="particulier">Particulier</SelectItem>
+                              <SelectItem value="autre">Autre</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <p className="text-sm text-gray-700">{(client as any).bpf_category ?? "—"}</p>
+                        )}
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Pays</Label>
+                        {editingClient ? (
+                          <Input
+                            value={clientForm.country}
+                            onChange={(e) => setClientForm((f) => ({ ...f, country: e.target.value }))}
+                          />
+                        ) : (
+                          <p className="text-sm text-gray-700">{(client as any).country ?? "France"}</p>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <div className="space-y-4">
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base font-semibold">Résumé</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {[
+                      { label: "Contacts", value: contacts.length, icon: User },
+                      { label: "Apprenants", value: learners.length, icon: Users },
+                      { label: "Sessions", value: sessions.length, icon: Calendar },
+                    ].map(({ label, value, icon: Icon }) => (
+                      <div key={label} className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Icon className="h-4 w-4" />
+                          {label}
+                        </div>
+                        <span className="font-semibold text-gray-900">{value}</span>
+                      </div>
+                    ))}
+
+                    <Separator />
+
+                    <div className="text-xs text-muted-foreground space-y-1">
+                      <p>Créé le {formatDate(client.created_at)}</p>
+                      {client.updated_at && client.updated_at !== client.created_at && (
+                        <p>Modifié le {formatDate(client.updated_at)}</p>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          </div>
+
+          <hr className="border-gray-100" />
+
+          {/* ── Tasks section ── */}
+          <div>
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Tâches</h3>
+            <TasksSection clientId={clientId} clientName={client.company_name} />
+          </div>
         </TabsContent>
 
-        {/* ---- Tab: Sessions ---- */}
-        <TabsContent value="sessions" className="mt-6">
+        {/* ════ Tab: Formations ════ */}
+        <TabsContent value="formations" className="mt-6">
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base font-semibold">Historique des sessions</CardTitle>
@@ -1300,7 +1622,69 @@ export default function ClientDetailPage() {
           </Card>
         </TabsContent>
 
-        {/* ---- Tab: Documents contractuels ---- */}
+        {/* ════ Tab: Communication ════ */}
+        <TabsContent value="communication" className="mt-6 space-y-8">
+
+          {/* ── Email section ── */}
+          <div>
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Emails</h3>
+            <EmailSection clientId={clientId} clientName={client.company_name} contacts={contacts} />
+          </div>
+
+          <hr className="border-gray-100" />
+
+          {/* ── Comments section ── */}
+          <div>
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Commentaires</h3>
+            <CommentsSection clientId={clientId} />
+          </div>
+
+          <hr className="border-gray-100" />
+
+          {/* ── History section ── */}
+          <div>
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Historique des activités</h3>
+            <Card>
+              <CardContent className="pt-6">
+                {activity.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-14 text-center">
+                    <History className="h-10 w-10 text-muted-foreground/30 mb-3" />
+                    <p className="font-medium text-gray-700">Aucune activité enregistrée</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Les actions sur ce client apparaîtront ici.
+                    </p>
+                  </div>
+                ) : (
+                  <ScrollArea className="max-h-[500px]">
+                    <div className="relative space-y-0">
+                      {activity.map((entry, idx) => (
+                        <div key={entry.id} className="flex gap-3 pb-6 relative">
+                          {idx < activity.length - 1 && (
+                            <div className="absolute left-[17px] top-8 bottom-0 w-px bg-gray-200" />
+                          )}
+                          <div className="flex-shrink-0 h-9 w-9 rounded-full bg-gray-100 flex items-center justify-center z-10">
+                            <CheckCircle className="h-4 w-4 text-green-600" />
+                          </div>
+                          <div className="flex-1 pt-1.5">
+                            <p className="text-sm text-gray-800">{entry.action}</p>
+                            <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
+                              {(entry.user_first_name || entry.user_last_name) && (
+                                <span>{entry.user_first_name} {entry.user_last_name}</span>
+                              )}
+                              <span>• {formatDate(entry.created_at, "dd/MM/yyyy HH:mm")}</span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        {/* ════ Tab: Documents ════ */}
         <TabsContent value="documents" className="mt-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-3">
@@ -1425,394 +1809,6 @@ export default function ClientDetailPage() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
-        </TabsContent>
-
-        {/* ---- Tab: Informations ---- */}
-        <TabsContent value="info" className="mt-6">
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-            <div className="lg:col-span-2">
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between pb-3">
-                  <CardTitle className="text-base font-semibold">Informations générales</CardTitle>
-                  {!editingClient ? (
-                    <Button variant="outline" size="sm" onClick={() => setEditingClient(true)} className="gap-1.5">
-                      <Pencil className="h-3.5 w-3.5" />
-                      Modifier
-                    </Button>
-                  ) : (
-                    <div className="flex gap-2">
-                      <Button variant="ghost" size="sm" onClick={cancelEditClient} disabled={savingClient} className="gap-1.5">
-                        <X className="h-3.5 w-3.5" />
-                        Annuler
-                      </Button>
-                      <Button size="sm" onClick={handleSaveClient} disabled={savingClient} className="gap-1.5">
-                        {savingClient
-                          ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                          : <Save className="h-3.5 w-3.5" />
-                        }
-                        Enregistrer
-                      </Button>
-                    </div>
-                  )}
-                </CardHeader>
-                <CardContent className="space-y-5">
-                  <div className="space-y-1.5">
-                    <Label>Nom de l&apos;entreprise <span className="text-red-500">*</span></Label>
-                    {editingClient ? (
-                      <>
-                        <Input
-                          value={clientForm.company_name}
-                          onChange={(e) => setClientForm((f) => ({ ...f, company_name: e.target.value }))}
-                          className={cn(clientErrors.company_name && "border-red-500")}
-                        />
-                        {clientErrors.company_name && <p className="text-xs text-red-500">{clientErrors.company_name}</p>}
-                      </>
-                    ) : (
-                      <p className="text-sm font-medium text-gray-900">{client.company_name}</p>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <Label>SIRET</Label>
-                      {editingClient ? (
-                        <Input
-                          value={clientForm.siret}
-                          onChange={(e) => setClientForm((f) => ({ ...f, siret: e.target.value }))}
-                          placeholder="14 chiffres"
-                          maxLength={14}
-                        />
-                      ) : (
-                        <p className="text-sm text-gray-700 font-mono">{client.siret ?? "—"}</p>
-                      )}
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>Statut</Label>
-                      {editingClient ? (
-                        <Select
-                          value={clientForm.status}
-                          onValueChange={(v) => setClientForm((f) => ({ ...f, status: v as ClientStatus }))}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="active">Actif</SelectItem>
-                            <SelectItem value="inactive">Inactif</SelectItem>
-                            <SelectItem value="prospect">Prospect</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <Badge className={cn("border-0", STATUS_COLORS[client.status])}>
-                          {STATUS_LABELS[client.status]}
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-
-                  <Separator />
-
-                  <div className="space-y-1.5">
-                    <Label>Adresse</Label>
-                    {editingClient ? (
-                      <Input
-                        value={clientForm.address}
-                        onChange={(e) => setClientForm((f) => ({ ...f, address: e.target.value }))}
-                        placeholder="Rue, numéro…"
-                      />
-                    ) : (
-                      <p className="text-sm text-gray-700">{client.address ?? "—"}</p>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <Label>Ville</Label>
-                      {editingClient ? (
-                        <Input
-                          value={clientForm.city}
-                          onChange={(e) => setClientForm((f) => ({ ...f, city: e.target.value }))}
-                        />
-                      ) : (
-                        <p className="text-sm text-gray-700">{client.city ?? "—"}</p>
-                      )}
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>Code postal</Label>
-                      {editingClient ? (
-                        <Input
-                          value={clientForm.postal_code}
-                          onChange={(e) => setClientForm((f) => ({ ...f, postal_code: e.target.value }))}
-                          maxLength={5}
-                        />
-                      ) : (
-                        <p className="text-sm text-gray-700">{client.postal_code ?? "—"}</p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <Label>Téléphone</Label>
-                      {editingClient ? (
-                        <Input
-                          value={clientForm.phone}
-                          onChange={(e) => setClientForm((f) => ({ ...f, phone: e.target.value }))}
-                          placeholder="01 23 45 67 89"
-                        />
-                      ) : (
-                        <p className="text-sm text-gray-700">{(client as any).phone ?? "—"}</p>
-                      )}
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>Email</Label>
-                      {editingClient ? (
-                        <Input
-                          type="email"
-                          value={clientForm.email}
-                          onChange={(e) => setClientForm((f) => ({ ...f, email: e.target.value }))}
-                          placeholder="contact@entreprise.fr"
-                        />
-                      ) : (
-                        <p className="text-sm text-gray-700">{(client as any).email ?? "—"}</p>
-                      )}
-                    </div>
-                  </div>
-
-                  <Separator />
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <Label>Site web</Label>
-                      {editingClient ? (
-                        <Input
-                          value={clientForm.website}
-                          onChange={(e) => setClientForm((f) => ({ ...f, website: e.target.value }))}
-                          placeholder="www.exemple.fr"
-                        />
-                      ) : client.website ? (
-                        <a
-                          href={client.website.startsWith("http") ? client.website : `https://${client.website}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-sm text-violet-600 hover:underline flex items-center gap-1"
-                        >
-                          <Globe className="h-3.5 w-3.5" />
-                          {client.website}
-                        </a>
-                      ) : (
-                        <p className="text-sm text-gray-700">—</p>
-                      )}
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>Secteur d&apos;activité</Label>
-                      {editingClient ? (
-                        <Select
-                          value={clientForm.sector}
-                          onValueChange={(v) => setClientForm((f) => ({ ...f, sector: v }))}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Choisir un secteur" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {SECTOR_OPTIONS.map((s) => (
-                              <SelectItem key={s} value={s}>{s}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <p className="text-sm text-gray-700">{client.sector ?? "—"}</p>
-                      )}
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>Code NAF</Label>
-                      {editingClient ? (
-                        <Input
-                          value={clientForm.naf_code}
-                          onChange={(e) => setClientForm((f) => ({ ...f, naf_code: e.target.value }))}
-                          placeholder="Ex : 8559A"
-                        />
-                      ) : (
-                        <p className="text-sm text-gray-700">{client.naf_code ?? "—"}</p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label>Notes</Label>
-                    {editingClient ? (
-                      <Textarea
-                        value={clientForm.notes}
-                        onChange={(e) => setClientForm((f) => ({ ...f, notes: e.target.value }))}
-                        rows={4}
-                        className="resize-none"
-                        placeholder="Notes internes sur ce client…"
-                      />
-                    ) : (
-                      <p className="text-sm text-gray-700 whitespace-pre-wrap">
-                        {client.notes ?? <span className="text-muted-foreground italic">Aucune note.</span>}
-                      </p>
-                    )}
-                  </div>
-
-                  <Separator />
-
-                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Financement</h3>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <Label>OPCO</Label>
-                      {editingClient ? (
-                        <Input
-                          value={clientForm.opco}
-                          onChange={(e) => setClientForm((f) => ({ ...f, opco: e.target.value }))}
-                          placeholder="Nom de l'OPCO"
-                        />
-                      ) : (
-                        <p className="text-sm text-gray-700">{(client as any).opco ?? "—"}</p>
-                      )}
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>Type de financement</Label>
-                      {editingClient ? (
-                        <Select
-                          value={clientForm.funding_type}
-                          onValueChange={(v) => setClientForm((f) => ({ ...f, funding_type: v }))}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Sélectionner..." />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="entreprise">Entreprise</SelectItem>
-                            <SelectItem value="opco">OPCO</SelectItem>
-                            <SelectItem value="cpf">CPF</SelectItem>
-                            <SelectItem value="pole_emploi">Pôle Emploi</SelectItem>
-                            <SelectItem value="region">Région</SelectItem>
-                            <SelectItem value="autre">Autre</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <p className="text-sm text-gray-700">{(client as any).funding_type ?? "—"}</p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <Label>Catégorie BPF</Label>
-                      {editingClient ? (
-                        <Select
-                          value={clientForm.bpf_category}
-                          onValueChange={(v) => setClientForm((f) => ({ ...f, bpf_category: v }))}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Sélectionner..." />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="entreprise_privee">Entreprise privée</SelectItem>
-                            <SelectItem value="administration_publique">Administration publique</SelectItem>
-                            <SelectItem value="association">Association</SelectItem>
-                            <SelectItem value="particulier">Particulier</SelectItem>
-                            <SelectItem value="autre">Autre</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <p className="text-sm text-gray-700">{(client as any).bpf_category ?? "—"}</p>
-                      )}
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>Pays</Label>
-                      {editingClient ? (
-                        <Input
-                          value={clientForm.country}
-                          onChange={(e) => setClientForm((f) => ({ ...f, country: e.target.value }))}
-                        />
-                      ) : (
-                        <p className="text-sm text-gray-700">{(client as any).country ?? "France"}</p>
-                      )}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            <div className="space-y-4">
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base font-semibold">Résumé</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {[
-                    { label: "Contacts", value: contacts.length, icon: User },
-                    { label: "Apprenants", value: learners.length, icon: Users },
-                    { label: "Sessions", value: sessions.length, icon: Calendar },
-                  ].map(({ label, value, icon: Icon }) => (
-                    <div key={label} className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Icon className="h-4 w-4" />
-                        {label}
-                      </div>
-                      <span className="font-semibold text-gray-900">{value}</span>
-                    </div>
-                  ))}
-
-                  <Separator />
-
-                  <div className="text-xs text-muted-foreground space-y-1">
-                    <p>Créé le {formatDate(client.created_at)}</p>
-                    {client.updated_at && client.updated_at !== client.created_at && (
-                      <p>Modifié le {formatDate(client.updated_at)}</p>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-        </TabsContent>
-
-        {/* ---- Tab: Historique ---- */}
-        <TabsContent value="history" className="mt-6">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base font-semibold">Historique des activités</CardTitle>
-              <CardDescription>Journal des modifications sur ce client</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {activity.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-14 text-center">
-                  <History className="h-10 w-10 text-muted-foreground/30 mb-3" />
-                  <p className="font-medium text-gray-700">Aucune activité enregistrée</p>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Les actions sur ce client apparaîtront ici.
-                  </p>
-                </div>
-              ) : (
-                <ScrollArea className="max-h-[500px]">
-                  <div className="relative space-y-0">
-                    {activity.map((entry, idx) => (
-                      <div key={entry.id} className="flex gap-3 pb-6 relative">
-                        {idx < activity.length - 1 && (
-                          <div className="absolute left-[17px] top-8 bottom-0 w-px bg-gray-200" />
-                        )}
-                        <div className="flex-shrink-0 h-9 w-9 rounded-full bg-gray-100 flex items-center justify-center z-10">
-                          <CheckCircle className="h-4 w-4 text-green-600" />
-                        </div>
-                        <div className="flex-1 pt-1.5">
-                          <p className="text-sm text-gray-800">{entry.action}</p>
-                          <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
-                            {(entry.user_first_name || entry.user_last_name) && (
-                              <span>{entry.user_first_name} {entry.user_last_name}</span>
-                            )}
-                            <span>• {formatDate(entry.created_at, "dd/MM/yyyy HH:mm")}</span>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </ScrollArea>
-              )}
-            </CardContent>
-          </Card>
         </TabsContent>
       </Tabs>
 
