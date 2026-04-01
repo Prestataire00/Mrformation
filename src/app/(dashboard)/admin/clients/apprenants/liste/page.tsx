@@ -5,6 +5,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Download, ChevronLeft, ChevronRight, Plus, Loader2, Mail } from "lucide-react";
 import { downloadXlsx } from "@/lib/export-xlsx";
+import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/use-toast";
 import { useEntity } from "@/contexts/EntityContext";
 import { Button } from "@/components/ui/button";
@@ -37,6 +38,7 @@ export default function ApprenantsListePage() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
 
+  const [viewMode, setViewMode] = useState<"list" | "cards">("list");
   const [nameFilter, setNameFilter] = useState("");
   const [companyFilter, setCompanyFilter] = useState("");
   const [sessionsMin, setSessionsMin] = useState("");
@@ -224,8 +226,19 @@ export default function ApprenantsListePage() {
 
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-gray-700 text-xl font-bold">Clients / Tous Les Apprenants</h1>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-3">
+          <h1 className="text-lg font-bold text-gray-900">Apprenants</h1>
+          <span className="text-sm text-gray-400">{total}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
+            <button onClick={() => setViewMode("list")} className={cn("px-2 py-1 text-xs rounded-md transition", viewMode === "list" ? "bg-white shadow-sm font-medium" : "text-gray-500")}>
+              Liste
+            </button>
+            <button onClick={() => setViewMode("cards")} className={cn("px-2 py-1 text-xs rounded-md transition", viewMode === "cards" ? "bg-white shadow-sm font-medium" : "text-gray-500")}>
+              Cards
+            </button>
+          </div>
           <button
             onClick={handleDownloadExcel}
             className="border border-[#3DB5C5] text-[#3DB5C5] px-4 py-2 rounded-lg text-sm flex items-center gap-1"
@@ -279,107 +292,129 @@ export default function ApprenantsListePage() {
         </div>
       </div>
 
-      {/* Count */}
-      <p className="text-sm text-gray-500 mb-3">{total} apprenant{total !== 1 ? "s" : ""}</p>
-
-      {/* Table */}
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-        {loading ? (
-          <div className="flex justify-center py-16">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#3DB5C5] border-t-transparent" />
-          </div>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="px-4 py-3 w-10">
-                  <input
-                    type="checkbox"
-                    checked={selected.size === displayLearners.length && displayLearners.length > 0}
-                    onChange={(e) => {
-                      if (e.target.checked) setSelected(new Set(displayLearners.map((l) => l.id)));
-                      else setSelected(new Set());
-                    }}
-                    className="rounded border-gray-300"
-                  />
-                </th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-600">Nom</th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-600">Entreprise</th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-600">Tél</th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-600">Email</th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-600">Sessions</th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-600">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {displayLearners.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-gray-400">
-                    Aucun apprenant trouvé
-                  </td>
-                </tr>
-              ) : (
-                displayLearners.map((learner) => {
-                  const fullName = `${learner.first_name} ${learner.last_name}`;
-                  return (
-                    <tr key={learner.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-3">
-                        <input
-                          type="checkbox"
-                          checked={selected.has(learner.id)}
-                          onChange={(e) => {
-                            const next = new Set(selected);
-                            if (e.target.checked) next.add(learner.id);
-                            else next.delete(learner.id);
-                            setSelected(next);
-                          }}
-                          className="rounded border-gray-300"
-                        />
-                      </td>
-                      <td className="px-4 py-3 font-medium text-gray-800">{fullName}</td>
-                      <td className="px-4 py-3 text-gray-600">{learner.clients?.company_name ?? "—"}</td>
-                      <td className="px-4 py-3 text-gray-600">{learner.phone ?? "—"}</td>
-                      <td className="px-4 py-3 text-gray-600 truncate max-w-[200px]">{learner.email}</td>
-                      <td className="px-4 py-3 text-gray-600">{learner.sessions_count ?? 0}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-3">
-                          {learner.email && (
-                            <button
-                              onClick={() => { setSelected(new Set([learner.id])); setMassEmailDialog(true); }}
-                              className="text-[#3DB5C5] hover:text-teal-700"
-                              title="Envoyer un email"
-                            >
-                              <Mail className="h-3.5 w-3.5" />
-                            </button>
-                          )}
-                          <Link
-                            href={`/admin/clients/apprenants/${learner.id}`}
-                            className="text-[#3DB5C5] hover:underline text-xs font-medium"
-                          >
-                            Modifier
-                          </Link>
-                          <Link
-                            href={`/admin/crm/quotes/new?learner_name=${encodeURIComponent(fullName)}`}
-                            className="text-gray-500 hover:underline text-xs"
-                          >
-                            Créer un devis
-                          </Link>
-                          <button
-                            onClick={() => handleDelete(learner.id, fullName)}
-                            className="text-red-500 hover:underline text-xs"
-                          >
-                            Supprimer
-                          </button>
-                        </div>
+      {loading ? (
+        <div className="flex justify-center py-16">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#3DB5C5] border-t-transparent" />
+        </div>
+      ) : (
+        <>
+          {viewMode === "list" && (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="px-4 py-3 w-10">
+                      <input
+                        type="checkbox"
+                        checked={selected.size === displayLearners.length && displayLearners.length > 0}
+                        onChange={(e) => {
+                          if (e.target.checked) setSelected(new Set(displayLearners.map((l) => l.id)));
+                          else setSelected(new Set());
+                        }}
+                        className="rounded border-gray-300"
+                      />
+                    </th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-600">Nom</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-600">Entreprise</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-600">Tél</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-600">Email</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-600">Sessions</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-600">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {displayLearners.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="px-4 py-12 text-center text-gray-400">
+                        Aucun apprenant trouvé
                       </td>
                     </tr>
-                  );
-                })
+                  ) : (
+                    displayLearners.map((learner) => {
+                      const fullName = `${learner.first_name} ${learner.last_name}`;
+                      return (
+                        <tr key={learner.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-4 py-3">
+                            <input
+                              type="checkbox"
+                              checked={selected.has(learner.id)}
+                              onChange={(e) => {
+                                const next = new Set(selected);
+                                if (e.target.checked) next.add(learner.id);
+                                else next.delete(learner.id);
+                                setSelected(next);
+                              }}
+                              className="rounded border-gray-300"
+                            />
+                          </td>
+                          <td className="px-4 py-3 font-medium text-gray-800">{fullName}</td>
+                          <td className="px-4 py-3 text-gray-600">{learner.clients?.company_name ?? "—"}</td>
+                          <td className="px-4 py-3 text-gray-600">{learner.phone ?? "—"}</td>
+                          <td className="px-4 py-3 text-gray-600 truncate max-w-[200px]">{learner.email}</td>
+                          <td className="px-4 py-3 text-gray-600">{learner.sessions_count ?? 0}</td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-3">
+                              {learner.email && (
+                                <button
+                                  onClick={() => { setSelected(new Set([learner.id])); setMassEmailDialog(true); }}
+                                  className="text-[#3DB5C5] hover:text-teal-700"
+                                  title="Envoyer un email"
+                                >
+                                  <Mail className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                              <Link
+                                href={`/admin/clients/apprenants/${learner.id}`}
+                                className="text-[#3DB5C5] hover:underline text-xs font-medium"
+                              >
+                                Modifier
+                              </Link>
+                              <Link
+                                href={`/admin/crm/quotes/new?learner_name=${encodeURIComponent(fullName)}`}
+                                className="text-gray-500 hover:underline text-xs"
+                              >
+                                Créer un devis
+                              </Link>
+                              <button
+                                onClick={() => handleDelete(learner.id, fullName)}
+                                className="text-red-500 hover:underline text-xs"
+                              >
+                                Supprimer
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {viewMode === "cards" && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+              {displayLearners.length === 0 ? (
+                <p className="col-span-full text-center text-gray-400 py-12">Aucun apprenant trouvé</p>
+              ) : (
+                displayLearners.map((learner) => (
+                  <Link key={learner.id} href={`/admin/clients/apprenants/${learner.id}`}
+                    className="border rounded-lg p-3.5 hover:border-[#3DB5C5]/40 hover:shadow-sm transition-all bg-white flex items-start gap-3">
+                    <div className="h-9 w-9 rounded-full bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-500 shrink-0">
+                      {learner.first_name?.charAt(0)}{learner.last_name?.charAt(0)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-gray-900 leading-tight">{learner.first_name} {learner.last_name}</p>
+                      <p className="text-xs text-[#3DB5C5] mt-0.5 truncate">{learner.clients?.company_name || "Sans entreprise"}</p>
+                      {learner.email && <p className="text-[10px] text-gray-400 mt-1 truncate">{learner.email}</p>}
+                    </div>
+                  </Link>
+                ))
               )}
-            </tbody>
-          </table>
-        )}
-      </div>
+            </div>
+          )}
+        </>
+      )}
 
       {/* Pagination */}
       {totalPages > 1 && (

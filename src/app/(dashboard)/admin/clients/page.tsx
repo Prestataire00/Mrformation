@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -17,13 +18,12 @@ import {
   MoreHorizontal,
   ChevronLeft,
   ChevronRight,
+  X,
 } from "lucide-react";
-import { CompanySearch, type CompanySearchResult } from "@/components/crm/CompanySearch";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
@@ -37,9 +37,7 @@ import {
 import {
   Select,
   SelectContent,
-  SelectGroup,
   SelectItem,
-  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -80,20 +78,6 @@ interface ClientWithCount extends Client {
   contacts_count: number;
 }
 
-interface ClientFormData {
-  company_name: string;
-  siret: string;
-  address: string;
-  city: string;
-  postal_code: string;
-  website: string;
-  sector: string;
-  naf_code: string;
-  bpf_category: string;
-  status: ClientStatus;
-  notes: string;
-}
-
 const BPF_CATEGORY_LABELS: Record<string, string> = {
   entreprise_privee: "Entreprise privée",
   apprentissage: "Contrats d'apprentissage",
@@ -115,20 +99,6 @@ const BPF_CATEGORY_LABELS: Record<string, string> = {
   autre: "Autre",
 };
 
-const EMPTY_FORM: ClientFormData = {
-  company_name: "",
-  siret: "",
-  address: "",
-  city: "",
-  postal_code: "",
-  website: "",
-  sector: "",
-  naf_code: "",
-  bpf_category: "entreprise_privee",
-  status: "prospect",
-  notes: "",
-};
-
 const PAGE_SIZE = 10;
 
 interface StatusCounts {
@@ -140,6 +110,7 @@ interface StatusCounts {
 export default function ClientsPage() {
   const supabase = createClient();
   const { toast } = useToast();
+  const router = useRouter();
 
   const { entityId } = useEntity();
   const [clients, setClients] = useState<ClientWithCount[]>([]);
@@ -159,15 +130,14 @@ export default function ClientsPage() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
 
-  // Dialogs
-  const [addDialogOpen, setAddDialogOpen] = useState(false);
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  // Inline add form
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [addFormData, setAddFormData] = useState({ company_name: "", siret: "", sector: "", email: "", phone: "" });
+  const [addFormError, setAddFormError] = useState("");
+
+  // Delete dialog
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedClient, setSelectedClient] = useState<ClientWithCount | null>(null);
-
-  // Form
-  const [formData, setFormData] = useState<ClientFormData>(EMPTY_FORM);
-  const [formErrors, setFormErrors] = useState<Partial<Record<keyof ClientFormData, string>>>({});
 
   useEffect(() => {
     if (entityId === undefined) return;
@@ -232,86 +202,36 @@ export default function ClientsPage() {
     }
   }, [supabase, entityId, statusFilter, debouncedSearch, page, toast]);
 
-  function validateForm(): boolean {
-    const errors: Partial<Record<keyof ClientFormData, string>> = {};
-    if (!formData.company_name.trim()) {
-      errors.company_name = "Le nom de l'entreprise est requis.";
-    }
-    setFormErrors(errors);
-    return Object.keys(errors).length === 0;
-  }
-
   async function handleCreate() {
-    if (!validateForm()) return;
+    if (!addFormData.company_name.trim()) {
+      setAddFormError("Le nom de l'entreprise est requis.");
+      return;
+    }
+    setAddFormError("");
     setSaving(true);
     try {
       const payload: Record<string, unknown> = {
-        company_name: formData.company_name.trim(),
-        siret: formData.siret.trim() || null,
-        address: formData.address.trim() || null,
-        city: formData.city.trim() || null,
-        postal_code: formData.postal_code.trim() || null,
-        website: formData.website.trim() || null,
-        sector: formData.sector || null,
-        naf_code: formData.naf_code.trim() || null,
-        bpf_category: formData.bpf_category || null,
-        status: formData.status,
-        notes: formData.notes.trim() || null,
+        company_name: addFormData.company_name.trim(),
+        siret: addFormData.siret.trim() || null,
+        sector: addFormData.sector || null,
+        email: addFormData.email.trim() || null,
+        phone: addFormData.phone.trim() || null,
+        status: "prospect",
       };
       if (entityId) payload.entity_id = entityId;
 
       const { error } = await supabase.from("clients").insert([payload]);
       if (error) throw error;
 
-      toast({ title: "Client ajouté", description: `${formData.company_name} a été créé avec succès.` });
-      setAddDialogOpen(false);
-      setFormData(EMPTY_FORM);
-      setFormErrors({});
+      toast({ title: "Client ajouté", description: `${addFormData.company_name} a été créé avec succès.` });
+      setShowAddForm(false);
+      setAddFormData({ company_name: "", siret: "", sector: "", email: "", phone: "" });
       setPage(1);
       fetchClients();
       fetchStatusCounts();
     } catch (err) {
       console.error("handleCreate error:", err);
       toast({ title: "Erreur", description: "Impossible de créer le client.", variant: "destructive" });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleUpdate() {
-    if (!selectedClient || !validateForm()) return;
-    setSaving(true);
-    try {
-      const { error } = await supabase
-        .from("clients")
-        .update({
-          company_name: formData.company_name.trim(),
-          siret: formData.siret.trim() || null,
-          address: formData.address.trim() || null,
-          city: formData.city.trim() || null,
-          postal_code: formData.postal_code.trim() || null,
-          website: formData.website.trim() || null,
-          sector: formData.sector || null,
-          naf_code: formData.naf_code.trim() || null,
-          bpf_category: formData.bpf_category || null,
-          status: formData.status,
-          notes: formData.notes.trim() || null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", selectedClient.id);
-
-      if (error) throw error;
-
-      toast({ title: "Client modifié", description: `${formData.company_name} a été mis à jour.` });
-      setEditDialogOpen(false);
-      setSelectedClient(null);
-      setFormData(EMPTY_FORM);
-      setFormErrors({});
-      fetchClients();
-      fetchStatusCounts();
-    } catch (err) {
-      console.error("handleUpdate error:", err);
-      toast({ title: "Erreur", description: "Impossible de modifier le client.", variant: "destructive" });
     } finally {
       setSaving(false);
     }
@@ -341,53 +261,9 @@ export default function ClientsPage() {
     }
   }
 
-  function handleCompanySelect(company: CompanySearchResult) {
-    // Parse address into parts if possible (Pappers returns "12 Rue de la Paix")
-    setFormData((prev) => ({
-      ...prev,
-      company_name: company.company_name || prev.company_name,
-      siret: company.siret || prev.siret,
-      address: company.address || prev.address,
-      city: company.city || prev.city,
-      postal_code: company.postal_code || prev.postal_code,
-    }));
-    // Clear any company_name error since it's now filled
-    setFormErrors((prev) => ({ ...prev, company_name: undefined }));
-  }
-
-  function openAddDialog() {
-    setFormData(EMPTY_FORM);
-    setFormErrors({});
-    setAddDialogOpen(true);
-  }
-
-  function openEditDialog(client: ClientWithCount) {
-    setSelectedClient(client);
-    setFormData({
-      company_name: client.company_name,
-      siret: client.siret ?? "",
-      address: client.address ?? "",
-      city: client.city ?? "",
-      postal_code: client.postal_code ?? "",
-      website: client.website ?? "",
-      sector: client.sector ?? "",
-      naf_code: client.naf_code ?? "",
-      bpf_category: client.bpf_category || "entreprise_privee",
-      status: client.status,
-      notes: client.notes ?? "",
-    });
-    setFormErrors({});
-    setEditDialogOpen(true);
-  }
-
   function openDeleteDialog(client: ClientWithCount) {
     setSelectedClient(client);
     setDeleteDialogOpen(true);
-  }
-
-  function updateField(field: keyof ClientFormData, value: string) {
-    setFormData((prev) => ({ ...prev, [field]: value }));
-    if (formErrors[field]) setFormErrors((prev) => ({ ...prev, [field]: undefined }));
   }
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
@@ -402,17 +278,95 @@ export default function ClientsPage() {
     <div className="space-y-6 p-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-gray-900">Clients</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Gérez votre portefeuille clients ({total} au total)
-          </p>
+        <div className="flex items-center gap-6">
+          <h1 className="text-lg font-bold text-gray-900">Entreprises</h1>
+          <span className="text-xs text-gray-500"><span className="font-bold text-sm text-gray-900">{clients.length}</span> entreprises</span>
         </div>
-        <Button onClick={openAddDialog} className="gap-2">
-          <Plus className="h-4 w-4" />
-          Ajouter une entreprise
+        <Button size="sm" onClick={() => setShowAddForm(true)} style={{ background: "#3DB5C5" }} className="text-white gap-1.5 text-xs">
+          <Plus className="h-3.5 w-3.5" /> Ajouter
         </Button>
       </div>
+
+      {/* Inline Add Form */}
+      {showAddForm && (
+        <Card>
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-gray-800">Nouvelle entreprise</h3>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setShowAddForm(false); setAddFormError(""); }}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="add_company_name" className="text-xs">Nom de l&apos;entreprise <span className="text-red-500">*</span></Label>
+                <Input
+                  id="add_company_name"
+                  value={addFormData.company_name}
+                  onChange={(e) => { setAddFormData(prev => ({ ...prev, company_name: e.target.value })); setAddFormError(""); }}
+                  placeholder="Nom"
+                  className={cn("h-8 text-sm", addFormError && "border-red-500")}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="add_siret" className="text-xs">SIRET</Label>
+                <Input
+                  id="add_siret"
+                  value={addFormData.siret}
+                  onChange={(e) => setAddFormData(prev => ({ ...prev, siret: e.target.value }))}
+                  placeholder="12345678901234"
+                  maxLength={14}
+                  className="h-8 text-sm"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="add_sector" className="text-xs">Secteur</Label>
+                <Select value={addFormData.sector} onValueChange={(v) => setAddFormData(prev => ({ ...prev, sector: v }))}>
+                  <SelectTrigger id="add_sector" className="h-8 text-sm">
+                    <SelectValue placeholder="Secteur" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SECTOR_OPTIONS.map((s) => (
+                      <SelectItem key={s} value={s}>{s}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="add_email" className="text-xs">Email</Label>
+                <Input
+                  id="add_email"
+                  type="email"
+                  value={addFormData.email}
+                  onChange={(e) => setAddFormData(prev => ({ ...prev, email: e.target.value }))}
+                  placeholder="contact@exemple.fr"
+                  className="h-8 text-sm"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="add_phone" className="text-xs">Téléphone</Label>
+                <Input
+                  id="add_phone"
+                  value={addFormData.phone}
+                  onChange={(e) => setAddFormData(prev => ({ ...prev, phone: e.target.value }))}
+                  placeholder="01 23 45 67 89"
+                  className="h-8 text-sm"
+                />
+              </div>
+            </div>
+            {addFormError && <p className="text-xs text-red-500">{addFormError}</p>}
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => { setShowAddForm(false); setAddFormError(""); setAddFormData({ company_name: "", siret: "", sector: "", email: "", phone: "" }); }}>
+                Annuler
+              </Button>
+              <Button size="sm" onClick={handleCreate} disabled={saving} style={{ background: "#3DB5C5" }} className="text-white gap-1.5 text-xs">
+                {saving && <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />}
+                Créer
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Status filter cards */}
       <div className="grid grid-cols-3 gap-4">
@@ -512,7 +466,7 @@ export default function ClientsPage() {
                   : "Commencez par ajouter votre premier client."}
               </p>
               {!search && statusFilter === "all" && (
-                <Button onClick={openAddDialog} className="mt-4 gap-2">
+                <Button onClick={() => setShowAddForm(true)} className="mt-4 gap-2">
                   <Plus className="h-4 w-4" />
                   Ajouter une entreprise
                 </Button>
@@ -616,7 +570,7 @@ export default function ClientsPage() {
                                   Voir le détail
                                 </Link>
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => openEditDialog(client)} className="gap-2">
+                              <DropdownMenuItem onClick={() => router.push(`/admin/clients/${client.id}`)} className="gap-2">
                                 <Pencil className="h-4 w-4" />
                                 Modifier
                               </DropdownMenuItem>
@@ -674,55 +628,6 @@ export default function ClientsPage() {
         </CardContent>
       </Card>
 
-      {/* Add Client Dialog */}
-      <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Ajouter une entreprise</DialogTitle>
-            <DialogDescription>
-              Renseignez les informations de la nouvelle entreprise. Le nom est obligatoire.
-            </DialogDescription>
-          </DialogHeader>
-          <ClientForm
-            formData={formData}
-            formErrors={formErrors}
-            onUpdate={updateField}
-            onCompanySelect={handleCompanySelect}
-          />
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="outline" disabled={saving}>Annuler</Button>
-            </DialogClose>
-            <Button onClick={handleCreate} disabled={saving} className="gap-2">
-              {saving && <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />}
-              Créer le client
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Edit Client Dialog */}
-      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Modifier l&apos;entreprise</DialogTitle>
-            <DialogDescription>
-              Mettez à jour les informations de {selectedClient?.company_name}.
-            </DialogDescription>
-          </DialogHeader>
-          <ClientForm formData={formData} formErrors={formErrors} onUpdate={updateField} />
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="outline" disabled={saving}>Annuler</Button>
-            </DialogClose>
-            <Button onClick={handleUpdate} disabled={saving} className="gap-2">
-              {saving && <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />}
-              Enregistrer les modifications
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* Delete Confirmation Dialog */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent className="max-w-md">
@@ -745,192 +650,6 @@ export default function ClientsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
-  );
-}
-
-// ---- ClientForm sub-component ----
-interface ClientFormProps {
-  formData: ClientFormData;
-  formErrors: Partial<Record<keyof ClientFormData, string>>;
-  onUpdate: (field: keyof ClientFormData, value: string) => void;
-  onCompanySelect?: (company: CompanySearchResult) => void;
-}
-
-function ClientForm({ formData, formErrors, onUpdate, onCompanySelect }: ClientFormProps) {
-  return (
-    <div className="space-y-5 py-2">
-      {/* Pappers company search */}
-      {onCompanySelect && (
-        <div className="space-y-1.5">
-          <Label>Recherche entreprise (Pappers)</Label>
-          <CompanySearch
-            onSelect={onCompanySelect}
-            placeholder="Tapez le nom ou SIRET pour auto-remplir le formulaire…"
-          />
-        </div>
-      )}
-
-      <div className="space-y-1.5">
-        <Label htmlFor="company_name">
-          Nom de l&apos;entreprise <span className="text-red-500">*</span>
-        </Label>
-        <Input
-          id="company_name"
-          value={formData.company_name}
-          onChange={(e) => onUpdate("company_name", e.target.value)}
-          placeholder="Ex : Société Dupont & Associés"
-          className={cn(formErrors.company_name && "border-red-500 focus-visible:ring-red-500")}
-        />
-        {formErrors.company_name && (
-          <p className="text-xs text-red-500">{formErrors.company_name}</p>
-        )}
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-1.5">
-          <Label htmlFor="siret">SIRET</Label>
-          <Input
-            id="siret"
-            value={formData.siret}
-            onChange={(e) => onUpdate("siret", e.target.value)}
-            placeholder="12345678901234"
-            maxLength={14}
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="status">Statut</Label>
-          <Select value={formData.status} onValueChange={(v) => onUpdate("status", v)}>
-            <SelectTrigger id="status">
-              <SelectValue placeholder="Choisir un statut" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="active">Actif</SelectItem>
-              <SelectItem value="inactive">Inactif</SelectItem>
-              <SelectItem value="prospect">Prospect</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      <div className="space-y-1.5">
-        <Label htmlFor="address">Adresse</Label>
-        <Input
-          id="address"
-          value={formData.address}
-          onChange={(e) => onUpdate("address", e.target.value)}
-          placeholder="Ex : 12 rue de la Paix"
-        />
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-1.5">
-          <Label htmlFor="city">Ville</Label>
-          <Input
-            id="city"
-            value={formData.city}
-            onChange={(e) => onUpdate("city", e.target.value)}
-            placeholder="Ex : Paris"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="postal_code">Code postal</Label>
-          <Input
-            id="postal_code"
-            value={formData.postal_code}
-            onChange={(e) => onUpdate("postal_code", e.target.value)}
-            placeholder="Ex : 75001"
-            maxLength={5}
-          />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-1.5">
-          <Label htmlFor="website">Site web</Label>
-          <Input
-            id="website"
-            value={formData.website}
-            onChange={(e) => onUpdate("website", e.target.value)}
-            placeholder="www.exemple.fr"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="sector">Secteur d&apos;activité</Label>
-          <Select value={formData.sector} onValueChange={(v) => onUpdate("sector", v)}>
-            <SelectTrigger id="sector">
-              <SelectValue placeholder="Choisir un secteur" />
-            </SelectTrigger>
-            <SelectContent>
-              {SECTOR_OPTIONS.map((s) => (
-                <SelectItem key={s} value={s}>{s}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="naf_code">Code NAF</Label>
-          <Input
-            id="naf_code"
-            value={formData.naf_code}
-            onChange={(e) => onUpdate("naf_code", e.target.value)}
-            placeholder="Ex : 8559A"
-          />
-        </div>
-      </div>
-
-      <div className="space-y-1.5">
-        <Label htmlFor="bpf_category">Catégorie BPF</Label>
-        <Select value={formData.bpf_category} onValueChange={(v) => onUpdate("bpf_category", v)}>
-          <SelectTrigger id="bpf_category">
-            <SelectValue placeholder="Choisir une catégorie BPF" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              <SelectLabel>Entreprises</SelectLabel>
-              <SelectItem value="entreprise_privee">Entreprise privée</SelectItem>
-            </SelectGroup>
-            <SelectGroup>
-              <SelectLabel>Fonds de formation</SelectLabel>
-              <SelectItem value="apprentissage">Contrats d&apos;apprentissage</SelectItem>
-              <SelectItem value="professionnalisation">Contrats de professionnalisation</SelectItem>
-              <SelectItem value="reconversion_alternance">Reconversion / alternance</SelectItem>
-              <SelectItem value="conge_transition">Congé / transition professionnelle</SelectItem>
-              <SelectItem value="cpf">Compte personnel de formation (CPF)</SelectItem>
-              <SelectItem value="dispositif_chomeurs">Dispositifs demandeurs d&apos;emploi</SelectItem>
-              <SelectItem value="non_salaries">Dispositifs travailleurs non-salariés</SelectItem>
-              <SelectItem value="plan_developpement">Plan de développement des compétences</SelectItem>
-            </SelectGroup>
-            <SelectGroup>
-              <SelectLabel>Pouvoirs publics</SelectLabel>
-              <SelectItem value="pouvoir_public_agents">Pouvoirs publics (formation agents)</SelectItem>
-              <SelectItem value="instances_europeennes">Instances européennes</SelectItem>
-              <SelectItem value="etat">État</SelectItem>
-              <SelectItem value="conseil_regional">Conseils régionaux</SelectItem>
-              <SelectItem value="pole_emploi">Pôle emploi</SelectItem>
-              <SelectItem value="autres_publics">Autres ressources publiques</SelectItem>
-            </SelectGroup>
-            <SelectGroup>
-              <SelectLabel>Autres</SelectLabel>
-              <SelectItem value="individuel">Particulier / Individuel</SelectItem>
-              <SelectItem value="organisme_formation">Organisme de formation</SelectItem>
-              <SelectItem value="autre">Autre</SelectItem>
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="space-y-1.5">
-        <Label htmlFor="notes">Notes</Label>
-        <Textarea
-          id="notes"
-          value={formData.notes}
-          onChange={(e) => onUpdate("notes", e.target.value)}
-          placeholder="Informations complémentaires sur ce client…"
-          rows={3}
-          className="resize-none"
-        />
-      </div>
     </div>
   );
 }

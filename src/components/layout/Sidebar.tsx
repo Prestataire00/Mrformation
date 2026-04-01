@@ -90,10 +90,9 @@ const adminNavSections: NavSection[] = [
         label: "Clients & Financeurs",
         icon: Users,
         children: [
-          { label: "Profils des Apprenants", href: "/admin/clients/apprenants", icon: GraduationCap },
-          { label: "Tous les Apprenants", href: "/admin/clients/apprenants/liste", icon: Users },
-          { label: "Toutes les Entreprises", href: "/admin/clients", icon: Building2 },
-          { label: "Tous les Financeurs", href: "/admin/clients/financeurs", icon: Banknote },
+          { label: "Apprenants", href: "/admin/clients/apprenants/liste", icon: GraduationCap },
+          { label: "Entreprises", href: "/admin/clients", icon: Building2 },
+          { label: "Financeurs", href: "/admin/clients/financeurs", icon: Banknote },
         ],
       },
     ],
