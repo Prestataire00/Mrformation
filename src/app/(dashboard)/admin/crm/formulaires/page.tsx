@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
 import {
-  Loader2, Link2, Send, ExternalLink, Mail, Plus, Copy, ChevronDown, ChevronRight, BarChart3,
+  Loader2, Link2, Send, ExternalLink, Mail, Plus, Copy, ChevronDown, ChevronRight, BarChart3, Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -267,6 +267,14 @@ export default function FormulairesPage() {
     }
   }
 
+  // Delete
+  async function handleDelete(q: QItem) {
+    if (!confirm(`Supprimer "${q.title}" et toutes ses réponses ?`)) return;
+    const { error } = await supabase.from("questionnaires").delete().eq("id", q.id);
+    if (error) toast({ title: "Erreur", description: error.message, variant: "destructive" });
+    else { toast({ title: "Questionnaire supprimé" }); fetchData(); }
+  }
+
   // Duplicate
   async function handleDuplicate(q: QItem) {
     if (!entityId) return;
@@ -486,6 +494,9 @@ export default function FormulairesPage() {
                       <button onClick={() => router.push("/admin/questionnaires/dashboard")} className="text-[10px] text-gray-500 hover:text-gray-700 px-1.5 py-0.5 rounded hover:bg-gray-100">Résultats</button>
                       <button onClick={() => handleDuplicate(q)} className="text-[10px] text-gray-400 hover:text-gray-600 px-1.5 py-0.5" title="Dupliquer">
                         <Copy className="h-3 w-3" />
+                      </button>
+                      <button onClick={() => handleDelete(q)} className="text-[10px] text-red-400 hover:text-red-600 px-1.5 py-0.5" title="Supprimer">
+                        <Trash2 className="h-3 w-3" />
                       </button>
                     </div>
                   </td>
