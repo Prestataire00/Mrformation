@@ -202,6 +202,16 @@ export default function ClientDetailPage() {
 
   // Client edit
   const [editingClient, setEditingClient] = useState(false);
+
+  // Add learner inline
+  const [showAddLearner, setShowAddLearner] = useState(false);
+  const [newLearner, setNewLearner] = useState({ first_name: "", last_name: "", email: "", job_title: "" });
+
+  // Enroll learner
+  const [enrollDialogOpen, setEnrollDialogOpen] = useState(false);
+  const [enrollingLearner, setEnrollingLearner] = useState<any>(null);
+  const [enrollSessionId, setEnrollSessionId] = useState("");
+  const [enrolling, setEnrolling] = useState(false);
   const [savingClient, setSavingClient] = useState(false);
   const [clientForm, setClientForm] = useState<ClientFormData>({
     company_name: "",
@@ -329,6 +339,53 @@ export default function ClientDetailPage() {
       setLearners(mapped);
     }
   }, [supabase, clientId, entityId]);
+
+  async function handleAddLearner() {
+    if (!newLearner.first_name.trim() || !newLearner.last_name.trim() || !entityId) return;
+    const { error } = await supabase.from("learners").insert({
+      entity_id: entityId,
+      client_id: clientId,
+      first_name: newLearner.first_name.trim(),
+      last_name: newLearner.last_name.trim(),
+      email: newLearner.email.trim() || null,
+      job_title: newLearner.job_title.trim() || null,
+    });
+    if (error) {
+      toast({ title: "Erreur", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Apprenant ajouté" });
+      setNewLearner({ first_name: "", last_name: "", email: "", job_title: "" });
+      setShowAddLearner(false);
+      fetchLearners();
+    }
+  }
+
+  function handleEnrollLearner(learner: any) {
+    setEnrollingLearner(learner);
+    setEnrollSessionId("");
+    setEnrollDialogOpen(true);
+  }
+
+  async function handleConfirmEnroll() {
+    if (!enrollingLearner || !enrollSessionId) return;
+    setEnrolling(true);
+    const { error } = await supabase.from("enrollments").insert({
+      session_id: enrollSessionId,
+      learner_id: enrollingLearner.id,
+      client_id: clientId,
+      status: "registered",
+    });
+    setEnrolling(false);
+    if (error) {
+      if (error.code === "23505") toast({ title: "Déjà inscrit à cette session", variant: "destructive" });
+      else toast({ title: "Erreur", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: `${enrollingLearner.first_name} inscrit à la formation` });
+      setEnrollDialogOpen(false);
+      fetchLearners();
+      fetchSessions();
+    }
+  }
 
   const fetchSessions = useCallback(async () => {
     const { data, error } = await supabase
@@ -1087,82 +1144,96 @@ export default function ClientDetailPage() {
         </TabsContent>
 
         {/* ---- Tab: Apprenants ---- */}
-        <TabsContent value="learners" className="mt-6">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base font-semibold">Apprenants liés</CardTitle>
-              <CardDescription>
-                {learners.length} apprenant{learners.length !== 1 ? "s" : ""} rattaché{learners.length !== 1 ? "s" : ""} à ce client
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {learners.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-14 text-center">
-                  <Users className="h-10 w-10 text-muted-foreground/30 mb-3" />
-                  <p className="font-medium text-gray-700">Aucun apprenant lié</p>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Les apprenants s&apos;ajoutent depuis le module Apprenants.
-                  </p>
-                  <Link href="/admin/clients/apprenants">
-                    <Button variant="outline" size="sm" className="mt-4">
-                      Gérer les apprenants
-                    </Button>
-                  </Link>
+        <TabsContent value="learners" className="mt-6 space-y-4">
+          {/* Add learner inline form */}
+          {showAddLearner ? (
+            <div className="border rounded-lg p-4 bg-gray-50/50 space-y-3">
+              <p className="text-xs font-semibold text-gray-500 uppercase">Ajouter un apprenant</p>
+              <div className="flex items-center gap-3">
+                <Input placeholder="Prénom *" value={newLearner.first_name} onChange={e => setNewLearner(f => ({...f, first_name: e.target.value}))} className="h-8 text-sm flex-1" autoFocus />
+                <Input placeholder="Nom *" value={newLearner.last_name} onChange={e => setNewLearner(f => ({...f, last_name: e.target.value}))} className="h-8 text-sm flex-1" />
+                <Input placeholder="Email" value={newLearner.email} onChange={e => setNewLearner(f => ({...f, email: e.target.value}))} className="h-8 text-sm flex-1" />
+                <Input placeholder="Poste" value={newLearner.job_title} onChange={e => setNewLearner(f => ({...f, job_title: e.target.value}))} className="h-8 text-sm w-32" />
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="flex-1" />
+                <Button size="sm" variant="ghost" className="text-xs h-7" onClick={() => setShowAddLearner(false)}>Annuler</Button>
+                <Button size="sm" className="text-xs h-7" disabled={!newLearner.first_name.trim() || !newLearner.last_name.trim()} onClick={handleAddLearner}>Ajouter</Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-500">{learners.length} apprenant{learners.length !== 1 ? "s" : ""}</span>
+              <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={() => setShowAddLearner(true)}>
+                <UserPlus className="h-3.5 w-3.5" /> Ajouter un apprenant
+              </Button>
+            </div>
+          )}
+
+          {/* Learners list */}
+          {learners.length === 0 && !showAddLearner ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center border rounded-lg border-dashed">
+              <Users className="h-8 w-8 text-gray-300 mb-2" />
+              <p className="text-sm text-gray-500">Aucun apprenant rattaché</p>
+              <p className="text-xs text-gray-400 mt-1">Ajoutez les employés de cette entreprise qui participeront aux formations</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {learners.map((learner) => (
+                <div key={learner.id} className="border rounded-lg p-3 hover:bg-gray-50/50 transition-colors">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="h-8 w-8 rounded-full bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-500 shrink-0">
+                        {learner.first_name.charAt(0)}{learner.last_name.charAt(0)}
+                      </div>
+                      <div className="min-w-0">
+                        <Link href={`/admin/clients/apprenants/${learner.id}`} className="text-sm font-medium text-gray-900 hover:text-[#3DB5C5] hover:underline">
+                          {learner.first_name} {learner.last_name}
+                        </Link>
+                        <div className="flex items-center gap-3 text-xs text-gray-400 mt-0.5">
+                          {learner.email && <span>{learner.email}</span>}
+                          {learner.job_title && <span>{learner.job_title}</span>}
+                          <span>{learner.enrollments_count} formation{learner.enrollments_count !== 1 ? "s" : ""}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button onClick={() => handleEnrollLearner(learner)} className="text-[10px] text-[#3DB5C5] hover:underline px-1.5 py-0.5">Inscrire</button>
+                      <Link href={`/admin/clients/apprenants/${learner.id}`} className="text-[10px] text-gray-500 hover:text-gray-700 px-1.5 py-0.5">Voir</Link>
+                    </div>
+                  </div>
                 </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b bg-gray-50/80">
-                        <th className="px-4 py-3 text-left font-medium text-gray-600">Nom</th>
-                        <th className="px-4 py-3 text-left font-medium text-gray-600">Email</th>
-                        <th className="px-4 py-3 text-left font-medium text-gray-600">Téléphone</th>
-                        <th className="px-4 py-3 text-left font-medium text-gray-600">Poste</th>
-                        <th className="px-4 py-3 text-left font-medium text-gray-600">Inscriptions</th>
-                        <th className="px-4 py-3 text-left font-medium text-gray-600">Depuis le</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {learners.map((learner) => (
-                        <tr key={learner.id} className="hover:bg-gray-50/50">
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-2.5">
-                              <Avatar className="h-8 w-8">
-                                <AvatarFallback className="bg-indigo-100 text-indigo-700 text-xs font-semibold">
-                                  {getInitials(learner.first_name, learner.last_name)}
-                                </AvatarFallback>
-                              </Avatar>
-                              <span className="font-medium text-gray-900">
-                                {learner.first_name} {learner.last_name}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3">
-                            {learner.email ? (
-                              <a href={`mailto:${learner.email}`} className="text-violet-600 hover:underline text-xs">
-                                {learner.email}
-                              </a>
-                            ) : "—"}
-                          </td>
-                          <td className="px-4 py-3 text-muted-foreground text-xs">{learner.phone ?? "—"}</td>
-                          <td className="px-4 py-3 text-gray-700">{learner.job_title ?? "—"}</td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-1.5">
-                              <BookOpen className="h-3.5 w-3.5 text-muted-foreground" />
-                              <span>{learner.enrollments_count}</span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-muted-foreground text-xs">
-                            {formatDate(learner.created_at)}
-                          </td>
-                        </tr>
+              ))}
+            </div>
+          )}
+
+          {/* Enroll dialog */}
+          {enrollDialogOpen && enrollingLearner && (
+            <Dialog open={enrollDialogOpen} onOpenChange={setEnrollDialogOpen}>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Inscrire {enrollingLearner.first_name} {enrollingLearner.last_name}</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-3 py-2">
+                  <Label>Formation</Label>
+                  <Select value={enrollSessionId} onValueChange={setEnrollSessionId}>
+                    <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Sélectionner une session..." /></SelectTrigger>
+                    <SelectContent>
+                      {sessions.map(s => (
+                        <SelectItem key={s.id} value={s.id}>{s.title}{s.start_date ? ` (${formatDate(s.start_date)})` : ""}</SelectItem>
                       ))}
-                    </tbody>
-                  </table>
+                    </SelectContent>
+                  </Select>
                 </div>
-              )}
-            </CardContent>
-          </Card>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setEnrollDialogOpen(false)}>Annuler</Button>
+                  <Button onClick={handleConfirmEnroll} disabled={!enrollSessionId || enrolling}>
+                    {enrolling ? "Inscription..." : "Inscrire"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          )}
         </TabsContent>
 
         {/* ---- Tab: Sessions ---- */}
