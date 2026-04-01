@@ -640,22 +640,10 @@ export default function QuotesPage() {
                     return (
                       <tr key={quote.id} className="hover:bg-gray-50/50 transition-colors">
                         <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-violet-100">
-                              <FileText className="h-4 w-4 text-violet-600" />
-                            </div>
-                            <span className="font-mono font-medium text-gray-900">{quote.reference}</span>
-                          </div>
+                          <span className="font-mono text-sm text-gray-900">{quote.reference}</span>
                         </td>
                         <td className="px-4 py-3">
-                          <div className="flex items-center gap-1.5">
-                            {quote.client ? (
-                              <Badge variant="outline" className="text-xs border-green-300 text-green-700">Client</Badge>
-                            ) : (
-                              <Badge variant="outline" className="text-xs border-blue-300 text-blue-700">Prospect</Badge>
-                            )}
-                            <span className="text-gray-700">{getEntityName(quote)}</span>
-                          </div>
+                          <span className="text-sm text-gray-700">{getEntityName(quote)}</span>
                         </td>
                         <td className="px-4 py-3">
                           <span className="font-semibold text-gray-900">{formatCurrency(quote.amount)}</span>
