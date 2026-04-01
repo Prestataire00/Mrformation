@@ -271,11 +271,7 @@ export async function generateDevisPDF(data: DevisData, entityName?: string): Pr
 
   y += 35;
 
-  // Separator line
-  doc.setDrawColor("#3DB5C5");
-  doc.setLineWidth(0.8);
-  doc.line(margin, y, pageWidth - margin, y);
-  y += 10;
+  y += 5;
 
   // Title
   doc.setFontSize(14);
