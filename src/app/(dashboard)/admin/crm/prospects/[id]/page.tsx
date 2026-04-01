@@ -122,6 +122,9 @@ export default function ProspectDetailPage() {
   // Dialogs (kept: delete, link training)
   const [deleteOpen, setDeleteOpen] = useState(false);
 
+  // Tab control
+  const [activeTab, setActiveTab] = useState("timeline");
+
   // Inline form toggles
   const [showNoteForm, setShowNoteForm] = useState(false);
   const [showActionForm, setShowActionForm] = useState(false);
@@ -580,7 +583,7 @@ export default function ProspectDetailPage() {
         <div className="flex items-center gap-2 mt-4 flex-wrap">
           {prospect.email && (
             <Button size="sm" className="text-xs h-8 gap-1.5" style={{ background: "#3DB5C5" }}
-              onClick={() => router.push(`/admin/crm/prospects/${prospect.id}/email`)}
+              onClick={() => setActiveTab("communication")}
             >
               <Send className="w-3 h-3" /> Email
             </Button>
@@ -618,7 +621,7 @@ export default function ProspectDetailPage() {
           {/* Tabs */}
 
           {/* Tabbed tracking: Timeline / Commercial / Communication */}
-          <Tabs defaultValue="timeline" className="w-full">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="w-full justify-start border-b rounded-none bg-transparent h-auto p-0 gap-6 mb-4">
               <TabsTrigger
                 value="timeline"
