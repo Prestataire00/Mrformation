@@ -110,7 +110,7 @@ export default function ProspectTasksSection({ prospectId, prospectName }: Prosp
   const { toast } = useToast();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [filter, setFilter] = useState<"all" | "active" | "completed">("active");
   const [form, setForm] = useState({
@@ -158,7 +158,7 @@ export default function ProspectTasksSection({ prospectId, prospectName }: Prosp
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Erreur");
       toast({ title: "Tâche créée" });
-      setDialogOpen(false);
+      setShowForm(false);
       setForm({ title: "", description: "", priority: "medium", due_date: "", reminder_at: "" });
       fetchTasks();
     } catch (err: unknown) {
@@ -258,11 +258,64 @@ export default function ProspectTasksSection({ prospectId, prospectName }: Prosp
             </Badge>
           )}
         </div>
-        <Button size="sm" onClick={() => setDialogOpen(true)} className="gap-1.5">
+        <Button size="sm" onClick={() => setShowForm(true)} className="gap-1.5">
           <Plus className="h-4 w-4" />
           Nouvelle tâche
         </Button>
       </div>
+
+      {/* Inline create form */}
+      {showForm && (
+        <div className="border rounded-lg p-4 mb-4 bg-gray-50/50 space-y-3">
+          <Input
+            value={form.title}
+            onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+            placeholder="Titre de la tâche..."
+            autoFocus
+            className="text-sm"
+            onKeyDown={(e) => { if (e.key === "Enter" && form.title.trim()) handleCreate(); if (e.key === "Escape") setShowForm(false); }}
+          />
+          <div className="flex items-center gap-2 flex-wrap">
+            <Select value={form.priority} onValueChange={(v) => setForm((f) => ({ ...f, priority: v as TaskPriority }))}>
+              <SelectTrigger className="h-8 w-28 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="low">Basse</SelectItem>
+                <SelectItem value="medium">Moyenne</SelectItem>
+                <SelectItem value="high">Haute</SelectItem>
+              </SelectContent>
+            </Select>
+            <Input
+              type="date"
+              value={form.due_date}
+              onChange={(e) => setForm((f) => ({ ...f, due_date: e.target.value }))}
+              className="h-8 w-36 text-xs"
+            />
+            <div className="flex gap-1">
+              {REMINDER_PRESETS.slice(0, 4).map((preset) => (
+                <button
+                  key={preset.label}
+                  type="button"
+                  onClick={() => setForm((f) => ({ ...f, reminder_at: computeReminderDate(preset.days) }))}
+                  className={cn(
+                    "rounded-full border px-2 py-0.5 text-[10px] font-medium transition-colors",
+                    form.reminder_at === computeReminderDate(preset.days)
+                      ? "border-blue-500 bg-blue-50 text-blue-700"
+                      : "border-gray-200 text-gray-500 hover:border-gray-300"
+                  )}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex-1" />
+            <Button size="sm" variant="ghost" className="text-xs h-7" onClick={() => setShowForm(false)}>Annuler</Button>
+            <Button size="sm" className="text-xs h-7 gap-1" onClick={handleCreate} disabled={saving || !form.title.trim()}>
+              {saving && <Loader2 className="h-3 w-3 animate-spin" />}
+              Créer
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Task list */}
       {filteredTasks.length === 0 ? (
@@ -379,122 +432,6 @@ export default function ProspectTasksSection({ prospectId, prospectName }: Prosp
         </div>
       )}
 
-      {/* Create task dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Nouvelle tâche</DialogTitle>
-            <DialogDescription>
-              Ajouter une tâche liée à {prospectName}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label>Titre <span className="text-red-500">*</span></Label>
-              <Input
-                value={form.title}
-                onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-                placeholder="Ex: Relancer pour le devis"
-                autoFocus
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Description</Label>
-              <Textarea
-                value={form.description}
-                onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                rows={3}
-                className="resize-none"
-                placeholder="Détails supplémentaires..."
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label>Priorité</Label>
-                <Select value={form.priority} onValueChange={(v) => setForm((f) => ({ ...f, priority: v as TaskPriority }))}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="low">Basse</SelectItem>
-                    <SelectItem value="medium">Moyenne</SelectItem>
-                    <SelectItem value="high">Haute</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Échéance</Label>
-                <Input
-                  type="date"
-                  value={form.due_date}
-                  onChange={(e) => setForm((f) => ({ ...f, due_date: e.target.value }))}
-                />
-              </div>
-            </div>
-
-            {/* Reminder section */}
-            <div className="space-y-2">
-              <Label className="flex items-center gap-1.5">
-                <Bell className="h-3.5 w-3.5" />
-                Rappel
-              </Label>
-              <div className="flex flex-wrap gap-1.5">
-                {REMINDER_PRESETS.map((preset) => (
-                  <button
-                    key={preset.label}
-                    type="button"
-                    onClick={() =>
-                      setForm((f) => ({ ...f, reminder_at: computeReminderDate(preset.days) }))
-                    }
-                    className={cn(
-                      "rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
-                      form.reminder_at === computeReminderDate(preset.days)
-                        ? "border-blue-500 bg-blue-50 text-blue-700"
-                        : "border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50"
-                    )}
-                  >
-                    {preset.label}
-                  </button>
-                ))}
-                {form.reminder_at && (
-                  <button
-                    type="button"
-                    onClick={() => setForm((f) => ({ ...f, reminder_at: "" }))}
-                    className="rounded-md border border-red-200 px-2.5 py-1 text-xs font-medium text-red-500 hover:bg-red-50 transition-colors"
-                  >
-                    Retirer
-                  </button>
-                )}
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Ou date personnalisée</Label>
-                <Input
-                  type="datetime-local"
-                  value={form.reminder_at ? new Date(form.reminder_at).toISOString().slice(0, 16) : ""}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setForm((f) => ({ ...f, reminder_at: val ? new Date(val).toISOString() : "" }));
-                  }}
-                  className="text-sm"
-                />
-              </div>
-              {form.reminder_at && (
-                <p className="text-xs text-blue-600 flex items-center gap-1">
-                  <Bell className="h-3 w-3" />
-                  Rappel prévu : {formatReminderLabel(form.reminder_at)}
-                </p>
-              )}
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>Annuler</Button>
-            <Button onClick={handleCreate} disabled={saving || !form.title.trim()} className="gap-1.5">
-              {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-              Créer la tâche
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
