@@ -22,6 +22,7 @@ import {
   X,
   Loader2,
   Trash2,
+  Users,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -36,7 +37,8 @@ import {
   DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog";
-import { formatDateTime } from "@/lib/utils";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { formatDateTime, formatDate } from "@/lib/utils";
 import type { CommercialActionType, CrmCommercialAction } from "@/lib/types";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -99,6 +101,13 @@ export default function SuiviCommercialPage() {
   // Prospects list for the dialog
   const [prospects, setProspects] = useState<{ id: string; company_name: string }[]>([]);
 
+  // My active prospects
+  const [myProspects, setMyProspects] = useState<{ id: string; company_name: string; status: string; amount: number | null; updated_at: string }[]>([]);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+  // Team stats
+  const [teamStats, setTeamStats] = useState<{ name: string; actions: number; pipeline: number }[]>([]);
+
   // Delete confirmation
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -123,6 +132,60 @@ export default function SuiviCommercialPage() {
         emails: data.filter((a) => a.action_type === "email").length,
         relances: data.filter((a) => a.action_type === "relance").length,
       });
+    }
+  }, [supabase, entityId]);
+
+  // ── Fetch current user + my prospects ──────────────────────────────────
+
+  const fetchMyData = useCallback(async () => {
+    if (!entityId) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    setCurrentUserId(user.id);
+
+    // My active prospects (non-won, non-lost, non-dormant)
+    const { data: myP } = await supabase
+      .from("crm_prospects")
+      .select("id, company_name, status, amount, updated_at")
+      .eq("entity_id", entityId)
+      .not("status", "in", '("won","lost","dormant")')
+      .order("updated_at", { ascending: false })
+      .limit(20);
+    setMyProspects(myP ?? []);
+
+    // Team stats: actions per author this month
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const { data: teamActions } = await supabase
+      .from("crm_commercial_actions")
+      .select("author_id, author:profiles(first_name, last_name)")
+      .eq("entity_id", entityId)
+      .gte("created_at", firstDay);
+
+    if (teamActions) {
+      const byAuthor = new Map<string, { name: string; actions: number }>();
+      for (const a of teamActions) {
+        const authorName = (a.author as any)?.first_name
+          ? `${(a.author as any).first_name} ${(a.author as any).last_name}`
+          : "Inconnu";
+        const existing = byAuthor.get(a.author_id) ?? { name: authorName, actions: 0 };
+        existing.actions++;
+        byAuthor.set(a.author_id, existing);
+      }
+
+      // Get pipeline per author (sum of prospect amounts for active prospects)
+      const { data: allProspects } = await supabase
+        .from("crm_prospects")
+        .select("amount")
+        .eq("entity_id", entityId)
+        .not("status", "in", '("won","lost","dormant")');
+
+      const totalPipeline = (allProspects ?? []).reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+
+      const stats = Array.from(byAuthor.values())
+        .map((s) => ({ ...s, pipeline: Math.round(totalPipeline / (byAuthor.size || 1)) }))
+        .sort((a, b) => b.actions - a.actions);
+      setTeamStats(stats);
     }
   }, [supabase, entityId]);
 
@@ -164,7 +227,8 @@ export default function SuiviCommercialPage() {
     if (entityId === undefined) return;
     fetchActions(0, false);
     fetchKpis();
-  }, [entityId, fetchActions, fetchKpis]);
+    fetchMyData();
+  }, [entityId, fetchActions, fetchKpis, fetchMyData]);
 
   // ── Fetch prospects for dialog ──────────────────────────────────────────
 
@@ -275,32 +339,80 @@ export default function SuiviCommercialPage() {
         ))}
       </div>
 
-      {/* Main Card */}
-      <Card className="bg-white border border-gray-200 shadow-sm">
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base font-semibold text-gray-700 flex items-center gap-2">
-              <Activity className="h-4 w-4" style={{ color: "#3DB5C5" }} />
-              Journal des actions commerciales
-              {totalCount > 0 && (
-                <Badge variant="outline" className="text-[10px] ml-1">
-                  {totalCount} action{totalCount > 1 ? "s" : ""}
-                </Badge>
-              )}
-            </CardTitle>
-            <Button
-              size="sm"
-              onClick={() => setDialogOpen(true)}
-              className="gap-1.5 text-white"
-              style={{ background: "#3DB5C5" }}
-            >
-              <Plus className="h-4 w-4" />
-              Nouvelle action
-            </Button>
-          </div>
-        </CardHeader>
+      {/* Tabs: Mon activité / Équipe */}
+      <Tabs defaultValue="my-activity">
+        <TabsList className="mb-4">
+          <TabsTrigger value="my-activity" className="gap-1.5">
+            <Activity className="h-4 w-4" />
+            Mon activité
+          </TabsTrigger>
+          <TabsTrigger value="team" className="gap-1.5">
+            <Users className="h-4 w-4" />
+            Équipe
+          </TabsTrigger>
+        </TabsList>
 
-        <CardContent>
+        {/* ── Mon activité ── */}
+        <TabsContent value="my-activity" className="space-y-4">
+          {/* My active prospects */}
+          {myProspects.length > 0 && (
+            <Card className="bg-white border border-gray-200 shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold text-gray-700">Mes prospects actifs ({myProspects.length})</CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="divide-y divide-gray-100">
+                  {myProspects.slice(0, 8).map((p) => (
+                    <Link
+                      key={p.id}
+                      href={`/admin/crm/prospects/${p.id}`}
+                      className="flex items-center justify-between px-4 py-2.5 hover:bg-gray-50 transition-colors"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="h-7 w-7 rounded-full bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-500 shrink-0">
+                          {p.company_name.charAt(0)}
+                        </div>
+                        <span className="text-sm font-medium text-gray-700 truncate">{p.company_name}</span>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {p.amount && <span className="text-xs font-medium text-gray-600">{Number(p.amount).toLocaleString("fr-FR")} €</span>}
+                        <Badge variant="outline" className="text-[10px]">
+                          {p.status === "new" ? "Lead" : p.status === "contacted" ? "Contacté" : p.status === "qualified" ? "Qualifié" : p.status === "proposal" ? "Proposition" : p.status}
+                        </Badge>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Journal */}
+          <Card className="bg-white border border-gray-200 shadow-sm">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base font-semibold text-gray-700 flex items-center gap-2">
+                  <Activity className="h-4 w-4" style={{ color: "#3DB5C5" }} />
+                  Journal des actions
+                  {totalCount > 0 && (
+                    <Badge variant="outline" className="text-[10px] ml-1">
+                      {totalCount}
+                    </Badge>
+                  )}
+                </CardTitle>
+                <Button
+                  size="sm"
+                  onClick={() => setDialogOpen(true)}
+                  className="gap-1.5 text-white"
+                  style={{ background: "#3DB5C5" }}
+                >
+                  <Plus className="h-4 w-4" />
+                  Nouvelle action
+                </Button>
+              </div>
+            </CardHeader>
+
+            <CardContent>
           {/* Filter Bar */}
           <div className="flex flex-wrap gap-3 items-end mb-5 pb-4 border-b border-gray-100">
             <div className="flex flex-col gap-1">
@@ -481,6 +593,40 @@ export default function SuiviCommercialPage() {
           )}
         </CardContent>
       </Card>
+        </TabsContent>
+
+        {/* ── Équipe ── */}
+        <TabsContent value="team" className="space-y-4">
+          <Card className="bg-white border border-gray-200 shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-semibold text-gray-700">Classement ce mois</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {teamStats.length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-8">Aucune activité ce mois-ci</p>
+              ) : (
+                <div className="space-y-3">
+                  {teamStats.map((member, i) => (
+                    <div key={member.name} className="flex items-center gap-3">
+                      <span className="text-lg font-bold text-gray-300 w-6 text-right">{i + 1}</span>
+                      <div className="h-9 w-9 rounded-full bg-gray-100 flex items-center justify-center text-sm font-bold text-gray-500 shrink-0">
+                        {member.name.charAt(0)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-700">{member.name}</p>
+                        <div className="flex items-center gap-3 text-xs text-gray-500">
+                          <span>{member.actions} action{member.actions > 1 ? "s" : ""}</span>
+                          <span>{member.pipeline.toLocaleString("fr-FR")} € pipeline</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       {/* ── New Action Dialog ───────────────────────────────────────────── */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
