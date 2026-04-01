@@ -284,14 +284,9 @@ export default function NewQuotePage() {
             <p className="text-sm font-bold text-gray-900">{prospectName || "Devis"}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={addLine} className="text-xs text-[#3DB5C5] hover:underline gap-1 flex items-center">
-            <Plus className="h-3 w-3" /> Produit
-          </button>
-          <Button onClick={handleSubmit} disabled={saving} size="sm" style={{ background: "#3DB5C5" }} className="text-white text-xs">
-            {saving ? "Création..." : "Créer le devis"}
-          </Button>
-        </div>
+        <Button onClick={handleSubmit} disabled={saving} size="sm" style={{ background: "#3DB5C5" }} className="text-white text-xs">
+          {saving ? "Création..." : "Créer le devis"}
+        </Button>
       </div>
 
       {/* Content */}
