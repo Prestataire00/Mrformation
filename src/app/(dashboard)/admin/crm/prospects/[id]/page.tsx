@@ -503,273 +503,102 @@ export default function ProspectDetailPage() {
   const amount = Number(prospect.amount) || 0;
 
   return (
-    <div className="space-y-6 max-w-4xl">
-      {/* Breadcrumb + Back */}
-      <div className="flex items-center gap-2 text-sm">
-        <button
-          onClick={() => router.push("/admin/crm/prospects")}
-          className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Tunnel de Vente
-        </button>
-        <ChevronRight className="w-3 h-3 text-muted-foreground" />
-        <span className="font-medium">{prospect.company_name}</span>
-      </div>
+    <div className="space-y-0">
+      {/* ── HEADER HUBSPOT STYLE ────────────────────────────────────────── */}
+      <div className="bg-white border-b px-6 py-5">
+        {/* Breadcrumb */}
+        <div className="flex items-center gap-2 text-xs text-muted-foreground mb-3">
+          <button
+            onClick={() => router.push("/admin/crm/prospects")}
+            className="flex items-center gap-1 hover:text-foreground transition-colors"
+          >
+            <ArrowLeft className="w-3 h-3" />
+            Tunnel de Vente
+          </button>
+          <ChevronRight className="w-3 h-3" />
+          <span className="text-foreground font-medium">{prospect.company_name}</span>
+        </div>
 
-      {/* ── Header: Infos entreprise ─────────────────────────────────────── */}
-      <Card>
-        <CardContent className="py-5">
-          <div className="flex items-start justify-between">
+        {/* Main info line */}
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="h-12 w-12 rounded-xl bg-gray-100 flex items-center justify-center text-lg font-bold text-gray-400 shrink-0">
+              {prospect.company_name.charAt(0)}
+            </div>
             <div>
-              <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide mb-1">Entreprise</p>
-              <p className="text-sm"><span className="font-medium">Commercial :</span> MR FORMATION</p>
-              <div className="flex items-center gap-2 mt-1">
-                <span className="text-sm font-medium">Statut :</span>
-                <Badge
-                  className="text-white text-xs"
-                  style={{ backgroundColor: statusInfo.color }}
-                >
-                  {statusInfo.label}
-                </Badge>
+              <h1 className="text-xl font-bold text-gray-900">{prospect.company_name}</h1>
+              <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground flex-wrap">
+                {prospect.contact_name && (
+                  <span className="flex items-center gap-1"><User className="w-3 h-3" />{prospect.contact_name}</span>
+                )}
+                {prospect.email && (
+                  <a href={`mailto:${prospect.email}`} className="flex items-center gap-1 text-[#3DB5C5] hover:underline"><Mail className="w-3 h-3" />{prospect.email}</a>
+                )}
+                {prospect.phone && (
+                  <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{prospect.phone}</span>
+                )}
               </div>
-              {amount > 0 && (
-                <p className="text-sm mt-1">
-                  <span className="font-medium">Montant HT :</span>{" "}
-                  {amount.toLocaleString("fr-FR")} EUR
-                </p>
-              )}
             </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <Badge className="text-white text-xs px-3 py-1" style={{ backgroundColor: statusInfo.color }}>
+              {statusInfo.label}
+            </Badge>
+            {amount > 0 && (
+              <span className="text-sm font-bold text-gray-700">{amount.toLocaleString("fr-FR")} €</span>
+            )}
             {prospect.source && (
-              <Badge variant="secondary" className="text-xs">
-                {prospect.source}
-              </Badge>
+              <Badge variant="secondary" className="text-xs">{prospect.source}</Badge>
             )}
           </div>
-        </CardContent>
-      </Card>
+        </div>
 
-      {/* ── Contacts ─────────────────────────────────────────────────────── */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Contacts</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          <div className="bg-muted/40 rounded-lg p-4 space-y-1.5 text-sm">
-            <p className="flex items-center gap-2">
-              <Building2 className="w-3.5 h-3.5 text-muted-foreground" />
-              <span className="font-medium">Nom :</span> {prospect.company_name}
-            </p>
-            {prospect.contact_name && (
-              <p className="flex items-center gap-2">
-                <User className="w-3.5 h-3.5 text-muted-foreground" />
-                <span className="font-medium">Contact :</span> {prospect.contact_name}
-              </p>
-            )}
-            {prospect.email && (
-              <p className="flex items-center gap-2">
-                <Mail className="w-3.5 h-3.5 text-muted-foreground" />
-                <span className="font-medium">Email :</span> {prospect.email}
-              </p>
-            )}
-            {prospect.phone && (
-              <p className="flex items-center gap-2">
-                <Phone className="w-3.5 h-3.5 text-muted-foreground" />
-                <span className="font-medium">Téléphone :</span> {prospect.phone}
-              </p>
-            )}
-          </div>
-
-          {/* Action buttons */}
-          <div className="flex flex-wrap gap-2 pt-2">
-            {prospect.email && (
-              <Button
-                size="sm"
-                variant="default"
-                className="text-xs h-8"
-                onClick={() => router.push(`/admin/crm/prospects/${prospect.id}/email`)}
-              >
-                <Send className="w-3 h-3 mr-1.5" />
-                Email
-              </Button>
-            )}
-            <Button
-              size="sm"
-              variant="default"
-              className="text-xs h-8"
-              onClick={() => router.push(`/admin/crm/quotes/new?prospect_id=${prospect.id}`)}
+        {/* Action buttons */}
+        <div className="flex items-center gap-2 mt-4 flex-wrap">
+          {prospect.email && (
+            <Button size="sm" className="text-xs h-8 gap-1.5" style={{ background: "#3DB5C5" }}
+              onClick={() => router.push(`/admin/crm/prospects/${prospect.id}/email`)}
             >
-              <FileText className="w-3 h-3 mr-1.5" />
-              Devis
+              <Send className="w-3 h-3" /> Email
             </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="text-xs h-8"
-              onClick={() => setActionOpen(true)}
-            >
-              <Plus className="w-3 h-3 mr-1.5" />
-              Action
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="text-xs h-8"
-              onClick={() => setNoteOpen(true)}
-            >
-              <StickyNote className="w-3 h-3 mr-1.5" />
-              Note
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="text-xs h-8"
-              onClick={() => { setNewStatus(prospect.status as ProspectStatus); setStatusOpen(true); }}
-            >
-              <TrendingUp className="w-3 h-3 mr-1.5" />
-              Statut
-            </Button>
-            <Button size="sm" variant="ghost" className="text-xs h-8" onClick={openEdit}>
-              <Pencil className="w-3 h-3 mr-1.5" />
-              Modifier
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* ── Devis ────────────────────────────────────────────────────────── */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Devis</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {quotes.length === 0 ? (
-            <p className="text-sm text-muted-foreground mb-3">Aucun devis pour ce lead.</p>
-          ) : (
-            <div className="space-y-2 mb-3">
-              {quotes.map((q) => (
-                <div
-                  key={q.id}
-                  className="rounded-lg border border-gray-200 bg-white overflow-hidden"
-                >
-                  {/* Quote header */}
-                  <div className="flex items-center justify-between px-4 py-2.5 bg-muted/30">
-                    <div className="flex items-center gap-3 text-sm">
-                      <FileText className="w-4 h-4 text-muted-foreground" />
-                      <span className="font-medium">
-                        {formatDate(q.created_at)} — {q.reference}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-xs">
-                        {q.status === "accepted" ? "Accepté" : q.status === "rejected" ? "Refusé" : q.status === "sent" ? "Envoyé" : "Brouillon"}
-                      </Badge>
-                      <span className="font-semibold text-sm">
-                        {q.amount ? `${q.amount.toLocaleString("fr-FR")} EUR` : "—"}
-                      </span>
-                    </div>
-                  </div>
-                  {/* Action bar */}
-                  <div className="flex items-center gap-1 px-3 py-1.5 border-t border-gray-100">
-                    <button
-                      onClick={() => router.push(`/admin/crm/quotes/new?prospect_id=${prospect.id}&edit=${q.id}`)}
-                      className="flex items-center gap-1 rounded px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100 transition"
-                    >
-                      <Pencil className="w-3 h-3" />
-                      Modifier
-                    </button>
-                    <div className="w-px h-4 bg-gray-200" />
-                    <button
-                      onClick={() => handleDownloadDevis(q)}
-                      className="flex items-center gap-1 rounded px-2.5 py-1 text-xs font-medium text-[#3DB5C5] hover:bg-[#e8f7f9] transition"
-                    >
-                      <Download className="w-3 h-3" />
-                      Voir / Télécharger
-                    </button>
-                    <div className="w-px h-4 bg-gray-200" />
-                    <button
-                      onClick={() => router.push(`/admin/crm/prospects/${prospect.id}/email?subject=${encodeURIComponent(`Devis ${q.reference ?? ""}`)}`)}
-                      className="flex items-center gap-1 rounded px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100 transition"
-                    >
-                      <Send className="w-3 h-3" />
-                      Envoyer par email
-                    </button>
-                    <div className="w-px h-4 bg-gray-200" />
-                    <button
-                      onClick={() => handleDeleteQuote(q.id)}
-                      className="flex items-center gap-1 rounded px-2.5 py-1 text-xs font-medium text-red-500 hover:bg-red-50 transition"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                      Supprimer
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
           )}
-          <Button
-            size="sm"
-            variant="default"
-            className="text-xs h-8"
+          <Button size="sm" variant="outline" className="text-xs h-8 gap-1.5"
             onClick={() => router.push(`/admin/crm/quotes/new?prospect_id=${prospect.id}`)}
           >
-            <Plus className="w-3 h-3 mr-1.5" />
-            CRÉER UN DEVIS
+            <FileText className="w-3 h-3" /> Devis
           </Button>
-        </CardContent>
-      </Card>
-
-      {/* ── Questionnaires ───────────────────────────────────────────────── */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Questionnaires</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground uppercase tracking-wide font-medium mb-3">
-            Pas de questionnaire attribué
-          </p>
-          <Button
-            size="sm"
-            variant="outline"
-            className="text-xs h-8"
-            onClick={() => router.push("/admin/questionnaires")}
+          <Button size="sm" variant="outline" className="text-xs h-8 gap-1.5"
+            onClick={() => setActionOpen(true)}
           >
-            <ClipboardList className="w-3 h-3 mr-1.5" />
-            Attribuer un questionnaire
+            <Plus className="w-3 h-3" /> Action
           </Button>
-        </CardContent>
-      </Card>
+          <Button size="sm" variant="outline" className="text-xs h-8 gap-1.5"
+            onClick={() => setNoteOpen(true)}
+          >
+            <StickyNote className="w-3 h-3" /> Note
+          </Button>
+          <Button size="sm" variant="outline" className="text-xs h-8 gap-1.5"
+            onClick={() => { setNewStatus(prospect.status as ProspectStatus); setStatusOpen(true); }}
+          >
+            <TrendingUp className="w-3 h-3" /> Statut
+          </Button>
+          <Button size="sm" variant="ghost" className="text-xs h-8 gap-1.5" onClick={openEdit}>
+            <Pencil className="w-3 h-3" /> Modifier
+          </Button>
+          <Button size="sm" variant="ghost" className="text-xs h-8 gap-1.5 text-red-500 hover:text-red-600 hover:bg-red-50"
+            onClick={() => setDeleteOpen(true)}
+          >
+            <Trash2 className="w-3 h-3" />
+          </Button>
+        </div>
+      </div>
 
-      {/* ── Suivi de l'opportunité ───────────────────────────────────────── */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Suivi de l&apos;opportunité</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {/* Action buttons */}
-          <div className="flex flex-wrap gap-2 mb-4">
-            <Button
-              size="sm"
-              variant="default"
-              className="text-xs h-8"
-              onClick={() => {
-                setNewStatus(prospect.status);
-                setStatusOpen(true);
-              }}
-            >
-              <TrendingUp className="w-3 h-3 mr-1.5" />
-              MODIFIER LE STATUT
-            </Button>
-            <Button
-              size="sm"
-              variant="default"
-              className="text-xs h-8"
-              onClick={() => setNoteOpen(true)}
-            >
-              <StickyNote className="w-3 h-3 mr-1.5" />
-              AJOUTER UNE NOTE
-            </Button>
-          </div>
+      {/* ── 2 COLONNES ──────────────────────────────────────────────────── */}
+      <div className="flex gap-0 min-h-[calc(100vh-200px)]">
+        {/* ── GAUCHE: Activité (2/3) ── */}
+        <div className="flex-1 border-r bg-gray-50/50 p-6">
+          {/* Tabs */}
 
           {/* Tabbed tracking: Timeline / Commercial / Communication */}
           <Tabs defaultValue="timeline" className="w-full">
@@ -858,114 +687,98 @@ export default function ProspectDetailPage() {
               </div>
             </TabsContent>
           </Tabs>
-        </CardContent>
-      </Card>
+        </div>
 
-      {/* ── Formation ────────────────────────────────────────────────────── */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Formation</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {linkedTraining ? (
-            <div>
-              <div className="flex items-center gap-3 rounded-lg border border-blue-200 bg-blue-50/50 p-3 mb-3">
-                <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600">
-                  <BookOpen className="h-4 w-4" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-gray-900">{linkedTraining.title}</p>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    {linkedTraining.category && (
-                      <span className="text-xs text-gray-500">{linkedTraining.category}</span>
-                    )}
-                    {linkedTraining.duration_hours && (
-                      <span className="text-xs text-gray-500">{linkedTraining.duration_hours}h</span>
-                    )}
-                    {linkedTraining.price_per_person && (
-                      <span className="text-xs text-gray-500">{Number(linkedTraining.price_per_person).toLocaleString("fr-FR")} €/pers</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="text-xs h-8"
-                  onClick={openLinkTrainingDialog}
-                >
-                  <ExternalLink className="w-3 h-3 mr-1.5" />
-                  Changer de formation
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="text-xs h-8 text-red-500 hover:text-red-600"
-                  onClick={handleUnlinkTraining}
-                >
-                  <Trash2 className="w-3 h-3 mr-1.5" />
-                  Dissocier
-                </Button>
-              </div>
+        {/* ── DROITE: Infos & Devis (1/3) ── */}
+        <div className="w-80 shrink-0 bg-white p-6 space-y-6 overflow-y-auto">
+          {/* Infos */}
+          <div>
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Informations</h3>
+            <div className="space-y-2 text-sm">
+              {prospect.siret && (
+                <div className="flex justify-between"><span className="text-muted-foreground">SIRET</span><span className="font-medium">{prospect.siret}</span></div>
+              )}
+              {prospect.naf_code && (
+                <div className="flex justify-between"><span className="text-muted-foreground">NAF</span><span className="font-medium">{prospect.naf_code}</span></div>
+              )}
+              {prospect.source && (
+                <div className="flex justify-between"><span className="text-muted-foreground">Source</span><span className="font-medium">{prospect.source}</span></div>
+              )}
+              <div className="flex justify-between"><span className="text-muted-foreground">Créé le</span><span className="font-medium">{formatDate(prospect.created_at)}</span></div>
+              {amount > 0 && (
+                <div className="flex justify-between"><span className="text-muted-foreground">Montant HT</span><span className="font-bold text-gray-900">{amount.toLocaleString("fr-FR")} €</span></div>
+              )}
             </div>
-          ) : (
-            <div>
-              <div className="bg-muted/40 rounded-lg p-4 mb-3">
-                <p className="text-sm text-muted-foreground">
-                  Connectez ce prospect à une formation existante.
-                </p>
-              </div>
-              <Button
-                size="sm"
-                variant="default"
-                className="text-xs h-8"
-                onClick={openLinkTrainingDialog}
+          </div>
+
+          <hr className="border-gray-100" />
+
+          {/* Devis */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Devis ({quotes.length})</h3>
+              <Button size="sm" variant="ghost" className="text-xs h-6 px-2 gap-1"
+                onClick={() => router.push(`/admin/crm/quotes/new?prospect_id=${prospect.id}`)}
               >
-                <ExternalLink className="w-3 h-3 mr-1.5" />
-                CONNECTER À UNE FORMATION
+                <Plus className="w-3 h-3" /> Créer
               </Button>
             </div>
-          )}
-        </CardContent>
-      </Card>
+            {quotes.length === 0 ? (
+              <p className="text-xs text-muted-foreground">Aucun devis</p>
+            ) : (
+              <div className="space-y-2">
+                {quotes.map((q) => (
+                  <div key={q.id} className="rounded-lg border border-gray-100 p-3 hover:bg-gray-50 transition-colors">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-medium">{q.reference}</span>
+                      <Badge variant="outline" className="text-[10px]">
+                        {q.status === "accepted" ? "Accepté" : q.status === "rejected" ? "Refusé" : q.status === "sent" ? "Envoyé" : "Brouillon"}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">{formatDate(q.created_at)}</span>
+                      <span className="text-sm font-semibold">{q.amount ? `${q.amount.toLocaleString("fr-FR")} €` : "—"}</span>
+                    </div>
+                    <div className="flex gap-1 mt-2">
+                      <button onClick={() => handleDownloadDevis(q)} className="text-[10px] text-[#3DB5C5] hover:underline">PDF</button>
+                      <span className="text-gray-300">·</span>
+                      <button onClick={() => router.push(`/admin/crm/prospects/${prospect.id}/email?subject=${encodeURIComponent(`Devis ${q.reference ?? ""}`)}`)} className="text-[10px] text-gray-500 hover:underline">Envoyer</button>
+                      <span className="text-gray-300">·</span>
+                      <button onClick={() => handleDeleteQuote(q.id)} className="text-[10px] text-red-400 hover:underline">Suppr.</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
-      {/* ── Documents ────────────────────────────────────────────────────── */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Documents</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground mb-3">
-            Pas de documents pour ce lead.
-          </p>
-          <Button size="sm" variant="outline" className="text-xs h-8">
-            <Upload className="w-3 h-3 mr-1.5" />
-            AJOUTER
-          </Button>
-        </CardContent>
-      </Card>
+          <hr className="border-gray-100" />
 
-      {/* ── Supprimer le Lead ────────────────────────────────────────────── */}
-      <Card className="border-red-200 bg-red-50/30">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base text-red-600">Supprimer le Lead</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground mb-3">
-            Vous pouvez supprimer le lead après la suppression de ses documents et de ses notes...
-          </p>
-          <Button
-            size="sm"
-            variant="destructive"
-            className="text-xs h-8"
-            onClick={() => setDeleteOpen(true)}
-          >
-            <Trash2 className="w-3 h-3 mr-1.5" />
-            Supprimer
-          </Button>
-        </CardContent>
-      </Card>
+          {/* Formation */}
+          <div>
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Formation liée</h3>
+            {linkedTraining ? (
+              <div>
+                <div className="rounded-lg border border-blue-100 bg-blue-50/50 p-3 mb-2">
+                  <p className="text-sm font-medium text-gray-900">{linkedTraining.title}</p>
+                  <div className="flex items-center gap-2 mt-1 text-xs text-gray-500">
+                    {linkedTraining.duration_hours && <span>{linkedTraining.duration_hours}h</span>}
+                    {linkedTraining.price_per_person && <span>{Number(linkedTraining.price_per_person).toLocaleString("fr-FR")} €/pers</span>}
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={openLinkTrainingDialog} className="text-[10px] text-[#3DB5C5] hover:underline">Changer</button>
+                  <button onClick={handleUnlinkTraining} className="text-[10px] text-red-400 hover:underline">Dissocier</button>
+                </div>
+              </div>
+            ) : (
+              <Button size="sm" variant="outline" className="text-xs h-7 gap-1 w-full" onClick={openLinkTrainingDialog}>
+                <ExternalLink className="w-3 h-3" /> Lier une formation
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
 
       {/* ══════════════════════════════════════════════════════════════════ */}
       {/* DIALOGS                                                          */}
