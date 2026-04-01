@@ -272,331 +272,184 @@ export default function NewQuotePage() {
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50/50">
       {/* Header */}
-      <div className="border-b border-gray-200 bg-white px-6 py-4">
-        <button
-          onClick={() => router.back()}
-          className="mb-3 flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 transition"
-        >
-          <ArrowLeft className="h-3.5 w-3.5" />
-          Retour
-        </button>
-        <h1 className="text-lg font-medium text-gray-600">
-          Lead / <span className="font-bold text-gray-900">Créer Un Devis</span>
-        </h1>
+      <div className="sticky top-0 z-10 border-b bg-white px-6 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <button onClick={() => router.back()} className="text-gray-400 hover:text-gray-600">
+            <ArrowLeft className="h-4 w-4" />
+          </button>
+          <div>
+            <p className="text-xs text-gray-400">Nouveau devis</p>
+            <p className="text-sm font-bold text-gray-900">{prospectName || "Devis"}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={addLine} className="text-xs text-[#3DB5C5] hover:underline gap-1 flex items-center">
+            <Plus className="h-3 w-3" /> Produit
+          </button>
+          <Button onClick={handleSubmit} disabled={saving} size="sm" style={{ background: "#3DB5C5" }} className="text-white text-xs">
+            {saving ? "Création..." : "Créer le devis"}
+          </Button>
+        </div>
       </div>
 
-      {/* Form */}
-      <div className="mx-auto max-w-3xl px-6 py-8">
-        {(prospectName || learnerName) && (
-          <h2 className="mb-8 text-2xl font-bold text-gray-900">
-            Devis Pour {prospectName || learnerName}
-          </h2>
-        )}
+      {/* Content */}
+      <div className="max-w-5xl mx-auto px-6 py-6">
+        {error && <p className="text-sm text-red-600 bg-red-50 rounded px-3 py-2 mb-4">{error}</p>}
 
-        <div className="space-y-6">
-          {/* Numéro du devis */}
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700">
-              Numéro du devis<span className="text-red-500">*</span>
-            </label>
-            <Input
-              value={form.reference}
-              onChange={(e) => updateField("reference", e.target.value)}
-              className="font-mono"
-            />
-          </div>
-
-          {/* Date de création */}
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700">
-              Date de création<span className="text-red-500">*</span>
-            </label>
-            <Input
-              type="date"
-              value={form.date_creation}
-              onChange={(e) => updateField("date_creation", e.target.value)}
-            />
-          </div>
-
-          {/* Date d'échéance */}
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700">
-              Date d&apos;échéance<span className="text-red-500">*</span>
-            </label>
-            <Input
-              type="date"
-              value={form.date_echeance}
-              onChange={(e) => updateField("date_echeance", e.target.value)}
-            />
-          </div>
-
-          {/* Date début formation */}
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700">
-              Date de début de la formation
-            </label>
-            <Input
-              type="date"
-              value={form.training_start}
-              onChange={(e) => updateField("training_start", e.target.value)}
-            />
-          </div>
-
-          {/* Date fin formation */}
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700">
-              Date de fin de la formation
-            </label>
-            <Input
-              type="date"
-              value={form.training_end}
-              onChange={(e) => updateField("training_end", e.target.value)}
-            />
-          </div>
-
-          {/* TVA */}
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700">
-              TVA<span className="text-red-500">*</span>
-            </label>
-            <Input
-              value={form.tva}
-              onChange={(e) => updateField("tva", e.target.value)}
-              placeholder="20,00"
-            />
-          </div>
-
-          {/* Effectifs Formés */}
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700">
-              Effectifs Formés
-            </label>
-            <Input
-              type="number"
-              min="0"
-              value={form.effectifs}
-              onChange={(e) => updateField("effectifs", e.target.value)}
-            />
-          </div>
-
-          {/* Durée de la formation */}
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700">
-              Durée de la formation{" "}
-              <span className="text-xs text-gray-400 font-normal">
-                (ex: 10 heures, 10 jours, 1 mois...)
-              </span>
-            </label>
-            <Input
-              value={form.duration}
-              onChange={(e) => updateField("duration", e.target.value)}
-            />
-          </div>
-
-          {/* Programme lié */}
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700">
-              Programme lié
-            </label>
-            <Select value={form.program_id || "none"} onValueChange={(v) => handleProgramChange(v === "none" ? "" : v)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Choisir un programme" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Aucun</SelectItem>
-                {programs.map((p) => <SelectItem key={p.id} value={p.id}>{p.title}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Source de financement (BPF) */}
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700">
-              Source de financement (BPF)
-            </label>
-            <Select value={form.bpf_funding_type || "none"} onValueChange={(v) => updateField("bpf_funding_type", v === "none" ? "" : v)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Sélectionner une source..." />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Aucune</SelectItem>
-                <SelectGroup>
-                  <SelectLabel>Entreprises</SelectLabel>
-                  <SelectItem value="entreprise_privee">Entreprise privée</SelectItem>
-                </SelectGroup>
-                <SelectGroup>
-                  <SelectLabel>Fonds de formation</SelectLabel>
-                  <SelectItem value="apprentissage">Contrats d&apos;apprentissage</SelectItem>
-                  <SelectItem value="professionnalisation">Contrats de professionnalisation</SelectItem>
-                  <SelectItem value="reconversion_alternance">Reconversion / alternance</SelectItem>
-                  <SelectItem value="conge_transition">Congé / transition pro</SelectItem>
-                  <SelectItem value="cpf">CPF</SelectItem>
-                  <SelectItem value="dispositif_chomeurs">Dispositifs demandeurs d&apos;emploi</SelectItem>
-                  <SelectItem value="non_salaries">Travailleurs non-salariés</SelectItem>
-                  <SelectItem value="plan_developpement">Plan de développement</SelectItem>
-                </SelectGroup>
-                <SelectGroup>
-                  <SelectLabel>Pouvoirs publics</SelectLabel>
-                  <SelectItem value="pouvoir_public_agents">Pouvoirs publics (agents)</SelectItem>
-                  <SelectItem value="instances_europeennes">Instances européennes</SelectItem>
-                  <SelectItem value="etat">État</SelectItem>
-                  <SelectItem value="conseil_regional">Conseils régionaux</SelectItem>
-                  <SelectItem value="pole_emploi">Pôle emploi</SelectItem>
-                  <SelectItem value="autres_publics">Autres publics</SelectItem>
-                </SelectGroup>
-                <SelectGroup>
-                  <SelectLabel>Autres</SelectLabel>
-                  <SelectItem value="individuel">Particulier</SelectItem>
-                  <SelectItem value="organisme_formation">Organisme de formation</SelectItem>
-                  <SelectItem value="autre">Autre</SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Notes */}
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700">
-              Notes{" "}
-              <span className="text-xs text-gray-400 font-normal">
-                (pour la boîte des notes si vous en avez besoin)
-              </span>
-            </label>
-            <Textarea
-              value={form.notes}
-              onChange={(e) => updateField("notes", e.target.value)}
-              rows={3}
-              className="resize-none"
-            />
-          </div>
-
-          {/* Mention Libre & Pénalités */}
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700">
-              Mention Libre &amp; Pénalités
-            </label>
-            <Textarea
-              value={form.mention}
-              onChange={(e) => updateField("mention", e.target.value)}
-              rows={4}
-              className="resize-none text-sm"
-            />
-          </div>
-
-          {/* ─── Produits ──────────────────────────────────────────────── */}
-          {form.lines.length > 0 && (
+        <div className="grid grid-cols-2 gap-6 mb-6">
+          {/* LEFT: Informations */}
+          <div className="space-y-4">
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Informations</h3>
             <div className="space-y-3">
-              <h3 className="text-sm font-semibold text-gray-700">Produits</h3>
-              {form.lines.map((line, idx) => (
-                <div
-                  key={idx}
-                  className="flex items-start gap-3 rounded-lg border border-gray-200 bg-white p-3"
-                >
-                  <div className="flex-1 space-y-2">
-                    <Input
-                      placeholder="Description du produit"
-                      value={line.description}
-                      onChange={(e) => updateLine(idx, "description", e.target.value)}
-                    />
-                    <div className="flex gap-3">
-                      <div className="w-28">
-                        <label className="mb-0.5 block text-[10px] text-gray-400">
-                          Quantité
-                        </label>
-                        <Input
-                          value={line.quantity}
-                          onChange={(e) => updateLine(idx, "quantity", e.target.value)}
-                        />
-                      </div>
-                      <div className="w-36">
-                        <label className="mb-0.5 block text-[10px] text-gray-400">
-                          Prix unitaire HT (€)
-                        </label>
-                        <Input
-                          value={line.unit_price}
-                          onChange={(e) => updateLine(idx, "unit_price", e.target.value)}
-                        />
-                      </div>
-                      <div className="flex items-end pb-1">
-                        <span className="text-sm font-medium text-gray-700">
-                          ={" "}
-                          {calcLineTotal(line).toLocaleString("fr-FR", {
-                            minimumFractionDigits: 2,
-                          })}{" "}
-                          €
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => removeLine(idx)}
-                    className="mt-1 rounded p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500 transition"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">N° devis</label>
+                <Input value={form.reference} onChange={(e) => updateField("reference", e.target.value)} className="h-8 text-sm font-mono" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Création</label>
+                  <Input type="date" value={form.date_creation} onChange={(e) => updateField("date_creation", e.target.value)} className="h-8 text-sm" />
                 </div>
-              ))}
-
-              {/* Totaux */}
-              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm">
-                <div className="flex justify-between text-gray-600">
-                  <span>Sous-total HT</span>
-                  <span>
-                    {calcSubtotal().toLocaleString("fr-FR", {
-                      minimumFractionDigits: 2,
-                    })}{" "}
-                    €
-                  </span>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Échéance</label>
+                  <Input type="date" value={form.date_echeance} onChange={(e) => updateField("date_echeance", e.target.value)} className="h-8 text-sm" />
                 </div>
-                <div className="flex justify-between text-gray-600">
-                  <span>TVA ({form.tva}%)</span>
-                  <span>
-                    {calcTVA().toLocaleString("fr-FR", {
-                      minimumFractionDigits: 2,
-                    })}{" "}
-                    €
-                  </span>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">TVA (%)</label>
+                  <Input value={form.tva} onChange={(e) => updateField("tva", e.target.value)} className="h-8 text-sm" placeholder="20,00" />
                 </div>
-                <div className="mt-1 flex justify-between border-t border-gray-200 pt-1 font-bold text-gray-900">
-                  <span>Total TTC</span>
-                  <span>
-                    {calcTotal().toLocaleString("fr-FR", {
-                      minimumFractionDigits: 2,
-                    })}{" "}
-                    €
-                  </span>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Effectifs</label>
+                  <Input type="number" value={form.effectifs} onChange={(e) => updateField("effectifs", e.target.value)} className="h-8 text-sm" />
                 </div>
               </div>
             </div>
-          )}
+          </div>
 
-          {/* Boutons action */}
-          {error && (
-            <p className="text-sm text-red-600 bg-red-50 rounded-lg px-4 py-2">{error}</p>
-          )}
-
-          <div className="flex items-center gap-3 pt-2">
-            <button
-              type="button"
-              onClick={addLine}
-              className="rounded-lg border-2 border-[#3DB5C5] px-5 py-2.5 text-sm font-bold text-[#3DB5C5] transition hover:bg-[#e0f5f7]"
-            >
-              <Plus className="mr-1.5 inline h-4 w-4" />
-              Ajouter un Produit
-            </button>
-
-            <button
-              onClick={handleSubmit}
-              disabled={saving}
-              className="rounded-lg px-6 py-2.5 text-sm font-bold text-white transition disabled:opacity-50"
-              style={{ backgroundColor: "#3DB5C5" }}
-            >
-              {saving ? "Création en cours…" : "Créer Le Devis"}
-            </button>
+          {/* RIGHT: Formation */}
+          <div className="space-y-4">
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Formation</h3>
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Début</label>
+                  <Input type="date" value={form.training_start} onChange={(e) => updateField("training_start", e.target.value)} className="h-8 text-sm" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Fin</label>
+                  <Input type="date" value={form.training_end} onChange={(e) => updateField("training_end", e.target.value)} className="h-8 text-sm" />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Durée</label>
+                <Input value={form.duration} onChange={(e) => updateField("duration", e.target.value)} className="h-8 text-sm" placeholder="ex: 10 heures, 2 jours" />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Programme</label>
+                <Select value={form.program_id || "none"} onValueChange={(v) => handleProgramChange(v === "none" ? "" : v)}>
+                  <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Aucun" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Aucun</SelectItem>
+                    {programs.map((p) => <SelectItem key={p.id} value={p.id}>{p.title}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Source BPF</label>
+                <Select value={form.bpf_funding_type || "none"} onValueChange={(v) => updateField("bpf_funding_type", v === "none" ? "" : v)}>
+                  <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Aucune" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Aucune</SelectItem>
+                    <SelectGroup>
+                      <SelectLabel>Entreprises</SelectLabel>
+                      <SelectItem value="entreprise_privee">Entreprise privée</SelectItem>
+                    </SelectGroup>
+                    <SelectGroup>
+                      <SelectLabel>Fonds de formation</SelectLabel>
+                      <SelectItem value="apprentissage">Contrats d&apos;apprentissage</SelectItem>
+                      <SelectItem value="professionnalisation">Contrats de professionnalisation</SelectItem>
+                      <SelectItem value="reconversion_alternance">Reconversion / alternance</SelectItem>
+                      <SelectItem value="conge_transition">Congé / transition pro</SelectItem>
+                      <SelectItem value="cpf">CPF</SelectItem>
+                      <SelectItem value="dispositif_chomeurs">Dispositifs demandeurs d&apos;emploi</SelectItem>
+                      <SelectItem value="non_salaries">Travailleurs non-salariés</SelectItem>
+                      <SelectItem value="plan_developpement">Plan de développement</SelectItem>
+                    </SelectGroup>
+                    <SelectGroup>
+                      <SelectLabel>Pouvoirs publics</SelectLabel>
+                      <SelectItem value="pouvoir_public_agents">Pouvoirs publics (agents)</SelectItem>
+                      <SelectItem value="instances_europeennes">Instances européennes</SelectItem>
+                      <SelectItem value="etat">État</SelectItem>
+                      <SelectItem value="conseil_regional">Conseils régionaux</SelectItem>
+                      <SelectItem value="pole_emploi">Pôle emploi</SelectItem>
+                      <SelectItem value="autres_publics">Autres publics</SelectItem>
+                    </SelectGroup>
+                    <SelectGroup>
+                      <SelectLabel>Autres</SelectLabel>
+                      <SelectItem value="individuel">Particulier</SelectItem>
+                      <SelectItem value="organisme_formation">Organisme de formation</SelectItem>
+                      <SelectItem value="autre">Autre</SelectItem>
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
           </div>
         </div>
+
+        {/* PRODUCTS */}
+        <div className="mb-6">
+          <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Produits</h3>
+          <div className="border rounded-lg overflow-hidden">
+            {/* Table header */}
+            <div className="grid grid-cols-[1fr_80px_120px_120px_40px] gap-2 px-3 py-2 bg-gray-50 text-[10px] font-semibold text-gray-500 uppercase">
+              <span>Description</span><span>Qté</span><span>PU HT (€)</span><span>Total HT</span><span></span>
+            </div>
+            {/* Lines */}
+            {form.lines.map((line, idx) => (
+              <div key={idx} className="grid grid-cols-[1fr_80px_120px_120px_40px] gap-2 px-3 py-2 border-t items-center">
+                <Input value={line.description} onChange={(e) => updateLine(idx, "description", e.target.value)} placeholder="Description" className="h-8 text-sm border-0 shadow-none px-0 focus-visible:ring-0" />
+                <Input value={line.quantity} onChange={(e) => updateLine(idx, "quantity", e.target.value)} className="h-8 text-sm text-center" />
+                <Input value={line.unit_price} onChange={(e) => updateLine(idx, "unit_price", e.target.value)} className="h-8 text-sm text-right" />
+                <span className="text-sm font-medium text-right">{calcLineTotal(line).toLocaleString("fr-FR", { minimumFractionDigits: 2 })} €</span>
+                <button onClick={() => removeLine(idx)} className="p-1 text-gray-300 hover:text-red-500"><Trash2 className="h-3.5 w-3.5" /></button>
+              </div>
+            ))}
+            {/* Add line */}
+            <div className="px-3 py-2 border-t">
+              <button onClick={addLine} className="text-xs text-[#3DB5C5] hover:underline flex items-center gap-1"><Plus className="h-3 w-3" /> Ajouter une ligne</button>
+            </div>
+          </div>
+          {/* Totals - right aligned */}
+          <div className="flex justify-end mt-3">
+            <div className="w-64 space-y-1 text-sm">
+              <div className="flex justify-between text-gray-500"><span>Sous-total HT</span><span>{calcSubtotal().toLocaleString("fr-FR", { minimumFractionDigits: 2 })} €</span></div>
+              <div className="flex justify-between text-gray-500"><span>TVA ({form.tva}%)</span><span>{calcTVA().toLocaleString("fr-FR", { minimumFractionDigits: 2 })} €</span></div>
+              <div className="flex justify-between font-bold text-gray-900 border-t pt-1"><span>Total TTC</span><span>{calcTotal().toLocaleString("fr-FR", { minimumFractionDigits: 2 })} €</span></div>
+            </div>
+          </div>
+        </div>
+
+        {/* NOTES (collapsible) */}
+        <details className="mb-8">
+          <summary className="text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer hover:text-gray-600">
+            Notes & mentions
+          </summary>
+          <div className="grid grid-cols-2 gap-4 mt-3">
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">Notes</label>
+              <Textarea value={form.notes} onChange={(e) => updateField("notes", e.target.value)} rows={3} className="text-sm resize-none" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">Mention & Pénalités</label>
+              <Textarea value={form.mention} onChange={(e) => updateField("mention", e.target.value)} rows={3} className="text-sm resize-none" />
+            </div>
+          </div>
+        </details>
       </div>
     </div>
   );
