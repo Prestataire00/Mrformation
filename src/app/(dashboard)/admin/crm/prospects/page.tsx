@@ -489,33 +489,15 @@ export default function CrmProspectsPage() {
         {/* Barre actions */}
         <div className="flex flex-wrap items-center gap-3">
 
-          {/* Bouton Ajouter */}
-          <button
-            onClick={() => openAdd("new")}
-            className="flex items-center gap-1.5 rounded px-4 py-2 text-sm font-bold uppercase tracking-wide text-white transition hover:opacity-90"
-            style={{ backgroundColor: "#3DB5C5" }}
-          >
-            <Plus className="h-4 w-4" />
-            AJOUTER UN PROSPECT
-          </button>
-
-          {/* Bouton Configuration */}
-          <button
-            onClick={openConfig}
-            className="flex items-center gap-1.5 rounded border border-gray-300 bg-white px-4 py-2 text-sm font-semibold uppercase tracking-wide text-gray-600 transition hover:bg-gray-50"
-          >
-            <Settings2 className="h-4 w-4" />
-            CONFIGURATION DU TUNNEL
-          </button>
-
-          {/* Bouton Portefeuille */}
-          <Link
-            href="/admin/crm/prospects/portfolio"
-            className="flex items-center gap-1.5 rounded border border-gray-300 bg-white px-4 py-2 text-sm font-semibold uppercase tracking-wide text-gray-600 transition hover:bg-gray-50"
-          >
-            <LayoutGrid className="h-4 w-4" />
-            PORTEFEUILLE
-          </Link>
+          <Button size="sm" onClick={() => openAdd("new")} style={{ background: "#3DB5C5" }} className="text-white gap-1.5 text-xs">
+            <Plus className="h-3.5 w-3.5" /> Ajouter un prospect
+          </Button>
+          <Button size="sm" variant="outline" onClick={openConfig} className="gap-1.5 text-xs">
+            <Settings2 className="h-3.5 w-3.5" /> Config
+          </Button>
+          <Button size="sm" variant="ghost" asChild className="text-xs gap-1.5">
+            <Link href="/admin/crm/prospects/portfolio"><LayoutGrid className="h-3.5 w-3.5" /></Link>
+          </Button>
 
           <div className="flex-1" />
 
@@ -602,23 +584,22 @@ export default function CrmProspectsPage() {
                   onDragOver={(e) => handleColDragOver(e, colIdx)}
                   onDrop={() => handleColDrop(colIdx)}
                   onDragEnd={handleColDragEnd}
-                  className="rounded-t-lg px-4 py-3 cursor-grab active:cursor-grabbing select-none"
-                  style={{ backgroundColor: col.color }}
+                  className="flex items-center justify-between px-3 py-2.5 bg-gray-50/80 rounded-t-lg border-b border-gray-100 cursor-grab active:cursor-grabbing select-none"
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                      <GripVertical className="h-4 w-4 text-white/60" />
-                      <span className="text-sm font-bold uppercase tracking-wide text-white">
-                        {col.label}
-                      </span>
-                    </div>
-                    <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-white/30 px-1.5 text-xs font-bold text-white">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: col.color }} />
+                    <span className="text-xs font-semibold uppercase tracking-wider text-gray-600">
+                      {col.label}
+                    </span>
+                    <span className="text-[10px] text-gray-400 bg-gray-100 rounded-full px-1.5 py-0.5 font-medium">
                       {cards.length}
                     </span>
                   </div>
-                  <p className="text-xs font-semibold text-white/80 mt-1">
-                    Total : {formatEUR(cards.reduce((sum, p) => sum + getProspectAmount(p), 0))}
-                  </p>
+                  {cards.reduce((sum, p) => sum + getProspectAmount(p), 0) > 0 && (
+                    <span className="text-[10px] font-medium text-gray-400">
+                      {formatEUR(cards.reduce((sum, p) => sum + getProspectAmount(p), 0))}
+                    </span>
+                  )}
                 </div>
 
                 {/* Cartes */}
@@ -645,52 +626,29 @@ export default function CrmProspectsPage() {
                           isBeingDragged && "opacity-40 scale-95"
                         )}
                       >
-                        {/* Avatar + Nom + Score */}
-                        <div className="flex items-start gap-2.5 mb-2.5">
-                          <div
-                            className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
-                            style={{ backgroundColor: "#3DB5C5" }}
-                          >
-                            {getInitialsFromName(p.company_name, p.contact_name)}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-bold text-gray-900 leading-tight">
-                              {p.company_name}
-                            </p>
-                            <p className="text-[11px] text-gray-400 mt-0.5">Entreprise</p>
-                          </div>
-                        </div>
+                        <p className="text-sm font-semibold text-gray-900 leading-snug">{p.company_name}</p>
+                        {p.contact_name && (
+                          <p className="text-xs text-gray-500 mt-0.5">{p.contact_name}</p>
+                        )}
 
                         {/* Tags */}
                         {(prospectTags[p.id] ?? []).length > 0 && (
-                          <div className="flex flex-wrap gap-1 mb-1.5">
+                          <div className="flex flex-wrap gap-1 mt-1.5">
                             <TagBadges tags={allTags.filter((t) => (prospectTags[p.id] ?? []).includes(t.id))} />
                           </div>
                         )}
 
-                        {/* Détails */}
-                        <div className="space-y-1 text-xs text-gray-500 border-t border-gray-100 pt-2">
-                          {product && (
-                            <p className="line-clamp-2">
-                              <span className="font-medium text-gray-600">Produit:</span>{" "}
-                              {product}
-                            </p>
-                          )}
-                          <p>
-                            <span className="font-medium text-gray-600">Source:</span>{" "}
-                            {p.source || "—"}
-                          </p>
-                          <p>
-                            <span className="font-medium text-gray-600">Commercial/Admin:</span>{" "}
-                            {p.contact_name || "—"}
-                          </p>
-                          <p>
-                            <span className="font-medium text-gray-600">Prix:</span>{" "}
-                            <span className={amount > 0 ? "text-green-600 font-medium" : "text-gray-400"}>
-                              {amount > 0 ? formatEUR(amount) : "0 EUR"}
-                            </span>
-                          </p>
-                        </div>
+                        {/* Footer */}
+                        {(p.source || amount > 0) && (
+                          <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-gray-50">
+                            {p.source ? (
+                              <span className="text-[10px] text-gray-400">{p.source}</span>
+                            ) : <span />}
+                            {amount > 0 && (
+                              <span className="text-xs font-semibold text-green-600">{formatEUR(amount)}</span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
