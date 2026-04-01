@@ -771,53 +771,51 @@ export default function ProspectDetailPage() {
             </Button>
           </div>
 
-          {/* Tabbed tracking: Tâches / Commentaires / Emails / Historique */}
-          <Tabs defaultValue="tasks" className="w-full">
+          {/* Tabbed tracking: Timeline / Commercial / Communication */}
+          <Tabs defaultValue="timeline" className="w-full">
             <TabsList className="w-full justify-start border-b rounded-none bg-transparent h-auto p-0 gap-6 mb-4">
               <TabsTrigger
-                value="tasks"
+                value="timeline"
+                className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-600 data-[state=active]:text-blue-600 data-[state=active]:shadow-none bg-transparent px-1 pb-2.5 text-sm font-medium"
+              >
+                <Clock className="h-4 w-4 mr-1.5" />
+                Timeline
+              </TabsTrigger>
+              <TabsTrigger
+                value="commercial"
                 className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-600 data-[state=active]:text-blue-600 data-[state=active]:shadow-none bg-transparent px-1 pb-2.5 text-sm font-medium"
               >
                 <ClipboardList className="h-4 w-4 mr-1.5" />
                 Tâches
               </TabsTrigger>
               <TabsTrigger
-                value="comments"
-                className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-600 data-[state=active]:text-blue-600 data-[state=active]:shadow-none bg-transparent px-1 pb-2.5 text-sm font-medium"
-              >
-                <MessageSquare className="h-4 w-4 mr-1.5" />
-                Commentaires
-              </TabsTrigger>
-              <TabsTrigger
-                value="emails"
+                value="communication"
                 className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-600 data-[state=active]:text-blue-600 data-[state=active]:shadow-none bg-transparent px-1 pb-2.5 text-sm font-medium"
               >
                 <Send className="h-4 w-4 mr-1.5" />
-                Emails
-              </TabsTrigger>
-              <TabsTrigger
-                value="timeline"
-                className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-600 data-[state=active]:text-blue-600 data-[state=active]:shadow-none bg-transparent px-1 pb-2.5 text-sm font-medium"
-              >
-                <Clock className="h-4 w-4 mr-1.5" />
-                Historique
+                Communication
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="tasks">
+            <TabsContent value="commercial">
               <ProspectTasksSection
                 prospectId={prospect.id}
                 prospectName={prospect.company_name}
               />
             </TabsContent>
-            <TabsContent value="comments">
-              <ProspectCommentsSection prospectId={prospect.id} />
-            </TabsContent>
-            <TabsContent value="emails">
-              <ProspectEmailSection
-                prospectId={prospect.id}
-                prospect={prospect}
-              />
+            <TabsContent value="communication">
+              <div className="space-y-6">
+                <ProspectEmailSection
+                  prospectId={prospect.id}
+                  prospect={prospect}
+                />
+                <div className="border-t pt-4">
+                  <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-1.5">
+                    <MessageSquare className="h-4 w-4" /> Commentaires internes
+                  </h3>
+                  <ProspectCommentsSection prospectId={prospect.id} />
+                </div>
+              </div>
             </TabsContent>
             <TabsContent value="timeline">
               <div className="space-y-4">
