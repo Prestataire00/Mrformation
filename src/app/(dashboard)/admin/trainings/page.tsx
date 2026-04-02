@@ -7,10 +7,8 @@ import { useDebounce } from "@/hooks/useDebounce";
 import { cn, formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { useToast } from "@/components/ui/use-toast";
 import {
   Dialog,
@@ -39,12 +37,8 @@ import {
   MoreHorizontal,
   Trash2,
   BookOpen,
-  Clock,
   Users,
-  ChevronRight,
-  Library,
   MapPin,
-  Video,
   CalendarDays,
   Loader2,
   Wifi,
@@ -139,16 +133,11 @@ export default function FormationsPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [modeFilter, setModeFilter] = useState("all");
 
-  // Creation dialog
-  const [dialogOpen, setDialogOpen] = useState(false);
+  // Inline creation form
+  const [showCreateForm, setShowCreateForm] = useState(false);
   const [formData, setFormData] = useState<SessionFormData>(emptyForm);
   const [saving, setSaving] = useState(false);
-
-  // Program picker
-  const [programPickerOpen, setProgramPickerOpen] = useState(false);
   const [programs, setPrograms] = useState<ProgramOption[]>([]);
-  const [programSearch, setProgramSearch] = useState("");
-  const [loadingPrograms, setLoadingPrograms] = useState(false);
 
   // Delete
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -197,7 +186,6 @@ export default function FormationsPage() {
 
   const fetchPrograms = useCallback(async () => {
     if (!entityId) return;
-    setLoadingPrograms(true);
     const { data } = await supabase
       .from("programs")
       .select("id, title, description, objectives, duration_hours")
@@ -205,7 +193,6 @@ export default function FormationsPage() {
       .eq("is_active", true)
       .order("title");
     setPrograms((data ?? []) as ProgramOption[]);
-    setLoadingPrograms(false);
   }, [entityId, supabase]);
 
   useEffect(() => {
@@ -232,35 +219,19 @@ export default function FormationsPage() {
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
-  const getFormationName = (s: SessionCard) => s.program?.title || s.training?.title || null;
-  const getTrainerNames = (s: SessionCard) =>
-    (s.formation_trainers || [])
-      .map((ft) => ft.trainer ? `${ft.trainer.first_name} ${ft.trainer.last_name}` : null)
-      .filter(Boolean)
-      .join(", ");
   const getEnrollmentCount = (s: SessionCard) => s.enrollments?.length ?? 0;
 
-  // ── Open creation dialog ──────────────────────────────────────────────────
+  // ── Open inline create form ─────────────────────────────────────────────
 
-  function openCreateDialog() {
+  function openCreateForm() {
     setFormData(emptyForm);
-    setProgramPickerOpen(true);
+    setShowCreateForm(true);
     fetchPrograms();
-  }
-
-  function selectProgram(program: ProgramOption) {
-    setFormData({
-      ...emptyForm,
-      program_id: program.id,
-      title: program.title,
-    });
-    setProgramPickerOpen(false);
-    setDialogOpen(true);
   }
 
   // ── Save session ──────────────────────────────────────────────────────────
 
-  async function handleSave() {
+  async function handleCreateSession() {
     if (!formData.title.trim()) {
       toast({ title: "Titre requis", variant: "destructive" });
       return;
@@ -273,16 +244,12 @@ export default function FormationsPage() {
       toast({ title: "Dates invalides", description: "La date de fin doit être après la date de début.", variant: "destructive" });
       return;
     }
-    if (!formData.program_id) {
-      toast({ title: "Programme requis", description: "Sélectionnez un programme.", variant: "destructive" });
-      return;
-    }
 
     setSaving(true);
     const payload = {
       entity_id: entityId,
       title: formData.title.trim(),
-      program_id: formData.program_id,
+      program_id: formData.program_id || null,
       start_date: new Date(formData.start_date).toISOString(),
       end_date: new Date(formData.end_date).toISOString(),
       mode: formData.mode,
@@ -299,7 +266,7 @@ export default function FormationsPage() {
       toast({ title: "Erreur", description: error.message, variant: "destructive" });
     } else {
       toast({ title: "Session planifiée" });
-      setDialogOpen(false);
+      setShowCreateForm(false);
       setFormData(emptyForm);
       fetchSessions();
     }
@@ -326,34 +293,89 @@ export default function FormationsPage() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Formations</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            {sessions.length} session{sessions.length !== 1 ? "s" : ""}
-          </p>
-        </div>
-        <Button onClick={openCreateDialog} className="gap-2">
-          <Plus className="h-4 w-4" />
+      <div className="flex items-center gap-3">
+        <h1 className="text-lg font-bold text-gray-900">Formations</h1>
+        <span className="text-xs text-gray-400">{sessions.length} session{sessions.length !== 1 ? "s" : ""}</span>
+        <div className="flex-1" />
+        <Button size="sm" onClick={openCreateForm} className="gap-1.5 h-8 text-xs">
+          <Plus className="h-3.5 w-3.5" />
           Planifier une session
         </Button>
       </div>
 
+      {/* Inline creation form */}
+      {showCreateForm && (
+        <div className="border rounded-lg p-4 bg-gray-50/50 space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+            <Input
+              placeholder="Titre de la session *"
+              autoFocus
+              className="h-8 text-sm"
+              value={formData.title}
+              onChange={(e) => setFormData((f) => ({ ...f, title: e.target.value }))}
+            />
+            <Input
+              type="date"
+              className="h-8 text-sm"
+              value={formData.start_date}
+              onChange={(e) => {
+                const val = e.target.value;
+                setFormData((f) => ({
+                  ...f,
+                  start_date: val,
+                  end_date: f.end_date || val,
+                }));
+              }}
+            />
+            <Input
+              type="date"
+              className="h-8 text-sm"
+              value={formData.end_date}
+              onChange={(e) => setFormData((f) => ({ ...f, end_date: e.target.value }))}
+            />
+            <Select value={formData.mode} onValueChange={(v) => setFormData((f) => ({ ...f, mode: v as SessionFormData["mode"] }))}>
+              <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Mode" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="presentiel">Présentiel</SelectItem>
+                <SelectItem value="distanciel">Distanciel</SelectItem>
+                <SelectItem value="hybride">Hybride</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-2">
+            <Select value={formData.program_id || "none"} onValueChange={(v) => setFormData((f) => ({ ...f, program_id: v === "none" ? "" : v }))}>
+              <SelectTrigger className="h-8 text-sm w-48"><SelectValue placeholder="Programme (optionnel)" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Aucun programme</SelectItem>
+                {programs.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>{p.title}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="flex-1" />
+            <Button size="sm" variant="ghost" className="text-xs h-7" onClick={() => setShowCreateForm(false)}>Annuler</Button>
+            <Button size="sm" className="text-xs h-7" onClick={handleCreateSession} disabled={saving}>
+              {saving ? "Création…" : "Créer"}
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Filters */}
-      <div className="flex flex-wrap gap-3">
-        <div className="relative flex-1 min-w-[200px] max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[180px] max-w-sm">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
           <Input
-            placeholder="Rechercher par titre, programme, formateur, lieu…"
+            placeholder="Rechercher…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
+            className="pl-8 h-8 text-sm"
           />
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-full sm:w-44">
+          <SelectTrigger className="w-36 h-8 text-sm">
             <SelectValue placeholder="Statut" />
           </SelectTrigger>
           <SelectContent>
@@ -365,7 +387,7 @@ export default function FormationsPage() {
           </SelectContent>
         </Select>
         <Select value={modeFilter} onValueChange={setModeFilter}>
-          <SelectTrigger className="w-full sm:w-44">
+          <SelectTrigger className="w-36 h-8 text-sm">
             <SelectValue placeholder="Mode" />
           </SelectTrigger>
           <SelectContent>
@@ -394,320 +416,75 @@ export default function FormationsPage() {
             const statusCfg = STATUS_CONFIG[session.status] ?? { label: session.status, color: "bg-gray-100 text-gray-600" };
             const modeCfg = MODE_CONFIG[session.mode] ?? { label: session.mode, icon: MapPin };
             const ModeIcon = modeCfg.icon;
-            const programName = getFormationName(session);
-            const trainerStr = getTrainerNames(session);
             const enrollCount = getEnrollmentCount(session);
 
             return (
-              <Card key={session.id} className="flex flex-col overflow-hidden transition-shadow hover:shadow-md">
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      {programName && (
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <Library className="h-3 w-3 text-indigo-500 flex-shrink-0" />
-                          <span className="text-xs font-medium text-indigo-600 truncate">{programName}</span>
-                        </div>
-                      )}
-                      <h3 className="font-semibold text-gray-900 text-sm leading-tight line-clamp-2">
+              <Link key={session.id} href={`/admin/formations/${session.id}`}>
+                <Card className="overflow-hidden transition-shadow hover:shadow-md cursor-pointer">
+                  <CardHeader className="pb-2 pt-3 px-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <h3 className="font-semibold text-gray-900 text-sm leading-tight line-clamp-2 flex-1 min-w-0">
                         {session.title}
                       </h3>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild onClick={(e) => e.preventDefault()}>
+                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0 flex-shrink-0">
+                            <MoreHorizontal className="h-3.5 w-3.5" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem asChild>
+                            <Link href={`/admin/formations/${session.id}`} className="gap-2">
+                              <BookOpen className="h-4 w-4" />
+                              Gérer
+                            </Link>
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onClick={(e) => { e.preventDefault(); setSessionToDelete(session); setDeleteDialogOpen(true); }}
+                            className="gap-2 text-red-600 focus:text-red-600"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            Supprimer
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0 flex-shrink-0">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem asChild>
-                          <Link href={`/admin/formations/${session.id}`} className="gap-2">
-                            <BookOpen className="h-4 w-4" />
-                            Gérer la formation
-                          </Link>
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          onClick={() => { setSessionToDelete(session); setDeleteDialogOpen(true); }}
-                          className="gap-2 text-red-600 focus:text-red-600"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          Supprimer
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </CardHeader>
+                  </CardHeader>
 
-                <CardContent className="flex-1 space-y-3">
-                  {/* Dates */}
-                  <div className="flex items-center gap-1.5 text-xs text-gray-600">
-                    <CalendarDays className="h-3.5 w-3.5 text-gray-400" />
-                    <span>
-                      Du {formatDate(session.start_date)} au {formatDate(session.end_date)}
-                    </span>
-                  </div>
-
-                  {/* Location or Visio */}
-                  {session.location && (
-                    <div className="flex items-center gap-1.5 text-xs text-gray-600">
-                      <MapPin className="h-3.5 w-3.5 text-gray-400" />
-                      <span className="truncate">{session.location}</span>
+                  <CardContent className="space-y-2 pb-3 px-4">
+                    <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                      <CalendarDays className="h-3 w-3 text-gray-400" />
+                      <span>{formatDate(session.start_date)} — {formatDate(session.end_date)}</span>
                     </div>
-                  )}
 
-                  {/* Badges */}
-                  <div className="flex flex-wrap gap-1.5">
-                    <Badge className={cn("text-[10px] border-0 font-medium", statusCfg.color)}>
-                      {statusCfg.label}
-                    </Badge>
-                    <Badge variant="outline" className="text-[10px] font-medium gap-1">
-                      <ModeIcon className="h-3 w-3" />
-                      {modeCfg.label}
-                    </Badge>
-                    {session.type && (
-                      <Badge variant="outline" className="text-[10px] font-medium uppercase">
-                        {session.type}
+                    {session.location && (
+                      <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                        <MapPin className="h-3 w-3 text-gray-400" />
+                        <span className="truncate">{session.location}</span>
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <Badge className={cn("text-[10px] border-0 font-medium", statusCfg.color)}>
+                        {statusCfg.label}
                       </Badge>
-                    )}
-                  </div>
-
-                  {/* Footer info */}
-                  <div className="flex items-center gap-4 text-xs text-gray-500 pt-1">
-                    {trainerStr && (
-                      <span className="truncate">{trainerStr}</span>
-                    )}
-                    <div className="flex items-center gap-1">
-                      <Users className="h-3.5 w-3.5 text-gray-400" />
-                      <span>
-                        {enrollCount}
-                        {session.max_participants ? `/${session.max_participants}` : ""}
-                      </span>
+                      <Badge variant="outline" className="text-[10px] font-medium gap-1">
+                        <ModeIcon className="h-3 w-3" />
+                        {modeCfg.label}
+                      </Badge>
+                      <div className="flex items-center gap-1 text-[10px] text-gray-400 ml-auto">
+                        <Users className="h-3 w-3" />
+                        {enrollCount}{session.max_participants ? `/${session.max_participants}` : ""}
+                      </div>
                     </div>
-                  </div>
-                </CardContent>
-
-                <CardFooter className="pt-3 border-t">
-                  <Link
-                    href={`/admin/formations/${session.id}`}
-                    className="flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-800 font-medium transition-colors"
-                  >
-                    Gérer la formation
-                    <ChevronRight className="h-3.5 w-3.5" />
-                  </Link>
-                </CardFooter>
-              </Card>
+                  </CardContent>
+                </Card>
+              </Link>
             );
           })}
         </div>
       )}
-
-      {/* ══════════════════════════════════════════════════════════════════════ */}
-      {/* PROGRAM PICKER DIALOG                                                */}
-      {/* ══════════════════════════════════════════════════════════════════════ */}
-      <Dialog open={programPickerOpen} onOpenChange={setProgramPickerOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Choisir un programme</DialogTitle>
-          </DialogHeader>
-          <div className="relative mb-3">
-            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
-            <Input
-              placeholder="Rechercher un programme…"
-              value={programSearch}
-              onChange={(e) => setProgramSearch(e.target.value)}
-              className="pl-8 text-sm"
-            />
-          </div>
-          <div className="max-h-[400px] overflow-y-auto space-y-1">
-            {loadingPrograms ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
-              </div>
-            ) : programs
-                .filter((p) => {
-                  const q = programSearch.toLowerCase();
-                  return !q || p.title.toLowerCase().includes(q) || (p.description ?? "").toLowerCase().includes(q);
-                })
-                .length === 0 ? (
-              <p className="text-center text-sm text-gray-400 py-8">Aucun programme trouvé</p>
-            ) : (
-              programs
-                .filter((p) => {
-                  const q = programSearch.toLowerCase();
-                  return !q || p.title.toLowerCase().includes(q) || (p.description ?? "").toLowerCase().includes(q);
-                })
-                .map((program) => (
-                  <button
-                    key={program.id}
-                    onClick={() => selectProgram(program)}
-                    className="flex w-full items-center gap-3 rounded-lg border border-gray-100 bg-white p-3 text-left hover:border-indigo-300 hover:bg-indigo-50/50 transition-all"
-                  >
-                    <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-indigo-100 text-indigo-600">
-                      <Library className="h-4 w-4" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-gray-900 truncate">{program.title}</p>
-                      {program.description && (
-                        <p className="text-xs text-gray-500 truncate mt-0.5">{program.description}</p>
-                      )}
-                      {program.duration_hours && (
-                        <p className="text-xs text-gray-400 mt-0.5">{program.duration_hours}h</p>
-                      )}
-                    </div>
-                    <ChevronRight className="h-4 w-4 text-gray-300 flex-shrink-0" />
-                  </button>
-                ))
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* ══════════════════════════════════════════════════════════════════════ */}
-      {/* SESSION CREATION DIALOG                                              */}
-      {/* ══════════════════════════════════════════════════════════════════════ */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Planifier une session</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            {/* Selected program */}
-            {formData.program_id && (
-              <div className="flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50/50 px-3 py-2">
-                <Library className="h-4 w-4 text-indigo-600 flex-shrink-0" />
-                <span className="text-sm font-medium text-indigo-900 truncate">
-                  {programs.find((p) => p.id === formData.program_id)?.title ?? "Programme sélectionné"}
-                </span>
-                <button
-                  onClick={() => { setDialogOpen(false); openCreateDialog(); }}
-                  className="ml-auto text-xs text-indigo-600 hover:text-indigo-800 font-medium"
-                >
-                  Changer
-                </button>
-              </div>
-            )}
-
-            {/* Title */}
-            <div className="space-y-1.5">
-              <Label>Titre <span className="text-red-500">*</span></Label>
-              <Input
-                value={formData.title}
-                onChange={(e) => setFormData((f) => ({ ...f, title: e.target.value }))}
-                placeholder="Ex: Management d'équipe — Groupe A"
-              />
-            </div>
-
-            {/* Dates */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label>Date de début <span className="text-red-500">*</span></Label>
-                <Input
-                  type="datetime-local"
-                  value={formData.start_date}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setFormData((f) => ({
-                      ...f,
-                      start_date: val,
-                      // Auto-set end date to +1h if not already set
-                      end_date: f.end_date || (val ? new Date(new Date(val).getTime() + 3600000).toISOString().slice(0, 16) : ""),
-                    }));
-                  }}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Date de fin <span className="text-red-500">*</span></Label>
-                <Input
-                  type="datetime-local"
-                  value={formData.end_date}
-                  onChange={(e) => setFormData((f) => ({ ...f, end_date: e.target.value }))}
-                />
-              </div>
-            </div>
-
-            {/* Mode + Type */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label>Mode</Label>
-                <Select value={formData.mode} onValueChange={(v) => setFormData((f) => ({ ...f, mode: v as SessionFormData["mode"] }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="presentiel">Présentiel</SelectItem>
-                    <SelectItem value="distanciel">Distanciel</SelectItem>
-                    <SelectItem value="hybride">Hybride</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Type</Label>
-                <Select value={formData.type} onValueChange={(v) => setFormData((f) => ({ ...f, type: v as SessionFormData["type"] }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="intra">Intra-entreprise</SelectItem>
-                    <SelectItem value="inter">Inter-entreprises</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Location (if presentiel or hybride) */}
-            {formData.mode !== "distanciel" && (
-              <div className="space-y-1.5">
-                <Label>Lieu</Label>
-                <Input
-                  value={formData.location}
-                  onChange={(e) => setFormData((f) => ({ ...f, location: e.target.value }))}
-                  placeholder="Ex: 12 rue de la Paix, Paris"
-                />
-              </div>
-            )}
-
-            {/* Visio link (if distanciel or hybride) */}
-            {formData.mode !== "presentiel" && (
-              <div className="space-y-1.5">
-                <Label>Lien visio</Label>
-                <Input
-                  value={formData.visio_link}
-                  onChange={(e) => setFormData((f) => ({ ...f, visio_link: e.target.value }))}
-                  placeholder="https://meet.google.com/..."
-                />
-              </div>
-            )}
-
-            {/* Max participants */}
-            <div className="space-y-1.5">
-              <Label>Participants max</Label>
-              <Input
-                type="number"
-                min="1"
-                value={formData.max_participants}
-                onChange={(e) => setFormData((f) => ({ ...f, max_participants: e.target.value }))}
-                placeholder="Ex: 12"
-                className="max-w-[150px]"
-              />
-            </div>
-
-            {/* Notes */}
-            <div className="space-y-1.5">
-              <Label>Notes internes</Label>
-              <Textarea
-                value={formData.notes}
-                onChange={(e) => setFormData((f) => ({ ...f, notes: e.target.value }))}
-                rows={2}
-                placeholder="Notes internes (optionnel)"
-                className="resize-none"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>Annuler</Button>
-            <Button onClick={handleSave} disabled={saving}>
-              {saving ? "Création…" : "Planifier la session"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* ══════════════════════════════════════════════════════════════════════ */}
       {/* DELETE DIALOG                                                        */}

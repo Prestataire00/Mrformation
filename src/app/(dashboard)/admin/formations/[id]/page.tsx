@@ -42,7 +42,7 @@ export default function FormationDetailPage() {
 
   const [formation, setFormation] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("resume");
+  const [activeTab, setActiveTab] = useState("overview");
 
   const fetchFormation = useCallback(async () => {
     if (!entityId) return;
@@ -153,85 +153,89 @@ export default function FormationDetailPage() {
         </div>
       </div>
 
-      {/* Tabs */}
+      {/* Tabs — 5 groupes */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="w-full justify-start border-b rounded-none h-auto p-0 bg-transparent flex-wrap">
+        <TabsList className="w-full justify-start border-b rounded-none h-auto p-0 bg-transparent gap-0">
           {[
-            { value: "resume", label: "Résumé" },
-            { value: "planning", label: "Planning" },
-            { value: "parcours", label: "Parcours" },
-            { value: "emargements", label: "Émargements" },
-            { value: "absences", label: "Absences" },
-            { value: "docs", label: "Docs Partagés" },
-            { value: "messagerie", label: "Messagerie" },
-            { value: "programme", label: "Programme" },
-            { value: "evaluation", label: "Évaluation" },
-            { value: "satisfaction", label: "Satisfaction & Qualité" },
-            { value: "convention", label: "Convention & Documents" },
+            { value: "overview", label: "Vue d'ensemble" },
+            { value: "suivi", label: "Suivi" },
+            { value: "communication", label: "Communication" },
+            { value: "documents", label: "Documents" },
             { value: "finances", label: "Finances" },
-            { value: "elearning", label: "e-Learning" },
           ].map((tab) => (
             <TabsTrigger
               key={tab.value}
               value={tab.value}
-              className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-2.5"
-              disabled={false}
+              className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-2.5 text-sm"
             >
               {tab.label}
             </TabsTrigger>
           ))}
         </TabsList>
 
-        <TabsContent value="resume" className="mt-6">
+        {/* ═══ VUE D'ENSEMBLE ═══ */}
+        <TabsContent value="overview" className="mt-6 space-y-8">
           <TabResume formation={formation} onRefresh={fetchFormation} />
+          <hr className="border-gray-100" />
+          <div>
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Planning & Parcours</h3>
+            <TabPlanning formation={formation} onRefresh={fetchFormation} />
+          </div>
+          <hr className="border-gray-100" />
+          <div>
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Parcours</h3>
+            <TabParcours formation={formation} onRefresh={fetchFormation} />
+          </div>
         </TabsContent>
 
-        <TabsContent value="planning" className="mt-6">
-          <TabPlanning formation={formation} onRefresh={fetchFormation} />
-        </TabsContent>
-
-        <TabsContent value="parcours" className="mt-6">
-          <TabParcours formation={formation} onRefresh={fetchFormation} />
-        </TabsContent>
-
-        <TabsContent value="emargements" className="mt-6">
+        {/* ═══ SUIVI ═══ */}
+        <TabsContent value="suivi" className="mt-6 space-y-8">
           <TabEmargements formation={formation} onRefresh={fetchFormation} />
+          <hr className="border-gray-100" />
+          <div>
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Absences</h3>
+            <TabAbsences formation={formation} onRefresh={fetchFormation} />
+          </div>
+          <hr className="border-gray-100" />
+          <div>
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">e-Learning</h3>
+            <TabElearning formation={formation} onRefresh={fetchFormation} />
+          </div>
         </TabsContent>
 
-        <TabsContent value="absences" className="mt-6">
-          <TabAbsences formation={formation} onRefresh={fetchFormation} />
-        </TabsContent>
-
-        <TabsContent value="docs" className="mt-6">
-          <TabDocsPartages formation={formation} onRefresh={fetchFormation} />
-        </TabsContent>
-
-        <TabsContent value="messagerie" className="mt-6">
+        {/* ═══ COMMUNICATION ═══ */}
+        <TabsContent value="communication" className="mt-6 space-y-8">
           <TabMessagerie formation={formation} onRefresh={fetchFormation} />
+          <hr className="border-gray-100" />
+          <div>
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Évaluation</h3>
+            <TabEvaluation formation={formation} onRefresh={fetchFormation} />
+          </div>
+          <hr className="border-gray-100" />
+          <div>
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Satisfaction & Qualité</h3>
+            <TabSatisfaction formation={formation} onRefresh={fetchFormation} />
+          </div>
         </TabsContent>
 
-        <TabsContent value="programme" className="mt-6">
-          <TabProgramme formation={formation} onRefresh={fetchFormation} />
-        </TabsContent>
-
-        <TabsContent value="evaluation" className="mt-6">
-          <TabEvaluation formation={formation} onRefresh={fetchFormation} />
-        </TabsContent>
-
-        <TabsContent value="satisfaction" className="mt-6">
-          <TabSatisfaction formation={formation} onRefresh={fetchFormation} />
-        </TabsContent>
-
-        <TabsContent value="convention" className="mt-6">
+        {/* ═══ DOCUMENTS ═══ */}
+        <TabsContent value="documents" className="mt-6 space-y-8">
           <TabConventionDocs formation={formation} onRefresh={fetchFormation} />
+          <hr className="border-gray-100" />
+          <div>
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Documents partagés</h3>
+            <TabDocsPartages formation={formation} onRefresh={fetchFormation} />
+          </div>
+          <hr className="border-gray-100" />
+          <div>
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Programme</h3>
+            <TabProgramme formation={formation} onRefresh={fetchFormation} />
+          </div>
         </TabsContent>
 
+        {/* ═══ FINANCES ═══ */}
         <TabsContent value="finances" className="mt-6">
           <TabFinances formation={formation} onRefresh={fetchFormation} />
-        </TabsContent>
-
-        <TabsContent value="elearning" className="mt-6">
-          <TabElearning formation={formation} onRefresh={fetchFormation} />
         </TabsContent>
       </Tabs>
     </div>
