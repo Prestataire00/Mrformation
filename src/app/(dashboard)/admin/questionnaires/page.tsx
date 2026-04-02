@@ -495,7 +495,7 @@ export default function QuestionnairesPage() {
     let content = `RÉSULTATS — ${statsQ.title}\n`;
     content += `Type: ${TYPE_LABELS[statsQ.type]} | ${statsResponses.length} réponse(s)\n`;
     content += `Exporté le ${new Date().toLocaleDateString("fr-FR")}\n\n`;
-    content += "═".repeat(60) + "\n\n";
+    content += "-".repeat(60) + "\n\n";
 
     questions.forEach((q, idx) => {
       content += `${idx + 1}. ${q.text}\n`;
@@ -505,7 +505,7 @@ export default function QuestionnairesPage() {
 
       if ("avg" in stats) {
         content += `   Moyenne: ${(stats as any).avg.toFixed(1)} / 5 (${(stats as any).count} réponses)\n`;
-        content += `   Distribution: ${(stats as any).distribution.map((c: number, i: number) => `${i + 1}★=${c}`).join(", ")}\n`;
+        content += `   Distribution: ${(stats as any).distribution.map((c: number, i: number) => `${i + 1}& =${c}`).join(", ")}\n`;
       } else if ("counts" in stats) {
         const s = stats as any;
         Object.entries(s.counts as Record<string, number>).forEach(([key, count]) => {
