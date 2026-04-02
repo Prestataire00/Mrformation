@@ -20,6 +20,8 @@ import {
   Pencil,
   Phone,
   Save,
+  ShieldOff,
+  ShieldCheck,
 } from "lucide-react";
 import QRCode from "qrcode";
 import { useEntity } from "@/contexts/EntityContext";
@@ -91,6 +93,8 @@ export default function LearnerDetailPage() {
   const [company, setCompany] = useState<ClientOption | null>(null);
   const [creatingAccess, setCreatingAccess] = useState(false);
   const [accessCreated, setAccessCreated] = useState<{ email: string; password: string; login_url: string } | null>(null);
+  const [learnerActive, setLearnerActive] = useState(true);
+  const [togglingAccess, setTogglingAccess] = useState(false);
 
   const fetchLearner = useCallback(async () => {
     if (!entityId) return;
@@ -248,6 +252,28 @@ export default function LearnerDetailPage() {
     }
   }
 
+  async function handleToggleAccess() {
+    if (!learner?.profile_id) return;
+    setTogglingAccess(true);
+    try {
+      const res = await fetch("/api/admin/toggle-access", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profile_id: learner.profile_id, is_active: !learnerActive }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setLearnerActive(!learnerActive);
+        toast({ title: data.message });
+      } else {
+        toast({ title: "Erreur", description: data.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Erreur", variant: "destructive" });
+    }
+    setTogglingAccess(false);
+  }
+
   useEffect(() => {
     if (!accessCreated?.login_url) return;
     const el = document.getElementById("qr-access");
@@ -304,6 +330,18 @@ export default function LearnerDetailPage() {
             {!learner.profile_id && learner.email && (
               <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={handleCreateAccess} disabled={creatingAccess}>
                 <Key className="h-3 w-3" /> {creatingAccess ? "Création..." : "Créer un accès"}
+              </Button>
+            )}
+            {learner.profile_id && (
+              <Button
+                size="sm"
+                variant="outline"
+                className={cn("text-xs gap-1.5", learnerActive ? "text-red-500 hover:text-red-600 hover:bg-red-50" : "text-green-600 hover:text-green-700 hover:bg-green-50")}
+                onClick={handleToggleAccess}
+                disabled={togglingAccess}
+              >
+                {togglingAccess ? <Loader2 className="h-3 w-3 animate-spin" /> : learnerActive ? <ShieldOff className="h-3 w-3" /> : <ShieldCheck className="h-3 w-3" />}
+                {learnerActive ? "Suspendre" : "Réactiver"}
               </Button>
             )}
             <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={toggleEdit}>
