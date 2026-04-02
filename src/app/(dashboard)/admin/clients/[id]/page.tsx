@@ -35,6 +35,7 @@ import {
   Clock,
   Target,
   UserPlus,
+  Key,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -700,6 +701,47 @@ export default function ClientDetailPage() {
     }
   }
 
+  async function handleCreateClientAccess() {
+    const primaryEmail = contacts.find((c: Contact) => c.email)?.email;
+    const primaryContact = contacts[0];
+    if (!primaryEmail || !primaryContact) {
+      toast({ title: "Aucun contact avec email", variant: "destructive" });
+      return;
+    }
+    try {
+      const res = await fetch("/api/admin/create-access", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: primaryEmail,
+          first_name: primaryContact.first_name,
+          last_name: primaryContact.last_name,
+          role: "client",
+          entity_type: "client",
+          entity_type_id: clientId,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast({ title: `Accès créé — MDP: ${data.password}`, description: `Email envoyé à ${data.email}` });
+        // Auto-send email
+        await fetch("/api/emails/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            to: data.email,
+            subject: "Vos accès plateforme formation",
+            body: `Bonjour ${primaryContact.first_name},\n\nVotre accès client à la plateforme a été créé.\n\nEmail: ${data.email}\nMot de passe: ${data.password}\n\nConnectez-vous: ${data.login_url}\n\nCordialement,\nL'équipe formation`,
+          }),
+        });
+      } else {
+        toast({ title: "Erreur", description: data.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Erreur", variant: "destructive" });
+    }
+  }
+
   function openAddContactDialog() {
     setContactForm(EMPTY_CONTACT_FORM);
     setContactErrors({});
@@ -873,6 +915,9 @@ export default function ClientDetailPage() {
         >
           <UserPlus className="h-3.5 w-3.5" />
           Ajouter un contact
+        </Button>
+        <Button size="sm" variant="outline" className="gap-1.5 text-xs" onClick={handleCreateClientAccess}>
+          <Key className="h-3.5 w-3.5" /> Accès plateforme
         </Button>
       </div>
 

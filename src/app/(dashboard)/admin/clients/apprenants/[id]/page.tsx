@@ -14,12 +14,14 @@ import {
   BookOpen,
   Building2,
   Clock,
+  Key,
   Loader2,
   Mail,
   Pencil,
   Phone,
   Save,
 } from "lucide-react";
+import QRCode from "qrcode";
 import { useEntity } from "@/contexts/EntityContext";
 import { cn } from "@/lib/utils";
 
@@ -32,6 +34,7 @@ interface LearnerDetail {
   client_id: string | null;
   clients: { company_name: string } | null;
   avatar_url?: string | null;
+  profile_id?: string | null;
 }
 
 interface ClientOption {
@@ -86,13 +89,15 @@ export default function LearnerDetailPage() {
   const [sessions, setSessions] = useState<SessionEnrollment[]>([]);
   const [clientOptions, setClientOptions] = useState<ClientOption[]>([]);
   const [company, setCompany] = useState<ClientOption | null>(null);
+  const [creatingAccess, setCreatingAccess] = useState(false);
+  const [accessCreated, setAccessCreated] = useState<{ email: string; password: string; login_url: string } | null>(null);
 
   const fetchLearner = useCallback(async () => {
     if (!entityId) return;
     setLoading(true);
     const { data, error } = await supabase
       .from("learners")
-      .select("id, first_name, last_name, email, phone, client_id, job_title, birth_date, gender, nationality, address, city, postal_code, social_security_number, education_level, clients(company_name)")
+      .select("id, first_name, last_name, email, phone, client_id, profile_id, job_title, birth_date, gender, nationality, address, city, postal_code, social_security_number, education_level, clients(company_name)")
       .eq("id", learnerId)
       .eq("entity_id", entityId)
       .single();
@@ -199,6 +204,62 @@ export default function LearnerDetailPage() {
     setSaving(false);
   };
 
+  async function handleCreateAccess() {
+    if (!learner?.email) return;
+    setCreatingAccess(true);
+    try {
+      const res = await fetch("/api/admin/create-access", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: learner.email,
+          first_name: learner.first_name,
+          last_name: learner.last_name,
+          role: "learner",
+          entity_type: "learner",
+          entity_type_id: learner.id,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setAccessCreated(data);
+        toast({ title: "Accès créé" });
+      } else {
+        toast({ title: "Erreur", description: data.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Erreur", variant: "destructive" });
+    }
+    setCreatingAccess(false);
+  }
+
+  async function handleSendAccessEmail() {
+    if (!accessCreated || !learner) return;
+    const body = `Bonjour ${learner.first_name},\n\nVotre accès à la plateforme de formation a été créé.\n\nEmail: ${accessCreated.email}\nMot de passe: ${accessCreated.password}\n\nConnectez-vous ici: ${accessCreated.login_url}\n\nCordialement,\nL'équipe formation`;
+    try {
+      await fetch("/api/emails/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to: accessCreated.email, subject: "Vos accès plateforme formation", body }),
+      });
+      toast({ title: "Accès envoyés par email" });
+    } catch {
+      toast({ title: "Erreur d'envoi", variant: "destructive" });
+    }
+  }
+
+  useEffect(() => {
+    if (!accessCreated?.login_url) return;
+    const el = document.getElementById("qr-access");
+    if (el) {
+      el.innerHTML = "";
+      const canvas = document.createElement("canvas");
+      QRCode.toCanvas(canvas, accessCreated.login_url, { width: 120 }, (err: Error | null | undefined) => {
+        if (!err) el.appendChild(canvas);
+      });
+    }
+  }, [accessCreated]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -239,11 +300,37 @@ export default function LearnerDetailPage() {
               {company && <Link href={`/admin/clients/${company.id}`} className="flex items-center gap-1 text-[#3DB5C5] hover:underline"><Building2 className="h-3 w-3" />{company.company_name}</Link>}
             </div>
           </div>
-          <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={toggleEdit}>
-            <Pencil className="h-3 w-3" /> {editing ? "Annuler" : "Modifier"}
-          </Button>
+          <div className="flex items-center gap-2">
+            {!learner.profile_id && learner.email && (
+              <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={handleCreateAccess} disabled={creatingAccess}>
+                <Key className="h-3 w-3" /> {creatingAccess ? "Création..." : "Créer un accès"}
+              </Button>
+            )}
+            <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={toggleEdit}>
+              <Pencil className="h-3 w-3" /> {editing ? "Annuler" : "Modifier"}
+            </Button>
+          </div>
         </div>
       </div>
+
+      {accessCreated && (
+        <div className="border border-green-200 bg-green-50 rounded-lg p-4 space-y-3 mx-6 mt-4">
+          <p className="text-sm font-semibold text-green-800">Accès plateforme créé</p>
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div><span className="text-gray-500">Email:</span> <span className="font-mono">{accessCreated.email}</span></div>
+            <div><span className="text-gray-500">Mot de passe:</span> <span className="font-mono font-bold">{accessCreated.password}</span></div>
+          </div>
+          <div className="flex items-center gap-4">
+            <div id="qr-access" />
+            <div className="space-y-2">
+              <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={handleSendAccessEmail}>
+                <Mail className="h-3 w-3" /> Envoyer par email
+              </Button>
+              <p className="text-[10px] text-gray-400">Le QR code redirige vers la page de connexion</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Two columns */}
       <div className="flex gap-0 min-h-[calc(100vh-200px)]">
