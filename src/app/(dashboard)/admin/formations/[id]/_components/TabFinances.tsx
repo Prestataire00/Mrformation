@@ -146,12 +146,17 @@ export function TabFinances({ formation, onRefresh }: Props) {
     const recipientType = isAvoir && parentInvoice
       ? parentInvoice.recipient_type
       : invoiceForm.recipient_type;
-    const amount = isAvoir && parentInvoice
+    const rawAmount = isAvoir && parentInvoice
       ? -Math.abs(parentInvoice.amount)
       : parseFloat(invoiceForm.amount);
+    const amount = rawAmount;
 
     if (!recipientName) {
       toast({ title: "Le nom du destinataire est requis", variant: "destructive" });
+      return;
+    }
+    if (!isAvoir && (isNaN(amount) || amount <= 0)) {
+      toast({ title: "Montant invalide", description: "Entrez un montant positif", variant: "destructive" });
       return;
     }
 
@@ -215,33 +220,43 @@ export function TabFinances({ formation, onRefresh }: Props) {
 
   const handleCreateCharge = async () => {
     if (!chargeLabel.trim() || !chargeAmount) return;
+    const parsedAmount = parseFloat(chargeAmount);
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      toast({ title: "Montant invalide", description: "Entrez un montant positif", variant: "destructive" });
+      return;
+    }
     setSavingCharge(true);
-    const { error } = await supabase.from("formation_charges").insert({
-      session_id: formation.id,
-      entity_id: formation.entity_id,
-      label: chargeLabel.trim(),
-      amount: parseFloat(chargeAmount),
-    });
-    setSavingCharge(false);
-    if (error) {
-      toast({ title: "Erreur", description: error.message, variant: "destructive" });
-    } else {
+    try {
+      const { error } = await supabase.from("formation_charges").insert({
+        session_id: formation.id,
+        entity_id: formation.entity_id,
+        label: chargeLabel.trim(),
+        amount: parsedAmount,
+      });
+      if (error) throw error;
       toast({ title: "Charge ajoutée" });
       setChargeLabel("");
       setChargeAmount("");
       fetchData();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Impossible d'ajouter la charge";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
+    } finally {
+      setSavingCharge(false);
     }
   };
 
   // ── Delete charge ──
 
   const handleDeleteCharge = async (id: string) => {
-    const { error } = await supabase.from("formation_charges").delete().eq("id", id);
-    if (error) {
-      toast({ title: "Erreur", variant: "destructive" });
-    } else {
+    try {
+      const { error } = await supabase.from("formation_charges").delete().eq("id", id).eq("session_id", formation.id);
+      if (error) throw error;
       toast({ title: "Charge supprimée" });
       fetchData();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Impossible de supprimer la charge";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
     }
   };
 

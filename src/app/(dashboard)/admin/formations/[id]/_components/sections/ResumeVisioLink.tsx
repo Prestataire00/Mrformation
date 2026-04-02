@@ -21,16 +21,20 @@ export function ResumeVisioLink({ formation, onRefresh }: Props) {
 
   const handleSave = async () => {
     setSaving(true);
-    const { error } = await supabase
-      .from("sessions")
-      .update({ visio_link: visioLink || null })
-      .eq("id", formation.id);
-    setSaving(false);
-    if (error) {
-      toast({ title: "Erreur", variant: "destructive" });
-    } else {
+    try {
+      const { error } = await supabase
+        .from("sessions")
+        .update({ visio_link: visioLink || null })
+        .eq("id", formation.id)
+        .eq("entity_id", formation.entity_id);
+      if (error) throw error;
       toast({ title: "Lien de visio mis à jour" });
-      onRefresh();
+      await onRefresh();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Impossible de sauvegarder";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
+    } finally {
+      setSaving(false);
     }
   };
 

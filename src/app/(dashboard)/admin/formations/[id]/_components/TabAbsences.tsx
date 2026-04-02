@@ -4,8 +4,6 @@ import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Plus, Trash2, Loader2, ScanSearch } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -93,13 +91,16 @@ export function TabAbsences({ formation, onRefresh }: Props) {
 
   const handleDelete = async (id: string) => {
     setDeleting(id);
-    const { error } = await supabase.from("formation_absences").delete().eq("id", id);
-    setDeleting(null);
-    if (error) {
-      toast({ title: "Erreur", variant: "destructive" });
-    } else {
+    try {
+      const { error } = await supabase.from("formation_absences").delete().eq("id", id).eq("session_id", formation.id);
+      if (error) throw error;
       toast({ title: "Absence supprimée" });
-      onRefresh();
+      await onRefresh();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Impossible de supprimer";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
+    } finally {
+      setDeleting(null);
     }
   };
 
@@ -149,104 +150,103 @@ export function TabAbsences({ formation, onRefresh }: Props) {
     }
   };
 
+  const formatSlotTime = (dateStr: string) =>
+    new Date(dateStr).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
+    <div className="space-y-4">
+      {/* Header compact */}
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-bold">{formation.title}</h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            {absences.length} Absence{absences.length !== 1 ? "s" : ""}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
+        <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+          Absences ({absences.length})
+        </h3>
+        <div className="flex items-center gap-1.5">
           <Button
+            size="sm"
             variant="outline"
+            className="text-xs h-7 gap-1"
             onClick={() => setShowAutoDetect(true)}
             disabled={autoDetecting}
           >
             {autoDetecting ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              <Loader2 className="h-3 w-3 animate-spin" />
             ) : (
-              <ScanSearch className="h-4 w-4 mr-2" />
+              <ScanSearch className="h-3 w-3" />
             )}
-            Détecter les absences automatiquement
+            Détection auto
           </Button>
-          <Button onClick={() => setShowAdd(true)}>
-            <Plus className="h-4 w-4 mr-2" /> Ajouter une absence
+          <Button size="sm" className="text-xs h-7 gap-1" onClick={() => setShowAdd(true)}>
+            <Plus className="h-3 w-3" /> Ajouter
           </Button>
         </div>
       </div>
 
       {/* Liste des absences */}
       {absences.length === 0 ? (
-        <Card>
-          <CardContent className="pt-6 text-center text-muted-foreground">
-            Aucune absence enregistrée.
-          </CardContent>
-        </Card>
+        <p className="text-sm text-muted-foreground py-8 text-center">
+          Aucune absence enregistrée.
+        </p>
       ) : (
-        <div className="space-y-3">
-          {absences.map((absence) => {
+        <div className="border rounded-lg overflow-hidden">
+          {absences.map((absence, index) => {
             const learner = (absence as FormationAbsence & { learner?: { id: string; first_name: string; last_name: string } }).learner;
             const slot = timeSlots.find((s) => s.id === absence.time_slot_id);
             return (
-              <Card key={absence.id}>
-                <CardContent className="pt-4">
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-1">
-                      <p className="font-medium">
-                        {learner ? `${learner.first_name} ${learner.last_name}` : "Apprenant inconnu"}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {new Date(absence.date).toLocaleDateString("fr-FR")}
-                        {slot && (
-                          <span>
-                            {" — "}
-                            {new Date(slot.start_time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
-                            {" - "}
-                            {new Date(slot.end_time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
-                          </span>
-                        )}
-                      </p>
-                      {absence.reason && (
-                        <p className="text-sm text-muted-foreground">Raison : {absence.reason}</p>
-                      )}
-                      {absence.notes && (
-                        <p className="text-xs text-muted-foreground italic">{absence.notes}</p>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Select
-                        value={absence.status}
-                        onValueChange={(val) => handleUpdateStatus(absence.id, val)}
-                      >
-                        <SelectTrigger className="w-[140px]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="justified">Justifiée</SelectItem>
-                          <SelectItem value="unjustified">Non justifiée</SelectItem>
-                          <SelectItem value="excused">Excusée</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="text-red-500 hover:text-red-700"
-                        onClick={() => handleDelete(absence.id)}
-                        disabled={deleting === absence.id}
-                      >
-                        {deleting === absence.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-4 w-4" />
-                        )}
-                      </Button>
-                    </div>
+              <div key={absence.id} className={index > 0 ? "border-t" : ""}>
+                <div className="flex items-center justify-between px-4 py-2.5">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="font-medium text-sm whitespace-nowrap">
+                      {learner ? `${learner.first_name} ${learner.last_name}` : "Apprenant inconnu"}
+                    </span>
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">
+                      {new Date(absence.date).toLocaleDateString("fr-FR")}
+                      {slot && ` ${formatSlotTime(slot.start_time)} - ${formatSlotTime(slot.end_time)}`}
+                    </span>
+                    <span className={`text-xs px-1.5 py-0.5 rounded-full whitespace-nowrap ${STATUS_COLORS[absence.status] || "bg-gray-100 text-gray-600"}`}>
+                      {STATUS_LABELS[absence.status] || absence.status}
+                    </span>
                   </div>
-                </CardContent>
-              </Card>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <Select
+                      value={absence.status}
+                      onValueChange={(val) => handleUpdateStatus(absence.id, val)}
+                    >
+                      <SelectTrigger className="w-[120px] h-7 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="justified">Justifiée</SelectItem>
+                        <SelectItem value="unjustified">Non justifiée</SelectItem>
+                        <SelectItem value="excused">Excusée</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-6 w-6 text-muted-foreground hover:text-red-600"
+                      onClick={() => handleDelete(absence.id)}
+                      disabled={deleting === absence.id}
+                    >
+                      {deleting === absence.id ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-3 w-3" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
+                {/* Reason/notes en 2e ligne si présentes */}
+                {(absence.reason || absence.notes) && (
+                  <div className="px-4 pb-2 -mt-1 flex gap-4">
+                    {absence.reason && (
+                      <span className="text-xs text-muted-foreground">Raison : {absence.reason}</span>
+                    )}
+                    {absence.notes && (
+                      <span className="text-xs text-muted-foreground italic">{absence.notes}</span>
+                    )}
+                  </div>
+                )}
+              </div>
             );
           })}
         </div>

@@ -90,23 +90,25 @@ export function BulkSlotCreator({ formation, onRefresh }: Props) {
     }
 
     setLoading(true);
-    const existing = formation.formation_time_slots?.length ?? 0;
-    const rows = previewSlots.map((s, i) => ({
-      session_id: formation.id,
-      title: s.title,
-      start_time: s.start_time,
-      end_time: s.end_time,
-      slot_order: existing + i + 1,
-    }));
+    try {
+      const existing = formation.formation_time_slots?.length ?? 0;
+      const rows = previewSlots.map((s, i) => ({
+        session_id: formation.id,
+        title: s.title,
+        start_time: s.start_time,
+        end_time: s.end_time,
+        slot_order: existing + i + 1,
+      }));
 
-    const { error } = await supabase.from("formation_time_slots").insert(rows);
-    setLoading(false);
-
-    if (error) {
-      toast({ title: "Erreur", description: error.message, variant: "destructive" });
-    } else {
+      const { error } = await supabase.from("formation_time_slots").insert(rows);
+      if (error) throw error;
       toast({ title: `${previewSlots.length} créneau${previewSlots.length > 1 ? "x" : ""} créé${previewSlots.length > 1 ? "s" : ""}` });
-      onRefresh();
+      await onRefresh();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Impossible de créer les créneaux";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
+    } finally {
+      setLoading(false);
     }
   }
 

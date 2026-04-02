@@ -68,15 +68,22 @@ export function ResumeCompanies({ formation, onRefresh }: Props) {
     }
   };
 
+  const [deleting, setDeleting] = useState(false);
+
   const handleDelete = async () => {
     if (!deleteId) return;
-    const { error } = await supabase.from("formation_companies").delete().eq("id", deleteId);
-    if (error) {
-      toast({ title: "Erreur", variant: "destructive" });
-    } else {
+    setDeleting(true);
+    try {
+      const { error } = await supabase.from("formation_companies").delete().eq("id", deleteId).eq("session_id", formation.id);
+      if (error) throw error;
       toast({ title: "Entreprise retirée" });
       setDeleteId(null);
-      onRefresh();
+      await onRefresh();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Impossible de retirer l'entreprise";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -181,7 +188,10 @@ export function ResumeCompanies({ formation, onRefresh }: Props) {
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteId(null)}>Annuler</Button>
-            <Button variant="destructive" onClick={handleDelete}>Retirer</Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
+              {deleting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Retirer
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

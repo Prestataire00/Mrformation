@@ -9,7 +9,6 @@ import {
   XCircle, Mail, CheckCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -433,12 +432,14 @@ export function TabEmargements({ formation, onRefresh }: Props) {
   // ── Delete signature ──
 
   const handleDeleteSignature = async (signatureId: string) => {
-    const { error } = await supabase.from("signatures").delete().eq("id", signatureId);
-    if (error) {
-      toast({ title: "Erreur", description: "Impossible de supprimer", variant: "destructive" });
-    } else {
+    try {
+      const { error } = await supabase.from("signatures").delete().eq("id", signatureId).eq("session_id", formation.id);
+      if (error) throw error;
       toast({ title: "Signature supprimée" });
       await onRefresh();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Impossible de supprimer";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
     }
   };
 
@@ -544,281 +545,217 @@ export function TabEmargements({ formation, onRefresh }: Props) {
   const totalSigned = timeSlots.reduce((sum, slot) => sum + getSignaturesForSlot(slot).length, 0);
   const completionPct = totalExpected > 0 ? Math.round((totalSigned / totalExpected) * 100) : 0;
 
+  // ── Render person row (trainer or learner) ──
+  const renderPersonRow = (
+    personId: string,
+    personName: string,
+    signerType: "learner" | "trainer",
+    slotSignatures: Signature[],
+    slot: FormationTimeSlot,
+    past: boolean,
+    label?: string
+  ) => {
+    const sig = slotSignatures.find(
+      s => s.signer_id === personId && s.signer_type === signerType
+    );
+    return (
+      <div key={`${slot.id}-${personId}`} className="flex items-center justify-between px-4 py-2 text-sm">
+        <div className="flex items-center gap-2">
+          <span className="font-medium">{personName}</span>
+          {label && <span className="text-xs text-muted-foreground">({label})</span>}
+        </div>
+        <div className="flex items-center gap-1.5">
+          {sig ? (
+            <>
+              <span className="text-xs text-green-700 bg-green-100 px-1.5 py-0.5 rounded-full">Signé</span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-muted-foreground hover:text-red-600"
+                onClick={() => handleDeleteSignature(sig.id)}
+              >
+                <XCircle className="h-3 w-3" />
+              </Button>
+            </>
+          ) : (
+            <>
+              {past && (
+                <span className="text-xs text-red-600 bg-red-50 px-1.5 py-0.5 rounded-full">Absent</span>
+              )}
+              <span className="text-xs text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded-full">En attente</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 text-xs gap-1"
+                onClick={() => setSignDialog({
+                  open: true,
+                  slotId: slot.id,
+                  signerId: personId,
+                  signerType,
+                  signerName: personName,
+                })}
+              >
+                <PenLine className="h-3 w-3" /> Signer
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
-      {/* Actions globales */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Actions d&apos;émargement</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-wrap gap-3">
-            <Button
-              variant="outline"
-              onClick={handleGenerateAllTokens}
-              disabled={generatingTokens || timeSlots.length === 0}
-            >
-              {generatingTokens
-                ? <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                : <QrCode className="h-4 w-4 mr-2" />
-              }
-              Générer les QR codes
-            </Button>
-            <Button
-              variant="outline"
-              onClick={handleExportPdf}
-              disabled={exportingPdf || timeSlots.length === 0}
-            >
-              {exportingPdf
-                ? <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                : <FileDown className="h-4 w-4 mr-2" />
-              }
-              Exporter PDF QR codes
-            </Button>
-            <Button
-              variant="outline"
-              onClick={handleSendToTrainer}
-              disabled={sendingToTrainer || trainers.length === 0 || timeSlots.length === 0}
-            >
-              {sendingToTrainer
-                ? <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                : <Mail className="h-4 w-4 mr-2" />
-              }
-              Envoyer QR au formateur
-            </Button>
-            <Button variant="outline" onClick={handlePrintEmpty}>
-              <Printer className="h-4 w-4 mr-2" /> Imprimer feuille vide
-            </Button>
-          </div>
-
-          {/* Progress bar */}
-          {exportingPdf && pdfProgress.total > 0 && (
-            <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">
-                Génération des QR codes... {pdfProgress.current}/{pdfProgress.total}
-              </p>
-              <Progress value={(pdfProgress.current / pdfProgress.total) * 100} className="h-2" />
-            </div>
-          )}
-
-          {/* Global stats */}
+      {/* Header compact + toolbar */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+            Émargements
+          </h3>
           {timeSlots.length > 0 && (
-            <div className="flex items-center gap-4 pt-2 border-t text-sm">
-              <span className="text-muted-foreground">
-                Progression globale : <span className="font-semibold text-foreground">{totalSigned}/{totalExpected}</span> signatures
+            <div className="flex items-center gap-3 mt-1">
+              <span className="text-sm text-muted-foreground">
+                <span className="font-medium text-foreground">{totalSigned}/{totalExpected}</span> signatures
               </span>
-              <Progress value={completionPct} className="flex-1 max-w-48 h-2" />
-              <span className="text-xs font-medium">{completionPct}%</span>
+              <Progress value={completionPct} className="w-32 h-1.5" />
+              <span className="text-xs font-medium text-muted-foreground">{completionPct}%</span>
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-xs h-7 gap-1"
+            onClick={handleGenerateAllTokens}
+            disabled={generatingTokens || timeSlots.length === 0}
+          >
+            {generatingTokens ? <Loader2 className="h-3 w-3 animate-spin" /> : <QrCode className="h-3 w-3" />}
+            QR codes
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-xs h-7 gap-1"
+            onClick={handleExportPdf}
+            disabled={exportingPdf || timeSlots.length === 0}
+          >
+            {exportingPdf ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileDown className="h-3 w-3" />}
+            PDF
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-xs h-7 gap-1"
+            onClick={handleSendToTrainer}
+            disabled={sendingToTrainer || trainers.length === 0 || timeSlots.length === 0}
+          >
+            {sendingToTrainer ? <Loader2 className="h-3 w-3 animate-spin" /> : <Mail className="h-3 w-3" />}
+            Envoyer
+          </Button>
+          <Button size="sm" variant="ghost" className="text-xs h-7 gap-1" onClick={handlePrintEmpty}>
+            <Printer className="h-3 w-3" /> Imprimer
+          </Button>
+        </div>
+      </div>
+
+      {/* PDF progress */}
+      {exportingPdf && pdfProgress.total > 0 && (
+        <div className="space-y-1">
+          <p className="text-xs text-muted-foreground">
+            Génération QR codes... {pdfProgress.current}/{pdfProgress.total}
+          </p>
+          <Progress value={(pdfProgress.current / pdfProgress.total) * 100} className="h-1.5" />
+        </div>
+      )}
 
       {/* Par créneau */}
       {timeSlots.length === 0 ? (
-        <Card>
-          <CardContent className="pt-6 text-center text-muted-foreground">
-            Aucun créneau planifié. Créez des créneaux dans l&apos;onglet Planning.
-          </CardContent>
-        </Card>
+        <p className="text-sm text-muted-foreground py-8 text-center">
+          Aucun créneau planifié. Créez des créneaux dans l&apos;onglet Planning.
+        </p>
       ) : (
-        timeSlots.map((slot, index) => {
-          const slotSignatures = getSignaturesForSlot(slot);
-          const start = new Date(slot.start_time);
-          const end = new Date(slot.end_time);
-          const durationMs = end.getTime() - start.getTime();
-          const durationH = Math.floor(durationMs / (1000 * 60 * 60));
-          const durationM = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60));
-          const durationStr = durationH > 0
-            ? `${durationH}h${durationM > 0 ? durationM.toString().padStart(2, "0") : ""}`
-            : `${durationM}min`;
+        <div className="space-y-4">
+          {timeSlots.map((slot, index) => {
+            const slotSignatures = getSignaturesForSlot(slot);
+            const start = new Date(slot.start_time);
+            const end = new Date(slot.end_time);
+            const durationMs = end.getTime() - start.getTime();
+            const durationH = Math.floor(durationMs / (1000 * 60 * 60));
+            const durationM = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60));
+            const durationStr = durationH > 0
+              ? `${durationH}h${durationM > 0 ? durationM.toString().padStart(2, "0") : ""}`
+              : `${durationM}min`;
 
-          const slotTotal = enrollments.length + trainers.length;
-          const slotSigned = slotSignatures.length;
-          const slotPct = slotTotal > 0 ? Math.round((slotSigned / slotTotal) * 100) : 0;
-          const past = isSlotPast(slot);
+            const slotTotal = enrollments.length + trainers.length;
+            const slotSigned = slotSignatures.length;
+            const slotPct = slotTotal > 0 ? Math.round((slotSigned / slotTotal) * 100) : 0;
+            const past = isSlotPast(slot);
 
-          return (
-            <Card key={slot.id} className={past && slotPct < 100 ? "border-orange-200" : ""}>
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-base">
-                    Créneau {index + 1} : {slot.title || formation.title}
-                  </CardTitle>
+            return (
+              <div key={slot.id} className={`border rounded-lg overflow-hidden ${past && slotPct < 100 ? "border-orange-300" : ""}`}>
+                {/* Slot header */}
+                <div className="flex items-center justify-between px-4 py-2.5 bg-muted/30 border-b">
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-medium">Créneau {index + 1}</span>
+                    <span className="text-xs text-muted-foreground">{formatSlotLabel(slot)}</span>
+                    <span className="text-xs text-muted-foreground">{durationStr}</span>
+                  </div>
                   <div className="flex items-center gap-2">
-                    <Badge variant="outline">{durationStr}</Badge>
+                    <Progress value={slotPct} className="w-20 h-1.5" />
+                    <span className="text-xs text-muted-foreground">{slotSigned}/{slotTotal}</span>
                     {slotPct === 100 ? (
-                      <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
-                        <CheckCircle2 className="h-3 w-3 mr-1" /> Complet
-                      </Badge>
+                      <span className="inline-flex items-center gap-1 text-xs text-green-700 bg-green-100 px-1.5 py-0.5 rounded-full">
+                        <CheckCircle2 className="h-3 w-3" /> Complet
+                      </span>
                     ) : past ? (
-                      <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100">
-                        <AlertTriangle className="h-3 w-3 mr-1" /> Incomplet
-                      </Badge>
+                      <span className="inline-flex items-center gap-1 text-xs text-orange-700 bg-orange-100 px-1.5 py-0.5 rounded-full">
+                        Incomplet
+                      </span>
                     ) : null}
+                    {slotPct < 100 && (
+                      <Button size="sm" variant="ghost" className="text-xs h-6 gap-1" onClick={() => openBulkSign(slot)}>
+                        <CheckCheck className="h-3 w-3" /> Cocher tous
+                      </Button>
+                    )}
                   </div>
                 </div>
-                <p className="text-sm text-muted-foreground">{formatSlotLabel(slot)}</p>
-                {/* Slot progress */}
-                <div className="flex items-center gap-3 mt-1">
-                  <Progress value={slotPct} className="flex-1 h-1.5" />
-                  <span className="text-xs text-muted-foreground font-medium">{slotSigned}/{slotTotal}</span>
-                  {slotPct < 100 && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="ml-auto h-7 text-xs gap-1"
-                      onClick={() => openBulkSign(slot)}
-                    >
-                      <CheckCheck className="h-3 w-3" /> Cocher les présences
-                    </Button>
-                  )}
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {/* Formateurs */}
-                {trainers.length > 0 && (
-                  <div>
-                    <h4 className="text-sm font-semibold mb-2">Formateurs</h4>
-                    <div className="space-y-2">
-                      {trainers.map(ft => {
-                        const trainer = ft.trainer;
-                        if (!trainer) return null;
-                        const sig = slotSignatures.find(
-                          s => s.signer_id === trainer.id && s.signer_type === "trainer"
-                        );
-                        return (
-                          <div
-                            key={ft.id}
-                            className="flex items-center justify-between p-3 bg-muted/30 rounded-lg"
-                          >
-                            <span className="text-sm font-medium">
-                              {trainer.first_name} {trainer.last_name}
-                            </span>
-                            <div className="flex items-center gap-2">
-                              {sig ? (
-                                <>
-                                  <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
-                                    <CheckSquare className="h-3 w-3 mr-1" /> Signé
-                                  </Badge>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-7 w-7 text-red-500 hover:text-red-700"
-                                    onClick={() => handleDeleteSignature(sig.id)}
-                                  >
-                                    <XCircle className="h-3.5 w-3.5" />
-                                  </Button>
-                                </>
-                              ) : (
-                                <>
-                                  {past && (
-                                    <Badge variant="outline" className="text-red-600 border-red-200 text-xs">
-                                      Absent
-                                    </Badge>
-                                  )}
-                                  <Badge variant="outline" className="text-orange-600 border-orange-300">
-                                    En attente
-                                  </Badge>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-7 text-xs gap-1"
-                                    onClick={() => setSignDialog({
-                                      open: true,
-                                      slotId: slot.id,
-                                      signerId: trainer.id,
-                                      signerType: "trainer",
-                                      signerName: `${trainer.first_name} ${trainer.last_name}`,
-                                    })}
-                                  >
-                                    <PenLine className="h-3 w-3" /> Signer pour
-                                  </Button>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
 
-                {/* Apprenants */}
-                <div>
-                  <h4 className="text-sm font-semibold mb-2">
-                    Apprenants ({enrollments.length})
-                  </h4>
-                  {enrollments.length === 0 ? (
-                    <p className="text-sm text-muted-foreground italic">Aucun apprenant inscrit</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {enrollments.map(enrollment => {
-                        const learner = enrollment.learner;
-                        if (!learner) return null;
-                        const sig = slotSignatures.find(
-                          s => s.signer_id === learner.id && s.signer_type === "learner"
-                        );
-                        return (
-                          <div
-                            key={enrollment.id}
-                            className="flex items-center justify-between p-3 bg-muted/30 rounded-lg"
-                          >
-                            <span className="text-sm font-medium">
-                              {learner.first_name} {learner.last_name}
-                            </span>
-                            <div className="flex items-center gap-2">
-                              {sig ? (
-                                <>
-                                  <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
-                                    <CheckSquare className="h-3 w-3 mr-1" /> Signé
-                                  </Badge>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-7 w-7 text-red-500 hover:text-red-700"
-                                    onClick={() => handleDeleteSignature(sig.id)}
-                                  >
-                                    <XCircle className="h-3.5 w-3.5" />
-                                  </Button>
-                                </>
-                              ) : (
-                                <>
-                                  {past && (
-                                    <Badge variant="outline" className="text-red-600 border-red-200 text-xs">
-                                      Absent
-                                    </Badge>
-                                  )}
-                                  <Badge variant="outline" className="text-orange-600 border-orange-300">
-                                    En attente
-                                  </Badge>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-7 text-xs gap-1"
-                                    onClick={() => setSignDialog({
-                                      open: true,
-                                      slotId: slot.id,
-                                      signerId: learner.id,
-                                      signerType: "learner",
-                                      signerName: `${learner.first_name} ${learner.last_name}`,
-                                    })}
-                                  >
-                                    <PenLine className="h-3 w-3" /> Signer pour
-                                  </Button>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
+                {/* Person rows - flat list */}
+                <div className="divide-y">
+                  {trainers.map(ft => {
+                    const trainer = ft.trainer;
+                    if (!trainer) return null;
+                    return renderPersonRow(
+                      trainer.id,
+                      `${trainer.first_name} ${trainer.last_name}`,
+                      "trainer",
+                      slotSignatures,
+                      slot,
+                      past,
+                      "Formateur"
+                    );
+                  })}
+                  {enrollments.map(enrollment => {
+                    const learner = enrollment.learner;
+                    if (!learner) return null;
+                    return renderPersonRow(
+                      learner.id,
+                      `${learner.first_name} ${learner.last_name}`,
+                      "learner",
+                      slotSignatures,
+                      slot,
+                      past
+                    );
+                  })}
+                  {enrollments.length === 0 && trainers.length === 0 && (
+                    <p className="text-sm text-muted-foreground py-4 text-center">Aucun participant</p>
                   )}
                 </div>
-              </CardContent>
-            </Card>
-          );
-        })
+              </div>
+            );
+          })}
+        </div>
       )}
 
       {/* ── Dialog: Bulk sign ── */}

@@ -46,16 +46,24 @@ export function TabParcours({ formation, onRefresh }: Props) {
   async function handleMarkCompleted() {
     if (!confirm("Confirmer la fin de la formation ?")) return;
     setSaving(true);
-    const { error } = await supabase
-      .from("sessions")
-      .update({ is_completed: true, status: "completed" })
-      .eq("id", formation.id);
-    setSaving(false);
-    if (error) toast({ title: "Erreur", variant: "destructive" });
-    else { toast({ title: "Formation terminée" }); onRefresh(); }
+    try {
+      const { error } = await supabase
+        .from("sessions")
+        .update({ is_completed: true, status: "completed" })
+        .eq("id", formation.id)
+        .eq("entity_id", formation.entity_id);
+      if (error) throw error;
+      toast({ title: "Formation terminée" });
+      await onRefresh();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Impossible de terminer la formation";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
   }
 
-  function openEdit(slot: any) {
+  function openEdit(slot: { id: string; module_title?: string | null; module_objectives?: string | null }) {
     setEditingSlotId(slot.id);
     setEditModule(slot.module_title || "");
     setEditObjectives(slot.module_objectives || "");
@@ -63,12 +71,20 @@ export function TabParcours({ formation, onRefresh }: Props) {
 
   async function handleSaveSlot() {
     if (!editingSlotId) return;
-    const { error } = await supabase
-      .from("formation_time_slots")
-      .update({ module_title: editModule.trim() || null, module_objectives: editObjectives.trim() || null })
-      .eq("id", editingSlotId);
-    if (error) toast({ title: "Erreur", variant: "destructive" });
-    else { toast({ title: "Créneau mis à jour" }); setEditingSlotId(null); onRefresh(); }
+    try {
+      const { error } = await supabase
+        .from("formation_time_slots")
+        .update({ module_title: editModule.trim() || null, module_objectives: editObjectives.trim() || null })
+        .eq("id", editingSlotId)
+        .eq("session_id", formation.id);
+      if (error) throw error;
+      toast({ title: "Créneau mis à jour" });
+      setEditingSlotId(null);
+      await onRefresh();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Impossible de mettre à jour";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
+    }
   }
 
   const handleDownloadBilan = () => {

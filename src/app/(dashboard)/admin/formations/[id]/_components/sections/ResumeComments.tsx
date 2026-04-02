@@ -25,28 +25,34 @@ export function ResumeComments({ formation, onRefresh }: Props) {
   const handleAdd = async () => {
     if (!newComment.trim()) return;
     setSaving(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    const { error } = await supabase.from("formation_comments").insert({
-      session_id: formation.id,
-      author_id: user?.id || null,
-      content: newComment.trim(),
-    });
-    setSaving(false);
-    if (error) {
-      toast({ title: "Erreur", variant: "destructive" });
-    } else {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const { error } = await supabase.from("formation_comments").insert({
+        session_id: formation.id,
+        author_id: user?.id || null,
+        content: newComment.trim(),
+      });
+      if (error) throw error;
       toast({ title: "Commentaire ajouté" });
       setNewComment("");
-      onRefresh();
+      await onRefresh();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Impossible d'ajouter le commentaire";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleDelete = async (commentId: string) => {
-    const { error } = await supabase.from("formation_comments").delete().eq("id", commentId);
-    if (error) {
-      toast({ title: "Erreur", variant: "destructive" });
-    } else {
-      onRefresh();
+    try {
+      const { error } = await supabase.from("formation_comments").delete().eq("id", commentId).eq("session_id", formation.id);
+      if (error) throw error;
+      toast({ title: "Commentaire supprimé" });
+      await onRefresh();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Impossible de supprimer";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
     }
   };
 

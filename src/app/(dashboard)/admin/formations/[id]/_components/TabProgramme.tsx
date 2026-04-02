@@ -60,47 +60,59 @@ export function TabProgramme({ formation, onRefresh }: Props) {
   }, [program, fetchPrograms]);
 
   const handleToggleDpc = async (checked: boolean) => {
-    const { error } = await supabase
-      .from("sessions")
-      .update({ is_dpc: checked })
-      .eq("id", formation.id);
-    if (error) {
-      toast({ title: "Erreur", variant: "destructive" });
-    } else {
-      onRefresh();
+    try {
+      const { error } = await supabase
+        .from("sessions")
+        .update({ is_dpc: checked })
+        .eq("id", formation.id)
+        .eq("entity_id", formation.entity_id);
+      if (error) throw error;
+      toast({ title: checked ? "DPC activé" : "DPC désactivé" });
+      await onRefresh();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Impossible de modifier le DPC";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
     }
   };
 
   const handleRemoveProgram = async () => {
     setSaving(true);
-    const { error } = await supabase
-      .from("sessions")
-      .update({ program_id: null })
-      .eq("id", formation.id);
-    setSaving(false);
-    if (error) {
-      toast({ title: "Erreur", variant: "destructive" });
-    } else {
+    try {
+      const { error } = await supabase
+        .from("sessions")
+        .update({ program_id: null })
+        .eq("id", formation.id)
+        .eq("entity_id", formation.entity_id);
+      if (error) throw error;
       toast({ title: "Programme dissocié" });
       setConfirmRemove(false);
-      onRefresh();
+      await onRefresh();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Impossible de dissocier le programme";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleAssignProgram = async () => {
     if (!selectedProgramId) return;
     setSaving(true);
-    const { error } = await supabase
-      .from("sessions")
-      .update({ program_id: selectedProgramId })
-      .eq("id", formation.id);
-    setSaving(false);
-    if (error) {
-      toast({ title: "Erreur", variant: "destructive" });
-    } else {
+    try {
+      const { error } = await supabase
+        .from("sessions")
+        .update({ program_id: selectedProgramId })
+        .eq("id", formation.id)
+        .eq("entity_id", formation.entity_id);
+      if (error) throw error;
       toast({ title: "Programme attribué" });
       setShowAssign(false);
-      onRefresh();
+      await onRefresh();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Impossible d'attribuer le programme";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
+    } finally {
+      setSaving(false);
     }
   };
 

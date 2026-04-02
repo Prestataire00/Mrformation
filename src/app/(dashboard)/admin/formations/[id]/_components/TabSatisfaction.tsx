@@ -147,44 +147,52 @@ export function TabSatisfaction({ formation, onRefresh }: Props) {
     const key = makeKey(satType, targetType, targetId);
     setSaving(key);
 
-    const existing = getAssignment(satType, targetType, targetId);
-    if (existing) {
-      await supabase
-        .from("formation_satisfaction_assignments")
-        .delete()
-        .eq("id", existing.id);
-    }
+    try {
+      const existing = getAssignment(satType, targetType, targetId);
+      if (existing) {
+        const { error: delErr } = await supabase
+          .from("formation_satisfaction_assignments")
+          .delete()
+          .eq("id", existing.id)
+          .eq("session_id", formation.id);
+        if (delErr) throw delErr;
+      }
 
-    const { error } = await supabase.from("formation_satisfaction_assignments").insert({
-      session_id: formation.id,
-      questionnaire_id: questionnaireId,
-      satisfaction_type: satType,
-      target_type: targetType,
-      target_id: targetId,
-    });
-
-    setSaving(null);
-    if (error) {
-      toast({ title: "Erreur", description: error.message, variant: "destructive" });
-    } else {
+      const { error } = await supabase.from("formation_satisfaction_assignments").insert({
+        session_id: formation.id,
+        questionnaire_id: questionnaireId,
+        satisfaction_type: satType,
+        target_type: targetType,
+        target_id: targetId,
+      });
+      if (error) throw error;
       toast({ title: "Questionnaire attribué" });
-      onRefresh();
+      await onRefresh();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Impossible d'attribuer";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
+    } finally {
+      setSaving(null);
     }
   };
 
   // Remove assignment
   const handleRemove = async (assignmentId: string) => {
     setSaving(assignmentId);
-    const { error } = await supabase
-      .from("formation_satisfaction_assignments")
-      .delete()
-      .eq("id", assignmentId);
-    setSaving(null);
-    if (error) {
-      toast({ title: "Erreur", description: error.message, variant: "destructive" });
-    } else {
+    try {
+      const { error } = await supabase
+        .from("formation_satisfaction_assignments")
+        .delete()
+        .eq("id", assignmentId)
+        .eq("session_id", formation.id);
+      if (error) throw error;
       toast({ title: "Questionnaire supprimé" });
-      onRefresh();
+      await onRefresh();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Impossible de supprimer";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
+    } finally {
+      setSaving(null);
     }
   };
 

@@ -2,9 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Loader2 } from "lucide-react";
+import { Loader2, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
@@ -40,6 +39,7 @@ export function TabElearning({ formation, onRefresh }: Props) {
   const [courses, setCourses] = useState<ElearningCourse[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   // Per-learner form state
   const [courseSelections, setCourseSelections] = useState<Record<string, string>>({});
@@ -51,6 +51,9 @@ export function TabElearning({ formation, onRefresh }: Props) {
   const enrollments = formation.enrollments || [];
   const signatures = formation.signatures || [];
   const timeSlots = formation.formation_time_slots || [];
+
+  const toggleExpanded = (id: string) =>
+    setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
 
   // Fetch available courses
   const fetchCourses = useCallback(async () => {
@@ -92,11 +95,9 @@ export function TabElearning({ formation, onRefresh }: Props) {
 
   // Calculate signed attendance time for a learner (in seconds)
   const getSignedAttendanceTime = (learnerId: string): number => {
-    // Find all signatures for this learner
     const learnerSignatures = signatures.filter(
       (s) => s.signer_id === learnerId && s.signer_type === "learner" && s.time_slot_id
     );
-
     let totalSeconds = 0;
     for (const sig of learnerSignatures) {
       const slot = timeSlots.find((ts) => ts.id === sig.time_slot_id);
@@ -119,7 +120,6 @@ export function TabElearning({ formation, onRefresh }: Props) {
 
     setSaving(`assign-${learnerId}`);
 
-    // First create elearning_enrollment
     const { data: enrollment } = await supabase
       .from("elearning_enrollments")
       .upsert(
@@ -129,7 +129,6 @@ export function TabElearning({ formation, onRefresh }: Props) {
       .select("id")
       .single();
 
-    // Then create formation_elearning_assignment
     const { error } = await supabase.from("formation_elearning_assignments").insert({
       session_id: formation.id,
       learner_id: learnerId,
@@ -158,29 +157,36 @@ export function TabElearning({ formation, onRefresh }: Props) {
   // Save notes
   const handleSaveNotes = async (assignmentId: string, learnerId: string) => {
     setSaving(`notes-${learnerId}`);
-    const { error } = await supabase
-      .from("formation_elearning_assignments")
-      .update({ notes: notes[learnerId] || "" })
-      .eq("id", assignmentId);
-    setSaving(null);
-    if (error) {
-      toast({ title: "Erreur", variant: "destructive" });
-    } else {
+    try {
+      const { error } = await supabase
+        .from("formation_elearning_assignments")
+        .update({ notes: notes[learnerId] || "" })
+        .eq("id", assignmentId)
+        .eq("session_id", formation.id);
+      if (error) throw error;
       toast({ title: "Notes confirmées" });
-      onRefresh();
+      await onRefresh();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Impossible de sauvegarder";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
+    } finally {
+      setSaving(null);
     }
   };
 
   // Toggle completed
   const handleToggleCompleted = async (assignmentId: string, isCompleted: boolean) => {
-    const { error } = await supabase
-      .from("formation_elearning_assignments")
-      .update({ is_completed: isCompleted })
-      .eq("id", assignmentId);
-    if (error) {
-      toast({ title: "Erreur", variant: "destructive" });
-    } else {
-      onRefresh();
+    try {
+      const { error } = await supabase
+        .from("formation_elearning_assignments")
+        .update({ is_completed: isCompleted })
+        .eq("id", assignmentId)
+        .eq("session_id", formation.id);
+      if (error) throw error;
+      await onRefresh();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Impossible de mettre à jour";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
     }
   };
 
@@ -193,187 +199,203 @@ export function TabElearning({ formation, onRefresh }: Props) {
   }
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-xl font-bold">{formation.title}</h2>
-      <p className="text-sm text-muted-foreground">
-        Pour attribuer des formations e-learning, choisissez des programmes ci-dessous
-      </p>
+    <div className="space-y-4">
+      {/* Header compact */}
+      <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+        e-Learning ({enrollments.length} apprenant{enrollments.length !== 1 ? "s" : ""})
+      </h3>
 
-      {enrollments.map((enrollment) => {
-        const learner = enrollment.learner;
-        if (!learner) return null;
+      {enrollments.length === 0 ? (
+        <p className="text-sm text-muted-foreground py-8 text-center">
+          Aucun apprenant inscrit.
+        </p>
+      ) : (
+        <div className="border rounded-lg overflow-hidden">
+          {/* Table header */}
+          <div className="grid grid-cols-[1fr_180px_100px_90px_40px] gap-2 px-4 py-2 bg-muted/30 border-b text-xs font-medium text-muted-foreground">
+            <span>Apprenant</span>
+            <span>Cours attribué</span>
+            <span>Temps total</span>
+            <span>Statut</span>
+            <span></span>
+          </div>
 
-        const assignment = getAssignment(learner.id);
-        const signedTime = getSignedAttendanceTime(learner.id);
+          {enrollments.map((enrollment) => {
+            const learner = enrollment.learner;
+            if (!learner) return null;
 
-        // Calculate total time
-        const timeModules = assignment?.time_elearning_modules || 0;
-        const timeEvals = assignment?.time_elearning_evaluations || 0;
-        const timeOther = assignment?.time_other_evaluations || 0;
-        const timeVirtual = assignment?.time_virtual_classroom || 0;
-        const totalTime = timeModules + timeEvals + timeOther + timeVirtual + signedTime;
+            const assignment = getAssignment(learner.id);
+            const signedTime = getSignedAttendanceTime(learner.id);
+            const timeModules = assignment?.time_elearning_modules || 0;
+            const timeEvals = assignment?.time_elearning_evaluations || 0;
+            const timeOther = assignment?.time_other_evaluations || 0;
+            const timeVirtual = assignment?.time_virtual_classroom || 0;
+            const totalTime = timeModules + timeEvals + timeOther + timeVirtual + signedTime;
+            const isExpanded = expanded[learner.id];
 
-        return (
-          <Card key={enrollment.id}>
-            <CardContent className="pt-6 space-y-5">
-              {/* Learner name */}
-              <h3 className="text-lg font-bold underline">
-                {learner.first_name} {learner.last_name}
-              </h3>
-
-              {/* Connection tracking button */}
-              <Button
-                className="bg-teal-500 hover:bg-teal-600 text-white"
-                onClick={() => toast({ title: "Suivi des connexions (à implémenter)" })}
-              >
-                Suivi des connexions
-              </Button>
-
-              {/* Current assignment */}
-              {assignment ? (
-                <p className="text-sm font-semibold">
-                  Cours attribué : {assignment.course?.title || "Cours e-learning"}
-                  {assignment.start_date && ` — Du ${assignment.start_date}`}
-                  {assignment.end_date && ` au ${assignment.end_date}`}
-                </p>
-              ) : (
-                <p className="text-sm font-semibold uppercase text-muted-foreground">
-                  Pas de cours e-learning attribué
-                </p>
-              )}
-
-              {/* Attribution form */}
-              <div className="space-y-3">
-                <p className="font-semibold text-sm">Attribuer un cours e-learning</p>
-                <Select
-                  value={courseSelections[learner.id] || ""}
-                  onValueChange={(val) =>
-                    setCourseSelections((prev) => ({ ...prev, [learner.id]: val }))
-                  }
+            return (
+              <div key={enrollment.id} className="border-b last:border-b-0">
+                {/* Summary row */}
+                <div
+                  className="grid grid-cols-[1fr_180px_100px_90px_40px] gap-2 px-4 py-2.5 items-center text-sm cursor-pointer hover:bg-muted/20 transition-colors"
+                  onClick={() => toggleExpanded(learner.id)}
                 >
-                  <SelectTrigger className="w-[400px]">
-                    <SelectValue placeholder="Sélectionner un cours..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {courses.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.title}
-                      </SelectItem>
-                    ))}
-                    {courses.length === 0 && (
-                      <SelectItem value="_none" disabled>
-                        Aucun cours disponible
-                      </SelectItem>
+                  <span className="font-medium truncate">
+                    {learner.first_name} {learner.last_name}
+                  </span>
+                  <span className="text-xs text-muted-foreground truncate">
+                    {assignment?.course?.title || "Non attribué"}
+                  </span>
+                  <span className="text-xs font-mono text-muted-foreground">{formatTime(totalTime)}</span>
+                  <div>
+                    {assignment?.is_completed ? (
+                      <span className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">Terminé</span>
+                    ) : assignment ? (
+                      <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">En cours</span>
+                    ) : (
+                      <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full">—</span>
                     )}
-                  </SelectContent>
-                </Select>
-
-                <div className="flex items-center gap-4">
-                  <div>
-                    <p className="text-sm font-semibold mb-1">Commence le</p>
-                    <Input
-                      type="date"
-                      className="w-[180px]"
-                      value={startDates[learner.id] || ""}
-                      onChange={(e) =>
-                        setStartDates((prev) => ({ ...prev, [learner.id]: e.target.value }))
-                      }
-                    />
                   </div>
-                  <div>
-                    <p className="text-sm font-semibold mb-1">Valide jusqu&apos;au</p>
-                    <Input
-                      type="date"
-                      className="w-[180px]"
-                      value={endDates[learner.id] || ""}
-                      onChange={(e) =>
-                        setEndDates((prev) => ({ ...prev, [learner.id]: e.target.value }))
-                      }
-                    />
-                  </div>
+                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); toggleExpanded(learner.id); }}>
+                    <ChevronDown className={`h-3 w-3 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                  </Button>
                 </div>
 
-                <Button
-                  className="bg-teal-500 hover:bg-teal-600 text-white"
-                  onClick={() => handleAssign(learner.id)}
-                  disabled={saving === `assign-${learner.id}` || !courseSelections[learner.id]}
-                >
-                  {saving === `assign-${learner.id}` && (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  )}
-                  Attribuer
-                </Button>
-              </div>
+                {/* Expandable detail panel */}
+                {isExpanded && (
+                  <div className="px-4 py-3 bg-muted/10 border-t space-y-4">
+                    {/* Attribution form - inline row */}
+                    <div className="flex items-end gap-2 flex-wrap">
+                      <div className="space-y-1">
+                        <span className="text-xs text-muted-foreground">Cours</span>
+                        <Select
+                          value={courseSelections[learner.id] || ""}
+                          onValueChange={(val) =>
+                            setCourseSelections((prev) => ({ ...prev, [learner.id]: val }))
+                          }
+                        >
+                          <SelectTrigger className="w-[220px] h-8 text-xs">
+                            <SelectValue placeholder="Sélectionner..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {courses.map((c) => (
+                              <SelectItem key={c.id} value={c.id}>
+                                {c.title}
+                              </SelectItem>
+                            ))}
+                            {courses.length === 0 && (
+                              <SelectItem value="_none" disabled>
+                                Aucun cours disponible
+                              </SelectItem>
+                            )}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <span className="text-xs text-muted-foreground">Début</span>
+                        <Input
+                          type="date"
+                          className="w-[140px] h-8 text-xs"
+                          value={startDates[learner.id] || ""}
+                          onChange={(e) =>
+                            setStartDates((prev) => ({ ...prev, [learner.id]: e.target.value }))
+                          }
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <span className="text-xs text-muted-foreground">Fin</span>
+                        <Input
+                          type="date"
+                          className="w-[140px] h-8 text-xs"
+                          value={endDates[learner.id] || ""}
+                          onChange={(e) =>
+                            setEndDates((prev) => ({ ...prev, [learner.id]: e.target.value }))
+                          }
+                        />
+                      </div>
+                      <Button
+                        size="sm"
+                        className="h-8 text-xs"
+                        onClick={() => handleAssign(learner.id)}
+                        disabled={saving === `assign-${learner.id}` || !courseSelections[learner.id]}
+                      >
+                        {saving === `assign-${learner.id}` && (
+                          <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                        )}
+                        Attribuer
+                      </Button>
+                    </div>
 
-              {/* Notes */}
-              <div className="space-y-2">
-                <p className="font-semibold text-sm">Notes</p>
-                <Textarea
-                  value={notes[learner.id] || ""}
-                  onChange={(e) =>
-                    setNotes((prev) => ({ ...prev, [learner.id]: e.target.value }))
-                  }
-                  placeholder="Ajouter des notes..."
-                  rows={3}
-                />
-                {assignment && (
-                  <Button
-                    className="bg-teal-500 hover:bg-teal-600 text-white"
-                    onClick={() => handleSaveNotes(assignment.id, learner.id)}
-                    disabled={saving === `notes-${learner.id}`}
-                  >
-                    {saving === `notes-${learner.id}` && (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    {/* Current assignment info */}
+                    {assignment && (
+                      <p className="text-xs text-muted-foreground">
+                        Cours actuel : <span className="font-medium text-foreground">{assignment.course?.title}</span>
+                        {assignment.start_date && ` — Du ${assignment.start_date}`}
+                        {assignment.end_date && ` au ${assignment.end_date}`}
+                      </p>
                     )}
-                    Confirmer les notes
-                  </Button>
-                )}
-              </div>
 
-              {/* Suivi Final */}
-              <div className="space-y-2 bg-muted/30 p-4 rounded-lg">
-                <p className="font-semibold">Suivi Final</p>
-                <p className="text-sm">
-                  Temps passé sur les modules e-learning : {formatTime(timeModules)}
-                </p>
-                <p className="text-sm">
-                  Temps passé sur les évaluations e-learning : {formatTime(timeEvals)}
-                </p>
-                <p className="text-sm">
-                  Temps passé sur les autres évaluations : {formatTime(timeOther)}
-                </p>
-                <p className="text-sm">
-                  Temps passé en classe virtuelle : {formatTime(timeVirtual)}
-                </p>
-                <p className="text-sm">
-                  Temps total des émargements signés : {formatTime(signedTime)}
-                </p>
-                <p className="text-sm font-bold">
-                  Temps total : {formatTime(totalTime)}
-                </p>
+                    {/* Time breakdown - compact grid */}
+                    <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-xs max-w-md">
+                      <span className="text-muted-foreground">Modules e-learning</span>
+                      <span className="font-mono">{formatTime(timeModules)}</span>
+                      <span className="text-muted-foreground">Évaluations e-learning</span>
+                      <span className="font-mono">{formatTime(timeEvals)}</span>
+                      <span className="text-muted-foreground">Autres évaluations</span>
+                      <span className="font-mono">{formatTime(timeOther)}</span>
+                      <span className="text-muted-foreground">Classe virtuelle</span>
+                      <span className="font-mono">{formatTime(timeVirtual)}</span>
+                      <span className="text-muted-foreground">Émargements signés</span>
+                      <span className="font-mono">{formatTime(signedTime)}</span>
+                      <span className="font-medium">Total</span>
+                      <span className="font-mono font-medium">{formatTime(totalTime)}</span>
+                    </div>
 
-                {assignment && (
-                  <div className="pt-2">
-                    <Switch
-                      checked={assignment.is_completed}
-                      onCheckedChange={(checked) =>
-                        handleToggleCompleted(assignment.id, checked)
-                      }
-                    />
+                    {/* Notes + completion */}
+                    <div className="flex items-start gap-4">
+                      <div className="flex-1 space-y-1.5">
+                        <Textarea
+                          className="text-xs"
+                          rows={2}
+                          placeholder="Notes..."
+                          value={notes[learner.id] || ""}
+                          onChange={(e) =>
+                            setNotes((prev) => ({ ...prev, [learner.id]: e.target.value }))
+                          }
+                        />
+                        {assignment && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-xs h-7"
+                            onClick={() => handleSaveNotes(assignment.id, learner.id)}
+                            disabled={saving === `notes-${learner.id}`}
+                          >
+                            {saving === `notes-${learner.id}` && (
+                              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                            )}
+                            Enregistrer les notes
+                          </Button>
+                        )}
+                      </div>
+                      {assignment && (
+                        <div className="flex items-center gap-2 pt-1 shrink-0">
+                          <span className="text-xs text-muted-foreground">Terminé</span>
+                          <Switch
+                            checked={assignment.is_completed}
+                            onCheckedChange={(checked) =>
+                              handleToggleCompleted(assignment.id, checked)
+                            }
+                          />
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
-            </CardContent>
-          </Card>
-        );
-      })}
-
-      {enrollments.length === 0 && (
-        <Card>
-          <CardContent className="pt-6 text-center text-muted-foreground">
-            Aucun apprenant inscrit.
-          </CardContent>
-        </Card>
+            );
+          })}
+        </div>
       )}
     </div>
   );

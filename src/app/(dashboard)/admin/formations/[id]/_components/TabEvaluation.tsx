@@ -106,29 +106,33 @@ export function TabEvaluation({ formation, onRefresh }: Props) {
     const key = learnerId ? `${learnerId}-${evalType}` : `mass-${evalType}`;
     setSaving(key);
 
-    // Delete existing assignment if any
-    const existing = getCurrentAssignment(evalType, learnerId);
-    if (existing) {
-      await supabase
-        .from("formation_evaluation_assignments")
-        .delete()
-        .eq("id", existing.id);
-    }
+    try {
+      // Delete existing assignment if any
+      const existing = getCurrentAssignment(evalType, learnerId);
+      if (existing) {
+        const { error: delErr } = await supabase
+          .from("formation_evaluation_assignments")
+          .delete()
+          .eq("id", existing.id)
+          .eq("session_id", formation.id);
+        if (delErr) throw delErr;
+      }
 
-    // Insert new
-    const { error } = await supabase.from("formation_evaluation_assignments").insert({
-      session_id: formation.id,
-      questionnaire_id: questionnaireId,
-      evaluation_type: evalType,
-      learner_id: learnerId,
-    });
-
-    setSaving(null);
-    if (error) {
-      toast({ title: "Erreur", description: error.message, variant: "destructive" });
-    } else {
+      // Insert new
+      const { error } = await supabase.from("formation_evaluation_assignments").insert({
+        session_id: formation.id,
+        questionnaire_id: questionnaireId,
+        evaluation_type: evalType,
+        learner_id: learnerId,
+      });
+      if (error) throw error;
       toast({ title: "Évaluation attribuée" });
-      onRefresh();
+      await onRefresh();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Impossible d'attribuer l'évaluation";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
+    } finally {
+      setSaving(null);
     }
   };
 

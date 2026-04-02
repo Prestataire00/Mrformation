@@ -25,21 +25,26 @@ export function ResumeDangerZone({ formation, onRefresh }: Props) {
 
   const handleDelete = async () => {
     setDeleting(true);
-    // D'abord supprimer les données liées
-    await supabase.from("formation_time_slots").delete().eq("session_id", formation.id);
-    await supabase.from("formation_trainers").delete().eq("session_id", formation.id);
-    await supabase.from("formation_companies").delete().eq("session_id", formation.id);
-    await supabase.from("formation_financiers").delete().eq("session_id", formation.id);
-    await supabase.from("formation_comments").delete().eq("session_id", formation.id);
-    await supabase.from("enrollments").delete().eq("session_id", formation.id);
+    try {
+      // D'abord supprimer les données liées
+      const tables = [
+        "formation_time_slots", "formation_trainers", "formation_companies",
+        "formation_financiers", "formation_comments", "enrollments",
+      ];
+      for (const table of tables) {
+        const { error } = await supabase.from(table).delete().eq("session_id", formation.id);
+        if (error) throw new Error(`Erreur suppression ${table}: ${error.message}`);
+      }
 
-    const { error } = await supabase.from("sessions").delete().eq("id", formation.id);
-    setDeleting(false);
-    if (error) {
-      toast({ title: "Erreur", description: error.message, variant: "destructive" });
-    } else {
+      const { error } = await supabase.from("sessions").delete().eq("id", formation.id).eq("entity_id", formation.entity_id);
+      if (error) throw error;
       toast({ title: "Formation supprimée" });
       router.push("/admin/sessions");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Impossible de supprimer la formation";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
+    } finally {
+      setDeleting(false);
     }
   };
 

@@ -43,22 +43,26 @@ export function TimeSlotCard({ slot, index, formationTitle, onRefresh }: Props) 
 
   const handleSave = async () => {
     setSaving(true);
-    const { error } = await supabase
-      .from("formation_time_slots")
-      .update({
-        module_title: moduleTitle || null,
-        module_objectives: moduleObjectives || null,
-        module_themes: moduleThemes || null,
-        module_exercises: moduleExercises || null,
-      })
-      .eq("id", slot.id);
-    setSaving(false);
-    if (error) {
-      toast({ title: "Erreur", variant: "destructive" });
-    } else {
+    try {
+      const { error } = await supabase
+        .from("formation_time_slots")
+        .update({
+          module_title: moduleTitle || null,
+          module_objectives: moduleObjectives || null,
+          module_themes: moduleThemes || null,
+          module_exercises: moduleExercises || null,
+        })
+        .eq("id", slot.id)
+        .eq("session_id", slot.session_id);
+      if (error) throw error;
       toast({ title: "Créneau mis à jour" });
       setEditing(false);
-      onRefresh();
+      await onRefresh();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Impossible de mettre à jour";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
+    } finally {
+      setSaving(false);
     }
   };
 

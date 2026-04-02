@@ -360,7 +360,8 @@ export function TabMessagerie({ formation, onRefresh }: Props) {
       });
     }
 
-    fetchHistory();
+    await fetchHistory();
+    await onRefresh();
   };
 
   // ─── Render action buttons for a recipient group ─────────────

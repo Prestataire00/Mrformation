@@ -84,31 +84,38 @@ export function TabPlanning({ formation, onRefresh }: Props) {
 
   const handleDeleteAll = async () => {
     setDeleting(true);
-    const { error } = await supabase
-      .from("formation_time_slots")
-      .delete()
-      .eq("session_id", formation.id);
-    setDeleting(false);
-    if (error) {
-      toast({ title: "Erreur", variant: "destructive" });
-    } else {
+    try {
+      const { error } = await supabase
+        .from("formation_time_slots")
+        .delete()
+        .eq("session_id", formation.id);
+      if (error) throw error;
       toast({ title: "Tous les créneaux supprimés" });
-      onRefresh();
+      await onRefresh();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Impossible de supprimer les créneaux";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
+    } finally {
+      setDeleting(false);
     }
   };
 
   const handleMarkPlanned = async () => {
     setSaving(true);
-    const { error } = await supabase
-      .from("sessions")
-      .update({ is_planned: true })
-      .eq("id", formation.id);
-    setSaving(false);
-    if (error) {
-      toast({ title: "Erreur", variant: "destructive" });
-    } else {
+    try {
+      const { error } = await supabase
+        .from("sessions")
+        .update({ is_planned: true })
+        .eq("id", formation.id)
+        .eq("entity_id", formation.entity_id);
+      if (error) throw error;
       toast({ title: "Formation marquée comme planifiée" });
-      onRefresh();
+      await onRefresh();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Impossible de marquer comme planifiée";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
+    } finally {
+      setSaving(false);
     }
   };
 

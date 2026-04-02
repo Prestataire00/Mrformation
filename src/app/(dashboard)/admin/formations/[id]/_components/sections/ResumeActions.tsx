@@ -60,16 +60,24 @@ export function ResumeActions({ formation, onRefresh }: Props) {
     }
   };
 
+  const [starting, setStarting] = useState(false);
+
   const handleStart = async () => {
-    const { error } = await supabase
-      .from("sessions")
-      .update({ status: "in_progress" })
-      .eq("id", formation.id);
-    if (error) {
-      toast({ title: "Erreur", variant: "destructive" });
-    } else {
+    setStarting(true);
+    try {
+      const { error } = await supabase
+        .from("sessions")
+        .update({ status: "in_progress" })
+        .eq("id", formation.id)
+        .eq("entity_id", formation.entity_id);
+      if (error) throw error;
       toast({ title: "Formation démarrée" });
-      onRefresh();
+      await onRefresh();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Impossible de démarrer";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
+    } finally {
+      setStarting(false);
     }
   };
 
@@ -78,15 +86,15 @@ export function ResumeActions({ formation, onRefresh }: Props) {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
           {formation.status === "upcoming" && (
-            <Button size="sm" onClick={handleStart} className="bg-orange-400 hover:bg-orange-500 text-white">
-              <Play className="h-4 w-4 mr-2" /> Commencer
+            <Button size="sm" onClick={handleStart} disabled={starting} className="bg-orange-400 hover:bg-orange-500 text-white">
+              {starting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Play className="h-4 w-4 mr-2" />} Commencer
             </Button>
           )}
           <Button size="sm" variant="outline" onClick={() => setConfirmDuplicate(true)}>
             <Copy className="h-4 w-4 mr-2" /> Dupliquer
           </Button>
         </div>
-        <Button size="sm" variant="outline">
+        <Button size="sm" variant="outline" onClick={() => toast({ title: "Historique", description: "Fonctionnalité à venir" })}>
           <History className="h-4 w-4 mr-2" /> Historique
         </Button>
       </div>
