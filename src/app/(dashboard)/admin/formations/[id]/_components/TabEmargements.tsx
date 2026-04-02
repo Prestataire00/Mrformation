@@ -16,6 +16,8 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/components/ui/use-toast";
 import { downloadQRCodesPDF, type QRSlotData } from "@/lib/qr-pdf-export";
+import { downloadEmargementPDF } from "@/lib/emargement-pdf-export";
+import { useEntity } from "@/contexts/EntityContext";
 import type { Session, FormationTimeSlot, Signature, Enrollment, FormationTrainer } from "@/lib/types";
 
 // ──────────────────────────────────────────────
@@ -154,10 +156,12 @@ function InlineSignaturePad({ onSign, disabled }: { onSign: (svg: string) => voi
 
 export function TabEmargements({ formation, onRefresh }: Props) {
   const { toast } = useToast();
+  const { entity } = useEntity();
   const supabase = createClient();
 
   const [generatingTokens, setGeneratingTokens] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [exportingSheet, setExportingSheet] = useState(false);
   const [pdfProgress, setPdfProgress] = useState({ current: 0, total: 0 });
   const [sendingToTrainer, setSendingToTrainer] = useState(false);
 
@@ -293,7 +297,7 @@ export function TabEmargements({ formation, onRefresh }: Props) {
       await downloadQRCodesPDF({
         sessionTitle: formation.title,
         trainingTitle: formation.training?.title || null,
-        entityName: "MR FORMATION",
+        entityName: entity?.name || "MR FORMATION",
         location: formation.location,
         baseUrl,
         slots: pdfSlots,
@@ -501,6 +505,51 @@ export function TabEmargements({ formation, onRefresh }: Props) {
     await onRefresh();
   };
 
+  // ── Export PDF feuille d'émargement (format professionnel) ──
+
+  const handleExportEmargementPdf = async () => {
+    setExportingSheet(true);
+    try {
+      // Calculate duration
+      const totalMs = timeSlots.reduce((sum, slot) => {
+        return sum + (new Date(slot.end_time).getTime() - new Date(slot.start_time).getTime());
+      }, 0);
+      const totalHours = (totalMs / (1000 * 60 * 60)).toFixed(2);
+
+      await downloadEmargementPDF({
+        formationTitle: formation.title,
+        startDate: formation.start_date,
+        endDate: formation.end_date,
+        location: formation.location,
+        duration: `${totalHours} heures`,
+        entityName: entity?.name || "MR FORMATION",
+        trainers: trainers
+          .filter((ft) => ft.trainer)
+          .map((ft) => ({
+            first_name: ft.trainer!.first_name,
+            last_name: ft.trainer!.last_name,
+          })),
+        learners: enrollments
+          .filter((e) => e.learner)
+          .map((e) => ({
+            first_name: e.learner!.first_name,
+            last_name: e.learner!.last_name,
+          })),
+        timeSlots: timeSlots.map((s) => ({
+          id: s.id,
+          title: s.title,
+          start_time: s.start_time,
+          end_time: s.end_time,
+        })),
+      });
+      toast({ title: "Feuille d'émargement exportée" });
+    } catch {
+      toast({ title: "Erreur", description: "Impossible de générer le PDF", variant: "destructive" });
+    } finally {
+      setExportingSheet(false);
+    }
+  };
+
   // ── Print empty attendance sheet ──
 
   const handlePrintEmpty = () => {
@@ -641,7 +690,17 @@ export function TabEmargements({ formation, onRefresh }: Props) {
             disabled={exportingPdf || timeSlots.length === 0}
           >
             {exportingPdf ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileDown className="h-3 w-3" />}
-            PDF
+            PDF QR
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-xs h-7 gap-1"
+            onClick={handleExportEmargementPdf}
+            disabled={exportingSheet || timeSlots.length === 0}
+          >
+            {exportingSheet ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
+            Feuille PDF
           </Button>
           <Button
             size="sm"
