@@ -34,8 +34,6 @@ export function TabPlanning({ formation, onRefresh }: Props) {
   const supabase = createClient();
   const [viewMode, setViewMode] = useState<ViewMode>("month");
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
-  const [confirmPlanned, setConfirmPlanned] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -95,7 +93,6 @@ export function TabPlanning({ formation, onRefresh }: Props) {
       toast({ title: "Erreur", variant: "destructive" });
     } else {
       toast({ title: "Tous les créneaux supprimés" });
-      setConfirmDeleteAll(false);
       onRefresh();
     }
   };
@@ -111,7 +108,6 @@ export function TabPlanning({ formation, onRefresh }: Props) {
       toast({ title: "Erreur", variant: "destructive" });
     } else {
       toast({ title: "Formation marquée comme planifiée" });
-      setConfirmPlanned(false);
       onRefresh();
     }
   };
@@ -292,72 +288,26 @@ export function TabPlanning({ formation, onRefresh }: Props) {
       {/* Création en masse */}
       <BulkSlotCreator formation={formation} onRefresh={onRefresh} />
 
-      {/* Actions en bas */}
-      <div className="space-y-4">
-        {/* Supprimer tous les créneaux */}
-        <Card className="border-red-200">
-          <CardContent className="pt-6">
-            <p className="font-bold mb-2">
-              Avez-vous fait une erreur ? Voulez-vous supprimer tous les créneaux planifiés ?
-            </p>
-            <Button variant="destructive" size="sm" onClick={() => setConfirmDeleteAll(true)}>
-              <Trash2 className="h-4 w-4 mr-1" /> Supprimer
+      {/* Actions compactes */}
+      {timeSlots.length > 0 && (
+        <div className="flex items-center gap-3 pt-2">
+          {!formation.is_planned && (
+            <Button size="sm" className="text-xs h-7 gap-1 bg-green-600 hover:bg-green-700 text-white" onClick={async () => {
+              if (!confirm("Confirmer que la formation est planifiée ?")) return;
+              setSaving(true);
+              await handleMarkPlanned();
+            }} disabled={saving}>
+              <CheckCircle className="h-3 w-3" /> Marquer comme planifiée
             </Button>
-          </CardContent>
-        </Card>
-
-        {/* Formation Planifiée */}
-        {!formation.is_planned && (
-          <Card className="border-green-200 bg-green-50/50">
-            <CardContent className="pt-6">
-              <p className="font-medium mb-1">Formation planifiée</p>
-              <p className="text-sm text-muted-foreground mb-3">
-                Cliquez sur ce bouton pour confirmer que la formation est planifiée
-              </p>
-              <Button
-                className="bg-green-600 hover:bg-green-700 text-white"
-                onClick={() => setConfirmPlanned(true)}
-              >
-                <CheckCircle className="h-4 w-4 mr-2" /> Formation Planifiée
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-      </div>
-
-      {/* Dialogs */}
-      <Dialog open={confirmDeleteAll} onOpenChange={setConfirmDeleteAll}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Supprimer tous les créneaux ?</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            Tous les créneaux planifiés seront supprimés. Cette action est irréversible.
-          </p>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmDeleteAll(false)}>Annuler</Button>
-            <Button variant="destructive" onClick={handleDeleteAll} disabled={deleting}>
-              {deleting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Supprimer tout
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={confirmPlanned} onOpenChange={setConfirmPlanned}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Confirmer la planification ?</DialogTitle>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmPlanned(false)}>Annuler</Button>
-            <Button className="bg-green-600 hover:bg-green-700" onClick={handleMarkPlanned} disabled={saving}>
-              {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Confirmer
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          )}
+          <Button size="sm" variant="outline" className="text-xs h-7 gap-1 text-red-500 hover:text-red-600 hover:bg-red-50" onClick={async () => {
+            if (!confirm("Supprimer tous les créneaux planifiés ? Cette action est irréversible.")) return;
+            await handleDeleteAll();
+          }} disabled={deleting}>
+            <Trash2 className="h-3 w-3" /> Supprimer tous les créneaux
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
