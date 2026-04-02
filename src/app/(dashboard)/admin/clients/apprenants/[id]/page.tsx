@@ -37,6 +37,7 @@ interface LearnerDetail {
   clients: { company_name: string } | null;
   avatar_url?: string | null;
   profile_id?: string | null;
+  created_at?: string;
 }
 
 interface ClientOption {
@@ -371,9 +372,18 @@ export default function LearnerDetailPage() {
       )}
 
       {/* Two columns */}
-      <div className="flex gap-0 min-h-[calc(100vh-200px)]">
+      <div className="flex flex-col md:flex-row gap-0 min-h-0 md:min-h-[calc(100vh-200px)]">
         {/* LEFT: Formations (2/3) */}
         <div className="flex-1 p-6 space-y-6">
+          {/* Quick stats */}
+          <div className="flex items-center gap-6 text-xs text-gray-500">
+            <span><span className="font-bold text-sm text-gray-900">{sessions.length}</span> formation{sessions.length !== 1 ? "s" : ""}</span>
+            <span><span className="font-bold text-sm text-gray-900">{elearning.length}</span> e-learning</span>
+            {sessions.filter(s => s.status === "completed").length > 0 && (
+              <span><span className="font-bold text-sm text-green-600">{sessions.filter(s => s.status === "completed").length}</span> terminée{sessions.filter(s => s.status === "completed").length > 1 ? "s" : ""}</span>
+            )}
+          </div>
+
           {/* Sessions de formation */}
           <div>
             <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Sessions de formation ({sessions.length})</h3>
@@ -438,7 +448,7 @@ export default function LearnerDetailPage() {
         </div>
 
         {/* RIGHT: Infos (1/3) */}
-        <div className="w-80 shrink-0 bg-white border-l p-6 space-y-6">
+        <div className="w-full md:w-80 shrink-0 bg-white border-t md:border-t-0 md:border-l p-6 space-y-6">
           {/* Company */}
           {company && (
             <div>
@@ -559,31 +569,34 @@ export default function LearnerDetailPage() {
                 </div>
               </div>
             ) : (
-              <div className="space-y-2 text-sm">
-                {(learner as any).job_title && (
-                  <div><span className="text-gray-400">Poste</span><p className="text-gray-700">{(learner as any).job_title}</p></div>
+              <div className="space-y-3 text-sm">
+                <div className="flex justify-between"><span className="text-gray-400">Email</span><span className="text-gray-700">{learner?.email || "—"}</span></div>
+                <div className="flex justify-between"><span className="text-gray-400">Téléphone</span><span className="text-gray-700">{learner?.phone || "—"}</span></div>
+                <div className="flex justify-between"><span className="text-gray-400">Poste</span><span className="text-gray-700">{(learner as any)?.job_title || "—"}</span></div>
+
+                <hr className="border-gray-100" />
+
+                <div className="flex justify-between"><span className="text-gray-400">Genre</span><span className="text-gray-700">{(learner as any)?.gender === "M" ? "Homme" : (learner as any)?.gender === "F" ? "Femme" : (learner as any)?.gender === "autre" ? "Autre" : "—"}</span></div>
+                <div className="flex justify-between"><span className="text-gray-400">Naissance</span><span className="text-gray-700">{(learner as any)?.birth_date ? formatDate((learner as any).birth_date) : "—"}</span></div>
+                <div className="flex justify-between"><span className="text-gray-400">Nationalité</span><span className="text-gray-700">{(learner as any)?.nationality || "—"}</span></div>
+                <div className="flex justify-between"><span className="text-gray-400">Niveau</span><span className="text-gray-700">{(learner as any)?.education_level || "—"}</span></div>
+
+                {((learner as any)?.address || (learner as any)?.city) && (
+                  <>
+                    <hr className="border-gray-100" />
+                    <div>
+                      <span className="text-gray-400 block mb-0.5">Adresse</span>
+                      <p className="text-gray-700">
+                        {(learner as any).address}{(learner as any).address && (learner as any).city ? ", " : ""}
+                        {(learner as any).postal_code} {(learner as any).city}
+                      </p>
+                    </div>
+                  </>
                 )}
-                {(learner as any).gender && (
-                  <div><span className="text-gray-400">Genre</span><p className="text-gray-700">{(learner as any).gender === "M" ? "Homme" : (learner as any).gender === "F" ? "Femme" : "Autre"}</p></div>
-                )}
-                {(learner as any).birth_date && (
-                  <div><span className="text-gray-400">Date de naissance</span><p className="text-gray-700">{formatDate((learner as any).birth_date)}</p></div>
-                )}
-                {(learner as any).nationality && (
-                  <div><span className="text-gray-400">Nationalité</span><p className="text-gray-700">{(learner as any).nationality}</p></div>
-                )}
-                {(learner as any).education_level && (
-                  <div><span className="text-gray-400">Niveau</span><p className="text-gray-700">{(learner as any).education_level}</p></div>
-                )}
-                {((learner as any).address || (learner as any).city) && (
-                  <div>
-                    <span className="text-gray-400">Adresse</span>
-                    <p className="text-gray-700">
-                      {(learner as any).address}{(learner as any).address && (learner as any).city ? ", " : ""}
-                      {(learner as any).postal_code} {(learner as any).city}
-                    </p>
-                  </div>
-                )}
+
+                <hr className="border-gray-100" />
+                <div className="flex justify-between"><span className="text-gray-400">Inscrit depuis</span><span className="text-gray-700">{learner?.created_at ? formatDate(learner.created_at) : "—"}</span></div>
+                <div className="flex justify-between"><span className="text-gray-400">Accès plateforme</span><span className={learner?.profile_id ? "text-green-600" : "text-gray-300"}>{learner?.profile_id ? "Actif" : "Non créé"}</span></div>
               </div>
             )}
           </div>
