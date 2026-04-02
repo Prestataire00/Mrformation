@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
+import { MobileSidebarWrapper } from "@/components/layout/MobileSidebarWrapper";
 import { EntityProvider } from "@/contexts/EntityContext";
 import type { Entity } from "@/lib/types";
 
@@ -57,9 +58,16 @@ export default async function DashboardLayout({
       >
         <Header profile={profile} entity={entity} />
         <div className="flex flex-1 overflow-hidden">
-          <Sidebar entity={entity} role={profile?.role ?? "admin"} hasCrmAccess={profile?.has_crm_access ?? false} />
+          {/* Desktop sidebar */}
+          <div className="hidden md:flex">
+            <Sidebar entity={entity} role={profile?.role ?? "admin"} hasCrmAccess={profile?.has_crm_access ?? false} />
+          </div>
+          {/* Mobile sidebar overlay */}
+          <MobileSidebarWrapper>
+            <Sidebar entity={entity} role={profile?.role ?? "admin"} hasCrmAccess={profile?.has_crm_access ?? false} />
+          </MobileSidebarWrapper>
           <main className="flex-1 overflow-y-auto">
-            <div className="p-6">
+            <div className="p-4 md:p-6">
               {children}
             </div>
           </main>
