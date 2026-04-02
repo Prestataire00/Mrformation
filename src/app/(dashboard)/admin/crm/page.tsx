@@ -394,7 +394,7 @@ export default function CrmDashboardPage() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
         <Card>
           <CardContent className="p-4 flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100">
@@ -455,7 +455,7 @@ export default function CrmDashboardPage() {
       </div>
 
       {/* Task quick stats */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <Card>
           <CardContent className="p-4 flex items-center gap-3">
             <Clock className="h-5 w-5 text-amber-500" />
@@ -495,7 +495,7 @@ export default function CrmDashboardPage() {
       </div>
 
       {/* Advanced CRM metrics */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card>
           <CardContent className="p-4 flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100">
@@ -532,7 +532,7 @@ export default function CrmDashboardPage() {
       </div>
 
       {/* Charts Row */}
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Conversion Funnel */}
         <Card>
           <CardHeader className="pb-2">
@@ -632,7 +632,7 @@ export default function CrmDashboardPage() {
       </Card>
 
       {/* Pipeline Analytics */}
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Conversion par étape */}
         <Card>
           <CardHeader className="pb-3">

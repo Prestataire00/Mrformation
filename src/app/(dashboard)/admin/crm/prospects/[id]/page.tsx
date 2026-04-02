@@ -615,7 +615,7 @@ export default function ProspectDetailPage() {
       </div>
 
       {/* ── 2 COLONNES ──────────────────────────────────────────────────── */}
-      <div className="flex gap-0 min-h-[calc(100vh-200px)]">
+      <div className="flex flex-col md:flex-row gap-0 min-h-0 md:min-h-[calc(100vh-200px)]">
         {/* ── GAUCHE: Activité (2/3) ── */}
         <div className="flex-1 border-r bg-gray-50/50 p-6">
           {/* Tabs */}
@@ -744,7 +744,7 @@ export default function ProspectDetailPage() {
         </div>
 
         {/* ── DROITE: Infos & Devis (1/3) ── */}
-        <div className="w-80 shrink-0 bg-white p-6 space-y-6 overflow-y-auto">
+        <div className="w-full md:w-80 shrink-0 bg-white border-t md:border-t-0 p-6 space-y-6 overflow-y-auto">
           {/* Infos */}
           {editMode ? (
             <div className="space-y-3">

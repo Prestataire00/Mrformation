@@ -586,7 +586,7 @@ export default function QuotesPage() {
             <button onClick={() => setStatusFilter("all")} className="text-[10px] text-gray-400 hover:text-gray-600 ml-1">Tous</button>
           )}
         </div>
-        <div className="relative w-60">
+        <div className="relative w-full sm:w-60">
           <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
           <Input
             placeholder="Référence..."

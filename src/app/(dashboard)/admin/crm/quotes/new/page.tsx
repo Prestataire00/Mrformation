@@ -293,7 +293,7 @@ export default function NewQuotePage() {
       <div className="max-w-5xl mx-auto px-6 py-6">
         {error && <p className="text-sm text-red-600 bg-red-50 rounded px-3 py-2 mb-4">{error}</p>}
 
-        <div className="grid grid-cols-2 gap-6 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
           {/* LEFT: Informations */}
           <div className="space-y-4">
             <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Informations</h3>
@@ -302,7 +302,7 @@ export default function NewQuotePage() {
                 <label className="text-xs text-gray-500 mb-1 block">N° devis</label>
                 <Input value={form.reference} onChange={(e) => updateField("reference", e.target.value)} className="h-8 text-sm font-mono" />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block">Création</label>
                   <Input type="date" value={form.date_creation} onChange={(e) => updateField("date_creation", e.target.value)} className="h-8 text-sm" />
@@ -312,7 +312,7 @@ export default function NewQuotePage() {
                   <Input type="date" value={form.date_echeance} onChange={(e) => updateField("date_echeance", e.target.value)} className="h-8 text-sm" />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block">TVA (%)</label>
                   <Input value={form.tva} onChange={(e) => updateField("tva", e.target.value)} className="h-8 text-sm" placeholder="20,00" />
@@ -329,7 +329,7 @@ export default function NewQuotePage() {
           <div className="space-y-4">
             <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Formation</h3>
             <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block">Début</label>
                   <Input type="date" value={form.training_start} onChange={(e) => updateField("training_start", e.target.value)} className="h-8 text-sm" />
@@ -421,7 +421,7 @@ export default function NewQuotePage() {
           </div>
           {/* Totals - right aligned */}
           <div className="flex justify-end mt-3">
-            <div className="w-64 space-y-1 text-sm">
+            <div className="w-full sm:w-64 space-y-1 text-sm">
               <div className="flex justify-between text-gray-500"><span>Sous-total HT</span><span>{calcSubtotal().toLocaleString("fr-FR", { minimumFractionDigits: 2 })} €</span></div>
               <div className="flex justify-between text-gray-500"><span>TVA ({form.tva}%)</span><span>{calcTVA().toLocaleString("fr-FR", { minimumFractionDigits: 2 })} €</span></div>
               <div className="flex justify-between font-bold text-gray-900 border-t pt-1"><span>Total TTC</span><span>{calcTotal().toLocaleString("fr-FR", { minimumFractionDigits: 2 })} €</span></div>

@@ -460,7 +460,7 @@ export default function SuiviCommercialPage() {
                 value={filterSearch}
                 onChange={(e) => setFilterSearch(e.target.value)}
                 placeholder="Sujet ou contenu..."
-                className="h-9 w-48 text-sm"
+                className="h-9 w-full sm:w-48 text-sm"
               />
             </div>
 
