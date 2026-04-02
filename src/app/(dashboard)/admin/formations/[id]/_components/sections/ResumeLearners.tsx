@@ -2,9 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { GraduationCap, Plus, Pencil, Trash2, Download, Loader2 } from "lucide-react";
+import { Plus, Trash2, Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -123,60 +122,52 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
 
   return (
     <>
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base flex items-center gap-2">
-              <GraduationCap className="h-4 w-4" /> Apprenants & Particuliers ({enrollments.length})
-            </CardTitle>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            {enrollments.map((e) => (
-              <div key={e.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <Avatar className="h-8 w-8">
-                    <AvatarFallback className="text-xs">
-                      {getInitials(e.learner?.first_name, e.learner?.last_name)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <p className="font-medium text-sm">
-                      {e.learner?.last_name?.toUpperCase()} {e.learner?.first_name}
-                    </p>
-                    {e.learner?.email && (
-                      <p className="text-xs text-muted-foreground">{e.learner.email}</p>
-                    )}
-                  </div>
-                  {e.client && (
-                    <Badge variant="outline" className="text-xs">{e.client.company_name}</Badge>
+      <div className="space-y-3">
+        <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Apprenants & Particuliers ({enrollments.length})</h3>
+        <div className="space-y-3">
+          {enrollments.map((e) => (
+            <div key={e.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+              <div className="flex items-center gap-3">
+                <Avatar className="h-8 w-8">
+                  <AvatarFallback className="text-xs">
+                    {getInitials(e.learner?.first_name, e.learner?.last_name)}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <p className="font-medium text-sm">
+                    {e.learner?.last_name?.toUpperCase()} {e.learner?.first_name}
+                  </p>
+                  {e.learner?.email && (
+                    <p className="text-xs text-muted-foreground">{e.learner.email}</p>
                   )}
-                  <Badge className={ENROLLMENT_STATUS_COLORS[e.status] || "bg-gray-100"}>
-                    {ENROLLMENT_STATUS_LABELS[e.status] || e.status}
-                  </Badge>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Button size="sm" variant="ghost" className="text-red-600 hover:text-red-700" onClick={() => setDeleteId(e.id)}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
+                {e.client && (
+                  <Badge variant="outline" className="text-xs">{e.client.company_name}</Badge>
+                )}
+                <Badge className={ENROLLMENT_STATUS_COLORS[e.status] || "bg-gray-100"}>
+                  {ENROLLMENT_STATUS_LABELS[e.status] || e.status}
+                </Badge>
               </div>
-            ))}
-            {enrollments.length === 0 && (
-              <p className="text-sm text-muted-foreground">Aucun apprenant inscrit</p>
-            )}
-          </div>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Button size="sm" onClick={() => setDialogOpen(true)}>
-              <Plus className="h-4 w-4 mr-1" /> Ajouter un Apprenant
-            </Button>
-            <Button size="sm" variant="outline" onClick={handleExportExcel}>
-              <Download className="h-4 w-4 mr-1" /> Exporter la liste (CSV)
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="ghost" className="text-red-600 hover:text-red-700" onClick={() => setDeleteId(e.id)}>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          ))}
+          {enrollments.length === 0 && (
+            <p className="text-sm text-muted-foreground">Aucun apprenant inscrit</p>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" onClick={() => setDialogOpen(true)}>
+            <Plus className="h-4 w-4 mr-1" /> Ajouter un Apprenant
+          </Button>
+          <Button size="sm" variant="outline" onClick={handleExportExcel}>
+            <Download className="h-4 w-4 mr-1" /> Exporter la liste (CSV)
+          </Button>
+        </div>
+      </div>
 
       {/* Add Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

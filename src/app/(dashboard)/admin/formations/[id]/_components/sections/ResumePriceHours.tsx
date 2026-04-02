@@ -6,7 +6,6 @@ import { Euro, Clock, Save, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/components/ui/use-toast";
 import { formatCurrency } from "@/lib/utils";
 import type { Session } from "@/lib/types";
@@ -44,58 +43,49 @@ export function ResumePriceHours({ formation, onRefresh }: Props) {
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                <Euro className="h-4 w-4" /> Prix Total
-              </p>
-              {editing ? (
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={totalPrice}
-                  onChange={(e) => setTotalPrice(e.target.value)}
-                  className="mt-1 w-[150px]"
-                  placeholder="0.00"
-                />
-              ) : (
-                <p className="text-2xl font-bold mt-1">
-                  {formatCurrency(formation.total_price)}
-                </p>
-              )}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                <Clock className="h-4 w-4" /> Heures Planifiées
-              </p>
-              {editing ? (
-                <Input
-                  type="number"
-                  step="0.5"
-                  value={plannedHours}
-                  onChange={(e) => setPlannedHours(e.target.value)}
-                  className="mt-1 w-[150px]"
-                  placeholder="0"
-                />
-              ) : (
-                <p className="text-2xl font-bold mt-1">
-                  {formation.planned_hours != null ? `${formation.planned_hours} heure(s)` : "—"}
-                </p>
-              )}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-      <div className="col-span-full">
+    <div className="space-y-3">
+      <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Prix & Heures</h3>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+            <Euro className="h-3 w-3" /> Prix Total
+          </p>
+          {editing ? (
+            <Input
+              type="number"
+              step="0.01"
+              value={totalPrice}
+              onChange={(e) => setTotalPrice(e.target.value)}
+              className="mt-1 w-[150px]"
+              placeholder="0.00"
+            />
+          ) : (
+            <p className="text-sm font-semibold mt-1">
+              {formatCurrency(formation.total_price)}
+            </p>
+          )}
+        </div>
+        <div>
+          <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+            <Clock className="h-3 w-3" /> Heures Planifiées
+          </p>
+          {editing ? (
+            <Input
+              type="number"
+              step="0.5"
+              value={plannedHours}
+              onChange={(e) => setPlannedHours(e.target.value)}
+              className="mt-1 w-[150px]"
+              placeholder="0"
+            />
+          ) : (
+            <p className="text-sm font-semibold mt-1">
+              {formation.planned_hours != null ? `${formation.planned_hours} heure(s)` : "—"}
+            </p>
+          )}
+        </div>
+      </div>
+      <div>
         {editing ? (
           <div className="flex gap-2">
             <Button size="sm" onClick={handleSave} disabled={saving}>

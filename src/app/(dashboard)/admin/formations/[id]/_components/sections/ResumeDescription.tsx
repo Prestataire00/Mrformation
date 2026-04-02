@@ -2,10 +2,9 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { FileText, Save, X } from "lucide-react";
+import { Save, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/use-toast";
 import type { Session } from "@/lib/types";
 
@@ -38,41 +37,35 @@ export function ResumeDescription({ formation, onRefresh }: Props) {
   };
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base flex items-center gap-2">
-          <FileText className="h-4 w-4" /> Description
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        {editing ? (
-          <div className="space-y-3">
-            <Textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={4}
-              placeholder="Description de la formation..."
-            />
-            <div className="flex gap-2">
-              <Button size="sm" onClick={handleSave} disabled={saving}>
-                <Save className="h-4 w-4 mr-1" /> Enregistrer
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => setEditing(false)}>
-                <X className="h-4 w-4 mr-1" /> Annuler
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <div>
-            <p className="text-sm whitespace-pre-wrap">
-              {formation.description || "Aucune description"}
-            </p>
-            <Button size="sm" variant="outline" className="mt-3" onClick={() => setEditing(true)}>
-              Modifier
+    <div className="space-y-3">
+      <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Description</h3>
+      {editing ? (
+        <div className="space-y-3">
+          <Textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={4}
+            placeholder="Description de la formation..."
+          />
+          <div className="flex gap-2">
+            <Button size="sm" onClick={handleSave} disabled={saving}>
+              <Save className="h-4 w-4 mr-1" /> Enregistrer
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setEditing(false)}>
+              <X className="h-4 w-4 mr-1" /> Annuler
             </Button>
           </div>
-        )}
-      </CardContent>
-    </Card>
+        </div>
+      ) : (
+        <div>
+          <p className="text-sm whitespace-pre-wrap">
+            {formation.description || "Aucune description"}
+          </p>
+          <Button size="sm" variant="outline" className="mt-3" onClick={() => setEditing(true)}>
+            Modifier
+          </Button>
+        </div>
+      )}
+    </div>
   );
 }

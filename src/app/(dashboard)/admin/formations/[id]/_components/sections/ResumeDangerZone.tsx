@@ -3,9 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { AlertTriangle, Trash2, Pencil, Loader2 } from "lucide-react";
+import { Trash2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -46,23 +45,9 @@ export function ResumeDangerZone({ formation, onRefresh }: Props) {
 
   return (
     <>
-      <Card className="border-red-200 bg-red-50/50">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2 text-red-700">
-            <AlertTriangle className="h-4 w-4" /> Supprimer / Modifier La Formation
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground mb-4">
-            Vous pouvez supprimer la formation après la suppression des apprenants, formateurs, documents, créneaux...
-          </p>
-          <div className="flex gap-3">
-            <Button variant="destructive" size="sm" onClick={() => setConfirmDelete(true)}>
-              <Trash2 className="h-4 w-4 mr-1" /> Supprimer
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      <Button variant="outline" size="sm" className="text-xs text-red-500" onClick={() => setConfirmDelete(true)}>
+        <Trash2 className="h-3 w-3 mr-1" /> Supprimer cette formation
+      </Button>
 
       <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
         <DialogContent className="max-w-sm">

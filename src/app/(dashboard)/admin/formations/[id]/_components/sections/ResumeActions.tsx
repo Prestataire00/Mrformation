@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Copy, Play, History, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -76,25 +75,21 @@ export function ResumeActions({ formation, onRefresh }: Props) {
 
   return (
     <>
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex items-center justify-between flex-wrap gap-3">
-            <div className="flex items-center gap-3">
-              {formation.status === "upcoming" && (
-                <Button onClick={handleStart} className="bg-orange-400 hover:bg-orange-500 text-white">
-                  <Play className="h-4 w-4 mr-2" /> Commencer
-                </Button>
-              )}
-              <Button variant="outline" onClick={() => setConfirmDuplicate(true)}>
-                <Copy className="h-4 w-4 mr-2" /> Dupliquer cette formation
-              </Button>
-            </div>
-            <Button variant="outline">
-              <History className="h-4 w-4 mr-2" /> Historique
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-3">
+          {formation.status === "upcoming" && (
+            <Button size="sm" onClick={handleStart} className="bg-orange-400 hover:bg-orange-500 text-white">
+              <Play className="h-4 w-4 mr-2" /> Commencer
             </Button>
-          </div>
-        </CardContent>
-      </Card>
+          )}
+          <Button size="sm" variant="outline" onClick={() => setConfirmDuplicate(true)}>
+            <Copy className="h-4 w-4 mr-2" /> Dupliquer
+          </Button>
+        </div>
+        <Button size="sm" variant="outline">
+          <History className="h-4 w-4 mr-2" /> Historique
+        </Button>
+      </div>
 
       <Dialog open={confirmDuplicate} onOpenChange={setConfirmDuplicate}>
         <DialogContent className="max-w-sm">

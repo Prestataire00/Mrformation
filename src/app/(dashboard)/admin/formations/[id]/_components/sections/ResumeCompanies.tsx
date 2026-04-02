@@ -2,9 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Building2, Plus, Trash2, Loader2 } from "lucide-react";
+import { Plus, Trash2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -86,60 +85,54 @@ export function ResumeCompanies({ formation, onRefresh }: Props) {
 
   return (
     <>
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Building2 className="h-4 w-4" /> Entreprises ({companies.length})
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            {companies.map((fc) => {
-              // Trouver les apprenants liés à cette entreprise
-              const companyLearners = (formation.enrollments || []).filter(
-                (e) => e.client_id === fc.client_id
-              );
-              return (
-                <div key={fc.id} className="p-4 bg-muted/50 rounded-lg">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-3">
-                      <span className="font-medium">{fc.client?.company_name}</span>
-                      {fc.amount != null && (
-                        <span className="text-sm text-muted-foreground">
-                          {formatCurrency(fc.amount)}
-                        </span>
-                      )}
-                      {fc.email && (
-                        <span className="text-sm text-muted-foreground">{fc.email}</span>
-                      )}
-                    </div>
-                    <Button size="sm" variant="ghost" className="text-red-600" onClick={() => setDeleteId(fc.id)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+      <div className="space-y-3">
+        <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Entreprises ({companies.length})</h3>
+        <div className="space-y-3">
+          {companies.map((fc) => {
+            // Trouver les apprenants liés à cette entreprise
+            const companyLearners = (formation.enrollments || []).filter(
+              (e) => e.client_id === fc.client_id
+            );
+            return (
+              <div key={fc.id} className="p-4 bg-muted/50 rounded-lg">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-3">
+                    <span className="font-medium">{fc.client?.company_name}</span>
+                    {fc.amount != null && (
+                      <span className="text-sm text-muted-foreground">
+                        {formatCurrency(fc.amount)}
+                      </span>
+                    )}
+                    {fc.email && (
+                      <span className="text-sm text-muted-foreground">{fc.email}</span>
+                    )}
                   </div>
-                  {companyLearners.length > 0 && (
-                    <div className="ml-4 space-y-1">
-                      {companyLearners.map((e) => (
-                        <p key={e.id} className="text-sm text-muted-foreground">
-                          {e.learner?.last_name?.toUpperCase()} {e.learner?.first_name}
-                        </p>
-                      ))}
-                    </div>
-                  )}
+                  <Button size="sm" variant="ghost" className="text-red-600" onClick={() => setDeleteId(fc.id)}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
                 </div>
-              );
-            })}
-            {companies.length === 0 && (
-              <p className="text-sm text-muted-foreground">Aucune entreprise liée</p>
-            )}
-          </div>
-          <div className="mt-4 flex gap-2">
-            <Button size="sm" onClick={() => setDialogOpen(true)}>
-              <Plus className="h-4 w-4 mr-1" /> Ajouter une Entreprise
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+                {companyLearners.length > 0 && (
+                  <div className="ml-4 space-y-1">
+                    {companyLearners.map((e) => (
+                      <p key={e.id} className="text-sm text-muted-foreground">
+                        {e.learner?.last_name?.toUpperCase()} {e.learner?.first_name}
+                      </p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {companies.length === 0 && (
+            <p className="text-sm text-muted-foreground">Aucune entreprise liée</p>
+          )}
+        </div>
+        <div className="flex gap-2">
+          <Button size="sm" onClick={() => setDialogOpen(true)}>
+            <Plus className="h-4 w-4 mr-1" /> Ajouter une Entreprise
+          </Button>
+        </div>
+      </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>

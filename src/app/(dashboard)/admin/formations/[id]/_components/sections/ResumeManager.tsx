@@ -2,9 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { UserCog } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -52,31 +50,25 @@ export function ResumeManager({ formation, onRefresh }: Props) {
   };
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base flex items-center gap-2">
-          <UserCog className="h-4 w-4" /> Manager
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="flex items-center gap-3">
-          <Select value={selectedManager} onValueChange={setSelectedManager}>
-            <SelectTrigger className="w-[300px]">
-              <SelectValue placeholder="Attribuer un Manager" />
-            </SelectTrigger>
-            <SelectContent>
-              {admins.map((a) => (
-                <SelectItem key={a.id} value={a.id}>
-                  {a.first_name} {a.last_name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button size="sm" onClick={handleSave} disabled={saving}>
-            Attribuer
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+    <div className="space-y-3">
+      <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Manager</h3>
+      <div className="flex items-center gap-3">
+        <Select value={selectedManager} onValueChange={setSelectedManager}>
+          <SelectTrigger className="w-[300px]">
+            <SelectValue placeholder="Attribuer un Manager" />
+          </SelectTrigger>
+          <SelectContent>
+            {admins.map((a) => (
+              <SelectItem key={a.id} value={a.id}>
+                {a.first_name} {a.last_name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button size="sm" onClick={handleSave} disabled={saving}>
+          Attribuer
+        </Button>
+      </div>
+    </div>
   );
 }

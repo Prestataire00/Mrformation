@@ -3,14 +3,12 @@
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
-  Euro, Receipt, Plus, CheckCircle, Clock, AlertTriangle,
-  Loader2, FileDown, Trash2, Undo2, Settings,
+  Plus, CheckCircle, Loader2, Trash2, Undo2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -101,8 +99,7 @@ export function TabFinances({ formation, onRefresh }: Props) {
   });
   const [savingInvoice, setSavingInvoice] = useState(false);
 
-  // Charge dialog
-  const [chargeDialog, setChargeDialog] = useState(false);
+  // Inline charge form
   const [chargeLabel, setChargeLabel] = useState("");
   const [chargeAmount, setChargeAmount] = useState("");
   const [savingCharge, setSavingCharge] = useState(false);
@@ -230,7 +227,6 @@ export function TabFinances({ formation, onRefresh }: Props) {
       toast({ title: "Erreur", description: error.message, variant: "destructive" });
     } else {
       toast({ title: "Charge ajoutée" });
-      setChargeDialog(false);
       setChargeLabel("");
       setChargeAmount("");
       fetchData();
@@ -259,57 +255,6 @@ export function TabFinances({ formation, onRefresh }: Props) {
     toast({ title: `Préfixe mis à jour : ${val}` });
   };
 
-  // ── Render invoice row ──
-
-  const renderInvoice = (inv: Invoice) => {
-    const badge = STATUS_BADGES[inv.status] ?? STATUS_BADGES.pending;
-    return (
-      <div key={inv.id} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
-        <div className="flex items-center gap-3 flex-1 min-w-0">
-          <span className="font-mono text-sm font-semibold">{inv.reference}</span>
-          {inv.is_avoir && (
-            <Badge variant="outline" className="text-xs border-purple-300 text-purple-600">Avoir</Badge>
-          )}
-          <span className="text-sm truncate">{inv.recipient_name}</span>
-          <span className={`text-sm font-medium ${inv.is_avoir ? "text-purple-600" : ""}`}>
-            {formatCurrency(inv.amount)}
-          </span>
-          <Badge className={`${badge.className} hover:${badge.className} text-xs`}>
-            {badge.label}
-          </Badge>
-          {inv.due_date && (
-            <span className="text-xs text-muted-foreground">
-              Éch. {new Date(inv.due_date).toLocaleDateString("fr-FR")}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-1 shrink-0">
-          {inv.status !== "paid" && inv.status !== "cancelled" && !inv.is_avoir && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 text-xs text-green-600"
-              onClick={() => handleUpdateStatus(inv.id, "paid")}
-            >
-              <CheckCircle className="h-3 w-3 mr-1" /> Payée
-            </Button>
-          )}
-          {!inv.is_avoir && inv.status !== "cancelled" && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 text-xs text-purple-600"
-              onClick={() => handleCreateInvoice(true, inv)}
-              disabled={savingInvoice}
-            >
-              <Undo2 className="h-3 w-3 mr-1" /> Avoir
-            </Button>
-          )}
-        </div>
-      </div>
-    );
-  };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -320,150 +265,202 @@ export function TabFinances({ formation, onRefresh }: Props) {
 
   return (
     <div className="space-y-6">
-      {/* SECTION 1 — Stats */}
-      <div className="grid grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <Receipt className="h-5 w-5 text-blue-500" />
-            <div>
-              <p className="text-xs text-muted-foreground">Total facturé</p>
-              <p className="text-xl font-bold">{formatCurrency(stats.total_invoiced)}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <CheckCircle className="h-5 w-5 text-green-500" />
-            <div>
-              <p className="text-xs text-muted-foreground">Payé</p>
-              <p className="text-xl font-bold text-green-600">{formatCurrency(stats.total_paid)}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <Clock className="h-5 w-5 text-amber-500" />
-            <div>
-              <p className="text-xs text-muted-foreground">En attente</p>
-              <p className="text-xl font-bold text-amber-600">{formatCurrency(stats.total_pending)}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex items-center gap-3">
-            <AlertTriangle className="h-5 w-5 text-red-500" />
-            <div>
-              <p className="text-xs text-muted-foreground">En retard</p>
-              <p className="text-xl font-bold text-red-600">{formatCurrency(stats.total_late)}</p>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Inline stats */}
+      <div className="flex items-center gap-6 flex-wrap">
+        <span className="text-xs text-gray-500">
+          <span className="font-bold text-sm text-gray-900">{formatCurrency(stats.total_invoiced)}</span> facturé
+        </span>
+        <span className="text-xs text-gray-500">
+          <span className="font-bold text-sm text-green-700">{formatCurrency(stats.total_paid)}</span> payé
+        </span>
+        <span className="text-xs text-gray-500">
+          <span className="font-bold text-sm text-amber-600">{formatCurrency(stats.total_pending)}</span> en attente
+        </span>
+        <span className="text-xs text-gray-500">
+          <span className="font-bold text-sm text-red-600">{formatCurrency(stats.total_late)}</span> en retard
+        </span>
+        <span className="text-xs text-gray-500">
+          <span className="font-bold text-sm text-gray-900">{formatCurrency(stats.total_charges)}</span> charges
+        </span>
       </div>
 
-      {/* SECTION 2 — Factures par type */}
+      {/* Factures par type */}
       {SECTION_CONFIG.map(({ type, title, icon }) => {
         const sectionInvoices = invoices.filter((i) => i.recipient_type === type);
         return (
-          <Card key={type}>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <span>{icon}</span> {title} ({sectionInvoices.length})
-                </CardTitle>
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    setInvoiceForm((f) => ({ ...f, recipient_type: type }));
-                    setInvoiceDialog(true);
-                  }}
-                >
-                  <Plus className="h-4 w-4 mr-1" /> Créer une facture
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {sectionInvoices.length === 0 ? (
-                <p className="text-sm text-muted-foreground italic">Aucune facture</p>
-              ) : (
-                <div className="space-y-2">{sectionInvoices.map(renderInvoice)}</div>
-              )}
-            </CardContent>
-          </Card>
+          <div key={type} className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                {icon} {title} ({sectionInvoices.length})
+              </h3>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                onClick={() => {
+                  setInvoiceForm((f) => ({ ...f, recipient_type: type }));
+                  setInvoiceDialog(true);
+                }}
+              >
+                <Plus className="h-3 w-3 mr-1" /> Facture
+              </Button>
+            </div>
+            {sectionInvoices.length === 0 ? (
+              <p className="text-sm text-muted-foreground italic">Aucune facture</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-xs text-gray-400 border-b">
+                    <th className="text-left py-1 font-medium">Réf.</th>
+                    <th className="text-left py-1 font-medium">Destinataire</th>
+                    <th className="text-right py-1 font-medium">Montant</th>
+                    <th className="text-left py-1 pl-3 font-medium">Statut</th>
+                    <th className="text-left py-1 font-medium">Échéance</th>
+                    <th className="text-right py-1 font-medium">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sectionInvoices.map((inv) => {
+                    const badge = STATUS_BADGES[inv.status] ?? STATUS_BADGES.pending;
+                    return (
+                      <tr key={inv.id} className="border-b border-gray-100 last:border-0">
+                        <td className="py-1.5 font-mono text-xs">
+                          {inv.reference}
+                          {inv.is_avoir && (
+                            <Badge variant="outline" className="ml-1 text-[10px] px-1 py-0 border-purple-300 text-purple-600">AV</Badge>
+                          )}
+                        </td>
+                        <td className="py-1.5 truncate max-w-[160px]">{inv.recipient_name}</td>
+                        <td className={`py-1.5 text-right font-medium ${inv.is_avoir ? "text-purple-600" : ""}`}>
+                          {formatCurrency(inv.amount)}
+                        </td>
+                        <td className="py-1.5 pl-3">
+                          <Badge className={`${badge.className} hover:${badge.className} text-[10px] px-1.5 py-0`}>
+                            {badge.label}
+                          </Badge>
+                        </td>
+                        <td className="py-1.5 text-xs text-muted-foreground">
+                          {inv.due_date ? new Date(inv.due_date).toLocaleDateString("fr-FR") : "—"}
+                        </td>
+                        <td className="py-1.5 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            {inv.status !== "paid" && inv.status !== "cancelled" && !inv.is_avoir && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 text-[11px] px-1.5 text-green-600"
+                                onClick={() => handleUpdateStatus(inv.id, "paid")}
+                              >
+                                <CheckCircle className="h-3 w-3 mr-0.5" /> Payée
+                              </Button>
+                            )}
+                            {!inv.is_avoir && inv.status !== "cancelled" && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 text-[11px] px-1.5 text-purple-600"
+                                onClick={() => handleCreateInvoice(true, inv)}
+                                disabled={savingInvoice}
+                              >
+                                <Undo2 className="h-3 w-3 mr-0.5" /> Avoir
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
         );
       })}
 
-      {/* SECTION 3 — Charges */}
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base flex items-center gap-2">
-              <FileDown className="h-4 w-4" /> Charges ({charges.length})
-            </CardTitle>
-            <Button size="sm" onClick={() => setChargeDialog(true)}>
-              <Plus className="h-4 w-4 mr-1" /> Ajouter une charge
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {charges.length === 0 ? (
-            <p className="text-sm text-muted-foreground italic">Aucune charge</p>
-          ) : (
-            <div className="space-y-2">
-              {charges.map((c) => (
-                <div key={c.id} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm">{c.label}</span>
-                    <span className="text-sm font-medium">{formatCurrency(c.amount)}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {new Date(c.created_at).toLocaleDateString("fr-FR")}
-                    </span>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 text-red-500"
-                    onClick={() => handleDeleteCharge(c.id)}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              ))}
-              <div className="flex justify-end pt-2 border-t">
-                <span className="text-sm font-semibold">
-                  Total charges : {formatCurrency(stats.total_charges)}
-                </span>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* SECTION 4 — Préfixe */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Settings className="h-4 w-4" /> Préfixe de facturation
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center gap-3">
-            <Input
-              value={prefixDraft}
-              onChange={(e) => setPrefixDraft(e.target.value)}
-              className="w-32 uppercase"
-              placeholder="FAC"
-            />
-            <span className="text-sm text-muted-foreground">
-              Aperçu : <span className="font-mono font-semibold">{prefixDraft.trim().toUpperCase() || "FAC"}-1</span>
+      {/* Charges */}
+      <div className="space-y-3">
+        <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+          Charges ({charges.length})
+          {charges.length > 0 && (
+            <span className="ml-2 text-gray-500 normal-case font-normal">
+              Total : {formatCurrency(stats.total_charges)}
             </span>
-            <Button size="sm" variant="outline" onClick={savePrefix}>
-              Sauvegarder
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+          )}
+        </h3>
+        {charges.length > 0 && (
+          <table className="w-full text-sm">
+            <tbody>
+              {charges.map((c) => (
+                <tr key={c.id} className="border-b border-gray-100 last:border-0">
+                  <td className="py-1.5">{c.label}</td>
+                  <td className="py-1.5 text-right font-medium">{formatCurrency(c.amount)}</td>
+                  <td className="py-1.5 text-right text-xs text-muted-foreground w-24">
+                    {new Date(c.created_at).toLocaleDateString("fr-FR")}
+                  </td>
+                  <td className="py-1.5 text-right w-8">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 text-red-500"
+                      onClick={() => handleDeleteCharge(c.id)}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {/* Inline add charge */}
+        <div className="flex items-center gap-2">
+          <Input
+            value={chargeLabel}
+            onChange={(e) => setChargeLabel(e.target.value)}
+            placeholder="Libellé charge..."
+            className="h-7 text-xs flex-1 max-w-[200px]"
+          />
+          <Input
+            type="number"
+            step="0.01"
+            value={chargeAmount}
+            onChange={(e) => setChargeAmount(e.target.value)}
+            placeholder="Montant"
+            className="h-7 text-xs w-24"
+          />
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs"
+            onClick={handleCreateCharge}
+            disabled={savingCharge || !chargeLabel.trim() || !chargeAmount}
+          >
+            {savingCharge ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3 mr-1" />}
+            Ajouter
+          </Button>
+        </div>
+      </div>
 
-      {/* Dialog — Créer une facture */}
+      {/* Prefix — inline */}
+      <div className="space-y-3">
+        <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Préfixe de facturation</h3>
+        <div className="flex items-center gap-2">
+          <Input
+            value={prefixDraft}
+            onChange={(e) => setPrefixDraft(e.target.value)}
+            className="w-24 h-7 text-xs uppercase"
+            placeholder="FAC"
+          />
+          <span className="text-xs text-muted-foreground">
+            Aperçu : <span className="font-mono font-semibold">{prefixDraft.trim().toUpperCase() || "FAC"}-1</span>
+          </span>
+          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={savePrefix}>
+            Sauvegarder
+          </Button>
+        </div>
+      </div>
+
+      {/* Dialog -- Créer une facture (multi-field, kept as dialog) */}
       <Dialog open={invoiceDialog} onOpenChange={setInvoiceDialog}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -530,42 +527,6 @@ export function TabFinances({ formation, onRefresh }: Props) {
             <Button onClick={() => handleCreateInvoice(false)} disabled={savingInvoice}>
               {savingInvoice && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Créer
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Dialog — Ajouter une charge */}
-      <Dialog open={chargeDialog} onOpenChange={setChargeDialog}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Ajouter une charge</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label>Libellé *</Label>
-              <Input
-                value={chargeLabel}
-                onChange={(e) => setChargeLabel(e.target.value)}
-                placeholder="Location salle, matériel..."
-              />
-            </div>
-            <div>
-              <Label>Montant (EUR) *</Label>
-              <Input
-                type="number"
-                step="0.01"
-                value={chargeAmount}
-                onChange={(e) => setChargeAmount(e.target.value)}
-                placeholder="0.00"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setChargeDialog(false)}>Annuler</Button>
-            <Button onClick={handleCreateCharge} disabled={savingCharge || !chargeLabel.trim() || !chargeAmount}>
-              {savingCharge && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Ajouter
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -2,10 +2,9 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Users, Plus, Pencil, Trash2, Loader2 } from "lucide-react";
+import { Plus, Trash2, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -87,55 +86,47 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
 
   return (
     <>
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Users className="h-4 w-4" /> Formateurs ({formationTrainers.length})
-            </CardTitle>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            {formationTrainers.map((ft) => (
-              <div key={ft.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <Avatar className="h-8 w-8">
-                    <AvatarFallback className="text-xs">
-                      {getInitials(ft.trainer?.first_name, ft.trainer?.last_name)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <p className="font-medium text-sm">
-                      {ft.trainer?.last_name?.toUpperCase()} {ft.trainer?.first_name}
-                    </p>
-                    {ft.trainer?.email && (
-                      <p className="text-xs text-muted-foreground">{ft.trainer.email}</p>
-                    )}
-                  </div>
-                  <Badge variant="outline" className="text-xs">{ft.role}</Badge>
-                  {ft.hourly_rate != null && (
-                    <span className="text-xs text-muted-foreground">{ft.hourly_rate} €/h</span>
+      <div className="space-y-3">
+        <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Formateurs ({formationTrainers.length})</h3>
+        <div className="space-y-3">
+          {formationTrainers.map((ft) => (
+            <div key={ft.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+              <div className="flex items-center gap-3">
+                <Avatar className="h-8 w-8">
+                  <AvatarFallback className="text-xs">
+                    {getInitials(ft.trainer?.first_name, ft.trainer?.last_name)}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <p className="font-medium text-sm">
+                    {ft.trainer?.last_name?.toUpperCase()} {ft.trainer?.first_name}
+                  </p>
+                  {ft.trainer?.email && (
+                    <p className="text-xs text-muted-foreground">{ft.trainer.email}</p>
                   )}
                 </div>
-                <div className="flex items-center gap-2">
-                  <Button size="sm" variant="ghost" className="text-red-600 hover:text-red-700" onClick={() => setDeleteId(ft.id)}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
+                <Badge variant="outline" className="text-xs">{ft.role}</Badge>
+                {ft.hourly_rate != null && (
+                  <span className="text-xs text-muted-foreground">{ft.hourly_rate} €/h</span>
+                )}
               </div>
-            ))}
-            {formationTrainers.length === 0 && (
-              <p className="text-sm text-muted-foreground">Aucun formateur assigné</p>
-            )}
-          </div>
-          <div className="mt-4 flex gap-2">
-            <Button size="sm" onClick={() => setDialogOpen(true)}>
-              <Plus className="h-4 w-4 mr-1" /> Ajouter un Formateur
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="ghost" className="text-red-600 hover:text-red-700" onClick={() => setDeleteId(ft.id)}>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          ))}
+          {formationTrainers.length === 0 && (
+            <p className="text-sm text-muted-foreground">Aucun formateur assigné</p>
+          )}
+        </div>
+        <div className="flex gap-2">
+          <Button size="sm" onClick={() => setDialogOpen(true)}>
+            <Plus className="h-4 w-4 mr-1" /> Ajouter un Formateur
+          </Button>
+        </div>
+      </div>
 
       {/* Add Dialog */}
       <Dialog open={dialogOpen} onOpenChange={(open) => {
