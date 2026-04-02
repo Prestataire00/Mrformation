@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
       .eq("id", user.id)
       .single();
 
-    if (!["admin", "learner"].includes(profile?.role)) {
+    if (!["admin", "super_admin", "learner"].includes(profile?.role)) {
       return NextResponse.json({ data: null, error: "Accès non autorisé" }, { status: 403 });
     }
 
