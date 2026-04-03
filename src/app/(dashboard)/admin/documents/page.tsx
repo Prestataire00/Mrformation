@@ -482,6 +482,10 @@ export default function DocumentsPage() {
     return matchSearch && matchType;
   });
 
+  // Separate system vs custom templates
+  const systemTemplates = filteredTemplates.filter((t) => (t as unknown as { is_system?: boolean }).is_system === true);
+  const customTemplates = filteredTemplates.filter((t) => (t as unknown as { is_system?: boolean }).is_system !== true);
+
   const filteredDocs = generatedDocs.filter((d) => {
     return (
       docSearch === "" ||
@@ -791,9 +795,10 @@ export default function DocumentsPage() {
         {/* Bouton "Générer un document" retiré */}
       </div>
 
-      <Tabs defaultValue="templates" className="space-y-4">
+      <Tabs defaultValue="official" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="templates">Modèles</TabsTrigger>
+          <TabsTrigger value="official">Templates officiels</TabsTrigger>
+          <TabsTrigger value="custom">Mes modèles</TabsTrigger>
           <TabsTrigger value="generated">Documents générés</TabsTrigger>
           <TabsTrigger value="client-docs" className="gap-2">
             <Building2 className="h-4 w-4" />
@@ -801,8 +806,82 @@ export default function DocumentsPage() {
           </TabsTrigger>
         </TabsList>
 
-        {/* TEMPLATES TAB */}
-        <TabsContent value="templates" className="space-y-4">
+        {/* ═══ ONGLET 1 : TEMPLATES OFFICIELS ═══ */}
+        <TabsContent value="official" className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Les 11 modèles officiels MR Formation. Vous pouvez les personnaliser sans modifier le code.
+          </p>
+
+          {templatesLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="h-36 rounded-xl bg-gray-100 animate-pulse" />
+              ))}
+            </div>
+          ) : systemTemplates.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <FileText className="h-10 w-10 text-gray-300 mb-3" />
+              <p className="font-medium text-gray-600">Aucun template système trouvé</p>
+              <p className="text-sm text-gray-400 mt-1">Exécutez la migration SQL pour créer les 11 templates.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {systemTemplates.map((template) => (
+                <Card key={template.id} className="group hover:shadow-md transition-shadow">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <div className={cn("p-2 rounded-lg", TYPE_COLORS[template.type as DocumentType])}>
+                          <TypeIcon type={template.type as DocumentType} />
+                        </div>
+                        <div>
+                          <CardTitle className="text-sm">{truncate(template.name, 40)}</CardTitle>
+                          <div className="flex items-center gap-1.5 mt-1">
+                            <Badge className={cn("text-xs font-normal", TYPE_COLORS[template.type as DocumentType])}>
+                              {TYPE_LABELS[template.type as DocumentType]}
+                            </Badge>
+                            <Badge variant="outline" className="text-xs font-normal text-blue-600 border-blue-200">Officiel</Badge>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 text-xs gap-1"
+                        onClick={() => { setPreviewTemplate(template); setPreviewDialogOpen(true); }}
+                      >
+                        <Eye className="h-3 w-3" /> Aperçu
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs gap-1"
+                        onClick={() => openEditTemplate(template)}
+                      >
+                        <Pencil className="h-3 w-3" /> Personnaliser
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 text-xs gap-1"
+                        onClick={() => handleExportTemplateAsPDF(template)}
+                      >
+                        <Download className="h-3 w-3" /> PDF
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* ═══ ONGLET 2 : MES MODÈLES (custom) ═══ */}
+        <TabsContent value="custom" className="space-y-4">
           <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
             <div className="flex flex-col sm:flex-row gap-3 flex-1">
               <div className="relative flex-1 min-w-[200px]">
@@ -828,10 +907,60 @@ export default function DocumentsPage() {
                 </SelectContent>
               </Select>
             </div>
-            <Button onClick={openAddTemplate} variant="outline" className="gap-2 shrink-0">
-              <Plus className="h-4 w-4" />
-              Nouveau modèle
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button onClick={openAddTemplate} variant="outline" className="gap-2 shrink-0">
+                <Plus className="h-4 w-4" />
+                Nouveau modèle
+              </Button>
+              <Button
+                variant="outline"
+                className="gap-2 shrink-0"
+                onClick={() => {
+                  const input = document.createElement("input");
+                  input.type = "file";
+                  input.accept = ".docx";
+                  input.onchange = async (e) => {
+                    const file = (e.target as HTMLInputElement).files?.[0];
+                    if (!file || !entityId) return;
+                    toast({ title: "Import en cours..." });
+                    try {
+                      // Upload to storage
+                      const formData = new FormData();
+                      formData.append("file", file);
+                      formData.append("entity_id", entityId);
+                      const res = await fetch("/api/documents/upload-template", { method: "POST", body: formData });
+                      const uploadResult = await res.json();
+                      if (!res.ok) throw new Error(uploadResult.error);
+
+                      // Extract HTML via mammoth (client-side)
+                      const mammoth = await import("mammoth");
+                      const arrayBuffer = await file.arrayBuffer();
+                      const result = await mammoth.convertToHtml({ arrayBuffer });
+                      const html = result.value;
+
+                      // Open in editor
+                      setEditingTemplate(null);
+                      setTemplateForm({
+                        name: file.name.replace(/\.docx$/i, ""),
+                        type: "other",
+                        content: html,
+                      });
+                      setShowStarterPicker(false);
+                      setTemplateDialogOpen(true);
+
+                      toast({ title: "Document importé", description: "Modifiez-le puis sauvegardez." });
+                    } catch (err) {
+                      const msg = err instanceof Error ? err.message : "Erreur import";
+                      toast({ title: "Erreur", description: msg, variant: "destructive" });
+                    }
+                  };
+                  input.click();
+                }}
+              >
+                <Upload className="h-4 w-4" />
+                Importer .docx
+              </Button>
+            </div>
           </div>
 
           {templatesLoading ? (
@@ -840,15 +969,15 @@ export default function DocumentsPage() {
                 <div key={i} className="h-44 rounded-xl bg-gray-100 animate-pulse" />
               ))}
             </div>
-          ) : filteredTemplates.length === 0 ? (
+          ) : customTemplates.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <FileText className="h-12 w-12 text-gray-300 mb-3" />
-              <p className="font-medium text-gray-600">Aucun modèle trouvé</p>
-              <p className="text-sm text-gray-400 mt-1">Créez votre premier modèle de document.</p>
+              <p className="font-medium text-gray-600">Aucun modèle personnalisé</p>
+              <p className="text-sm text-gray-400 mt-1">Créez votre premier modèle ou importez un .docx.</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {filteredTemplates.map((template) => (
+              {customTemplates.map((template) => (
                 <Card key={template.id} className="group hover:shadow-md transition-shadow">
                   <CardHeader className="pb-3">
                     <div className="flex items-start justify-between gap-2">

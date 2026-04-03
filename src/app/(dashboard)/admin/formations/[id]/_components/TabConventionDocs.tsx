@@ -208,34 +208,52 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
   const handleView = async (doc: FormationConventionDocument) => {
     let htmlContent: string | null = null;
 
+    const learner = enrollments.find((e) => e.learner?.id === doc.owner_id)?.learner;
+    const company = companies.find((c) => c.client_id === doc.owner_id)?.client;
+    const trainerData = trainers.find((t) => t.trainer_id === doc.owner_id)?.trainer;
+
+    const templateData = {
+      formation,
+      learner: learner ? { first_name: learner.first_name, last_name: learner.last_name, email: learner.email ?? undefined } : undefined,
+      company: company || undefined,
+      trainer: trainerData || undefined,
+      entityName,
+    };
+
+    const resolveCtx = {
+      session: formation,
+      learner: learner || null,
+      client: company || null,
+      trainer: trainerData || null,
+    };
+
     if (doc.template_id) {
+      // Custom template from DB
       const { data: template } = await supabase
         .from("document_templates")
         .select("content")
         .eq("id", doc.template_id)
         .single();
 
-      if (template?.content) {
-        const learner = enrollments.find((e) => e.learner?.id === doc.owner_id)?.learner;
-        htmlContent = resolveVariables(template.content, {
-          session: formation,
-          learner: learner || null,
-          client: null,
-          trainer: null,
-        });
+      if (template?.content && template.content.trim() !== "") {
+        htmlContent = resolveVariables(template.content, resolveCtx);
       }
     } else {
-      const learner = enrollments.find((e) => e.learner?.id === doc.owner_id)?.learner;
-      const company = companies.find((c) => c.client_id === doc.owner_id)?.client;
-      const trainerData = trainers.find((t) => t.trainer_id === doc.owner_id)?.trainer;
+      // System template: check if admin personalized it in DB first
+      const { data: systemTemplate } = await supabase
+        .from("document_templates")
+        .select("content")
+        .eq("system_key", doc.doc_type)
+        .eq("entity_id", formation.entity_id)
+        .single();
 
-      htmlContent = getDefaultTemplate(doc.doc_type, {
-        formation,
-        learner: learner ? { first_name: learner.first_name, last_name: learner.last_name, email: learner.email ?? undefined } : undefined,
-        company: company || undefined,
-        trainer: trainerData || undefined,
-        entityName,
-      });
+      if (systemTemplate?.content && systemTemplate.content.trim() !== "") {
+        // Admin has personalized this template → use DB content
+        htmlContent = resolveVariables(systemTemplate.content, resolveCtx);
+      } else {
+        // No personalization → use hardcoded TypeScript function
+        htmlContent = getDefaultTemplate(doc.doc_type, templateData);
+      }
     }
 
     if (!htmlContent) {
