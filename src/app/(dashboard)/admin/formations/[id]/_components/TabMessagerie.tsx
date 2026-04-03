@@ -2,9 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Send, Clock, Mail, Loader2, Zap } from "lucide-react";
+import { Send, Clock, Mail, Loader2, Zap, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,6 +14,9 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useToast } from "@/components/ui/use-toast";
 import { resolveVariables } from "@/lib/utils/resolve-variables";
 import type {
@@ -105,13 +107,17 @@ export function TabMessagerie({ formation, onRefresh }: Props) {
       h.subject.includes(rule.name || rule.document_type) && h.status === "sent"
     );
 
-    if (sent) return { label: "✅ Envoyé", color: "bg-green-100 text-green-700" };
-    if (targetDate < today) return { label: "⏰ Date passée", color: "bg-gray-100 text-gray-500" };
-    if (targetDate.getTime() === today.getTime()) return { label: "🔔 Aujourd'hui", color: "bg-orange-100 text-orange-700" };
-    return { label: `📅 ${getRuleTargetDate(rule)}`, color: "bg-blue-100 text-blue-700" };
+    if (sent) return { label: "Envoyé", color: "bg-green-100 text-green-700" };
+    if (targetDate < today) return { label: "Date passée", color: "bg-gray-100 text-gray-500" };
+    if (targetDate.getTime() === today.getTime()) return { label: "Aujourd'hui", color: "bg-orange-100 text-orange-700" };
+    return { label: getRuleTargetDate(rule), color: "bg-blue-100 text-blue-700" };
   }
+
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+    learners: true, companies: false, trainers: false, financiers: false, manager: false,
+  });
 
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -229,7 +235,6 @@ export function TabMessagerie({ formation, onRefresh }: Props) {
     setSelectedTemplateId(templateId);
     const tmpl = templates.find((t) => t.id === templateId);
     if (tmpl) {
-      // Resolve variables for first recipient
       const r = dialogRecipients[0];
       const learner = r?.type === "learner"
         ? enrollments.find((e) => e.learner?.id === r.id)?.learner
@@ -271,7 +276,6 @@ export function TabMessagerie({ formation, onRefresh }: Props) {
         continue;
       }
 
-      // Resolve per-recipient variables for mass sends
       let subject = emailSubject;
       let body = emailBody;
       if (isMass && (dialogMode === "template" || dialogMode === "schedule_template")) {
@@ -292,7 +296,6 @@ export function TabMessagerie({ formation, onRefresh }: Props) {
       }
 
       if (isSchedule) {
-        // Store as pending in email_history directly
         const { data: { user } } = await supabase.auth.getUser();
         const { data: profile } = await supabase
           .from("profiles")
@@ -318,7 +321,6 @@ export function TabMessagerie({ formation, onRefresh }: Props) {
         if (error) failCount++;
         else successCount++;
       } else {
-        // Send immediately via API
         try {
           const res = await fetch("/api/emails/send", {
             method: "POST",
@@ -364,139 +366,131 @@ export function TabMessagerie({ formation, onRefresh }: Props) {
     await onRefresh();
   };
 
-  // ─── Render action buttons for a recipient group ─────────────
-  const renderActionButtons = (recipients: Recipient[], mass = false) => {
-    const isTemplate = (mode: DialogMode) => mode === "template" || mode === "schedule_template";
-    const btnClass = (variant: "green" | "orange") =>
-      variant === "green"
-        ? "bg-emerald-500 hover:bg-emerald-600 text-white text-xs"
-        : "bg-orange-400 hover:bg-orange-500 text-white text-xs";
+  // ─── Compact action dropdown for a recipient ──────────────────
+  const renderActionDropdown = (recipients: Recipient[], mass = false, label = "Envoyer") => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button size="sm" variant="outline" className="text-xs h-7 gap-1">
+          <Mail className="h-3 w-3" /> {label}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={() => openDialog("template", recipients, mass)}>
+          <Mail className="h-3 w-3 mr-2" /> Email (template){mass ? " en masse" : ""}
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => openDialog("libre", recipients, mass)}>
+          <Mail className="h-3 w-3 mr-2" /> Email (libre){mass ? " en masse" : ""}
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => openDialog("schedule_template", recipients, mass)}>
+          <Clock className="h-3 w-3 mr-2" /> Programmer (template){mass ? " en masse" : ""}
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => openDialog("schedule_libre", recipients, mass)}>
+          <Clock className="h-3 w-3 mr-2" /> Programmer (libre){mass ? " en masse" : ""}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 
-    const prefix = mass ? " en mass" : "";
-
-    return (
-      <div className="flex flex-wrap gap-2">
-        <Button
-          size="sm"
-          className={btnClass("green")}
-          onClick={() => openDialog("template", recipients, mass)}
-        >
-          <Mail className="h-3 w-3 mr-1" /> Envoyer un e-mail (template){prefix}
-        </Button>
-        <Button
-          size="sm"
-          className={btnClass("orange")}
-          onClick={() => openDialog("libre", recipients, mass)}
-        >
-          <Mail className="h-3 w-3 mr-1" /> Envoyer un e-mail (libre){prefix}
-        </Button>
-        <Button
-          size="sm"
-          className={btnClass("orange")}
-          onClick={() => openDialog("schedule_libre", recipients, mass)}
-        >
-          <Clock className="h-3 w-3 mr-1" /> Programmer un e-mail (libre){prefix}
-        </Button>
-        <Button
-          size="sm"
-          className={btnClass("orange")}
-          onClick={() => openDialog("schedule_template", recipients, mass)}
-        >
-          <Clock className="h-3 w-3 mr-1" /> Programmer un e-mail (Template){prefix}
-        </Button>
-      </div>
-    );
-  };
-
-  // ─── Render email history table ──────────────────────────────
+  // ─── Render email history (compact table) ──────────────────
   const renderHistory = (recipientEmail: string | null) => {
     const history = getHistoryFor(recipientEmail);
-    if (history.length === 0) {
-      return (
-        <p className="text-sm text-muted-foreground italic mt-2">
-          Pas d&apos;emails envoyés{recipientEmail ? ` à ${recipientEmail}` : ""}
-        </p>
-      );
-    }
+    if (history.length === 0) return null;
     return (
-      <div className="mt-3 overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b">
-              <th className="text-left py-2 px-3 font-semibold">Date</th>
-              <th className="text-left py-2 px-3 font-semibold">Objet</th>
-              <th className="text-left py-2 px-3 font-semibold">Email</th>
-              <th className="text-left py-2 px-3 font-semibold">Status</th>
-            </tr>
-          </thead>
+      <div className="mt-2 overflow-x-auto">
+        <table className="w-full text-xs">
           <tbody>
-            {history.map((h) => {
+            {history.slice(0, 3).map((h) => {
               const badge = STATUS_BADGES[h.status] || STATUS_BADGES.pending;
               return (
                 <tr key={h.id} className="border-b last:border-0">
-                  <td className="py-2 px-3 text-muted-foreground whitespace-nowrap">
-                    {new Date(h.sent_at).toLocaleString("fr-FR", {
-                      year: "numeric",
-                      month: "2-digit",
-                      day: "2-digit",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                      second: "2-digit",
-                    })}
+                  <td className="py-1.5 pr-3 text-muted-foreground whitespace-nowrap">
+                    {new Date(h.sent_at).toLocaleDateString("fr-FR")}
                   </td>
-                  <td className="py-2 px-3">{h.subject}</td>
-                  <td className="py-2 px-3 text-muted-foreground">{h.recipient_email}</td>
-                  <td className="py-2 px-3">
-                    <Badge className={badge.className}>{badge.label}</Badge>
+                  <td className="py-1.5 pr-3 truncate max-w-[200px]">{h.subject}</td>
+                  <td className="py-1.5">
+                    <span className={`text-xs px-1.5 py-0.5 rounded-full ${badge.className}`}>{badge.label}</span>
                   </td>
                 </tr>
               );
             })}
           </tbody>
         </table>
+        {history.length > 3 && (
+          <p className="text-xs text-muted-foreground mt-1">+{history.length - 3} autre(s)</p>
+        )}
       </div>
     );
   };
 
+  const toggleSection = (key: string) =>
+    setExpandedSections((prev) => ({ ...prev, [key]: !prev[key] }));
+
   // ─── Render a recipient section ──────────────────────────────
   const renderRecipientSection = (
+    key: string,
     title: string,
     recipients: Recipient[],
     showMassButtons = false
-  ) => (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-lg uppercase">
-          {title} ({recipients.length}):
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {showMassButtons && recipients.length > 0 && (
-          <div className="mb-4">{renderActionButtons(recipients, true)}</div>
-        )}
-
-        {recipients.length === 0 ? (
-          <p className="text-sm text-muted-foreground italic">Aucun</p>
-        ) : (
-          recipients.map((r) => (
-            <div key={r.id} className="bg-muted/20 rounded-lg p-4 space-y-3">
-              <p className="font-medium">{r.name}</p>
-              {renderHistory(r.email)}
-              <div className="pt-2">{renderActionButtons([r])}</div>
+  ) => {
+    const isExpanded = expandedSections[key];
+    return (
+      <div className="border rounded-lg overflow-hidden">
+        {/* Section header */}
+        <div
+          className="flex items-center justify-between px-4 py-2.5 bg-muted/30 cursor-pointer hover:bg-muted/50 transition-colors"
+          onClick={() => toggleSection(key)}
+        >
+          <div className="flex items-center gap-2">
+            <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${isExpanded ? "" : "-rotate-90"}`} />
+            <span className="text-sm font-medium">{title}</span>
+            <span className="text-xs text-muted-foreground">({recipients.length})</span>
+          </div>
+          {showMassButtons && recipients.length > 0 && (
+            <div onClick={(e) => e.stopPropagation()}>
+              {renderActionDropdown(recipients, true, "Envoi masse")}
             </div>
-          ))
+          )}
+        </div>
+
+        {/* Expanded content */}
+        {isExpanded && (
+          <div className="divide-y">
+            {recipients.length === 0 ? (
+              <p className="text-sm text-muted-foreground px-4 py-3 italic">Aucun</p>
+            ) : (
+              recipients.map((r) => (
+                <div key={r.id} className="px-4 py-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="min-w-0">
+                      <span className="text-sm font-medium">{r.name}</span>
+                      {r.email && (
+                        <span className="text-xs text-muted-foreground ml-2">{r.email}</span>
+                      )}
+                      {!r.email && (
+                        <span className="text-xs text-orange-500 ml-2">Pas d&apos;email</span>
+                      )}
+                    </div>
+                    <div onClick={(e) => e.stopPropagation()}>
+                      {renderActionDropdown([r])}
+                    </div>
+                  </div>
+                  {renderHistory(r.email)}
+                </div>
+              ))
+            )}
+          </div>
         )}
-      </CardContent>
-    </Card>
-  );
+      </div>
+    );
+  };
 
   // ─── Dialog title ────────────────────────────────────────────
   const dialogTitle = (() => {
     const isSchedule = dialogMode.startsWith("schedule");
-    const isTemplate = dialogMode.includes("template");
+    const isTempl = dialogMode.includes("template");
     const action = isSchedule ? "Programmer" : "Envoyer";
-    const type = isTemplate ? "(template)" : "(libre)";
-    const mass = isMass ? " en mass" : "";
+    const type = isTempl ? "(template)" : "(libre)";
+    const mass = isMass ? " en masse" : "";
     return `${action} un e-mail ${type}${mass}`;
   })();
 
@@ -504,114 +498,112 @@ export function TabMessagerie({ formation, onRefresh }: Props) {
   const isSchedule = dialogMode === "schedule_template" || dialogMode === "schedule_libre";
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-xl font-bold">{formation.title}</h2>
+    <div className="space-y-4">
+      {/* Section Automatisation */}
+      {automationRules.length > 0 && (
+        <div className="mb-2">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
+              <Zap className="h-3 w-3 text-yellow-500" />
+              Emails automatiques
+            </h3>
+            <a href="/admin/trainings/automation" className="text-xs text-muted-foreground hover:underline">
+              Configurer
+            </a>
+          </div>
+          <div className="space-y-1.5">
+            {automationRules.map((rule) => {
+              const status = getRuleStatus(rule);
+              const label = rule.name || rule.template?.name || rule.document_type;
+              const recipient = rule.recipient_type === "trainers" ? "Formateurs" : rule.recipient_type === "all" ? "Tous" : "Apprenants";
+              const trigger = rule.trigger_type === "session_start_minus_days"
+                ? `J-${rule.days_offset} avant début`
+                : `J+${rule.days_offset} après fin`;
+              return (
+                <div key={rule.id} className="flex items-center justify-between px-3 py-2 bg-muted/30 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <Zap className="h-3 w-3 text-yellow-500 shrink-0" />
+                    <div>
+                      <p className="text-xs font-medium">{label}</p>
+                      <p className="text-xs text-muted-foreground">{trigger} · {recipient}</p>
+                    </div>
+                  </div>
+                  <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${status.color}`}>
+                    {status.label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          {automationHistory.length > 0 && (
+            <details className="mt-1.5">
+              <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
+                Historique ({automationHistory.length})
+              </summary>
+              <div className="mt-1 space-y-0.5">
+                {automationHistory.slice(0, 5).map((h, i) => (
+                  <div key={i} className="flex items-center justify-between text-xs text-muted-foreground py-0.5">
+                    <span className="truncate max-w-[200px]">{h.subject}</span>
+                    <span className={h.status === "sent" ? "text-green-600" : "text-red-500"}>
+                      {h.status === "sent" ? "Envoyé" : "Échoué"} {new Date(h.sent_at).toLocaleDateString("fr-FR")}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+        </div>
+      )}
 
       {loadingHistory ? (
         <div className="flex justify-center py-8">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
       ) : (
-        <>
-          {/* Section Automatisation */}
-          {automationRules.length > 0 && (
-            <div className="mb-6">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-semibold text-gray-800 flex items-center gap-2">
-                  <Zap className="h-4 w-4 text-yellow-500" />
-                  Emails automatiques
-                </h3>
-                <a href="/admin/trainings/automation" className="text-xs text-[#3DB5C5] hover:underline">
-                  Configurer →
-                </a>
+        <div className="space-y-3">
+          {renderRecipientSection("learners", "Apprenants", learnerRecipients, true)}
+          {renderRecipientSection("companies", "Entreprises", companyRecipients)}
+          {renderRecipientSection("trainers", "Formateurs", trainerRecipients)}
+          {renderRecipientSection("financiers", "Financeurs", financierRecipients)}
+
+          {/* Manager */}
+          <div className="border rounded-lg overflow-hidden">
+            <div
+              className="flex items-center justify-between px-4 py-2.5 bg-muted/30 cursor-pointer hover:bg-muted/50 transition-colors"
+              onClick={() => toggleSection("manager")}
+            >
+              <div className="flex items-center gap-2">
+                <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${expandedSections.manager ? "" : "-rotate-90"}`} />
+                <span className="text-sm font-medium">Manager</span>
               </div>
-              <div className="space-y-2">
-                {automationRules.map((rule) => {
-                  const status = getRuleStatus(rule);
-                  const label = rule.name || rule.template?.name || rule.document_type;
-                  const recipient = rule.recipient_type === "trainers" ? "Formateurs" : rule.recipient_type === "all" ? "Tous" : "Apprenants";
-                  const trigger = rule.trigger_type === "session_start_minus_days"
-                    ? `J-${rule.days_offset} avant début`
-                    : `J+${rule.days_offset} après fin`;
-                  return (
-                    <div key={rule.id} className="flex items-center justify-between p-3 bg-gray-50 border border-gray-200 rounded-lg">
-                      <div className="flex items-center gap-3">
-                        <Zap className="h-3.5 w-3.5 text-yellow-500 shrink-0" />
-                        <div>
-                          <p className="text-sm font-medium text-gray-800">{label}</p>
-                          <p className="text-xs text-gray-500">{trigger} · {recipient}</p>
-                        </div>
-                      </div>
-                      <span className={`text-xs px-2 py-1 rounded-full font-medium ${status.color}`}>
-                        {status.label}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-              {automationHistory.length > 0 && (
-                <details className="mt-2">
-                  <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-700">
-                    Voir l&apos;historique ({automationHistory.length})
-                  </summary>
-                  <div className="mt-2 space-y-1">
-                    {automationHistory.slice(0, 5).map((h, i) => (
-                      <div key={i} className="flex items-center justify-between text-xs text-gray-500 py-1 border-b border-gray-100">
-                        <span className="truncate max-w-[200px]">{h.subject}</span>
-                        <span className={h.status === "sent" ? "text-green-600" : "text-red-500"}>
-                          {h.status === "sent" ? "✅" : "❌"} {new Date(h.sent_at).toLocaleDateString("fr-FR")}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </details>
-              )}
             </div>
-          )}
-
-          {/* APPRENANTS */}
-          {renderRecipientSection("Apprenants", learnerRecipients, true)}
-
-          {/* ENTREPRISES */}
-          {renderRecipientSection("Entreprises", companyRecipients)}
-
-          {/* FORMATEURS */}
-          {renderRecipientSection("Formateurs", trainerRecipients)}
-
-          {/* FINANCEURS */}
-          {renderRecipientSection("Financeurs", financierRecipients)}
-
-          {/* MANAGER */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg uppercase">Manager:</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {manager ? (
-                <div className="bg-muted/20 rounded-lg p-4 space-y-3">
-                  <p className="font-medium">
-                    {manager.first_name} {manager.last_name}
-                  </p>
-                  {renderHistory(manager.email)}
-                  <div className="pt-2">
-                    {renderActionButtons([
-                      {
+            {expandedSections.manager && (
+              <div className="px-4 py-2.5">
+                {manager ? (
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="text-sm font-medium">{manager.first_name} {manager.last_name}</span>
+                        {manager.email && (
+                          <span className="text-xs text-muted-foreground ml-2">{manager.email}</span>
+                        )}
+                      </div>
+                      {renderActionDropdown([{
                         id: manager.id,
                         name: `${manager.first_name} ${manager.last_name}`,
                         email: manager.email || null,
                         type: "manager",
-                      },
-                    ])}
+                      }])}
+                    </div>
+                    {renderHistory(manager.email)}
                   </div>
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground italic">
-                  Pas de manager attribué
-                </p>
-              )}
-            </CardContent>
-          </Card>
-        </>
+                ) : (
+                  <p className="text-sm text-muted-foreground italic">Pas de manager attribué</p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {/* ─── Send/Schedule Dialog ──────────────────────────────── */}
@@ -621,7 +613,6 @@ export function TabMessagerie({ formation, onRefresh }: Props) {
             <DialogTitle>{dialogTitle}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            {/* Destinataires */}
             <div>
               <Label>Destinataire(s)</Label>
               <div className="flex flex-wrap gap-1 mt-1">
@@ -633,7 +624,6 @@ export function TabMessagerie({ formation, onRefresh }: Props) {
               </div>
             </div>
 
-            {/* Template select */}
             {isTemplate && (
               <div>
                 <Label>Modèle d&apos;email</Label>
@@ -652,7 +642,6 @@ export function TabMessagerie({ formation, onRefresh }: Props) {
               </div>
             )}
 
-            {/* Scheduling */}
             {isSchedule && (
               <div className="flex gap-3">
                 <div className="flex-1">
@@ -674,7 +663,6 @@ export function TabMessagerie({ formation, onRefresh }: Props) {
               </div>
             )}
 
-            {/* Subject */}
             <div>
               <Label>Objet *</Label>
               <Input
@@ -684,7 +672,6 @@ export function TabMessagerie({ formation, onRefresh }: Props) {
               />
             </div>
 
-            {/* Body */}
             <div>
               <Label>Corps du message</Label>
               <Textarea
@@ -702,13 +689,9 @@ export function TabMessagerie({ formation, onRefresh }: Props) {
             <Button onClick={handleSend} disabled={sending}>
               {sending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               {isSchedule ? (
-                <>
-                  <Clock className="h-4 w-4 mr-1" /> Programmer
-                </>
+                <><Clock className="h-4 w-4 mr-1" /> Programmer</>
               ) : (
-                <>
-                  <Send className="h-4 w-4 mr-1" /> Envoyer
-                </>
+                <><Send className="h-4 w-4 mr-1" /> Envoyer</>
               )}
             </Button>
           </DialogFooter>

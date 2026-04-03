@@ -2,9 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Loader2, Smile, Trash2 } from "lucide-react";
+import { Loader2, Smile, Trash2, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -19,11 +18,10 @@ interface Props {
   onRefresh: () => Promise<void>;
 }
 
-// Questionnaire types for apprenants
-const LEARNER_SATISFACTION_TYPES: { type: SatisfactionType; label: string }[] = [
-  { type: "satisfaction_chaud", label: "Satisfaction à chaud" },
-  { type: "satisfaction_froid", label: "Satisfaction à froid" },
-  { type: "autres_quest", label: "Autres questionnaires" },
+const LEARNER_SATISFACTION_TYPES: { type: SatisfactionType; label: string; short: string }[] = [
+  { type: "satisfaction_chaud", label: "Satisfaction à chaud", short: "À chaud" },
+  { type: "satisfaction_froid", label: "Satisfaction à froid", short: "À froid" },
+  { type: "autres_quest", label: "Autres questionnaires", short: "Autres" },
 ];
 
 export function TabSatisfaction({ formation, onRefresh }: Props) {
@@ -33,8 +31,8 @@ export function TabSatisfaction({ formation, onRefresh }: Props) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const [selections, setSelections] = useState<Record<string, string>>({});
-  // Satisfaction scores per questionnaire+target
   const [satisfactionScores, setSatisfactionScores] = useState<Record<string, number | null>>({});
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({ learners: true });
 
   const assignments = formation.formation_satisfaction_assignments || [];
   const enrollments = formation.enrollments || [];
@@ -42,7 +40,6 @@ export function TabSatisfaction({ formation, onRefresh }: Props) {
   const companies = formation.formation_companies || [];
   const financiers = formation.formation_financiers || [];
 
-  // Fetch questionnaires
   const fetchQuestionnaires = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
@@ -62,11 +59,8 @@ export function TabSatisfaction({ formation, onRefresh }: Props) {
     setLoading(false);
   }, [supabase]);
 
-  useEffect(() => {
-    fetchQuestionnaires();
-  }, [fetchQuestionnaires]);
+  useEffect(() => { fetchQuestionnaires(); }, [fetchQuestionnaires]);
 
-  // Initialize selections from existing assignments
   useEffect(() => {
     const sel: Record<string, string> = {};
     for (const a of assignments) {
@@ -76,7 +70,6 @@ export function TabSatisfaction({ formation, onRefresh }: Props) {
     setSelections(sel);
   }, [assignments]);
 
-  // Fetch satisfaction scores from questionnaire_responses
   useEffect(() => {
     if (assignments.length === 0) return;
     const fetchScores = async () => {
@@ -87,14 +80,11 @@ export function TabSatisfaction({ formation, onRefresh }: Props) {
           .select("responses")
           .eq("questionnaire_id", a.questionnaire_id)
           .eq("session_id", formation.id);
-
-        if (a.target_id && (a.target_type === "learner")) {
+        if (a.target_id && a.target_type === "learner") {
           query.eq("learner_id", a.target_id);
         }
-
         const { data } = await query;
         if (data && data.length > 0) {
-          // Calculate average rating from responses
           let totalRating = 0;
           let ratingCount = 0;
           for (const resp of data) {
@@ -119,24 +109,16 @@ export function TabSatisfaction({ formation, onRefresh }: Props) {
     return `${satType}-${targetType}-${targetId || "mass"}`;
   }
 
-  // Get questionnaires relevant to a satisfaction type
-  const getQuestionnairesForType = (satType: SatisfactionType) => {
-    return questionnaires.filter(
-      (q) =>
-        q.quality_indicator_type === satType ||
-        q.type === "satisfaction" ||
-        q.type === "survey"
+  const getQuestionnairesForType = (satType: SatisfactionType) =>
+    questionnaires.filter(
+      (q) => q.quality_indicator_type === satType || q.type === "satisfaction" || q.type === "survey"
     );
-  };
 
-  // Find existing assignment
-  const getAssignment = (satType: SatisfactionType, targetType: SatisfactionTargetType, targetId: string | null) => {
-    return assignments.find(
+  const getAssignment = (satType: SatisfactionType, targetType: SatisfactionTargetType, targetId: string | null) =>
+    assignments.find(
       (a) => a.satisfaction_type === satType && a.target_type === targetType && a.target_id === targetId
     );
-  };
 
-  // Assign questionnaire
   const handleAssign = async (
     satType: SatisfactionType,
     targetType: SatisfactionTargetType,
@@ -146,7 +128,6 @@ export function TabSatisfaction({ formation, onRefresh }: Props) {
     if (!questionnaireId) return;
     const key = makeKey(satType, targetType, targetId);
     setSaving(key);
-
     try {
       const existing = getAssignment(satType, targetType, targetId);
       if (existing) {
@@ -157,7 +138,6 @@ export function TabSatisfaction({ formation, onRefresh }: Props) {
           .eq("session_id", formation.id);
         if (delErr) throw delErr;
       }
-
       const { error } = await supabase.from("formation_satisfaction_assignments").insert({
         session_id: formation.id,
         questionnaire_id: questionnaireId,
@@ -176,7 +156,6 @@ export function TabSatisfaction({ formation, onRefresh }: Props) {
     }
   };
 
-  // Remove assignment
   const handleRemove = async (assignmentId: string) => {
     setSaving(assignmentId);
     try {
@@ -196,15 +175,15 @@ export function TabSatisfaction({ formation, onRefresh }: Props) {
     }
   };
 
-  // Get satisfaction score display for an assignment
   const getScoreDisplay = (a: FormationSatisfactionAssignment) => {
     const key = `${a.questionnaire_id}-${a.target_type}-${a.target_id || "mass"}`;
-    const score = satisfactionScores[key];
-    if (score === undefined || score === null) return null;
-    return score;
+    return satisfactionScores[key] ?? null;
   };
 
-  // Render a satisfaction assignment row
+  const toggleExpanded = (key: string) =>
+    setExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
+
+  // Compact satisfaction row
   const renderSatRow = (
     satType: SatisfactionType,
     label: string,
@@ -218,89 +197,113 @@ export function TabSatisfaction({ formation, onRefresh }: Props) {
     const existing = getAssignment(satType, targetType, targetId);
 
     return (
-      <div key={key} className="space-y-2">
-        <p className="font-semibold text-sm">{label}</p>
+      <div key={key} className="flex items-center gap-2 py-1.5">
+        <span className="text-xs font-medium text-muted-foreground w-[90px] shrink-0 truncate" title={label}>
+          {label}
+        </span>
         {existing && (
-          <div className="flex items-center gap-3 text-sm text-muted-foreground">
-            <span className="font-medium">
-              {existing.questionnaire?.title || "Questionnaire"}
+          <div className="flex items-center gap-1 shrink-0">
+            <span className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full truncate max-w-[120px]" title={existing.questionnaire?.title}>
+              {existing.questionnaire?.title || "Attribué"}
             </span>
-            <button
-              className="text-red-500 hover:text-red-700 text-xs underline flex items-center gap-1"
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-5 w-5 text-muted-foreground hover:text-red-600"
               onClick={() => handleRemove(existing.id)}
               disabled={saving === existing.id}
             >
-              {saving === existing.id ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <Trash2 className="h-3 w-3" />
-              )}
-              Supprimer ce questionnaire
-            </button>
+              {saving === existing.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+            </Button>
           </div>
         )}
-        <div className="flex items-center gap-3">
-          <Select
-            value={currentValue}
-            onValueChange={(val) => {
-              setSelections((prev) => ({ ...prev, [key]: val }));
-            }}
-          >
-            <SelectTrigger className="w-[400px]">
-              <SelectValue placeholder="Sélectionner un questionnaire..." />
-            </SelectTrigger>
-            <SelectContent>
-              {available.map((q) => (
-                <SelectItem key={q.id} value={q.id}>
-                  {q.title}
-                </SelectItem>
-              ))}
-              {available.length === 0 && (
-                <SelectItem value="_none" disabled>
-                  Aucun questionnaire disponible
-                </SelectItem>
-              )}
-            </SelectContent>
-          </Select>
-          <Button
-            className="bg-teal-500 hover:bg-teal-600 text-white"
-            onClick={() => handleAssign(satType, targetType, targetId, currentValue)}
-            disabled={!currentValue || isSaving}
-          >
-            {isSaving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Attribuer
-          </Button>
-        </div>
+        <Select
+          value={currentValue}
+          onValueChange={(val) => setSelections((prev) => ({ ...prev, [key]: val }))}
+        >
+          <SelectTrigger className="h-7 text-xs flex-1 min-w-0">
+            <SelectValue placeholder="Questionnaire..." />
+          </SelectTrigger>
+          <SelectContent>
+            {available.map((q) => (
+              <SelectItem key={q.id} value={q.id}>{q.title}</SelectItem>
+            ))}
+            {available.length === 0 && (
+              <SelectItem value="_none" disabled>Aucun disponible</SelectItem>
+            )}
+          </SelectContent>
+        </Select>
+        <Button
+          size="sm"
+          className="h-7 text-xs shrink-0"
+          onClick={() => handleAssign(satType, targetType, targetId, currentValue)}
+          disabled={!currentValue || isSaving}
+        >
+          {isSaving && <Loader2 className="h-3 w-3 mr-1 animate-spin" />}
+          Attribuer
+        </Button>
       </div>
     );
   };
 
-  // Render satisfaction synthesis for a target
-  const renderSatisfactionSynthesis = (targetType: SatisfactionTargetType, targetId: string | null) => {
+  // Satisfaction score synthesis
+  const renderScoreBadge = (targetType: SatisfactionTargetType, targetId: string | null) => {
     const targetAssignments = assignments.filter(
       (a) => a.target_type === targetType && (a.target_id === targetId || (targetId === null && a.target_id === null))
     );
     if (targetAssignments.length === 0) return null;
 
-    const scores = targetAssignments
-      .map((a) => getScoreDisplay(a))
-      .filter((s): s is number => s !== null);
-
+    const scores = targetAssignments.map((a) => getScoreDisplay(a)).filter((s): s is number => s !== null);
     if (scores.length === 0) return null;
 
     const avgScore = Math.round(scores.reduce((sum, s) => sum + s, 0) / scores.length);
 
     return (
-      <div className="flex items-center gap-3 p-3 bg-green-50 rounded-lg border border-green-200">
-        <Smile className="h-8 w-8 text-green-500" />
-        <div>
-          <p className="text-sm font-semibold text-green-700">
-            MOYENNE DE SATISFACTION {avgScore}%
-          </p>
-          <p className="text-xs text-green-600">
-            Synthèse satisfaction ({scores.length} questionnaire{scores.length > 1 ? "s" : ""})
-          </p>
+      <span className="inline-flex items-center gap-1 text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
+        <Smile className="h-3 w-3" /> {avgScore}%
+      </span>
+    );
+  };
+
+  // Generic section renderer
+  const renderSection = (
+    sectionKey: string,
+    title: string,
+    items: { id: string; name: string; targetType: SatisfactionTargetType; satTypes: { type: SatisfactionType; label: string }[] }[],
+    emptyText: string
+  ) => {
+    const isExpanded = expanded[sectionKey];
+    return (
+      <div className="border rounded-lg overflow-hidden">
+        <div
+          className="flex items-center justify-between px-4 py-2.5 bg-muted/30 cursor-pointer hover:bg-muted/50 transition-colors"
+          onClick={() => toggleExpanded(sectionKey)}
+        >
+          <div className="flex items-center gap-2">
+            <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${isExpanded ? "" : "-rotate-90"}`} />
+            <span className="text-sm font-medium">{title}</span>
+            <span className="text-xs text-muted-foreground">({items.length})</span>
+          </div>
         </div>
+        {isExpanded && (
+          <div className="divide-y">
+            {items.length === 0 ? (
+              <p className="text-sm text-muted-foreground px-4 py-3 italic">{emptyText}</p>
+            ) : (
+              items.map((item) => (
+                <div key={item.id} className="px-4 py-2.5 space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">{item.name}</span>
+                    {renderScoreBadge(item.targetType, item.id)}
+                  </div>
+                  {item.satTypes.map((st) =>
+                    renderSatRow(st.type, st.label, item.targetType, item.id)
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        )}
       </div>
     );
   };
@@ -314,169 +317,93 @@ export function TabSatisfaction({ formation, onRefresh }: Props) {
   }
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-xl font-bold">{formation.title}</h2>
+    <div className="space-y-4">
+      <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+        Satisfaction & Qualité
+      </h3>
 
-      {/* ===== SECTION: QUESTIONNAIRES POUR APPRENANTS ===== */}
-      <Card>
-        <CardContent className="pt-6 space-y-6">
-          <h3 className="text-lg font-bold uppercase">Questionnaires pour apprenants</h3>
+      {/* Apprenants */}
+      {renderSection(
+        "learners",
+        "Questionnaires apprenants",
+        [
+          // Mass attribution entry
+          ...([{
+            id: "__mass__",
+            name: "Attribution en masse",
+            targetType: "learner" as SatisfactionTargetType,
+            satTypes: LEARNER_SATISFACTION_TYPES.map((st) => ({ type: st.type, label: st.short })),
+          }]),
+          // Per learner
+          ...enrollments
+            .filter((e) => e.learner)
+            .map((e) => ({
+              id: e.learner!.id,
+              name: `${e.learner!.first_name} ${e.learner!.last_name}`,
+              targetType: "learner" as SatisfactionTargetType,
+              satTypes: LEARNER_SATISFACTION_TYPES.map((st) => ({ type: st.type, label: st.short })),
+            })),
+        ],
+        "Aucun apprenant inscrit"
+      )}
 
-          {/* Mass attribution */}
-          <div className="space-y-4 border-b pb-6">
-            <p className="font-semibold text-sm text-muted-foreground uppercase">
-              Attribution en masse à tous les apprenants
-            </p>
-            {LEARNER_SATISFACTION_TYPES.map((st) =>
-              renderSatRow(st.type, st.label, "learner", null)
-            )}
-          </div>
+      {/* Formateurs */}
+      {renderSection(
+        "trainers",
+        "Questionnaires formateurs",
+        trainers
+          .filter((ft) => ft.trainer)
+          .map((ft) => ({
+            id: ft.trainer!.id,
+            name: `${ft.trainer!.first_name} ${ft.trainer!.last_name}`,
+            targetType: "trainer" as SatisfactionTargetType,
+            satTypes: [{ type: "quest_formateurs" as SatisfactionType, label: "Questionnaire" }],
+          })),
+        "Aucun formateur"
+      )}
 
-          {/* Per learner */}
-          {enrollments.map((enrollment) => {
-            const learner = enrollment.learner;
-            if (!learner) return null;
+      {/* Manager */}
+      {renderSection(
+        "manager",
+        "Questionnaire manager",
+        formation.manager
+          ? [{
+              id: formation.manager_id!,
+              name: `${formation.manager.first_name} ${formation.manager.last_name}`,
+              targetType: "manager" as SatisfactionTargetType,
+              satTypes: [{ type: "quest_managers" as SatisfactionType, label: "Questionnaire" }],
+            }]
+          : [],
+        "Aucun manager attribué"
+      )}
 
-            const learnerAssignments = assignments.filter(
-              (a) => a.target_type === "learner" && a.target_id === learner.id
-            );
-            const massAssignments = assignments.filter(
-              (a) => a.target_type === "learner" && a.target_id === null
-            );
+      {/* Financeurs */}
+      {renderSection(
+        "financiers",
+        "Questionnaires financeurs",
+        financiers.map((f) => ({
+          id: f.id,
+          name: f.name,
+          targetType: "financier" as SatisfactionTargetType,
+          satTypes: [{ type: "quest_financeurs" as SatisfactionType, label: "Questionnaire" }],
+        })),
+        "Aucun financeur"
+      )}
 
-            return (
-              <div key={enrollment.id} className="space-y-4 border-b pb-6 last:border-b-0">
-                <h4 className="font-bold">
-                  {learner.first_name} {learner.last_name}
-                </h4>
-
-                {renderSatisfactionSynthesis("learner", learner.id)}
-
-                {/* Show current assignments */}
-                {[...massAssignments, ...learnerAssignments].length > 0 && (
-                  <div className="text-sm text-muted-foreground space-y-1">
-                    {[...massAssignments, ...learnerAssignments].map((a) => (
-                      <p key={a.id}>
-                        {LEARNER_SATISFACTION_TYPES.find((s) => s.type === a.satisfaction_type)?.label || a.satisfaction_type}
-                        {" → "}
-                        <span className="font-medium">
-                          {a.questionnaire?.title || "Questionnaire"}
-                        </span>
-                        {a.target_id === null && " (en masse)"}
-                      </p>
-                    ))}
-                  </div>
-                )}
-
-                {LEARNER_SATISFACTION_TYPES.map((st) =>
-                  renderSatRow(st.type, st.label, "learner", learner.id)
-                )}
-              </div>
-            );
-          })}
-
-          {enrollments.length === 0 && (
-            <p className="text-sm text-muted-foreground">Aucun apprenant inscrit.</p>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* ===== SECTION: QUESTIONNAIRES POUR FORMATEURS ===== */}
-      <Card>
-        <CardContent className="pt-6 space-y-6">
-          <h3 className="text-lg font-bold uppercase">Questionnaires pour formateurs</h3>
-
-          {trainers.length === 0 && (
-            <p className="text-sm text-muted-foreground italic">
-              Aucun formateur attribué à cette formation...
-            </p>
-          )}
-
-          {trainers.map((ft) => {
-            const trainer = ft.trainer;
-            if (!trainer) return null;
-
-            return (
-              <div key={ft.id} className="space-y-4 border-b pb-6 last:border-b-0">
-                <h4 className="font-bold">
-                  {trainer.first_name} {trainer.last_name}
-                </h4>
-
-                {renderSatisfactionSynthesis("trainer", trainer.id)}
-
-                {renderSatRow("quest_formateurs", "Questionnaire formateur", "trainer", trainer.id)}
-              </div>
-            );
-          })}
-        </CardContent>
-      </Card>
-
-      {/* ===== SECTION: QUESTIONNAIRES POUR MANAGER ===== */}
-      <Card>
-        <CardContent className="pt-6 space-y-6">
-          <h3 className="text-lg font-bold uppercase">Questionnaires pour manager</h3>
-
-          {!formation.manager_id ? (
-            <p className="text-sm text-muted-foreground italic">
-              Aucun manager attribué à cette formation...
-            </p>
-          ) : (
-            <div className="space-y-4">
-              {formation.manager && (
-                <h4 className="font-bold">
-                  {formation.manager.first_name} {formation.manager.last_name}
-                </h4>
-              )}
-              {renderSatRow("quest_managers", "Questionnaire manager", "manager", formation.manager_id)}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* ===== SECTION: QUESTIONNAIRES POUR FINANCEUR ===== */}
-      <Card>
-        <CardContent className="pt-6 space-y-6">
-          <h3 className="text-lg font-bold uppercase">Questionnaires pour financeur</h3>
-
-          {financiers.length === 0 ? (
-            <p className="text-sm text-muted-foreground italic">
-              Aucun financeur attribué à cette formation...
-            </p>
-          ) : (
-            financiers.map((fin) => (
-              <div key={fin.id} className="space-y-4 border-b pb-6 last:border-b-0">
-                <h4 className="font-bold">{fin.name}</h4>
-                {renderSatRow("quest_financeurs", "Questionnaire financeur", "financier", fin.id)}
-              </div>
-            ))
-          )}
-        </CardContent>
-      </Card>
-
-      {/* ===== SECTION: QUESTIONNAIRES POUR ENTREPRISES ===== */}
-      <Card>
-        <CardContent className="pt-6 space-y-6">
-          <h3 className="text-lg font-bold uppercase">Questionnaires pour entreprises</h3>
-
-          {companies.length === 0 ? (
-            <p className="text-sm text-muted-foreground italic">
-              Aucune entreprise attribuée à cette formation...
-            </p>
-          ) : (
-            companies.map((fc) => {
-              const client = fc.client;
-              if (!client) return null;
-
-              return (
-                <div key={fc.id} className="space-y-4 border-b pb-6 last:border-b-0">
-                  <h4 className="font-bold">{client.company_name}</h4>
-                  {renderSatRow("quest_entreprises", "Questionnaire entreprise", "company", client.id)}
-                </div>
-              );
-            })
-          )}
-        </CardContent>
-      </Card>
+      {/* Entreprises */}
+      {renderSection(
+        "companies",
+        "Questionnaires entreprises",
+        companies
+          .filter((fc) => fc.client)
+          .map((fc) => ({
+            id: fc.client!.id,
+            name: fc.client!.company_name,
+            targetType: "company" as SatisfactionTargetType,
+            satTypes: [{ type: "quest_entreprises" as SatisfactionType, label: "Questionnaire" }],
+          })),
+        "Aucune entreprise"
+      )}
     </div>
   );
 }
