@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Loader2, ChevronDown } from "lucide-react";
+import { Loader2, ChevronDown, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -117,6 +117,25 @@ export function TabEvaluation({ formation, onRefresh }: Props) {
     }
   };
 
+  const handleRemove = async (assignmentId: string) => {
+    setSaving(assignmentId);
+    try {
+      const { error } = await supabase
+        .from("formation_evaluation_assignments")
+        .delete()
+        .eq("id", assignmentId)
+        .eq("session_id", formation.id);
+      if (error) throw error;
+      toast({ title: "Attribution supprimée" });
+      await onRefresh();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Impossible de supprimer";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
+    } finally {
+      setSaving(null);
+    }
+  };
+
   const toggleExpanded = (key: string) =>
     setExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
 
@@ -140,9 +159,20 @@ export function TabEvaluation({ formation, onRefresh }: Props) {
           {label}
         </span>
         {existing && (
-          <span className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full shrink-0 truncate max-w-[150px]" title={existing.questionnaire?.title}>
-            {existing.questionnaire?.title || "Attribué"}
-          </span>
+          <div className="flex items-center gap-1 shrink-0">
+            <span className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full truncate max-w-[150px]" title={existing.questionnaire?.title}>
+              {existing.questionnaire?.title || "Attribué"}
+            </span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-5 w-5 text-muted-foreground hover:text-red-600"
+              onClick={() => handleRemove(existing.id)}
+              disabled={saving === existing.id}
+            >
+              {saving === existing.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+            </Button>
+          </div>
         )}
         <Select
           value={currentValue}
