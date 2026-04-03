@@ -25,7 +25,13 @@ function todayFr(): string {
   });
 }
 
+function getLogoPath(entityName: string): string {
+  if (entityName.toLowerCase().includes("c3v")) return "/logo-c3v-formation.png";
+  return "/logo-mr-formation.png";
+}
+
 function wrap(entityName: string, title: string, body: string): string {
+  const logoSrc = getLogoPath(entityName);
   return `<div style="font-family: Helvetica, Arial, sans-serif; color: #1e293b; max-width: 794px; margin: 0 auto; padding: 40px 50px; line-height: 1.6;">
   <!-- Header -->
   <div style="border-bottom: 3px solid #374151; padding-bottom: 16px; margin-bottom: 32px; display: flex; justify-content: space-between; align-items: center;">
@@ -33,9 +39,7 @@ function wrap(entityName: string, title: string, body: string): string {
       <p style="font-size: 20px; font-weight: 700; margin: 0; color: #111827;">${entityName}</p>
       <p style="font-size: 12px; color: #6b7280; margin: 4px 0 0 0;">Organisme de formation professionnelle</p>
     </div>
-    <div style="width: 80px; height: 80px; border: 1px dashed #d1d5db; display: flex; align-items: center; justify-content: center; border-radius: 8px;">
-      <span style="font-size: 10px; color: #9ca3af;">Logo</span>
-    </div>
+    <img src="${logoSrc}" alt="${entityName}" style="width: 80px; height: auto; object-fit: contain;" />
   </div>
 
   <!-- Title -->
