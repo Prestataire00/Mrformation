@@ -275,14 +275,65 @@ function conventionEntreprise(data: TemplateData): string {
 // ──────────────────────────────────────────────
 
 function feuilleEmargement(data: TemplateData): string {
-  const { formation, company, entityName } = data;
+  const { formation, learner, company, entityName } = data;
   const co = getCompanyInfo(entityName);
   const companyName = company?.company_name || "";
   const modalite = MODE_LABELS[formation.mode] || formation.mode;
   const enrollments = formation.enrollments || [];
   const trainers = formation.formation_trainers || [];
   const timeSlots = formation.formation_time_slots || [];
+  const signatures = formation.signatures || [];
   const formateursNoms = trainers.filter((ft) => ft.trainer).map((ft) => `${ft.trainer!.last_name?.toUpperCase()} ${ft.trainer!.first_name}`).join(", ") || "[Formateur]";
+
+  // ── Format INDIVIDUEL (Document 10) quand learner est passé ──
+  if (learner) {
+    const fullName = `${learner.last_name?.toUpperCase()} ${learner.first_name}`;
+    const learnerId = enrollments.find((e) => e.learner?.last_name === learner.last_name && e.learner?.first_name === learner.first_name)?.learner?.id;
+
+    const infoBlock = `
+      <div style="border: 1px solid #333; padding: 12px 16px; margin-bottom: 20px; font-size: 12px; line-height: 1.8;">
+        Nom du stagiaire: <strong>${fullName}</strong><br/>
+        Nom de la formation: <strong>${formation.title}</strong><br/>
+        Date de la formation: du <strong>${formatDateFr(formation.start_date)}</strong> au <strong>${formatDateFr(formation.end_date)}</strong><br/>
+        Lieu de la formation: <strong>${modalite}</strong><br/>
+        Durée: <strong>${formation.planned_hours || "—"} heure(s)</strong> heures<br/>
+        Prestataire de la formation: <strong>${co.name} N° de déclaration d'activité: ${co.nda}</strong><br/>
+        Formateur(s): ${formateursNoms}
+      </div>`;
+
+    let slotBlocks = "";
+    for (const slot of timeSlots) {
+      const dateStr = formatDateFr(slot.start_time);
+      const startTime = new Date(slot.start_time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+      const endTime = new Date(slot.end_time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+
+      // Check signatures for this slot
+      const trainerSigned = trainers.some((ft) =>
+        ft.trainer && signatures.some((s) => s.time_slot_id === slot.id && s.signer_id === ft.trainer!.id && s.signer_type === "trainer")
+      );
+      const learnerSigned = learnerId ? signatures.some((s) => s.time_slot_id === slot.id && s.signer_id === learnerId && s.signer_type === "learner") : false;
+
+      slotBlocks += `
+        <div style="background: #EFF6FF; border: 0.5px solid #BFDBFE; border-radius: 6px; padding: 12px; margin-bottom: 12px;">
+          <p style="text-decoration: underline; font-size: 11px; margin: 0 0 8px;">Créneau: De ${dateStr} - ${startTime} À ${dateStr} - ${endTime} (${formation.title})</p>
+          ${trainers.filter((ft) => ft.trainer).map((ft) => `
+            <p style="margin: 4px 0; font-size: 11px;">${ft.trainer!.last_name?.toUpperCase()} ${ft.trainer!.first_name}</p>
+            <p style="color: #666; font-size: 10px; margin: 0 0 8px;">${trainerSigned ? "Présent (A signé en présentiel)" : ""}</p>
+          `).join("")}
+          <p style="font-weight: 700; margin: 4px 0; font-size: 11px;">${fullName}</p>
+          <p style="color: #666; font-size: 10px; margin: 0;">${learnerSigned ? "Présent (A signé en présentiel)" : ""}</p>
+        </div>`;
+    }
+
+    const body = `
+      ${infoBlock}
+      <h2 style="text-align: center; font-weight: 700; font-size: 14px; margin: 20px 0 12px 0;">Tableau de signature</h2>
+      ${slotBlocks.length > 0 ? slotBlocks : `<p style="color: #999; font-style: italic;">Aucun créneau planifié.</p>`}`;
+
+    return wrap(entityName, "Feuille d'émargement", body);
+  }
+
+  // ── Format COLLECTIF (Document 2) — pas de learner passé ──
 
   const contextLine = `Formation : ${formation.title} - Lieu de formation : ${modalite} (${formation.location || "—"}) - Client : ${companyName}`;
 
@@ -632,83 +683,269 @@ function politiqueRgpd(data: TemplateData): string {
 }
 
 // ──────────────────────────────────────────────
-// Existing templates (convocation, certificat, attestation)
+// DOCUMENT 7 — CONVOCATION (format officiel)
 // ──────────────────────────────────────────────
 
 function convocation(data: TemplateData): string {
   const { formation, learner, entityName } = data;
-  const fullName = learner ? `${learner.first_name} ${learner.last_name}` : "—";
+  const co = getCompanyInfo(entityName);
+  const fullName = learner ? `${learner.last_name?.toUpperCase()} ${learner.first_name}` : "—";
+  const modalite = MODE_LABELS[formation.mode] || "En présentiel";
+  const timeSlots = formation.formation_time_slots || [];
+
+  const slotsHtml = timeSlots.length > 0
+    ? `<ul style="margin: 8px 0; padding-left: 20px; font-size: 12px;">${timeSlots.map((slot) => {
+        const d = formatDateFr(slot.start_time);
+        const s = new Date(slot.start_time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+        const e = new Date(slot.end_time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+        return `<li>De ${d} - ${s} À ${d} - ${e}</li>`;
+      }).join("")}</ul>`
+    : `<p style="color: #999; font-style: italic;">Créneaux non encore planifiés.</p>`;
 
   const body = `
-    <p style="margin-bottom: 20px;">Madame, Monsieur <strong>${fullName}</strong>,</p>
-    <p style="margin-bottom: 20px;">Nous avons le plaisir de vous confirmer votre inscription à la formation suivante :</p>
-    ${infoTable(
-      infoRow("Formation", formation.title || "—") +
-      infoRow("Date de début", formatDateFrLong(formation.start_date)) +
-      infoRow("Date de fin", formatDateFrLong(formation.end_date)) +
-      infoRow("Lieu", formation.location || "À distance") +
-      infoRow("Modalité", MODE_LABELS[formation.mode] || formation.mode || "—") +
-      infoRow("Durée", formation.planned_hours ? `${formation.planned_hours} heure(s)` : "—")
-    )}
-    <p style="margin-bottom: 12px;">Nous vous invitons à vous présenter <strong>15 minutes avant le début de la formation</strong> muni(e) d'une pièce d'identité.</p>
-    <p style="margin-bottom: 12px;">Pour toute question, n'hésitez pas à nous contacter.</p>
-    <p style="margin-top: 24px;">Cordialement,<br/><strong>${entityName}</strong></p>`;
+    <p style="text-align: center; font-weight: 600; font-size: 16px; margin-bottom: 20px;">Convocation à la formation professionnelle</p>
 
-  return wrap(entityName, "Convocation à la formation", body);
+    <p>Bonjour <strong>${fullName}</strong>, Vous êtes convoqué pour la formation :</p>
+
+    <p style="font-weight: 700; font-size: 16px; margin: 16px 0;">${formation.title}</p>
+
+    <p>
+      Lieu de la formation: <strong>${modalite} - ${formation.location || "—"}</strong><br/>
+      Durée de la formation: <strong>${formation.planned_hours || "—"} heure(s)</strong><br/>
+      Dates de la formation: <strong>Du ${formatDateFr(formation.start_date)} au ${formatDateFr(formation.end_date)}</strong>
+    </p>
+
+    <p style="font-weight: 700;">Vos dates en détail :</p>
+    ${slotsHtml}
+
+    <p><strong>Vous trouverez des informations complémentaires concernant la formation sur la page web dédiée aux stagiaires de cette formation:</strong></p>
+
+    <p style="text-align: center; color: #666; font-size: 11px;">https://mrformationcrm.netlify.app/emargement</p>
+
+    <p>Vous pourrez vous connecter à cette page en scannant le QR code ci-dessus.<br/>En cas d'indisponibilité ou de renoncement, veuillez nous prévenir le plus rapidement possible.</p>
+
+    <p><strong>Important :</strong><br/>
+    Vous trouverez dans votre extranet notre <strong>règlement intérieur</strong> dont vous devez avoir pris connaissance <strong>avant</strong> votre entrée en formation, afin d'être informé des règles de fonctionnement dans le cadre de la formation.<br/>
+    Pour les formations qui se déroulent dans votre entreprise, le règlement intérieur de votre entreprise s'applique pour la partie <strong>Sécurité</strong> (article 5).</p>
+
+    <p style="margin-top: 24px;">Nous restons à votre disposition.<br/>Bien cordialement,<br/><strong>${co.name}</strong><br/>${co.address}</p>`;
+
+  return wrap(entityName, "", body);
 }
+
+// ──────────────────────────────────────────────
+// DOCUMENT 8 — CERTIFICAT DE RÉALISATION
+// ──────────────────────────────────────────────
 
 function certificatRealisation(data: TemplateData): string {
-  const { formation, learner, entityName } = data;
-  const fullName = learner ? `${learner.first_name} ${learner.last_name}` : "—";
+  const { formation, learner, company, entityName } = data;
+  const co = getCompanyInfo(entityName);
+  const fullName = learner ? `${learner.last_name?.toUpperCase()} ${learner.first_name}` : "—";
+  const clientName = company?.company_name || formation.formation_companies?.[0]?.client?.company_name || "—";
+  const objectives = formation.program?.objectives || "";
 
   const body = `
-    <p style="margin-bottom: 20px;">Je soussigné(e), responsable de l'organisme de formation <strong>${entityName}</strong>, atteste que :</p>
-    ${infoTable(
-      infoRow("Participant(e)", fullName) +
-      infoRow("Formation", formation.title || "—") +
-      infoRow("Du", formatDateFrLong(formation.start_date)) +
-      infoRow("Au", formatDateFrLong(formation.end_date)) +
-      infoRow("Lieu", formation.location || "À distance") +
-      infoRow("Durée", formation.planned_hours ? `${formation.planned_hours} heure(s)` : "—")
-    )}
-    <p style="margin-bottom: 20px;">a bien suivi l'intégralité de l'action de formation citée ci-dessus.</p>
-    <p style="margin-bottom: 8px;">Fait pour servir et valoir ce que de droit.</p>
-    <p style="margin-bottom: 24px;">Fait à ${formation.location || "—"}, le ${todayFr()}</p>
-    <div style="display: flex; justify-content: space-between; margin-top: 32px;">
-      <div>
-        <p style="font-size: 11px; color: #6b7280; margin: 0 0 40px 0;">Le responsable de l'organisme</p>
-        <div style="border-bottom: 1px solid #d1d5db; width: 200px;"></div>
-      </div>
-      <div>
-        <p style="font-size: 11px; color: #6b7280; margin: 0 0 40px 0;">Le/La participant(e)</p>
-        <div style="border-bottom: 1px solid #d1d5db; width: 200px;"></div>
-      </div>
-    </div>`;
+    <h2 style="text-align: center; color: #DC2626; font-size: 18px; font-weight: 700; text-transform: uppercase; margin-bottom: 24px;">Certificat réalisation de formation</h2>
 
-  return wrap(entityName, "Certificat de réalisation", body);
+    <p>Je, soussigné: <strong>${co.president}</strong>, représentant de l'organisme de formation <strong>${co.name}</strong>,</p>
+
+    <p>atteste que: <strong>${fullName}</strong> a suivi la formation:</p>
+
+    <p>
+      Nom de la formation: <strong>${formation.title}</strong><br/>
+      Lieu de la formation: ${formation.location || "—"}<br/>
+      Dates de la formation: du <strong>${formatDateFr(formation.start_date)}</strong> au <strong>${formatDateFr(formation.end_date)}</strong><br/>
+      Durée de la formation: <strong>${formation.planned_hours || "—"} heure(s)</strong><br/>
+      Présenté par : <strong>${clientName}</strong>
+    </p>
+
+    <hr style="border: 0; border-top: 0.5px solid #ccc; margin: 16px 0;"/>
+
+    <p style="font-style: italic; font-size: 11px;">Nature de l'action concourant au développement des compétences :</p>
+
+    <p style="font-size: 12px; line-height: 2;">
+      ☑ Action de formation<br/>
+      ☐ Bilan de compétences<br/>
+      ☐ Action de VAE<br/>
+      ☐ Action de formation par apprentissage
+    </p>
+
+    <hr style="border: 0; border-top: 0.5px solid #ccc; margin: 16px 0;"/>
+
+    <p style="font-style: italic; font-size: 11px;">Sans préjudice des délais imposés par les règles fiscales, comptables ou commerciales, je m'engage à conserver l'ensemble des pièces justificatives qui ont permis d'établir le présent certificat pendant une durée de 3 ans à compter de la fin de l'année du dernier paiement. En cas de cofinancement des fonds européens la durée de conservation est étendue conformément aux obligations conventionnelles spécifiques.</p>
+
+    <hr style="border: 0; border-top: 0.5px solid #ccc; margin: 16px 0;"/>
+
+    <p><strong>Objectifs de la formation :</strong></p>
+    ${objectives
+      ? `<div style="font-size: 11px; white-space: pre-line;">${objectives}</div>`
+      : `<p style="font-size: 11px; color: #999;"></p>`
+    }
+
+    <p>Résultat de l'évaluation des acquis jalonnant ou terminant la formation (QUIZZ, TEST, QCM etc....) : <strong>ACQUIS</strong></p>
+
+    <p>La feuille d'émargement attestant cette assiduité est fournie en annexe.</p>
+
+    <p style="margin-top: 24px;">Fait à Marseille, le ${todayFrShort()}</p>`;
+
+  return wrap(entityName, "", body);
 }
+
+// ──────────────────────────────────────────────
+// DOCUMENT 9 — ATTESTATION D'ASSIDUITÉ
+// ──────────────────────────────────────────────
 
 function attestationAssiduite(data: TemplateData): string {
   const { formation, learner, entityName } = data;
-  const fullName = learner ? `${learner.first_name} ${learner.last_name}` : "—";
+  const co = getCompanyInfo(entityName);
+  const fullName = learner ? `${learner.last_name?.toUpperCase()} ${learner.first_name}` : "—";
+  const modalite = MODE_LABELS[formation.mode] || "En présentiel";
+
+  // Calculate effective hours from signatures
+  const signatures = formation.signatures || [];
+  const timeSlots = formation.formation_time_slots || [];
+  const learnerId = learner ? (formation.enrollments || []).find((e) => e.learner?.last_name === learner.last_name && e.learner?.first_name === learner.first_name)?.learner?.id : null;
+
+  let heuresEffectives = 0;
+  if (learnerId && timeSlots.length > 0) {
+    for (const slot of timeSlots) {
+      const signed = signatures.some(
+        (s) => s.time_slot_id === slot.id && s.signer_id === learnerId && s.signer_type === "learner"
+      );
+      if (signed) {
+        const ms = new Date(slot.end_time).getTime() - new Date(slot.start_time).getTime();
+        heuresEffectives += ms / 3600000;
+      }
+    }
+  }
+  // Fallback: if no signature data, use total planned hours
+  if (heuresEffectives === 0 && formation.planned_hours) {
+    heuresEffectives = Number(formation.planned_hours);
+  }
+  const totalHours = Number(formation.planned_hours) || heuresEffectives;
+  const tauxRealisation = totalHours > 0 ? ((heuresEffectives / totalHours) * 100).toFixed(2) : "100.00";
 
   const body = `
-    <p style="margin-bottom: 20px;">Je soussigné(e), responsable de l'organisme de formation <strong>${entityName}</strong>, atteste que :</p>
-    ${infoTable(
-      infoRow("Participant(e)", fullName) +
-      infoRow("Formation", formation.title || "—") +
-      infoRow("Période", `Du ${formatDateFrLong(formation.start_date)} au ${formatDateFrLong(formation.end_date)}`) +
-      infoRow("Durée totale", formation.planned_hours ? `${formation.planned_hours} heure(s)` : "—")
-    )}
-    <p style="margin-bottom: 20px;">a suivi la formation avec <strong>assiduité</strong> pour la durée totale indiquée ci-dessus.</p>
-    <p style="margin-bottom: 8px;">Fait pour servir et valoir ce que de droit.</p>
-    <p style="margin-bottom: 24px;">Fait à ${formation.location || "—"}, le ${todayFr()}</p>
-    <div style="margin-top: 32px;">
-      <p style="font-size: 11px; color: #6b7280; margin: 0 0 40px 0;">Signature et cachet de l'organisme</p>
-      <div style="border-bottom: 1px solid #d1d5db; width: 200px;"></div>
-    </div>`;
+    <h1 style="text-align: center; font-size: 28px; font-weight: 700; margin-bottom: 24px;">Attestation d'assiduité</h1>
 
-  return wrap(entityName, "Attestation d'assiduité", body);
+    <p>Je, soussigné: <strong>${co.president}</strong>, représentant de l'organisme de formation <strong>${co.name}</strong>,</p>
+
+    <p>atteste que: <strong>${fullName}</strong> a suivi la formation:</p>
+
+    <h2 style="text-align: center; font-size: 22px; font-weight: 700; margin: 20px 0;">${formation.title}</h2>
+
+    <p>
+      Lieu de la formation: <strong>${modalite}</strong><br/>
+      Dates de la formation: du <strong>${formatDateFr(formation.start_date)}</strong> au <strong>${formatDateFr(formation.end_date)}</strong><br/>
+      Durée de la formation: <strong>${formation.planned_hours || "—"} heure(s)</strong><br/>
+      Type d'action de formation: <strong>Action de formation</strong>
+    </p>
+
+    <h2 style="font-size: 22px; font-weight: 700; margin: 24px 0 12px 0;">Assiduité du stagiaire</h2>
+
+    <p>Durée effectivement suivie par le/la stagiaire: <strong>${heuresEffectives.toFixed(0)}h</strong>,<br/>
+    soit un taux de réalisation de <strong>${tauxRealisation} %</strong>.</p>
+
+    <p>Résultat de l'évaluation des acquis jalonnant ou terminant la formation (QUIZZ, TEST, QCM etc....) : ACQUIS</p>
+
+    <p>La feuille d'émargement attestant cette assiduité est fournie en annexe.</p>
+
+    <p style="margin-top: 24px;">Fait à Marseille, le ${todayFrShort()}</p>`;
+
+  return wrap(entityName, "", body);
+}
+
+// ──────────────────────────────────────────────
+// DOCUMENT 10 — FEUILLE ÉMARGEMENT (individuelle si learner passé)
+// ──────────────────────────────────────────────
+// Note: feuilleEmargement() (Document 2) already handles the collective format.
+// When a learner is passed in TemplateData, we generate the individual format.
+// The existing function at line 277 already handles this — we just need the
+// feuille_emargement key in GENERATORS to point to the updated function.
+// The function feuilleEmargement() was already updated above to handle both cases.
+
+// ──────────────────────────────────────────────
+// DOCUMENT 11 — CERTIFICAT DE RÉUSSITE (design graphique)
+// ──────────────────────────────────────────────
+
+function microCertificat(data: TemplateData): string {
+  const { formation, learner, entityName } = data;
+  const co = getCompanyInfo(entityName);
+  const fullName = learner ? `${learner.last_name?.toUpperCase()} ${learner.first_name?.toUpperCase()}` : "—";
+  const titleUpper = (formation.title || "—").toUpperCase();
+  const code = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`.slice(0, 13);
+
+  return `<div style="font-family: Arial, sans-serif; text-align: center; min-height: 900px; width: 794px; position: relative; background: white; overflow: hidden; padding: 40px 60px; box-sizing: border-box;">
+
+  <!-- Bande teal bas -->
+  <div style="position: absolute; bottom: 0; left: 0; right: 0; height: 70px; background: #00897B;"></div>
+
+  <!-- Diagonales dorées -->
+  <div style="position: absolute; bottom: 35px; left: -20px; width: 280px; height: 6px; background: linear-gradient(90deg, #B8860B, #FFD700, #B8860B); transform: rotate(-8deg);"></div>
+  <div style="position: absolute; bottom: 35px; right: -20px; width: 280px; height: 6px; background: linear-gradient(90deg, #B8860B, #FFD700, #B8860B); transform: rotate(8deg);"></div>
+
+  <!-- Contenu -->
+  <div style="position: relative; z-index: 2;">
+
+    <!-- Couronne -->
+    <div style="margin-bottom: 8px;">
+      <svg width="50" height="40" viewBox="0 0 50 40">
+        <polygon points="5,35 10,10 25,25 40,10 45,35" fill="#B8860B" stroke="#FFD700" stroke-width="1"/>
+        <circle cx="5" cy="10" r="3" fill="#FFD700"/>
+        <circle cx="25" cy="5" r="3" fill="#FFD700"/>
+        <circle cx="45" cy="10" r="3" fill="#FFD700"/>
+      </svg>
+    </div>
+
+    <p style="font-size: 13px; font-weight: 700; margin: 0 0 4px;">Délivré Le ${todayFrShort()}</p>
+
+    <h1 style="font-size: 52px; font-weight: 900; letter-spacing: -1px; margin: 8px 0; color: #111;">Certificat</h1>
+
+    <p style="font-size: 14px; color: #555; margin: 0 0 16px;">Ce certificat atteste que:</p>
+
+    <h2 style="font-size: 36px; font-weight: 900; color: #DC2626; margin: 0 0 16px; text-transform: uppercase; letter-spacing: 1px;">${fullName}</h2>
+
+    <p style="font-size: 14px; color: #333; margin: 0 0 8px;">A suivi la formation avec succès</p>
+
+    <h3 style="font-size: 22px; font-weight: 900; text-transform: uppercase; margin: 0 0 32px; letter-spacing: 0.5px; color: #111;">${titleUpper}</h3>
+
+    <p style="font-size: 12px; color: #666; margin: 0 0 4px;">Nom de l'Organisme de Formation</p>
+    <p style="font-size: 14px; font-weight: 700; margin: 0 0 24px;">${co.name}</p>
+
+    <p style="font-size: 12px; color: #666; margin: 0 0 4px;">Code d'Identification du Certificat</p>
+    <p style="font-size: 14px; font-weight: 700; margin: 0 0 24px;">CODE: ${code}</p>
+
+    <!-- Médailles -->
+    <div style="display: flex; justify-content: center; gap: 24px; margin-bottom: 24px;">
+      <svg width="70" height="70" viewBox="0 0 70 70">
+        <circle cx="35" cy="40" r="25" fill="#E5E7EB" stroke="#D1D5DB" stroke-width="2"/>
+        <polygon points="35,18 28,30 35,37 42,30" fill="#B8860B"/>
+        <text x="35" y="48" text-anchor="middle" font-size="10" font-weight="bold" fill="#374151">★★★</text>
+      </svg>
+      <svg width="70" height="70" viewBox="0 0 70 70">
+        <circle cx="35" cy="40" r="25" fill="#E5E7EB" stroke="#D1D5DB" stroke-width="2"/>
+        <polygon points="35,18 28,30 35,37 42,30" fill="#B8860B"/>
+        <text x="35" y="48" text-anchor="middle" font-size="14" font-weight="bold" fill="#374151">1</text>
+      </svg>
+    </div>
+
+    <!-- Lignes signature -->
+    <div style="display: flex; justify-content: space-around; margin-bottom: 16px;">
+      <div style="width: 180px; border-top: 1px solid #333; padding-top: 4px; font-size: 11px; color: #666;">Signature</div>
+      <div style="width: 180px; border-top: 1px solid #333; padding-top: 4px; font-size: 11px; color: #666;">Signature</div>
+    </div>
+
+    <!-- Médaille dorée centrale -->
+    <div style="margin-bottom: 80px;">
+      <svg width="60" height="60" viewBox="0 0 60 60">
+        <circle cx="30" cy="30" r="26" fill="#D4AF37" stroke="#B8860B" stroke-width="3"/>
+        <circle cx="30" cy="30" r="19" fill="#FFD700" stroke="#B8860B" stroke-width="1"/>
+        <text x="30" y="35" text-anchor="middle" font-size="16" font-weight="bold" fill="#7B3F00">★</text>
+      </svg>
+    </div>
+
+  </div>
+</div>`;
 }
 
 // ──────────────────────────────────────────────
@@ -725,6 +962,7 @@ const GENERATORS: Record<string, (data: TemplateData) => string> = {
   reglement_interieur: reglementInterieur,
   politique_confidentialite: politiqueRgpd,
   programme_formation: programmeFormation,
+  micro_certificat: microCertificat,
 };
 
 export function getDefaultTemplate(docType: string, data: TemplateData): string | null {
