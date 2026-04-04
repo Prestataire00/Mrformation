@@ -664,6 +664,115 @@ export async function exportHtmlToPDF(
   }
 }
 
+/**
+ * Same as exportHtmlToPDF but returns base64 string instead of downloading.
+ * Used for email attachments.
+ */
+export async function exportHtmlToPDFBase64(
+  title: string,
+  htmlContent: string,
+  entityName = "MR FORMATION"
+): Promise<string> {
+  const { default: html2canvas } = await import("html2canvas");
+
+  const container = document.createElement("div");
+  container.style.cssText =
+    "position:fixed;left:-9999px;top:0;width:794px;padding:40px 50px;background:#fff;font-family:Helvetica,Arial,sans-serif;font-size:14px;line-height:1.6;color:#1e293b;";
+
+  container.innerHTML = `
+    <div style="border-bottom:2px solid ${BRAND_BLUE};padding-bottom:12px;margin-bottom:24px;">
+      <h1 style="font-size:22px;font-weight:700;color:${DARK_TEXT};margin:0 0 4px 0;">${title}</h1>
+      <p style="font-size:11px;color:${MUTED_TEXT};margin:0;">Document etabli le ${formatDateFr()} | ${entityName}</p>
+    </div>
+    <div class="document-html-content">${htmlContent}</div>
+  `;
+
+  const style = document.createElement("style");
+  style.textContent = `
+    .document-html-content h1 { font-size:20px;font-weight:700;margin:16px 0 8px; }
+    .document-html-content h2 { font-size:17px;font-weight:600;margin:14px 0 6px; }
+    .document-html-content h3 { font-size:15px;font-weight:600;margin:12px 0 6px; }
+    .document-html-content p { margin:0 0 8px; }
+    .document-html-content ul { list-style:disc;padding-left:24px;margin:0 0 8px; }
+    .document-html-content ol { list-style:decimal;padding-left:24px;margin:0 0 8px; }
+    .document-html-content li { margin:0 0 4px; }
+    .document-html-content table { border-collapse:collapse;width:100%;margin:12px 0; }
+    .document-html-content td, .document-html-content th {
+      border:1px solid #e2e8f0;padding:6px 10px;text-align:left;font-size:13px;
+    }
+    .document-html-content th { background:#f1f5f9;font-weight:600; }
+    .document-html-content blockquote { border-left:3px solid #e2e8f0;padding-left:12px;color:#64748b;margin:8px 0; }
+    .document-html-content pre { background:#f1f5f9;padding:10px;border-radius:4px;font-size:12px;overflow-x:auto; }
+    .document-html-content .variable-chip {
+      display:inline;background:none;border:none;padding:0;font-family:inherit;font-size:inherit;color:inherit;
+    }
+  `;
+  container.prepend(style);
+  document.body.appendChild(container);
+
+  try {
+    const canvas = await html2canvas(container, {
+      scale: 2,
+      useCORS: true,
+      logging: false,
+      backgroundColor: "#ffffff",
+    });
+
+    const imgData = canvas.toDataURL("image/png");
+    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+
+    const pageWidth = 210;
+    const pageHeight = 297;
+    const marginX = 10;
+    const headerH = 18;
+    const footerH = 10;
+    const usableWidth = pageWidth - marginX * 2;
+    const usableTop = headerH + 4;
+    const usableHeight = pageHeight - usableTop - footerH - 4;
+
+    const imgWidth = usableWidth;
+    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+    let remainingHeight = imgHeight;
+    let sourceY = 0;
+    let pageNum = 0;
+
+    while (remainingHeight > 0) {
+      if (pageNum > 0) doc.addPage();
+      pageNum++;
+
+      addPageHeader(doc, entityName);
+
+      const sliceHeight = Math.min(remainingHeight, usableHeight);
+      const sourceSliceHeight = (sliceHeight / imgHeight) * canvas.height;
+
+      const sliceCanvas = document.createElement("canvas");
+      sliceCanvas.width = canvas.width;
+      sliceCanvas.height = sourceSliceHeight;
+      const ctx = sliceCanvas.getContext("2d");
+      if (ctx) {
+        ctx.drawImage(canvas, 0, sourceY, canvas.width, sourceSliceHeight, 0, 0, canvas.width, sourceSliceHeight);
+      }
+
+      doc.addImage(sliceCanvas.toDataURL("image/png"), "PNG", marginX, usableTop, imgWidth, sliceHeight);
+
+      sourceY += sourceSliceHeight;
+      remainingHeight -= sliceHeight;
+    }
+
+    const totalPages = pageNum;
+    for (let p = 1; p <= totalPages; p++) {
+      doc.setPage(p);
+      addPageFooter(doc, p, totalPages);
+    }
+
+    // Return base64 instead of saving
+    return doc.output("datauristring").split(",")[1];
+  } finally {
+    document.body.removeChild(container);
+  }
+}
+
 // ──────────────────────────────────────────────
 // BPF Full CERFA Export
 // ──────────────────────────────────────────────

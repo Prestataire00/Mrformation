@@ -21,7 +21,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { useEntity } from "@/contexts/EntityContext";
 import { getDefaultTemplate } from "@/lib/document-templates-defaults";
 import { resolveVariables } from "@/lib/utils/resolve-variables";
-import { exportHtmlToPDF } from "@/lib/pdf-export";
+import { exportHtmlToPDF, exportHtmlToPDFBase64 } from "@/lib/pdf-export";
 import type {
   Session, ConventionDocType, ConventionOwnerType,
   FormationConventionDocument, DocumentTemplate,
@@ -89,6 +89,8 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
   const [templates, setTemplates] = useState<DocumentTemplate[]>([]);
   const [loadingTemplates, setLoadingTemplates] = useState(true);
   const [initialized, setInitialized] = useState(false);
+  const [massSending, setMassSending] = useState<string | null>(null);
+  const [massDownloading, setMassDownloading] = useState<string | null>(null);
 
   // Custom doc template selections
   const [customSelections, setCustomSelections] = useState<Record<string, string>>({});
@@ -203,11 +205,9 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     }
   }, [loadingTemplates, initializeDefaultDocs, enrollments.length]);
 
-  // ===== VIEW DOCUMENT =====
+  // ===== GENERATE DOCUMENT HTML (reusable) =====
 
-  const handleView = async (doc: FormationConventionDocument) => {
-    let htmlContent: string | null = null;
-
+  const generateDocHtml = async (doc: FormationConventionDocument): Promise<string> => {
     const learner = enrollments.find((e) => e.learner?.id === doc.owner_id)?.learner;
     const company = companies.find((c) => c.client_id === doc.owner_id)?.client;
     const trainerData = trainers.find((t) => t.trainer_id === doc.owner_id)?.trainer;
@@ -227,19 +227,18 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
       trainer: trainerData || null,
     };
 
+    let htmlContent: string | null = null;
+
     if (doc.template_id) {
-      // Custom template from DB
       const { data: template } = await supabase
         .from("document_templates")
         .select("content")
         .eq("id", doc.template_id)
         .single();
-
-      if (template?.content && template.content.trim() !== "") {
+      if (template?.content?.trim()) {
         htmlContent = resolveVariables(template.content, resolveCtx);
       }
     } else {
-      // System template: check if admin personalized it in DB first
       const { data: systemTemplate } = await supabase
         .from("document_templates")
         .select("content")
@@ -247,27 +246,26 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
         .eq("entity_id", formation.entity_id)
         .single();
 
-      if (systemTemplate?.content && systemTemplate.content.trim() !== "") {
-        // Admin has personalized this template → use DB content
+      if (systemTemplate?.content?.trim()) {
         htmlContent = resolveVariables(systemTemplate.content, resolveCtx);
       } else {
-        // No personalization → use hardcoded TypeScript function
         htmlContent = getDefaultTemplate(doc.doc_type, templateData);
       }
     }
 
-    if (!htmlContent) {
+    return DOMPurify.sanitize(htmlContent || "");
+  };
+
+  // ===== VIEW DOCUMENT =====
+
+  const handleView = async (doc: FormationConventionDocument) => {
+    const html = await generateDocHtml(doc);
+    if (!html) {
       toast({ title: "Aucun modèle disponible pour ce type de document", variant: "destructive" });
       return;
     }
-
     const label = doc.custom_label || DOC_LABELS[doc.doc_type] || doc.doc_type;
-    setPreviewDoc({
-      open: true,
-      html: DOMPurify.sanitize(htmlContent),
-      title: label,
-      filename: `${doc.doc_type}_${Date.now()}`,
-    });
+    setPreviewDoc({ open: true, html, title: label, filename: `${doc.doc_type}_${Date.now()}` });
   };
 
   // ===== HELPERS =====
@@ -334,17 +332,26 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     }
     setSaving(`send-${docId}`);
     const doc = docs.find((d) => d.id === docId);
-    const docLabel = doc ? DOC_LABELS[doc.doc_type] || doc.doc_type : "Document";
+    if (!doc) { setSaving(null); return; }
+    const docLabel = DOC_LABELS[doc.doc_type] || doc.doc_type;
 
     try {
+      const html = await generateDocHtml(doc);
+      const base64 = await exportHtmlToPDFBase64(docLabel, html, entityName);
+
       const res = await fetch("/api/emails/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           to: recipientEmail,
-          subject: `${docLabel} - ${formation.title}`,
-          body: `Veuillez trouver ci-joint le document "${docLabel}" pour la formation "${formation.title}".`,
+          subject: `${docLabel} — ${formation.title}`,
+          body: `Bonjour,\n\nVeuillez trouver ci-joint votre document "${docLabel}" pour la formation "${formation.title}".\n\nCordialement,\nL'équipe formation`,
           session_id: formation.id,
+          attachments: [{
+            filename: `${doc.doc_type.replace(/_/g, "-")}.pdf`,
+            content: base64,
+            type: "application/pdf",
+          }],
         }),
       });
 
@@ -355,12 +362,113 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
         .update({ is_sent: true, sent_at: new Date().toISOString() })
         .eq("id", docId);
 
-      toast({ title: "Document envoyé" });
+      toast({ title: `${docLabel} envoyé avec PDF` });
       onRefresh();
     } catch {
       toast({ title: "Erreur d'envoi", variant: "destructive" });
     }
     setSaving(null);
+  };
+
+  // ===== MASS SEND WITH PDF =====
+
+  const getRecipientEmail = (doc: FormationConventionDocument): string | null => {
+    if (doc.owner_type === "learner") {
+      return enrollments.find((e) => e.learner?.id === doc.owner_id)?.learner?.email || null;
+    }
+    if (doc.owner_type === "company") {
+      return companies.find((c) => c.client_id === doc.owner_id)?.email || null;
+    }
+    if (doc.owner_type === "trainer") {
+      return trainers.find((t) => t.trainer_id === doc.owner_id)?.trainer?.email || null;
+    }
+    return null;
+  };
+
+  const handleMassSendWithPDF = async (ownerType: ConventionOwnerType, docType: string) => {
+    const key = `${ownerType}-${docType}`;
+    setMassSending(key);
+
+    const targetDocs = docs.filter((d) => d.doc_type === docType && d.owner_type === ownerType);
+    let sent = 0;
+    let failed = 0;
+
+    for (const doc of targetDocs) {
+      const email = getRecipientEmail(doc);
+      if (!email) { failed++; continue; }
+
+      try {
+        const html = await generateDocHtml(doc);
+        const base64 = await exportHtmlToPDFBase64(
+          DOC_LABELS[doc.doc_type] || doc.doc_type, html, entityName
+        );
+
+        const res = await fetch("/api/emails/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            to: email,
+            subject: `${DOC_LABELS[doc.doc_type] || doc.doc_type} — ${formation.title}`,
+            body: `Bonjour,\n\nVeuillez trouver ci-joint votre document pour la formation "${formation.title}".\n\nCordialement,\nL'équipe formation`,
+            session_id: formation.id,
+            attachments: [{
+              filename: `${doc.doc_type.replace(/_/g, "-")}.pdf`,
+              content: base64,
+              type: "application/pdf",
+            }],
+          }),
+        });
+
+        if (res.ok) {
+          await supabase
+            .from("formation_convention_documents")
+            .update({ is_sent: true, sent_at: new Date().toISOString() })
+            .eq("id", doc.id);
+          sent++;
+        } else {
+          failed++;
+        }
+      } catch {
+        failed++;
+      }
+
+      // Anti-spam delay
+      await new Promise((r) => setTimeout(r, 800));
+    }
+
+    toast({
+      title: `${sent} envoyé${sent > 1 ? "s" : ""}${failed > 0 ? `, ${failed} échec${failed > 1 ? "s" : ""}` : ""}`,
+    });
+    setMassSending(null);
+    onRefresh();
+  };
+
+  // ===== MASS DOWNLOAD PDF =====
+
+  const handleDownloadAllPDF = async (ownerType: ConventionOwnerType, docType: string) => {
+    const key = `${ownerType}-${docType}`;
+    setMassDownloading(key);
+
+    const targetDocs = docs.filter((d) => d.doc_type === docType && d.owner_type === ownerType);
+    toast({ title: `Génération de ${targetDocs.length} PDF...` });
+
+    for (const doc of targetDocs) {
+      const html = await generateDocHtml(doc);
+      const label = DOC_LABELS[doc.doc_type] || doc.doc_type;
+
+      const learner = enrollments.find((e) => e.learner?.id === doc.owner_id)?.learner;
+      const suffix = learner
+        ? `${learner.last_name}_${learner.first_name}`
+        : doc.owner_id.slice(0, 8);
+
+      await exportHtmlToPDF(label, html, `${doc.doc_type}_${suffix}.pdf`, entityName);
+
+      // Delay to avoid saturating the browser
+      await new Promise((r) => setTimeout(r, 600));
+    }
+
+    toast({ title: `${targetDocs.length} PDF téléchargés` });
+    setMassDownloading(null);
   };
 
   // Mass confirm all docs of a type
@@ -842,8 +950,32 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
       {/* ===== APPRENANTS ===== */}
       {showAll && (
         <div className="border rounded-lg overflow-hidden">
-          <div className="px-4 py-2.5 bg-muted/30 border-b">
+          <div className="flex items-center justify-between px-4 py-2.5 bg-muted/30 border-b">
             <span className="text-sm font-medium">Apprenants ({enrollments.length})</span>
+            {enrollments.length > 0 && (
+              <div className="flex items-center gap-1.5">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-6 text-xs gap-1"
+                  onClick={() => handleMassSendWithPDF("learner", "convocation")}
+                  disabled={massSending !== null}
+                >
+                  {massSending?.startsWith("learner") ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+                  Envoyer tout
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 text-xs gap-1"
+                  onClick={() => handleDownloadAllPDF("learner", "convocation")}
+                  disabled={massDownloading !== null}
+                >
+                  {massDownloading?.startsWith("learner") ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
+                  PDF tout
+                </Button>
+              </div>
+            )}
           </div>
           {enrollments.length === 0 ? (
             <p className="text-sm text-muted-foreground px-4 py-4 text-center italic">Aucun apprenant inscrit.</p>
@@ -860,8 +992,19 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
       {/* ===== ENTREPRISES ===== */}
       {showAll && (
         <div className="border rounded-lg overflow-hidden">
-          <div className="px-4 py-2.5 bg-muted/30 border-b">
+          <div className="flex items-center justify-between px-4 py-2.5 bg-muted/30 border-b">
             <span className="text-sm font-medium">Entreprises ({companies.length})</span>
+            {companies.length > 0 && (
+              <div className="flex items-center gap-1.5">
+                <Button size="sm" variant="outline" className="h-6 text-xs gap-1"
+                  onClick={() => handleMassSendWithPDF("company", "convention_entreprise")}
+                  disabled={massSending !== null}
+                >
+                  {massSending?.startsWith("company") ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+                  Envoyer tout
+                </Button>
+              </div>
+            )}
           </div>
           {companies.length === 0 ? (
             <p className="text-sm text-muted-foreground px-4 py-4 text-center italic">Aucune entreprise.</p>
@@ -878,8 +1021,19 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
       {/* ===== FORMATEURS ===== */}
       {showAll && (
         <div className="border rounded-lg overflow-hidden">
-          <div className="px-4 py-2.5 bg-muted/30 border-b">
+          <div className="flex items-center justify-between px-4 py-2.5 bg-muted/30 border-b">
             <span className="text-sm font-medium">Formateurs ({trainers.length})</span>
+            {trainers.length > 0 && (
+              <div className="flex items-center gap-1.5">
+                <Button size="sm" variant="outline" className="h-6 text-xs gap-1"
+                  onClick={() => handleMassSendWithPDF("trainer", "convention_intervention")}
+                  disabled={massSending !== null}
+                >
+                  {massSending?.startsWith("trainer") ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+                  Envoyer tout
+                </Button>
+              </div>
+            )}
           </div>
           {trainers.length === 0 ? (
             <p className="text-sm text-muted-foreground px-4 py-4 text-center italic">Aucun formateur.</p>
