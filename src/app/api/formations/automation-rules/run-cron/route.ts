@@ -49,6 +49,127 @@ export async function POST(request: NextRequest) {
 
   const supabase = createServiceClient();
   const today = new Date().toISOString().split("T")[0];
+
+  // Parse optional body for targeted mode
+  let specificTrigger: string | null = null;
+  let specificSessionId: string | null = null;
+  try {
+    const body = await request.json();
+    specificTrigger = body.trigger_type || null;
+    specificSessionId = body.session_id || null;
+  } catch { /* empty body = normal cron mode */ }
+
+  // ── TARGETED MODE: specific trigger + session ──
+  if (specificTrigger && specificSessionId) {
+    try {
+      const { data: session } = await supabase
+        .from("sessions")
+        .select("id, title, start_date, end_date, location, entity_id, status")
+        .eq("id", specificSessionId)
+        .single();
+
+      if (!session) {
+        return NextResponse.json({ error: "Session not found" }, { status: 404 });
+      }
+
+      const { data: entity } = await supabase
+        .from("entities").select("id, name").eq("id", session.entity_id).single();
+      const FROM_ADDRESS = getFromAddress(entity?.name || "MR FORMATION");
+
+      const { data: rules } = await supabase
+        .from("formation_automation_rules")
+        .select("*")
+        .eq("entity_id", session.entity_id)
+        .eq("trigger_type", specificTrigger)
+        .eq("is_enabled", true);
+
+      if (!rules || rules.length === 0) {
+        return NextResponse.json({ success: true, sent: 0, message: "No rules for this trigger" });
+      }
+
+      // Pre-load templates
+      const templateIds = rules.filter((r) => r.template_id).map((r) => r.template_id);
+      let templateMap: Record<string, { subject: string; body: string }> = {};
+      if (templateIds.length > 0) {
+        const { data: tplData } = await supabase.from("email_templates").select("id, subject, body").in("id", templateIds);
+        if (tplData) templateMap = Object.fromEntries(tplData.map((t) => [t.id, t]));
+      }
+
+      let emailsSent = 0;
+
+      for (const rule of rules) {
+        const recipientType = rule.recipient_type || "learners";
+        type Recipient = { id: string; email: string; first_name: string; last_name: string; type: "learner" | "trainer" };
+        const recipients: Recipient[] = [];
+
+        if (recipientType === "learners" || recipientType === "all") {
+          const { data: enrollments } = await supabase
+            .from("enrollments")
+            .select("learner_id, learner:learners!enrollments_learner_id_fkey(id, email, first_name, last_name)")
+            .eq("session_id", session.id).in("status", ["registered", "confirmed", "completed"]);
+          for (const e of enrollments ?? []) {
+            const l = e.learner as unknown as { id: string; email: string | null; first_name: string; last_name: string } | null;
+            if (l?.email) recipients.push({ id: l.id, email: l.email, first_name: l.first_name, last_name: l.last_name, type: "learner" });
+          }
+        }
+
+        if (recipientType === "trainers" || recipientType === "all") {
+          const { data: trainerLinks } = await supabase
+            .from("formation_trainers")
+            .select("trainer:trainers!formation_trainers_trainer_id_fkey(id, email, first_name, last_name)")
+            .eq("session_id", session.id);
+          for (const tl of trainerLinks ?? []) {
+            const t = tl.trainer as unknown as { id: string; email: string | null; first_name: string; last_name: string } | null;
+            if (t?.email) recipients.push({ id: t.id, email: t.email, first_name: t.first_name, last_name: t.last_name, type: "trainer" });
+          }
+        }
+
+        const tpl = rule.template_id ? templateMap[rule.template_id] : null;
+
+        for (const recipient of recipients) {
+          let subject: string;
+          let textBody: string;
+
+          if (tpl) {
+            subject = resolveVariables(tpl.subject, { session: session as unknown as import("@/lib/types").Session, learner: recipient.type === "learner" ? recipient as unknown as import("@/lib/types").Learner : null, trainer: recipient.type === "trainer" ? recipient as unknown as import("@/lib/types").Trainer : null });
+            textBody = resolveVariables(tpl.body, { session: session as unknown as import("@/lib/types").Session, learner: recipient.type === "learner" ? recipient as unknown as import("@/lib/types").Learner : null, trainer: recipient.type === "trainer" ? recipient as unknown as import("@/lib/types").Trainer : null });
+          } else {
+            subject = `${DOCUMENT_TYPE_SUBJECTS[rule.document_type] ?? rule.document_type} — ${session.title}`;
+            textBody = `Bonjour ${recipient.first_name} ${recipient.last_name},\n\nVeuillez trouver ci-joint votre document : ${DOCUMENT_TYPE_SUBJECTS[rule.document_type] ?? rule.document_type}.\n\nFormation : ${session.title}\n\nCordialement,\nL'équipe de formation`;
+          }
+
+          let emailStatus: "sent" | "failed" = "sent";
+          let errorMessage: string | null = null;
+
+          if (resend) {
+            try {
+              const result = await resend.emails.send({ from: FROM_ADDRESS, to: [recipient.email], subject, html: toHtmlBody(textBody), text: textBody });
+              if (result.error) { emailStatus = "failed"; errorMessage = result.error.message ?? "Resend error"; }
+            } catch (err) { emailStatus = "failed"; errorMessage = err instanceof Error ? err.message : "Erreur inconnue"; }
+          } else {
+            console.log(`[automation] Simulated ${specificTrigger} email to:`, recipient.email, "—", subject);
+          }
+
+          await supabase.from("email_history").insert({
+            entity_id: session.entity_id, recipient_email: recipient.email,
+            subject, body: textBody, status: emailStatus,
+            sent_at: new Date().toISOString(), sent_via: "resend",
+            session_id: session.id, recipient_type: recipient.type,
+            recipient_id: recipient.id, error_message: errorMessage,
+          });
+
+          if (emailStatus === "sent") emailsSent++;
+        }
+      }
+
+      return NextResponse.json({ success: true, sent: emailsSent, trigger: specificTrigger, session: session.title });
+    } catch (err) {
+      console.error(`[automation] ${specificTrigger} error:`, err);
+      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    }
+  }
+
+  // ── NORMAL CRON MODE: all entities ──
   const results: Array<{ entity: string; sent: number; processed: number; errors: number }> = [];
   let totalSent = 0;
 
@@ -62,12 +183,13 @@ export async function POST(request: NextRequest) {
       let processed = 0;
       const errors: string[] = [];
 
-      // 1. Fetch enabled rules
+      // 1. Fetch enabled rules (only date-based triggers for cron)
       const { data: rules } = await supabase
         .from("formation_automation_rules")
         .select("*")
         .eq("entity_id", entityId)
-        .eq("is_enabled", true);
+        .eq("is_enabled", true)
+        .in("trigger_type", ["session_start_minus_days", "session_end_plus_days"]);
 
       if (!rules || rules.length === 0) {
         results.push({ entity: entity.name, sent: 0, processed: 0, errors: 0 });

@@ -54,6 +54,17 @@ export function TabParcours({ formation, onRefresh }: Props) {
         .eq("entity_id", formation.entity_id);
       if (error) throw error;
       toast({ title: "Formation terminée" });
+
+      // Trigger on_session_completion automation rules
+      fetch("/api/formations/automation-rules/trigger-event", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          trigger_type: "on_session_completion",
+          session_id: formation.id,
+        }),
+      }).catch((err) => console.error("[automation] on_session_completion:", err));
+
       await onRefresh();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Impossible de terminer la formation";

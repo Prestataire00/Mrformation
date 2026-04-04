@@ -46,6 +46,8 @@ const DOCUMENT_TYPE_LABELS: Record<string, string> = {
 const TRIGGER_TYPE_LABELS: Record<string, string> = {
   session_start_minus_days: "jours avant le début",
   session_end_plus_days: "jours après la fin",
+  on_session_creation: "à la création de la session",
+  on_session_completion: "à la complétion (terminé)",
 };
 
 const RECIPIENT_LABELS: Record<string, string> = {
@@ -256,15 +258,17 @@ export default function AutomationPage() {
                   <div className="space-y-1">
                     <Label className="text-xs text-gray-500">Déclencheur</Label>
                     <div className="flex items-center gap-1">
-                      <Input
-                        type="number"
-                        min={1}
-                        max={365}
-                        value={rule.days_offset}
-                        onChange={(e) => updateRule(index, "days_offset", parseInt(e.target.value) || 1)}
-                        className="w-16 h-8 text-xs text-center"
-                        disabled={!rule.is_enabled}
-                      />
+                      {(rule.trigger_type === "session_start_minus_days" || rule.trigger_type === "session_end_plus_days") && (
+                        <Input
+                          type="number"
+                          min={1}
+                          max={365}
+                          value={rule.days_offset}
+                          onChange={(e) => updateRule(index, "days_offset", parseInt(e.target.value) || 1)}
+                          className="w-16 h-8 text-xs text-center"
+                          disabled={!rule.is_enabled}
+                        />
+                      )}
                       <Select
                         value={rule.trigger_type}
                         onValueChange={(v) => updateRule(index, "trigger_type", v)}
@@ -276,6 +280,8 @@ export default function AutomationPage() {
                         <SelectContent>
                           <SelectItem value="session_start_minus_days">avant début</SelectItem>
                           <SelectItem value="session_end_plus_days">après fin</SelectItem>
+                          <SelectItem value="on_session_creation">à la création</SelectItem>
+                          <SelectItem value="on_session_completion">à la complétion</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -368,7 +374,7 @@ export default function AutomationPage() {
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-gray-400">{RECIPIENT_LABELS[rule.recipient_type] || "📚"}</span>
                     <span className="font-medium text-gray-800 bg-white border border-gray-200 px-2 py-0.5 rounded">
-                      {rule.trigger_type === "session_start_minus_days" ? `J-${rule.days_offset}` : `J+${rule.days_offset}`}
+                      {rule.trigger_type === "session_start_minus_days" ? `J-${rule.days_offset}` : rule.trigger_type === "session_end_plus_days" ? `J+${rule.days_offset}` : rule.trigger_type === "on_session_creation" ? "Création" : "Complétion"}
                     </span>
                   </div>
                 </div>

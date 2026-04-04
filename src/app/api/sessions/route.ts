@@ -202,6 +202,20 @@ export async function POST(request: NextRequest) {
       details: { name: data.title ?? body.title },
     });
 
+    // Trigger on_session_creation automation rules (fire & forget)
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.URL || "https://mrformationcrm.netlify.app";
+    fetch(`${appUrl}/api/formations/automation-rules/run-cron`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${process.env.CRON_SECRET}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        trigger_type: "on_session_creation",
+        session_id: data.id,
+      }),
+    }).catch((err) => console.error("[automation] on_session_creation error:", err));
+
     return NextResponse.json({ data, error: null }, { status: 201 });
   } catch (err) {
     return NextResponse.json({ data: null, error: sanitizeError(err, "create session") }, { status: 500 });
