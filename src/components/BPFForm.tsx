@@ -4,7 +4,11 @@ import { useState, useCallback, useEffect } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
-import { Loader2, BarChart3, AlertTriangle, CheckCircle2, XCircle, ClipboardCheck } from "lucide-react";
+import { Loader2, BarChart3, AlertTriangle, CheckCircle2, XCircle, ClipboardCheck, Sparkles } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from "@/components/ui/dialog";
 import { downloadXlsx } from "@/lib/export-xlsx";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/use-toast";
@@ -77,6 +81,20 @@ export function BPFForm({ title }: BPFFormProps) {
     link?: string;
   }
   const [verifications, setVerifications] = useState<VerificationCheck[]>([]);
+
+  // AI assistant state
+  interface AISuggestion {
+    id: string;
+    suggestion: string;
+    reason: string;
+    label?: string;
+    applied?: boolean;
+  }
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiDialogOpen, setAiDialogOpen] = useState(false);
+  const [aiSuggestions, setAiSuggestions] = useState<AISuggestion[]>([]);
+  const [aiType, setAiType] = useState<string>("");
+  const [aiApplying, setAiApplying] = useState(false);
 
   const fiscalYear = dateFrom ? new Date(dateFrom).getFullYear() : currentYear;
 
@@ -574,6 +592,108 @@ export function BPFForm({ title }: BPFFormProps) {
 
   const handleFilter = () => fetchData();
 
+  // ─── AI Classification ───
+
+  const handleAiClassify = async (type: "learner_type" | "bpf_objective" | "nsf_code") => {
+    if (!entityId) return;
+    setAiLoading(true);
+    setAiType(type);
+
+    try {
+      let items: Record<string, unknown>[] = [];
+
+      if (type === "learner_type") {
+        const { data } = await supabase
+          .from("learners")
+          .select("id, first_name, last_name, email, learner_type, client:clients(company_name, siret)")
+          .eq("entity_id", entityId)
+          .or("learner_type.is.null,learner_type.eq.");
+        items = (data || []).map((l) => {
+          const client = Array.isArray(l.client) ? l.client[0] : l.client;
+          return {
+            id: l.id,
+            first_name: l.first_name,
+            last_name: l.last_name,
+            email: l.email,
+            client_name: (client as Record<string, unknown>)?.company_name || null,
+            client_siret: (client as Record<string, unknown>)?.siret || null,
+          };
+        });
+      }
+
+      if (type === "bpf_objective" || type === "nsf_code") {
+        const field = type === "bpf_objective" ? "bpf_objective" : "nsf_code";
+        const { data } = await supabase
+          .from("trainings")
+          .select("id, title, description, category, duration_hours, bpf_objective, nsf_code")
+          .eq("entity_id", entityId)
+          .is(field, null);
+        items = (data || []).map((t) => ({
+          id: t.id,
+          title: t.title,
+          description: t.description,
+          category: t.category,
+          duration_hours: t.duration_hours,
+        }));
+      }
+
+      if (items.length === 0) {
+        toast({ title: "Aucune donnée à classifier", description: "Toutes les données sont déjà renseignées." });
+        setAiLoading(false);
+        return;
+      }
+
+      const res = await fetch("/api/bpf/ai-classify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type, items }),
+      });
+
+      const result = await res.json();
+
+      if (!res.ok) {
+        toast({ title: "Erreur IA", description: result.error, variant: "destructive" });
+        setAiLoading(false);
+        return;
+      }
+
+      setAiSuggestions(result.suggestions || []);
+      setAiDialogOpen(true);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Erreur";
+      toast({ title: "Erreur", description: msg, variant: "destructive" });
+    }
+    setAiLoading(false);
+  };
+
+  const handleApplyAiSuggestions = async () => {
+    setAiApplying(true);
+    let applied = 0;
+
+    for (const s of aiSuggestions) {
+      if (s.applied) continue;
+
+      try {
+        if (aiType === "learner_type") {
+          await supabase.from("learners").update({ learner_type: s.suggestion }).eq("id", s.id);
+        } else if (aiType === "bpf_objective") {
+          await supabase.from("trainings").update({ bpf_objective: s.suggestion }).eq("id", s.id);
+        } else if (aiType === "nsf_code") {
+          await supabase.from("trainings").update({ nsf_code: s.suggestion, nsf_label: s.label || s.suggestion }).eq("id", s.id);
+        }
+        s.applied = true;
+        applied++;
+      } catch { /* continue */ }
+    }
+
+    setAiSuggestions([...aiSuggestions]);
+    setAiApplying(false);
+    toast({ title: `${applied} suggestion${applied > 1 ? "s" : ""} appliquée${applied > 1 ? "s" : ""}` });
+
+    // Refresh BPF data
+    await fetchData();
+  };
+
   // Section G is the only manually-saveable section now
   const handleSaveG = async () => {
     if (!entityId) return;
@@ -770,19 +890,41 @@ export function BPFForm({ title }: BPFFormProps) {
             </h3>
           </div>
           <div className="space-y-1.5">
-            {verifications.map((check, i) => (
-              <div key={i} className={`flex items-center justify-between text-sm px-3 py-1.5 rounded-lg ${check.ok ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700"}`}>
-                <div className="flex items-center gap-2">
-                  {check.ok ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0" /> : <AlertTriangle className="h-3.5 w-3.5 shrink-0" />}
-                  <span>{check.label} : <strong>{check.valid}/{check.total}</strong></span>
+            {verifications.map((check, i) => {
+              // Map check labels to AI classification types
+              const aiTypeMap: Record<string, "learner_type" | "bpf_objective" | "nsf_code"> = {
+                "Apprenants avec type renseigné": "learner_type",
+                "Formations avec objectif BPF": "bpf_objective",
+                "Formations avec code NSF": "nsf_code",
+              };
+              const classifyType = aiTypeMap[check.label];
+
+              return (
+                <div key={i} className={`flex items-center justify-between text-sm px-3 py-1.5 rounded-lg ${check.ok ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700"}`}>
+                  <div className="flex items-center gap-2">
+                    {check.ok ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0" /> : <AlertTriangle className="h-3.5 w-3.5 shrink-0" />}
+                    <span>{check.label} : <strong>{check.valid}/{check.total}</strong></span>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {!check.ok && classifyType && (
+                      <button
+                        onClick={() => handleAiClassify(classifyType)}
+                        disabled={aiLoading}
+                        className="flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-800 disabled:opacity-50"
+                      >
+                        {aiLoading && aiType === classifyType ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                        Classifier avec l&apos;IA
+                      </button>
+                    )}
+                    {!check.ok && check.link && (
+                      <Link href={check.link} className="text-xs font-medium underline hover:no-underline">
+                        Corriger →
+                      </Link>
+                    )}
+                  </div>
                 </div>
-                {!check.ok && check.link && (
-                  <Link href={check.link} className="text-xs font-medium underline hover:no-underline shrink-0">
-                    Corriger →
-                  </Link>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -827,6 +969,50 @@ export function BPFForm({ title }: BPFFormProps) {
         onSectionGChange={setSectionGManual}
         onSaveG={handleSaveG}
       />
+
+      {/* ═══ DIALOG SUGGESTIONS IA ═══ */}
+      <Dialog open={aiDialogOpen} onOpenChange={setAiDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-indigo-600" />
+              Suggestions de l&apos;IA — {aiType === "learner_type" ? "Types d'apprenants" : aiType === "bpf_objective" ? "Objectifs BPF" : "Codes NSF"}
+            </DialogTitle>
+          </DialogHeader>
+
+          {aiSuggestions.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">Aucune suggestion.</p>
+          ) : (
+            <div className="space-y-2">
+              {aiSuggestions.map((s, i) => (
+                <div key={i} className={`flex items-center justify-between px-3 py-2 rounded-lg text-sm ${s.applied ? "bg-green-50 border border-green-200" : "bg-gray-50 border border-gray-200"}`}>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      {s.applied && <CheckCircle2 className="h-3.5 w-3.5 text-green-600 shrink-0" />}
+                      <span className="font-medium">{s.id.slice(0, 8)}...</span>
+                      <span className="text-xs bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-full">{s.suggestion}</span>
+                      {s.label && <span className="text-xs text-gray-500">({s.label})</span>}
+                    </div>
+                    <p className="text-xs text-gray-500 mt-0.5">{s.reason}</p>
+                  </div>
+                  {s.applied && <span className="text-xs text-green-600 shrink-0">Appliqué</span>}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAiDialogOpen(false)}>Fermer</Button>
+            {aiSuggestions.some((s) => !s.applied) && (
+              <Button onClick={handleApplyAiSuggestions} disabled={aiApplying}>
+                {aiApplying && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                <Sparkles className="h-4 w-4 mr-2" />
+                Appliquer toutes les suggestions
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
