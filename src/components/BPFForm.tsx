@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
-import { Loader2, BarChart3, AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
+import { Loader2, BarChart3, AlertTriangle, CheckCircle2, XCircle, ClipboardCheck } from "lucide-react";
 import { downloadXlsx } from "@/lib/export-xlsx";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/use-toast";
@@ -44,7 +45,6 @@ export function BPFForm({ title }: BPFFormProps) {
   const [dateTo, setDateTo] = useState(`${currentYear}-12-31`);
   const [filteredFrom, setFilteredFrom] = useState(`${currentYear}-01-01`);
   const [filteredTo, setFilteredTo] = useState(`${currentYear}-12-31`);
-  const [showFinancier, setShowFinancier] = useState(false);
   const [loading, setLoading] = useState(true);
 
   // Computed BPF data
@@ -67,6 +67,16 @@ export function BPFForm({ title }: BPFFormProps) {
   const [prevYearData, setPrevYearData] = useState<{
     stagiaires: number; heures: number; actions: number; ca: number; satisfaction: number | null;
   } | null>(null);
+
+  // Data verification
+  interface VerificationCheck {
+    label: string;
+    ok: boolean;
+    total: number;
+    valid: number;
+    link?: string;
+  }
+  const [verifications, setVerifications] = useState<VerificationCheck[]>([]);
 
   const fiscalYear = dateFrom ? new Date(dateFrom).getFullYear() : currentYear;
 
@@ -402,11 +412,13 @@ export function BPFForm({ title }: BPFFormProps) {
       setTotalCA(kpiCA);
 
       // ─── Satisfaction score from questionnaire_responses ───
+      let satisfactionResponseCount = 0;
       try {
         const { data: satisfactionResponses } = await supabase
           .from("questionnaire_responses")
           .select("responses")
           .in("session_id", sessionIds.length > 0 ? sessionIds : ["__none__"]);
+        satisfactionResponseCount = satisfactionResponses?.length || 0;
 
         let satScore: number | null = null;
         if (satisfactionResponses && satisfactionResponses.length > 0) {
@@ -481,12 +493,65 @@ export function BPFForm({ title }: BPFFormProps) {
         setPrevYearData(null);
       }
 
+      // ─── Data verification checks ───
+      const checks: VerificationCheck[] = [];
+
+      // 1. Sessions avec heures
+      const sessionsWithHours = sessions ? sessions.filter((s) => {
+        const t = Array.isArray(s.training) ? (s.training as Record<string, unknown>[])[0] : (s.training as Record<string, unknown> | null);
+        return ((t?.duration_hours as number) || 0) > 0;
+      }).length : 0;
+      const totalSessions = sessions?.length || 0;
+      checks.push({ label: "Sessions avec heures renseignées", ok: sessionsWithHours === totalSessions && totalSessions > 0, total: totalSessions, valid: sessionsWithHours, link: "/admin/sessions" });
+
+      // 2. Formations avec objectif BPF
+      const trainingsWithObj = sessions ? sessions.filter((s) => {
+        const t = Array.isArray(s.training) ? (s.training as Record<string, unknown>[])[0] : (s.training as Record<string, unknown> | null);
+        return !!(t?.bpf_objective);
+      }).length : 0;
+      checks.push({ label: "Formations avec objectif BPF", ok: trainingsWithObj === totalSessions && totalSessions > 0, total: totalSessions, valid: trainingsWithObj, link: "/admin/trainings" });
+
+      // 3. Formations avec code NSF
+      const trainingsWithNsf = sessions ? sessions.filter((s) => {
+        const t = Array.isArray(s.training) ? (s.training as Record<string, unknown>[])[0] : (s.training as Record<string, unknown> | null);
+        return !!(t?.nsf_code);
+      }).length : 0;
+      checks.push({ label: "Formations avec code NSF", ok: trainingsWithNsf === totalSessions && totalSessions > 0, total: totalSessions, valid: trainingsWithNsf, link: "/admin/trainings" });
+
+      // 4. Devis acceptés
+      const nbQuotes = acceptedQuotes?.length || 0;
+      checks.push({ label: "Devis acceptés (CA)", ok: nbQuotes > 0, total: nbQuotes, valid: nbQuotes, link: "/admin/crm" });
+
+      // 5. Formateurs avec type + taux horaire
+      const { data: allTrainers } = await supabase
+        .from("trainers")
+        .select("id, type, hourly_rate")
+        .eq("entity_id", entityId);
+      const trainersComplete = (allTrainers || []).filter((t) => t.type && t.hourly_rate != null && t.hourly_rate > 0).length;
+      const trainersTotal = allTrainers?.length || 0;
+      checks.push({ label: "Formateurs avec type et taux horaire", ok: trainersComplete === trainersTotal && trainersTotal > 0, total: trainersTotal, valid: trainersComplete, link: "/admin/trainers" });
+
+      // 6. Apprenants avec learner_type
+      const { data: allLearners } = await supabase
+        .from("learners")
+        .select("id, learner_type")
+        .eq("entity_id", entityId);
+      const learnersWithType = (allLearners || []).filter((l) => l.learner_type && l.learner_type !== "").length;
+      const learnersTotal = allLearners?.length || 0;
+      checks.push({ label: "Apprenants avec type renseigné", ok: learnersWithType === learnersTotal && learnersTotal > 0, total: learnersTotal, valid: learnersWithType, link: "/admin/clients" });
+
+      // 7. Questionnaires satisfaction
+      const satisfactionCount = satisfactionResponseCount;
+      checks.push({ label: "Questionnaires de satisfaction", ok: satisfactionCount > 0, total: satisfactionCount, valid: satisfactionCount, link: "/admin/questionnaires" });
+
+      setVerifications(checks);
+
       setBpf({
         personnesInternes: { nombre: internalCount ?? 0, heures: internalHours },
         personnesExternes: { nombre: externalCount ?? 0, heures: externalHours },
         f1: f1Rows,
         f1DistanceCount: distanceLearners.size,
-        f2: { stagiaires: 0, heures: 0 },
+        f2: { stagiaires: gManual.stagiaires, heures: gManual.heures },
         f3: f3Rows,
         f4: f4Rows,
         g: gManual,
@@ -695,11 +760,34 @@ export function BPFForm({ title }: BPFFormProps) {
         );
       })()}
 
-      <SectionA
-        entityName={entityName}
-        showFinancier={showFinancier}
-        onToggleFinancier={() => setShowFinancier(!showFinancier)}
-      />
+      {/* ═══ VÉRIFICATION DES DONNÉES ═══ */}
+      {verifications.length > 0 && (
+        <div className="border border-indigo-200 rounded-xl p-5 mb-6 bg-indigo-50/50">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold text-indigo-900 flex items-center gap-2 text-sm">
+              <ClipboardCheck className="h-4 w-4" />
+              Vérification des données — Score : {verifications.filter((v) => v.ok).length}/{verifications.length} ({Math.round((verifications.filter((v) => v.ok).length / verifications.length) * 100)}%)
+            </h3>
+          </div>
+          <div className="space-y-1.5">
+            {verifications.map((check, i) => (
+              <div key={i} className={`flex items-center justify-between text-sm px-3 py-1.5 rounded-lg ${check.ok ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700"}`}>
+                <div className="flex items-center gap-2">
+                  {check.ok ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0" /> : <AlertTriangle className="h-3.5 w-3.5 shrink-0" />}
+                  <span>{check.label} : <strong>{check.valid}/{check.total}</strong></span>
+                </div>
+                {!check.ok && check.link && (
+                  <Link href={check.link} className="text-xs font-medium underline hover:no-underline shrink-0">
+                    Corriger →
+                  </Link>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <SectionA entityName={entityName} />
 
       <SectionB
         dateFrom={dateFrom}

@@ -61,8 +61,9 @@ export function SectionG({ editingFinancial, sectionGManual, onSectionGChange, o
                   <input
                     type="number"
                     min="0"
+                    step="0.5"
                     value={sectionGManual.heures || ""}
-                    onChange={(e) => onSectionGChange((prev) => ({ ...prev, heures: parseInt(e.target.value) || 0 }))}
+                    onChange={(e) => onSectionGChange((prev) => ({ ...prev, heures: parseFloat(e.target.value) || 0 }))}
                     className="w-24 border border-gray-300 rounded px-2 py-1 text-sm text-right focus:outline-none focus:border-[#3DB5C5]"
                   />
                 </td>
