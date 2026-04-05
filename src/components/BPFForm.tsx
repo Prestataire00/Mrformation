@@ -3,8 +3,9 @@
 import { useState, useCallback, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
-import { Loader2 } from "lucide-react";
+import { Loader2, BarChart3, AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
 import { downloadXlsx } from "@/lib/export-xlsx";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/use-toast";
 
 import { BPFData, defaultBPF, FINANCIAL_LINES, CHARGE_LINES } from "./bpf/types";
@@ -53,6 +54,19 @@ export function BPFForm({ title }: BPFFormProps) {
   const [sectionC, setSectionC] = useState<Record<string, number>>({});
   const [sectionD, setSectionD] = useState<Record<string, number>>({});
   const [sectionGManual, setSectionGManual] = useState<{ stagiaires: number; heures: number }>({ stagiaires: 0, heures: 0 });
+
+  // KPI & satisfaction
+  const [satisfactionScore, setSatisfactionScore] = useState<number | null>(null);
+  const [totalStagiaires, setTotalStagiaires] = useState(0);
+  const [totalHeures, setTotalHeures] = useState(0);
+  const [totalActions, setTotalActions] = useState(0);
+  const [totalCA, setTotalCA] = useState(0);
+
+  // Comparison N-1
+  const [showComparison, setShowComparison] = useState(false);
+  const [prevYearData, setPrevYearData] = useState<{
+    stagiaires: number; heures: number; actions: number; ca: number; satisfaction: number | null;
+  } | null>(null);
 
   const fiscalYear = dateFrom ? new Date(dateFrom).getFullYear() : currentYear;
 
@@ -367,6 +381,106 @@ export function BPFForm({ title }: BPFFormProps) {
       const gManual = { stagiaires: gData.stagiaires || 0, heures: gData.heures || 0 };
       setSectionGManual(gManual);
 
+      // ─── KPI totals ───
+      const kpiStagiaires = totalF1Learners;
+      const kpiHeures = totalF1Hours;
+      const kpiActions = sessions?.length || 0;
+      const kpiCA = (() => {
+        const l1 = computedSectionC["line_1"] || 0;
+        const l2Keys = FINANCIAL_LINES.find((l) => l.key === "line_2_total")?.sumKeys || [];
+        const l2Total = l2Keys.reduce((s, k) => s + (computedSectionC[k] || 0), 0);
+        const l3 = computedSectionC["line_3"] || 0;
+        const l9 = computedSectionC["line_9"] || 0;
+        const l10 = computedSectionC["line_10"] || 0;
+        const l11 = computedSectionC["line_11"] || 0;
+        const pub = (computedSectionC["line_4"] || 0) + (computedSectionC["line_5"] || 0) + (computedSectionC["line_6"] || 0) + (computedSectionC["line_7"] || 0) + (computedSectionC["line_8"] || 0);
+        return l1 + l2Total + l3 + pub + l9 + l10 + l11;
+      })();
+      setTotalStagiaires(kpiStagiaires);
+      setTotalHeures(kpiHeures);
+      setTotalActions(kpiActions);
+      setTotalCA(kpiCA);
+
+      // ─── Satisfaction score from questionnaire_responses ───
+      try {
+        const { data: satisfactionResponses } = await supabase
+          .from("questionnaire_responses")
+          .select("responses")
+          .in("session_id", sessionIds.length > 0 ? sessionIds : ["__none__"]);
+
+        let satScore: number | null = null;
+        if (satisfactionResponses && satisfactionResponses.length > 0) {
+          const allRatings: number[] = [];
+          for (const resp of satisfactionResponses) {
+            const answers = resp.responses as Record<string, unknown>;
+            for (const value of Object.values(answers)) {
+              const num = Number(value);
+              if (!isNaN(num) && num >= 1 && num <= 5) {
+                allRatings.push(num);
+              }
+            }
+          }
+          if (allRatings.length > 0) {
+            satScore = Math.round((allRatings.reduce((a, b) => a + b, 0) / allRatings.length) * 10) / 10;
+          }
+        }
+        setSatisfactionScore(satScore);
+      } catch {
+        setSatisfactionScore(null);
+      }
+
+      // ─── Comparison N-1 (lightweight) ───
+      try {
+        const prevYear = fiscalYear - 1;
+        const prevFrom = `${prevYear}-01-01`;
+        const prevTo = `${prevYear}-12-31T23:59:59`;
+
+        const { data: prevSessions } = await supabase
+          .from("sessions")
+          .select("id, training:trainings(duration_hours)")
+          .eq("entity_id", entityId)
+          .neq("status", "cancelled")
+          .gte("start_date", prevFrom)
+          .lte("start_date", prevTo);
+
+        const prevSessionIds = prevSessions?.map((s) => s.id as string) || [];
+        let prevHeures = 0;
+        for (const s of prevSessions || []) {
+          const t = Array.isArray(s.training) ? (s.training as Record<string, unknown>[])[0] : (s.training as Record<string, unknown> | null);
+          prevHeures += (t?.duration_hours as number) || 0;
+        }
+
+        let prevStagiaires = 0;
+        if (prevSessionIds.length > 0) {
+          const { count } = await supabase
+            .from("enrollments")
+            .select("learner_id", { count: "exact", head: true })
+            .in("session_id", prevSessionIds)
+            .neq("status", "cancelled");
+          prevStagiaires = count || 0;
+        }
+
+        const prevQuoteQuery = supabase
+          .from("crm_quotes")
+          .select("amount")
+          .eq("entity_id", entityId)
+          .eq("status", "accepted")
+          .gte("created_at", prevFrom)
+          .lte("created_at", prevTo);
+        const { data: prevQuotes } = await prevQuoteQuery;
+        const prevCA = (prevQuotes || []).reduce((s, q) => s + ((q.amount as number) || 0), 0);
+
+        setPrevYearData({
+          stagiaires: prevStagiaires,
+          heures: prevHeures,
+          actions: prevSessionIds.length,
+          ca: prevCA,
+          satisfaction: null,
+        });
+      } catch {
+        setPrevYearData(null);
+      }
+
       setBpf({
         personnesInternes: { nombre: internalCount ?? 0, heures: internalHours },
         personnesExternes: { nombre: externalCount ?? 0, heures: externalHours },
@@ -504,6 +618,82 @@ export function BPFForm({ title }: BPFFormProps) {
         onExportExcel={handleExportExcel}
         onExportPDF={handleExportPDF}
       />
+
+      {/* ═══ KPI CARDS ═══ */}
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-5 mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold text-blue-900 flex items-center gap-2 text-sm">
+            <BarChart3 className="h-4 w-4" />
+            Synthèse {fiscalYear} — Calculée automatiquement
+          </h3>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500">Comparer avec {fiscalYear - 1}</span>
+            <Switch checked={showComparison} onCheckedChange={setShowComparison} />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          {([
+            { icon: "🎓", label: "Stagiaires formés", value: totalStagiaires, prev: prevYearData?.stagiaires, fmt: (v: number) => String(v) },
+            { icon: "⏱️", label: "Heures dispensées", value: totalHeures, prev: prevYearData?.heures, fmt: (v: number) => `${v}h` },
+            { icon: "📋", label: "Actions de formation", value: totalActions, prev: prevYearData?.actions, fmt: (v: number) => String(v) },
+            { icon: "💶", label: "CA formation", value: totalCA, prev: prevYearData?.ca, fmt: (v: number) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(v) },
+            { icon: "⭐", label: "Satisfaction", value: satisfactionScore, prev: prevYearData?.satisfaction, fmt: (v: number) => `${v}/5` },
+          ] as const).map((kpi) => (
+            <div key={kpi.label} className="bg-white rounded-lg p-3 shadow-sm border border-blue-100">
+              <p className="text-xl mb-0.5">{kpi.icon}</p>
+              <p className="text-xl font-bold text-gray-900">
+                {kpi.value !== null && kpi.value !== undefined ? kpi.fmt(kpi.value) : "—"}
+              </p>
+              <p className="text-xs text-gray-500 mt-0.5">{kpi.label}</p>
+              {showComparison && kpi.prev != null && kpi.value != null && kpi.prev > 0 && (
+                <p className={`text-xs mt-1 font-medium ${kpi.value >= kpi.prev ? "text-green-600" : "text-red-500"}`}>
+                  {kpi.value >= kpi.prev ? "▲" : "▼"} {Math.abs(Math.round(((kpi.value - kpi.prev) / kpi.prev) * 100))}% vs {fiscalYear - 1}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <p className="text-xs text-gray-400 mt-3">
+          Mis à jour : {new Date().toLocaleDateString("fr-FR")} — Données calculées depuis sessions et devis
+        </p>
+      </div>
+
+      {/* ═══ ALERTES DONNÉES MANQUANTES ═══ */}
+      {(() => {
+        const alerts: Array<{ type: "error" | "warning" | "success"; message: string }> = [];
+
+        if (totalStagiaires === 0)
+          alerts.push({ type: "error", message: "Aucun stagiaire enregistré — vérifiez les inscriptions aux sessions" });
+        if (totalHeures === 0)
+          alerts.push({ type: "warning", message: "Heures non renseignées — vérifiez planned_hours / duration_hours sur vos formations" });
+        if (satisfactionScore === null)
+          alerts.push({ type: "warning", message: "Satisfaction non calculable — aucun questionnaire de satisfaction complété cette année" });
+        if (totalCA === 0)
+          alerts.push({ type: "warning", message: "CA non calculé — aucun devis accepté cette année" });
+        if (totalStagiaires > 0 && totalHeures > 0 && totalCA > 0)
+          alerts.push({ type: "success", message: "BPF complet — prêt à exporter en PDF ou Excel" });
+
+        if (alerts.length === 0) return null;
+
+        return (
+          <div className="space-y-2 mb-6">
+            {alerts.map((alert, i) => (
+              <div key={i} className={`flex items-start gap-2 p-3 rounded-lg text-sm ${
+                alert.type === "error" ? "bg-red-50 border border-red-200 text-red-700"
+                : alert.type === "warning" ? "bg-amber-50 border border-amber-200 text-amber-700"
+                : "bg-green-50 border border-green-200 text-green-700"
+              }`}>
+                {alert.type === "error" ? <XCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                  : alert.type === "warning" ? <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                  : <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0" />}
+                <span>{alert.message}</span>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
 
       <SectionA
         entityName={entityName}
