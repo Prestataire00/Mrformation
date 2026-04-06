@@ -24,6 +24,10 @@ export interface DevisData {
   signer_name?: string;
   validity_days?: number;
   lines: DevisLine[];
+  // Signature data (after electronic signature)
+  signature_data?: string; // SVG string
+  signed_at?: string; // ISO date
+  signer_ip?: string;
   // Prospect info
   prospect_name: string;
   prospect_address?: string;
@@ -587,6 +591,85 @@ export async function generateDevisPDF(data: DevisData, entityName?: string): Pr
     doc.setTextColor(GRAY);
     const mentionLines = doc.splitTextToSize(data.mention, contentWidth);
     doc.text(mentionLines, margin, y);
+  }
+
+  // ── Signature page (if signed) ──
+  if (data.signature_data) {
+    doc.addPage();
+
+    let sigY = 20;
+
+    // Header
+    doc.setFontSize(16);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(DARK);
+    doc.text("BON POUR ACCORD", pageWidth / 2, sigY, { align: "center" });
+    sigY += 12;
+
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(GRAY);
+    doc.text(`Devis ${data.reference}`, pageWidth / 2, sigY, { align: "center" });
+    sigY += 15;
+
+    // Signer info
+    doc.setFontSize(11);
+    doc.setTextColor(DARK);
+    if (data.signer_name) {
+      doc.text(`Signataire : ${data.signer_name}`, margin, sigY);
+      sigY += 7;
+    }
+    if (data.signed_at) {
+      doc.text(`Date de signature : ${new Date(data.signed_at).toLocaleString("fr-FR")}`, margin, sigY);
+      sigY += 7;
+    }
+    if (data.signer_ip) {
+      doc.setFontSize(8);
+      doc.setTextColor(GRAY);
+      doc.text(`Adresse IP : ${data.signer_ip}`, margin, sigY);
+      sigY += 10;
+    }
+
+    // Render SVG signature as image
+    try {
+      // Convert SVG to data URL via canvas
+      const svgBlob = new Blob([data.signature_data], { type: "image/svg+xml" });
+      const svgUrl = URL.createObjectURL(svgBlob);
+      const img = new Image();
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error("Failed to load signature SVG"));
+        img.src = svgUrl;
+      });
+
+      const canvas = document.createElement("canvas");
+      canvas.width = 400;
+      canvas.height = 128;
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.fillStyle = "white";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, 400, 128);
+        const pngData = canvas.toDataURL("image/png");
+        doc.addImage(pngData, "PNG", margin, sigY, 80, 25);
+        sigY += 30;
+      }
+      URL.revokeObjectURL(svgUrl);
+    } catch {
+      // Fallback: just show text
+      doc.setFontSize(9);
+      doc.setTextColor(GRAY);
+      doc.text("[Signature électronique enregistrée]", margin, sigY);
+      sigY += 10;
+    }
+
+    // Legal text
+    doc.setFontSize(8);
+    doc.setTextColor(GRAY);
+    doc.setFont("helvetica", "italic");
+    const legalText = "Ce document a été signé électroniquement. La signature électronique a la même valeur juridique qu'une signature manuscrite conformément au règlement eIDAS et à l'article 1367 du Code civil.";
+    const legalLines = doc.splitTextToSize(legalText, contentWidth);
+    doc.text(legalLines, margin, sigY);
   }
 
   // Footer on last page

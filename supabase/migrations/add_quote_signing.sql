@@ -21,6 +21,7 @@ ALTER TABLE crm_quotes ADD COLUMN IF NOT EXISTS signature_requested_at TIMESTAMP
 ALTER TABLE crm_quotes ADD COLUMN IF NOT EXISTS signed_at TIMESTAMPTZ;
 ALTER TABLE crm_quotes ADD COLUMN IF NOT EXISTS signer_name TEXT;
 ALTER TABLE crm_quotes ADD COLUMN IF NOT EXISTS signer_ip TEXT;
+ALTER TABLE crm_quotes ADD COLUMN IF NOT EXISTS signature_data TEXT;
 
 -- 3. Table signatures devis (preuve légale)
 CREATE TABLE IF NOT EXISTS quote_signatures (

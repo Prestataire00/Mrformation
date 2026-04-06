@@ -362,6 +362,10 @@ export default function QuotesPage() {
         prospect_email: prospectEmail,
         prospect_phone: prospectPhone,
         prospect_siret: prospectSiret,
+        // Signature data (if signed)
+        signature_data: (quote as unknown as Record<string, unknown>).signature_data as string | undefined,
+        signed_at: (quote as unknown as Record<string, unknown>).signed_at as string | undefined,
+        signer_ip: (quote as unknown as Record<string, unknown>).signer_ip as string | undefined,
       };
 
       if (devisData.lines.length === 0 && quote.amount && quote.amount > 0) {

@@ -43,12 +43,13 @@ export async function POST(request: NextRequest) {
         user_agent: userAgent,
       }, { onConflict: "quote_id" });
 
-      // Update quote to accepted
+      // Update quote to accepted + store signature data for PDF
       await supabase.from("crm_quotes").update({
         status: "accepted",
         signed_at: new Date().toISOString(),
         signer_name: signer_name || "Signataire",
         signer_ip: ipAddress,
+        signature_data,
         updated_at: new Date().toISOString(),
       }).eq("id", quote.id);
 
