@@ -21,67 +21,65 @@ export async function GET(request: NextRequest) {
 
   const supabase = createServiceClient();
 
-  // Fetch token (supports both document and quote signatures)
-  const { data: tokenData } = await supabase
-    .from("signing_tokens")
-    .select("id, document_id, quote_id, session_id, token_purpose, expires_at, used_at, entity_id")
-    .eq("token", token)
-    .in("token_purpose", ["document_signature", "quote_signature"])
-    .single();
+  // 1. Check if it's a QUOTE token (stored in crm_quotes.signature_token)
+  const { data: quote } = await supabase
+    .from("crm_quotes")
+    .select("id, reference, amount, status, signed_at, valid_until, entity_id, prospect_id, client_id")
+    .eq("signature_token", token)
+    .maybeSingle();
 
-  if (!tokenData) {
-    return NextResponse.json({ valid: false, reason: "Token invalide" });
-  }
+  if (quote) {
+    const { data: entity } = await supabase
+      .from("entities").select("name, slug").eq("id", quote.entity_id).single();
 
-  const expired = new Date(tokenData.expires_at) < new Date();
-  const alreadyUsed = !!tokenData.used_at;
-
-  // Fetch entity
-  const { data: entity } = await supabase
-    .from("entities")
-    .select("name, slug")
-    .eq("id", tokenData.entity_id)
-    .single();
-
-  // ── QUOTE SIGNATURE ──
-  if (tokenData.token_purpose === "quote_signature" && tokenData.quote_id) {
-    const { data: quote } = await supabase
-      .from("crm_quotes")
-      .select("id, reference, amount, status, signed_at, valid_until, prospect_id, client_id")
-      .eq("id", tokenData.quote_id)
-      .single();
-
-    // Get prospect/client name
     let recipientName = "";
-    if (quote?.prospect_id) {
+    if (quote.prospect_id) {
       const { data: p } = await supabase.from("crm_prospects").select("company_name, contact_name").eq("id", quote.prospect_id).single();
       recipientName = p?.contact_name || p?.company_name || "";
-    } else if (quote?.client_id) {
+    } else if (quote.client_id) {
       const { data: c } = await supabase.from("clients").select("company_name").eq("id", quote.client_id).single();
       recipientName = c?.company_name || "";
     }
 
-    const isSigned = quote?.signed_at || quote?.status === "accepted";
+    const isSigned = !!quote.signed_at || quote.status === "accepted";
+    const expired = quote.valid_until ? new Date(quote.valid_until) < new Date() : false;
 
     return NextResponse.json({
-      valid: !expired && !alreadyUsed && quote && !isSigned,
+      valid: !isSigned && !expired,
       expired,
-      already_signed: !!isSigned,
-      signed_at: quote?.signed_at || null,
+      already_signed: isSigned,
+      signed_at: quote.signed_at || null,
       type: "quote",
-      document_info: quote ? {
+      document_info: {
         type: "devis",
         label: `Proposition commerciale ${quote.reference}`,
         amount: quote.amount,
         valid_until: quote.valid_until,
-      } : null,
+      },
       signer_name: recipientName,
       entity_name: entity?.name || "MR FORMATION",
       entity_slug: entity?.slug || "mr-formation",
     });
   }
 
-  // ── DOCUMENT SIGNATURE ──
+  // 2. Check if it's a DOCUMENT token (stored in signing_tokens)
+  const { data: tokenData } = await supabase
+    .from("signing_tokens")
+    .select("id, document_id, session_id, token_purpose, expires_at, used_at, entity_id")
+    .eq("token", token)
+    .eq("token_purpose", "document_signature")
+    .maybeSingle();
+
+  if (!tokenData) {
+    return NextResponse.json({ valid: false, reason: "Token invalide" });
+  }
+
+  const tokenExpired = new Date(tokenData.expires_at) < new Date();
+  const alreadyUsed = !!tokenData.used_at;
+
+  const { data: entity } = await supabase
+    .from("entities").select("name, slug").eq("id", tokenData.entity_id).single();
+
   const { data: doc } = await supabase
     .from("formation_convention_documents")
     .select("id, doc_type, owner_type, is_signed, signed_at, signer_name, signer_email")
@@ -89,14 +87,13 @@ export async function GET(request: NextRequest) {
     .single();
 
   const { data: session } = await supabase
-    .from("sessions")
-    .select("title, start_date, end_date")
+    .from("sessions").select("title, start_date, end_date")
     .eq("id", tokenData.session_id)
     .single();
 
   return NextResponse.json({
-    valid: !expired && !alreadyUsed && doc && !doc.is_signed,
-    expired,
+    valid: !tokenExpired && !alreadyUsed && doc && !doc.is_signed,
+    expired: tokenExpired,
     already_signed: doc?.is_signed || alreadyUsed,
     signed_at: doc?.signed_at || null,
     type: "document",

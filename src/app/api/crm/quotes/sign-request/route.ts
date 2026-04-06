@@ -1,20 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient as createServiceClient } from "@supabase/supabase-js";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { requireRole } from "@/lib/auth/require-role";
-import { sanitizeError } from "@/lib/api-error";
 import { logAudit } from "@/lib/audit-log";
 
 function getServiceSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) throw new Error("Missing Supabase config");
-  return createServiceClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
-}
-
-function getFromAddress(entityName: string): string {
-  return entityName.toLowerCase().includes("c3v")
-    ? "C3V Formation <noreply@c3vformation.fr>"
-    : "MR Formation <noreply@mrformation.fr>";
+  return createSupabaseClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
 }
 
 export async function POST(request: NextRequest) {
@@ -25,14 +18,14 @@ export async function POST(request: NextRequest) {
     const { quote_id } = await request.json();
     if (!quote_id) return NextResponse.json({ error: "quote_id requis" }, { status: 400 });
 
-    // Fetch quote with prospect/client info
+    // Fetch quote
     const { data: quote, error: quoteErr } = await auth.supabase
       .from("crm_quotes")
       .select("id, reference, amount, status, entity_id, prospect_id, client_id, valid_until")
       .eq("id", quote_id)
       .single();
 
-    if (quoteErr) return NextResponse.json({ error: `Erreur chargement devis: ${quoteErr.message}` }, { status: 500 });
+    if (quoteErr) return NextResponse.json({ error: quoteErr.message }, { status: 500 });
     if (!quote) return NextResponse.json({ error: "Devis introuvable" }, { status: 404 });
 
     // Get recipient email
@@ -40,15 +33,14 @@ export async function POST(request: NextRequest) {
     let recipientName = "";
 
     if (quote.prospect_id) {
-      const { data: prospect } = await auth.supabase
+      const { data: p } = await auth.supabase
         .from("crm_prospects").select("email, company_name, contact_name").eq("id", quote.prospect_id).single();
-      recipientEmail = prospect?.email || null;
-      recipientName = prospect?.contact_name || prospect?.company_name || "";
+      recipientEmail = p?.email || null;
+      recipientName = p?.contact_name || p?.company_name || "";
     } else if (quote.client_id) {
-      const { data: client } = await auth.supabase
-        .from("clients").select("email, company_name").eq("id", quote.client_id).single();
-      recipientEmail = (client as Record<string, string> | null)?.email || null;
-      recipientName = client?.company_name || "";
+      const { data: c } = await auth.supabase
+        .from("clients").select("company_name").eq("id", quote.client_id).single();
+      recipientName = c?.company_name || "";
     }
 
     if (!recipientEmail) {
@@ -60,63 +52,38 @@ export async function POST(request: NextRequest) {
       .from("entities").select("name").eq("id", quote.entity_id).single();
     const entityName = entity?.name || "MR FORMATION";
 
-    // Create signing token (30 days)
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 30);
+    // Generate a simple UUID token — stored directly in crm_quotes.signature_token
+    const signToken = crypto.randomUUID();
+    const serviceDb = getServiceSupabase();
 
-    // Use service role client to bypass RLS on signing_tokens
-    const serviceSupabase = getServiceSupabase();
-
-    const { data: token, error: tokenErr } = await serviceSupabase
-      .from("signing_tokens")
-      .insert({
-        entity_id: quote.entity_id,
-        quote_id,
-        token_purpose: "quote_signature",
-        expires_at: expiresAt.toISOString(),
-      })
-      .select("token")
-      .single();
-
-    if (tokenErr) throw tokenErr;
-
-    // Update quote
-    await serviceSupabase
+    const { error: updateErr } = await serviceDb
       .from("crm_quotes")
       .update({
-        signature_token: token.token,
+        signature_token: signToken,
         signature_requested_at: new Date().toISOString(),
         status: quote.status === "draft" ? "sent" : quote.status,
-        sent_at: quote.status === "draft" ? new Date().toISOString() : undefined,
         updated_at: new Date().toISOString(),
       })
       .eq("id", quote_id);
 
+    if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 });
+
     // Build sign URL
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.URL || "https://mrformationcrm.netlify.app";
-    const signUrl = `${appUrl}/sign/${token.token}`;
-
-    // Generate PDF for attachment
-    let pdfBase64 = "";
-    try {
-      // Call the existing download endpoint logic client-side — here we just attach the sign URL
-      // PDF generation for devis is complex (uses devis-pdf.ts) — skip attachment, just send the link
-    } catch { /* skip */ }
+    const signUrl = `${appUrl}/sign/${signToken}`;
 
     // Send email
     const amount = Number(quote.amount) || 0;
     const emailBody = `Bonjour${recipientName ? ` ${recipientName}` : ""},\n\nVeuillez trouver notre proposition commerciale ${quote.reference}${amount > 0 ? ` d'un montant de ${amount.toLocaleString("fr-FR")}€ HT` : ""}.\n\nPour accepter cette proposition, veuillez la signer électroniquement en cliquant sur le lien suivant :\n\n${signUrl}\n\nCe lien est valide${quote.valid_until ? ` jusqu'au ${new Date(quote.valid_until).toLocaleDateString("fr-FR")}` : " pendant 30 jours"}.\n\nN'hésitez pas à nous contacter pour toute question.\n\nCordialement,\nL'équipe ${entityName}`;
 
-    const emailPayload: Record<string, unknown> = {
-      to: recipientEmail,
-      subject: `Proposition ${quote.reference} — ${entityName}`,
-      body: emailBody,
-    };
-
     await fetch(`${appUrl}/api/emails/send`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(emailPayload),
+      body: JSON.stringify({
+        to: recipientEmail,
+        subject: `Proposition ${quote.reference} — ${entityName}`,
+        body: emailBody,
+      }),
     });
 
     logAudit({
@@ -129,10 +96,9 @@ export async function POST(request: NextRequest) {
       details: { reference: quote.reference, signer_email: recipientEmail },
     });
 
-    return NextResponse.json({ success: true, sign_url: signUrl, token: token.token, email_sent_to: recipientEmail });
+    return NextResponse.json({ success: true, sign_url: signUrl, email_sent_to: recipientEmail });
   } catch (err) {
     console.error("[quote-sign-request] ERROR:", err);
-    const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
   }
 }
