@@ -157,9 +157,23 @@ export default function SignDocumentPage() {
           </p>
 
           <div className="bg-gray-50 rounded-lg p-4 space-y-1 text-sm">
-            <p><span className="text-gray-500">Formation :</span> <strong>{status.document_info?.session_title}</strong></p>
-            <p><span className="text-gray-500">Du</span> {formatDate(status.document_info?.start_date || "")} <span className="text-gray-500">au</span> {formatDate(status.document_info?.end_date || "")}</p>
-            <p><span className="text-gray-500">Document :</span> {status.document_info?.label}</p>
+            {(status as unknown as Record<string, unknown>).type === "quote" ? (
+              <>
+                <p><span className="text-gray-500">Référence :</span> <strong>{status.document_info?.label}</strong></p>
+                {(status.document_info as Record<string, unknown>)?.amount && (
+                  <p><span className="text-gray-500">Montant :</span> <strong>{Number((status.document_info as Record<string, unknown>).amount).toLocaleString("fr-FR")} € HT</strong></p>
+                )}
+                {(status.document_info as Record<string, unknown>)?.valid_until && (
+                  <p><span className="text-gray-500">Valide jusqu&apos;au :</span> {formatDate(String((status.document_info as Record<string, unknown>).valid_until))}</p>
+                )}
+              </>
+            ) : (
+              <>
+                <p><span className="text-gray-500">Formation :</span> <strong>{(status.document_info as Record<string, unknown>)?.session_title as string}</strong></p>
+                <p><span className="text-gray-500">Du</span> {formatDate((status.document_info as Record<string, unknown>)?.start_date as string || "")} <span className="text-gray-500">au</span> {formatDate((status.document_info as Record<string, unknown>)?.end_date as string || "")}</p>
+                <p><span className="text-gray-500">Document :</span> {status.document_info?.label}</p>
+              </>
+            )}
           </div>
         </div>
 

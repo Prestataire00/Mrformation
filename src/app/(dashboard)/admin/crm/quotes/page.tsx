@@ -28,6 +28,7 @@ import {
   FileDown,
   GraduationCap,
   Loader2,
+  PenLine,
 } from "lucide-react";
 import { downloadDevisPDF, generateDevisPDF, type DevisData } from "@/lib/devis-pdf";
 import { Button } from "@/components/ui/button";
@@ -743,6 +744,16 @@ export default function QuotesPage() {
                                 Relance
                               </Badge>
                             )}
+                            {!!(quote as unknown as Record<string, unknown>).signed_at && (
+                              <Badge className="border-0 text-[10px] bg-green-100 text-green-700">
+                                ✓ Signé
+                              </Badge>
+                            )}
+                            {!!(quote as unknown as Record<string, unknown>).signature_requested_at && !(quote as unknown as Record<string, unknown>).signed_at && (
+                              <Badge className="border-0 text-[10px] bg-indigo-100 text-indigo-700">
+                                <PenLine className="h-2.5 w-2.5 mr-0.5" /> En attente
+                              </Badge>
+                            )}
                           </div>
                         </td>
                         <td className="px-4 py-3">
@@ -783,6 +794,30 @@ export default function QuotesPage() {
                                 <Send className="h-4 w-4" />
                                 Envoyer par email
                               </DropdownMenuItem>
+                              {quote.status !== "accepted" && !(quote as unknown as Record<string, unknown>).signed_at && (
+                                <DropdownMenuItem
+                                  onClick={async () => {
+                                    try {
+                                      toast({ title: "Envoi en cours..." });
+                                      const res = await fetch("/api/crm/quotes/sign-request", {
+                                        method: "POST",
+                                        headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({ quote_id: quote.id }),
+                                      });
+                                      const data = await res.json();
+                                      if (!res.ok) throw new Error(data.error);
+                                      toast({ title: "Lien de signature envoyé", description: `Email envoyé à ${data.email_sent_to}` });
+                                      fetchQuotes();
+                                    } catch (err) {
+                                      toast({ title: "Erreur", description: err instanceof Error ? err.message : "Erreur", variant: "destructive" });
+                                    }
+                                  }}
+                                  className="gap-2 text-indigo-600 focus:text-indigo-600"
+                                >
+                                  <PenLine className="h-4 w-4" />
+                                  Envoyer pour signature
+                                </DropdownMenuItem>
+                              )}
                               <DropdownMenuItem onClick={() => router.push(`/admin/crm/quotes/new?edit=${quote.id}`)} className="gap-2">
                                 <Pencil className="h-4 w-4" />
                                 Modifier

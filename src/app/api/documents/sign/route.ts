@@ -19,12 +19,12 @@ export async function POST(request: NextRequest) {
 
     const supabase = createServiceClient();
 
-    // Validate token
+    // Validate token (supports both document_signature and quote_signature)
     const { data: tokenData, error: tokenErr } = await supabase
       .from("signing_tokens")
-      .select("id, token, session_id, document_id, token_purpose, expires_at, used_at, entity_id, signer_type")
+      .select("id, token, session_id, document_id, quote_id, token_purpose, expires_at, used_at, entity_id, signer_type")
       .eq("token", token)
-      .eq("token_purpose", "document_signature")
+      .in("token_purpose", ["document_signature", "quote_signature"])
       .single();
 
     if (tokenErr || !tokenData) {
@@ -39,6 +39,45 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Ce document a déjà été signé" }, { status: 410 });
     }
 
+    // ── QUOTE SIGNATURE ──
+    if (tokenData.token_purpose === "quote_signature" && tokenData.quote_id) {
+      const ipAddress = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+      const userAgent = request.headers.get("user-agent") || "unknown";
+
+      // Insert quote signature
+      await supabase.from("quote_signatures").insert({
+        quote_id: tokenData.quote_id,
+        entity_id: tokenData.entity_id,
+        signer_name: signer_name || "Signataire",
+        signature_data,
+        ip_address: ipAddress,
+        user_agent: userAgent,
+      });
+
+      // Update quote status to accepted
+      await supabase.from("crm_quotes").update({
+        status: "accepted",
+        signed_at: new Date().toISOString(),
+        signer_name: signer_name || "Signataire",
+        signer_ip: ipAddress,
+        updated_at: new Date().toISOString(),
+      }).eq("id", tokenData.quote_id);
+
+      // Mark token used
+      await supabase.from("signing_tokens").update({ used_at: new Date().toISOString() }).eq("id", tokenData.id);
+
+      // Get quote reference for response
+      const { data: quote } = await supabase.from("crm_quotes").select("reference").eq("id", tokenData.quote_id).single();
+
+      return NextResponse.json({
+        success: true,
+        type: "quote",
+        reference: quote?.reference || "",
+        signed_at: new Date().toISOString(),
+      });
+    }
+
+    // ── DOCUMENT SIGNATURE ──
     if (!tokenData.document_id) {
       return NextResponse.json({ error: "Token non lié à un document" }, { status: 400 });
     }
