@@ -34,6 +34,9 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn, formatDate } from "@/lib/utils";
+import { useToast } from "@/components/ui/use-toast";
+import { getScoreCategory } from "@/lib/ai/prospect-scoring";
+import { Progress } from "@/components/ui/progress";
 import type { CrmProspect, ProspectStatus } from "@/lib/types";
 
 import ProspectTasksSection from "./_components/ProspectTasksSection";
@@ -95,8 +98,12 @@ export default function ProspectListePage() {
 
   // Extra filters
   const [assignedFilter, setAssignedFilter] = useState("all");
+  const [scoreFilter, setScoreFilter] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [batchScoring, setBatchScoring] = useState(false);
+  const [batchProgress, setBatchProgress] = useState(0);
+  const { toast } = useToast();
   const [amountMin, setAmountMin] = useState("");
   const [profiles, setProfiles] = useState<Array<{ id: string; first_name: string; last_name: string }>>([]);
 
@@ -171,8 +178,32 @@ export default function ProspectListePage() {
     if (dateFrom && p.created_at < dateFrom) return false;
     if (dateTo && p.created_at > dateTo + "T23:59:59") return false;
     if (amountMin && extractAmount(p) < parseFloat(amountMin)) return false;
+    if (scoreFilter === "hot" && (p.score || 0) < 60) return false;
+    if (scoreFilter === "warm" && ((p.score || 0) < 30 || (p.score || 0) >= 60)) return false;
+    if (scoreFilter === "cold" && (p.score || 0) >= 30) return false;
     return true;
-  });
+  }).sort((a, b) => (b.score || 0) - (a.score || 0)); // Default: score desc
+
+  const handleBatchScore = async () => {
+    setBatchScoring(true);
+    setBatchProgress(0);
+    let done = 0;
+    for (const p of prospects) {
+      try {
+        await fetch("/api/ai/score-prospect", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prospect_id: p.id }),
+        });
+      } catch { /* continue */ }
+      done++;
+      setBatchProgress(Math.round((done / prospects.length) * 100));
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    setBatchScoring(false);
+    toast({ title: `${done} scores recalculés` });
+    fetchProspects();
+  };
 
   const handleExportExcel = () => {
     const headers = ["Entreprise", "Contact", "Email", "Téléphone", "Statut", "Source", "Montant", "Date de création"];
@@ -205,13 +236,30 @@ export default function ProspectListePage() {
             {totalCount} prospect{totalCount > 1 ? "s" : ""} au total
           </p>
         </div>
-        <button
-          onClick={handleExportExcel}
-          className="border border-[#3DB5C5] text-[#3DB5C5] px-4 py-2 rounded-lg text-sm flex items-center gap-1"
-        >
-          <Download className="h-4 w-4" /> Télécharger en Excel
-        </button>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-xs h-8 gap-1"
+            onClick={handleBatchScore}
+            disabled={batchScoring || prospects.length === 0}
+          >
+            {batchScoring ? <Loader2 className="h-3 w-3 animate-spin" /> : <span>📊</span>}
+            {batchScoring ? `${batchProgress}%` : "Recalculer scores"}
+          </Button>
+          <button
+            onClick={handleExportExcel}
+            className="border border-[#3DB5C5] text-[#3DB5C5] px-4 py-2 rounded-lg text-sm flex items-center gap-1"
+          >
+            <Download className="h-4 w-4" /> Excel
+          </button>
+        </div>
       </div>
+
+      {/* Batch progress */}
+      {batchScoring && (
+        <Progress value={batchProgress} className="h-1.5" />
+      )}
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3">
@@ -244,6 +292,17 @@ export default function ProspectListePage() {
             {SOURCE_OPTIONS.map((s) => (
               <SelectItem key={s} value={s}>{s}</SelectItem>
             ))}
+          </SelectContent>
+        </Select>
+        <Select value={scoreFilter} onValueChange={setScoreFilter}>
+          <SelectTrigger className="w-[140px]">
+            <SelectValue placeholder="Score" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Tous scores</SelectItem>
+            <SelectItem value="hot">🔥 Chaud (&gt;60)</SelectItem>
+            <SelectItem value="warm">🌡️ Tiède (30-60)</SelectItem>
+            <SelectItem value="cold">❄️ Froid (&lt;30)</SelectItem>
           </SelectContent>
         </Select>
         <Select value={assignedFilter} onValueChange={setAssignedFilter}>
@@ -309,6 +368,7 @@ export default function ProspectListePage() {
                     <th className="text-left px-4 py-3 font-medium text-gray-600">Contact</th>
                     <th className="text-left px-4 py-3 font-medium text-gray-600 hidden md:table-cell">Email</th>
                     <th className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell">Tél</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600 hidden md:table-cell">Score</th>
                     <th className="text-left px-4 py-3 font-medium text-gray-600">Statut</th>
                     <th className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell">Source</th>
                     <th className="text-left px-4 py-3 font-medium text-gray-600 hidden xl:table-cell">Date</th>
@@ -347,6 +407,16 @@ export default function ProspectListePage() {
                         </td>
                         <td className="px-4 py-3 text-gray-600 hidden lg:table-cell">
                           {p.phone || "—"}
+                        </td>
+                        <td className="px-4 py-3 hidden md:table-cell">
+                          {(() => {
+                            const sc = getScoreCategory(p.score || 0);
+                            return p.score ? (
+                              <Badge className={`text-xs ${sc.color}`}>{sc.emoji} {p.score}</Badge>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            );
+                          })()}
                         </td>
                         <td className="px-4 py-3">
                           <Badge

@@ -35,6 +35,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn, formatDate } from "@/lib/utils";
+import { getScoreCategory } from "@/lib/ai/prospect-scoring";
 import type { CrmProspect, CrmTag, ProspectStatus } from "@/lib/types";
 import { CompanySearch, type CompanySearchResult } from "@/components/crm/CompanySearch";
 import { createFirstContactTask, createProposalPrepTask } from "@/lib/crm/automations";
@@ -703,7 +704,9 @@ export default function CrmProspectsPage() {
                         onClick={() => !draggedCardId && router.push(`/admin/crm/prospects/${p.id}`)}
                         className={cn(
                           "group relative rounded-lg border border-gray-100 bg-white p-3 shadow-sm hover:border-[#3DB5C5] hover:shadow-md transition-all cursor-grab active:cursor-grabbing",
-                          isBeingDragged && "opacity-40 scale-95"
+                          isBeingDragged && "opacity-40 scale-95",
+                          (p.score || 0) >= 60 && "border-l-[3px] border-l-red-400",
+                          (p.score || 0) >= 30 && (p.score || 0) < 60 && "border-l-[3px] border-l-amber-400"
                         )}
                       >
                         {/* Bulk checkbox */}
@@ -728,7 +731,10 @@ export default function CrmProspectsPage() {
                             {teamMembers.find(m => m.id === p.assigned_to)?.name.charAt(0)}
                           </div>
                         )}
-                        <p className="text-sm font-semibold text-gray-900 leading-snug">{p.company_name}</p>
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-sm font-semibold text-gray-900 leading-snug">{p.company_name}</p>
+                          {!!p.score && (() => { const sc = getScoreCategory(p.score); return <span className={`text-[9px] px-1 py-0.5 rounded-full font-medium ${sc.color}`}>{sc.emoji}{p.score}</span>; })()}
+                        </div>
                         {p.contact_name && (
                           <p className="text-xs text-gray-500 mt-0.5">{p.contact_name}</p>
                         )}
