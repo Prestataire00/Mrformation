@@ -123,6 +123,9 @@ export function TabFinances({ formation, onRefresh }: Props) {
 
   // Auto-generate
   const [autoGenerating, setAutoGenerating] = useState(false);
+  const [previewDialog, setPreviewDialog] = useState(false);
+  const [previewData, setPreviewData] = useState<{ preview: Array<{ recipientType: string; recipientName: string; amount: number; detail: string }>; warnings: string[] } | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -358,8 +361,23 @@ export function TabFinances({ formation, onRefresh }: Props) {
     !(formation as unknown as { invoice_generated?: boolean }).invoice_generated &&
     invoices.length === 0;
 
-  const handleAutoGenerate = async () => {
-    if (!confirm("Générer automatiquement les factures pour cette formation ?")) return;
+  const handlePreviewAutoGenerate = async () => {
+    setPreviewLoading(true);
+    try {
+      const res = await fetch(`/api/formations/${formation.id}/invoices/auto-generate`);
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error);
+      setPreviewData(result);
+      setPreviewDialog(true);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Erreur";
+      toast({ title: "Erreur", description: msg, variant: "destructive" });
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const handleConfirmAutoGenerate = async () => {
     setAutoGenerating(true);
     try {
       const res = await fetch(`/api/formations/${formation.id}/invoices/auto-generate`, {
@@ -371,6 +389,7 @@ export function TabFinances({ formation, onRefresh }: Props) {
         title: `${result.count} facture(s) générée(s)`,
         description: `Total : ${formatCurrency(result.invoices.reduce((s: number, i: { amount: number }) => s + Number(i.amount), 0))}`,
       });
+      setPreviewDialog(false);
       fetchData();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Erreur";
@@ -421,10 +440,10 @@ export function TabFinances({ formation, onRefresh }: Props) {
           <Button
             size="sm"
             className="shrink-0"
-            onClick={handleAutoGenerate}
-            disabled={autoGenerating}
+            onClick={handlePreviewAutoGenerate}
+            disabled={previewLoading}
           >
-            {autoGenerating && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            {previewLoading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
             Générer les factures
           </Button>
         </div>
@@ -683,6 +702,80 @@ export function TabFinances({ formation, onRefresh }: Props) {
               {savingInvoice && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Créer
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ═══ PREVIEW DIALOG ═══ */}
+      <Dialog open={previewDialog} onOpenChange={setPreviewDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Aperçu des factures à générer</DialogTitle>
+          </DialogHeader>
+
+          {previewData && (
+            <div className="space-y-4">
+              {/* Warnings */}
+              {previewData.warnings.length > 0 && (
+                <div className="space-y-1.5">
+                  {previewData.warnings.map((w, i) => (
+                    <div key={i} className="flex items-start gap-2 p-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-700">
+                      <span className="shrink-0">⚠️</span>
+                      <span>{w}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Preview list */}
+              {previewData.preview.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">Aucune facture à générer.</p>
+              ) : (
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-muted/50 border-b">
+                        <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Destinataire</th>
+                        <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Type</th>
+                        <th className="text-right px-3 py-2 text-xs font-medium text-gray-500">Montant</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {previewData.preview.map((item, i) => (
+                        <tr key={i} className="border-b last:border-0">
+                          <td className="px-3 py-2">
+                            <span className="font-medium">{item.recipientName}</span>
+                            {item.detail && <span className="text-xs text-muted-foreground ml-1.5">({item.detail})</span>}
+                          </td>
+                          <td className="px-3 py-2">
+                            <Badge variant="outline" className="text-xs capitalize">{item.recipientType}</Badge>
+                          </td>
+                          <td className="px-3 py-2 text-right font-medium">{formatCurrency(item.amount)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="bg-muted/30">
+                        <td colSpan={2} className="px-3 py-2 text-sm font-medium">Total</td>
+                        <td className="px-3 py-2 text-right font-bold">
+                          {formatCurrency(previewData.preview.reduce((s, i) => s + i.amount, 0))}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPreviewDialog(false)}>Annuler</Button>
+            {previewData && previewData.preview.length > 0 && (
+              <Button onClick={handleConfirmAutoGenerate} disabled={autoGenerating}>
+                {autoGenerating && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                Confirmer ({previewData.preview.length} facture{previewData.preview.length > 1 ? "s" : ""})
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
