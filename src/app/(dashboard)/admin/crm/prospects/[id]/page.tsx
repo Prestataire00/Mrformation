@@ -53,7 +53,10 @@ import {
 import { cn, formatDate } from "@/lib/utils";
 import { logCommercialAction } from "@/lib/crm/log-commercial-action";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useToast } from "@/components/ui/use-toast";
 import type { CrmProspect, CrmQuote, ProspectStatus, Training } from "@/lib/types";
+import { detectOPCO } from "@/lib/ai/opco-mapping";
+import { getScoreCategory } from "@/lib/ai/prospect-scoring";
 import ProspectTasksSection from "../liste/_components/ProspectTasksSection";
 import ProspectCommentsSection from "../liste/_components/ProspectCommentsSection";
 import ProspectEmailSection from "../liste/_components/ProspectEmailSection";
@@ -116,11 +119,19 @@ export default function ProspectDetailPage() {
 
   const [prospect, setProspect] = useState<CrmProspect | null>(null);
   const [quotes, setQuotes] = useState<CrmQuote[]>([]);
+  const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   // Dialogs (kept: delete, link training)
   const [deleteOpen, setDeleteOpen] = useState(false);
+
+  // IA state
+  const [enriching, setEnriching] = useState(false);
+  const [enrichData, setEnrichData] = useState<Record<string, unknown> | null>(null);
+  const [aiInsights, setAiInsights] = useState<Record<string, unknown> | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [scoringLoading, setScoringLoading] = useState(false);
 
   // Tab control
   const [activeTab, setActiveTab] = useState("timeline");
@@ -485,6 +496,80 @@ export default function ProspectDetailPage() {
     setQuotes((prev) => prev.filter((q) => q.id !== quoteId));
   }
 
+  // ── AI Functions ──────────────────────────────────────────────────────────
+
+  const handleEnrichPappers = async () => {
+    if (!prospect?.siret) return;
+    setEnriching(true);
+    try {
+      const res = await fetch(`/api/pappers/company?siret=${prospect.siret}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erreur Pappers");
+      setEnrichData(data);
+      const opco = detectOPCO(data.naf_code);
+      toast({
+        title: "Données Pappers récupérées",
+        description: opco ? `OPCO probable : ${opco.opco}` : "OPCO non détecté",
+      });
+      // Auto-update NAF if missing
+      if (data.naf_code && !prospect.naf_code) {
+        await supabase.from("crm_prospects").update({ naf_code: data.naf_code }).eq("id", prospect.id);
+      }
+    } catch (err) {
+      toast({ title: "Erreur Pappers", description: err instanceof Error ? err.message : "Service indisponible", variant: "destructive" });
+    } finally {
+      setEnriching(false);
+    }
+  };
+
+  const handleAiInsights = async () => {
+    if (!prospect) return;
+    setAiLoading(true);
+    try {
+      const res = await fetch("/api/ai/enrich-prospect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          company_name: prospect.company_name,
+          siret: prospect.siret,
+          naf_code: prospect.naf_code || enrichData?.naf_code,
+          naf_label: enrichData?.naf_label,
+          employees: enrichData?.employees,
+          notes: prospect.notes,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erreur IA");
+      setAiInsights(data.insights);
+    } catch (err) {
+      toast({ title: "Service IA indisponible", description: err instanceof Error ? err.message : "Réessayez plus tard", variant: "destructive" });
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleRecalcScore = async () => {
+    if (!prospect) return;
+    setScoringLoading(true);
+    try {
+      const res = await fetch("/api/ai/score-prospect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prospect_id: prospect.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erreur scoring");
+      setProspect((prev) => prev ? { ...prev, score: data.score } : prev);
+      toast({ title: `Score : ${data.score}/100` });
+    } catch (err) {
+      toast({ title: "Erreur scoring", description: err instanceof Error ? err.message : "Réessayez", variant: "destructive" });
+    } finally {
+      setScoringLoading(false);
+    }
+  };
+
+  const scoreCategory = prospect?.score ? getScoreCategory(prospect.score) : null;
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   if (loading) {
@@ -532,7 +617,17 @@ export default function ProspectDetailPage() {
               {prospect.company_name.charAt(0)}
             </div>
             <div>
-              <h1 className="text-xl font-bold text-gray-900">{prospect.company_name}</h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl font-bold text-gray-900">{prospect.company_name}</h1>
+                {scoreCategory && (
+                  <Badge className={`text-xs ${scoreCategory.color}`} title={`Score : ${prospect.score}/100`}>
+                    {scoreCategory.emoji} {prospect.score}
+                  </Badge>
+                )}
+                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={handleRecalcScore} disabled={scoringLoading} title="Recalculer le score">
+                  {scoringLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <span className="text-xs">📊</span>}
+                </Button>
+              </div>
               <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground flex-wrap">
                 {prospect.contact_name && (
                   <span className="flex items-center gap-1"><User className="w-3 h-3" />{prospect.contact_name}</span>
@@ -800,6 +895,57 @@ export default function ProspectDetailPage() {
               </div>
             </>
           )}
+
+          {/* ═══ IA SECTION ═══ */}
+          <hr className="border-gray-100" />
+          <div className="space-y-3">
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Intelligence commerciale</h3>
+
+            {/* Bouton Enrichir Pappers */}
+            {prospect.siret && (
+              <Button size="sm" variant="outline" className="w-full text-xs h-7 gap-1" onClick={handleEnrichPappers} disabled={enriching}>
+                {enriching ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
+                Enrichir via Pappers
+              </Button>
+            )}
+
+            {/* Résultat Pappers */}
+            {enrichData && (
+              <div className="text-xs space-y-1 p-2 bg-blue-50 rounded-lg">
+                {!!enrichData.naf_label && <p><span className="text-muted-foreground">NAF :</span> <strong>{String(enrichData.naf_code)}</strong> — {String(enrichData.naf_label)}</p>}
+                {!!enrichData.employees && <p><span className="text-muted-foreground">Effectif :</span> <strong>{String(enrichData.employees)}</strong></p>}
+                {(() => { const opco = detectOPCO(String(enrichData.naf_code || "")); return opco ? <p><span className="text-muted-foreground">OPCO :</span> <strong className="text-blue-600">{opco.opco}</strong> <Badge variant="outline" className="text-[9px] ml-1">{opco.confidence}</Badge></p> : null; })()}
+                {(() => { const dirs = enrichData.dirigeants as Array<Record<string, string>> | undefined; return dirs && dirs.length > 0 ? <p><span className="text-muted-foreground">Dirigeant :</span> <strong>{dirs[0].prenom} {dirs[0].nom}</strong></p> : null; })()}
+              </div>
+            )}
+
+            {/* Bouton Insights IA */}
+            <Button size="sm" variant="outline" className="w-full text-xs h-7 gap-1" onClick={handleAiInsights} disabled={aiLoading}>
+              {aiLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <span>✨</span>}
+              Analyser ce prospect (IA)
+            </Button>
+
+            {/* Résultats IA */}
+            {aiInsights && (
+              <div className="text-xs space-y-2 p-3 bg-indigo-50 rounded-lg border border-indigo-200">
+                <p className="font-semibold text-indigo-800 flex items-center gap-1">✨ Insights IA</p>
+                {Array.isArray(aiInsights.suggested_trainings) && (
+                  <div>
+                    <p className="text-muted-foreground mb-1">Formations suggérées :</p>
+                    <div className="flex flex-wrap gap-1">
+                      {(aiInsights.suggested_trainings as string[]).map((t, i) => (
+                        <Badge key={i} variant="outline" className="text-[9px]">{t}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {!!aiInsights.sales_pitch && <p className="italic text-indigo-700">{String(aiInsights.sales_pitch)}</p>}
+                {!!aiInsights.estimated_budget && <p><span className="text-muted-foreground">Budget estimé :</span> <strong>{String(aiInsights.estimated_budget)}</strong></p>}
+                {!!aiInsights.key_contact_role && <p><span className="text-muted-foreground">Contact idéal :</span> <strong>{String(aiInsights.key_contact_role)}</strong></p>}
+                {!!aiInsights.opco_tips && <p><span className="text-muted-foreground">Conseil OPCO :</span> {String(aiInsights.opco_tips)}</p>}
+              </div>
+            )}
+          </div>
 
           <hr className="border-gray-100" />
 

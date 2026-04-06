@@ -10,6 +10,7 @@ import {
   Loader2,
   CheckCircle,
   AlertCircle,
+  Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -56,7 +57,13 @@ export default function SendEmailPage() {
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
 
   const [subject, setSubject] = useState(searchParams.get("subject") ?? "");
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState(searchParams.get("body") ?? "");
+
+  // IA state
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiType, setAiType] = useState("first_contact");
+  const [aiCustom, setAiCustom] = useState("");
+  const [showAiDialog, setShowAiDialog] = useState(false);
 
   // ── Fetch prospect ─────────────────────────────────────────────────────────
 
@@ -206,6 +213,89 @@ export default function SendEmailPage() {
               Email : <span className="font-normal text-gray-500">{prospect.email || "Aucun email"}</span>
             </label>
           </div>
+
+          {/* Bouton IA */}
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5 text-xs"
+              onClick={() => setShowAiDialog(true)}
+              disabled={aiLoading}
+            >
+              {aiLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+              Rédiger avec l&apos;IA
+            </Button>
+            {subject && message && <span className="text-xs text-muted-foreground italic">Généré par IA — vérifiez avant d&apos;envoyer</span>}
+          </div>
+
+          {/* Dialog IA */}
+          {showAiDialog && (
+            <div className="p-4 border border-indigo-200 rounded-lg bg-indigo-50 space-y-3">
+              <p className="text-sm font-medium text-indigo-800">Type d&apos;email :</p>
+              <div className="grid grid-cols-2 gap-2">
+                {([
+                  { value: "first_contact", label: "Première prise de contact" },
+                  { value: "quote_followup", label: "Relance devis" },
+                  { value: "post_meeting", label: "Suite à un appel" },
+                  { value: "reactivation", label: "Réactivation prospect" },
+                  { value: "thank_you", label: "Remerciement" },
+                  { value: "custom", label: "Personnalisé" },
+                ] as const).map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setAiType(opt.value)}
+                    className={`text-xs px-3 py-2 rounded-lg border transition-colors ${aiType === opt.value ? "border-indigo-500 bg-indigo-100 text-indigo-800 font-medium" : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"}`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              {aiType === "custom" && (
+                <Textarea
+                  value={aiCustom}
+                  onChange={(e) => setAiCustom(e.target.value)}
+                  placeholder="Décrivez le type d'email souhaité..."
+                  rows={2}
+                  className="text-sm"
+                />
+              )}
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  className="gap-1"
+                  onClick={async () => {
+                    setAiLoading(true);
+                    try {
+                      const res = await fetch("/api/ai/draft-email", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          prospect_id: prospectId,
+                          context_type: aiType,
+                          custom_instructions: aiType === "custom" ? aiCustom : undefined,
+                        }),
+                      });
+                      const data = await res.json();
+                      if (!res.ok) throw new Error(data.error);
+                      setSubject(data.subject);
+                      setMessage(data.body);
+                      setShowAiDialog(false);
+                    } catch {
+                      setResult({ success: false, message: "Service IA indisponible" });
+                    } finally {
+                      setAiLoading(false);
+                    }
+                  }}
+                  disabled={aiLoading}
+                >
+                  {aiLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                  Générer
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setShowAiDialog(false)}>Annuler</Button>
+              </div>
+            </div>
+          )}
 
           {/* Sujet */}
           <div>
