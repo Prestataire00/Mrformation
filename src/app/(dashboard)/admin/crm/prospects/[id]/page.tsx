@@ -992,11 +992,12 @@ export default function ProspectDetailPage() {
                                 body: JSON.stringify({ quote_id: q.id }),
                               });
                               const data = await res.json();
-                              if (!res.ok) throw new Error(data.error);
+                              if (!res.ok) throw new Error(typeof data.error === "string" ? data.error : JSON.stringify(data.error || data));
                               toast({ title: "Envoyé pour signature", description: `Email envoyé à ${data.email_sent_to}` });
                               fetchProspect();
                             } catch (err) {
-                              toast({ title: "Erreur", description: err instanceof Error ? err.message : "Erreur", variant: "destructive" });
+                              const msg = err instanceof Error ? err.message : "Une erreur est survenue";
+                              toast({ title: "Erreur", description: msg, variant: "destructive" });
                             }
                           }}
                           className="text-[10px] text-indigo-600 hover:underline font-medium"

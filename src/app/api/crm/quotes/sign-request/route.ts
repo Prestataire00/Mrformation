@@ -131,6 +131,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, sign_url: signUrl, token: token.token, email_sent_to: recipientEmail });
   } catch (err) {
-    return NextResponse.json({ error: sanitizeError(err, "quote-sign-request") }, { status: 500 });
+    console.error("[quote-sign-request] ERROR:", err);
+    const message = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
