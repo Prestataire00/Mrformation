@@ -498,17 +498,37 @@ export default function QuotesPage() {
       let meta: Record<string, unknown> = {};
       try { meta = convertQuote.notes ? JSON.parse(convertQuote.notes) : {}; } catch { /* plain text */ }
 
+      const q = convertQuote as unknown as Record<string, unknown>;
+      const trainingStart = (q.training_start as string) || (meta.training_start as string) || undefined;
+      const trainingEnd = (q.training_end as string) || (meta.training_end as string) || undefined;
+      const effectifs = Number(q.effectifs || meta.effectifs) || undefined;
+      const duration = (q.duration as string) || (meta.duration as string) || undefined;
+      const plannedHours = duration ? parseFloat(duration) || undefined : undefined;
+
+      // Build description from quote lines
+      let description: string | undefined;
+      const { data: quoteLines } = await supabase
+        .from("crm_quote_lines")
+        .select("description, quantity, unit_price")
+        .eq("quote_id", convertQuote.id);
+      if (quoteLines && quoteLines.length > 0) {
+        description = quoteLines.map((l) => `${l.description} (${l.quantity}× ${l.unit_price}€)`).join("\n");
+      }
+
       const sessionPayload = {
         training_id: convertQuote.training_id || undefined,
         program_id: convertQuote.program_id || undefined,
         client_id: convertQuote.client_id || undefined,
-        start_date: (convertQuote as any).training_start || (meta.training_start as string) || undefined,
-        end_date: (convertQuote as any).training_end || (meta.training_end as string) || undefined,
-        max_participants: (convertQuote as any).effectifs || (meta.effectifs ? Number(meta.effectifs) : undefined),
+        start_date: trainingStart,
+        end_date: trainingEnd,
+        max_participants: effectifs,
         price: convertQuote.amount || undefined,
+        planned_hours: plannedHours,
         status: "planned",
         mode: "presentiel",
+        type: effectifs && effectifs > 1 ? "inter" : "intra",
         notes: `Créé depuis le devis ${convertQuote.reference}`,
+        description,
       };
 
       const res = await fetch("/api/sessions", {
@@ -524,15 +544,42 @@ export default function QuotesPage() {
         return;
       }
 
+      const newSessionId = result.data.id;
+
+      // Link quote to session
       await supabase
         .from("crm_quotes")
-        .update({ converted_session_id: result.data.id })
+        .update({ converted_session_id: newSessionId, status: "accepted" })
         .eq("id", convertQuote.id);
+
+      // If financeur linked to quote → create formation_financier
+      const financeurId = q.financeur_id as string | null;
+      const opcoAmount = Number(q.opco_amount) || 0;
+      if (financeurId && opcoAmount > 0) {
+        // Fetch financeur details
+        const { data: financeur } = await supabase
+          .from("financeurs")
+          .select("name, type")
+          .eq("id", financeurId)
+          .maybeSingle();
+
+        if (financeur) {
+          await supabase.from("formation_financiers").insert({
+            session_id: newSessionId,
+            financeur_id: financeurId,
+            name: financeur.name,
+            type: financeur.type || "opco",
+            amount: opcoAmount,
+            amount_requested: opcoAmount,
+            status: "a_deposer",
+          });
+        }
+      }
 
       toast({ title: "Formation créée !", description: `Session créée depuis le devis ${convertQuote.reference}` });
       setConvertDialog(false);
       setConvertQuote(null);
-      router.push(`/admin/formations/${result.data.id}`);
+      router.push(`/admin/formations/${newSessionId}`);
     } catch {
       toast({ title: "Erreur réseau", variant: "destructive" });
     } finally {
