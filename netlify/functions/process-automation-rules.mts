@@ -10,13 +10,25 @@ export default async () => {
   }
 
   try {
+    // 1. Automation rules
     const res = await fetch(`${baseUrl}/api/formations/automation-rules/run-cron`, {
       method: "POST",
       headers: { Authorization: `Bearer ${cronSecret}` },
     });
-
     const data = await res.json();
     console.log("[cron] automation-rules result:", JSON.stringify(data));
+
+    // 2. Document signature reminders
+    try {
+      const signRes = await fetch(`${baseUrl}/api/documents/process-sign-reminders`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${cronSecret}` },
+      });
+      const signData = await signRes.json();
+      console.log("[cron] sign-reminders result:", JSON.stringify(signData));
+    } catch (signErr) {
+      console.error("[cron] sign-reminders failed:", signErr);
+    }
 
     return new Response(JSON.stringify(data), { status: res.status });
   } catch (err) {
