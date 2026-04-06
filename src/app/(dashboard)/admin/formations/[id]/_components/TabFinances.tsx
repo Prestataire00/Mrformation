@@ -3,8 +3,11 @@
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
-  Plus, CheckCircle, Loader2, Trash2, Undo2,
+  Plus, CheckCircle, Loader2, Trash2, Undo2, FileDown, Send,
 } from "lucide-react";
+import { useEntity } from "@/contexts/EntityContext";
+import { downloadInvoicePDF, invoicePDFBase64 } from "@/lib/invoice-pdf-export";
+import type { InvoicePdfData } from "@/lib/invoice-pdf-export";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -81,6 +84,7 @@ const SECTION_CONFIG = [
 
 export function TabFinances({ formation, onRefresh }: Props) {
   const { toast } = useToast();
+  const { entity } = useEntity();
   const supabase = createClient();
 
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -258,6 +262,89 @@ export function TabFinances({ formation, onRefresh }: Props) {
     }
   };
 
+  // ── Invoice PDF helpers ──
+
+  const buildInvoicePdfData = (inv: Invoice): InvoicePdfData => ({
+    entityName: entity?.name || "MR FORMATION",
+    entityAddress: (entity as unknown as Record<string, string>)?.address || "24/26 Boulevard Gay Lussac",
+    entityPostalCode: (entity as unknown as Record<string, string>)?.postal_code || "13014",
+    entityCity: (entity as unknown as Record<string, string>)?.city || "Marseille",
+    entitySiret: (entity as unknown as Record<string, string>)?.siret || "91311329600036",
+    entityNda: (entity as unknown as Record<string, string>)?.nda || "93132013113",
+    entityPhone: (entity as unknown as Record<string, string>)?.phone || "0750461245",
+    entityEmail: (entity as unknown as Record<string, string>)?.email || "contact@mrformation.fr",
+    entityTvaExempt: (entity as unknown as Record<string, unknown>)?.tva_exempt !== false,
+    entityTvaRate: Number((entity as unknown as Record<string, unknown>)?.tva_rate) || 20,
+    entityFooterText: (entity as unknown as Record<string, string>)?.invoice_footer_text || "TVA non applicable, article 261-4-4° du CGI.",
+    entityLogo: "",
+    reference: inv.reference,
+    createdAt: inv.created_at,
+    dueDate: inv.due_date,
+    status: inv.status,
+    isAvoir: inv.is_avoir,
+    notes: inv.notes,
+    recipientName: inv.recipient_name,
+    recipientType: inv.recipient_type,
+    sessionTitle: formation.title,
+    sessionStartDate: formation.start_date,
+    sessionEndDate: formation.end_date,
+    sessionDuration: formation.planned_hours ? Number(formation.planned_hours) : null,
+    amount: inv.amount,
+  });
+
+  const handleDownloadPdf = async (inv: Invoice) => {
+    try {
+      await downloadInvoicePDF(buildInvoicePdfData(inv));
+      toast({ title: `PDF ${inv.reference} téléchargé` });
+    } catch {
+      toast({ title: "Erreur PDF", variant: "destructive" });
+    }
+  };
+
+  const handleSendInvoiceEmail = async (inv: Invoice) => {
+    // Find recipient email
+    let email: string | null = null;
+    if (inv.recipient_type === "company") {
+      const company = formation.formation_companies?.find((c) => c.client_id === inv.recipient_id);
+      email = company?.email || (company?.client as unknown as Record<string, string>)?.email || null;
+    }
+    if (!email) {
+      toast({ title: "Pas d'email pour ce destinataire", variant: "destructive" });
+      return;
+    }
+
+    try {
+      toast({ title: "Génération du PDF et envoi..." });
+      const base64 = await invoicePDFBase64(buildInvoicePdfData(inv));
+      const res = await fetch("/api/emails/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: email,
+          subject: `${inv.is_avoir ? "Avoir" : "Facture"} ${inv.reference} — ${formation.title}`,
+          body: `Bonjour,\n\nVeuillez trouver ci-joint ${inv.is_avoir ? "l'avoir" : "la facture"} ${inv.reference} relative à la formation "${formation.title}".\n\nCordialement,\nL'équipe formation`,
+          session_id: formation.id,
+          attachments: [{
+            filename: `${inv.reference}.pdf`,
+            content: base64,
+            type: "application/pdf",
+          }],
+        }),
+      });
+      if (!res.ok) throw new Error("Erreur envoi");
+
+      await supabase
+        .from("formation_invoices")
+        .update({ status: "sent", updated_at: new Date().toISOString() })
+        .eq("id", inv.id);
+
+      toast({ title: `Facture ${inv.reference} envoyée par email` });
+      fetchData();
+    } catch {
+      toast({ title: "Erreur d'envoi", variant: "destructive" });
+    }
+  };
+
   const canAutoGenerate =
     formation.status === "completed" &&
     !(formation as unknown as { invoice_generated?: boolean }).invoice_generated &&
@@ -395,6 +482,22 @@ export function TabFinances({ formation, onRefresh }: Props) {
                         </td>
                         <td className="py-1.5 text-right">
                           <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 text-[11px] px-1.5"
+                              onClick={() => handleDownloadPdf(inv)}
+                            >
+                              <FileDown className="h-3 w-3 mr-0.5" /> PDF
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 text-[11px] px-1.5 text-blue-600"
+                              onClick={() => handleSendInvoiceEmail(inv)}
+                            >
+                              <Send className="h-3 w-3 mr-0.5" /> Email
+                            </Button>
                             {inv.status !== "paid" && inv.status !== "cancelled" && !inv.is_avoir && (
                               <Button
                                 variant="ghost"
