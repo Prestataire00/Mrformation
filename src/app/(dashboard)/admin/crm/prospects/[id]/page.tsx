@@ -984,21 +984,28 @@ export default function ProspectDetailPage() {
                       ) : q.status !== "accepted" ? (
                         <button
                           onClick={async () => {
-                            try {
+                            {
                               toast({ title: "Envoi en cours..." });
-                              const res = await fetch("/api/crm/quotes/sign-request", {
+                              fetch("/api/crm/quotes/sign-request", {
                                 method: "POST",
                                 headers: { "Content-Type": "application/json" },
                                 body: JSON.stringify({ quote_id: q.id }),
-                              });
-                              const text = await res.text();
-                              let data: Record<string, unknown>;
-                              try { data = JSON.parse(text); } catch { throw new Error(`Erreur serveur (${res.status}): ${text.slice(0, 200)}`); }
-                              if (!res.ok) throw new Error(String(data.error || `Erreur ${res.status}`));
-                              toast({ title: "Envoyé pour signature", description: `Email envoyé à ${(data as Record<string, string>).email_sent_to}` });
-                              fetchProspect();
-                            } catch (err) {
-                              toast({ title: "Erreur", description: err instanceof Error ? err.message : "Erreur inconnue", variant: "destructive" });
+                              })
+                                .then(async (res) => {
+                                  const text = await res.text();
+                                  if (!res.ok) {
+                                    let msg = `Erreur ${res.status}`;
+                                    try { msg = JSON.parse(text).error || msg; } catch { msg = text.slice(0, 200) || msg; }
+                                    toast({ title: "Erreur", description: String(msg), variant: "destructive" });
+                                    return;
+                                  }
+                                  const data = JSON.parse(text);
+                                  toast({ title: "Envoyé pour signature", description: `Email envoyé à ${data.email_sent_to}` });
+                                  fetchProspect();
+                                })
+                                .catch((err) => {
+                                  toast({ title: "Erreur réseau", description: String(err?.message || err), variant: "destructive" });
+                                });
                             }
                           }}
                           className="text-[10px] text-indigo-600 hover:underline font-medium"
