@@ -48,6 +48,7 @@ const TRIGGER_TYPE_LABELS: Record<string, string> = {
   session_end_plus_days: "jours après la fin",
   on_session_creation: "à la création de la session",
   on_session_completion: "à la complétion (terminé)",
+  opco_deposit_reminder: "rappel dépôt OPCO (J-X avant début)",
 };
 
 const RECIPIENT_LABELS: Record<string, string> = {
@@ -258,7 +259,7 @@ export default function AutomationPage() {
                   <div className="space-y-1">
                     <Label className="text-xs text-gray-500">Déclencheur</Label>
                     <div className="flex items-center gap-1">
-                      {(rule.trigger_type === "session_start_minus_days" || rule.trigger_type === "session_end_plus_days") && (
+                      {(rule.trigger_type === "session_start_minus_days" || rule.trigger_type === "session_end_plus_days" || rule.trigger_type === "opco_deposit_reminder") && (
                         <Input
                           type="number"
                           min={1}
@@ -282,6 +283,7 @@ export default function AutomationPage() {
                           <SelectItem value="session_end_plus_days">après fin</SelectItem>
                           <SelectItem value="on_session_creation">à la création</SelectItem>
                           <SelectItem value="on_session_completion">à la complétion</SelectItem>
+                          <SelectItem value="opco_deposit_reminder">rappel OPCO</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -374,7 +376,7 @@ export default function AutomationPage() {
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-gray-400">{RECIPIENT_LABELS[rule.recipient_type] || "📚"}</span>
                     <span className="font-medium text-gray-800 bg-white border border-gray-200 px-2 py-0.5 rounded">
-                      {rule.trigger_type === "session_start_minus_days" ? `J-${rule.days_offset}` : rule.trigger_type === "session_end_plus_days" ? `J+${rule.days_offset}` : rule.trigger_type === "on_session_creation" ? "Création" : "Complétion"}
+                      {rule.trigger_type === "session_start_minus_days" ? `J-${rule.days_offset}` : rule.trigger_type === "session_end_plus_days" ? `J+${rule.days_offset}` : rule.trigger_type === "on_session_creation" ? "Création" : rule.trigger_type === "on_session_completion" ? "Complétion" : rule.trigger_type === "opco_deposit_reminder" ? `OPCO J-${rule.days_offset}` : rule.trigger_type}
                     </span>
                   </div>
                 </div>

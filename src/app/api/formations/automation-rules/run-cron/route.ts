@@ -320,6 +320,75 @@ export async function POST(request: NextRequest) {
       totalSent += emailsSent;
     }
 
+    // ── OPCO DEPOSIT REMINDERS ──
+    // Check formation_financiers with status='a_deposer' where session starts within X days
+    for (const entity of entities ?? []) {
+      const FROM_ADDR = getFromAddress(entity.name);
+
+      const { data: opcoRules } = await supabase
+        .from("formation_automation_rules")
+        .select("*")
+        .eq("entity_id", entity.id)
+        .eq("trigger_type", "opco_deposit_reminder")
+        .eq("is_enabled", true);
+
+      if (!opcoRules || opcoRules.length === 0) continue;
+
+      for (const rule of opcoRules) {
+        const targetDate = new Date();
+        targetDate.setDate(targetDate.getDate() + (rule.days_offset || 7));
+        const targetDateStr = targetDate.toISOString().split("T")[0];
+
+        // Find sessions starting on target date that have undeposited OPCO
+        const { data: pendingOpco } = await supabase
+          .from("formation_financiers")
+          .select("id, name, session_id, session:sessions!inner(id, title, start_date, entity_id)")
+          .eq("status", "a_deposer")
+          .eq("session.entity_id", entity.id)
+          .eq("session.start_date", targetDateStr);
+
+        if (!pendingOpco || pendingOpco.length === 0) continue;
+
+        // Send reminder to all admins of this entity
+        const { data: admins } = await supabase
+          .from("profiles")
+          .select("id, email, first_name, last_name")
+          .eq("entity_id", entity.id)
+          .in("role", ["admin", "super_admin"]);
+
+        for (const opco of pendingOpco) {
+          const session = Array.isArray(opco.session) ? opco.session[0] : opco.session;
+          if (!session) continue;
+          const sessionTitle = (session as Record<string, string>).title || "Formation";
+
+          for (const admin of admins ?? []) {
+            if (!admin.email) continue;
+
+            const subject = `Rappel : demande OPCO à déposer — ${sessionTitle}`;
+            const textBody = `Bonjour ${admin.first_name},\n\nLa demande de prise en charge OPCO "${opco.name}" pour la formation "${sessionTitle}" n'a pas encore été déposée.\n\nLa formation commence le ${targetDateStr}.\n\nPensez à déposer la demande rapidement.\n\nCordialement,\nL'équipe ${entity.name}`;
+
+            if (resend) {
+              try {
+                await resend.emails.send({ from: FROM_ADDR, to: [admin.email], subject, html: toHtmlBody(textBody), text: textBody });
+              } catch { /* continue */ }
+            } else {
+              console.log(`[cron] Simulated OPCO reminder to ${admin.email}: ${subject}`);
+            }
+
+            await supabase.from("email_history").insert({
+              entity_id: entity.id, recipient_email: admin.email,
+              subject, body: textBody, status: "sent",
+              sent_at: new Date().toISOString(), sent_via: "resend",
+              session_id: (session as Record<string, string>).id,
+              recipient_type: "admin", recipient_id: admin.id,
+            });
+
+            totalSent++;
+          }
+        }
+      }
+    }
+
     console.log(`[cron] Automation complete: ${totalSent} emails sent across ${results.length} entities`);
 
     return NextResponse.json({
