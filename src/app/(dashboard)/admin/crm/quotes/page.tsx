@@ -313,9 +313,24 @@ export default function QuotesPage() {
         }
       }
 
-      const lines = Array.isArray(meta.lines) ? meta.lines : [];
+      // Fetch lines from crm_quote_lines (with fallback to JSON meta.lines)
+      let lines: Array<Record<string, unknown>> = [];
+      const { data: dbLines } = await supabase
+        .from("crm_quote_lines")
+        .select("description, quantity, unit_price")
+        .eq("quote_id", quote.id)
+        .order("created_at", { ascending: true });
+      if (dbLines && dbLines.length > 0) {
+        lines = dbLines;
+      } else if (Array.isArray(meta.lines)) {
+        lines = meta.lines as Array<Record<string, unknown>>;
+      }
+
       let tvaRate = 20;
-      if (typeof meta.tva === "number") {
+      // Use column first, then meta fallback
+      if ((quote as unknown as Record<string, unknown>).tva != null) {
+        tvaRate = Number((quote as unknown as Record<string, unknown>).tva) || 20;
+      } else if (typeof meta.tva === "number") {
         tvaRate = meta.tva;
       } else if (typeof meta.tva === "string") {
         tvaRate = parseFloat(String(meta.tva).replace(",", ".")) || 20;
@@ -376,9 +391,23 @@ export default function QuotesPage() {
         if (c) { prospectName = c.company_name; prospectEmail = c.email ?? ""; }
       }
 
-      const lines = Array.isArray(meta.lines) ? meta.lines : [];
+      // Fetch lines from crm_quote_lines (fallback JSON)
+      let sendLines: Array<Record<string, unknown>> = [];
+      const { data: sendDbLines } = await supabase
+        .from("crm_quote_lines")
+        .select("description, quantity, unit_price")
+        .eq("quote_id", quote.id)
+        .order("created_at", { ascending: true });
+      if (sendDbLines && sendDbLines.length > 0) {
+        sendLines = sendDbLines;
+      } else if (Array.isArray(meta.lines)) {
+        sendLines = meta.lines as Array<Record<string, unknown>>;
+      }
+
       let tvaRate = 20;
-      if (typeof meta.tva === "number") tvaRate = meta.tva;
+      if ((quote as unknown as Record<string, unknown>).tva != null) {
+        tvaRate = Number((quote as unknown as Record<string, unknown>).tva) || 20;
+      } else if (typeof meta.tva === "number") tvaRate = meta.tva;
       else if (typeof meta.tva === "string") tvaRate = parseFloat(String(meta.tva).replace(",", ".")) || 20;
 
       const devisData: DevisData = {
@@ -386,7 +415,7 @@ export default function QuotesPage() {
         date_creation: quote.created_at?.slice(0, 10) ?? new Date().toISOString().slice(0, 10),
         date_echeance: quote.valid_until ?? "",
         tva: tvaRate,
-        lines: lines.map((l: Record<string, unknown>) => ({
+        lines: sendLines.map((l: Record<string, unknown>) => ({
           description: String(l.description ?? ""),
           quantity: Number(l.quantity ?? 1),
           unit_price: Number(l.unit_price ?? 0),

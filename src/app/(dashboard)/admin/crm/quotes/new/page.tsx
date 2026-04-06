@@ -117,11 +117,13 @@ export default function NewQuotePage() {
   }, [prospectId, supabase]);
 
   const generateRef = useCallback(async () => {
-    let q = supabase.from("crm_quotes").select("id", { count: "exact", head: true });
+    const fiscalYear = new Date().getFullYear();
+    let q = supabase.from("crm_quotes").select("quote_number").eq("fiscal_year", fiscalYear);
     if (entityId) q = q.eq("entity_id", entityId);
-    const { count } = await q;
-    const num = String((count ?? 0) + 1).padStart(3, "0");
-    setForm((f) => ({ ...f, reference: `M-FAC-${num}` }));
+    q = q.order("quote_number", { ascending: false }).limit(1);
+    const { data } = await q.maybeSingle();
+    const nextNum = ((data?.quote_number as number) ?? 0) + 1;
+    setForm((f) => ({ ...f, reference: `DEV-${fiscalYear}-${String(nextNum).padStart(3, "0")}` }));
   }, [supabase, entityId]);
 
   useEffect(() => {
@@ -219,7 +221,7 @@ export default function NewQuotePage() {
     setError("");
 
     try {
-      // Build metadata JSON for notes
+      // Build metadata JSON for notes (WITHOUT lines — stored in crm_quote_lines)
       const metadata = {
         tva: form.tva,
         training_start: form.training_start || null,
@@ -228,22 +230,36 @@ export default function NewQuotePage() {
         duration: form.duration || null,
         mention: form.mention || null,
         notes_text: form.notes || null,
-        lines: form.lines.map((l) => ({
-          description: l.description,
-          quantity: parseFloat(l.quantity.replace(",", ".")) || 1,
-          unit_price: parseFloat(l.unit_price.replace(",", ".")) || 0,
-        })),
       };
 
+      // Get next quote number
+      const fiscalYear = new Date().getFullYear();
+      const { data: maxRow } = await supabase
+        .from("crm_quotes")
+        .select("quote_number")
+        .eq("entity_id", entityId)
+        .eq("fiscal_year", fiscalYear)
+        .order("quote_number", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const nextNumber = (maxRow?.quote_number ?? 0) + 1;
+
       const payload: Record<string, unknown> = {
-        reference: form.reference.trim(),
+        reference: form.reference.trim() || `DEV-${fiscalYear}-${String(nextNumber).padStart(3, "0")}`,
         prospect_id: prospectId || null,
         amount: calcTotal(),
         status: "draft",
         valid_until: form.date_echeance || null,
         notes: JSON.stringify(metadata),
+        tva: parseFloat(String(form.tva).replace(",", ".")) || 20,
+        training_start: form.training_start || null,
+        training_end: form.training_end || null,
+        effectifs: form.effectifs ? parseInt(form.effectifs) : null,
+        duration: form.duration || null,
         bpf_funding_type: form.bpf_funding_type || null,
         program_id: form.program_id || null,
+        quote_number: nextNumber,
+        fiscal_year: fiscalYear,
       };
       if (entityId) payload.entity_id = entityId;
 
@@ -252,8 +268,27 @@ export default function NewQuotePage() {
       } = await supabase.auth.getUser();
       if (user) payload.created_by = user.id;
 
-      const { error: insertErr } = await supabase.from("crm_quotes").insert([payload]);
+      const { data: insertedQuote, error: insertErr } = await supabase
+        .from("crm_quotes")
+        .insert([payload])
+        .select("id")
+        .single();
       if (insertErr) throw insertErr;
+
+      // Insert lines into crm_quote_lines
+      const parsedLines = form.lines
+        .filter((l) => l.description.trim())
+        .map((l) => ({
+          quote_id: insertedQuote.id,
+          description: l.description.trim(),
+          quantity: parseFloat(l.quantity.replace(",", ".")) || 1,
+          unit_price: parseFloat(l.unit_price.replace(",", ".")) || 0,
+        }));
+
+      if (parsedLines.length > 0) {
+        const { error: linesErr } = await supabase.from("crm_quote_lines").insert(parsedLines);
+        if (linesErr) console.error("Error inserting quote lines:", linesErr);
+      }
 
       // Navigate back to prospect or quotes list
       if (prospectId) {
