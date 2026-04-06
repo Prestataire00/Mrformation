@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { requireRole } from "@/lib/auth/require-role";
 import { sanitizeError } from "@/lib/api-error";
 import { logAudit } from "@/lib/audit-log";
+
+function getServiceSupabase() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) throw new Error("Missing Supabase config");
+  return createServiceClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
+}
 
 function getFromAddress(entityName: string): string {
   return entityName.toLowerCase().includes("c3v")
@@ -56,10 +64,12 @@ export async function POST(request: NextRequest) {
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 30);
 
-    const { data: token, error: tokenErr } = await auth.supabase
+    // Use service role client to bypass RLS on signing_tokens
+    const serviceSupabase = getServiceSupabase();
+
+    const { data: token, error: tokenErr } = await serviceSupabase
       .from("signing_tokens")
       .insert({
-        session_id: null,
         entity_id: quote.entity_id,
         quote_id,
         token_purpose: "quote_signature",
@@ -71,7 +81,7 @@ export async function POST(request: NextRequest) {
     if (tokenErr) throw tokenErr;
 
     // Update quote
-    await auth.supabase
+    await serviceSupabase
       .from("crm_quotes")
       .update({
         signature_token: token.token,
