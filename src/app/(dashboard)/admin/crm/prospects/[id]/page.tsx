@@ -991,13 +991,14 @@ export default function ProspectDetailPage() {
                                 headers: { "Content-Type": "application/json" },
                                 body: JSON.stringify({ quote_id: q.id }),
                               });
-                              const data = await res.json();
-                              if (!res.ok) throw new Error(typeof data.error === "string" ? data.error : JSON.stringify(data.error || data));
-                              toast({ title: "Envoyé pour signature", description: `Email envoyé à ${data.email_sent_to}` });
+                              const text = await res.text();
+                              let data: Record<string, unknown>;
+                              try { data = JSON.parse(text); } catch { throw new Error(`Erreur serveur (${res.status}): ${text.slice(0, 200)}`); }
+                              if (!res.ok) throw new Error(String(data.error || `Erreur ${res.status}`));
+                              toast({ title: "Envoyé pour signature", description: `Email envoyé à ${(data as Record<string, string>).email_sent_to}` });
                               fetchProspect();
                             } catch (err) {
-                              const msg = err instanceof Error ? err.message : "Une erreur est survenue";
-                              toast({ title: "Erreur", description: msg, variant: "destructive" });
+                              toast({ title: "Erreur", description: err instanceof Error ? err.message : "Erreur inconnue", variant: "destructive" });
                             }
                           }}
                           className="text-[10px] text-indigo-600 hover:underline font-medium"
