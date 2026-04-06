@@ -975,10 +975,37 @@ export default function ProspectDetailPage() {
                       <span className="text-xs text-muted-foreground">{formatDate(q.created_at)}</span>
                       <span className="text-sm font-semibold">{q.amount ? `${q.amount.toLocaleString("fr-FR")} €` : "—"}</span>
                     </div>
-                    <div className="flex gap-1 mt-2">
-                      <button onClick={() => handleDownloadDevis(q)} className="text-[10px] text-[#3DB5C5] hover:underline">PDF</button>
+                    <div className="flex items-center gap-1.5 mt-2">
+                      {/* Bouton principal : signature ou état */}
+                      {(q as unknown as Record<string, unknown>).signed_at ? (
+                        <span className="text-[10px] text-green-600 font-medium">✓ Signé</span>
+                      ) : (q as unknown as Record<string, unknown>).signature_requested_at ? (
+                        <span className="text-[10px] text-indigo-600 font-medium">En attente de signature</span>
+                      ) : q.status !== "accepted" ? (
+                        <button
+                          onClick={async () => {
+                            try {
+                              toast({ title: "Envoi en cours..." });
+                              const res = await fetch("/api/crm/quotes/sign-request", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ quote_id: q.id }),
+                              });
+                              const data = await res.json();
+                              if (!res.ok) throw new Error(data.error);
+                              toast({ title: "Envoyé pour signature", description: `Email envoyé à ${data.email_sent_to}` });
+                              fetchProspect();
+                            } catch (err) {
+                              toast({ title: "Erreur", description: err instanceof Error ? err.message : "Erreur", variant: "destructive" });
+                            }
+                          }}
+                          className="text-[10px] text-indigo-600 hover:underline font-medium"
+                        >
+                          ✉ Envoyer pour signature
+                        </button>
+                      ) : null}
                       <span className="text-gray-300">·</span>
-                      <button onClick={() => router.push(`/admin/crm/prospects/${prospect.id}/email?subject=${encodeURIComponent(`Devis ${q.reference ?? ""}`)}`)} className="text-[10px] text-gray-500 hover:underline">Envoyer</button>
+                      <button onClick={() => handleDownloadDevis(q)} className="text-[10px] text-[#3DB5C5] hover:underline">PDF</button>
                       <span className="text-gray-300">·</span>
                       <button onClick={() => handleDeleteQuote(q.id)} className="text-[10px] text-red-400 hover:underline">Suppr.</button>
                     </div>
