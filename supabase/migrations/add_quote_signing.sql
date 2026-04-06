@@ -5,6 +5,9 @@
 -- ============================================================
 
 -- 1. Étendre signing_tokens pour les devis
+-- Rendre session_id nullable (les devis n'ont pas de session)
+ALTER TABLE signing_tokens ALTER COLUMN session_id DROP NOT NULL;
+
 ALTER TABLE signing_tokens ADD COLUMN IF NOT EXISTS quote_id UUID REFERENCES crm_quotes(id) ON DELETE CASCADE;
 
 -- Mettre à jour la contrainte token_purpose pour inclure 'quote_signature'
