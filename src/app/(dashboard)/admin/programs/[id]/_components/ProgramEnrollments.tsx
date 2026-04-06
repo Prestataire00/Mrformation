@@ -27,7 +27,7 @@ import {
 } from "lucide-react";
 import { getInitials } from "@/lib/utils";
 
-const BRAND = "#3DB5C5";
+const BRAND = "#DC2626";
 
 interface Module {
   id: number;

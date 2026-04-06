@@ -188,7 +188,7 @@ export function BulkSlotCreator({ formation, onRefresh }: Props) {
           size="sm"
           onClick={handlePlanifier}
           disabled={loading || previewSlots.length === 0}
-          style={{ background: "#3DB5C5" }}
+          style={{ background: "#DC2626" }}
           className="text-white gap-1.5 text-xs"
         >
           {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CalendarPlus className="h-3.5 w-3.5" />}

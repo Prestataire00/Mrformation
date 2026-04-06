@@ -66,7 +66,7 @@ interface ProspectForm {
 // ─── Colonnes par défaut ──────────────────────────────────────────────────────
 
 const DEFAULT_COLUMNS: KanbanColumn[] = [
-  { id: "new",       label: "Lead",        color: "#3DB5C5" },
+  { id: "new",       label: "Lead",        color: "#DC2626" },
   { id: "contacted", label: "Contacté",    color: "#f97316" },
   { id: "qualified", label: "Qualifié",    color: "#8b5cf6" },
   { id: "proposal",  label: "Proposition", color: "#2563EB" },
@@ -561,7 +561,7 @@ export default function CrmProspectsPage() {
         {/* Barre actions */}
         <div className="flex flex-wrap items-center gap-3">
 
-          <Button size="sm" onClick={() => openAdd("new")} style={{ background: "#3DB5C5" }} className="text-white gap-1.5 text-xs">
+          <Button size="sm" onClick={() => openAdd("new")} style={{ background: "#DC2626" }} className="text-white gap-1.5 text-xs">
             <Plus className="h-3.5 w-3.5" /> Ajouter un prospect
           </Button>
           <Button size="sm" variant="outline" onClick={openConfig} className="gap-1.5 text-xs">
@@ -636,7 +636,7 @@ export default function CrmProspectsPage() {
       {/* ── Kanban ─────────────────────────────────────────────────── */}
       {loading ? (
         <div className="flex flex-1 items-center justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#3DB5C5] border-t-transparent" />
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#DC2626] border-t-transparent" />
         </div>
       ) : (
         <div className="flex flex-1 gap-4 overflow-x-auto p-6">
@@ -653,8 +653,8 @@ export default function CrmProspectsPage() {
                 className={cn(
                   "flex w-72 flex-shrink-0 flex-col rounded-lg bg-white border shadow-sm transition-all duration-150",
                   isDragging && "opacity-40 scale-95",
-                  isDragOver && !isDragging ? "border-[#3DB5C5] border-2 shadow-lg" : "border-gray-200",
-                  isCardDragTarget && "border-[#3DB5C5] border-2 bg-[#3DB5C5]/5"
+                  isDragOver && !isDragging ? "border-[#DC2626] border-2 shadow-lg" : "border-gray-200",
+                  isCardDragTarget && "border-[#DC2626] border-2 bg-[#DC2626]/5"
                 )}
                 style={{ minWidth: "288px" }}
               >
@@ -703,7 +703,7 @@ export default function CrmProspectsPage() {
                         onDragEnd={handleCardDragEnd}
                         onClick={() => !draggedCardId && router.push(`/admin/crm/prospects/${p.id}`)}
                         className={cn(
-                          "group relative rounded-lg border border-gray-100 bg-white p-3 shadow-sm hover:border-[#3DB5C5] hover:shadow-md transition-all cursor-grab active:cursor-grabbing",
+                          "group relative rounded-lg border border-gray-100 bg-white p-3 shadow-sm hover:border-[#DC2626] hover:shadow-md transition-all cursor-grab active:cursor-grabbing",
                           isBeingDragged && "opacity-40 scale-95",
                           (p.score || 0) >= 60 && "border-l-[3px] border-l-red-400",
                           (p.score || 0) >= 30 && (p.score || 0) < 60 && "border-l-[3px] border-l-amber-400"
@@ -766,7 +766,7 @@ export default function CrmProspectsPage() {
                 <div className="border-t border-gray-100 p-2">
                   <button
                     onClick={() => openAdd(col.id as ProspectStatus)}
-                    className="flex w-full items-center justify-center gap-1 rounded py-1.5 text-xs font-medium text-gray-400 hover:bg-gray-50 hover:text-[#3DB5C5] transition"
+                    className="flex w-full items-center justify-center gap-1 rounded py-1.5 text-xs font-medium text-gray-400 hover:bg-gray-50 hover:text-[#DC2626] transition"
                   >
                     <Plus className="h-3.5 w-3.5" />
                     Ajouter un prospect
@@ -801,7 +801,7 @@ export default function CrmProspectsPage() {
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle style={{ color: "#3DB5C5" }}>Ajouter un prospect</DialogTitle>
+            <DialogTitle style={{ color: "#DC2626" }}>Ajouter un prospect</DialogTitle>
           </DialogHeader>
           <ProspectFormFields form={form} setForm={setForm} columns={columns} onCompanySelect={handleCompanySelect} teamMembers={teamMembers} compact />
           {duplicateWarning && (
@@ -815,7 +815,7 @@ export default function CrmProspectsPage() {
               onClick={handleAdd}
               disabled={saving || !form.company_name.trim()}
               className="rounded px-4 py-2 text-sm font-bold uppercase tracking-wide text-white transition disabled:opacity-50"
-              style={{ backgroundColor: "#3DB5C5" }}
+              style={{ backgroundColor: "#DC2626" }}
             >
               {saving ? "Enregistrement…" : "AJOUTER"}
             </button>
@@ -829,7 +829,7 @@ export default function CrmProspectsPage() {
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle style={{ color: "#3DB5C5" }}>
+            <DialogTitle style={{ color: "#DC2626" }}>
               Modifier — {editingProspect?.company_name}
             </DialogTitle>
           </DialogHeader>
@@ -842,7 +842,7 @@ export default function CrmProspectsPage() {
               onClick={handleEdit}
               disabled={saving || !form.company_name.trim()}
               className="rounded px-4 py-2 text-sm font-bold uppercase tracking-wide text-white transition disabled:opacity-50"
-              style={{ backgroundColor: "#3DB5C5" }}
+              style={{ backgroundColor: "#DC2626" }}
             >
               {saving ? "Enregistrement…" : "ENREGISTRER"}
             </button>
@@ -882,7 +882,7 @@ export default function CrmProspectsPage() {
       <Dialog open={configOpen} onOpenChange={setConfigOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle style={{ color: "#3DB5C5" }}>Configuration du tunnel</DialogTitle>
+            <DialogTitle style={{ color: "#DC2626" }}>Configuration du tunnel</DialogTitle>
           </DialogHeader>
 
           <p className="text-xs text-gray-400 mb-3">
@@ -962,7 +962,7 @@ export default function CrmProspectsPage() {
                 { id, label: "Nouvelle colonne", color: "#6b7280" },
               ]);
             }}
-            className="flex w-full items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-gray-300 py-2.5 text-sm font-medium text-gray-400 hover:border-[#3DB5C5] hover:text-[#3DB5C5] transition"
+            className="flex w-full items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-gray-300 py-2.5 text-sm font-medium text-gray-400 hover:border-[#DC2626] hover:text-[#DC2626] transition"
           >
             <Plus className="h-4 w-4" />
             Ajouter une colonne
@@ -975,7 +975,7 @@ export default function CrmProspectsPage() {
             <button
               onClick={saveConfig}
               className="rounded px-4 py-2 text-sm font-bold uppercase tracking-wide text-white transition"
-              style={{ backgroundColor: "#3DB5C5" }}
+              style={{ backgroundColor: "#DC2626" }}
             >
               ENREGISTRER
             </button>

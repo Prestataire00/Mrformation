@@ -10,30 +10,30 @@
     --card-foreground: 222.2 84% 4.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
-    /* Turquoise - couleur principale de l'ancien CRM */
-    --primary: 187 72% 42%;
+    /* Rouge MR Formation — #DC2626 */
+    --primary: 0 84% 50%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 187 30% 94%;
-    --secondary-foreground: 187 72% 25%;
+    --secondary: 0 30% 95%;
+    --secondary-foreground: 0 84% 30%;
     --muted: 210 40% 96.1%;
     --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 187 20% 93%;
-    --accent-foreground: 187 72% 25%;
+    --accent: 0 20% 95%;
+    --accent-foreground: 0 84% 30%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
-    --ring: 187 72% 42%;
+    --ring: 0 84% 50%;
     --radius: 0.5rem;
     /* Sidebar claire */
     --sidebar-background: 0 0% 100%;
     --sidebar-foreground: 222 20% 25%;
-    --sidebar-primary: 187 72% 45%;
+    --sidebar-primary: 0 84% 50%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 210 20% 95%;
+    --sidebar-accent: 0 15% 96%;
     --sidebar-accent-foreground: 222 20% 25%;
     --sidebar-border: 220 14% 90%;
-    --sidebar-ring: 187 72% 45%;
+    --sidebar-ring: 0 84% 50%;
   }
 
   .dark {
@@ -43,7 +43,7 @@
     --card-foreground: 210 40% 98%;
     --popover: 222.2 84% 4.9%;
     --popover-foreground: 210 40% 98%;
-    --primary: 187 72% 45%;
+    --primary: 0 84% 50%;
     --primary-foreground: 0 0% 100%;
     --secondary: 217.2 32.6% 17.5%;
     --secondary-foreground: 210 40% 98%;
@@ -55,21 +55,21 @@
     --destructive-foreground: 210 40% 98%;
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
-    --ring: 187 72% 45%;
+    --ring: 0 84% 50%;
   }
 }
 
 /* ── Entity themes ────────────────────────────────────────── */
 [data-entity="mr-formation"] {
-  --primary: 217 89% 53%;
+  --primary: 0 84% 50%;
   --primary-foreground: 0 0% 100%;
-  --ring: 217 89% 53%;
-  --secondary: 217 30% 94%;
-  --secondary-foreground: 217 89% 30%;
-  --accent: 217 20% 93%;
-  --accent-foreground: 217 89% 30%;
-  --sidebar-primary: 217 89% 53%;
-  --sidebar-ring: 217 89% 53%;
+  --ring: 0 84% 50%;
+  --secondary: 0 30% 95%;
+  --secondary-foreground: 0 84% 30%;
+  --accent: 0 20% 95%;
+  --accent-foreground: 0 84% 30%;
+  --sidebar-primary: 0 84% 50%;
+  --sidebar-ring: 0 84% 50%;
 }
 
 [data-entity="c3v-formation"] {

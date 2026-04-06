@@ -886,7 +886,7 @@ export default function ClientDetailPage() {
         <Button
           size="sm"
           className="gap-1.5 text-xs"
-          style={{ background: "#3DB5C5" }}
+          style={{ background: "#DC2626" }}
           onClick={() => {
             const tabsList = document.querySelector('[data-state="active"][value="emails"]') || document.querySelector('[value="emails"]');
             if (tabsList) (tabsList as HTMLElement).click();
@@ -1199,7 +1199,7 @@ export default function ClientDetailPage() {
                           {learner.first_name.charAt(0)}{learner.last_name.charAt(0)}
                         </div>
                         <div className="min-w-0">
-                          <Link href={`/admin/clients/apprenants/${learner.id}`} className="text-sm font-medium text-gray-900 hover:text-[#3DB5C5] hover:underline">
+                          <Link href={`/admin/clients/apprenants/${learner.id}`} className="text-sm font-medium text-gray-900 hover:text-[#DC2626] hover:underline">
                             {learner.first_name} {learner.last_name}
                           </Link>
                           <div className="flex items-center gap-3 text-xs text-gray-400 mt-0.5">
@@ -1210,7 +1210,7 @@ export default function ClientDetailPage() {
                         </div>
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
-                        <button onClick={() => handleEnrollLearner(learner)} className="text-[10px] text-[#3DB5C5] hover:underline px-1.5 py-0.5">Inscrire</button>
+                        <button onClick={() => handleEnrollLearner(learner)} className="text-[10px] text-[#DC2626] hover:underline px-1.5 py-0.5">Inscrire</button>
                         <Link href={`/admin/clients/apprenants/${learner.id}`} className="text-[10px] text-gray-500 hover:text-gray-700 px-1.5 py-0.5">Voir</Link>
                       </div>
                     </div>

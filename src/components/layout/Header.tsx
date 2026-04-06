@@ -116,10 +116,10 @@ export function Header({ profile, entity }: HeaderProps) {
     [profile?.first_name, profile?.last_name].filter(Boolean).join(" ") || "Utilisateur";
   const initials = getInitials(profile?.first_name, profile?.last_name);
   const roleLabel = profile?.role ? ROLE_LABELS[profile.role] : "";
-  const entityColor = entity?.slug ? ENTITY_COLORS[entity.slug] ?? entity.theme_color : "#3DB5C5";
+  const entityColor = entity?.slug ? ENTITY_COLORS[entity.slug] ?? entity.theme_color : "#DC2626";
 
   return (
-    <header className="h-14 flex items-center px-5 gap-4 shrink-0" style={{ background: "#3DB5C5" }}>
+    <header className="h-14 flex items-center px-5 gap-4 shrink-0" style={{ background: "#DC2626" }}>
       {/* Entity Switcher separator */}
 
       {/* Entity Switcher */}

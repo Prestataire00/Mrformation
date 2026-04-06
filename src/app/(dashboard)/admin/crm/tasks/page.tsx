@@ -442,7 +442,7 @@ export default function TasksPage() {
               <LayoutGrid className="h-3.5 w-3.5" />
             </button>
           </div>
-          <Button onClick={toggleAddForm} size="sm" style={{ background: "#3DB5C5" }} className="text-white gap-1.5 text-xs">
+          <Button onClick={toggleAddForm} size="sm" style={{ background: "#DC2626" }} className="text-white gap-1.5 text-xs">
             <Plus className="h-3.5 w-3.5" /> Nouvelle tâche
           </Button>
         </div>
@@ -566,7 +566,7 @@ export default function TasksPage() {
           <p className="text-xs text-gray-400 mt-1">
             {hasActiveFilters ? "Modifiez vos filtres ou créez une nouvelle tâche." : "Commencez par créer votre première tâche."}
           </p>
-          <Button onClick={toggleAddForm} size="sm" className="mt-3 gap-1.5 text-xs" style={{ background: "#3DB5C5" }}>
+          <Button onClick={toggleAddForm} size="sm" className="mt-3 gap-1.5 text-xs" style={{ background: "#DC2626" }}>
             <Plus className="h-3.5 w-3.5" /> Nouvelle tâche
           </Button>
         </div>

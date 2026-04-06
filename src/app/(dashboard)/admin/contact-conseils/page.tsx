@@ -45,7 +45,7 @@ export default function ContactConseilsPage() {
           <div className="p-4 bg-muted/30 rounded-lg space-y-3">
             <div className="flex items-center gap-3">
               <div className="p-2.5 bg-teal-50 rounded-lg">
-                <Shield className="h-5 w-5 text-[#3DB5C5]" />
+                <Shield className="h-5 w-5 text-[#DC2626]" />
               </div>
               <div>
                 <p className="font-semibold text-gray-900">IA INFINITY</p>
@@ -62,7 +62,7 @@ export default function ContactConseilsPage() {
               <a
                 href="mailto:acces.prestataires@i-a-infinity.com"
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white"
-                style={{ background: "#3DB5C5" }}
+                style={{ background: "#DC2626" }}
               >
                 <Mail className="h-3.5 w-3.5" /> Contacter le support
               </a>
@@ -88,9 +88,9 @@ export default function ContactConseilsPage() {
                 rel="noopener noreferrer"
                 className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg hover:bg-muted/50 transition-colors group"
               >
-                <ExternalLink className="h-4 w-4 text-[#3DB5C5] shrink-0" />
+                <ExternalLink className="h-4 w-4 text-[#DC2626] shrink-0" />
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-gray-900 group-hover:text-[#3DB5C5] transition-colors">
+                  <p className="text-sm font-medium text-gray-900 group-hover:text-[#DC2626] transition-colors">
                     {r.label}
                   </p>
                   <p className="text-xs text-muted-foreground">{r.description}</p>

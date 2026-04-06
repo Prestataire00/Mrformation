@@ -54,7 +54,7 @@ export default function ResetPasswordPage() {
       className="min-h-screen flex items-center justify-center p-4"
       style={{
         background:
-          "linear-gradient(135deg, #87CEEB 0%, #5BB8D4 50%, #3DB5C5 100%)",
+          "linear-gradient(135deg, #FCA5A5 0%, #EF4444 50%, #DC2626 100%)",
       }}
     >
       <div className="w-full max-w-md">
@@ -62,7 +62,7 @@ export default function ResetPasswordPage() {
           {/* Header */}
           <div
             className="px-8 py-6 text-center"
-            style={{ background: "linear-gradient(135deg, #3DB5C5, #2BA3B3)" }}
+            style={{ background: "linear-gradient(135deg, #DC2626, #B91C1C)" }}
           >
             <div className="flex items-center justify-center gap-3 mb-1">
               <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
@@ -105,7 +105,7 @@ export default function ResetPasswordPage() {
                     onChange={(e) => setPassword(e.target.value)}
                     required
                     autoComplete="new-password"
-                    className="w-full px-4 py-3 bg-blue-50 border border-blue-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#3DB5C5] focus:border-transparent placeholder:text-gray-400 pr-10"
+                    className="w-full px-4 py-3 bg-blue-50 border border-blue-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#DC2626] focus:border-transparent placeholder:text-gray-400 pr-10"
                   />
                   <button
                     type="button"
@@ -127,14 +127,14 @@ export default function ResetPasswordPage() {
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required
                   autoComplete="new-password"
-                  className="w-full px-4 py-3 bg-blue-50 border border-blue-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#3DB5C5] focus:border-transparent placeholder:text-gray-400"
+                  className="w-full px-4 py-3 bg-blue-50 border border-blue-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#DC2626] focus:border-transparent placeholder:text-gray-400"
                 />
 
                 <button
                   type="submit"
                   disabled={loading}
                   className="w-full py-3 rounded-lg font-semibold text-white text-sm uppercase tracking-widest transition-all disabled:opacity-60"
-                  style={{ background: "linear-gradient(135deg, #3DB5C5, #2BA3B3)" }}
+                  style={{ background: "linear-gradient(135deg, #DC2626, #B91C1C)" }}
                 >
                   {loading ? (
                     <span className="flex items-center justify-center gap-2">

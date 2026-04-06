@@ -90,7 +90,7 @@ function SelectRoleContent() {
       className="min-h-screen flex items-center justify-center p-4"
       style={{
         background:
-          "linear-gradient(135deg, #87CEEB 0%, #5BB8D4 50%, #3DB5C5 100%)",
+          "linear-gradient(135deg, #FCA5A5 0%, #EF4444 50%, #DC2626 100%)",
       }}
     >
       <div className="w-full max-w-2xl">

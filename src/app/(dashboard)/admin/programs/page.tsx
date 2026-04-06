@@ -458,7 +458,7 @@ export default function ProgramsPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <CardTitle
-                        className="text-base leading-snug cursor-pointer hover:text-[#3DB5C5] transition-colors"
+                        className="text-base leading-snug cursor-pointer hover:text-[#DC2626] transition-colors"
                         onClick={() => router.push(`/admin/programs/${program.id}`)}
                       >
                         {truncate(program.title, 50)}

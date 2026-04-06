@@ -171,9 +171,9 @@ export default function FinanceursPage() {
     <div className="p-6">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm mb-4">
-        <Link href="/admin" className="text-[#3DB5C5] hover:underline">Accueil</Link>
+        <Link href="/admin" className="text-[#DC2626] hover:underline">Accueil</Link>
         <span className="text-gray-400">/</span>
-        <Link href="/admin/clients" className="text-[#3DB5C5] hover:underline">Clients</Link>
+        <Link href="/admin/clients" className="text-[#DC2626] hover:underline">Clients</Link>
         <span className="text-gray-400">/</span>
         <span className="text-gray-500">Financeurs</span>
       </div>
@@ -188,14 +188,14 @@ export default function FinanceursPage() {
           <button
             onClick={() => { setShowAddForm((v) => !v); setEditingId(null); }}
             className="text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-1"
-            style={{ background: "#3DB5C5" }}
+            style={{ background: "#DC2626" }}
           >
             <Plus className="h-4 w-4" />
             Ajouter
           </button>
           <button
             onClick={handleDownload}
-            className="border border-[#3DB5C5] text-[#3DB5C5] px-4 py-2 rounded-lg text-sm flex items-center gap-1"
+            className="border border-[#DC2626] text-[#DC2626] px-4 py-2 rounded-lg text-sm flex items-center gap-1"
           >
             <Download className="h-4 w-4" />
             Excel
@@ -212,14 +212,14 @@ export default function FinanceursPage() {
             placeholder="Rechercher..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="border border-gray-300 rounded-lg pl-9 pr-3 py-2 text-sm w-full focus:outline-none focus:border-[#3DB5C5]"
+            className="border border-gray-300 rounded-lg pl-9 pr-3 py-2 text-sm w-full focus:outline-none focus:border-[#DC2626]"
           />
         </div>
       </div>
 
       {/* Inline Add Form */}
       {showAddForm && (
-        <div className="border border-[#3DB5C5] rounded-lg bg-white p-4 mb-4">
+        <div className="border border-[#DC2626] rounded-lg bg-white p-4 mb-4">
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
             <div>
               <label className="block text-xs text-gray-500 mb-1">Nom <span className="text-red-500">*</span></label>
@@ -227,7 +227,7 @@ export default function FinanceursPage() {
                 type="text"
                 value={form.name}
                 onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#3DB5C5]"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#DC2626]"
                 placeholder="Nom du financeur"
               />
             </div>
@@ -237,7 +237,7 @@ export default function FinanceursPage() {
                 type="email"
                 value={form.email}
                 onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#3DB5C5]"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#DC2626]"
                 placeholder="contact@exemple.fr"
               />
             </div>
@@ -247,7 +247,7 @@ export default function FinanceursPage() {
                 type="tel"
                 value={form.phone}
                 onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#3DB5C5]"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#DC2626]"
                 placeholder="01 23 45 67 89"
               />
             </div>
@@ -256,7 +256,7 @@ export default function FinanceursPage() {
               <select
                 value={form.type}
                 onChange={(e) => setForm((p) => ({ ...p, type: e.target.value }))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#3DB5C5]"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#DC2626]"
               >
                 {TYPE_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
@@ -273,7 +273,7 @@ export default function FinanceursPage() {
               onClick={handleAdd}
               disabled={saving}
               className="text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-1 disabled:opacity-50"
-              style={{ background: "#3DB5C5" }}
+              style={{ background: "#DC2626" }}
             >
               {saving && <Loader2 className="h-4 w-4 animate-spin" />}
               Ajouter
@@ -319,7 +319,7 @@ export default function FinanceursPage() {
                             type="text"
                             value={editForm.name}
                             onChange={(e) => setEditForm((p) => ({ ...p, name: e.target.value }))}
-                            className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:border-[#3DB5C5]"
+                            className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:border-[#DC2626]"
                           />
                         </td>
                         <td className="px-4 py-2">
@@ -327,7 +327,7 @@ export default function FinanceursPage() {
                             type="tel"
                             value={editForm.phone}
                             onChange={(e) => setEditForm((p) => ({ ...p, phone: e.target.value }))}
-                            className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:border-[#3DB5C5]"
+                            className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:border-[#DC2626]"
                           />
                         </td>
                         <td className="px-4 py-2">
@@ -335,14 +335,14 @@ export default function FinanceursPage() {
                             type="email"
                             value={editForm.email}
                             onChange={(e) => setEditForm((p) => ({ ...p, email: e.target.value }))}
-                            className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:border-[#3DB5C5]"
+                            className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:border-[#DC2626]"
                           />
                         </td>
                         <td className="px-4 py-2">
                           <select
                             value={editForm.type}
                             onChange={(e) => setEditForm((p) => ({ ...p, type: e.target.value }))}
-                            className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:border-[#3DB5C5]"
+                            className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:border-[#DC2626]"
                           >
                             {TYPE_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
                           </select>
@@ -381,7 +381,7 @@ export default function FinanceursPage() {
                           <div className="flex items-center gap-3">
                             <button
                               onClick={() => startEdit(f)}
-                              className="text-[#3DB5C5] hover:underline text-xs font-medium"
+                              className="text-[#DC2626] hover:underline text-xs font-medium"
                             >
                               Modifier
                             </button>

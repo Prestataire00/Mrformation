@@ -138,7 +138,7 @@ export default function NotificationsPage() {
       <Card className="bg-white border border-gray-200 shadow-sm">
         <CardHeader className="pb-3 flex flex-row items-center justify-between">
           <CardTitle className="text-base font-semibold text-gray-700 flex items-center gap-2">
-            <Bell className="h-4 w-4" style={{ color: "#3DB5C5" }} />
+            <Bell className="h-4 w-4" style={{ color: "#DC2626" }} />
             Notifications
             {unreadCount > 0 && (
               <Badge className="bg-red-500 text-white text-[10px] ml-1">
@@ -169,7 +169,7 @@ export default function NotificationsPage() {
             {unreadCount > 0 && (
               <button
                 onClick={markAllRead}
-                className="text-xs text-[#3DB5C5] hover:underline font-medium"
+                className="text-xs text-[#DC2626] hover:underline font-medium"
               >
                 Tout marquer comme lu
               </button>
@@ -216,7 +216,7 @@ export default function NotificationsPage() {
                           {notification.title}
                         </p>
                         {!notification.is_read && (
-                          <span className="h-2 w-2 rounded-full bg-[#3DB5C5] flex-shrink-0" />
+                          <span className="h-2 w-2 rounded-full bg-[#DC2626] flex-shrink-0" />
                         )}
                         <Badge variant="outline" className="text-[10px] ml-auto flex-shrink-0">
                           {TYPE_LABELS[notification.type] ?? notification.type}

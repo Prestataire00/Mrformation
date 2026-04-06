@@ -122,7 +122,7 @@ export default function LearnerContactsPage() {
   if (loading) {
     return (
       <div className="flex justify-center py-24">
-        <Loader2 className="h-8 w-8 text-[#3DB5C5] animate-spin" />
+        <Loader2 className="h-8 w-8 text-[#DC2626] animate-spin" />
       </div>
     );
   }
@@ -131,7 +131,7 @@ export default function LearnerContactsPage() {
     <div className="p-6 space-y-6">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm">
-        <Link href="/learner" className="text-[#3DB5C5] hover:underline">Accueil</Link>
+        <Link href="/learner" className="text-[#DC2626] hover:underline">Accueil</Link>
         <span className="text-gray-400">/</span>
         <span className="text-gray-500">Contacts</span>
       </div>
@@ -146,24 +146,24 @@ export default function LearnerContactsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
-              <Building2 className="h-4 w-4 text-[#3DB5C5]" />
+              <Building2 className="h-4 w-4 text-[#DC2626]" />
               Organisme de formation
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex items-start gap-4">
-              <div className="w-12 h-12 rounded-xl bg-[#3DB5C5]/10 flex items-center justify-center shrink-0">
-                <Building2 className="h-6 w-6 text-[#3DB5C5]" />
+              <div className="w-12 h-12 rounded-xl bg-[#DC2626]/10 flex items-center justify-center shrink-0">
+                <Building2 className="h-6 w-6 text-[#DC2626]" />
               </div>
               <div className="space-y-1.5">
                 <p className="font-semibold text-gray-900">{entity.name}</p>
                 {entity.email && (
-                  <a href={`mailto:${entity.email}`} className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-[#3DB5C5] transition-colors">
+                  <a href={`mailto:${entity.email}`} className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-[#DC2626] transition-colors">
                     <Mail className="h-3.5 w-3.5" />{entity.email}
                   </a>
                 )}
                 {entity.phone && (
-                  <a href={`tel:${entity.phone}`} className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-[#3DB5C5] transition-colors">
+                  <a href={`tel:${entity.phone}`} className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-[#DC2626] transition-colors">
                     <Phone className="h-3.5 w-3.5" />{entity.phone}
                   </a>
                 )}
@@ -181,7 +181,7 @@ export default function LearnerContactsPage() {
       {/* Trainers */}
       <div>
         <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-          <User className="h-5 w-5 text-[#3DB5C5]" />
+          <User className="h-5 w-5 text-[#DC2626]" />
           Mes formateurs
         </h2>
 
@@ -202,7 +202,7 @@ export default function LearnerContactsPage() {
                 <CardContent className="pt-6">
                   <div className="flex items-start gap-4">
                     <Avatar className="h-14 w-14">
-                      <AvatarFallback className="bg-[#3DB5C5]/10 text-[#3DB5C5] font-bold text-lg">
+                      <AvatarFallback className="bg-[#DC2626]/10 text-[#DC2626] font-bold text-lg">
                         {getInitials(trainer.first_name, trainer.last_name)}
                       </AvatarFallback>
                     </Avatar>
@@ -221,7 +221,7 @@ export default function LearnerContactsPage() {
                       <div className="space-y-1">
                         <a
                           href={`mailto:${trainer.email}`}
-                          className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-[#3DB5C5] transition-colors"
+                          className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-[#DC2626] transition-colors"
                         >
                           <Mail className="h-3.5 w-3.5 shrink-0" />
                           <span className="truncate">{trainer.email}</span>
@@ -229,7 +229,7 @@ export default function LearnerContactsPage() {
                         {trainer.phone && (
                           <a
                             href={`tel:${trainer.phone}`}
-                            className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-[#3DB5C5] transition-colors"
+                            className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-[#DC2626] transition-colors"
                           >
                             <Phone className="h-3.5 w-3.5 shrink-0" />
                             {trainer.phone}

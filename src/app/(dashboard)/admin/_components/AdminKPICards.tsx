@@ -59,7 +59,7 @@ export function AdminKPICards({
     { id: "nouveaux_apprenants", icon: <Users className="h-6 w-6 text-blue-600" />,       bg: "bg-blue-100",   value: newLearners,   label: "Apprenants Inscrits", format: "number" },
     { id: "sessions_en_cours",   icon: <BookOpen className="h-6 w-6 text-orange-500" />,  bg: "bg-orange-100", value: ongoingSessions, label: "Formations En Cours", format: "number" },
     { id: "sessions_terminees",  icon: <CheckCircle className="h-6 w-6 text-green-600" />,bg: "bg-green-100",  value: doneSessions,  label: "Formations Terminées", format: "number" },
-    { id: "ca_realise",          icon: <Euro className="h-6 w-6" style={{ color: "#3DB5C5" }} />, bg: "", bgStyle: { backgroundColor: "#e0f5f8" } as CSSProperties, value: caRealise, label: `CA Réalisé ${year}`, format: "currency" },
+    { id: "ca_realise",          icon: <Euro className="h-6 w-6" style={{ color: "#DC2626" }} />, bg: "", bgStyle: { backgroundColor: "#e0f5f8" } as CSSProperties, value: caRealise, label: `CA Réalisé ${year}`, format: "currency" },
     { id: "ca_previsionnel",     icon: <TrendingUp className="h-6 w-6 text-indigo-600" />,bg: "bg-indigo-100", value: caPrevisionnel, label: `CA Prévisionnel ${year}`, format: "currency" },
     { id: "taux_completion",     icon: <ClipboardCheck className="h-6 w-6 text-teal-600" />, bg: "bg-teal-100", value: tauxCompletion, label: "Taux de Complétion", format: "percent" },
     { id: "nb_questionnaires",   icon: <MessageSquare className="h-6 w-6 text-pink-600" />,  bg: "bg-pink-100",  value: nbQuestionnaireResponses, label: "Réponses ce mois", format: "number" },

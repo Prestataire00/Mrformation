@@ -198,40 +198,40 @@ export default function SuiviCommercialPage() {
             value={searchCommercial}
             onChange={(e) => setSearchCommercial(e.target.value)}
             placeholder="Nom du commercial"
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-44 focus:outline-none focus:border-[#3DB5C5]"
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-44 focus:outline-none focus:border-[#DC2626]"
           />
           <input
             type="text"
             value={searchLead}
             onChange={(e) => setSearchLead(e.target.value)}
             placeholder="Nom du lead"
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-44 focus:outline-none focus:border-[#3DB5C5]"
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-44 focus:outline-none focus:border-[#DC2626]"
           />
           <input
             type="text"
             value={searchContact}
             onChange={(e) => setSearchContact(e.target.value)}
             placeholder="Contact"
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-44 focus:outline-none focus:border-[#3DB5C5]"
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-44 focus:outline-none focus:border-[#DC2626]"
           />
           <span className="text-sm text-gray-600">De</span>
           <input
             type="date"
             value={dateFrom}
             onChange={(e) => setDateFrom(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#3DB5C5]"
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#DC2626]"
           />
           <span className="text-sm text-gray-600">À</span>
           <input
             type="date"
             value={dateTo}
             onChange={(e) => setDateTo(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#3DB5C5]"
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#DC2626]"
           />
           <button
             onClick={fetchData}
             className="text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5"
-            style={{ background: "#3DB5C5" }}
+            style={{ background: "#DC2626" }}
           >
             <Filter className="h-4 w-4" />
             Filtrer
@@ -240,7 +240,7 @@ export default function SuiviCommercialPage() {
         <button
           onClick={handleDownload}
           className="text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5 shrink-0"
-          style={{ background: "#3DB5C5" }}
+          style={{ background: "#DC2626" }}
         >
           <Download className="h-4 w-4" />
           Télécharger en Excel
@@ -282,7 +282,7 @@ export default function SuiviCommercialPage() {
                       <td className="px-3 py-2.5 text-gray-700">{row.date_creation}</td>
                       <td className="px-3 py-2.5 text-gray-700">{row.commercial}</td>
                       <td className="px-3 py-2.5 text-gray-800 font-medium">{row.nom_lead}</td>
-                      <td className="px-3 py-2.5 text-[#3DB5C5]">{row.contact}</td>
+                      <td className="px-3 py-2.5 text-[#DC2626]">{row.contact}</td>
                       <td className="px-3 py-2.5 text-right text-gray-700">{fmtEur(row.montant_ht_non_confirme)}</td>
                       <td className="px-3 py-2.5 text-right text-gray-700">{fmtEur(row.montant_ht_confirme)}</td>
                       <td className="px-3 py-2.5">

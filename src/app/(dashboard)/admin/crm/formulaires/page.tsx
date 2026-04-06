@@ -490,7 +490,7 @@ export default function FormulairesPage() {
                   <td className="px-4 py-2.5">
                     <div className="flex items-center gap-1">
                       <button onClick={() => openAssign(q)} className="text-[10px] text-gray-500 hover:text-gray-700 px-1.5 py-0.5 rounded hover:bg-gray-100">Attribuer</button>
-                      <button onClick={() => openSend(q)} className="text-[10px] text-[#3DB5C5] hover:underline px-1.5 py-0.5">Envoyer</button>
+                      <button onClick={() => openSend(q)} className="text-[10px] text-[#DC2626] hover:underline px-1.5 py-0.5">Envoyer</button>
                       <button onClick={() => router.push("/admin/questionnaires/dashboard")} className="text-[10px] text-gray-500 hover:text-gray-700 px-1.5 py-0.5 rounded hover:bg-gray-100">Résultats</button>
                       <button onClick={() => handleDuplicate(q)} className="text-[10px] text-gray-400 hover:text-gray-600 px-1.5 py-0.5" title="Dupliquer">
                         <Copy className="h-3 w-3" />
@@ -506,7 +506,7 @@ export default function FormulairesPage() {
                   <tr key={`${q.id}-expand`}>
                     <td colSpan={7} className="px-8 py-3 bg-gray-50/50 border-b">
                       {q.questions.length === 0 ? (
-                        <p className="text-xs text-gray-400 italic">Aucune question — <button onClick={() => router.push("/admin/questionnaires")} className="text-[#3DB5C5] hover:underline">ajouter des questions</button></p>
+                        <p className="text-xs text-gray-400 italic">Aucune question — <button onClick={() => router.push("/admin/questionnaires")} className="text-[#DC2626] hover:underline">ajouter des questions</button></p>
                       ) : (
                         <div className="space-y-1">
                           {q.questions.map((question, i) => (
@@ -533,7 +533,7 @@ export default function FormulairesPage() {
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-              <Send className="h-4 w-4 text-[#3DB5C5]" />
+              <Send className="h-4 w-4 text-[#DC2626]" />
               Envois automatiques ({autoSendLinks.length})
             </h2>
             <Button

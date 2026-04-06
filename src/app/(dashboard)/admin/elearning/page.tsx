@@ -517,7 +517,7 @@ export default function ELearningPage() {
     <div className="p-6 space-y-6">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm">
-        <Link href="/admin" className="text-[#3DB5C5] hover:underline">
+        <Link href="/admin" className="text-[#DC2626] hover:underline">
           Accueil
         </Link>
         <span className="text-gray-400">/</span>
@@ -777,7 +777,7 @@ export default function ELearningPage() {
                         <div
                           className={cn(
                             "h-full rounded-full transition-all",
-                            status === "published" ? "bg-green-500" : "bg-[#3DB5C5]"
+                            status === "published" ? "bg-green-500" : "bg-[#DC2626]"
                           )}
                           style={{
                             width: `${Math.min(100, (modules.length / 10) * 100)}%`,
@@ -797,7 +797,7 @@ export default function ELearningPage() {
                       variant="outline"
                       size="sm"
                       onClick={() => openEditDialog(course)}
-                      className="h-7 text-xs gap-1.5 border-[#3DB5C5] text-[#3DB5C5] hover:bg-[#3DB5C5]/5"
+                      className="h-7 text-xs gap-1.5 border-[#DC2626] text-[#DC2626] hover:bg-[#DC2626]/5"
                     >
                       <Pencil className="h-3 w-3" />
                       Éditer
@@ -903,7 +903,7 @@ export default function ELearningPage() {
                       <Link
                         href={`/admin/elearning/courses/${course.id}`}
                         onClick={(e) => e.stopPropagation()}
-                        className="inline-flex items-center gap-1.5 h-7 px-3 text-xs font-medium rounded-md border border-[#3DB5C5] text-[#3DB5C5] hover:bg-[#3DB5C5]/5 transition-colors"
+                        className="inline-flex items-center gap-1.5 h-7 px-3 text-xs font-medium rounded-md border border-[#DC2626] text-[#DC2626] hover:bg-[#DC2626]/5 transition-colors"
                       >
                         <Pencil className="h-3 w-3" />
                         Éditer
@@ -922,7 +922,7 @@ export default function ELearningPage() {
         <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <BookMarked className="h-5 w-5 text-[#3DB5C5]" />
+              <BookMarked className="h-5 w-5 text-[#DC2626]" />
               {editingCourse ? "Modifier le cours" : "Nouveau cours e-learning"}
             </DialogTitle>
           </DialogHeader>
@@ -1173,7 +1173,7 @@ export default function ELearningPage() {
                                 "inline-flex items-center gap-1.5 h-8 px-3 rounded-md border text-xs font-medium cursor-pointer shrink-0 transition-colors",
                                 uploadingModuleId === mod.id
                                   ? "border-gray-200 text-gray-400 pointer-events-none"
-                                  : "border-[#3DB5C5] text-[#3DB5C5] hover:bg-[#3DB5C5]/5"
+                                  : "border-[#DC2626] text-[#DC2626] hover:bg-[#DC2626]/5"
                               )}>
                                 <input
                                   type="file"
@@ -1199,7 +1199,7 @@ export default function ELearningPage() {
                               href={mod.content_url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 text-[11px] text-[#3DB5C5] hover:underline"
+                              className="inline-flex items-center gap-1 text-[11px] text-[#DC2626] hover:underline"
                             >
                               <LinkIcon className="h-3 w-3" />
                               Aperçu du lien
@@ -1234,7 +1234,7 @@ export default function ELearningPage() {
             <Button
               onClick={handleSave}
               disabled={saving}
-              style={{ background: "#3DB5C5" }}
+              style={{ background: "#DC2626" }}
               className="text-white hover:opacity-90"
             >
               {saving

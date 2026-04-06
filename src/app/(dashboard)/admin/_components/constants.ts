@@ -30,18 +30,18 @@ export const DAYS_FR = ["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."];
 export const BRAND_LIGHT = "rgba(61, 181, 197, 0.15)";
 
 export const QUICK_ACCESS = [
-  { title: "Clients",       href: "/admin/clients",          icon: Building2,    color: "#3DB5C5" },
-  { title: "Formations",    href: "/admin/trainings",         icon: BookOpen,     color: "#3DB5C5" },
-  { title: "Sessions",      href: "/admin/sessions",          icon: Calendar,     color: "#3DB5C5" },
-  { title: "Formateurs",    href: "/admin/trainers",          icon: UserCheck,    color: "#3DB5C5" },
-  { title: "CRM",           href: "/admin/crm/prospects",     icon: TrendingUp,   color: "#3DB5C5" },
-  { title: "Documents",     href: "/admin/documents",         icon: FileText,     color: "#3DB5C5" },
-  { title: "Rapports",      href: "/admin/reports",           icon: BarChart3,    color: "#3DB5C5" },
-  { title: "Emails",        href: "/admin/emails",            icon: Mail,         color: "#3DB5C5" },
-  { title: "Signatures",    href: "/admin/signatures",        icon: PenLine,      color: "#3DB5C5" },
-  { title: "Programmes",    href: "/admin/programs",          icon: ClipboardList,color: "#3DB5C5" },
-  { title: "Questionnaires",href: "/admin/questionnaires",    icon: Settings,     color: "#3DB5C5" },
-  { title: "Tâches CRM",   href: "/admin/crm/tasks",         icon: CheckCircle,  color: "#3DB5C5" },
+  { title: "Clients",       href: "/admin/clients",          icon: Building2,    color: "#DC2626" },
+  { title: "Formations",    href: "/admin/trainings",         icon: BookOpen,     color: "#DC2626" },
+  { title: "Sessions",      href: "/admin/sessions",          icon: Calendar,     color: "#DC2626" },
+  { title: "Formateurs",    href: "/admin/trainers",          icon: UserCheck,    color: "#DC2626" },
+  { title: "CRM",           href: "/admin/crm/prospects",     icon: TrendingUp,   color: "#DC2626" },
+  { title: "Documents",     href: "/admin/documents",         icon: FileText,     color: "#DC2626" },
+  { title: "Rapports",      href: "/admin/reports",           icon: BarChart3,    color: "#DC2626" },
+  { title: "Emails",        href: "/admin/emails",            icon: Mail,         color: "#DC2626" },
+  { title: "Signatures",    href: "/admin/signatures",        icon: PenLine,      color: "#DC2626" },
+  { title: "Programmes",    href: "/admin/programs",          icon: ClipboardList,color: "#DC2626" },
+  { title: "Questionnaires",href: "/admin/questionnaires",    icon: Settings,     color: "#DC2626" },
+  { title: "Tâches CRM",   href: "/admin/crm/tasks",         icon: CheckCircle,  color: "#DC2626" },
 ];
 
 export const MODE_LABELS: Record<string, string> = {

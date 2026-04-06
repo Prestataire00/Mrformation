@@ -48,7 +48,7 @@ import ProspectEmailSection from "./_components/ProspectEmailSection";
 const PAGE_SIZE = 15;
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
-  new:       { label: "Lead",        color: "#3DB5C5" },
+  new:       { label: "Lead",        color: "#DC2626" },
   contacted: { label: "Contacté",    color: "#f97316" },
   qualified: { label: "Qualifié",    color: "#8b5cf6" },
   proposal:  { label: "Proposition", color: "#2563EB" },
@@ -249,7 +249,7 @@ export default function ProspectListePage() {
           </Button>
           <button
             onClick={handleExportExcel}
-            className="border border-[#3DB5C5] text-[#3DB5C5] px-4 py-2 rounded-lg text-sm flex items-center gap-1"
+            className="border border-[#DC2626] text-[#DC2626] px-4 py-2 rounded-lg text-sm flex items-center gap-1"
           >
             <Download className="h-4 w-4" /> Excel
           </button>
@@ -323,14 +323,14 @@ export default function ProspectListePage() {
             type="date"
             value={dateFrom}
             onChange={(e) => setDateFrom(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#3DB5C5]"
+            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#DC2626]"
           />
           <span className="text-xs text-gray-400">→</span>
           <input
             type="date"
             value={dateTo}
             onChange={(e) => setDateTo(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#3DB5C5]"
+            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#DC2626]"
           />
         </div>
         <input
@@ -338,7 +338,7 @@ export default function ProspectListePage() {
           placeholder="Montant min €"
           value={amountMin}
           onChange={(e) => setAmountMin(e.target.value)}
-          className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#3DB5C5] w-[130px]"
+          className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#DC2626] w-[130px]"
         />
       </div>
 

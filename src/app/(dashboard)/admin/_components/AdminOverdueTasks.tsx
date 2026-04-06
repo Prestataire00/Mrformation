@@ -27,7 +27,7 @@ export function AdminOverdueTasks({ overdueTasks }: AdminOverdueTasksProps) {
     <div className="space-y-3">
     <div
       className="rounded-md px-5 py-4 text-white text-sm font-medium"
-      style={{ backgroundColor: "#3DB5C5" }}
+      style={{ backgroundColor: "#DC2626" }}
     >
       {overdueTasks.length} tâche{overdueTasks.length > 1 ? "s" : ""} en retard
     </div>
@@ -75,7 +75,7 @@ export function AdminOverdueTasks({ overdueTasks }: AdminOverdueTasksProps) {
         <div className="border-t border-gray-100 px-5 py-3">
           <button
             onClick={() => setShowAll((v) => !v)}
-            className="text-sm text-[#3DB5C5] hover:text-[#2a9aa8] font-medium"
+            className="text-sm text-[#DC2626] hover:text-[#2a9aa8] font-medium"
           >
             {showAll
               ? "Réduire"

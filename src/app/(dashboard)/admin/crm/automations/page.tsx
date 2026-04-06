@@ -115,7 +115,7 @@ export default function AutomationsPage() {
           </Link>
           <div>
             <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-              <Zap className="h-6 w-6 text-[#3DB5C5]" />
+              <Zap className="h-6 w-6 text-[#DC2626]" />
               Automatisations CRM
             </h1>
             <p className="text-sm text-gray-500 mt-0.5">
@@ -127,7 +127,7 @@ export default function AutomationsPage() {
           onClick={runAutomations}
           disabled={running}
           className="gap-2"
-          style={{ backgroundColor: "#3DB5C5" }}
+          style={{ backgroundColor: "#DC2626" }}
         >
           {running ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -188,7 +188,7 @@ export default function AutomationsPage() {
                     {isToggling ? (
                       <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
                     ) : rule.is_enabled ? (
-                      <ToggleRight className="h-7 w-7 text-[#3DB5C5]" />
+                      <ToggleRight className="h-7 w-7 text-[#DC2626]" />
                     ) : (
                       <ToggleLeft className="h-7 w-7 text-gray-300" />
                     )}

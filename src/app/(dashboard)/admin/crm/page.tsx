@@ -68,7 +68,7 @@ interface DashboardData {
 }
 
 const DEFAULT_PROSPECT_STATUS_MAP: Record<string, { label: string; color: string }> = {
-  new: { label: "Lead", color: "#3DB5C5" },
+  new: { label: "Lead", color: "#DC2626" },
   contacted: { label: "Contacté", color: "#f97316" },
   qualified: { label: "Qualifié", color: "#8b5cf6" },
   proposal: { label: "Proposition", color: "#2563EB" },
@@ -269,7 +269,7 @@ export default function CrmDashboardPage() {
       // Using cumulative approach: a prospect that reached "won" also passed through all prior stages
       const stageOrder = ["new", "contacted", "qualified", "proposal", "won"];
       const stageLabels: Record<string, string> = { new: "Lead", contacted: "Contacté", qualified: "Qualifié", proposal: "Proposition", won: "Gagné" };
-      const stageColors = ["#3DB5C5", "#f97316", "#8b5cf6", "#2563EB"];
+      const stageColors = ["#DC2626", "#f97316", "#8b5cf6", "#2563EB"];
       // Count prospects that reached at least each stage (current status or later)
       const reachedStage: Record<string, number> = {};
       for (const s of stageOrder) reachedStage[s] = 0;
@@ -378,7 +378,7 @@ export default function CrmDashboardPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#3DB5C5] border-t-transparent" />
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#DC2626] border-t-transparent" />
       </div>
     );
   }
@@ -537,7 +537,7 @@ export default function CrmDashboardPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <TrendingUp className="h-4 w-4 text-[#3DB5C5]" />
+              <TrendingUp className="h-4 w-4 text-[#DC2626]" />
               Funnel de conversion
             </CardTitle>
           </CardHeader>

@@ -415,14 +415,14 @@ export default function SuiviQualitePage() {
           <div className="flex rounded-lg border border-gray-300 overflow-hidden">
             <button
               onClick={() => setViewMode("table")}
-              className={`px-3 py-2 text-sm font-medium flex items-center gap-1.5 ${viewMode === "table" ? "bg-[#3DB5C5] text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
+              className={`px-3 py-2 text-sm font-medium flex items-center gap-1.5 ${viewMode === "table" ? "bg-[#DC2626] text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
             >
               <BarChart3 className="h-4 w-4" />
               Tableau
             </button>
             <button
               onClick={() => setViewMode("qualiopi")}
-              className={`px-3 py-2 text-sm font-medium flex items-center gap-1.5 ${viewMode === "qualiopi" ? "bg-[#3DB5C5] text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
+              className={`px-3 py-2 text-sm font-medium flex items-center gap-1.5 ${viewMode === "qualiopi" ? "bg-[#DC2626] text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
             >
               <Shield className="h-4 w-4" />
               Qualiopi
@@ -433,7 +433,7 @@ export default function SuiviQualitePage() {
             <button
               onClick={() => setDetailed(d => !d)}
               className="text-white px-4 py-2 rounded-lg text-sm font-medium"
-              style={{ background: "#3DB5C5" }}
+              style={{ background: "#DC2626" }}
             >
               {detailed ? "Vue simplifiée" : "Vue détaillée"}
             </button>
@@ -444,7 +444,7 @@ export default function SuiviQualitePage() {
             value={searchName}
             onChange={(e) => setSearchName(e.target.value)}
             placeholder="Nom de la formation"
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-56 focus:outline-none focus:border-[#3DB5C5]"
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-56 focus:outline-none focus:border-[#DC2626]"
           />
           <div className="flex items-center gap-2">
             <button
@@ -468,7 +468,7 @@ export default function SuiviQualitePage() {
           <button
             onClick={handleDownloadExcel}
             className="text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5"
-            style={{ background: "#3DB5C5" }}
+            style={{ background: "#DC2626" }}
           >
             <Download className="h-4 w-4" />
             Excel
@@ -573,7 +573,7 @@ export default function SuiviQualitePage() {
                       const mGen = moyenneGen(row);
                       return (
                         <tr key={row.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                          <td className="px-3 py-2.5 text-[#3DB5C5] font-medium sticky left-0 bg-white">{row.formation}</td>
+                          <td className="px-3 py-2.5 text-[#DC2626] font-medium sticky left-0 bg-white">{row.formation}</td>
                           <td className="px-3 py-2.5 text-center text-gray-600">{row.annee}</td>
                           {visibleColumns.map((col) => {
                             const val = row[col.key];

@@ -282,7 +282,7 @@ export default function ClientsPage() {
           <h1 className="text-lg font-bold text-gray-900">Entreprises</h1>
           <span className="text-xs text-gray-500"><span className="font-bold text-sm text-gray-900">{clients.length}</span> entreprises</span>
         </div>
-        <Button size="sm" onClick={() => setShowAddForm(true)} style={{ background: "#3DB5C5" }} className="text-white gap-1.5 text-xs">
+        <Button size="sm" onClick={() => setShowAddForm(true)} style={{ background: "#DC2626" }} className="text-white gap-1.5 text-xs">
           <Plus className="h-3.5 w-3.5" /> Ajouter
         </Button>
       </div>
@@ -359,7 +359,7 @@ export default function ClientsPage() {
               <Button variant="outline" size="sm" onClick={() => { setShowAddForm(false); setAddFormError(""); setAddFormData({ company_name: "", siret: "", sector: "", email: "", phone: "" }); }}>
                 Annuler
               </Button>
-              <Button size="sm" onClick={handleCreate} disabled={saving} style={{ background: "#3DB5C5" }} className="text-white gap-1.5 text-xs">
+              <Button size="sm" onClick={handleCreate} disabled={saving} style={{ background: "#DC2626" }} className="text-white gap-1.5 text-xs">
                 {saving && <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />}
                 Créer
               </Button>

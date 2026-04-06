@@ -384,7 +384,7 @@ export function Sidebar({ entity, role = "admin", hasCrmAccess = false }: Sideba
   const entityName = entity?.name ?? "MR FORMATION";
   const style = ENTITY_STYLES[slug] ?? {
     initials: entityName.charAt(0),
-    gradient: `linear-gradient(135deg, ${entity?.theme_color ?? "#3DB5C5"}, ${entity?.theme_color ?? "#3DB5C5"})`,
+    gradient: `linear-gradient(135deg, ${entity?.theme_color ?? "#DC2626"}, ${entity?.theme_color ?? "#DC2626"})`,
   };
 
   // Parcours de formation uniquement pour C3V Formation

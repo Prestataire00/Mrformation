@@ -14,7 +14,7 @@ export function BPFHeader({ title, onExportExcel, onExportPDF }: BPFHeaderProps)
         <button
           onClick={onExportExcel}
           className="text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5"
-          style={{ background: "#3DB5C5" }}
+          style={{ background: "#DC2626" }}
         >
           <Download className="h-4 w-4" />
           Excel

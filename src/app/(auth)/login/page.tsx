@@ -178,14 +178,14 @@ function LoginContent() {
     : "LMS FORMATION";
   const headerGradient = entityConfig
     ? entityConfig.gradient
-    : "linear-gradient(135deg, #3DB5C5, #2BA3B3)";
+    : "linear-gradient(135deg, #DC2626, #B91C1C)";
 
   return (
     <div
       className="min-h-screen flex items-center justify-center p-4"
       style={{
         background:
-          "linear-gradient(135deg, #87CEEB 0%, #5BB8D4 50%, #3DB5C5 100%)",
+          "linear-gradient(135deg, #FCA5A5 0%, #EF4444 50%, #DC2626 100%)",
       }}
     >
       <div className="w-full max-w-md">
@@ -240,7 +240,7 @@ function LoginContent() {
                       onChange={(e) => setEmail(e.target.value)}
                       required
                       autoComplete="email"
-                      className="w-full px-4 py-3 bg-blue-50 border border-blue-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#3DB5C5] focus:border-transparent placeholder:text-gray-400"
+                      className="w-full px-4 py-3 bg-blue-50 border border-blue-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#DC2626] focus:border-transparent placeholder:text-gray-400"
                     />
                     <button
                       type="submit"
@@ -262,7 +262,7 @@ function LoginContent() {
 
                 <button
                   onClick={() => { setForgotPassword(false); setResetSent(false); setError(null); }}
-                  className="w-full text-center text-sm text-[#3DB5C5] hover:underline font-medium mt-4"
+                  className="w-full text-center text-sm text-[#DC2626] hover:underline font-medium mt-4"
                 >
                   &larr; Retour à la connexion
                 </button>
@@ -294,7 +294,7 @@ function LoginContent() {
                     required
                     autoComplete="email"
                     aria-describedby={error ? "login-error" : undefined}
-                    className="w-full px-4 py-3 bg-blue-50 border border-blue-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#3DB5C5] focus:border-transparent placeholder:text-gray-400"
+                    className="w-full px-4 py-3 bg-blue-50 border border-blue-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#DC2626] focus:border-transparent placeholder:text-gray-400"
                   />
 
                   <div className="relative">
@@ -307,7 +307,7 @@ function LoginContent() {
                       required
                       autoComplete="current-password"
                       aria-describedby={error ? "login-error" : undefined}
-                      className="w-full px-4 py-3 bg-blue-50 border border-blue-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#3DB5C5] focus:border-transparent placeholder:text-gray-400 pr-10"
+                      className="w-full px-4 py-3 bg-blue-50 border border-blue-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#DC2626] focus:border-transparent placeholder:text-gray-400 pr-10"
                     />
                     <button
                       type="button"
@@ -350,7 +350,7 @@ function LoginContent() {
                 Mot de passe oublié ?{" "}
                 <button
                   onClick={() => { setForgotPassword(true); setError(null); }}
-                  className="text-[#3DB5C5] hover:underline font-medium"
+                  className="text-[#DC2626] hover:underline font-medium"
                 >
                   Cliquez ici
                 </button>

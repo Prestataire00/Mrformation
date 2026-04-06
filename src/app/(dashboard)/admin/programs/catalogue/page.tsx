@@ -92,7 +92,7 @@ export default function CataloguePage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <Monitor className="h-6 w-6 text-[#3DB5C5]" />
+            <Monitor className="h-6 w-6 text-[#DC2626]" />
             Catalogue en Ligne
           </h1>
           <p className="text-sm text-gray-500 mt-1">
@@ -182,7 +182,7 @@ export default function CataloguePage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <p
-                      className="text-sm font-semibold text-gray-900 cursor-pointer hover:text-[#3DB5C5] transition-colors"
+                      className="text-sm font-semibold text-gray-900 cursor-pointer hover:text-[#DC2626] transition-colors"
                       onClick={() => router.push(`/admin/programs/${program.id}`)}
                     >
                       {program.title}

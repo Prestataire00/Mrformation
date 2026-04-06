@@ -172,9 +172,9 @@ export default function AutomationPage() {
     <div className="p-6 max-w-4xl">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm mb-4">
-        <Link href="/admin" className="text-[#3DB5C5] hover:underline">Accueil</Link>
+        <Link href="/admin" className="text-[#DC2626] hover:underline">Accueil</Link>
         <span className="text-gray-400">/</span>
-        <Link href="/admin/trainings" className="text-[#3DB5C5] hover:underline">Formations</Link>
+        <Link href="/admin/trainings" className="text-[#DC2626] hover:underline">Formations</Link>
         <span className="text-gray-400">/</span>
         <span className="text-gray-500">Automatisation</span>
       </div>
@@ -208,14 +208,14 @@ export default function AutomationPage() {
 
         {loading ? (
           <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-6 w-6 animate-spin text-[#3DB5C5]" />
+            <Loader2 className="h-6 w-6 animate-spin text-[#DC2626]" />
           </div>
         ) : (
           <div className="space-y-6">
             {rules.map((rule, index) => (
               <div key={`${rule.trigger_type}-${rule.document_type}-${index}`} className="p-4 border border-gray-100 rounded-lg space-y-3">
                 <div className="flex items-center gap-3">
-                  <span className="w-6 h-6 rounded-full text-white text-xs flex items-center justify-center font-bold flex-shrink-0" style={{ background: "#3DB5C5" }}>
+                  <span className="w-6 h-6 rounded-full text-white text-xs flex items-center justify-center font-bold flex-shrink-0" style={{ background: "#DC2626" }}>
                     {index + 1}
                   </span>
                   <Switch
@@ -339,7 +339,7 @@ export default function AutomationPage() {
           <Button
             onClick={handleSave}
             disabled={saving || loading}
-            style={{ background: "#3DB5C5" }}
+            style={{ background: "#DC2626" }}
             className="text-white hover:opacity-90"
           >
             {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}

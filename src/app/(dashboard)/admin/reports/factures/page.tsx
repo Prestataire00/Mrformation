@@ -174,7 +174,7 @@ export default function SuiviFacturesPage() {
         <button
           onClick={handleDownload}
           className="text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5"
-          style={{ background: "#3DB5C5" }}
+          style={{ background: "#DC2626" }}
         >
           <Download className="h-4 w-4" />
           Télécharger en Excel
@@ -197,7 +197,7 @@ export default function SuiviFacturesPage() {
             type="date"
             value={dateFrom}
             onChange={(e) => setDateFrom(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#3DB5C5]"
+            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#DC2626]"
           />
         </div>
         <div>
@@ -206,7 +206,7 @@ export default function SuiviFacturesPage() {
             type="date"
             value={dateTo}
             onChange={(e) => setDateTo(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#3DB5C5]"
+            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#DC2626]"
           />
         </div>
         <div>
@@ -214,7 +214,7 @@ export default function SuiviFacturesPage() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#3DB5C5]"
+            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#DC2626]"
           >
             <option value="all">Tous</option>
             <option value="pending">En attente</option>
@@ -229,7 +229,7 @@ export default function SuiviFacturesPage() {
           <select
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#3DB5C5]"
+            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#DC2626]"
           >
             <option value="all">Tous</option>
             <option value="learner">Apprenant</option>
@@ -280,7 +280,7 @@ export default function SuiviFacturesPage() {
                         <Badge variant="outline" className="ml-2 text-xs border-purple-300 text-purple-600">Avoir</Badge>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-[#3DB5C5] text-xs">{inv.session_title}</td>
+                    <td className="px-4 py-3 text-[#DC2626] text-xs">{inv.session_title}</td>
                     <td className="px-4 py-3 text-gray-700">{inv.recipient_name}</td>
                     <td className="px-4 py-3 text-gray-600 text-xs">{TYPE_LABELS[inv.recipient_type] || inv.recipient_type}</td>
                     <td className={`px-4 py-3 text-right font-medium ${inv.is_avoir ? "text-purple-600" : "text-gray-900"}`}>

@@ -39,10 +39,10 @@ export function AdminRecentActivity({ activities, isSuperAdmin }: AdminRecentAct
     <Card className="bg-white border border-gray-200 shadow-sm">
       <CardHeader className="pb-3 flex flex-row items-center justify-between">
         <CardTitle className="text-base font-semibold text-gray-700 flex items-center gap-2">
-          <Activity className="h-4 w-4" style={{ color: "#3DB5C5" }} />
+          <Activity className="h-4 w-4" style={{ color: "#DC2626" }} />
           Activités récentes
         </CardTitle>
-        <Link href="/admin/activity" className="text-xs text-[#3DB5C5] hover:underline font-medium">
+        <Link href="/admin/activity" className="text-xs text-[#DC2626] hover:underline font-medium">
           Voir tout
         </Link>
       </CardHeader>

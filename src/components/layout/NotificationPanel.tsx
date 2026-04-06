@@ -149,7 +149,7 @@ export function NotificationPanel() {
           {unreadCount > 0 && (
             <button
               onClick={markAllRead}
-              className="text-xs text-[#3DB5C5] hover:underline font-medium"
+              className="text-xs text-[#DC2626] hover:underline font-medium"
             >
               Tout marquer comme lu
             </button>
@@ -188,7 +188,7 @@ export function NotificationPanel() {
                         {notification.title}
                       </p>
                       {!notification.is_read && (
-                        <span className="h-2 w-2 rounded-full bg-[#3DB5C5] flex-shrink-0" />
+                        <span className="h-2 w-2 rounded-full bg-[#DC2626] flex-shrink-0" />
                       )}
                     </div>
                     {notification.message && (
@@ -210,7 +210,7 @@ export function NotificationPanel() {
         <div className="border-t px-4 py-2 text-center">
           <button
             onClick={() => { router.push("/admin/notifications"); setOpen(false); }}
-            className="text-xs text-[#3DB5C5] hover:underline font-medium"
+            className="text-xs text-[#DC2626] hover:underline font-medium"
           >
             Voir toutes les notifications
           </button>

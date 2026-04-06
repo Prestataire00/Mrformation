@@ -319,7 +319,7 @@ export default function NewQuotePage() {
             <p className="text-sm font-bold text-gray-900">{prospectName || "Devis"}</p>
           </div>
         </div>
-        <Button onClick={handleSubmit} disabled={saving} size="sm" style={{ background: "#3DB5C5" }} className="text-white text-xs">
+        <Button onClick={handleSubmit} disabled={saving} size="sm" style={{ background: "#DC2626" }} className="text-white text-xs">
           {saving ? "Création..." : "Créer le devis"}
         </Button>
       </div>
@@ -451,7 +451,7 @@ export default function NewQuotePage() {
             ))}
             {/* Add line */}
             <div className="px-3 py-2 border-t">
-              <button onClick={addLine} className="text-xs text-[#3DB5C5] hover:underline flex items-center gap-1"><Plus className="h-3 w-3" /> Ajouter une ligne</button>
+              <button onClick={addLine} className="text-xs text-[#DC2626] hover:underline flex items-center gap-1"><Plus className="h-3 w-3" /> Ajouter une ligne</button>
             </div>
           </div>
           {/* Totals - right aligned */}

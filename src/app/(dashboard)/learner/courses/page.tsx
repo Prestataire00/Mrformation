@@ -212,7 +212,7 @@ export default function LearnerCoursesPage() {
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center gap-2 text-sm">
-        <Link href="/learner" className="text-[#3DB5C5] hover:underline">
+        <Link href="/learner" className="text-[#DC2626] hover:underline">
           Accueil
         </Link>
         <span className="text-gray-400">/</span>
@@ -269,7 +269,7 @@ export default function LearnerCoursesPage() {
                         </Badge>
                       )}
                     </div>
-                    <h3 className="font-semibold text-gray-900 group-hover:text-[#3DB5C5] transition-colors line-clamp-2">
+                    <h3 className="font-semibold text-gray-900 group-hover:text-[#DC2626] transition-colors line-clamp-2">
                       {course.title}
                     </h3>
                     {trainingTitle && (
@@ -326,7 +326,7 @@ export default function LearnerCoursesPage() {
 
       {loading ? (
         <div className="flex justify-center py-12">
-          <Loader2 className="h-8 w-8 text-[#3DB5C5] animate-spin" />
+          <Loader2 className="h-8 w-8 text-[#DC2626] animate-spin" />
         </div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-16">
@@ -372,7 +372,7 @@ export default function LearnerCoursesPage() {
                     </Badge>
                   </div>
 
-                  <h3 className="font-semibold text-gray-900 group-hover:text-[#3DB5C5] transition-colors line-clamp-2">
+                  <h3 className="font-semibold text-gray-900 group-hover:text-[#DC2626] transition-colors line-clamp-2">
                     {course.title}
                   </h3>
                   {course.description && (
@@ -391,7 +391,7 @@ export default function LearnerCoursesPage() {
                       <div
                         className={cn(
                           "h-full rounded-full transition-all",
-                          isCompleted ? "bg-green-500" : "bg-[#3DB5C5]"
+                          isCompleted ? "bg-green-500" : "bg-[#DC2626]"
                         )}
                         style={{ width: `${enrollment.completion_rate}%` }}
                       />
@@ -461,7 +461,7 @@ export default function LearnerCoursesPage() {
                           className={cn(
                             "flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors",
                             mod.content_url
-                              ? "bg-gray-50 hover:bg-[#3DB5C5]/10 text-gray-700 hover:text-[#3DB5C5] cursor-pointer"
+                              ? "bg-gray-50 hover:bg-[#DC2626]/10 text-gray-700 hover:text-[#DC2626] cursor-pointer"
                               : "bg-gray-50 text-gray-400 cursor-default"
                           )}
                         >
@@ -481,7 +481,7 @@ export default function LearnerCoursesPage() {
                       {modules.length > 2 && (
                         <button
                           onClick={() => setExpandedManual(isExpanded ? null : course.id)}
-                          className="text-xs text-[#3DB5C5] hover:underline ml-1"
+                          className="text-xs text-[#DC2626] hover:underline ml-1"
                         >
                           {isExpanded ? "Voir moins" : `+ ${modules.length - 2} module${modules.length - 2 > 1 ? "s" : ""}`}
                         </button>
@@ -534,7 +534,7 @@ export default function LearnerCoursesPage() {
                   onClick={() => handleEnroll(course.id)}
                   disabled={enrolling === course.id}
                   className="mt-4 w-full flex items-center justify-center gap-1.5 py-2 px-4 rounded-lg text-sm font-medium text-white transition disabled:opacity-60"
-                  style={{ background: "#3DB5C5" }}
+                  style={{ background: "#DC2626" }}
                 >
                   {enrolling === course.id ? (
                     <Loader2 className="h-4 w-4 animate-spin" />

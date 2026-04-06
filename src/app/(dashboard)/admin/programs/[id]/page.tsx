@@ -73,7 +73,7 @@ function splitDescriptionByJour(text: string): string[] {
 }
 
 // ── Brand colors ─────────────────────────────────────────────────────────────
-const BRAND = "#3DB5C5";
+const BRAND = "#DC2626";
 const BRAND_LIGHT = "rgba(61, 181, 197, 0.15)";
 const BRAND_SECONDARY = "rgba(61, 181, 197, 0.4)";
 
@@ -556,7 +556,7 @@ export default function ProgramDetailPage() {
         {/* ── Hero Grid ──────────────────────────────────────────────────── */}
         <div className="flex flex-col lg:flex-row gap-8 mb-10">
           {/* Entity logo */}
-          <div className="w-full max-w-[400px] h-[300px] rounded-3xl bg-gradient-to-br from-[#3DB5C5]/20 to-[#3DB5C5]/5 flex items-center justify-center overflow-hidden">
+          <div className="w-full max-w-[400px] h-[300px] rounded-3xl bg-gradient-to-br from-[#DC2626]/20 to-[#DC2626]/5 flex items-center justify-center overflow-hidden">
             <img
               src="/mr-formation-img-bibliotheque.png"
               alt="MR Formation"

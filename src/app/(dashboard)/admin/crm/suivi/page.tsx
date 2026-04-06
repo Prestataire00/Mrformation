@@ -317,7 +317,7 @@ export default function SuiviCommercialPage() {
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: "Actions ce mois", value: kpis.total, icon: Activity, color: "#3DB5C5" },
+          { label: "Actions ce mois", value: kpis.total, icon: Activity, color: "#DC2626" },
           { label: "Appels", value: kpis.calls, icon: Phone, color: "#22c55e" },
           { label: "Emails", value: kpis.emails, icon: Mail, color: "#8b5cf6" },
           { label: "Relances", value: kpis.relances, icon: RefreshCw, color: "#f97316" },
@@ -392,7 +392,7 @@ export default function SuiviCommercialPage() {
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-base font-semibold text-gray-700 flex items-center gap-2">
-                  <Activity className="h-4 w-4" style={{ color: "#3DB5C5" }} />
+                  <Activity className="h-4 w-4" style={{ color: "#DC2626" }} />
                   Journal des actions
                   {totalCount > 0 && (
                     <Badge variant="outline" className="text-[10px] ml-1">
@@ -404,7 +404,7 @@ export default function SuiviCommercialPage() {
                   size="sm"
                   onClick={() => setDialogOpen(true)}
                   className="gap-1.5 text-white"
-                  style={{ background: "#3DB5C5" }}
+                  style={{ background: "#DC2626" }}
                 >
                   <Plus className="h-4 w-4" />
                   Nouvelle action
@@ -423,7 +423,7 @@ export default function SuiviCommercialPage() {
               <select
                 value={filterType}
                 onChange={(e) => setFilterType(e.target.value)}
-                className="h-9 rounded-md border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#3DB5C5]/30 focus:border-[#3DB5C5]"
+                className="h-9 rounded-md border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#DC2626]/30 focus:border-[#DC2626]"
               >
                 <option value="">Tous les types</option>
                 {ACTION_TYPE_OPTIONS.map((t) => (
@@ -440,7 +440,7 @@ export default function SuiviCommercialPage() {
                 type="date"
                 value={filterDateFrom}
                 onChange={(e) => setFilterDateFrom(e.target.value)}
-                className="h-9 rounded-md border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#3DB5C5]/30 focus:border-[#3DB5C5]"
+                className="h-9 rounded-md border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#DC2626]/30 focus:border-[#DC2626]"
               />
             </div>
 
@@ -450,7 +450,7 @@ export default function SuiviCommercialPage() {
                 type="date"
                 value={filterDateTo}
                 onChange={(e) => setFilterDateTo(e.target.value)}
-                className="h-9 rounded-md border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#3DB5C5]/30 focus:border-[#3DB5C5]"
+                className="h-9 rounded-md border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#DC2626]/30 focus:border-[#DC2626]"
               />
             </div>
 
@@ -529,7 +529,7 @@ export default function SuiviCommercialPage() {
                         {prospectName && (
                           <Link
                             href={`/admin/crm/prospects/${action.prospect_id}`}
-                            className="text-xs font-medium text-[#3DB5C5] hover:underline"
+                            className="text-xs font-medium text-[#DC2626] hover:underline"
                           >
                             {prospectName}
                           </Link>
@@ -646,7 +646,7 @@ export default function SuiviCommercialPage() {
                 onChange={(e) =>
                   setNewAction({ ...newAction, action_type: e.target.value as CommercialActionType })
                 }
-                className="w-full h-10 rounded-md border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#3DB5C5]/30 focus:border-[#3DB5C5]"
+                className="w-full h-10 rounded-md border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#DC2626]/30 focus:border-[#DC2626]"
               >
                 {ACTION_TYPE_OPTIONS.map((t) => (
                   <option key={t} value={t}>
@@ -666,7 +666,7 @@ export default function SuiviCommercialPage() {
                 onChange={(e) =>
                   setNewAction({ ...newAction, prospect_id: e.target.value })
                 }
-                className="w-full h-10 rounded-md border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#3DB5C5]/30 focus:border-[#3DB5C5]"
+                className="w-full h-10 rounded-md border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#DC2626]/30 focus:border-[#DC2626]"
               >
                 <option value="">— Aucun prospect —</option>
                 {prospects.map((p) => (
@@ -713,7 +713,7 @@ export default function SuiviCommercialPage() {
               onClick={handleCreate}
               disabled={saving}
               className="text-white"
-              style={{ background: "#3DB5C5" }}
+              style={{ background: "#DC2626" }}
             >
               {saving ? (
                 <>
