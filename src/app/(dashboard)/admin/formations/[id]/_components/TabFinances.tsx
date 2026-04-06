@@ -109,6 +109,9 @@ export function TabFinances({ formation, onRefresh }: Props) {
   // Prefix — managed server-side (FAC for invoices, AV for avoirs)
   const prefix = "FAC";
 
+  // Auto-generate
+  const [autoGenerating, setAutoGenerating] = useState(false);
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
@@ -255,6 +258,33 @@ export function TabFinances({ formation, onRefresh }: Props) {
     }
   };
 
+  const canAutoGenerate =
+    formation.status === "completed" &&
+    !(formation as unknown as { invoice_generated?: boolean }).invoice_generated &&
+    invoices.length === 0;
+
+  const handleAutoGenerate = async () => {
+    if (!confirm("Générer automatiquement les factures pour cette formation ?")) return;
+    setAutoGenerating(true);
+    try {
+      const res = await fetch(`/api/formations/${formation.id}/invoices/auto-generate`, {
+        method: "POST",
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error);
+      toast({
+        title: `${result.count} facture(s) générée(s)`,
+        description: `Total : ${formatCurrency(result.invoices.reduce((s: number, i: { amount: number }) => s + Number(i.amount), 0))}`,
+      });
+      fetchData();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Erreur";
+      toast({ title: "Erreur", description: msg, variant: "destructive" });
+    } finally {
+      setAutoGenerating(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -283,6 +313,27 @@ export function TabFinances({ formation, onRefresh }: Props) {
           <span className="font-bold text-sm text-gray-900">{formatCurrency(stats.total_charges)}</span> charges
         </span>
       </div>
+
+      {/* Auto-generate button */}
+      {canAutoGenerate && (
+        <div className="flex items-center gap-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="flex-1">
+            <p className="text-sm font-medium text-blue-900">Formation terminée — aucune facture générée</p>
+            <p className="text-xs text-blue-700 mt-0.5">
+              Génère automatiquement les factures selon le type de formation (intra/inter), les entreprises liées et les financeurs.
+            </p>
+          </div>
+          <Button
+            size="sm"
+            className="shrink-0"
+            onClick={handleAutoGenerate}
+            disabled={autoGenerating}
+          >
+            {autoGenerating && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            Générer les factures
+          </Button>
+        </div>
+      )}
 
       {/* Factures par type */}
       {SECTION_CONFIG.map(({ type, title, icon }) => {
