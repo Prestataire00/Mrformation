@@ -71,51 +71,43 @@ const adminNavSections: NavSection[] = [
   {
     section: "Commercial",
     items: [
+      { label: "Pipeline", href: "/admin/crm/prospects", icon: TrendingUp },
+      { label: "Prospects", href: "/admin/crm/prospects/liste", icon: Users },
+      { label: "Devis", href: "/admin/crm/quotes", icon: FileText },
+      { label: "Tâches", href: "/admin/crm/tasks", icon: ClipboardList },
       {
-        label: "CRM",
-        icon: TrendingUp,
+        label: "Marketing",
+        icon: Repeat,
         children: [
-          { label: "Dashboard CRM", href: "/admin/crm", icon: BarChart3 },
-          { label: "Tunnel de Vente", href: "/admin/crm/prospects", icon: TrendingUp },
-          { label: "Tous les Prospects", href: "/admin/crm/prospects/liste", icon: Users },
-          { label: "Tâches", href: "/admin/crm/tasks", icon: ClipboardList },
-          { label: "Suivi Commercial", href: "/admin/crm/suivi", icon: Activity },
-          { label: "Devis", href: "/admin/crm/quotes", icon: FileText },
-          { label: "Formulaires", href: "/admin/crm/formulaires", icon: FileQuestion },
           { label: "Campagnes", href: "/admin/crm/campaigns", icon: Repeat },
           { label: "Séquences", href: "/admin/crm/sequences", icon: Sparkles },
+          { label: "Formulaires", href: "/admin/crm/formulaires", icon: FileQuestion },
         ],
       },
-      {
-        label: "Clients & Financeurs",
-        icon: Users,
-        children: [
-          { label: "Apprenants", href: "/admin/clients/apprenants/liste", icon: GraduationCap },
-          { label: "Entreprises", href: "/admin/clients", icon: Building2 },
-          { label: "Financeurs", href: "/admin/clients/financeurs", icon: Banknote },
-        ],
-      },
+      { label: "Suivi", href: "/admin/crm/suivi", icon: Activity },
+    ],
+  },
+  {
+    section: "Contacts",
+    items: [
+      { label: "Entreprises", href: "/admin/clients", icon: Building2 },
+      { label: "Apprenants", href: "/admin/clients/apprenants/liste", icon: GraduationCap },
+      { label: "Financeurs & OPCO", href: "/admin/clients/financeurs", icon: Banknote },
+      { label: "Formateurs", href: "/admin/trainers", icon: UserCheck },
     ],
   },
   {
     section: "Pédagogie",
     items: [
-      {
-        label: "Formations",
-        icon: BookOpen,
-        children: [
-          { label: "Toutes les Formations", href: "/admin/trainings", icon: BookOpen },
-          { label: "Parcours", href: "/admin/trainings/parcours", icon: Route },
-          { label: "Automatisation", href: "/admin/trainings/automation", icon: RefreshCw },
-        ],
-      },
+      { label: "Formations", href: "/admin/trainings", icon: BookOpen },
       { label: "Programmes", href: "/admin/programs", icon: Library },
+      { label: "Planning", href: "/admin/planning", icon: Calendar },
       {
         label: "E-Learning",
         icon: Monitor,
         children: [
           { label: "Mes Cours", href: "/admin/elearning", icon: Monitor },
-          { label: "Doc → Cours IA", href: "/admin/elearning/create", icon: Sparkles },
+          { label: "Créer depuis un doc", href: "/admin/elearning/create", icon: Sparkles },
         ],
       },
       {
@@ -123,71 +115,47 @@ const adminNavSections: NavSection[] = [
         icon: ClipboardList,
         children: [
           { label: "Questionnaires", href: "/admin/questionnaires", icon: ClipboardList },
-          { label: "Satisfaction & Qualité", href: "/admin/questionnaires/dashboard", icon: Star },
+          { label: "Qualité", href: "/admin/questionnaires/dashboard", icon: Star },
         ],
       },
-      { label: "Planning", href: "/admin/planning", icon: Calendar },
+      { label: "Automatisation", href: "/admin/trainings/automation", icon: RefreshCw },
     ],
   },
   {
-    section: "Formateurs",
-    items: [
-      {
-        label: "Formateurs",
-        icon: UserCheck,
-        children: [
-          { label: "Profils des Formateurs", href: "/admin/trainers", icon: UserCheck },
-          { label: "Tous les Formateurs", href: "/admin/trainers/liste", icon: Users },
-          { label: "CVthèque", href: "/admin/trainers/cvtheque", icon: FolderSearch },
-        ],
-      },
-    ],
-  },
-  {
-    section: "Administratif",
+    section: "Administration",
     items: [
       { label: "Documents", href: "/admin/documents", icon: FileText },
       { label: "Emails", href: "/admin/emails", icon: Mail },
       { label: "Signatures", href: "/admin/signatures", icon: PenLine },
-      { label: "Lieux de Formations", href: "/admin/lieux", icon: MapPin },
-    ],
-  },
-  {
-    section: "Pilotage",
-    items: [
-      {
-        label: "Suivis & Bilans",
-        icon: Activity,
-        children: [
-          { label: "Suivi des Absences", href: "/admin/reports/absences", icon: AlertTriangle },
-          { label: "Suivi Qualité", href: "/admin/reports/qualite", icon: Star },
-          { label: "Amélioration Continue", href: "/admin/reports/amelioration", icon: TrendingUp },
-          { label: "Suivi Commercial", href: "/admin/reports/commercial", icon: TrendingDown },
-          { label: "Incidents Qualité", href: "/admin/reports/incidents", icon: AlertTriangle },
-        ],
-      },
-      {
-        label: "Finances",
-        icon: Banknote,
-        children: [
-          { label: "Bilan Pédagogique et Financier", href: "/admin/reports/bpf", icon: BarChart3 },
-          { label: "BPF + E-Learning", href: "/admin/reports/bpf-elearning", icon: BarChart3 },
-          { label: "Suivi des Factures", href: "/admin/reports/factures", icon: Receipt },
-          { label: "Suivi OPCO", href: "/admin/reports/opco", icon: Building2 },
-          { label: "Affacturage", href: "/admin/affacturage", icon: Banknote },
-        ],
-      },
+      { label: "Lieux", href: "/admin/lieux", icon: MapPin },
       { label: "Certificateurs", href: "/admin/certificateurs", icon: Award },
     ],
   },
   {
-    section: "Système",
+    section: "Pilotage & Finances",
+    items: [
+      { label: "BPF", href: "/admin/reports/bpf", icon: BarChart3 },
+      { label: "Factures", href: "/admin/reports/factures", icon: Receipt },
+      { label: "Suivi OPCO", href: "/admin/reports/opco", icon: Building2 },
+      { label: "Affacturage", href: "/admin/affacturage", icon: Banknote },
+      {
+        label: "Qualité & Suivi",
+        icon: Activity,
+        children: [
+          { label: "Absences", href: "/admin/reports/absences", icon: AlertTriangle },
+          { label: "Qualité", href: "/admin/reports/qualite", icon: Star },
+          { label: "Amélioration", href: "/admin/reports/amelioration", icon: TrendingUp },
+          { label: "Commercial", href: "/admin/reports/commercial", icon: TrendingDown },
+          { label: "Incidents", href: "/admin/reports/incidents", icon: AlertTriangle },
+        ],
+      },
+    ],
+  },
+  {
+    section: "Paramètres",
     items: [
       { label: "Utilisateurs", href: "/admin/users", icon: Users },
-      { label: "Migration", href: "/admin/migration", icon: Database },
-      { label: "Migration PDF", href: "/admin/library-migration", icon: Upload },
-      { label: "La Veille", href: "/admin/veille", icon: Rss },
-      { label: "Contact & Conseils", href: "/admin/contact-conseils", icon: HelpCircle },
+      { label: "Veille", href: "/admin/veille", icon: Rss },
       { label: "Support", href: "/admin/support", icon: LifeBuoy },
     ],
   },
