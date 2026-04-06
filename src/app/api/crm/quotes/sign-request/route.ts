@@ -26,14 +26,14 @@ export async function POST(request: NextRequest) {
     if (!quote_id) return NextResponse.json({ error: "quote_id requis" }, { status: 400 });
 
     // Fetch quote with prospect/client info
-    const { data: quote } = await auth.supabase
+    const { data: quote, error: quoteErr } = await auth.supabase
       .from("crm_quotes")
-      .select("id, reference, amount, status, entity_id, prospect_id, client_id, valid_until, signed_at")
+      .select("id, reference, amount, status, entity_id, prospect_id, client_id, valid_until")
       .eq("id", quote_id)
       .single();
 
+    if (quoteErr) return NextResponse.json({ error: `Erreur chargement devis: ${quoteErr.message}` }, { status: 500 });
     if (!quote) return NextResponse.json({ error: "Devis introuvable" }, { status: 404 });
-    if (quote.signed_at) return NextResponse.json({ error: "Ce devis est déjà signé" }, { status: 400 });
 
     // Get recipient email
     let recipientEmail: string | null = null;
