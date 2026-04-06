@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/require-role";
-import { chatCompletion } from "@/lib/services/openai";
+import { claudeChat, extractJSON } from "@/lib/ai/claude-client";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 import { sanitizeError } from "@/lib/api-error";
 
@@ -89,17 +89,16 @@ Réponds en JSON strict :
   "body": "corps de l'email (professionnel, 3-5 paragraphes, avec formule de politesse)"
 }`;
 
-    const result = await chatCompletion([
-      { role: "system", content: "Tu es un rédacteur commercial expert pour un organisme de formation professionnelle français. Tu rédiges des emails en français, professionnels mais humains. Réponds uniquement en JSON valide." },
-      { role: "user", content: prompt },
-    ], { temperature: 0.8, max_tokens: 1000 });
+    const result = await claudeChat(
+      [{ role: "user", content: prompt }],
+      {
+        system: "Tu es un rédacteur commercial expert pour un organisme de formation professionnelle français. Tu rédiges des emails en français, professionnels mais humains. Réponds uniquement en JSON valide.",
+        temperature: 0.8,
+        maxTokens: 1000,
+      }
+    );
 
-    const jsonMatch = result.content.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      return NextResponse.json({ error: "Réponse IA invalide" }, { status: 500 });
-    }
-
-    const email = JSON.parse(jsonMatch[0]);
+    const email = extractJSON(result.content) as { subject: string; body: string };
 
     return NextResponse.json({
       subject: email.subject,

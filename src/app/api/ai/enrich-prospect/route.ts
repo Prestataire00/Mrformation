@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/require-role";
-import { chatCompletion } from "@/lib/services/openai";
+import { claudeChat, extractJSON } from "@/lib/ai/claude-client";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 import { sanitizeError } from "@/lib/api-error";
 
@@ -37,18 +37,16 @@ Génère une analyse commerciale en JSON strict (pas de texte autour) :
   "opco_tips": "conseil pratique sur le financement OPCO pour ce secteur d'activité"
 }`;
 
-    const result = await chatCompletion([
-      { role: "system", content: "Tu es un expert en formation professionnelle et développement commercial B2B en France. Réponds uniquement en JSON valide." },
-      { role: "user", content: prompt },
-    ], { temperature: 0.7, max_tokens: 1000 });
+    const result = await claudeChat(
+      [{ role: "user", content: prompt }],
+      {
+        system: "Tu es un expert en formation professionnelle et développement commercial B2B en France. Réponds uniquement en JSON valide.",
+        temperature: 0.7,
+        maxTokens: 1000,
+      }
+    );
 
-    // Parse JSON from response
-    const jsonMatch = result.content.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      return NextResponse.json({ error: "Réponse IA invalide", raw: result.content }, { status: 500 });
-    }
-
-    const insights = JSON.parse(jsonMatch[0]);
+    const insights = extractJSON(result.content);
 
     return NextResponse.json({
       insights,
