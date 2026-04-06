@@ -27,6 +27,8 @@ interface Invoice {
   amount: number;
   prefix: string;
   number: number;
+  global_number: number;
+  fiscal_year: number;
   reference: string;
   status: string;
   due_date: string | null;
@@ -104,15 +106,8 @@ export function TabFinances({ formation, onRefresh }: Props) {
   const [chargeAmount, setChargeAmount] = useState("");
   const [savingCharge, setSavingCharge] = useState(false);
 
-  // Prefix
-  const prefixKey = `invoice_prefix_${formation.id}`;
-  const [prefix, setPrefix] = useState(() => {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem(prefixKey) || "FAC";
-    }
-    return "FAC";
-  });
-  const [prefixDraft, setPrefixDraft] = useState(prefix);
+  // Prefix — managed server-side (FAC for invoices, AV for avoirs)
+  const prefix = "FAC";
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -258,16 +253,6 @@ export function TabFinances({ formation, onRefresh }: Props) {
       const message = err instanceof Error ? err.message : "Impossible de supprimer la charge";
       toast({ title: "Erreur", description: message, variant: "destructive" });
     }
-  };
-
-  // ── Save prefix ──
-
-  const savePrefix = () => {
-    const val = prefixDraft.trim().toUpperCase() || "FAC";
-    setPrefix(val);
-    setPrefixDraft(val);
-    localStorage.setItem(prefixKey, val);
-    toast({ title: `Préfixe mis à jour : ${val}` });
   };
 
   if (loading) {
@@ -452,25 +437,6 @@ export function TabFinances({ formation, onRefresh }: Props) {
           >
             {savingCharge ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3 mr-1" />}
             Ajouter
-          </Button>
-        </div>
-      </div>
-
-      {/* Prefix — inline */}
-      <div className="space-y-3">
-        <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Préfixe de facturation</h3>
-        <div className="flex items-center gap-2">
-          <Input
-            value={prefixDraft}
-            onChange={(e) => setPrefixDraft(e.target.value)}
-            className="w-24 h-7 text-xs uppercase"
-            placeholder="FAC"
-          />
-          <span className="text-xs text-muted-foreground">
-            Aperçu : <span className="font-mono font-semibold">{prefixDraft.trim().toUpperCase() || "FAC"}-1</span>
-          </span>
-          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={savePrefix}>
-            Sauvegarder
           </Button>
         </div>
       </div>

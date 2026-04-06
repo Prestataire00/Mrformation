@@ -98,29 +98,36 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
     }
 
-    // Auto-increment number per session + prefix
+    // Global sequential numbering per (entity_id, fiscal_year, prefix)
+    const fiscalYear = new Date().getFullYear();
+    const entityId = auth.profile.entity_id;
+    const invoicePrefix = is_avoir ? "AV" : (prefix || "FAC");
+
     const { data: maxRow } = await auth.supabase
       .from("formation_invoices")
-      .select("number")
-      .eq("session_id", sessionId)
-      .eq("prefix", prefix)
-      .order("number", { ascending: false })
+      .select("global_number")
+      .eq("entity_id", entityId)
+      .eq("fiscal_year", fiscalYear)
+      .eq("prefix", invoicePrefix)
+      .order("global_number", { ascending: false })
       .limit(1)
       .maybeSingle();
 
-    const nextNumber = (maxRow?.number ?? 0) + 1;
+    const nextGlobalNumber = (maxRow?.global_number ?? 0) + 1;
 
     const { data, error } = await auth.supabase
       .from("formation_invoices")
       .insert({
-        entity_id: auth.profile.entity_id,
+        entity_id: entityId,
         session_id: sessionId,
         recipient_type,
         recipient_id,
         recipient_name,
         amount: amount ?? 0,
-        prefix,
-        number: nextNumber,
+        prefix: invoicePrefix,
+        number: nextGlobalNumber, // legacy field, kept for backward compat
+        global_number: nextGlobalNumber,
+        fiscal_year: fiscalYear,
         due_date: due_date || null,
         notes: notes || null,
         is_avoir,
