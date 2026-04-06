@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Resend } from "resend";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { requireRole } from "@/lib/auth/require-role";
 import { logAudit } from "@/lib/audit-log";
+
+const isResendConfigured = !!process.env.RESEND_API_KEY && process.env.RESEND_API_KEY !== "votre-cle-resend";
+const resend = isResendConfigured ? new Resend(process.env.RESEND_API_KEY) : null;
 
 function getServiceSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -76,14 +80,34 @@ export async function POST(request: NextRequest) {
     const amount = Number(quote.amount) || 0;
     const emailBody = `Bonjour${recipientName ? ` ${recipientName}` : ""},\n\nVeuillez trouver notre proposition commerciale ${quote.reference}${amount > 0 ? ` d'un montant de ${amount.toLocaleString("fr-FR")}€ HT` : ""}.\n\nPour accepter cette proposition, veuillez la signer électroniquement en cliquant sur le lien suivant :\n\n${signUrl}\n\nCe lien est valide${quote.valid_until ? ` jusqu'au ${new Date(quote.valid_until).toLocaleDateString("fr-FR")}` : " pendant 30 jours"}.\n\nN'hésitez pas à nous contacter pour toute question.\n\nCordialement,\nL'équipe ${entityName}`;
 
-    await fetch(`${appUrl}/api/emails/send`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        to: recipientEmail,
-        subject: `Proposition ${quote.reference} — ${entityName}`,
-        body: emailBody,
-      }),
+    // Send email directly via Resend (not via /api/emails/send which requires auth)
+    const fromAddress = entityName.toLowerCase().includes("c3v")
+      ? "C3V Formation <noreply@c3vformation.fr>"
+      : "MR Formation <noreply@mrformation.fr>";
+    const subject = `Proposition ${quote.reference} — ${entityName}`;
+    const htmlBody = `<div style="font-family:sans-serif;font-size:14px;line-height:1.6;color:#374151;white-space:pre-wrap;">${emailBody.replace(/\n/g, "<br/>")}</div>`;
+
+    if (resend) {
+      await resend.emails.send({
+        from: fromAddress,
+        to: [recipientEmail],
+        subject,
+        html: htmlBody,
+        text: emailBody,
+      });
+    } else {
+      console.log("[sign-request] Simulated email to:", recipientEmail, "—", subject);
+    }
+
+    // Log in email_history
+    await serviceDb.from("email_history").insert({
+      entity_id: quote.entity_id,
+      recipient_email: recipientEmail,
+      subject,
+      body: emailBody,
+      status: "sent",
+      sent_at: new Date().toISOString(),
+      sent_via: "resend",
     });
 
     logAudit({
