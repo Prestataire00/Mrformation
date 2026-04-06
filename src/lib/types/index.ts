@@ -265,14 +265,47 @@ export type FinancierType =
   | "dispositif_chomeurs" | "non_salaries" | "plan_developpement"
   | "instances_europeennes" | "etat" | "conseil_regional" | "autres_publics";
 
+export type OpcoStatus = "a_deposer" | "deposee" | "en_cours" | "acceptee" | "refusee" | "partielle";
+
 export interface FormationFinancier {
   id: string;
   session_id: string;
+  financeur_id: string | null;
   name: string;
   type: FinancierType | null;
   reference: string | null;
   amount: number | null;
+  amount_requested: number | null;
+  amount_granted: number | null;
+  status: OpcoStatus;
+  accord_number: string | null;
+  deposit_date: string | null;
+  response_date: string | null;
+  rejection_reason: string | null;
+  documents_url: string | null;
   notes: string | null;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface Financeur {
+  id: string;
+  entity_id: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  type: string;
+  notes: string | null;
+  address: string | null;
+  city: string | null;
+  postal_code: string | null;
+  siret: string | null;
+  code_opco: string | null;
+  contact_name: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
+  website: string | null;
+  is_active: boolean;
   created_at: string;
 }
 

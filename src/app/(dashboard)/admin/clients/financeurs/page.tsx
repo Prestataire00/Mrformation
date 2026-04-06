@@ -16,6 +16,16 @@ interface Financeur {
   email: string | null;
   type: string;
   notes: string | null;
+  address: string | null;
+  city: string | null;
+  postal_code: string | null;
+  siret: string | null;
+  code_opco: string | null;
+  contact_name: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
+  website: string | null;
+  is_active: boolean;
   created_at: string;
 }
 
@@ -30,7 +40,7 @@ const TYPE_COLORS: Record<string, string> = {
   Autre: "bg-gray-100 text-gray-600",
 };
 
-const EMPTY_FORM = { name: "", phone: "", email: "", type: "OPCO" as string };
+const EMPTY_FORM = { name: "", phone: "", email: "", type: "OPCO" as string, siret: "", code_opco: "", contact_name: "", contact_email: "", address: "", city: "", postal_code: "" };
 
 export default function FinanceursPage() {
   const supabase = createClient();
@@ -84,6 +94,13 @@ export default function FinanceursPage() {
       phone: form.phone.trim() || null,
       email: form.email.trim() || null,
       type: form.type,
+      siret: form.siret.trim() || null,
+      code_opco: form.code_opco.trim() || null,
+      contact_name: form.contact_name.trim() || null,
+      contact_email: form.contact_email.trim() || null,
+      address: form.address.trim() || null,
+      city: form.city.trim() || null,
+      postal_code: form.postal_code.trim() || null,
     });
     setSaving(false);
     if (error) {
@@ -99,7 +116,7 @@ export default function FinanceursPage() {
   /* ---- Edit ---- */
   const startEdit = (f: Financeur) => {
     setEditingId(f.id);
-    setEditForm({ name: f.name, phone: f.phone || "", email: f.email || "", type: f.type });
+    setEditForm({ name: f.name, phone: f.phone || "", email: f.email || "", type: f.type, siret: f.siret || "", code_opco: f.code_opco || "", contact_name: f.contact_name || "", contact_email: f.contact_email || "", address: f.address || "", city: f.city || "", postal_code: f.postal_code || "" });
   };
 
   const handleSaveEdit = async () => {
@@ -112,6 +129,13 @@ export default function FinanceursPage() {
         phone: editForm.phone.trim() || null,
         email: editForm.email.trim() || null,
         type: editForm.type,
+        siret: editForm.siret.trim() || null,
+        code_opco: editForm.code_opco.trim() || null,
+        contact_name: editForm.contact_name.trim() || null,
+        contact_email: editForm.contact_email.trim() || null,
+        address: editForm.address.trim() || null,
+        city: editForm.city.trim() || null,
+        postal_code: editForm.postal_code.trim() || null,
       })
       .eq("id", editingId);
     setSaving(false);
