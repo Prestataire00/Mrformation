@@ -54,24 +54,48 @@ import {
   User,
 } from "lucide-react";
 
-type EmailType = "convocation" | "confirmation" | "relance" | "attestation" | "autre";
 type EmailStatus = "sent" | "failed" | "pending";
 
-const EMAIL_TYPE_LABELS: Record<EmailType, string> = {
+const EMAIL_TYPE_LABELS: Record<string, string> = {
   convocation: "Convocation",
   confirmation: "Confirmation",
   relance: "Relance",
   attestation: "Attestation",
+  devis: "Devis",
+  prospect: "Prospect",
+  convention: "Convention",
+  certificat: "Certificat",
+  administratif: "Administratif",
   autre: "Autre",
+  reminder_invoice_first: "Relance facture 1",
+  reminder_invoice_second: "Relance facture 2",
+  reminder_invoice_final: "Mise en demeure",
+  reminder_quote_first: "Suivi devis",
+  reminder_quote_second: "Relance devis",
+  reminder_quote_final: "Dernière relance devis",
+  reminder_opco: "Rappel OPCO",
 };
 
-const EMAIL_TYPE_COLORS: Record<EmailType, string> = {
+const EMAIL_TYPE_COLORS: Record<string, string> = {
   convocation: "bg-blue-100 text-blue-700",
   confirmation: "bg-green-100 text-green-700",
   relance: "bg-orange-100 text-orange-700",
   attestation: "bg-purple-100 text-purple-700",
+  devis: "bg-indigo-100 text-indigo-700",
+  prospect: "bg-teal-100 text-teal-700",
+  convention: "bg-amber-100 text-amber-700",
+  certificat: "bg-pink-100 text-pink-700",
+  administratif: "bg-slate-100 text-slate-700",
   autre: "bg-gray-100 text-gray-600",
 };
+
+const TEMPLATE_CATEGORIES = [
+  { key: "all", label: "Tous" },
+  { key: "formation", label: "Formation", types: ["convocation", "confirmation", "attestation"] },
+  { key: "commercial", label: "Commercial", types: ["relance", "devis", "prospect"] },
+  { key: "documents", label: "Documents", types: ["convention", "certificat", "administratif"] },
+  { key: "autre", label: "Autre", types: ["autre"] },
+] as const;
 
 const STATUS_BADGE: Record<EmailStatus, { label: string; className: string; icon: React.ReactNode }> = {
   sent: {
@@ -137,7 +161,7 @@ function getPreview(text: string): string {
 
 interface TemplateFormData {
   name: string;
-  type: EmailType;
+  type: string;
   subject: string;
   body: string;
 }
@@ -302,7 +326,9 @@ export default function EmailsPage() {
       templateSearch === "" ||
       t.name.toLowerCase().includes(templateSearch.toLowerCase()) ||
       t.subject.toLowerCase().includes(templateSearch.toLowerCase());
-    const matchType = typeFilter === "all" || t.type === typeFilter;
+    // Category-based filtering
+    const category = TEMPLATE_CATEGORIES.find((c) => c.key === typeFilter);
+    const matchType = typeFilter === "all" || (category && "types" in category && (category.types as readonly string[]).includes(t.type || "autre"));
     return matchSearch && matchType;
   });
 
@@ -335,7 +361,7 @@ export default function EmailsPage() {
     setEditingTemplate(t);
     setTemplateForm({
       name: t.name,
-      type: (t.type || "autre") as EmailType,
+      type: (t.type || "autre") as string,
       subject: t.subject,
       body: t.body,
     });
@@ -580,19 +606,17 @@ export default function EmailsPage() {
                 className="pl-9"
               />
             </div>
-            <Select value={typeFilter} onValueChange={setTypeFilter}>
-              <SelectTrigger className="w-full sm:w-48">
-                <SelectValue placeholder="Type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tous les types</SelectItem>
-                <SelectItem value="convocation">Convocation</SelectItem>
-                <SelectItem value="confirmation">Confirmation</SelectItem>
-                <SelectItem value="relance">Relance</SelectItem>
-                <SelectItem value="attestation">Attestation</SelectItem>
-                <SelectItem value="autre">Autre</SelectItem>
-              </SelectContent>
-            </Select>
+            <div className="flex flex-wrap gap-1">
+              {TEMPLATE_CATEGORIES.map((cat) => (
+                <button
+                  key={cat.key}
+                  onClick={() => setTypeFilter(cat.key)}
+                  className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${typeFilter === cat.key ? "border-[#3DB5C5] bg-[#3DB5C5]/10 text-[#3DB5C5] font-medium" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}
+                >
+                  {cat.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           {templatesLoading ? (
@@ -616,14 +640,14 @@ export default function EmailsPage() {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-start gap-3 flex-1 min-w-0">
-                      <div className={cn("p-2 rounded-lg shrink-0 mt-0.5", EMAIL_TYPE_COLORS[(template.type || "autre") as EmailType])}>
+                      <div className={cn("p-2 rounded-lg shrink-0 mt-0.5", EMAIL_TYPE_COLORS[(template.type || "autre") as string])}>
                         <Mail className="h-4 w-4" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <p className="font-semibold text-gray-900">{truncate(template.name, 50)}</p>
-                          <Badge className={cn("text-xs font-normal", EMAIL_TYPE_COLORS[(template.type || "autre") as EmailType])}>
-                            {EMAIL_TYPE_LABELS[(template.type || "autre") as EmailType]}
+                          <Badge className={cn("text-xs font-normal", EMAIL_TYPE_COLORS[(template.type || "autre") as string])}>
+                            {EMAIL_TYPE_LABELS[(template.type || "autre") as string]}
                           </Badge>
                         </div>
                         <p className="text-sm text-gray-600 mt-0.5 font-medium">
@@ -817,8 +841,8 @@ export default function EmailsPage() {
                           <td className="px-4 py-3">
                             {item.template ? (
                               <div className="flex items-center gap-1.5">
-                                <Badge className={cn("text-xs font-normal", EMAIL_TYPE_COLORS[(item.template.type || "autre") as EmailType])}>
-                                  {EMAIL_TYPE_LABELS[(item.template.type || "autre") as EmailType]}
+                                <Badge className={cn("text-xs font-normal", EMAIL_TYPE_COLORS[(item.template.type || "autre") as string])}>
+                                  {EMAIL_TYPE_LABELS[(item.template.type || "autre") as string]}
                                 </Badge>
                                 <span className="text-xs text-gray-500">{truncate(item.template.name, 20)}</span>
                               </div>
@@ -905,7 +929,7 @@ export default function EmailsPage() {
                 <Label htmlFor="et_type">Type</Label>
                 <Select
                   value={templateForm.type}
-                  onValueChange={(v) => setTemplateForm((p) => ({ ...p, type: v as EmailType }))}
+                  onValueChange={(v) => setTemplateForm((p) => ({ ...p, type: v as string }))}
                 >
                   <SelectTrigger id="et_type">
                     <SelectValue />
@@ -913,8 +937,13 @@ export default function EmailsPage() {
                   <SelectContent>
                     <SelectItem value="convocation">Convocation</SelectItem>
                     <SelectItem value="confirmation">Confirmation</SelectItem>
-                    <SelectItem value="relance">Relance</SelectItem>
                     <SelectItem value="attestation">Attestation</SelectItem>
+                    <SelectItem value="relance">Relance</SelectItem>
+                    <SelectItem value="devis">Devis</SelectItem>
+                    <SelectItem value="prospect">Prospect</SelectItem>
+                    <SelectItem value="convention">Convention</SelectItem>
+                    <SelectItem value="certificat">Certificat</SelectItem>
+                    <SelectItem value="administratif">Administratif</SelectItem>
                     <SelectItem value="autre">Autre</SelectItem>
                   </SelectContent>
                 </Select>
@@ -1255,8 +1284,8 @@ export default function EmailsPage() {
                 <div className="p-3 bg-gray-50 rounded-lg border">
                   <p className="text-xs font-medium text-gray-500 mb-1">Modèle utilisé</p>
                   <div className="flex items-center gap-2">
-                    <Badge className={cn("text-xs font-normal", EMAIL_TYPE_COLORS[(detailItem.template.type || "autre") as EmailType])}>
-                      {EMAIL_TYPE_LABELS[(detailItem.template.type || "autre") as EmailType]}
+                    <Badge className={cn("text-xs font-normal", EMAIL_TYPE_COLORS[(detailItem.template.type || "autre") as string])}>
+                      {EMAIL_TYPE_LABELS[(detailItem.template.type || "autre") as string]}
                     </Badge>
                     <span className="text-sm text-gray-800">{detailItem.template.name}</span>
                   </div>
