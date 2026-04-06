@@ -94,9 +94,24 @@ export async function POST(request: NextRequest) {
       const reminderCount = quote.reminder_count || 0;
 
       let reminderType: "first" | "second" | "final" | null = null;
-      if (daysSinceSent >= 14 && reminderCount < 3) reminderType = "final";
-      else if (daysSinceSent >= 7 && reminderCount < 2) reminderType = "second";
-      else if (daysSinceSent >= 3 && reminderCount < 1) reminderType = "first";
+      // Fetch settings
+      const { data: qSettings } = await supabase
+        .from("reminder_settings")
+        .select("reminder_key, is_enabled, days_delay")
+        .eq("entity_id", quote.entity_id)
+        .in("reminder_key", ["reminder_quote_first", "reminder_quote_second", "reminder_quote_final"]);
+
+      const qDelay = (key: string, fb: number) => (qSettings || []).find((x) => x.reminder_key === key)?.days_delay ?? fb;
+      const qEnabled = (key: string) => (qSettings || []).find((x) => x.reminder_key === key)?.is_enabled !== false;
+
+      let reminderTemplateKey = "";
+      if (daysSinceSent >= qDelay("reminder_quote_final", 14) && reminderCount < 3 && qEnabled("reminder_quote_final")) {
+        reminderType = "final"; reminderTemplateKey = "reminder_quote_final";
+      } else if (daysSinceSent >= qDelay("reminder_quote_second", 7) && reminderCount < 2 && qEnabled("reminder_quote_second")) {
+        reminderType = "second"; reminderTemplateKey = "reminder_quote_second";
+      } else if (daysSinceSent >= qDelay("reminder_quote_first", 3) && reminderCount < 1 && qEnabled("reminder_quote_first")) {
+        reminderType = "first"; reminderTemplateKey = "reminder_quote_first";
+      }
 
       if (!reminderType) continue;
 
@@ -117,15 +132,40 @@ export async function POST(request: NextRequest) {
       if (!recipientEmail) continue;
 
       const entityName = entityMap[quote.entity_id] || "MR FORMATION";
-      const template = TEMPLATES[reminderType];
-      const templateData = {
-        reference: quote.reference,
-        prospect: prospectName,
-        validUntil: quote.valid_until ? formatDate(quote.valid_until) : "",
+
+      // DB template first, fallback to hardcoded
+      let subject: string;
+      let textBody: string;
+
+      const { data: dbTpl } = await supabase
+        .from("email_templates")
+        .select("subject, body")
+        .eq("entity_id", quote.entity_id)
+        .eq("type", reminderTemplateKey)
+        .maybeSingle();
+
+      const vars: Record<string, string> = {
+        "{{reference}}": quote.reference,
+        "{{entreprise}}": prospectName,
+        "{{date_echeance}}": quote.valid_until ? formatDate(quote.valid_until) : "",
       };
 
-      const subject = template.subject(quote.reference);
-      const textBody = template.body(templateData);
+      if (dbTpl?.subject && dbTpl?.body) {
+        subject = dbTpl.subject;
+        textBody = dbTpl.body;
+        for (const [k, v] of Object.entries(vars)) {
+          subject = subject.replaceAll(k, v);
+          textBody = textBody.replaceAll(k, v);
+        }
+      } else {
+        const fallback = TEMPLATES[reminderType];
+        subject = fallback.subject(quote.reference);
+        textBody = fallback.body({
+          reference: quote.reference,
+          prospect: prospectName,
+          validUntil: quote.valid_until ? formatDate(quote.valid_until) : "",
+        });
+      }
 
       let emailSent = false;
       if (resend) {

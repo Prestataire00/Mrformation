@@ -108,10 +108,31 @@ export async function POST(request: NextRequest) {
       const reminderCount = invoice.reminder_count || 0;
 
       // Determine which reminder to send
+      // Fetch reminder settings for this entity
+      const { data: settings } = await supabase
+        .from("reminder_settings")
+        .select("reminder_key, is_enabled, days_delay")
+        .eq("entity_id", invoice.entity_id)
+        .in("reminder_key", ["reminder_invoice_first", "reminder_invoice_second", "reminder_invoice_final"]);
+
+      const getDelay = (key: string, fallback: number) => {
+        const s = (settings || []).find((x) => x.reminder_key === key);
+        return s?.days_delay ?? fallback;
+      };
+      const isReminderEnabled = (key: string) => {
+        const s = (settings || []).find((x) => x.reminder_key === key);
+        return s?.is_enabled !== false; // default true if not found
+      };
+
       let reminderType: "first" | "second" | "final" | null = null;
-      if (daysPastDue >= 45 && reminderCount < 3) reminderType = "final";
-      else if (daysPastDue >= 21 && reminderCount < 2) reminderType = "second";
-      else if (daysPastDue >= 7 && reminderCount < 1) reminderType = "first";
+      let reminderTemplateKey = "";
+      if (daysPastDue >= getDelay("reminder_invoice_final", 45) && reminderCount < 3 && isReminderEnabled("reminder_invoice_final")) {
+        reminderType = "final"; reminderTemplateKey = "reminder_invoice_final";
+      } else if (daysPastDue >= getDelay("reminder_invoice_second", 21) && reminderCount < 2 && isReminderEnabled("reminder_invoice_second")) {
+        reminderType = "second"; reminderTemplateKey = "reminder_invoice_second";
+      } else if (daysPastDue >= getDelay("reminder_invoice_first", 7) && reminderCount < 1 && isReminderEnabled("reminder_invoice_first")) {
+        reminderType = "first"; reminderTemplateKey = "reminder_invoice_first";
+      }
 
       if (!reminderType) continue;
 
@@ -157,20 +178,48 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      // Build email
+      // Build email — check DB template first, fallback to hardcoded
       const entityName = entityMap[invoice.entity_id] || "MR FORMATION";
       const sessionTitle = sessionMap[invoice.session_id] || "Formation";
-      const template = REMINDER_TEMPLATES[reminderType];
-      const templateData = {
-        reference: invoice.reference,
-        montant: formatCurrency(Number(invoice.amount)),
-        entreprise: invoice.recipient_name,
-        formation: sessionTitle,
-        dateEcheance: formatDate(invoice.due_date),
+
+      let subject: string;
+      let textBody: string;
+
+      const { data: dbTemplate } = await supabase
+        .from("email_templates")
+        .select("subject, body")
+        .eq("entity_id", invoice.entity_id)
+        .eq("type", reminderTemplateKey)
+        .maybeSingle();
+
+      const templateVars: Record<string, string> = {
+        "{{reference}}": invoice.reference,
+        "{{montant}}": formatCurrency(Number(invoice.amount)),
+        "{{entreprise}}": invoice.recipient_name,
+        "{{formation}}": sessionTitle,
+        "{{date_echeance}}": formatDate(invoice.due_date),
       };
 
-      const subject = template.subject(invoice.reference);
-      const textBody = template.body(templateData);
+      if (dbTemplate?.subject && dbTemplate?.body) {
+        subject = dbTemplate.subject;
+        textBody = dbTemplate.body;
+        // Replace variables
+        for (const [key, val] of Object.entries(templateVars)) {
+          subject = subject.replaceAll(key, val);
+          textBody = textBody.replaceAll(key, val);
+        }
+      } else {
+        // Fallback to hardcoded
+        const fallback = REMINDER_TEMPLATES[reminderType];
+        subject = fallback.subject(invoice.reference);
+        textBody = fallback.body({
+          reference: invoice.reference,
+          montant: formatCurrency(Number(invoice.amount)),
+          entreprise: invoice.recipient_name,
+          formation: sessionTitle,
+          dateEcheance: formatDate(invoice.due_date),
+        });
+      }
 
       // Send email
       let emailSent = false;
