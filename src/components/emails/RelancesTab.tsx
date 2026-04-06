@@ -51,7 +51,7 @@ const CATEGORY_CONFIG = {
   opco: { label: "Rappels OPCO", icon: Building2, color: "text-amber-600" },
 };
 
-export default function RelancesPage() {
+export function RelancesTab() {
   const supabase = createClient();
   const { entityId } = useEntity();
   const { toast } = useToast();
@@ -275,13 +275,10 @@ export default function RelancesPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Relances automatiques</h1>
-        <p className="text-sm text-gray-500 mt-1">
-          Personnalisez les emails de relance et activez/désactivez chaque type.
-        </p>
-      </div>
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        Personnalisez les emails de relance et activez/désactivez chaque type.
+      </p>
 
       <Tabs defaultValue="invoice" className="space-y-4">
         <TabsList>

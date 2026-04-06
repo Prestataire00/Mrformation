@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import DOMPurify from "dompurify";
 import { createClient } from "@/lib/supabase/client";
+import { RelancesTab } from "@/components/emails/RelancesTab";
 import { useEntity } from "@/contexts/EntityContext";
 import { EmailTemplate, EmailHistory, Session, Client, Learner } from "@/lib/types";
 import { cn, formatDateTime, truncate } from "@/lib/utils";
@@ -564,6 +565,7 @@ export default function EmailsPage() {
               </span>
             )}
           </TabsTrigger>
+          <TabsTrigger value="relances">Relances automatiques</TabsTrigger>
         </TabsList>
 
         {/* TEMPLATES TAB */}
@@ -872,6 +874,11 @@ export default function EmailsPage() {
               </div>
             )}
           </div>
+        </TabsContent>
+
+        {/* RELANCES TAB */}
+        <TabsContent value="relances" className="space-y-4">
+          <RelancesTab />
         </TabsContent>
       </Tabs>
 

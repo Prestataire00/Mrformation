@@ -148,7 +148,6 @@ const adminNavSections: NavSection[] = [
     items: [
       { label: "Documents", href: "/admin/documents", icon: FileText },
       { label: "Emails", href: "/admin/emails", icon: Mail },
-      { label: "Relances auto", href: "/admin/emails/relances", icon: Mail },
       { label: "Signatures", href: "/admin/signatures", icon: PenLine },
       { label: "Lieux de Formations", href: "/admin/lieux", icon: MapPin },
     ],
