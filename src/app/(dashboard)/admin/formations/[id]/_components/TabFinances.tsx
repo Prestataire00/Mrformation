@@ -40,7 +40,15 @@ interface Invoice {
   is_avoir: boolean;
   parent_invoice_id: string | null;
   created_at: string;
+  reminder_count?: number;
+  auto_generated?: boolean;
 }
+
+const REMINDER_BADGES: Record<number, { label: string; className: string }> = {
+  1: { label: "1 relance", className: "bg-amber-100 text-amber-700" },
+  2: { label: "2 relances", className: "bg-orange-100 text-orange-700" },
+  3: { label: "Mise en demeure", className: "bg-red-100 text-red-700" },
+};
 
 interface Charge {
   id: string;
@@ -473,9 +481,21 @@ export function TabFinances({ formation, onRefresh }: Props) {
                           {formatCurrency(inv.amount)}
                         </td>
                         <td className="py-1.5 pl-3">
-                          <Badge className={`${badge.className} hover:${badge.className} text-[10px] px-1.5 py-0`}>
-                            {badge.label}
-                          </Badge>
+                          <div className="flex items-center gap-1">
+                            <Badge className={`${badge.className} hover:${badge.className} text-[10px] px-1.5 py-0`}>
+                              {badge.label}
+                            </Badge>
+                            {inv.reminder_count && inv.reminder_count > 0 && REMINDER_BADGES[inv.reminder_count] && (
+                              <Badge className={`${REMINDER_BADGES[inv.reminder_count].className} text-[10px] px-1.5 py-0`}>
+                                {REMINDER_BADGES[inv.reminder_count].label}
+                              </Badge>
+                            )}
+                            {inv.auto_generated && (
+                              <Badge variant="outline" className="text-[10px] px-1 py-0 text-blue-600 border-blue-200">
+                                Auto
+                              </Badge>
+                            )}
+                          </div>
                         </td>
                         <td className="py-1.5 text-xs text-muted-foreground">
                           {inv.due_date ? new Date(inv.due_date).toLocaleDateString("fr-FR") : "—"}
