@@ -107,6 +107,7 @@ export function TabFinances({ formation, onRefresh }: Props) {
   const [invoiceForm, setInvoiceForm] = useState({
     recipient_type: "learner",
     recipient_name: "",
+    recipient_id: "",
     amount: "",
     due_date: "",
     notes: "",
@@ -180,7 +181,7 @@ export function TabFinances({ formation, onRefresh }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           recipient_type: recipientType,
-          recipient_id: parentInvoice?.recipient_id ?? crypto.randomUUID(),
+          recipient_id: parentInvoice?.recipient_id ?? (invoiceForm.recipient_id || crypto.randomUUID()),
           recipient_name: recipientName,
           amount,
           prefix: isAvoir ? "AV" : prefix,
@@ -195,7 +196,7 @@ export function TabFinances({ formation, onRefresh }: Props) {
         toast({ title: isAvoir ? "Avoir créé" : "Facture créée", description: data.invoice.reference });
         if (!isAvoir) {
           setInvoiceDialog(false);
-          setInvoiceForm({ recipient_type: "learner", recipient_name: "", amount: "", due_date: "", notes: "" });
+          setInvoiceForm({ recipient_type: "learner", recipient_name: "", recipient_id: "", amount: "", due_date: "", notes: "" });
         }
         fetchData();
       } else {
@@ -658,12 +659,48 @@ export function TabFinances({ formation, onRefresh }: Props) {
               </Select>
             </div>
             <div>
-              <Label>Nom du destinataire *</Label>
-              <Input
-                value={invoiceForm.recipient_name}
-                onChange={(e) => setInvoiceForm((f) => ({ ...f, recipient_name: e.target.value }))}
-                placeholder={RECIPIENT_LABELS[invoiceForm.recipient_type] || "Nom"}
-              />
+              <Label>Destinataire *</Label>
+              {(() => {
+                // Build options from formation data
+                const options: Array<{ id: string; name: string }> = [];
+                if (invoiceForm.recipient_type === "learner") {
+                  for (const e of formation.enrollments || []) {
+                    if (e.learner) options.push({ id: e.learner.id, name: `${e.learner.last_name?.toUpperCase()} ${e.learner.first_name}` });
+                  }
+                } else if (invoiceForm.recipient_type === "company") {
+                  for (const c of formation.formation_companies || []) {
+                    if (c.client) options.push({ id: c.client_id, name: c.client.company_name });
+                  }
+                } else if (invoiceForm.recipient_type === "financier") {
+                  for (const f of formation.formation_financiers || []) {
+                    options.push({ id: f.id, name: f.name });
+                  }
+                }
+                return options.length > 0 ? (
+                  <Select
+                    value={invoiceForm.recipient_name}
+                    onValueChange={(v) => {
+                      const opt = options.find((o) => o.name === v);
+                      setInvoiceForm((f) => ({ ...f, recipient_name: v, recipient_id: opt?.id || "" }));
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Sélectionner..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {options.map((o) => (
+                        <SelectItem key={o.id} value={o.name}>{o.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    value={invoiceForm.recipient_name}
+                    onChange={(e) => setInvoiceForm((f) => ({ ...f, recipient_name: e.target.value }))}
+                    placeholder={RECIPIENT_LABELS[invoiceForm.recipient_type] || "Nom"}
+                  />
+                );
+              })()}
             </div>
             <div>
               <Label>Montant (EUR) *</Label>
@@ -682,10 +719,6 @@ export function TabFinances({ formation, onRefresh }: Props) {
                 value={invoiceForm.due_date}
                 onChange={(e) => setInvoiceForm((f) => ({ ...f, due_date: e.target.value }))}
               />
-            </div>
-            <div>
-              <Label>Préfixe</Label>
-              <Input value={prefix} disabled className="w-32 uppercase" />
             </div>
             <div>
               <Label>Notes</Label>

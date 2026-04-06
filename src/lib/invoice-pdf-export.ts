@@ -59,7 +59,11 @@ function formatCurrency(amount: number): string {
     style: "currency",
     currency: "EUR",
     minimumFractionDigits: 2,
-  }).format(amount);
+  }).format(amount)
+    // jsPDF can't render narrow no-break space (U+202F) or no-break space (U+00A0)
+    // Replace with normal space to avoid "15/000,00" rendering bug
+    .replace(/\u202F/g, " ")
+    .replace(/\u00A0/g, " ");
 }
 
 function getLogoPath(entityName: string): string {
