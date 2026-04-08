@@ -214,7 +214,7 @@ export default function SequencesPage() {
           <h1 className="text-xl font-bold text-gray-900">Séquences automatisées</h1>
           <p className="text-sm text-muted-foreground mt-1">Automatisez vos relances avec des séquences multi-étapes</p>
         </div>
-        <Button size="sm" onClick={openCreate} style={{ background: "#DC2626" }} className="text-white gap-1.5">
+        <Button size="sm" onClick={openCreate} style={{ background: "#374151" }} className="text-white gap-1.5">
           <Plus className="h-4 w-4" /> Nouvelle séquence
         </Button>
       </div>
@@ -227,7 +227,7 @@ export default function SequencesPage() {
             <Zap className="h-10 w-10 text-gray-300 mb-3" />
             <p className="font-medium text-gray-600">Aucune séquence</p>
             <p className="text-sm text-gray-400 mt-1">Créez votre première séquence de relance automatique</p>
-            <Button size="sm" onClick={openCreate} className="mt-4 gap-1.5" style={{ background: "#DC2626" }}>
+            <Button size="sm" onClick={openCreate} className="mt-4 gap-1.5" style={{ background: "#374151" }}>
               <Plus className="h-4 w-4" /> Créer une séquence
             </Button>
           </CardContent>
@@ -358,7 +358,7 @@ export default function SequencesPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Annuler</Button>
-            <Button onClick={handleSave} disabled={saving || !name.trim()} style={{ background: "#DC2626" }} className="text-white">
+            <Button onClick={handleSave} disabled={saving || !name.trim()} style={{ background: "#374151" }} className="text-white">
               {saving ? "Enregistrement..." : editingId ? "Mettre à jour" : "Créer"}
             </Button>
           </DialogFooter>
@@ -383,7 +383,7 @@ export default function SequencesPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEnrollOpen(false)}>Annuler</Button>
-            <Button onClick={handleEnroll} disabled={!selectedProspectId} style={{ background: "#DC2626" }} className="text-white">
+            <Button onClick={handleEnroll} disabled={!selectedProspectId} style={{ background: "#374151" }} className="text-white">
               Inscrire
             </Button>
           </DialogFooter>

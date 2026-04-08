@@ -257,7 +257,7 @@ export function ProfilePage() {
                 onChange={handleAvatarUpload}
               />
               <div
-                className="w-16 h-16 rounded-full overflow-hidden cursor-pointer ring-2 ring-gray-200 group-hover:ring-[#DC2626] transition"
+                className="w-16 h-16 rounded-full overflow-hidden cursor-pointer ring-2 ring-gray-200 group-hover:ring-[#374151] transition"
                 onClick={() => fileInputRef.current?.click()}
               >
                 {profile.avatar_url ? (
@@ -272,7 +272,7 @@ export function ProfilePage() {
               <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploadingAvatar}
-                className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-[#DC2626] text-white flex items-center justify-center shadow-sm hover:bg-[#2da5b5] transition"
+                className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-[#374151] text-white flex items-center justify-center shadow-sm hover:bg-[#2da5b5] transition"
                 title="Changer la photo"
               >
                 {uploadingAvatar
@@ -313,7 +313,7 @@ export function ProfilePage() {
                 type="text"
                 value={firstName}
                 onChange={(e) => setFirstName(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#DC2626]"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#374151]"
               />
             </div>
             <div className="space-y-1.5">
@@ -325,7 +325,7 @@ export function ProfilePage() {
                 type="text"
                 value={lastName}
                 onChange={(e) => setLastName(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#DC2626]"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#374151]"
               />
             </div>
           </div>
@@ -356,7 +356,7 @@ export function ProfilePage() {
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="06 12 34 56 78"
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#DC2626]"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#374151]"
             />
           </div>
 
@@ -370,7 +370,7 @@ export function ProfilePage() {
               value={address}
               onChange={(e) => setAddress(e.target.value)}
               placeholder="Adresse complète (y compris la ville)"
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#DC2626]"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#374151]"
             />
           </div>
 
@@ -379,7 +379,7 @@ export function ProfilePage() {
               onClick={handleSave}
               disabled={saving}
               className="inline-flex items-center gap-2 px-4 py-2 text-white text-sm font-medium rounded-lg hover:opacity-90 transition-all disabled:opacity-60"
-              style={{ background: "#DC2626" }}
+              style={{ background: "#374151" }}
             >
               {saving ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -414,7 +414,7 @@ export function ProfilePage() {
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   placeholder="Minimum 6 caractères"
-                  className="w-full px-3 py-2 pr-10 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#DC2626]"
+                  className="w-full px-3 py-2 pr-10 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#374151]"
                 />
                 <button
                   type="button"
@@ -435,7 +435,7 @@ export function ProfilePage() {
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="Retapez le mot de passe"
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#DC2626]"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#374151]"
               />
             </div>
 
@@ -443,7 +443,7 @@ export function ProfilePage() {
               onClick={handleChangePassword}
               disabled={changingPassword}
               className="inline-flex items-center gap-2 px-4 py-2 text-white text-sm font-medium rounded-lg hover:opacity-90 transition-all disabled:opacity-60"
-              style={{ background: "#DC2626" }}
+              style={{ background: "#374151" }}
             >
               {changingPassword ? (
                 <Loader2 className="w-4 h-4 animate-spin" />

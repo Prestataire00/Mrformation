@@ -310,7 +310,7 @@ export default function LearnerMyTrainingsPage() {
       {!loading && programEnrollments.length > 0 && (
         <div className="mb-8">
           <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2 mb-4">
-            <GraduationCap className="w-5 h-5 text-[#DC2626]" />
+            <GraduationCap className="w-5 h-5 text-[#374151]" />
             Mes Parcours de formation
           </h2>
           <div className="space-y-4">
@@ -350,7 +350,7 @@ export default function LearnerMyTrainingsPage() {
                       <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
                         <div
                           className="h-full rounded-full transition-all"
-                          style={{ width: `${pe.completion_rate}%`, backgroundColor: "#DC2626" }}
+                          style={{ width: `${pe.completion_rate}%`, backgroundColor: "#374151" }}
                         />
                       </div>
                       <span className="text-sm font-medium text-gray-600">{pe.completion_rate}%</span>

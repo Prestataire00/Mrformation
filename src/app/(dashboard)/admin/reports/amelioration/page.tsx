@@ -84,7 +84,7 @@ export default function AmeliorationPage() {
           type="date"
           value={data.date}
           onChange={(e) => setData({ ...data, date: e.target.value })}
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#DC2626]"
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#374151]"
         />
       </div>
       <div>
@@ -92,7 +92,7 @@ export default function AmeliorationPage() {
         <textarea
           value={data.description}
           onChange={(e) => setData({ ...data, description: e.target.value })}
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#DC2626] resize-none"
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#374151] resize-none"
           rows={3}
           placeholder="Décrivez le constat ou le problème identifié..."
         />
@@ -102,7 +102,7 @@ export default function AmeliorationPage() {
         <textarea
           value={data.action_taken}
           onChange={(e) => setData({ ...data, action_taken: e.target.value })}
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#DC2626] resize-none"
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#374151] resize-none"
           rows={2}
           placeholder="Action corrective ou préventive mise en place..."
         />
@@ -113,7 +113,7 @@ export default function AmeliorationPage() {
           type="text"
           value={data.result}
           onChange={(e) => setData({ ...data, result: e.target.value })}
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#DC2626]"
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#374151]"
           placeholder="Résultat observé après l'action..."
         />
       </div>
@@ -123,7 +123,7 @@ export default function AmeliorationPage() {
           type="text"
           value={data.responsible}
           onChange={(e) => setData({ ...data, responsible: e.target.value })}
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#DC2626]"
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#374151]"
           placeholder="Nom du responsable de l'action..."
         />
       </div>
@@ -134,9 +134,9 @@ export default function AmeliorationPage() {
     <div className="p-6">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm mb-4">
-        <Link href="/admin" className="text-[#DC2626] hover:underline">Accueil</Link>
+        <Link href="/admin" className="text-[#374151] hover:underline">Accueil</Link>
         <span className="text-gray-400">/</span>
-        <Link href="/admin/reports" className="text-[#DC2626] hover:underline">Suivis</Link>
+        <Link href="/admin/reports" className="text-[#374151] hover:underline">Suivis</Link>
         <span className="text-gray-400">/</span>
         <span className="text-gray-500">Amélioration Continue</span>
       </div>
@@ -151,14 +151,14 @@ export default function AmeliorationPage() {
           <button
             onClick={() => { setForm({ ...EMPTY_FORM }); setAddOpen(true); }}
             className="text-white px-4 py-2 rounded-lg text-sm font-medium uppercase flex items-center gap-1"
-            style={{ background: "#DC2626" }}
+            style={{ background: "#374151" }}
           >
             <Plus className="h-4 w-4" />
             Ajouter une amélioration
           </button>
           <button
             onClick={handleDownloadCSV}
-            className="border border-[#DC2626] text-[#DC2626] px-4 py-2 rounded-lg text-sm flex items-center gap-1"
+            className="border border-[#374151] text-[#374151] px-4 py-2 rounded-lg text-sm flex items-center gap-1"
           >
             <Download className="h-4 w-4" />
             Télécharger en Excel
@@ -171,13 +171,13 @@ export default function AmeliorationPage() {
         <div className="flex flex-wrap items-end gap-4">
           <div>
             <label className="block text-xs text-gray-500 mb-1">Date de début</label>
-            <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#DC2626]" />
+            <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#374151]" />
           </div>
           <div>
             <label className="block text-xs text-gray-500 mb-1">Date de fin</label>
-            <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#DC2626]" />
+            <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#374151]" />
           </div>
-          <button className="text-white px-4 py-2 rounded-lg text-sm font-medium uppercase flex items-center gap-1" style={{ background: "#DC2626" }}>
+          <button className="text-white px-4 py-2 rounded-lg text-sm font-medium uppercase flex items-center gap-1" style={{ background: "#374151" }}>
             <Filter className="h-4 w-4" /> Filtrer
           </button>
         </div>
@@ -218,7 +218,7 @@ export default function AmeliorationPage() {
                   <td className="px-4 py-3 text-gray-600">{item.responsible || "—"}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
-                      <button onClick={() => setEditItem({ ...item })} className="text-[#DC2626] hover:underline text-xs font-medium">Modifier</button>
+                      <button onClick={() => setEditItem({ ...item })} className="text-[#374151] hover:underline text-xs font-medium">Modifier</button>
                       <button onClick={() => handleDelete(item.id)} className="text-red-500 hover:underline text-xs">Supprimer</button>
                     </div>
                   </td>
@@ -236,7 +236,7 @@ export default function AmeliorationPage() {
           <FormFields data={form} setData={(d) => setForm(d as typeof EMPTY_FORM)} />
           <DialogFooter>
             <button onClick={() => setAddOpen(false)} className="border border-gray-300 text-gray-600 px-4 py-2 rounded-lg text-sm">Annuler</button>
-            <button onClick={handleAdd} className="text-white px-4 py-2 rounded-lg text-sm font-medium" style={{ background: "#DC2626" }}>Ajouter</button>
+            <button onClick={handleAdd} className="text-white px-4 py-2 rounded-lg text-sm font-medium" style={{ background: "#374151" }}>Ajouter</button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -248,7 +248,7 @@ export default function AmeliorationPage() {
           {editItem && <FormFields data={editItem} setData={(d) => setEditItem(d as Amelioration)} />}
           <DialogFooter>
             <button onClick={() => setEditItem(null)} className="border border-gray-300 text-gray-600 px-4 py-2 rounded-lg text-sm">Annuler</button>
-            <button onClick={handleSaveEdit} className="text-white px-4 py-2 rounded-lg text-sm font-medium" style={{ background: "#DC2626" }}>Enregistrer</button>
+            <button onClick={handleSaveEdit} className="text-white px-4 py-2 rounded-lg text-sm font-medium" style={{ background: "#374151" }}>Enregistrer</button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

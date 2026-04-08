@@ -223,7 +223,7 @@ export default function TrainerContractsPage() {
         <Card className="bg-white border shadow-sm">
           <CardContent className="flex items-center gap-4 p-5">
             <div className="rounded-full p-3" style={{ backgroundColor: "#e0f5f8" }}>
-              <Calendar className="h-5 w-5" style={{ color: "#DC2626" }} />
+              <Calendar className="h-5 w-5" style={{ color: "#374151" }} />
             </div>
             <div>
               <p className="text-2xl font-bold text-gray-800">
@@ -239,7 +239,7 @@ export default function TrainerContractsPage() {
       <Card className="bg-white border shadow-sm">
         <CardHeader className="pb-3">
           <CardTitle className="text-base font-semibold text-gray-700 flex items-center gap-2">
-            <FolderOpen className="h-4 w-4" style={{ color: "#DC2626" }} />
+            <FolderOpen className="h-4 w-4" style={{ color: "#374151" }} />
             Documents ({filtered.length})
           </CardTitle>
         </CardHeader>

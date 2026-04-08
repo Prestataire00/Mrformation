@@ -54,7 +54,7 @@ export function SectionG({ editingFinancial, sectionGManual, onSectionGChange, o
                     min="0"
                     value={sectionGManual.stagiaires || ""}
                     onChange={(e) => onSectionGChange((prev) => ({ ...prev, stagiaires: parseInt(e.target.value) || 0 }))}
-                    className="w-24 border border-gray-300 rounded px-2 py-1 text-sm text-right focus:outline-none focus:border-[#DC2626]"
+                    className="w-24 border border-gray-300 rounded px-2 py-1 text-sm text-right focus:outline-none focus:border-[#374151]"
                   />
                 </td>
                 <td className="py-3">
@@ -64,7 +64,7 @@ export function SectionG({ editingFinancial, sectionGManual, onSectionGChange, o
                     step="0.5"
                     value={sectionGManual.heures || ""}
                     onChange={(e) => onSectionGChange((prev) => ({ ...prev, heures: parseFloat(e.target.value) || 0 }))}
-                    className="w-24 border border-gray-300 rounded px-2 py-1 text-sm text-right focus:outline-none focus:border-[#DC2626]"
+                    className="w-24 border border-gray-300 rounded px-2 py-1 text-sm text-right focus:outline-none focus:border-[#374151]"
                   />
                 </td>
               </>

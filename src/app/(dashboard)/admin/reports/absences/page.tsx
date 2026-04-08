@@ -135,7 +135,7 @@ export default function AbsencesPage() {
             onClick={handleDownload}
             disabled={absences.length === 0}
             className="text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5 disabled:opacity-50"
-            style={{ background: "#DC2626" }}
+            style={{ background: "#374151" }}
           >
             <Download className="h-4 w-4" />
             Télécharger en Excel
@@ -155,7 +155,7 @@ export default function AbsencesPage() {
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center py-16">
-            <Loader2 className="h-6 w-6 animate-spin text-[#DC2626]" />
+            <Loader2 className="h-6 w-6 animate-spin text-[#374151]" />
           </div>
         ) : (
           <table className="w-full text-sm">
@@ -183,7 +183,7 @@ export default function AbsencesPage() {
                     <td className="px-4 py-3 text-gray-600 text-xs">
                       {row.slot_start && row.slot_end ? `${row.slot_start} - ${row.slot_end}` : "—"}
                     </td>
-                    <td className="px-4 py-3 text-[#DC2626] text-xs">{row.session_title}</td>
+                    <td className="px-4 py-3 text-[#374151] text-xs">{row.session_title}</td>
                     <td className="px-4 py-3 text-gray-700">{row.learner_name}</td>
                     <td className="px-4 py-3 text-gray-600">{row.reason || "—"}</td>
                     <td className="px-4 py-3 text-gray-600">{STATUS_LABELS[row.status] || row.status}</td>

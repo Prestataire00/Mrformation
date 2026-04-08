@@ -34,19 +34,19 @@ export function SectionB({
           type="date"
           value={dateFrom}
           onChange={(e) => onDateFromChange(e.target.value)}
-          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#DC2626]"
+          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#374151]"
         />
         <span className="text-sm text-gray-700">Fin de l&apos;exercice comptable</span>
         <input
           type="date"
           value={dateTo}
           onChange={(e) => onDateToChange(e.target.value)}
-          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#DC2626]"
+          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#374151]"
         />
         <button
           onClick={onFilter}
           className="text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5"
-          style={{ background: "#DC2626" }}
+          style={{ background: "#374151" }}
         >
           <Filter className="h-4 w-4" />
           Filtrer

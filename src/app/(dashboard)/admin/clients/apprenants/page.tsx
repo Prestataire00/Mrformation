@@ -101,26 +101,26 @@ export default function ApprenantsProfilesPage() {
         <button
           onClick={() => setPage((p) => Math.max(1, p - 1))}
           disabled={page <= 1}
-          className="px-2 py-1 rounded border border-gray-300 text-gray-600 disabled:opacity-40 hover:border-[#DC2626] hover:text-[#DC2626]"
+          className="px-2 py-1 rounded border border-gray-300 text-gray-600 disabled:opacity-40 hover:border-[#374151] hover:text-[#374151]"
         >
           <ChevronLeft className="h-4 w-4" />
         </button>
-        {start > 1 && <><button onClick={() => setPage(1)} className="px-3 py-1 rounded border border-gray-300 text-gray-600 hover:border-[#DC2626] hover:text-[#DC2626]">1</button><span className="text-gray-400">...</span></>}
+        {start > 1 && <><button onClick={() => setPage(1)} className="px-3 py-1 rounded border border-gray-300 text-gray-600 hover:border-[#374151] hover:text-[#374151]">1</button><span className="text-gray-400">...</span></>}
         {pages.map((p) => (
           <button
             key={p}
             onClick={() => setPage(p)}
-            className={`px-3 py-1 rounded border text-sm font-medium ${p === page ? "text-white border-[#DC2626]" : "border-gray-300 text-gray-600 hover:border-[#DC2626] hover:text-[#DC2626]"}`}
-            style={p === page ? { background: "#DC2626" } : {}}
+            className={`px-3 py-1 rounded border text-sm font-medium ${p === page ? "text-white border-[#374151]" : "border-gray-300 text-gray-600 hover:border-[#374151] hover:text-[#374151]"}`}
+            style={p === page ? { background: "#374151" } : {}}
           >
             {p}
           </button>
         ))}
-        {end < totalPages && <><span className="text-gray-400">...</span><button onClick={() => setPage(totalPages)} className="px-3 py-1 rounded border border-gray-300 text-gray-600 hover:border-[#DC2626] hover:text-[#DC2626]">{totalPages}</button></>}
+        {end < totalPages && <><span className="text-gray-400">...</span><button onClick={() => setPage(totalPages)} className="px-3 py-1 rounded border border-gray-300 text-gray-600 hover:border-[#374151] hover:text-[#374151]">{totalPages}</button></>}
         <button
           onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
           disabled={page >= totalPages}
-          className="px-2 py-1 rounded border border-gray-300 text-gray-600 disabled:opacity-40 hover:border-[#DC2626] hover:text-[#DC2626]"
+          className="px-2 py-1 rounded border border-gray-300 text-gray-600 disabled:opacity-40 hover:border-[#374151] hover:text-[#374151]"
         >
           <ChevronRight className="h-4 w-4" />
         </button>
@@ -168,7 +168,7 @@ export default function ApprenantsProfilesPage() {
       {/* Grid */}
       {loading ? (
         <div className="flex justify-center py-20">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#DC2626] border-t-transparent" />
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#374151] border-t-transparent" />
         </div>
       ) : filteredLearners.length === 0 ? (
         <div className="text-center py-20 text-gray-400">
@@ -181,7 +181,7 @@ export default function ApprenantsProfilesPage() {
             <Link
               key={learner.id}
               href={`/admin/clients/apprenants/${learner.id}`}
-              className="border rounded-lg p-3.5 hover:border-[#DC2626]/40 hover:shadow-sm transition-all bg-white flex items-start gap-3"
+              className="border rounded-lg p-3.5 hover:border-[#374151]/40 hover:shadow-sm transition-all bg-white flex items-start gap-3"
             >
               <div className="h-9 w-9 rounded-full bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-500 shrink-0">
                 {learner.first_name.charAt(0)}{learner.last_name.charAt(0)}
@@ -189,7 +189,7 @@ export default function ApprenantsProfilesPage() {
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold text-gray-900 leading-tight">{learner.first_name} {learner.last_name}</p>
                 {learner.clients?.company_name ? (
-                  <p className="text-xs text-[#DC2626] mt-0.5 truncate">{learner.clients.company_name}</p>
+                  <p className="text-xs text-[#374151] mt-0.5 truncate">{learner.clients.company_name}</p>
                 ) : (
                   <p className="text-xs text-gray-300 mt-0.5 italic">Sans entreprise</p>
                 )}

@@ -14,7 +14,7 @@
 - [ ] Connexion apprenant — redirige vers /learner
 - [ ] Connexion client — redirige vers /client
 - [ ] Déconnexion — retour à la page login
-- [ ] Sélection entité MR FORMATION — couleur rouge #DC2626 dans la sidebar
+- [ ] Sélection entité MR FORMATION — couleur rouge #374151 dans la sidebar
 - [ ] Sélection entité C3V FORMATION — couleur bleue #2563EB dans la sidebar
 - [ ] Accès refusé si un apprenant tente /admin → redirection
 - [ ] Accès refusé si un formateur tente /admin/users → redirection

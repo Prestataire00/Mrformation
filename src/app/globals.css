@@ -10,30 +10,30 @@
     --card-foreground: 222.2 84% 4.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
-    /* Rouge MR Formation — #DC2626 */
-    --primary: 0 84% 50%;
+    /* Gris ardoise MR Formation — #374151 (gray-700) */
+    --primary: 220 13% 28%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 0 30% 95%;
-    --secondary-foreground: 0 84% 30%;
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 220 13% 28%;
     --muted: 210 40% 96.1%;
     --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 0 20% 95%;
-    --accent-foreground: 0 84% 30%;
+    --accent: 220 14% 96%;
+    --accent-foreground: 220 13% 28%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
-    --ring: 0 84% 50%;
+    --ring: 220 13% 28%;
     --radius: 0.5rem;
     /* Sidebar claire */
     --sidebar-background: 0 0% 100%;
     --sidebar-foreground: 222 20% 25%;
-    --sidebar-primary: 0 84% 50%;
+    --sidebar-primary: 220 13% 28%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 0 15% 96%;
+    --sidebar-accent: 220 14% 96%;
     --sidebar-accent-foreground: 222 20% 25%;
     --sidebar-border: 220 14% 90%;
-    --sidebar-ring: 0 84% 50%;
+    --sidebar-ring: 220 13% 28%;
   }
 
   .dark {
@@ -43,7 +43,7 @@
     --card-foreground: 210 40% 98%;
     --popover: 222.2 84% 4.9%;
     --popover-foreground: 210 40% 98%;
-    --primary: 0 84% 50%;
+    --primary: 220 13% 28%;
     --primary-foreground: 0 0% 100%;
     --secondary: 217.2 32.6% 17.5%;
     --secondary-foreground: 210 40% 98%;
@@ -55,21 +55,21 @@
     --destructive-foreground: 210 40% 98%;
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
-    --ring: 0 84% 50%;
+    --ring: 220 13% 28%;
   }
 }
 
 /* ── Entity themes ────────────────────────────────────────── */
 [data-entity="mr-formation"] {
-  --primary: 0 84% 50%;
+  --primary: 220 13% 28%;
   --primary-foreground: 0 0% 100%;
-  --ring: 0 84% 50%;
-  --secondary: 0 30% 95%;
-  --secondary-foreground: 0 84% 30%;
-  --accent: 0 20% 95%;
-  --accent-foreground: 0 84% 30%;
-  --sidebar-primary: 0 84% 50%;
-  --sidebar-ring: 0 84% 50%;
+  --ring: 220 13% 28%;
+  --secondary: 220 14% 96%;
+  --secondary-foreground: 220 13% 28%;
+  --accent: 220 14% 96%;
+  --accent-foreground: 220 13% 28%;
+  --sidebar-primary: 220 13% 28%;
+  --sidebar-ring: 220 13% 28%;
 }
 
 [data-entity="c3v-formation"] {

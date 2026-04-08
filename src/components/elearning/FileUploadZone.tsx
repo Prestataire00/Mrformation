@@ -144,8 +144,8 @@ export default function FileUploadZone({
         className={cn(
           "relative border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all duration-200",
           isDragging
-            ? "border-[#DC2626] bg-[#DC2626]/5"
-            : "border-gray-300 hover:border-[#DC2626] hover:bg-gray-50",
+            ? "border-[#374151] bg-[#374151]/5"
+            : "border-gray-300 hover:border-[#374151] hover:bg-gray-50",
           uploading && "pointer-events-none opacity-70"
         )}
       >
@@ -159,20 +159,20 @@ export default function FileUploadZone({
 
         {uploading ? (
           <div className="space-y-3">
-            <Loader2 className="h-10 w-10 text-[#DC2626] animate-spin mx-auto" />
+            <Loader2 className="h-10 w-10 text-[#374151] animate-spin mx-auto" />
             <p className="text-sm font-medium text-gray-700">
               Upload en cours... {uploadProgress}%
             </p>
             <div className="h-2 bg-gray-200 rounded-full max-w-xs mx-auto overflow-hidden">
               <div
-                className="h-full bg-[#DC2626] rounded-full transition-all duration-300"
+                className="h-full bg-[#374151] rounded-full transition-all duration-300"
                 style={{ width: `${uploadProgress}%` }}
               />
             </div>
           </div>
         ) : selectedFile ? (
           <div className="flex items-center justify-center gap-3">
-            <FileText className="h-8 w-8 text-[#DC2626]" />
+            <FileText className="h-8 w-8 text-[#374151]" />
             <div className="text-left">
               <p className="text-sm font-medium text-gray-900">{selectedFile.name}</p>
               <p className="text-xs text-gray-500">

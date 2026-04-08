@@ -168,7 +168,7 @@ export default function SendEmailPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <Loader2 className="w-8 h-8 animate-spin text-[#DC2626]" />
+        <Loader2 className="w-8 h-8 animate-spin text-[#374151]" />
       </div>
     );
   }
@@ -190,7 +190,7 @@ export default function SendEmailPage() {
       <div className="border-b border-gray-200 bg-white px-6 py-4">
         <button
           onClick={() => router.back()}
-          className="mb-3 flex items-center gap-1.5 text-xs font-medium text-[#DC2626] hover:text-[#991B1B] transition"
+          className="mb-3 flex items-center gap-1.5 text-xs font-medium text-[#374151] hover:text-[#991B1B] transition"
         >
           <ArrowLeft className="h-3.5 w-3.5" />
           Revenir
@@ -320,7 +320,7 @@ export default function SendEmailPage() {
                   key={tag.key}
                   type="button"
                   onClick={() => insertTag(tag.label)}
-                  className="rounded-md border border-[#DC2626] bg-[#FEF2F2] px-3 py-1.5 text-xs font-medium text-[#991B1B] hover:bg-[#FEE2E2] transition cursor-pointer"
+                  className="rounded-md border border-[#374151] bg-[#FEF2F2] px-3 py-1.5 text-xs font-medium text-[#991B1B] hover:bg-[#FEE2E2] transition cursor-pointer"
                 >
                   {tag.label}
                 </button>
@@ -396,7 +396,7 @@ export default function SendEmailPage() {
               onClick={handleSend}
               disabled={sending || !prospect.email || !subject.trim() || !message.trim()}
               className="flex items-center gap-2 rounded-lg px-6 py-2.5 text-sm font-bold text-white transition disabled:opacity-50"
-              style={{ backgroundColor: "#DC2626" }}
+              style={{ backgroundColor: "#374151" }}
             >
               {sending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />

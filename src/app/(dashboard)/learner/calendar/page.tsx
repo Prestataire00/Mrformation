@@ -249,7 +249,7 @@ export default function LearnerCalendarPage() {
   if (loading) {
     return (
       <div className="flex justify-center py-24">
-        <Loader2 className="h-8 w-8 text-[#DC2626] animate-spin" />
+        <Loader2 className="h-8 w-8 text-[#374151] animate-spin" />
       </div>
     );
   }
@@ -263,7 +263,7 @@ export default function LearnerCalendarPage() {
     <div className="p-6 space-y-6">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm">
-        <Link href="/learner" className="text-[#DC2626] hover:underline">Accueil</Link>
+        <Link href="/learner" className="text-[#374151] hover:underline">Accueil</Link>
         <span className="text-gray-400">/</span>
         <span className="text-gray-500">Calendrier</span>
       </div>
@@ -312,7 +312,7 @@ export default function LearnerCalendarPage() {
                   onClick={() => setCalendarView(v)}
                   className={cn(
                     "px-3 py-1 text-xs font-medium transition",
-                    calendarView === v ? "bg-[#DC2626] text-white" : "bg-white text-gray-600 hover:bg-gray-50"
+                    calendarView === v ? "bg-[#374151] text-white" : "bg-white text-gray-600 hover:bg-gray-50"
                   )}
                 >
                   {v === "day" ? "Jour" : v === "week" ? "Semaine" : "Mois"}
@@ -353,12 +353,12 @@ export default function LearnerCalendarPage() {
                       >
                         <div className={cn(
                           "text-xs font-semibold mb-1 text-center",
-                          isToday ? "text-[#DC2626]" : "text-gray-500"
+                          isToday ? "text-[#374151]" : "text-gray-500"
                         )}>
                           <div>{DAYS_FR[dd.getDay() === 0 ? 6 : dd.getDay() - 1]}</div>
                           <span className={cn(
                             "inline-flex items-center justify-center h-6 w-6 rounded-full text-sm font-bold",
-                            isToday && "bg-[#DC2626] text-white"
+                            isToday && "bg-[#374151] text-white"
                           )}>{dd.getDate()}</span>
                         </div>
                         <div className="space-y-0.5">
@@ -400,7 +400,7 @@ export default function LearnerCalendarPage() {
                   )}>
                     <div className={cn(
                       "w-12 text-xs font-mono flex-shrink-0 pt-1",
-                      isCurrentHour ? "text-[#DC2626] font-bold" : "text-gray-400"
+                      isCurrentHour ? "text-[#374151] font-bold" : "text-gray-400"
                     )}>
                       {String(hour).padStart(2, "0")}:00
                     </div>
@@ -467,14 +467,14 @@ export default function LearnerCalendarPage() {
                           !day.inMonth && "bg-gray-50/60",
                           isWeekend && day.inMonth && "bg-amber-50/30",
                           isToday && "bg-blue-50/40",
-                          isSelected && "ring-2 ring-[#DC2626] ring-inset"
+                          isSelected && "ring-2 ring-[#374151] ring-inset"
                         )}
                       >
                         <span className={cn(
                           "inline-block text-xs font-medium mb-0.5 px-1 rounded",
                           !day.inMonth && "text-gray-300",
                           day.inMonth && "text-gray-700",
-                          isToday && "bg-[#DC2626] text-white"
+                          isToday && "bg-[#374151] text-white"
                         )}>
                           {day.date}
                         </span>
@@ -511,7 +511,7 @@ export default function LearnerCalendarPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-[#DC2626]" />
+              <Calendar className="h-4 w-4 text-[#374151]" />
               {new Date(calSelectedDay).toLocaleDateString("fr-FR", {
                 weekday: "long",
                 day: "numeric",
@@ -555,7 +555,7 @@ export default function LearnerCalendarPage() {
                       href={buildGoogleCalendarUrl(s)}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-xs font-medium text-[#DC2626] hover:underline"
+                      className="inline-flex items-center gap-1 text-xs font-medium text-[#374151] hover:underline"
                     >
                       <CalendarPlus className="h-3 w-3" />
                       Google Calendar
@@ -563,7 +563,7 @@ export default function LearnerCalendarPage() {
                     <a
                       href={`/api/calendar/export?session_id=${s.id}&format=ics`}
                       download={`session-${s.id}.ics`}
-                      className="inline-flex items-center gap-1 text-xs font-medium text-[#DC2626] hover:underline"
+                      className="inline-flex items-center gap-1 text-xs font-medium text-[#374151] hover:underline"
                     >
                       <Download className="h-3 w-3" />
                       Apple / Outlook (.ics)

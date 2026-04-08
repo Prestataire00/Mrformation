@@ -30,7 +30,7 @@ export default function SupportPage() {
 
         <a
           href="mailto:acces.prestataires@i-a-infinity.com"
-          className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#DC2626] text-white rounded-lg hover:bg-[#2ea3b3] transition-colors font-medium"
+          className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#374151] text-white rounded-lg hover:bg-[#2ea3b3] transition-colors font-medium"
         >
           Contacter le support
           <Mail className="h-4 w-4" />

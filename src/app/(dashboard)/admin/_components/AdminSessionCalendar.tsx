@@ -155,7 +155,7 @@ export function AdminSessionCalendar({
                 onClick={() => setCalendarView(v)}
                 className={cn(
                   "px-3 py-1 text-xs font-medium transition",
-                  calendarView === v ? "bg-[#DC2626] text-white" : "bg-white text-gray-600 hover:bg-gray-50"
+                  calendarView === v ? "bg-[#374151] text-white" : "bg-white text-gray-600 hover:bg-gray-50"
                 )}
               >
                 {v === "day" ? "Jour" : v === "week" ? "Semaine" : "Mois"}
@@ -197,12 +197,12 @@ export function AdminSessionCalendar({
                     >
                       <div className={cn(
                         "text-xs font-semibold mb-1 text-center",
-                        isToday ? "text-[#DC2626]" : "text-gray-500"
+                        isToday ? "text-[#374151]" : "text-gray-500"
                       )}>
                         <div>{["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."][dd.getDay() === 0 ? 6 : dd.getDay() - 1]}</div>
                         <span className={cn(
                           "inline-flex items-center justify-center h-6 w-6 rounded-full text-sm font-bold",
-                          isToday && "bg-[#DC2626] text-white"
+                          isToday && "bg-[#374151] text-white"
                         )}>{dd.getDate()}</span>
                       </div>
                       <div className="space-y-0.5">
@@ -246,7 +246,7 @@ export function AdminSessionCalendar({
                   )}>
                     <div className={cn(
                       "w-12 text-xs font-mono flex-shrink-0 pt-1",
-                      isCurrentHour ? "text-[#DC2626] font-bold" : "text-gray-400"
+                      isCurrentHour ? "text-[#374151] font-bold" : "text-gray-400"
                     )}>
                       {String(hour).padStart(2, "0")}:00
                     </div>
@@ -318,7 +318,7 @@ export function AdminSessionCalendar({
                           "inline-block text-xs font-medium mb-0.5 px-1 rounded",
                           !day.inMonth && "text-gray-300",
                           day.inMonth && "text-gray-700",
-                          isToday && "bg-[#DC2626] text-white"
+                          isToday && "bg-[#374151] text-white"
                         )}
                       >
                         {day.date}

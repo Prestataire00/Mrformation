@@ -279,7 +279,7 @@ const trainerCrmNavItems: NavItem[] = [
 const ENTITY_STYLES: Record<string, { initials: string; gradient: string; logo?: string }> = {
   "mr-formation": {
     initials: "MR",
-    gradient: "linear-gradient(135deg, #DC2626, #B91C1C)",
+    gradient: "linear-gradient(135deg, #374151, #B91C1C)",
     logo: "/logo-mr-formation.png",
   },
   "c3v-formation": {
@@ -384,7 +384,7 @@ export function Sidebar({ entity, role = "admin", hasCrmAccess = false }: Sideba
   const entityName = entity?.name ?? "MR FORMATION";
   const style = ENTITY_STYLES[slug] ?? {
     initials: entityName.charAt(0),
-    gradient: `linear-gradient(135deg, ${entity?.theme_color ?? "#DC2626"}, ${entity?.theme_color ?? "#DC2626"})`,
+    gradient: `linear-gradient(135deg, ${entity?.theme_color ?? "#374151"}, ${entity?.theme_color ?? "#374151"})`,
   };
 
   // Parcours de formation uniquement pour C3V Formation

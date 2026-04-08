@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import type { CrmTag } from "@/lib/types";
 
 const TAG_COLORS = [
-  "#DC2626", "#2563EB", "#7C3AED", "#22c55e", "#f97316",
+  "#374151", "#2563EB", "#7C3AED", "#22c55e", "#f97316",
   "#ef4444", "#ec4899", "#8b5cf6", "#06b6d4", "#84cc16",
 ];
 

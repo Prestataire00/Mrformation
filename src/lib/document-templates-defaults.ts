@@ -745,7 +745,7 @@ function certificatRealisation(data: TemplateData): string {
   const objectives = formation.program?.objectives || "";
 
   const body = `
-    <h2 style="text-align: center; color: #DC2626; font-size: 18px; font-weight: 700; text-transform: uppercase; margin-bottom: 24px;">Certificat réalisation de formation</h2>
+    <h2 style="text-align: center; color: #374151; font-size: 18px; font-weight: 700; text-transform: uppercase; margin-bottom: 24px;">Certificat réalisation de formation</h2>
 
     <p>Je, soussigné: <strong>${co.president}</strong>, représentant de l'organisme de formation <strong>${co.name}</strong>,</p>
 
@@ -903,7 +903,7 @@ function microCertificat(data: TemplateData): string {
 
     <p style="font-size: 14px; color: #555; margin: 0 0 16px;">Ce certificat atteste que:</p>
 
-    <h2 style="font-size: 36px; font-weight: 900; color: #DC2626; margin: 0 0 16px; text-transform: uppercase; letter-spacing: 1px;">${fullName}</h2>
+    <h2 style="font-size: 36px; font-weight: 900; color: #374151; margin: 0 0 16px; text-transform: uppercase; letter-spacing: 1px;">${fullName}</h2>
 
     <p style="font-size: 14px; color: #333; margin: 0 0 8px;">A suivi la formation avec succès</p>
 

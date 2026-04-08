@@ -12,7 +12,7 @@ export function SectionF4({ bpf }: SectionF4Props) {
       </h2>
       <table className="w-full text-sm">
         <thead>
-          <tr className="bg-[#DC2626] text-white">
+          <tr className="bg-[#374151] text-white">
             <th className="text-left py-2 px-3">Code & Libellé</th>
             <th className="text-left py-2 px-3">Nombre de stagiaires</th>
             <th className="text-left py-2 px-3">Nombre total d&apos;heures de formation suivies par l&apos;ensemble des stagiaires</th>

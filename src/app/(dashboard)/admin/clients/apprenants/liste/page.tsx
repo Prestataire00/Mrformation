@@ -215,11 +215,11 @@ export default function ApprenantsListePage() {
     <div className="p-6">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm mb-4">
-        <Link href="/admin" className="text-[#DC2626] hover:underline">Accueil</Link>
+        <Link href="/admin" className="text-[#374151] hover:underline">Accueil</Link>
         <span className="text-gray-400">/</span>
-        <Link href="/admin/clients" className="text-[#DC2626] hover:underline">Clients</Link>
+        <Link href="/admin/clients" className="text-[#374151] hover:underline">Clients</Link>
         <span className="text-gray-400">/</span>
-        <Link href="/admin/clients/apprenants" className="text-[#DC2626] hover:underline">Apprenants</Link>
+        <Link href="/admin/clients/apprenants" className="text-[#374151] hover:underline">Apprenants</Link>
         <span className="text-gray-400">/</span>
         <span className="text-gray-500">Liste</span>
       </div>
@@ -241,14 +241,14 @@ export default function ApprenantsListePage() {
           </div>
           <button
             onClick={handleDownloadExcel}
-            className="border border-[#DC2626] text-[#DC2626] px-4 py-2 rounded-lg text-sm flex items-center gap-1"
+            className="border border-[#374151] text-[#374151] px-4 py-2 rounded-lg text-sm flex items-center gap-1"
           >
             <Download className="h-4 w-4" />
             Télécharger en Excel
           </button>
           <Button
             onClick={() => setAddDialog(true)}
-            style={{ background: "#DC2626" }}
+            style={{ background: "#374151" }}
             className="text-white hover:opacity-90"
           >
             <Plus className="h-4 w-4 mr-2" /> Ajouter un apprenant
@@ -266,7 +266,7 @@ export default function ApprenantsListePage() {
               placeholder="Rechercher par nom..."
               value={nameFilter}
               onChange={(e) => setNameFilter(e.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#DC2626] w-52"
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#374151] w-52"
             />
           </div>
           <div>
@@ -276,7 +276,7 @@ export default function ApprenantsListePage() {
               placeholder="Rechercher par entreprise..."
               value={companyFilter}
               onChange={(e) => setCompanyFilter(e.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#DC2626] w-52"
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#374151] w-52"
             />
           </div>
           <div>
@@ -286,7 +286,7 @@ export default function ApprenantsListePage() {
               placeholder="Ex: 3"
               value={sessionsMin}
               onChange={(e) => setSessionsMin(e.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#DC2626] w-32"
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#374151] w-32"
             />
           </div>
         </div>
@@ -294,7 +294,7 @@ export default function ApprenantsListePage() {
 
       {loading ? (
         <div className="flex justify-center py-16">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#DC2626] border-t-transparent" />
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#374151] border-t-transparent" />
         </div>
       ) : (
         <>
@@ -357,7 +357,7 @@ export default function ApprenantsListePage() {
                               {learner.email && (
                                 <button
                                   onClick={() => { setSelected(new Set([learner.id])); setMassEmailDialog(true); }}
-                                  className="text-[#DC2626] hover:text-teal-700"
+                                  className="text-[#374151] hover:text-teal-700"
                                   title="Envoyer un email"
                                 >
                                   <Mail className="h-3.5 w-3.5" />
@@ -365,7 +365,7 @@ export default function ApprenantsListePage() {
                               )}
                               <Link
                                 href={`/admin/clients/apprenants/${learner.id}`}
-                                className="text-[#DC2626] hover:underline text-xs font-medium"
+                                className="text-[#374151] hover:underline text-xs font-medium"
                               >
                                 Modifier
                               </Link>
@@ -399,13 +399,13 @@ export default function ApprenantsListePage() {
               ) : (
                 displayLearners.map((learner) => (
                   <Link key={learner.id} href={`/admin/clients/apprenants/${learner.id}`}
-                    className="border rounded-lg p-3.5 hover:border-[#DC2626]/40 hover:shadow-sm transition-all bg-white flex items-start gap-3">
+                    className="border rounded-lg p-3.5 hover:border-[#374151]/40 hover:shadow-sm transition-all bg-white flex items-start gap-3">
                     <div className="h-9 w-9 rounded-full bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-500 shrink-0">
                       {learner.first_name?.charAt(0)}{learner.last_name?.charAt(0)}
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-semibold text-gray-900 leading-tight">{learner.first_name} {learner.last_name}</p>
-                      <p className="text-xs text-[#DC2626] mt-0.5 truncate">{learner.clients?.company_name || "Sans entreprise"}</p>
+                      <p className="text-xs text-[#374151] mt-0.5 truncate">{learner.clients?.company_name || "Sans entreprise"}</p>
                       {learner.email && <p className="text-[10px] text-gray-400 mt-1 truncate">{learner.email}</p>}
                     </div>
                   </Link>
@@ -426,7 +426,7 @@ export default function ApprenantsListePage() {
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1}
-              className="px-3 py-1.5 rounded border border-gray-300 text-sm text-gray-600 disabled:opacity-40 hover:border-[#DC2626]"
+              className="px-3 py-1.5 rounded border border-gray-300 text-sm text-gray-600 disabled:opacity-40 hover:border-[#374151]"
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
@@ -437,7 +437,7 @@ export default function ApprenantsListePage() {
                   key={p}
                   onClick={() => setPage(p)}
                   className="px-3 py-1.5 rounded border text-sm font-medium"
-                  style={p === page ? { background: "#DC2626", color: "white", borderColor: "#DC2626" } : { borderColor: "#d1d5db", color: "#4b5563" }}
+                  style={p === page ? { background: "#374151", color: "white", borderColor: "#374151" } : { borderColor: "#d1d5db", color: "#4b5563" }}
                 >
                   {p}
                 </button>
@@ -446,7 +446,7 @@ export default function ApprenantsListePage() {
             <button
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages}
-              className="px-3 py-1.5 rounded border border-gray-300 text-sm text-gray-600 disabled:opacity-40 hover:border-[#DC2626] flex items-center gap-1"
+              className="px-3 py-1.5 rounded border border-gray-300 text-sm text-gray-600 disabled:opacity-40 hover:border-[#374151] flex items-center gap-1"
             >
               Suivant <ChevronRight className="h-4 w-4" />
             </button>
@@ -500,7 +500,7 @@ export default function ApprenantsListePage() {
               <select
                 value={addForm.client_id}
                 onChange={(e) => setAddForm((f) => ({ ...f, client_id: e.target.value }))}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[#DC2626] bg-white"
+                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[#374151] bg-white"
               >
                 <option value="">— Aucune entreprise —</option>
                 {clients.map((c) => (
@@ -536,7 +536,7 @@ export default function ApprenantsListePage() {
                     if (t) setMassEmailForm({ templateId: t.id, subject: t.subject, body: t.body });
                     else setMassEmailForm((f) => ({ ...f, templateId: "" }));
                   }}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-white focus:outline-none focus:border-[#DC2626]"
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-white focus:outline-none focus:border-[#374151]"
                 >
                   <option value="">— Email libre —</option>
                   {massTemplates.map((t) => (
@@ -588,7 +588,7 @@ export default function ApprenantsListePage() {
           <Button
             size="sm"
             onClick={() => setMassEmailDialog(true)}
-            style={{ background: "#DC2626" }}
+            style={{ background: "#374151" }}
             className="text-white hover:opacity-90"
           >
             <Mail className="h-4 w-4 mr-1" /> Envoyer un email

@@ -20,7 +20,7 @@ export function AdminUpcomingSessions({ upcoming }: AdminUpcomingSessionsProps) 
         <Link
           href="/admin/sessions"
           className="text-sm font-medium"
-          style={{ color: "#DC2626" }}
+          style={{ color: "#374151" }}
         >
           Voir tout →
         </Link>
@@ -54,7 +54,7 @@ export function AdminUpcomingSessions({ upcoming }: AdminUpcomingSessionsProps) 
                       {formatDate(s.start_date)}
                     </td>
                     <td className="py-2.5 pr-4">
-                      <span className="rounded-full bg-[#e0f5f7] px-2.5 py-0.5 text-xs font-medium text-[#DC2626]">
+                      <span className="rounded-full bg-[#e0f5f7] px-2.5 py-0.5 text-xs font-medium text-[#374151]">
                         {MODE_LABELS[s.mode] ?? s.mode}
                       </span>
                     </td>

@@ -55,7 +55,7 @@ interface ImportResult {
 }
 
 const FILE_CONFIG: Record<FileType, { label: string; icon: React.ElementType; color: string; description: string }> = {
-  apprenants: { label: "Apprenants", icon: Users, color: "#DC2626", description: "Tableau.xlsx — Noms, emails, téléphones des apprenants" },
+  apprenants: { label: "Apprenants", icon: Users, color: "#374151", description: "Tableau.xlsx — Noms, emails, téléphones des apprenants" },
   entreprises: { label: "Entreprises", icon: Building2, color: "#2563EB", description: "Tableau (1).xlsx — Clients entreprises" },
   financeurs: { label: "Financeurs", icon: Banknote, color: "#7C3AED", description: "Tableau (2).xlsx — Organismes financeurs (OPCO, etc.)" },
   formateurs: { label: "Formateurs", icon: UserCheck, color: "#F59E0B", description: "Tableau (3).xlsx — Formateurs internes et externes" },
@@ -393,7 +393,7 @@ export default function MigrationPage() {
               icon={Users}
               count={learners.length}
               dupes={stats.learnerDupes}
-              color="#DC2626"
+              color="#374151"
               onPreview={() => setPreviewType(previewType === "apprenants" ? null : "apprenants")}
               isPreview={previewType === "apprenants"}
             />
@@ -466,7 +466,7 @@ export default function MigrationPage() {
             <div className="flex items-center justify-center gap-6 text-sm py-2">
               {learners.length > 0 && (
                 <span className="flex items-center gap-1.5">
-                  <Users className="w-4 h-4 text-[#DC2626]" />
+                  <Users className="w-4 h-4 text-[#374151]" />
                   {learners.length} apprenants
                 </span>
               )}

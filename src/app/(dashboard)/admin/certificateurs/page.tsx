@@ -228,11 +228,11 @@ export default function CertificateursPage() {
           <button
             onClick={handleExport}
             className="text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5"
-            style={{ background: "#DC2626" }}
+            style={{ background: "#374151" }}
           >
             <Download className="h-4 w-4" /> Excel
           </button>
-          <Button onClick={openAdd} style={{ background: "#DC2626" }} className="text-white hover:opacity-90">
+          <Button onClick={openAdd} style={{ background: "#374151" }} className="text-white hover:opacity-90">
             <Plus className="h-4 w-4 mr-2" /> Ajouter
           </Button>
         </div>
@@ -259,7 +259,7 @@ export default function CertificateursPage() {
           <select
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#DC2626]"
+            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#374151]"
           >
             <option value="all">Tous types</option>
             <option value="rncp">RNCP</option>

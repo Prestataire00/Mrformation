@@ -66,7 +66,7 @@ import ProspectEmailSection from "../liste/_components/ProspectEmailSection";
 // ── Constants ───────────────────────────────────────────────────────────────
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
-  new:       { label: "Lead",        color: "#DC2626" },
+  new:       { label: "Lead",        color: "#374151" },
   contacted: { label: "Contacté",    color: "#f97316" },
   qualified: { label: "Qualifié",    color: "#8b5cf6" },
   proposal:  { label: "Proposition", color: "#2563EB" },
@@ -668,7 +668,7 @@ export default function ProspectDetailPage() {
                   <span className="flex items-center gap-1"><User className="w-3 h-3" />{prospect.contact_name}</span>
                 )}
                 {prospect.email && (
-                  <a href={`mailto:${prospect.email}`} className="flex items-center gap-1 text-[#DC2626] hover:underline"><Mail className="w-3 h-3" />{prospect.email}</a>
+                  <a href={`mailto:${prospect.email}`} className="flex items-center gap-1 text-[#374151] hover:underline"><Mail className="w-3 h-3" />{prospect.email}</a>
                 )}
                 {prospect.phone && (
                   <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{prospect.phone}</span>
@@ -712,7 +712,7 @@ export default function ProspectDetailPage() {
         {/* Action buttons */}
         <div className="flex items-center gap-2 mt-4 flex-wrap">
           {prospect.email && (
-            <Button size="sm" className="text-xs h-8 gap-1.5" style={{ background: "#DC2626" }}
+            <Button size="sm" className="text-xs h-8 gap-1.5" style={{ background: "#374151" }}
               onClick={() => setActiveTab("communication")}
             >
               <Send className="w-3 h-3" /> Email
@@ -1075,7 +1075,7 @@ export default function ProspectDetailPage() {
                         </button>
                       ) : null}
                       <span className="text-gray-300">·</span>
-                      <button onClick={() => handleDownloadDevis(q)} className="text-[10px] text-[#DC2626] hover:underline">PDF</button>
+                      <button onClick={() => handleDownloadDevis(q)} className="text-[10px] text-[#374151] hover:underline">PDF</button>
                       <span className="text-gray-300">·</span>
                       <button onClick={() => handleDeleteQuote(q.id)} className="text-[10px] text-red-400 hover:underline">Suppr.</button>
                     </div>
@@ -1100,7 +1100,7 @@ export default function ProspectDetailPage() {
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={openLinkTrainingDialog} className="text-[10px] text-[#DC2626] hover:underline">Changer</button>
+                  <button onClick={openLinkTrainingDialog} className="text-[10px] text-[#374151] hover:underline">Changer</button>
                   <button onClick={handleUnlinkTraining} className="text-[10px] text-red-400 hover:underline">Dissocier</button>
                 </div>
               </div>

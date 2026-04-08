@@ -51,7 +51,7 @@ export function AdminAlerts({ alerts, overdueTasks }: AdminAlertsProps) {
       {/* Summary banner — bilans manquants uniquement */}
       <div
         className="rounded-md px-5 py-4 text-white text-sm font-medium"
-        style={{ backgroundColor: alerts.length === 0 ? "#22c55e" : "#DC2626" }}
+        style={{ backgroundColor: alerts.length === 0 ? "#22c55e" : "#374151" }}
       >
         {alerts.length === 0
           ? "Aucun bilan manquant"

@@ -170,7 +170,7 @@ export default function LieuxPage() {
         <button
           onClick={() => setShowNewForm(!showNewForm)}
           className="text-white px-4 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-2 hover:opacity-90 transition-all"
-          style={{ background: "#DC2626" }}
+          style={{ background: "#374151" }}
         >
           <Plus className="h-4 w-4" />
           Ajouter un lieu ou une salle
@@ -197,7 +197,7 @@ export default function LieuxPage() {
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 placeholder="écrivez le nom du lieu"
-                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#DC2626] focus:border-transparent"
+                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#374151] focus:border-transparent"
               />
             </div>
 
@@ -210,14 +210,14 @@ export default function LieuxPage() {
                 value={newAddress}
                 onChange={(e) => setNewAddress(e.target.value)}
                 placeholder="écrivez l'adresse (y compris la ville)"
-                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#DC2626] focus:border-transparent"
+                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#374151] focus:border-transparent"
               />
             </div>
 
             <button
               onClick={handleAdd}
               className="text-white px-6 py-2.5 rounded-lg text-sm font-semibold hover:opacity-90 transition-all"
-              style={{ background: "#DC2626" }}
+              style={{ background: "#374151" }}
             >
               Ajouter
             </button>
@@ -233,7 +233,7 @@ export default function LieuxPage() {
           placeholder="Rechercher un lieu..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#DC2626] focus:border-transparent"
+          className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#374151] focus:border-transparent"
         />
       </div>
 
@@ -247,7 +247,7 @@ export default function LieuxPage() {
             <button
               onClick={() => setShowNewForm(true)}
               className="text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5"
-              style={{ background: "#DC2626" }}
+              style={{ background: "#374151" }}
             >
               <Plus className="h-4 w-4" />
               Ajouter un lieu
@@ -278,7 +278,7 @@ export default function LieuxPage() {
                       <div className="flex items-center gap-3">
                         <button
                           onClick={() => setEditItem({ ...venue })}
-                          className="text-[#DC2626] hover:underline text-xs font-medium flex items-center gap-1"
+                          className="text-[#374151] hover:underline text-xs font-medium flex items-center gap-1"
                         >
                           <Pencil className="h-3 w-3" /> Modifier
                         </button>
@@ -314,7 +314,7 @@ export default function LieuxPage() {
                   type="text"
                   value={editItem.name}
                   onChange={(e) => setEditItem((p) => p ? { ...p, name: e.target.value } : p)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#DC2626]"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#374151]"
                 />
               </div>
               <div>
@@ -323,7 +323,7 @@ export default function LieuxPage() {
                   type="text"
                   value={editItem.address}
                   onChange={(e) => setEditItem((p) => p ? { ...p, address: e.target.value } : p)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#DC2626]"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#374151]"
                   placeholder="Adresse complète (y compris la ville)"
                 />
               </div>
@@ -333,7 +333,7 @@ export default function LieuxPage() {
             <button onClick={() => setEditItem(null)} className="border border-gray-300 text-gray-600 px-4 py-2 rounded-lg text-sm">
               Annuler
             </button>
-            <button onClick={handleSaveEdit} className="text-white px-4 py-2 rounded-lg text-sm font-medium" style={{ background: "#DC2626" }}>
+            <button onClick={handleSaveEdit} className="text-white px-4 py-2 rounded-lg text-sm font-medium" style={{ background: "#374151" }}>
               Enregistrer
             </button>
           </DialogFooter>

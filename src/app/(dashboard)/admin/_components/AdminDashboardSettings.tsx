@@ -41,7 +41,7 @@ export function AdminDashboardSettings({
       <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <SlidersHorizontal className="h-5 w-5 text-[#DC2626]" />
+            <SlidersHorizontal className="h-5 w-5 text-[#374151]" />
             Personnaliser le tableau de bord
           </DialogTitle>
         </DialogHeader>

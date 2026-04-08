@@ -80,7 +80,7 @@ const TYPE_COLORS: Record<string, string> = {
   survey: "bg-purple-100 text-purple-700",
 };
 
-const CHART_COLORS = ["#DC2626", "#22c55e", "#f97316", "#8b5cf6", "#f59e0b", "#ec4899"];
+const CHART_COLORS = ["#374151", "#22c55e", "#f97316", "#8b5cf6", "#f59e0b", "#ec4899"];
 
 // ─── Composant principal ─────────────────────────────────────────────────────
 
@@ -308,7 +308,7 @@ export default function QuestionnairesDashboardPage() {
         <Card>
           <CardContent className="flex items-center gap-3 p-4">
             <div className="rounded-full p-2.5" style={{ backgroundColor: "#e0f5f8" }}>
-              <BarChart2 className="h-5 w-5" style={{ color: "#DC2626" }} />
+              <BarChart2 className="h-5 w-5" style={{ color: "#374151" }} />
             </div>
             <div>
               <p className="text-2xl font-bold text-gray-800">{loading ? "…" : activeQuestionnaires}</p>
@@ -472,7 +472,7 @@ export default function QuestionnairesDashboardPage() {
                       <td className="px-4 py-3 text-center">
                         <Link
                           href="/admin/questionnaires"
-                          className="text-xs text-[#DC2626] hover:underline font-medium"
+                          className="text-xs text-[#374151] hover:underline font-medium"
                         >
                           Voir résultats →
                         </Link>

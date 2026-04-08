@@ -286,7 +286,7 @@ export default function ActivityPage() {
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-base font-semibold text-gray-700 flex items-center gap-2">
-              <Activity className="h-4 w-4" style={{ color: "#DC2626" }} />
+              <Activity className="h-4 w-4" style={{ color: "#374151" }} />
               Historique des activités
               {totalCount > 0 && (
                 <Badge variant="outline" className="text-[10px] ml-1">
@@ -316,7 +316,7 @@ export default function ActivityPage() {
                 <select
                   value={roleFilter}
                   onChange={(e) => setRoleFilter(e.target.value)}
-                  className="h-9 rounded-md border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#DC2626]/30 focus:border-[#DC2626]"
+                  className="h-9 rounded-md border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#374151]/30 focus:border-[#374151]"
                 >
                   <option value="">Tous les rôles</option>
                   {Object.entries(ROLE_LABELS).map(([value, label]) => (
@@ -397,7 +397,7 @@ export default function ActivityPage() {
               <select
                 value={datePreset}
                 onChange={(e) => setDatePreset(e.target.value)}
-                className="h-9 rounded-md border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#DC2626]/30 focus:border-[#DC2626]"
+                className="h-9 rounded-md border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#374151]/30 focus:border-[#374151]"
               >
                 {DATE_PRESETS.map((p) => (
                   <option key={p.value} value={p.value}>
@@ -416,7 +416,7 @@ export default function ActivityPage() {
                     type="date"
                     value={dateFrom}
                     onChange={(e) => setDateFrom(e.target.value)}
-                    className="h-9 rounded-md border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#DC2626]/30 focus:border-[#DC2626]"
+                    className="h-9 rounded-md border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#374151]/30 focus:border-[#374151]"
                   />
                 </div>
                 <div className="flex flex-col gap-1">
@@ -425,7 +425,7 @@ export default function ActivityPage() {
                     type="date"
                     value={dateTo}
                     onChange={(e) => setDateTo(e.target.value)}
-                    className="h-9 rounded-md border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#DC2626]/30 focus:border-[#DC2626]"
+                    className="h-9 rounded-md border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#374151]/30 focus:border-[#374151]"
                   />
                 </div>
               </>

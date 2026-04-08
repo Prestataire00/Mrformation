@@ -17,7 +17,7 @@ const ENTITIES: EntityOption[] = [
     slug: "mr-formation",
     name: "MR FORMATION",
     initials: "MR",
-    gradient: "linear-gradient(135deg, #DC2626, #B91C1C)",
+    gradient: "linear-gradient(135deg, #374151, #B91C1C)",
     description: "Organisme de formation professionnelle",
   },
   {
@@ -43,7 +43,7 @@ export function LandingPage() {
       className="min-h-screen flex items-center justify-center p-4"
       style={{
         background:
-          "linear-gradient(135deg, #FCA5A5 0%, #EF4444 50%, #DC2626 100%)",
+          "linear-gradient(135deg, #FCA5A5 0%, #EF4444 50%, #374151 100%)",
       }}
     >
       <div className="w-full max-w-lg">

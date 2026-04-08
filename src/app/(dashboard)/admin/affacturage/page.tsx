@@ -246,7 +246,7 @@ export default function AffacturagePage() {
         </div>
         <Button
           onClick={openDialog}
-          style={{ background: "#DC2626" }}
+          style={{ background: "#374151" }}
           className="text-white hover:opacity-90"
         >
           <Plus className="h-4 w-4 mr-2" /> Créer un lot

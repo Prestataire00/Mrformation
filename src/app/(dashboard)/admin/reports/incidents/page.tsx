@@ -124,7 +124,7 @@ export default function IncidentsPage() {
           type="text"
           value={data.nom}
           onChange={(e) => setData({ ...data, nom: e.target.value })}
-          className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#DC2626]"
+          className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#374151]"
         />
       </div>
 
@@ -137,7 +137,7 @@ export default function IncidentsPage() {
           type="date"
           value={data.date}
           onChange={(e) => setData({ ...data, date: e.target.value })}
-          className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#DC2626]"
+          className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#374151]"
         />
       </div>
 
@@ -148,7 +148,7 @@ export default function IncidentsPage() {
           value={data.description}
           onChange={(e) => setData({ ...data, description: e.target.value })}
           rows={3}
-          className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#DC2626] resize-y"
+          className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#374151] resize-y"
         />
       </div>
 
@@ -158,7 +158,7 @@ export default function IncidentsPage() {
         <select
           value={data.statut}
           onChange={(e) => setData({ ...data, statut: e.target.value as Statut })}
-          className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#DC2626] bg-white"
+          className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#374151] bg-white"
         >
           <option value="Ouvert">Ouvert</option>
           <option value="Clos">Clos</option>
@@ -171,7 +171,7 @@ export default function IncidentsPage() {
         <select
           value={data.source}
           onChange={(e) => setData({ ...data, source: e.target.value as Source })}
-          className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#DC2626] bg-white"
+          className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#374151] bg-white"
         >
           <option value="Entreprise">Entreprise</option>
           <option value="Apprenant">Apprenant</option>
@@ -185,7 +185,7 @@ export default function IncidentsPage() {
         <select
           value={data.sujet}
           onChange={(e) => setData({ ...data, sujet: e.target.value as Sujet })}
-          className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#DC2626] bg-white"
+          className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#374151] bg-white"
         >
           <option value="Pédagogique">Pédagogique</option>
           <option value="Administratif">Administratif</option>
@@ -199,7 +199,7 @@ export default function IncidentsPage() {
         <select
           value={data.gravite}
           onChange={(e) => setData({ ...data, gravite: e.target.value as Gravite })}
-          className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#DC2626] bg-white"
+          className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#374151] bg-white"
         >
           <option value="Faible">Faible</option>
           <option value="Modéré">Modéré</option>
@@ -218,7 +218,7 @@ export default function IncidentsPage() {
           value={data.formation}
           onChange={(e) => setData({ ...data, formation: e.target.value })}
           placeholder="Nom de la formation"
-          className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#DC2626]"
+          className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#374151]"
         />
       </div>
 
@@ -236,7 +236,7 @@ export default function IncidentsPage() {
           value={data.action_menee}
           onChange={(e) => setData({ ...data, action_menee: e.target.value })}
           rows={3}
-          className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#DC2626] resize-y"
+          className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#374151] resize-y"
         />
       </div>
 
@@ -247,7 +247,7 @@ export default function IncidentsPage() {
           type="date"
           value={data.date_cloture}
           onChange={(e) => setData({ ...data, date_cloture: e.target.value })}
-          className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#DC2626]"
+          className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#374151]"
         />
       </div>
     </div>
@@ -265,7 +265,7 @@ export default function IncidentsPage() {
             setAddOpen(true);
           }}
           className="text-white px-4 py-2 rounded-lg text-sm font-medium uppercase flex items-center gap-1.5"
-          style={{ background: "#DC2626" }}
+          style={{ background: "#374151" }}
         >
           <Plus className="h-4 w-4" />
           Ajouter un incident
@@ -273,7 +273,7 @@ export default function IncidentsPage() {
         <button
           onClick={handleDownload}
           className="text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5"
-          style={{ background: "#DC2626" }}
+          style={{ background: "#374151" }}
         >
           <Download className="h-4 w-4" />
           Télécharger en Excel
@@ -287,14 +287,14 @@ export default function IncidentsPage() {
           type="date"
           value={dateFrom}
           onChange={(e) => setDateFrom(e.target.value)}
-          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#DC2626]"
+          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#374151]"
         />
         <span className="text-sm text-gray-600">au</span>
         <input
           type="date"
           value={dateTo}
           onChange={(e) => setDateTo(e.target.value)}
-          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#DC2626]"
+          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#374151]"
         />
         <span className="text-sm text-gray-600">contenant le texte:</span>
         <input
@@ -302,11 +302,11 @@ export default function IncidentsPage() {
           value={searchText}
           onChange={(e) => setSearchText(e.target.value)}
           placeholder="Rechercher"
-          className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-44 focus:outline-none focus:border-[#DC2626]"
+          className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-44 focus:outline-none focus:border-[#374151]"
         />
         <button
           className="text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5"
-          style={{ background: "#DC2626" }}
+          style={{ background: "#374151" }}
         >
           <Filter className="h-4 w-4" />
           Filtrer
@@ -355,7 +355,7 @@ export default function IncidentsPage() {
                     <div className="flex items-center gap-3">
                       <button
                         onClick={() => setEditItem({ ...inc })}
-                        className="text-[#DC2626] hover:underline text-xs font-medium"
+                        className="text-[#374151] hover:underline text-xs font-medium"
                       >
                         Modifier
                       </button>
@@ -385,7 +385,7 @@ export default function IncidentsPage() {
             <button onClick={() => setAddOpen(false)} className="border border-gray-300 text-gray-600 px-4 py-2 rounded-lg text-sm">
               Annuler
             </button>
-            <button onClick={handleAdd} className="text-white px-4 py-2 rounded-lg text-sm font-medium" style={{ background: "#DC2626" }}>
+            <button onClick={handleAdd} className="text-white px-4 py-2 rounded-lg text-sm font-medium" style={{ background: "#374151" }}>
               Ajouter
             </button>
           </DialogFooter>
@@ -405,7 +405,7 @@ export default function IncidentsPage() {
             <button onClick={() => setEditItem(null)} className="border border-gray-300 text-gray-600 px-4 py-2 rounded-lg text-sm">
               Annuler
             </button>
-            <button onClick={handleSaveEdit} className="text-white px-4 py-2 rounded-lg text-sm font-medium" style={{ background: "#DC2626" }}>
+            <button onClick={handleSaveEdit} className="text-white px-4 py-2 rounded-lg text-sm font-medium" style={{ background: "#374151" }}>
               Modifier
             </button>
           </DialogFooter>

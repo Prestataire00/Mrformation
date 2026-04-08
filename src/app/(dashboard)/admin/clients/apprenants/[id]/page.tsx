@@ -290,7 +290,7 @@ export default function LearnerDetailPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="h-8 w-8 text-[#DC2626] animate-spin" />
+        <Loader2 className="h-8 w-8 text-[#374151] animate-spin" />
       </div>
     );
   }
@@ -324,7 +324,7 @@ export default function LearnerDetailPage() {
             <div className="flex items-center gap-3 mt-1 text-sm text-gray-500">
               {learner.email && <span className="flex items-center gap-1"><Mail className="h-3 w-3" />{learner.email}</span>}
               {learner.phone && <span className="flex items-center gap-1"><Phone className="h-3 w-3" />{learner.phone}</span>}
-              {company && <Link href={`/admin/clients/${company.id}`} className="flex items-center gap-1 text-[#DC2626] hover:underline"><Building2 className="h-3 w-3" />{company.company_name}</Link>}
+              {company && <Link href={`/admin/clients/${company.id}`} className="flex items-center gap-1 text-[#374151] hover:underline"><Building2 className="h-3 w-3" />{company.company_name}</Link>}
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -404,7 +404,7 @@ export default function LearnerDetailPage() {
                     </div>
                     {enrollment.completion_rate > 0 && (
                       <div className="mt-2 bg-gray-100 rounded-full h-1.5">
-                        <div className="bg-[#DC2626] h-1.5 rounded-full" style={{ width: `${enrollment.completion_rate}%` }} />
+                        <div className="bg-[#374151] h-1.5 rounded-full" style={{ width: `${enrollment.completion_rate}%` }} />
                       </div>
                     )}
                   </div>
@@ -438,7 +438,7 @@ export default function LearnerDetailPage() {
                       </Badge>
                     </div>
                     <div className="mt-2 bg-gray-100 rounded-full h-1.5">
-                      <div className="bg-[#DC2626] h-1.5 rounded-full transition-all" style={{ width: `${e.progress ?? 0}%` }} />
+                      <div className="bg-[#374151] h-1.5 rounded-full transition-all" style={{ width: `${e.progress ?? 0}%` }} />
                     </div>
                   </div>
                 ))}
@@ -453,7 +453,7 @@ export default function LearnerDetailPage() {
           {company && (
             <div>
               <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Entreprise</h3>
-              <Link href={`/admin/clients/${company.id}`} className="text-sm text-[#DC2626] hover:underline flex items-center gap-1.5">
+              <Link href={`/admin/clients/${company.id}`} className="text-sm text-[#374151] hover:underline flex items-center gap-1.5">
                 <Building2 className="h-3.5 w-3.5" />{company.company_name}
               </Link>
             </div>
@@ -485,7 +485,7 @@ export default function LearnerDetailPage() {
                   <select
                     value={form.client_id}
                     onChange={(e) => setForm((f) => ({ ...f, client_id: e.target.value }))}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[#DC2626] bg-white"
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[#374151] bg-white"
                   >
                     <option value="">— Aucune entreprise —</option>
                     {clientOptions.map((c) => (
@@ -502,7 +502,7 @@ export default function LearnerDetailPage() {
                   <select
                     value={form.gender}
                     onChange={(e) => setForm((f) => ({ ...f, gender: e.target.value }))}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[#DC2626] bg-white"
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[#374151] bg-white"
                   >
                     <option value="">— Non renseigné —</option>
                     <option value="M">Homme</option>
@@ -537,7 +537,7 @@ export default function LearnerDetailPage() {
                   <select
                     value={form.education_level}
                     onChange={(e) => setForm((f) => ({ ...f, education_level: e.target.value }))}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[#DC2626] bg-white"
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[#374151] bg-white"
                   >
                     <option value="">— Non renseigné —</option>
                     <option value="bac_moins">Inférieur au Bac</option>
@@ -563,7 +563,7 @@ export default function LearnerDetailPage() {
                   </div>
                 </div>
                 <div className="flex gap-2 pt-2">
-                  <Button size="sm" onClick={handleSave} disabled={saving} className="gap-1 flex-1" style={{ background: "#DC2626" }}>
+                  <Button size="sm" onClick={handleSave} disabled={saving} className="gap-1 flex-1" style={{ background: "#374151" }}>
                     <Save className="h-3.5 w-3.5" /> {saving ? "..." : "Enregistrer"}
                   </Button>
                 </div>

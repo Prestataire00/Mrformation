@@ -55,7 +55,7 @@ const ROLE_OPTIONS: RoleOption[] = [
     label: "Administrateur",
     description: "Gérez la plateforme et les utilisateurs",
     icon: Settings,
-    gradient: "linear-gradient(135deg, #EF4444, #DC2626)",
+    gradient: "linear-gradient(135deg, #EF4444, #374151)",
   },
   {
     key: "commercial",
@@ -90,7 +90,7 @@ function SelectRoleContent() {
       className="min-h-screen flex items-center justify-center p-4"
       style={{
         background:
-          "linear-gradient(135deg, #FCA5A5 0%, #EF4444 50%, #DC2626 100%)",
+          "linear-gradient(135deg, #FCA5A5 0%, #EF4444 50%, #374151 100%)",
       }}
     >
       <div className="w-full max-w-2xl">

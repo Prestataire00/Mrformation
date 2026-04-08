@@ -14,7 +14,7 @@ function setCookie(name: string, value: string, days = 365) {
 const ENTITY_CONFIG: Record<string, { initials: string; gradient: string }> = {
   "mr-formation": {
     initials: "MR",
-    gradient: "linear-gradient(135deg, #DC2626, #B91C1C)",
+    gradient: "linear-gradient(135deg, #374151, #B91C1C)",
   },
   "c3v-formation": {
     initials: "C3V",
@@ -78,7 +78,7 @@ export default function SelectEntityPage() {
       <div
         className="min-h-screen flex items-center justify-center"
         style={{
-          background: "linear-gradient(135deg, #FCA5A5 0%, #EF4444 50%, #DC2626 100%)",
+          background: "linear-gradient(135deg, #FCA5A5 0%, #EF4444 50%, #374151 100%)",
         }}
       >
         <Loader2 className="w-8 h-8 text-white animate-spin" />
@@ -90,7 +90,7 @@ export default function SelectEntityPage() {
     <div
       className="min-h-screen flex items-center justify-center p-4"
       style={{
-        background: "linear-gradient(135deg, #FCA5A5 0%, #EF4444 50%, #DC2626 100%)",
+        background: "linear-gradient(135deg, #FCA5A5 0%, #EF4444 50%, #374151 100%)",
       }}
     >
       <div className="w-full max-w-lg">

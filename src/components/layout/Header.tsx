@@ -84,7 +84,7 @@ function useBreadcrumb() {
 }
 
 const ENTITY_COLORS: Record<string, string> = {
-  "mr-formation": "#DC2626",
+  "mr-formation": "#374151",
   "c3v-formation": "#2563EB",
 };
 
@@ -116,10 +116,10 @@ export function Header({ profile, entity }: HeaderProps) {
     [profile?.first_name, profile?.last_name].filter(Boolean).join(" ") || "Utilisateur";
   const initials = getInitials(profile?.first_name, profile?.last_name);
   const roleLabel = profile?.role ? ROLE_LABELS[profile.role] : "";
-  const entityColor = entity?.slug ? ENTITY_COLORS[entity.slug] ?? entity.theme_color : "#DC2626";
+  const entityColor = entity?.slug ? ENTITY_COLORS[entity.slug] ?? entity.theme_color : "#374151";
 
   return (
-    <header className="h-14 flex items-center px-5 gap-4 shrink-0" style={{ background: "#DC2626" }}>
+    <header className="h-14 flex items-center px-5 gap-4 shrink-0" style={{ background: "#374151" }}>
       {/* Entity Switcher separator */}
 
       {/* Entity Switcher */}

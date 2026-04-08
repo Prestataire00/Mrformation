@@ -1450,9 +1450,9 @@ export default function DocumentsPage() {
                 {/* Page vierge */}
                 <button
                   onClick={() => handlePickStarter(null)}
-                  className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-[#DC2626] hover:bg-[#DC2626]/5 transition-colors cursor-pointer group"
+                  className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-[#374151] hover:bg-[#374151]/5 transition-colors cursor-pointer group"
                 >
-                  <Plus className="h-8 w-8 mx-auto mb-3 text-gray-400 group-hover:text-[#DC2626]" />
+                  <Plus className="h-8 w-8 mx-auto mb-3 text-gray-400 group-hover:text-[#374151]" />
                   <p className="font-medium text-gray-700">Page vierge</p>
                   <p className="text-sm text-gray-400 mt-1">Partir de zéro</p>
                 </button>
@@ -1462,7 +1462,7 @@ export default function DocumentsPage() {
                   <button
                     key={starter.id}
                     onClick={() => handlePickStarter(starter)}
-                    className="border border-gray-200 rounded-xl p-6 text-left hover:border-[#DC2626] hover:bg-[#DC2626]/5 transition-colors cursor-pointer group"
+                    className="border border-gray-200 rounded-xl p-6 text-left hover:border-[#374151] hover:bg-[#374151]/5 transition-colors cursor-pointer group"
                   >
                     <div className="flex items-start justify-between mb-3">
                       <div className={cn("p-2 rounded-lg", TYPE_COLORS[starter.type])}>

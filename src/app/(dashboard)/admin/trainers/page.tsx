@@ -390,11 +390,11 @@ export default function TrainersPage() {
             <Link
               key={trainer.id}
               href={`/admin/trainers/${trainer.id}`}
-              className="bg-white border border-gray-200 rounded-xl p-5 hover:shadow-md hover:border-[#DC2626]/40 transition-all group"
+              className="bg-white border border-gray-200 rounded-xl p-5 hover:shadow-md hover:border-[#374151]/40 transition-all group"
             >
               <div className="flex items-center gap-4">
                 {/* Avatar circle */}
-                <div className="w-16 h-16 rounded-full flex items-center justify-center shrink-0" style={{ background: "#DC2626" }}>
+                <div className="w-16 h-16 rounded-full flex items-center justify-center shrink-0" style={{ background: "#374151" }}>
                   <span className="text-white font-bold text-xl">
                     {getInitials(trainer.first_name, trainer.last_name)}
                   </span>
@@ -402,7 +402,7 @@ export default function TrainersPage() {
 
                 {/* Info */}
                 <div className="flex-1 min-w-0">
-                  <p className="font-bold text-gray-900 group-hover:text-[#DC2626] transition-colors">
+                  <p className="font-bold text-gray-900 group-hover:text-[#374151] transition-colors">
                     {trainer.last_name} {trainer.first_name}
                   </p>
                   <p className="text-sm text-gray-500 mt-0.5">

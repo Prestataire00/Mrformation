@@ -137,9 +137,9 @@ export default function TrainersListePage() {
     <div className="p-6">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm mb-4">
-        <Link href="/admin" className="text-[#DC2626] hover:underline">Accueil</Link>
+        <Link href="/admin" className="text-[#374151] hover:underline">Accueil</Link>
         <span className="text-gray-400">/</span>
-        <Link href="/admin/trainers" className="text-[#DC2626] hover:underline">Formateurs</Link>
+        <Link href="/admin/trainers" className="text-[#374151] hover:underline">Formateurs</Link>
         <span className="text-gray-400">/</span>
         <span className="text-gray-500">Liste complète</span>
       </div>
@@ -149,7 +149,7 @@ export default function TrainersListePage() {
         <h1 className="text-gray-700 text-xl font-bold">Formateurs / Tous Les Formateurs</h1>
         <button
           onClick={handleDownloadExcel}
-          className="border border-[#DC2626] text-[#DC2626] px-4 py-2 rounded-lg text-sm flex items-center gap-1"
+          className="border border-[#374151] text-[#374151] px-4 py-2 rounded-lg text-sm flex items-center gap-1"
         >
           <Download className="h-4 w-4" />
           Télécharger en Excel
@@ -164,12 +164,12 @@ export default function TrainersListePage() {
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-          className="border border-gray-300 rounded-lg px-4 py-2 text-sm w-80 focus:outline-none focus:border-[#DC2626]"
+          className="border border-gray-300 rounded-lg px-4 py-2 text-sm w-80 focus:outline-none focus:border-[#374151]"
         />
         <button
           onClick={handleSearch}
           className="text-white px-4 py-2 rounded-lg text-sm font-medium uppercase flex items-center gap-1"
-          style={{ background: "#DC2626" }}
+          style={{ background: "#374151" }}
         >
           <Search className="h-4 w-4" />
           Rechercher
@@ -183,7 +183,7 @@ export default function TrainersListePage() {
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
         {loading ? (
           <div className="flex justify-center py-16">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#DC2626] border-t-transparent" />
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#374151] border-t-transparent" />
           </div>
         ) : (
           <table className="w-full text-sm">
@@ -210,7 +210,7 @@ export default function TrainersListePage() {
                   return (
                     <tr key={trainer.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-3 font-medium text-gray-800">
-                        <Link href={`/admin/trainers/${trainer.id}`} className="hover:text-[#DC2626]">
+                        <Link href={`/admin/trainers/${trainer.id}`} className="hover:text-[#374151]">
                           {fullName}
                         </Link>
                       </td>
@@ -221,7 +221,7 @@ export default function TrainersListePage() {
                         <div className="flex items-center gap-3">
                           <button
                             onClick={() => setEditItem({ ...trainer })}
-                            className="text-[#DC2626] hover:underline text-xs font-medium"
+                            className="text-[#374151] hover:underline text-xs font-medium"
                           >
                             Modifier
                           </button>
@@ -261,7 +261,7 @@ export default function TrainersListePage() {
                   key={p}
                   onClick={() => setPage(p)}
                   className="px-3 py-1.5 rounded border text-sm font-medium"
-                  style={p === page ? { background: "#DC2626", color: "white", borderColor: "#DC2626" } : { borderColor: "#d1d5db", color: "#4b5563" }}
+                  style={p === page ? { background: "#374151", color: "white", borderColor: "#374151" } : { borderColor: "#d1d5db", color: "#4b5563" }}
                 >
                   {p}
                 </button>
@@ -293,7 +293,7 @@ export default function TrainersListePage() {
                     type="text"
                     value={editItem.first_name}
                     onChange={(e) => setEditItem((p) => p ? { ...p, first_name: e.target.value } : p)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#DC2626]"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#374151]"
                   />
                 </div>
                 <div>
@@ -302,7 +302,7 @@ export default function TrainersListePage() {
                     type="text"
                     value={editItem.last_name}
                     onChange={(e) => setEditItem((p) => p ? { ...p, last_name: e.target.value } : p)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#DC2626]"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#374151]"
                   />
                 </div>
               </div>
@@ -312,7 +312,7 @@ export default function TrainersListePage() {
                   type="email"
                   value={editItem.email}
                   onChange={(e) => setEditItem((p) => p ? { ...p, email: e.target.value } : p)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#DC2626]"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#374151]"
                 />
               </div>
               <div>
@@ -321,7 +321,7 @@ export default function TrainersListePage() {
                   type="tel"
                   value={editItem.phone ?? ""}
                   onChange={(e) => setEditItem((p) => p ? { ...p, phone: e.target.value } : p)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#DC2626]"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#374151]"
                 />
               </div>
               <div>
@@ -329,7 +329,7 @@ export default function TrainersListePage() {
                 <select
                   value={editItem.type ?? "internal"}
                   onChange={(e) => setEditItem((p) => p ? { ...p, type: e.target.value } : p)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#DC2626]"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#374151]"
                 >
                   <option value="internal">Interne</option>
                   <option value="external">Externe</option>
@@ -345,7 +345,7 @@ export default function TrainersListePage() {
               onClick={handleSaveEdit}
               disabled={saving}
               className="text-white px-4 py-2 rounded-lg text-sm font-medium"
-              style={{ background: "#DC2626" }}
+              style={{ background: "#374151" }}
             >
               {saving ? "Enregistrement..." : "Enregistrer"}
             </button>

@@ -127,7 +127,7 @@ export async function generateInvoicePDF(data: InvoicePdfData): Promise<jsPDF> {
 
   doc.setFontSize(18);
   doc.setFont("helvetica", "bold");
-  doc.setTextColor(data.isAvoir ? "#7C3AED" : "#DC2626");
+  doc.setTextColor(data.isAvoir ? "#7C3AED" : "#374151");
   doc.text(data.isAvoir ? "AVOIR" : "FACTURE", MARGIN, y);
 
   doc.setFontSize(11);

@@ -18,7 +18,7 @@ Contact support : acces.prestataires@i-a-infinity.com
 ## 🏢 Entités (multi-tenant)
 | Entité | Slug | Couleur |
 |--------|------|---------|
-| MR FORMATION | mr-formation | #DC2626 |
+| MR FORMATION | mr-formation | #374151 |
 | C3V FORMATION | c3v-formation | #2563EB |
 ⚠️ CHAQUE requête Supabase DOIT filtrer par entity_id. Aucune exception.
 

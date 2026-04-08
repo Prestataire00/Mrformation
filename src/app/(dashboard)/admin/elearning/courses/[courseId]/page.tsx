@@ -207,7 +207,7 @@ export default function CourseEditorPage() {
   if (loading) {
     return (
       <div className="p-6 flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="h-8 w-8 text-[#DC2626] animate-spin" />
+        <Loader2 className="h-8 w-8 text-[#374151] animate-spin" />
       </div>
     );
   }
@@ -235,9 +235,9 @@ export default function CourseEditorPage() {
     <div className="p-6 space-y-6 max-w-5xl mx-auto">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm">
-        <Link href="/admin" className="text-[#DC2626] hover:underline">Accueil</Link>
+        <Link href="/admin" className="text-[#374151] hover:underline">Accueil</Link>
         <span className="text-gray-400">/</span>
-        <Link href="/admin/elearning" className="text-[#DC2626] hover:underline">E-Learning</Link>
+        <Link href="/admin/elearning" className="text-[#374151] hover:underline">E-Learning</Link>
         <span className="text-gray-400">/</span>
         <span className="text-gray-500 truncate max-w-xs">{course.title}</span>
       </div>
@@ -326,7 +326,7 @@ export default function CourseEditorPage() {
 
       {/* Launch course button — always visible when chapters exist */}
       {hasContent && (
-        <div className="bg-gradient-to-r from-[#DC2626]/10 to-blue-50 border border-[#DC2626]/20 rounded-xl p-5 flex items-center justify-between">
+        <div className="bg-gradient-to-r from-[#374151]/10 to-blue-50 border border-[#374151]/20 rounded-xl p-5 flex items-center justify-between">
           <div>
             <p className="text-sm font-semibold text-gray-900">
               {course.status === "published" ? "Tester le cours en mode apprenant" : "Prévisualiser le cours"}
@@ -334,7 +334,7 @@ export default function CourseEditorPage() {
             <p className="text-xs text-gray-500 mt-0.5">Parcours complet : slides Gamma, flashcards et quiz interactifs</p>
           </div>
           <Link href={`/learner/courses/${courseId}`}>
-            <Button className="gap-2 bg-[#DC2626] hover:opacity-90 text-white">
+            <Button className="gap-2 bg-[#374151] hover:opacity-90 text-white">
               <Play className="h-4 w-4" /> Lancer le cours
             </Button>
           </Link>
@@ -367,7 +367,7 @@ export default function CourseEditorPage() {
                       if (e.key === "Enter") handleSaveDuration();
                       if (e.key === "Escape") setEditingDuration(false);
                     }}
-                    className="w-16 h-7 text-sm font-bold text-gray-900 border border-gray-300 rounded px-1.5 focus:outline-none focus:border-[#DC2626]"
+                    className="w-16 h-7 text-sm font-bold text-gray-900 border border-gray-300 rounded px-1.5 focus:outline-none focus:border-[#374151]"
                     autoFocus
                   />
                   <span className="text-xs text-gray-500">min</span>
@@ -561,7 +561,7 @@ export default function CourseEditorPage() {
                     onClick={() => setExpandedChapter(isExpanded ? null : ch.id)}
                     className="w-full flex items-center gap-4 px-5 py-4 text-left hover:bg-gray-50 transition-colors"
                   >
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#DC2626] to-blue-600 flex items-center justify-center text-white font-bold text-sm shrink-0">
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#374151] to-blue-600 flex items-center justify-center text-white font-bold text-sm shrink-0">
                       {i + 1}
                     </div>
                     <div className="flex-1 min-w-0">

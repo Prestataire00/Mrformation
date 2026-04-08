@@ -629,7 +629,7 @@ export default function QuotesPage() {
             {stats.rejectedThisMonth > 0 && <span><span className="font-bold text-red-500 text-sm">{stats.rejectedThisMonth}</span> refusé{stats.rejectedThisMonth > 1 ? "s" : ""}</span>}
           </div>
         </div>
-        <Button onClick={() => router.push("/admin/crm/quotes/new")} size="sm" style={{ background: "#DC2626" }} className="text-white gap-1.5 text-xs">
+        <Button onClick={() => router.push("/admin/crm/quotes/new")} size="sm" style={{ background: "#374151" }} className="text-white gap-1.5 text-xs">
           <Plus className="h-3.5 w-3.5" /> Nouveau devis
         </Button>
       </div>

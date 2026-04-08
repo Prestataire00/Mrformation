@@ -161,7 +161,7 @@ export default function VeillePage() {
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white"
-                  style={{ background: "#DC2626" }}
+                  style={{ background: "#374151" }}
                 >
                   <ExternalLink className="h-3.5 w-3.5" /> Centre Inffo
                 </a>
@@ -170,7 +170,7 @@ export default function VeillePage() {
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white"
-                  style={{ background: "#DC2626" }}
+                  style={{ background: "#374151" }}
                 >
                   <ExternalLink className="h-3.5 w-3.5" /> Ministère du Travail
                 </a>
@@ -198,7 +198,7 @@ export default function VeillePage() {
                     href={article.link}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-sm font-medium text-gray-900 hover:text-[#DC2626] transition-colors block"
+                    className="text-sm font-medium text-gray-900 hover:text-[#374151] transition-colors block"
                   >
                     {article.title}
                     <ExternalLink className="h-3 w-3 inline ml-1 text-muted-foreground" />
@@ -225,7 +225,7 @@ export default function VeillePage() {
             <Button
               size="sm"
               onClick={() => setAddDialog(true)}
-              style={{ background: "#DC2626" }}
+              style={{ background: "#374151" }}
               className="text-white hover:opacity-90"
             >
               <Plus className="h-4 w-4 mr-1" /> Ajouter une note
@@ -267,7 +267,7 @@ export default function VeillePage() {
                         href={note.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-xs text-[#DC2626] hover:underline inline-flex items-center gap-1"
+                        className="text-xs text-[#374151] hover:underline inline-flex items-center gap-1"
                       >
                         <ExternalLink className="h-3 w-3" /> Lien
                       </a>

@@ -997,7 +997,7 @@ export default function TrainerProfilePage() {
                       setEmailForm({ subject: "", body: "", templateId: "" });
                     }
                   }}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[#DC2626] bg-white"
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[#374151] bg-white"
                 >
                   <option value="">— Email libre —</option>
                   {emailTemplates.map((t) => (

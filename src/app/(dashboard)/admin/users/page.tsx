@@ -416,7 +416,7 @@ export default function UsersPage() {
               key={stat.label}
               onClick={() => { if (role) setRoleFilter(roleFilter === role ? "" : role); }}
               className={`rounded-lg p-4 cursor-pointer transition-all border-2 ${
-                isActive ? "border-[#DC2626]" : "border-transparent hover:border-gray-300"
+                isActive ? "border-[#374151]" : "border-transparent hover:border-gray-300"
               } ${stat.color}`}
             >
               <p className="text-2xl font-bold">{stat.count}</p>
@@ -520,7 +520,7 @@ export default function UsersPage() {
                     key={role}
                     onClick={() => setForm((f) => ({ ...f, role }))}
                     className={`p-3 border rounded-lg cursor-pointer transition-all text-center ${
-                      form.role === role ? "border-[#DC2626] bg-teal-50" : "hover:border-gray-300"
+                      form.role === role ? "border-[#374151] bg-teal-50" : "hover:border-gray-300"
                     }`}
                   >
                     <p className="text-2xl mb-1">{icon}</p>
@@ -1013,7 +1013,7 @@ export default function UsersPage() {
               <button
                 onClick={handleSendUserEmail}
                 disabled={sendingUserEmail || !emailUserForm.subject.trim()}
-                className="px-4 py-2 bg-[#DC2626] text-white rounded-lg text-sm disabled:opacity-50 flex items-center gap-2"
+                className="px-4 py-2 bg-[#374151] text-white rounded-lg text-sm disabled:opacity-50 flex items-center gap-2"
               >
                 {sendingUserEmail && <Loader2 className="h-4 w-4 animate-spin" />}
                 <Mail className="h-4 w-4" /> Envoyer

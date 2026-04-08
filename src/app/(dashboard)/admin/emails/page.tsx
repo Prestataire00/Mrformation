@@ -611,7 +611,7 @@ export default function EmailsPage() {
                 <button
                   key={cat.key}
                   onClick={() => setTypeFilter(cat.key)}
-                  className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${typeFilter === cat.key ? "border-[#DC2626] bg-[#DC2626]/10 text-[#DC2626] font-medium" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}
+                  className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${typeFilter === cat.key ? "border-[#374151] bg-[#374151]/10 text-[#374151] font-medium" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}
                 >
                   {cat.label}
                 </button>

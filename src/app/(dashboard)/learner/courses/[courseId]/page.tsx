@@ -620,7 +620,7 @@ export default function CoursePlayerPage() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <Loader2 className="h-10 w-10 text-[#DC2626] animate-spin" />
+        <Loader2 className="h-10 w-10 text-[#374151] animate-spin" />
       </div>
     );
   }
@@ -667,11 +667,11 @@ export default function CoursePlayerPage() {
             )}
             <div className="flex items-center gap-6 text-sm text-gray-500 mb-8">
               <span className="flex items-center gap-1.5">
-                <BookOpen className="h-4 w-4 text-[#DC2626]" />
+                <BookOpen className="h-4 w-4 text-[#374151]" />
                 {chapters.length} chapitre{chapters.length > 1 ? "s" : ""}
               </span>
               <span className="flex items-center gap-1.5">
-                <Clock className="h-4 w-4 text-[#DC2626]" />
+                <Clock className="h-4 w-4 text-[#374151]" />
                 {course.estimated_duration_minutes} min
               </span>
               {course.course_type !== "quiz" && (
@@ -692,7 +692,7 @@ export default function CoursePlayerPage() {
             )}
             <Button
               onClick={goNext}
-              className="bg-gradient-to-r from-[#DC2626] to-blue-600 text-white px-10 py-4 text-lg gap-3 rounded-2xl shadow-lg hover:shadow-xl transition-all"
+              className="bg-gradient-to-r from-[#374151] to-blue-600 text-white px-10 py-4 text-lg gap-3 rounded-2xl shadow-lg hover:shadow-xl transition-all"
             >
               {bestScore ? "Recommencer" : "Commencer"} <ArrowRight className="h-5 w-5" />
             </Button>
@@ -715,9 +715,9 @@ export default function CoursePlayerPage() {
         return (
           <div className="flex flex-col h-full">
             {/* Chapter header */}
-            <div className="flex items-center justify-between px-6 py-3 bg-gradient-to-r from-[#DC2626]/10 to-blue-50 border-b border-[#DC2626]/20">
+            <div className="flex items-center justify-between px-6 py-3 bg-gradient-to-r from-[#374151]/10 to-blue-50 border-b border-[#374151]/20">
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-[#DC2626] flex items-center justify-center text-white font-bold text-sm">
+                <div className="w-8 h-8 rounded-lg bg-[#374151] flex items-center justify-center text-white font-bold text-sm">
                   {screen.chapterIdx + 1}
                 </div>
                 <div>
@@ -741,14 +741,14 @@ export default function CoursePlayerPage() {
             ) : (
               <div className="flex-1 overflow-y-auto px-8 py-8">
                 <div className="max-w-3xl mx-auto">
-                  <div className="text-xs font-semibold text-[#DC2626] uppercase tracking-widest mb-2">
+                  <div className="text-xs font-semibold text-[#374151] uppercase tracking-widest mb-2">
                     Chapitre {screen.chapterIdx + 1} / {chapters.length}
                   </div>
                   <h2 className="text-2xl font-bold text-gray-900 mb-4">{ch.title}</h2>
                   {ch.key_concepts && ch.key_concepts.length > 0 && (
                     <div className="flex flex-wrap gap-2 mb-6">
                       {ch.key_concepts.map((c, i) => (
-                        <span key={i} className="text-xs px-3 py-1 rounded-full bg-[#DC2626]/10 text-[#DC2626] font-medium">
+                        <span key={i} className="text-xs px-3 py-1 rounded-full bg-[#374151]/10 text-[#374151] font-medium">
                           {c}
                         </span>
                       ))}
@@ -770,7 +770,7 @@ export default function CoursePlayerPage() {
             <div className="px-6 py-4 bg-white border-t border-gray-200 flex justify-end">
               <Button
                 onClick={goNext}
-                className="bg-gradient-to-r from-[#DC2626] to-blue-600 text-white px-8 py-3 text-base gap-2 rounded-xl shadow-md"
+                className="bg-gradient-to-r from-[#374151] to-blue-600 text-white px-8 py-3 text-base gap-2 rounded-xl shadow-md"
               >
                 {nextLabel} <ArrowRight className="h-5 w-5" />
               </Button>
@@ -989,7 +989,7 @@ export default function CoursePlayerPage() {
                         ) : qIdx < questions.length - 1 ? (
                           <Button
                             onClick={() => setCurrentQuestionIdx((prev) => new Map(prev).set(screen.chapterIdx, qIdx + 1))}
-                            className="w-full bg-[#DC2626] hover:opacity-90 text-white py-4 text-base rounded-xl gap-2 shadow-md"
+                            className="w-full bg-[#374151] hover:opacity-90 text-white py-4 text-base rounded-xl gap-2 shadow-md"
                           >
                             Question suivante <ArrowRight className="h-5 w-5" />
                           </Button>
@@ -1008,7 +1008,7 @@ export default function CoursePlayerPage() {
               ) : (
                 <div className="flex flex-col items-center justify-center h-full text-center">
                   <p className="text-gray-500">Aucune question pour ce chapitre.</p>
-                  <Button onClick={goNext} className="mt-4 gap-2 bg-[#DC2626] text-white">
+                  <Button onClick={goNext} className="mt-4 gap-2 bg-[#374151] text-white">
                     Continuer <ArrowRight className="h-4 w-4" />
                   </Button>
                 </div>
@@ -1032,7 +1032,7 @@ export default function CoursePlayerPage() {
               "w-24 h-24 rounded-3xl flex items-center justify-center mb-6 shadow-xl",
               isPerfect ? "bg-gradient-to-br from-yellow-400 to-amber-500" :
               passed ? "bg-gradient-to-br from-green-400 to-emerald-500" :
-              "bg-gradient-to-br from-blue-400 to-[#DC2626]"
+              "bg-gradient-to-br from-blue-400 to-[#374151]"
             )}>
               {isPerfect ? <Trophy className="h-12 w-12 text-white" /> :
                passed ? <CheckCircle2 className="h-12 w-12 text-white" /> :
@@ -1050,7 +1050,7 @@ export default function CoursePlayerPage() {
                 <circle
                   cx="80" cy="80" r="66"
                   fill="none"
-                  stroke={isPerfect ? "#eab308" : passed ? "#22c55e" : "#DC2626"}
+                  stroke={isPerfect ? "#eab308" : passed ? "#22c55e" : "#374151"}
                   strokeWidth="16"
                   strokeLinecap="round"
                   strokeDasharray={`${(pct / 100) * 414.69} 414.69`}
@@ -1070,7 +1070,7 @@ export default function CoursePlayerPage() {
 
             <Button
               onClick={goNext}
-              className="bg-gradient-to-r from-[#DC2626] to-blue-600 text-white px-10 py-4 text-base gap-3 rounded-2xl shadow-lg"
+              className="bg-gradient-to-r from-[#374151] to-blue-600 text-white px-10 py-4 text-base gap-3 rounded-2xl shadow-lg"
             >
               {screen.chapterIdx < chapters.length - 1 ? "Chapitre suivant" : "Continuer"}
               <ArrowRight className="h-5 w-5" />
@@ -1232,7 +1232,7 @@ export default function CoursePlayerPage() {
           <div className="flex flex-col items-center justify-center h-full px-8 text-center bg-gradient-to-br from-gray-50 to-white">
             <div className={cn(
               "w-28 h-28 rounded-3xl flex items-center justify-center mb-6 shadow-2xl",
-              passed ? "bg-gradient-to-br from-yellow-400 to-amber-500" : "bg-gradient-to-br from-blue-400 to-[#DC2626]"
+              passed ? "bg-gradient-to-br from-yellow-400 to-amber-500" : "bg-gradient-to-br from-blue-400 to-[#374151]"
             )}>
               <Trophy className="h-14 w-14 text-white" />
             </div>
@@ -1311,7 +1311,7 @@ export default function CoursePlayerPage() {
                 <RotateCcw className="h-4 w-4" /> Recommencer
               </Button>
               <Link href="/learner">
-                <Button className="bg-gradient-to-r from-[#DC2626] to-blue-600 text-white hover:opacity-90 gap-2 px-6 py-3 rounded-xl">
+                <Button className="bg-gradient-to-r from-[#374151] to-blue-600 text-white hover:opacity-90 gap-2 px-6 py-3 rounded-xl">
                   <ArrowLeft className="h-4 w-4" /> Mes cours
                 </Button>
               </Link>
@@ -1347,7 +1347,7 @@ export default function CoursePlayerPage() {
                 <RotateCcw className="h-4 w-4" /> Recommencer
               </Button>
               <Link href="/learner">
-                <Button className="bg-gradient-to-r from-[#DC2626] to-blue-600 text-white hover:opacity-90 gap-2 px-6 py-3 rounded-xl">
+                <Button className="bg-gradient-to-r from-[#374151] to-blue-600 text-white hover:opacity-90 gap-2 px-6 py-3 rounded-xl">
                   <ArrowLeft className="h-4 w-4" /> Mes cours
                 </Button>
               </Link>
@@ -1420,13 +1420,13 @@ export default function CoursePlayerPage() {
                     onClick={() => goToChapter(ci)}
                     className={cn(
                       "w-full flex items-center gap-3 px-4 py-3 text-left transition-colors",
-                      isActive ? "bg-[#DC2626]/10 border-l-2 border-[#DC2626]" : "hover:bg-gray-50 border-l-2 border-transparent"
+                      isActive ? "bg-[#374151]/10 border-l-2 border-[#374151]" : "hover:bg-gray-50 border-l-2 border-transparent"
                     )}
                   >
                     <div className={cn(
                       "w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold shrink-0",
                       isDone ? "bg-green-100 text-green-700" :
-                      isActive ? "bg-[#DC2626] text-white" :
+                      isActive ? "bg-[#374151] text-white" :
                       "bg-gray-100 text-gray-500"
                     )}>
                       {isDone ? <CheckCircle2 className="h-3.5 w-3.5" /> : ci + 1}
@@ -1455,7 +1455,7 @@ export default function CoursePlayerPage() {
         </Link>
         <button
           onClick={() => setShowChapterNav(true)}
-          className="flex items-center gap-1 text-gray-400 hover:text-[#DC2626] transition"
+          className="flex items-center gap-1 text-gray-400 hover:text-[#374151] transition"
           title="Navigation des chapitres"
         >
           <BookOpen className="h-4 w-4" />
@@ -1465,7 +1465,7 @@ export default function CoursePlayerPage() {
           <div className="flex items-center gap-2 mt-0.5">
             <div className="flex-1 bg-gray-200 rounded-full h-1.5 max-w-xs">
               <div
-                className="bg-gradient-to-r from-[#DC2626] to-blue-600 h-1.5 rounded-full transition-all duration-500"
+                className="bg-gradient-to-r from-[#374151] to-blue-600 h-1.5 rounded-full transition-all duration-500"
                 style={{ width: `${progress}%` }}
               />
             </div>
@@ -1510,7 +1510,7 @@ export default function CoursePlayerPage() {
             {currentIdx < screens.length - 1 && (
               <Button
                 onClick={goNext}
-                className="gap-2 bg-[#DC2626] text-white hover:opacity-90 rounded-xl"
+                className="gap-2 bg-[#374151] text-white hover:opacity-90 rounded-xl"
               >
                 Suivant <ArrowRight className="h-4 w-4" />
               </Button>
