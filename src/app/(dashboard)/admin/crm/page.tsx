@@ -13,6 +13,7 @@ import {
   Bell,
   Target,
   BarChart3,
+  UserX,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -30,6 +31,7 @@ import {
 } from "recharts";
 import type { PieLabelRenderProps } from "recharts";
 import { cn, formatCurrency } from "@/lib/utils";
+import { DORMANCY_THRESHOLD_DAYS } from "@/lib/crm/constants";
 
 interface DashboardData {
   // Prospect funnel
@@ -50,6 +52,7 @@ interface DashboardData {
   activeReminders: number;
   todayTasks: number;
   completedThisWeek: number;
+  dormantProspects: number;
 
   // Monthly revenue (quotes from won prospects)
   monthlyRevenue: { month: string; amount: number }[];
@@ -121,6 +124,7 @@ export default function CrmDashboardPage() {
     activeReminders: 0,
     todayTasks: 0,
     completedThisWeek: 0,
+    dormantProspects: 0,
     monthlyRevenue: [],
     avgDealSize: 0,
     avgSalesCycle: 0,
@@ -213,6 +217,23 @@ export default function CrmDashboardPage() {
           completedThisWeek++;
         }
       }
+
+      // Dormant prospects: active prospects with no recent commercial action
+      const dormancyThreshold = new Date(
+        Date.now() - DORMANCY_THRESHOLD_DAYS * 86400000
+      ).toISOString();
+      const { data: recentActions } = await supabase
+        .from("crm_commercial_actions")
+        .select("prospect_id")
+        .eq("entity_id", entityId)
+        .gte("created_at", dormancyThreshold);
+      const recentlyActiveIds = new Set(
+        recentActions?.map((a) => a.prospect_id).filter(Boolean) ?? []
+      );
+      const activeStatuses = new Set(["new", "contacted", "qualified", "proposal"]);
+      const dormantProspects = prospects.filter(
+        (p) => activeStatuses.has(p.status) && !recentlyActiveIds.has(p.id)
+      ).length;
 
       // Won revenue from prospect amount field
       function getProspectAmount(p: { amount?: number | null }): number {
@@ -354,6 +375,7 @@ export default function CrmDashboardPage() {
         activeReminders,
         todayTasks,
         completedThisWeek,
+        dormantProspects,
         monthlyRevenue,
         avgDealSize,
         avgSalesCycle,
@@ -455,7 +477,7 @@ export default function CrmDashboardPage() {
       </div>
 
       {/* Task quick stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
         <Card>
           <CardContent className="p-4 flex items-center gap-3">
             <Clock className="h-5 w-5 text-amber-500" />
@@ -489,6 +511,17 @@ export default function CrmDashboardPage() {
             <div>
               <p className="text-xs text-muted-foreground">Complétées cette semaine</p>
               <p className="text-xl font-bold text-green-600">{data.completedThisWeek}</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className={data.dormantProspects > 0 ? "border-orange-200 bg-orange-50/50" : ""}>
+          <CardContent className="p-4 flex items-center gap-3">
+            <UserX className="h-5 w-5 text-orange-500" />
+            <div>
+              <p className="text-xs text-muted-foreground">Prospects dormants</p>
+              <p className={cn("text-xl font-bold", data.dormantProspects > 0 ? "text-orange-600" : "")}>
+                {data.dormantProspects}
+              </p>
             </div>
           </CardContent>
         </Card>

@@ -15,6 +15,7 @@ import {
   LayoutGrid,
   Trash2,
   CheckSquare,
+  AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,6 +37,7 @@ import {
 } from "@/components/ui/select";
 import { cn, formatDate } from "@/lib/utils";
 import { getScoreCategory } from "@/lib/ai/prospect-scoring";
+import { DORMANCY_THRESHOLD_DAYS } from "@/lib/crm/constants";
 import type { CrmProspect, CrmTag, ProspectStatus } from "@/lib/types";
 import { CompanySearch, type CompanySearchResult } from "@/components/crm/CompanySearch";
 import { createFirstContactTask, createProposalPrepTask } from "@/lib/crm/automations";
@@ -192,6 +194,9 @@ export default function CrmProspectsPage() {
   const [selectedCards, setSelectedCards] = useState<Set<string>>(new Set());
   const [bulkMode, setBulkMode] = useState(false);
 
+  // Dormancy tracking: prospect_id -> last action date ISO string
+  const [lastActionMap, setLastActionMap] = useState<Record<string, string>>({});
+
   // Config tunnel — édition temporaire
   const [tempColumns,      setTempColumns]       = useState<KanbanColumn[]>(DEFAULT_COLUMNS);
 
@@ -288,6 +293,26 @@ export default function CrmProspectsPage() {
 
     const { data } = await q;
     setProspects((data as CrmProspect[]) ?? []);
+
+    // Fetch last commercial action per prospect for dormancy detection
+    if (entityId) {
+      const { data: actions } = await supabase
+        .from("crm_commercial_actions")
+        .select("prospect_id, created_at")
+        .eq("entity_id", entityId)
+        .order("created_at", { ascending: false });
+
+      const map: Record<string, string> = {};
+      if (actions) {
+        for (const a of actions) {
+          if (a.prospect_id && !map[a.prospect_id]) {
+            map[a.prospect_id] = a.created_at;
+          }
+        }
+      }
+      setLastActionMap(map);
+    }
+
     setLoading(false);
   }, [entityId, supabase]);
 
@@ -695,6 +720,10 @@ export default function CrmProspectsPage() {
                     const amount = getProspectAmount(p);
                     const product = extractField(p.notes, "Produit");
                     const isBeingDragged = draggedCardId === p.id;
+                    const cardIsDormant = !["won", "lost", "dormant"].includes(p.status) && (
+                      !lastActionMap[p.id] ||
+                      Math.floor((Date.now() - new Date(lastActionMap[p.id]).getTime()) / 86400000) >= DORMANCY_THRESHOLD_DAYS
+                    );
                     return (
                       <div
                         key={p.id}
@@ -705,8 +734,9 @@ export default function CrmProspectsPage() {
                         className={cn(
                           "group relative rounded-lg border border-gray-100 bg-white p-3 shadow-sm hover:border-[#DC2626] hover:shadow-md transition-all cursor-grab active:cursor-grabbing",
                           isBeingDragged && "opacity-40 scale-95",
-                          (p.score || 0) >= 60 && "border-l-[3px] border-l-red-400",
-                          (p.score || 0) >= 30 && (p.score || 0) < 60 && "border-l-[3px] border-l-amber-400"
+                          cardIsDormant && "border-l-[3px] border-l-orange-400 bg-orange-50/30",
+                          !cardIsDormant && (p.score || 0) >= 60 && "border-l-[3px] border-l-red-400",
+                          !cardIsDormant && (p.score || 0) >= 30 && (p.score || 0) < 60 && "border-l-[3px] border-l-amber-400"
                         )}
                       >
                         {/* Bulk checkbox */}
@@ -743,6 +773,14 @@ export default function CrmProspectsPage() {
                         {(prospectTags[p.id] ?? []).length > 0 && (
                           <div className="flex flex-wrap gap-1 mt-1.5">
                             <TagBadges tags={allTags.filter((t) => (prospectTags[p.id] ?? []).includes(t.id))} />
+                          </div>
+                        )}
+
+                        {/* Dormant indicator */}
+                        {cardIsDormant && (
+                          <div className="flex items-center gap-1 mt-1.5 text-[10px] text-orange-600 font-medium">
+                            <AlertTriangle className="h-3 w-3" />
+                            Dormant
                           </div>
                         )}
 

@@ -851,7 +851,7 @@ export interface CrmCampaign {
 }
 
 // ===== CRM NOTIFICATIONS =====
-export type NotificationType = "task_overdue" | "task_due_today" | "task_due_soon" | "quote_followup" | "quote_expiring" | "general" | "prospect_won" | "quote_accepted" | "quote_rejected" | "daily_digest" | "weekly_summary";
+export type NotificationType = "task_overdue" | "task_due_today" | "task_due_soon" | "task_reminder" | "quote_followup" | "quote_expiring" | "general" | "prospect_won" | "prospect_dormant" | "prospect_inactive" | "quote_accepted" | "quote_rejected" | "daily_digest" | "weekly_summary";
 
 export interface CrmNotification {
   id: string;

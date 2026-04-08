@@ -135,12 +135,16 @@ export async function DELETE(
     .eq("id", user.id)
     .single();
 
-  if (!callerProfile || callerProfile.role !== "admin") {
+  if (!callerProfile || !["admin", "super_admin"].includes(callerProfile.role)) {
     return NextResponse.json({ error: "Accès non autorisé" }, { status: 403 });
   }
 
   const userId = params.id;
   const adminClient = createAdminClient();
+
+  // Unlink from learners/trainers first (set profile_id to null)
+  await adminClient.from("learners").update({ profile_id: null }).eq("profile_id", userId);
+  await adminClient.from("trainers").update({ profile_id: null }).eq("profile_id", userId);
 
   // Delete from profiles (auth account too)
   const { error: profileError } = await adminClient

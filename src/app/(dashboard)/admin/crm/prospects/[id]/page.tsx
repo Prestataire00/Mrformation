@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
@@ -28,6 +28,7 @@ import {
   Download,
   MoreHorizontal,
   Search,
+  AlertTriangle,
 } from "lucide-react";
 import { downloadDevisPDF, type DevisData } from "@/lib/devis-pdf";
 import { Button } from "@/components/ui/button";
@@ -52,6 +53,7 @@ import {
 } from "@/components/ui/select";
 import { cn, formatDate } from "@/lib/utils";
 import { logCommercialAction } from "@/lib/crm/log-commercial-action";
+import { DORMANCY_THRESHOLD_DAYS } from "@/lib/crm/constants";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/use-toast";
 import type { CrmProspect, CrmQuote, ProspectStatus, Training } from "@/lib/types";
@@ -384,14 +386,31 @@ export default function ProspectDetailPage() {
         updated_at: new Date().toISOString(),
       })
       .eq("id", prospect.id);
+
+    // Also log as commercial action for timeline
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user && entityId) {
+      await logCommercialAction({
+        supabase,
+        entityId,
+        authorId: user.id,
+        actionType: "comment",
+        prospectId: prospect.id,
+        subject: "Note",
+        content: newNote.trim(),
+      });
+    }
+
     setSaving(false);
     if (error) {
-      console.error("handleAddNote error:", error);
+      toast({ title: "Erreur", description: "Impossible d'ajouter la note", variant: "destructive" });
       return;
     }
+    toast({ title: "Note ajoutée" });
     setShowNoteForm(false);
     setNewNote("");
     fetchProspect();
+    fetchTimeline(prospect);
   }
 
   async function handleAddAction() {
@@ -570,6 +589,22 @@ export default function ProspectDetailPage() {
 
   const scoreCategory = prospect?.score ? getScoreCategory(prospect.score) : null;
 
+  // Dormancy detection from timeline activities
+  const isDormant = useMemo(() => {
+    if (!prospect || prospect.status === "won" || prospect.status === "lost") return false;
+    const realActions = activities.filter((a) => a.type !== "creation");
+    if (realActions.length === 0) return true;
+    const latestAction = new Date(realActions[0].date);
+    const daysSince = Math.floor((Date.now() - latestAction.getTime()) / (1000 * 60 * 60 * 24));
+    return daysSince >= DORMANCY_THRESHOLD_DAYS;
+  }, [activities, prospect]);
+
+  const daysSinceLastAction = useMemo(() => {
+    const realActions = activities.filter((a) => a.type !== "creation");
+    if (realActions.length === 0) return null;
+    return Math.floor((Date.now() - new Date(realActions[0].date).getTime()) / (1000 * 60 * 60 * 24));
+  }, [activities]);
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   if (loading) {
@@ -689,12 +724,12 @@ export default function ProspectDetailPage() {
             <FileText className="w-3 h-3" /> Devis
           </Button>
           <Button size="sm" variant="outline" className="text-xs h-8 gap-1.5"
-            onClick={() => setShowActionForm(true)}
+            onClick={() => { setShowActionForm(true); setActiveTab("timeline"); }}
           >
             <Plus className="w-3 h-3" /> Action
           </Button>
           <Button size="sm" variant="outline" className="text-xs h-8 gap-1.5"
-            onClick={() => setShowNoteForm(true)}
+            onClick={() => { setShowNoteForm(true); setActiveTab("timeline"); }}
           >
             <StickyNote className="w-3 h-3" /> Note
           </Button>
@@ -708,6 +743,32 @@ export default function ProspectDetailPage() {
           </Button>
         </div>
       </div>
+
+      {/* ── DORMANCY BANNER ─────────────────────────────────────────────── */}
+      {isDormant && (
+        <div className="mx-6 mt-4 flex items-center gap-3 rounded-lg border border-orange-200 bg-orange-50 px-4 py-3">
+          <AlertTriangle className="h-5 w-5 text-orange-500 shrink-0" />
+          <div>
+            <p className="text-sm font-medium text-orange-800">
+              Prospect dormant
+              {daysSinceLastAction !== null
+                ? ` — Aucune action depuis ${daysSinceLastAction} jour(s)`
+                : " — Aucune action commerciale enregistrée"}
+            </p>
+            <p className="text-xs text-orange-600 mt-0.5">
+              Planifiez un appel ou une relance pour relancer ce prospect.
+            </p>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            className="ml-auto text-xs shrink-0 border-orange-300 text-orange-700 hover:bg-orange-100"
+            onClick={() => { setShowActionForm(true); setActiveTab("timeline"); }}
+          >
+            <Plus className="w-3 h-3 mr-1" /> Action
+          </Button>
+        </div>
+      )}
 
       {/* ── 2 COLONNES ──────────────────────────────────────────────────── */}
       <div className="flex flex-col md:flex-row gap-0 min-h-0 md:min-h-[calc(100vh-200px)]">

@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { createExpiringQuoteTasks, notifyOverdueTasks } from "@/lib/crm/automations";
 import { sanitizeError } from "@/lib/api-error";
+import { DORMANCY_THRESHOLD_DAYS } from "@/lib/crm/constants";
 
 export async function POST(request: NextRequest) {
   try {
@@ -75,11 +76,33 @@ export async function POST(request: NextRequest) {
       .eq("entity_id", entityId)
       .eq("role", "admin");
 
+    // Count dormant prospects
+    const dormancyThreshold = new Date(
+      Date.now() - DORMANCY_THRESHOLD_DAYS * 86400000
+    ).toISOString();
+    const { data: recentActions } = await supabase
+      .from("crm_commercial_actions")
+      .select("prospect_id")
+      .eq("entity_id", entityId)
+      .gte("created_at", dormancyThreshold);
+    const recentIds = new Set(
+      recentActions?.map((a) => a.prospect_id).filter(Boolean) ?? []
+    );
+    const { data: activeProspects } = await supabase
+      .from("crm_prospects")
+      .select("id")
+      .eq("entity_id", entityId)
+      .not("status", "in", '("won","lost","dormant")');
+    const dormantCount = (activeProspects ?? []).filter(
+      (p) => !recentIds.has(p.id)
+    ).length;
+
     const parts: string[] = [];
     if ((overdueCount ?? 0) > 0) parts.push(`${overdueCount} tâche(s) en retard`);
     if ((todayTaskCount ?? 0) > 0) parts.push(`${todayTaskCount} tâche(s) du jour`);
     if ((expiringQuotes?.length ?? 0) > 0) parts.push(`${expiringQuotes?.length} devis expirant bientôt`);
     if ((newLeadsCount ?? 0) > 0) parts.push(`${newLeadsCount} nouveau(x) lead(s)`);
+    if (dormantCount > 0) parts.push(`${dormantCount} prospect(s) dormant(s)`);
 
     if (parts.length > 0 && admins) {
       const digestNotifs = admins.map((admin) => ({

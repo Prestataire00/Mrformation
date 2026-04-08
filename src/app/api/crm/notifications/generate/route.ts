@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
+import { DORMANCY_THRESHOLD_DAYS } from "@/lib/crm/constants";
 
 export async function POST(request: NextRequest) {
   try {
@@ -223,6 +224,62 @@ export async function POST(request: NextRequest) {
             link: "/admin/crm/quotes",
             resource_type: "quote",
             resource_id: quote.id,
+          });
+        }
+      }
+    }
+
+    // 5. Dormant prospects (no commercial action in X days)
+    const dormancyThreshold = new Date(
+      Date.now() - DORMANCY_THRESHOLD_DAYS * 24 * 60 * 60 * 1000
+    ).toISOString();
+
+    // Get all active prospects
+    const { data: activeProspects } = await supabase
+      .from("crm_prospects")
+      .select("id, company_name, assigned_to")
+      .eq("entity_id", profile.entity_id)
+      .not("status", "in", '("won","lost","dormant")');
+
+    if (activeProspects && activeProspects.length > 0) {
+      // Get prospect IDs that have recent actions
+      const { data: recentActions } = await supabase
+        .from("crm_commercial_actions")
+        .select("prospect_id")
+        .eq("entity_id", profile.entity_id)
+        .gte("created_at", dormancyThreshold);
+
+      const recentlyActiveIds = new Set(
+        recentActions?.map((a) => a.prospect_id).filter(Boolean) ?? []
+      );
+
+      const dormantProspects = activeProspects.filter(
+        (p) => !recentlyActiveIds.has(p.id)
+      );
+
+      for (const prospect of dormantProspects) {
+        const targetUser = prospect.assigned_to || user.id;
+
+        // Deduplicate: skip if unread prospect_dormant notification already exists
+        const { count } = await supabase
+          .from("crm_notifications")
+          .select("id", { count: "exact", head: true })
+          .eq("resource_type", "prospect")
+          .eq("resource_id", prospect.id)
+          .eq("type", "prospect_dormant")
+          .eq("user_id", targetUser)
+          .eq("is_read", false);
+
+        if (!count || count === 0) {
+          notifications.push({
+            entity_id: profile.entity_id,
+            user_id: targetUser,
+            type: "prospect_dormant",
+            title: "Prospect dormant",
+            message: `"${prospect.company_name}" n'a aucune action depuis plus de ${DORMANCY_THRESHOLD_DAYS} jours`,
+            link: `/admin/crm/prospects/${prospect.id}`,
+            resource_type: "prospect",
+            resource_id: prospect.id,
           });
         }
       }

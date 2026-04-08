@@ -299,6 +299,126 @@ const STARTER_TEMPLATES: StarterTemplate[] = [
   </tr>
 </table>`),
   },
+  {
+    id: "reglement_interieur",
+    name: "Règlement intérieur",
+    description: "Règlement intérieur applicable aux stagiaires",
+    type: "other",
+    variableCount: 1,
+    content: starterWrap("RÈGLEMENT INTÉRIEUR", `
+<h2>Article 1 — Objet et champ d'application</h2>
+<p>Le présent règlement est établi conformément aux articles L.6352-3 et L.6352-4 et R.6352-1 à R.6352-15 du Code du travail. Il s'applique à tous les stagiaires et ce, pour la durée de la formation suivie.</p>
+<h2>Article 2 — Discipline</h2>
+<p>Il est formellement interdit aux stagiaires :</p>
+<ul>
+<li>D'introduire des boissons alcoolisées dans les locaux</li>
+<li>De se présenter aux sessions en état d'ébriété ou sous l'emprise de stupéfiants</li>
+<li>D'emporter ou modifier les supports de formation sans autorisation</li>
+<li>De fumer dans les locaux</li>
+</ul>
+<h2>Article 3 — Horaires</h2>
+<p>Les stagiaires doivent se conformer aux horaires fixés et communiqués au préalable. En cas d'absence ou de retard, le stagiaire doit prévenir le formateur.</p>
+<h2>Article 4 — Sanctions</h2>
+<p>Tout manquement du stagiaire à l'une des dispositions du présent règlement pourra faire l'objet d'une sanction prononcée par le responsable de l'organisme de formation.</p>
+<p><em>Fait le {{date_today}}</em></p>`),
+  },
+  {
+    id: "politique_confidentialite",
+    name: "Politique RGPD",
+    description: "Politique de confidentialité et protection des données",
+    type: "other",
+    variableCount: 1,
+    content: starterWrap("POLITIQUE DE CONFIDENTIALITÉ — RGPD", `
+<h2>1. Responsable du traitement</h2>
+<p>L'organisme de formation est responsable du traitement des données personnelles collectées dans le cadre de ses activités.</p>
+<h2>2. Données collectées</h2>
+<p>Nous collectons les données suivantes : nom, prénom, adresse email, numéro de téléphone, adresse postale, données relatives au parcours de formation (présence, évaluations, certifications).</p>
+<h2>3. Finalités</h2>
+<ul>
+<li>Gestion administrative des formations</li>
+<li>Suivi pédagogique et évaluation</li>
+<li>Obligations légales (Qualiopi, BPF, OPCO)</li>
+<li>Communication relative aux formations</li>
+</ul>
+<h2>4. Durée de conservation</h2>
+<p>Les données sont conservées pendant la durée de la formation et 5 ans après la fin de celle-ci, conformément aux obligations légales.</p>
+<h2>5. Droits des personnes</h2>
+<p>Conformément au RGPD, vous disposez d'un droit d'accès, de rectification, de suppression et de portabilité de vos données. Contact : <strong>{{email_entite}}</strong></p>
+<p><em>Fait le {{date_today}}</em></p>`),
+  },
+  {
+    id: "cgv",
+    name: "Conditions Générales de Vente",
+    description: "CGV applicables aux prestations de formation",
+    type: "other",
+    variableCount: 1,
+    content: starterWrap("CONDITIONS GÉNÉRALES DE VENTE", `
+<h2>Article 1 — Objet</h2>
+<p>Les présentes CGV régissent les relations entre l'organisme de formation et ses clients pour toute commande de prestation de formation professionnelle.</p>
+<h2>Article 2 — Inscription</h2>
+<p>Toute inscription est confirmée par la signature de la convention de formation et le versement d'un acompte de 30 % du montant total.</p>
+<h2>Article 3 — Tarifs</h2>
+<p>Les prix sont indiqués en euros HT. TVA non applicable, article 261-4-4° du CGI (le cas échéant).</p>
+<h2>Article 4 — Annulation</h2>
+<p>Toute annulation par le client doit intervenir au plus tard 10 jours ouvrés avant le début de la formation. Passé ce délai, le montant total est dû.</p>
+<h2>Article 5 — Règlement</h2>
+<p>Le paiement est dû à réception de facture, à 30 jours. En cas de retard, des pénalités au taux de 3 fois le taux d'intérêt légal seront appliquées.</p>
+<h2>Article 6 — Responsabilité</h2>
+<p>L'organisme de formation s'engage à réaliser les prestations avec diligence. Sa responsabilité est limitée au montant de la prestation concernée.</p>
+<p><em>Fait le {{date_today}}</em></p>`),
+  },
+  {
+    id: "programme_formation",
+    name: "Programme de formation",
+    description: "Programme détaillé d'une action de formation",
+    type: "other",
+    variableCount: 6,
+    content: starterWrap("PROGRAMME DE FORMATION", `
+<table>
+  <tr><td><strong>Intitulé</strong></td><td>{{titre_formation}}</td></tr>
+  <tr><td><strong>Durée</strong></td><td>{{duree_heures}} heure(s)</td></tr>
+  <tr><td><strong>Dates</strong></td><td>Du {{date_debut}} au {{date_fin}}</td></tr>
+  <tr><td><strong>Formateur</strong></td><td>{{nom_formateur}}</td></tr>
+  <tr><td><strong>Lieu</strong></td><td>{{lieu}}</td></tr>
+</table>
+<h2>Objectifs pédagogiques</h2>
+<p>À l'issue de la formation, le stagiaire sera capable de :</p>
+<ul><li>[Objectif 1]</li><li>[Objectif 2]</li><li>[Objectif 3]</li></ul>
+<h2>Public visé</h2>
+<p>[Description du public cible]</p>
+<h2>Prérequis</h2>
+<p>[Prérequis nécessaires ou « Aucun prérequis »]</p>
+<h2>Contenu</h2>
+<p><strong>Module 1 :</strong> [Titre du module]</p>
+<ul><li>[Thème 1]</li><li>[Thème 2]</li></ul>
+<p><strong>Module 2 :</strong> [Titre du module]</p>
+<ul><li>[Thème 1]</li><li>[Thème 2]</li></ul>
+<h2>Méthodes pédagogiques</h2>
+<p>Apports théoriques, mises en situation pratiques, échanges en groupe.</p>
+<h2>Évaluation</h2>
+<p>Évaluation des acquis par questionnaire en fin de formation.</p>`),
+  },
+  {
+    id: "micro_certificat",
+    name: "Certificat de réussite",
+    description: "Certificat de réussite délivré à l'apprenant",
+    type: "certificate",
+    variableCount: 5,
+    content: starterWrap("CERTIFICAT DE RÉUSSITE", `
+<p>Nous certifions que :</p>
+<p style="font-size:1.2em"><strong>{{nom_apprenant}}</strong></p>
+<p>a suivi avec succès et validé les objectifs pédagogiques de la formation :</p>
+<p style="font-size:1.1em"><strong>{{titre_formation}}</strong></p>
+<table>
+  <tr><td><strong>Du</strong></td><td>{{date_debut}}</td></tr>
+  <tr><td><strong>Au</strong></td><td>{{date_fin}}</td></tr>
+  <tr><td><strong>Durée</strong></td><td>{{duree_heures}} heure(s)</td></tr>
+</table>
+<p>En foi de quoi, le présent certificat est délivré pour servir et valoir ce que de droit.</p>
+<p><em>Fait le {{date_today}}</em></p>
+<p><br/></p>
+<p><strong>Le responsable de l'organisme de formation</strong></p>`),
+  },
 ];
 
 interface TemplateFormData {
@@ -486,6 +606,28 @@ export default function DocumentsPage() {
   const systemTemplates = filteredTemplates.filter((t) => (t as unknown as { is_system?: boolean }).is_system === true);
   const customTemplates = filteredTemplates.filter((t) => (t as unknown as { is_system?: boolean }).is_system !== true);
 
+  // Map system_key to starter template content for system templates with empty content
+  const SYSTEM_KEY_TO_STARTER: Record<string, string> = {};
+  for (const s of STARTER_TEMPLATES) {
+    SYSTEM_KEY_TO_STARTER[s.id] = s.content;
+  }
+  // Additional mappings for system_keys that differ from starter IDs
+  SYSTEM_KEY_TO_STARTER["certificat_realisation"] = SYSTEM_KEY_TO_STARTER["certificat"] || "";
+  SYSTEM_KEY_TO_STARTER["attestation_assiduite"] = SYSTEM_KEY_TO_STARTER["attestation"] || "";
+  SYSTEM_KEY_TO_STARTER["convention_entreprise"] = SYSTEM_KEY_TO_STARTER["convention"] || "";
+  SYSTEM_KEY_TO_STARTER["feuille_emargement_individuelle"] = SYSTEM_KEY_TO_STARTER["emargement"] || "";
+  SYSTEM_KEY_TO_STARTER["feuille_emargement"] = SYSTEM_KEY_TO_STARTER["emargement"] || "";
+  SYSTEM_KEY_TO_STARTER["politique_confidentialite"] = SYSTEM_KEY_TO_STARTER["politique_confidentialite"] || "";
+  SYSTEM_KEY_TO_STARTER["programme_formation"] = SYSTEM_KEY_TO_STARTER["programme_formation"] || "";
+
+  /** Get effective content for a template (fallback to starter for system templates) */
+  function getTemplateContent(t: DocumentTemplate): string {
+    if (t.content && t.content.replace(/<[^>]*>/g, "").trim() !== "") return t.content;
+    const sysKey = (t as unknown as { system_key?: string }).system_key;
+    if (sysKey && SYSTEM_KEY_TO_STARTER[sysKey]) return SYSTEM_KEY_TO_STARTER[sysKey];
+    return "";
+  }
+
   const filteredDocs = generatedDocs.filter((d) => {
     return (
       docSearch === "" ||
@@ -531,10 +673,11 @@ export default function DocumentsPage() {
 
   const openEditTemplate = (t: DocumentTemplate) => {
     setEditingTemplate(t);
+    const effectiveContent = getTemplateContent(t);
     setTemplateForm({
       name: t.name,
       type: t.type as DocumentType,
-      content: plainTextToHtml(t.content || ""),
+      content: plainTextToHtml(effectiveContent),
     });
     setTemplateDialogOpen(true);
   };
@@ -595,7 +738,7 @@ export default function DocumentsPage() {
   };
 
   const handleExportTemplateAsPDF = async (tpl?: DocumentTemplate) => {
-    const content = tpl?.content || templateForm.content;
+    const content = tpl ? getTemplateContent(tpl) : templateForm.content;
     const name = tpl?.name || templateForm.name || "Document";
     if (!content || content.replace(/<[^>]*>/g, "").trim() === "") {
       toast({ title: "Aucun contenu à exporter", variant: "destructive" });
@@ -1432,7 +1575,9 @@ export default function DocumentsPage() {
             <div
               className="p-6 border rounded-lg bg-white prose prose-sm max-w-none text-gray-700 leading-relaxed max-h-96 overflow-y-auto"
               dangerouslySetInnerHTML={{
-                __html: DOMPurify.sanitize(previewTemplate?.content || "<p>Aucun contenu</p>"),
+                __html: DOMPurify.sanitize(
+                  getTemplatePreview(previewTemplate ? getTemplateContent(previewTemplate) : "") || "<p>Aucun contenu</p>"
+                ),
               }}
             />
           </div>

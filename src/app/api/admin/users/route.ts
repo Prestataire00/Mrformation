@@ -59,58 +59,15 @@ export async function GET() {
     return NextResponse.json({ error: sanitizeDbError(profilesRes.error, "fetch users") }, { status: 500 });
   }
 
-  // Start with profiles (auth users)
-  const allUsers: Array<{
-    id: string;
-    first_name: string;
-    last_name: string;
-    email: string;
-    phone: string | null;
-    role: string;
-    avatar_url: string | null;
-    created_at: string;
-    source: string;
-  }> = (profilesRes.data ?? []).map((p) => ({
+  // Only return auth users (profiles) — learners/trainers without accounts
+  // are managed from their own dedicated pages (Apprenants, Formateurs)
+  const allUsers = (profilesRes.data ?? []).map((p) => ({
     ...p,
-    source: "profile",
+    source: "profile" as const,
+    // Enrich with learner/trainer link info
+    linked_learner: (learnersRes.data ?? []).find((l) => l.email && l.email.toLowerCase() === p.email?.toLowerCase()),
+    linked_trainer: (trainersRes.data ?? []).find((t) => t.email && t.email.toLowerCase() === p.email?.toLowerCase()),
   }));
-
-  // Track emails already present from profiles to avoid duplicates
-  const existingEmails = new Set(allUsers.map((u) => u.email?.toLowerCase()));
-
-  // Add learners not already in profiles
-  for (const l of learnersRes.data ?? []) {
-    if (l.email && existingEmails.has(l.email.toLowerCase())) continue;
-    allUsers.push({
-      id: l.id,
-      first_name: l.first_name,
-      last_name: l.last_name,
-      email: l.email ?? "",
-      phone: l.phone ?? null,
-      role: "learner",
-      avatar_url: null,
-      created_at: l.created_at,
-      source: "learner",
-    });
-    if (l.email) existingEmails.add(l.email.toLowerCase());
-  }
-
-  // Add trainers not already in profiles
-  for (const t of trainersRes.data ?? []) {
-    if (t.email && existingEmails.has(t.email.toLowerCase())) continue;
-    allUsers.push({
-      id: t.id,
-      first_name: t.first_name,
-      last_name: t.last_name,
-      email: t.email ?? "",
-      phone: t.phone ?? null,
-      role: "trainer",
-      avatar_url: null,
-      created_at: t.created_at,
-      source: "trainer",
-    });
-    if (t.email) existingEmails.add(t.email.toLowerCase());
-  }
 
   return NextResponse.json({ data: allUsers });
 }

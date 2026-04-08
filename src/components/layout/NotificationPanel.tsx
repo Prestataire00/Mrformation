@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, Clock, AlertTriangle, FileText, CheckCircle, X } from "lucide-react";
+import { Bell, Clock, AlertTriangle, FileText, CheckCircle, X, UserX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -18,6 +18,9 @@ const NOTIFICATION_ICONS: Record<string, React.ElementType> = {
   task_due_soon: Clock,
   quote_followup: FileText,
   quote_expiring: AlertTriangle,
+  prospect_dormant: UserX,
+  prospect_inactive: UserX,
+  task_reminder: Clock,
   general: Bell,
 };
 
@@ -27,6 +30,9 @@ const NOTIFICATION_COLORS: Record<string, string> = {
   task_due_soon: "text-blue-500",
   quote_followup: "text-orange-500",
   quote_expiring: "text-red-500",
+  prospect_dormant: "text-orange-500",
+  prospect_inactive: "text-orange-400",
+  task_reminder: "text-blue-500",
   general: "text-gray-500",
 };
 

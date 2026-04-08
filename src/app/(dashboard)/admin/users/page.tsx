@@ -339,17 +339,11 @@ export default function UsersPage() {
 
   async function handleDelete(u: UserProfile) {
     if (!canDeleteUser(u)) return;
-    if (!confirm(`Supprimer l'utilisateur ${u.first_name} ${u.last_name} ? Cette action est irréversible.`)) return;
+    if (!confirm(`Supprimer le compte utilisateur de ${u.first_name} ${u.last_name} ?\n\nCela supprime uniquement l'accès à la plateforme. Les fiches formateur/apprenant/entreprise ne seront pas affectées.`)) return;
     setDeleting(u.id);
 
-    if (u.source === "profile") {
-      // Use the API to delete both profile and auth user
-      await fetch(`/api/admin/users/${u.id}`, { method: "DELETE" });
-    } else {
-      // For learners/trainers without auth accounts, delete directly
-      const table = u.source === "learner" ? "learners" : "trainers";
-      await supabase.from(table).delete().eq("id", u.id);
-    }
+    // Only delete auth profile — never delete learners/trainers/clients directly
+    await fetch(`/api/admin/users/${u.id}`, { method: "DELETE" });
 
     setUsers((prev) => prev.filter((x) => x.id !== u.id));
     setDeleting(null);
@@ -694,7 +688,7 @@ export default function UsersPage() {
                                 )}
 
                                 {/* Changer le mot de passe (utilisateurs auth uniquement, respect hiérarchie) */}
-                                {u.source === "profile" && (isSuperAdmin || (u.role !== "admin" && u.role !== "super_admin")) && (
+                                {(isSuperAdmin || (u.role !== "admin" && u.role !== "super_admin")) && (
                                   <button
                                     onClick={() => {
                                       setPasswordModal({ userId: u.id, name: `${u.first_name} ${u.last_name}` });
@@ -884,7 +878,6 @@ export default function UsersPage() {
                 <select
                   value={editForm.role}
                   onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
-                  disabled={editModal.source !== "profile"}
                   className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-400"
                 >
                   <option value="learner">Apprenant</option>
@@ -894,9 +887,6 @@ export default function UsersPage() {
                   {isSuperAdmin && <option value="admin">Administrateur</option>}
                   {isSuperAdmin && <option value="super_admin">Organisme</option>}
                 </select>
-                {editModal.source !== "profile" && (
-                  <p className="text-xs text-gray-400 mt-1">Le rôle ne peut être modifié que pour les utilisateurs avec un compte.</p>
-                )}
                 {!isSuperAdmin && (editModal.role === "admin" || editModal.role === "super_admin") && (
                   <p className="text-xs text-amber-600 mt-1">Seul un Organisme peut modifier le rôle d&apos;un administrateur.</p>
                 )}
