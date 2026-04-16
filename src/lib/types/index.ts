@@ -675,6 +675,9 @@ export interface CrmProspect {
   score?: number;
   naf_code: string | null;
   amount: number | null;
+  address: string | null;
+  city: string | null;
+  postal_code: string | null;
   created_at: string;
   updated_at: string;
   assignee?: Profile;

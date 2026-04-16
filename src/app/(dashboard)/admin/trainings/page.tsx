@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { SearchSelect } from "@/components/ui/search-select";
 import { useToast } from "@/components/ui/use-toast";
 import {
   Dialog,
@@ -399,15 +400,18 @@ export default function FormationsPage() {
                 <SelectItem value="inter">INTER — Inter-entreprises</SelectItem>
               </SelectContent>
             </Select>
-            <Select value={formData.program_id || "none"} onValueChange={(v) => setFormData((f) => ({ ...f, program_id: v === "none" ? "" : v }))}>
-              <SelectTrigger className="h-8 text-sm w-48"><SelectValue placeholder="Programme (optionnel)" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Aucun programme</SelectItem>
-                {programs.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>{p.title}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="w-48">
+              <SearchSelect
+                options={programs.map((p) => ({ value: p.id, label: p.title, sublabel: p.description || "" }))}
+                onSelect={(v) => setFormData((f) => ({ ...f, program_id: v }))}
+                placeholder="Programme (optionnel)"
+              />
+              {formData.program_id && (
+                <button onClick={() => setFormData((f) => ({ ...f, program_id: "" }))} className="text-[10px] text-gray-400 hover:text-gray-600 mt-0.5">
+                  {programs.find(p => p.id === formData.program_id)?.title} ✕
+                </button>
+              )}
+            </div>
             <label className="flex items-center gap-2 text-sm cursor-pointer">
               <Checkbox
                 checked={formData.is_subcontracted}

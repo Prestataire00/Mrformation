@@ -124,6 +124,18 @@ export async function POST(request: NextRequest) {
           }
         }
 
+        if (recipientType === "companies") {
+          const { data: companyLinks } = await supabase
+            .from("formation_companies")
+            .select("client_id, email, client:clients!formation_companies_client_id_fkey(id, company_name)")
+            .eq("session_id", session.id);
+          for (const cl of companyLinks ?? []) {
+            const c = cl.client as unknown as { id: string; company_name: string } | null;
+            const companyEmail = cl.email;
+            if (c && companyEmail) recipients.push({ id: c.id, email: companyEmail, first_name: c.company_name, last_name: "", type: "learner" });
+          }
+        }
+
         const tpl = rule.template_id ? templateMap[rule.template_id] : null;
 
         for (const recipient of recipients) {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
 import {
@@ -864,6 +865,7 @@ function TaskRow({
   profiles, prospects, clients,
   completingTask, completionNotes, onCompletionNotesChange, onConfirmComplete, onCancelComplete,
 }: TaskRowProps) {
+  const router = useRouter();
   const isCompleted = task.status === "completed";
   const profileName = getProfileName(task.assigned_to);
 
@@ -959,18 +961,31 @@ function TaskRow({
 
   const priorityDotColor = task.priority === "high" ? "bg-red-500" : task.priority === "medium" ? "bg-amber-400" : "bg-gray-300";
 
+  const handleRowClick = () => {
+    if (task.prospect_id) {
+      router.push(`/admin/crm/prospects/${task.prospect_id}`);
+    } else if (task.client_id) {
+      router.push(`/admin/clients/${task.client_id}`);
+    } else {
+      onEdit();
+    }
+  };
+
   return (
     <div
+      onClick={handleRowClick}
       className={cn(
-        "flex items-center gap-3 rounded-lg border bg-white px-3 py-2.5 hover:bg-gray-50/80 transition-colors",
+        "flex items-center gap-3 rounded-lg border bg-white px-3 py-2.5 hover:bg-gray-50/80 transition-colors cursor-pointer",
         isCompleted && "opacity-50"
       )}
     >
-      <Checkbox
-        checked={isCompleted}
-        onCheckedChange={onToggleComplete}
-        className="flex-shrink-0"
-      />
+      <div onClick={(e) => e.stopPropagation()}>
+        <Checkbox
+          checked={isCompleted}
+          onCheckedChange={onToggleComplete}
+          className="flex-shrink-0"
+        />
+      </div>
       <span className={cn("h-2 w-2 rounded-full flex-shrink-0", priorityDotColor)} title={TASK_PRIORITY_LABELS[task.priority]} />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">

@@ -154,6 +154,9 @@ export default function ProspectDetailPage() {
     source: "",
     notes: "",
     amount: "",
+    address: "",
+    city: "",
+    postal_code: "",
   });
   const [newNote, setNewNote] = useState("");
 
@@ -338,6 +341,9 @@ export default function ProspectDetailPage() {
       source: prospect.source ?? "",
       notes: prospect.notes ?? "",
       amount: prospect.amount ? String(prospect.amount) : "",
+      address: prospect.address ?? "",
+      city: prospect.city ?? "",
+      postal_code: prospect.postal_code ?? "",
     });
   }
 
@@ -356,6 +362,9 @@ export default function ProspectDetailPage() {
         source: editForm.source || null,
         notes: editForm.notes.trim() || null,
         amount: editForm.amount ? parseFloat(editForm.amount) : null,
+        address: editForm.address.trim() || null,
+        city: editForm.city.trim() || null,
+        postal_code: editForm.postal_code.trim() || null,
         updated_at: new Date().toISOString(),
       })
       .eq("id", prospect.id);
@@ -623,6 +632,9 @@ export default function ProspectDetailPage() {
           siret: prospect.siret || null,
           email: prospect.email || null,
           phone: prospect.phone || null,
+          address: prospect.address || null,
+          city: prospect.city || null,
+          postal_code: prospect.postal_code || null,
           status: "active",
         })
         .select("id")

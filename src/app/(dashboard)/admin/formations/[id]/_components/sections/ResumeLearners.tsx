@@ -69,9 +69,16 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
   const handleAdd = async () => {
     if (!selectedLearnerId) return;
     setSaving(true);
+    // Auto-link to company for INTRA formations with a single company
+    const companies = formation.formation_companies || [];
+    const autoClientId = formation.type === "intra" && companies.length === 1
+      ? companies[0].client_id
+      : null;
+
     const { error } = await supabase.from("enrollments").insert({
       session_id: formation.id,
       learner_id: selectedLearnerId,
+      client_id: autoClientId,
       status: "registered",
     });
     setSaving(false);
@@ -105,10 +112,13 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
         .single();
       if (error) throw error;
 
-      // Auto-enroll the new learner
+      // Auto-enroll the new learner (auto-link company for INTRA)
+      const fcs = formation.formation_companies || [];
+      const autoClient = formation.type === "intra" && fcs.length === 1 ? fcs[0].client_id : null;
       await supabase.from("enrollments").insert({
         session_id: formation.id,
         learner_id: data.id,
+        client_id: autoClient,
         status: "registered",
       });
 

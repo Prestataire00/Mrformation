@@ -22,6 +22,7 @@ import { useEntity } from "@/contexts/EntityContext";
 import { getDefaultTemplate } from "@/lib/document-templates-defaults";
 import { resolveVariables } from "@/lib/utils/resolve-variables";
 import { exportHtmlToPDF, exportHtmlToPDFBase64 } from "@/lib/pdf-export";
+import { cn } from "@/lib/utils";
 import type {
   Session, ConventionDocType, ConventionOwnerType,
   FormationConventionDocument, DocumentTemplate,
@@ -33,6 +34,23 @@ interface Props {
 }
 
 // ===== CONSTANTS =====
+
+const DOC_COLORS: Record<string, string> = {
+  convocation: "border-l-blue-500",
+  certificat_realisation: "border-l-green-500",
+  attestation_assiduite: "border-l-green-400",
+  feuille_emargement: "border-l-amber-500",
+  feuille_emargement_collectif: "border-l-amber-500",
+  micro_certificat: "border-l-emerald-500",
+  cgv: "border-l-gray-400",
+  politique_confidentialite: "border-l-gray-400",
+  reglement_interieur: "border-l-gray-400",
+  programme_formation: "border-l-gray-400",
+  convention_entreprise: "border-l-purple-500",
+  convention_intervention: "border-l-purple-400",
+  contrat_sous_traitance: "border-l-rose-500",
+  custom: "border-l-slate-500",
+};
 
 const DOC_LABELS: Record<string, string> = {
   convocation: "CONVOCATION À LA FORMATION",
@@ -689,7 +707,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     const isSaving = saving === doc.id || saving === `date-${doc.id}` || saving === `sign-${doc.id}`;
 
     return (
-      <div key={doc.id} className="flex items-center justify-between py-2 border-b last:border-b-0 gap-2">
+      <div key={doc.id} className={cn("flex items-center justify-between py-2 border-b last:border-b-0 gap-2 border-l-2 pl-3", DOC_COLORS[docType] || "border-l-slate-300")}>
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-xs font-medium truncate">{label}</span>
           {renderStatusBadges(doc)}
@@ -763,7 +781,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     const label = DOC_LABELS[docType] || docType;
 
     return (
-      <div key={doc.id} className="flex items-center justify-between py-2 border-b last:border-b-0 gap-2">
+      <div key={doc.id} className={cn("flex items-center justify-between py-2 border-b last:border-b-0 gap-2 border-l-2 pl-3", DOC_COLORS[docType] || "border-l-slate-300")}>
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-xs font-medium truncate">{label}</span>
           {renderStatusBadges(doc)}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo, useCallback } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
 import { Download, Loader2, CheckCircle } from "lucide-react";
@@ -280,7 +281,11 @@ export default function SuiviFacturesPage() {
                         <Badge variant="outline" className="ml-2 text-xs border-purple-300 text-purple-600">Avoir</Badge>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-[#374151] text-xs">{inv.session_title}</td>
+                    <td className="px-4 py-3 text-xs">
+                      <Link href={`/admin/formations/${inv.session_id}`} className="text-[#374151] hover:underline font-medium">
+                        {inv.session_title}
+                      </Link>
+                    </td>
                     <td className="px-4 py-3 text-gray-700">{inv.recipient_name}</td>
                     <td className="px-4 py-3 text-gray-600 text-xs">{TYPE_LABELS[inv.recipient_type] || inv.recipient_type}</td>
                     <td className={`px-4 py-3 text-right font-medium ${inv.is_avoir ? "text-purple-600" : "text-gray-900"}`}>

@@ -42,6 +42,7 @@ import {
   Monitor,
   Users,
   Upload,
+  Download,
   FileText,
   Loader2,
   ExternalLink,
@@ -102,6 +103,7 @@ export default function TrainerProfilePage() {
     hourly_rate: "",
     availability_notes: "",
     siret: "",
+    nda: "",
     contract_type: "",
     status: "active",
     legal_status: "",
@@ -216,6 +218,7 @@ export default function TrainerProfilePage() {
       hourly_rate: t.hourly_rate?.toString() || "",
       availability_notes: t.availability_notes || "",
       siret: (t as any).siret || "",
+      nda: (t as any).nda || "",
       contract_type: (t as any).contract_type || "",
       status: (t as any).status || "active",
       legal_status: (t as any).legal_status || "",
@@ -279,6 +282,7 @@ export default function TrainerProfilePage() {
         hourly_rate: formData.hourly_rate ? parseFloat(formData.hourly_rate) : null,
         availability_notes: formData.availability_notes.trim() || null,
         siret: formData.siret.trim() || null,
+        nda: formData.nda?.trim() || null,
         contract_type: formData.contract_type || null,
         status: formData.status || "active",
         legal_status: formData.legal_status || null,
@@ -474,6 +478,7 @@ export default function TrainerProfilePage() {
       <Tabs defaultValue="profil">
         <TabsList className="grid grid-cols-3 w-full max-w-md">
           <TabsTrigger value="profil">Profil</TabsTrigger>
+          <TabsTrigger value="documents">Documents</TabsTrigger>
           <TabsTrigger value="competences">Compétences</TabsTrigger>
           <TabsTrigger value="sessions">Sessions</TabsTrigger>
         </TabsList>
@@ -651,6 +656,16 @@ export default function TrainerProfilePage() {
                   />
                 </div>
                 <div className="space-y-1.5">
+                  <Label>NDA (N° déclaration d&apos;activité)</Label>
+                  <Input
+                    value={formData.nda || ""}
+                    onChange={(e) => setFormData((p) => ({ ...p, nda: e.target.value }))}
+                    placeholder="Ex: 93132013113"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
                   <Label>Statut juridique</Label>
                   <Select
                     value={formData.legal_status}
@@ -822,6 +837,11 @@ export default function TrainerProfilePage() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* DOCUMENTS TAB */}
+        <TabsContent value="documents" className="mt-6">
+          <TrainerDocumentsSection trainerId={trainer.id} entityId={trainer.entity_id} />
         </TabsContent>
 
         {/* COMPETENCES TAB */}
@@ -1034,5 +1054,144 @@ export default function TrainerProfilePage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+// ── Trainer Documents Section ─────────────────────────────────────────────
+
+function TrainerDocumentsSection({ trainerId, entityId }: { trainerId: string; entityId: string }) {
+  const supabase = createClient();
+  const { toast } = useToast();
+  const [docs, setDocs] = useState<{ id: string; doc_type: string; file_name: string; created_at: string }[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [selectedType, setSelectedType] = useState("nda");
+
+  const DOC_TYPE_LABELS: Record<string, string> = {
+    nda: "NDA / Déclaration d'activité",
+    urssaf: "Attestation URSSAF",
+    diplome: "Diplôme / Certification",
+    cv: "CV",
+    autre: "Autre",
+  };
+
+  const fetchDocs = useCallback(async () => {
+    const { data } = await supabase
+      .from("trainer_documents")
+      .select("id, doc_type, file_name, created_at")
+      .eq("trainer_id", trainerId)
+      .eq("scope", "admin")
+      .order("created_at", { ascending: false });
+    if (data) setDocs(data);
+  }, [trainerId, supabase]);
+
+  useEffect(() => { fetchDocs(); }, [fetchDocs]);
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const ext = file.name.split(".").pop();
+      const path = `trainer-docs/${trainerId}/${Date.now()}.${ext}`;
+      const { error: uploadErr } = await supabase.storage.from("documents").upload(path, file);
+      if (uploadErr) throw uploadErr;
+
+      const { error: insertErr } = await supabase.from("trainer_documents").insert({
+        trainer_id: trainerId,
+        entity_id: entityId,
+        scope: "admin",
+        doc_type: selectedType,
+        file_name: file.name,
+        file_type: file.type,
+        file_size: file.size,
+        file_path: path,
+      });
+      if (insertErr) throw insertErr;
+
+      toast({ title: "Document ajouté" });
+      fetchDocs();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Erreur";
+      toast({ title: "Erreur", description: msg, variant: "destructive" });
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  };
+
+  const handleDelete = async (docId: string) => {
+    if (!confirm("Supprimer ce document ?")) return;
+    const { error } = await supabase.from("trainer_documents").delete().eq("id", docId);
+    if (error) {
+      toast({ title: "Erreur", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Document supprimé" });
+      fetchDocs();
+    }
+  };
+
+  const handleDownload = async (doc: { file_name: string; id: string }) => {
+    try {
+      const res = await fetch(`/api/trainer/documents/${doc.id}/file-url`);
+      const { url } = await res.json();
+      if (url) window.open(url, "_blank");
+    } catch {
+      toast({ title: "Erreur de téléchargement", variant: "destructive" });
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Documents ({docs.length})</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Upload zone */}
+        <div className="flex items-center gap-3">
+          <Select value={selectedType} onValueChange={setSelectedType}>
+            <SelectTrigger className="h-8 text-sm w-48"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {Object.entries(DOC_TYPE_LABELS).map(([k, v]) => (
+                <SelectItem key={k} value={k}>{v}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <label className="cursor-pointer">
+            <input type="file" className="hidden" onChange={handleUpload} disabled={uploading} />
+            <Button size="sm" variant="outline" className="gap-1.5" asChild>
+              <span>
+                {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                {uploading ? "Envoi..." : "Ajouter un document"}
+              </span>
+            </Button>
+          </label>
+        </div>
+
+        {/* Document list */}
+        {docs.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-6">Aucun document</p>
+        ) : (
+          <div className="divide-y">
+            {docs.map((doc) => (
+              <div key={doc.id} className="flex items-center justify-between py-2">
+                <div className="flex items-center gap-3">
+                  <Badge variant="outline" className="text-[10px]">{DOC_TYPE_LABELS[doc.doc_type] || doc.doc_type}</Badge>
+                  <span className="text-sm">{doc.file_name}</span>
+                  <span className="text-xs text-muted-foreground">{new Date(doc.created_at).toLocaleDateString("fr-FR")}</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => handleDownload(doc)}>
+                    <Download className="h-3 w-3" />
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-6 text-xs text-red-600" onClick={() => handleDelete(doc.id)}>
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
