@@ -195,6 +195,7 @@ export interface Session {
   is_planned: boolean;
   is_completed: boolean;
   is_dpc: boolean;
+  is_subcontracted: boolean;
   catalog_pre_registration: boolean;
   updated_at: string;
   created_at: string;
@@ -242,6 +243,10 @@ export interface FormationTrainer {
   trainer_id: string;
   role: string;
   hourly_rate: number | null;
+  daily_rate: number | null;
+  hours_done: number | null;
+  dates_done: string | null;
+  notes: string | null;
   created_at: string;
   trainer?: Trainer;
 }
@@ -444,6 +449,8 @@ export interface Enrollment {
   status: EnrollmentStatus;
   completion_rate: number;
   enrolled_at: string;
+  price_per_learner: number | null;
+  hours_per_learner: number | null;
   session?: Session;
   learner?: Learner;
   client?: Client;

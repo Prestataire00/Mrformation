@@ -895,6 +895,15 @@ export default function ClientDetailPage() {
       <div className="flex flex-wrap gap-2">
         <Button
           size="sm"
+          variant="outline"
+          className="gap-1.5 text-xs"
+          onClick={() => router.push(`/admin/crm/quotes/new?client_id=${clientId}`)}
+        >
+          <FileText className="h-3.5 w-3.5" />
+          Nouveau devis
+        </Button>
+        <Button
+          size="sm"
           className="gap-1.5 text-xs"
           style={{ background: "#374151" }}
           onClick={() => {

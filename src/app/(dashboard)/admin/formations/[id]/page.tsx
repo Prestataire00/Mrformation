@@ -25,6 +25,7 @@ import { TabSatisfaction } from "./_components/TabSatisfaction";
 import { TabConventionDocs } from "./_components/TabConventionDocs";
 import { TabElearning } from "./_components/TabElearning";
 import { TabFinances } from "./_components/TabFinances";
+import { TabQualiopi } from "./_components/TabQualiopi";
 
 const MODE_LABELS: Record<string, string> = {
   presentiel: "Présentiel",
@@ -161,6 +162,7 @@ export default function FormationDetailPage() {
             { value: "suivi", label: "Suivi" },
             { value: "communication", label: "Communication" },
             { value: "documents", label: "Documents" },
+            { value: "qualiopi", label: "Qualiopi" },
             { value: "finances", label: "Finances" },
           ].map((tab) => (
             <TabsTrigger
@@ -231,6 +233,11 @@ export default function FormationDetailPage() {
             <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Programme</h3>
             <TabProgramme formation={formation} onRefresh={fetchFormation} />
           </div>
+        </TabsContent>
+
+        {/* ═══ QUALIOPI ═══ */}
+        <TabsContent value="qualiopi" className="mt-6">
+          <TabQualiopi formation={formation} onRefresh={fetchFormation} />
         </TabsContent>
 
         {/* ═══ FINANCES ═══ */}

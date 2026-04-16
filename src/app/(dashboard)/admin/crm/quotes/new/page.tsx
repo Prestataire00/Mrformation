@@ -65,6 +65,7 @@ export default function NewQuotePage() {
   const { entityId } = useEntity();
 
   const prospectId = searchParams.get("prospect_id");
+  const clientId = searchParams.get("client_id");
   const editId = searchParams.get("edit");
   const learnerName = searchParams.get("learner_name");
   const [prospectName, setProspectName] = useState("");
@@ -88,6 +89,19 @@ export default function NewQuotePage() {
     program_id: "",
     lines: [{ description: "", quantity: "1", unit_price: "" }],
   });
+
+  // Fetch client name if client_id is provided
+  useEffect(() => {
+    if (!clientId || editId) return;
+    (async () => {
+      const { data } = await supabase
+        .from("clients")
+        .select("company_name")
+        .eq("id", clientId)
+        .single();
+      if (data) setProspectName(data.company_name);
+    })();
+  }, [clientId, editId, supabase]);
 
   // Fetch prospect name, amount & generate reference (only in creation mode)
   useEffect(() => {
@@ -337,6 +351,7 @@ export default function NewQuotePage() {
         const payload: Record<string, unknown> = {
           reference: form.reference.trim() || `DEV-${fiscalYear}-${String(nextNumber).padStart(3, "0")}`,
           prospect_id: prospectId || null,
+          client_id: clientId || null,
           amount: calcTotal(),
           status: "draft",
           valid_until: form.date_echeance || null,
@@ -382,9 +397,11 @@ export default function NewQuotePage() {
         if (linesErr) console.error("Error inserting quote lines:", linesErr);
       }
 
-      // Navigate back to prospect or quotes list
+      // Navigate back to source or quotes list
       if (prospectId) {
         router.push(`/admin/crm/prospects/${prospectId}`);
+      } else if (clientId) {
+        router.push(`/admin/clients/${clientId}`);
       } else {
         router.push("/admin/crm/quotes");
       }

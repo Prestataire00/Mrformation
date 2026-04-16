@@ -9,9 +9,7 @@ import { Label } from "@/components/ui/label";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+import { SearchSelect } from "@/components/ui/search-select";
 import { useToast } from "@/components/ui/use-toast";
 import { formatCurrency } from "@/lib/utils";
 import type { Session, Client, FormationCompany } from "@/lib/types";
@@ -149,18 +147,20 @@ export function ResumeCompanies({ formation, onRefresh }: Props) {
           <div className="space-y-4">
             <div>
               <Label>Entreprise</Label>
-              <Select value={selectedClientId} onValueChange={setSelectedClientId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Sélectionner une entreprise" />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableClients.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.company_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchSelect
+                options={availableClients.map((c) => ({
+                  value: c.id,
+                  label: c.company_name,
+                  sublabel: c.siret || "",
+                }))}
+                onSelect={setSelectedClientId}
+                placeholder="Rechercher une entreprise..."
+              />
+              {selectedClientId && (
+                <p className="text-xs text-green-700 bg-green-50 rounded px-2 py-1 mt-1">
+                  {allClients.find((c) => c.id === selectedClientId)?.company_name}
+                </p>
+              )}
             </div>
             <div>
               <Label>Montant (EUR)</Label>

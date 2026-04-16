@@ -2,19 +2,18 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Plus, Trash2, Download, Loader2 } from "lucide-react";
+import { Plus, Trash2, Download, Loader2, UserPlus } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+import { SearchSelect } from "@/components/ui/search-select";
 import { useToast } from "@/components/ui/use-toast";
 import { getInitials } from "@/lib/utils";
-import type { Session, Learner, Enrollment } from "@/lib/types";
+import type { Session, Learner } from "@/lib/types";
 
 const ENROLLMENT_STATUS_LABELS: Record<string, string> = {
   registered: "Inscrit",
@@ -40,24 +39,32 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
   const supabase = createClient();
   const [allLearners, setAllLearners] = useState<Learner[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [selectedLearnerId, setSelectedLearnerId] = useState("");
-  const [selectedClientId, setSelectedClientId] = useState("");
   const [saving, setSaving] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
+  // Create learner form
+  const [newFirstName, setNewFirstName] = useState("");
+  const [newLastName, setNewLastName] = useState("");
+  const [newEmail, setNewEmail] = useState("");
+  const [creatingLearner, setCreatingLearner] = useState(false);
+
   const enrollments = formation.enrollments || [];
 
+  const fetchLearners = async () => {
+    const { data } = await supabase
+      .from("learners")
+      .select("*")
+      .eq("entity_id", formation.entity_id)
+      .order("last_name");
+    if (data) setAllLearners(data);
+  };
+
   useEffect(() => {
-    const fetch = async () => {
-      const { data } = await supabase
-        .from("learners")
-        .select("*")
-        .eq("entity_id", formation.entity_id)
-        .order("last_name");
-      if (data) setAllLearners(data);
-    };
-    fetch();
-  }, [formation.entity_id, supabase]);
+    fetchLearners();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formation.entity_id]);
 
   const handleAdd = async () => {
     if (!selectedLearnerId) return;
@@ -65,7 +72,6 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
     const { error } = await supabase.from("enrollments").insert({
       session_id: formation.id,
       learner_id: selectedLearnerId,
-      client_id: selectedClientId || null,
       status: "registered",
     });
     setSaving(false);
@@ -79,8 +85,45 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
       toast({ title: "Apprenant ajouté" });
       setDialogOpen(false);
       setSelectedLearnerId("");
-      setSelectedClientId("");
       onRefresh();
+    }
+  };
+
+  const handleCreateLearner = async () => {
+    if (!newFirstName.trim() || !newLastName.trim()) return;
+    setCreatingLearner(true);
+    try {
+      const { data, error } = await supabase
+        .from("learners")
+        .insert({
+          first_name: newFirstName.trim(),
+          last_name: newLastName.trim(),
+          email: newEmail.trim() || null,
+          entity_id: formation.entity_id,
+        })
+        .select("id")
+        .single();
+      if (error) throw error;
+
+      // Auto-enroll the new learner
+      await supabase.from("enrollments").insert({
+        session_id: formation.id,
+        learner_id: data.id,
+        status: "registered",
+      });
+
+      toast({ title: "Apprenant créé et inscrit" });
+      setCreateDialogOpen(false);
+      setNewFirstName("");
+      setNewLastName("");
+      setNewEmail("");
+      fetchLearners();
+      onRefresh();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Erreur";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
+    } finally {
+      setCreatingLearner(false);
     }
   };
 
@@ -104,7 +147,6 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
   };
 
   const handleExportExcel = () => {
-    // Export CSV simple
     const headers = ["Nom", "Prénom", "Email", "Téléphone", "Statut"];
     const rows = enrollments.map((e) => [
       e.learner?.last_name || "",
@@ -126,6 +168,14 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
   // Filtrer les apprenants déjà inscrits
   const enrolledIds = enrollments.map((e) => e.learner_id).filter(Boolean);
   const availableLearners = allLearners.filter((l) => !enrolledIds.includes(l.id));
+
+  const learnerOptions = availableLearners.map((l) => ({
+    value: l.id,
+    label: `${l.last_name?.toUpperCase()} ${l.first_name}`,
+    sublabel: l.email || "",
+  }));
+
+  const selectedLearner = allLearners.find((l) => l.id === selectedLearnerId);
 
   return (
     <>
@@ -170,8 +220,11 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
           <Button size="sm" onClick={() => setDialogOpen(true)}>
             <Plus className="h-4 w-4 mr-1" /> Ajouter un Apprenant
           </Button>
+          <Button size="sm" variant="outline" onClick={() => setCreateDialogOpen(true)}>
+            <UserPlus className="h-4 w-4 mr-1" /> Créer un apprenant
+          </Button>
           <Button size="sm" variant="outline" onClick={handleExportExcel}>
-            <Download className="h-4 w-4 mr-1" /> Exporter la liste (CSV)
+            <Download className="h-4 w-4 mr-1" /> Exporter (CSV)
           </Button>
         </div>
       </div>
@@ -184,18 +237,17 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Select value={selectedLearnerId} onValueChange={setSelectedLearnerId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Sélectionner un apprenant" />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableLearners.map((l) => (
-                    <SelectItem key={l.id} value={l.id}>
-                      {l.last_name?.toUpperCase()} {l.first_name} — {l.email || ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <label className="text-sm font-medium mb-1.5 block">Apprenant</label>
+              <SearchSelect
+                options={learnerOptions}
+                onSelect={setSelectedLearnerId}
+                placeholder="Rechercher un apprenant..."
+              />
+              {selectedLearner && (
+                <p className="text-xs text-green-700 bg-green-50 rounded px-2 py-1 mt-1">
+                  {selectedLearner.last_name?.toUpperCase()} {selectedLearner.first_name} — {selectedLearner.email || ""}
+                </p>
+              )}
             </div>
           </div>
           <DialogFooter>
@@ -203,6 +255,36 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
             <Button onClick={handleAdd} disabled={saving || !selectedLearnerId}>
               {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Ajouter
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Learner Dialog */}
+      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Créer un apprenant</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="text-sm font-medium mb-1 block">Prénom *</label>
+              <Input value={newFirstName} onChange={(e) => setNewFirstName(e.target.value)} placeholder="Prénom" />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Nom *</label>
+              <Input value={newLastName} onChange={(e) => setNewLastName(e.target.value)} placeholder="Nom" />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Email</label>
+              <Input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="email@exemple.com" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>Annuler</Button>
+            <Button onClick={handleCreateLearner} disabled={creatingLearner || !newFirstName.trim() || !newLastName.trim()}>
+              {creatingLearner && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Créer et inscrire
             </Button>
           </DialogFooter>
         </DialogContent>

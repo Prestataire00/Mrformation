@@ -13,6 +13,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { SearchSelect } from "@/components/ui/search-select";
 import { useToast } from "@/components/ui/use-toast";
 import { getInitials } from "@/lib/utils";
 import type { Session, Trainer, FormationTrainer } from "@/lib/types";
@@ -30,6 +31,7 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
   const [selectedTrainerId, setSelectedTrainerId] = useState("");
   const [selectedRole, setSelectedRole] = useState("formateur");
   const [selectedHourlyRate, setSelectedHourlyRate] = useState("");
+  const [selectedDailyRate, setSelectedDailyRate] = useState("");
   const [saving, setSaving] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
@@ -55,6 +57,7 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
       trainer_id: selectedTrainerId,
       role: selectedRole,
       hourly_rate: parseFloat(selectedHourlyRate) || null,
+      daily_rate: parseFloat(selectedDailyRate) || null,
     });
     setSaving(false);
     if (error) {
@@ -64,6 +67,7 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
       setDialogOpen(false);
       setSelectedTrainerId("");
       setSelectedHourlyRate("");
+      setSelectedDailyRate("");
       onRefresh();
     }
   };
@@ -91,6 +95,24 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
   const assignedIds = formationTrainers.map((ft) => ft.trainer_id);
   const availableTrainers = allTrainers.filter((t) => !assignedIds.includes(t.id));
 
+  const trainerOptions = availableTrainers.map((t) => ({
+    value: t.id,
+    label: `${t.last_name?.toUpperCase()} ${t.first_name}`,
+    sublabel: t.email || "",
+  }));
+
+  const handleSelectTrainer = (id: string) => {
+    setSelectedTrainerId(id);
+    const trainer = allTrainers.find((t) => t.id === id);
+    if (trainer?.hourly_rate != null) {
+      setSelectedHourlyRate(String(trainer.hourly_rate));
+    } else {
+      setSelectedHourlyRate("");
+    }
+  };
+
+  const selectedTrainer = allTrainers.find((t) => t.id === selectedTrainerId);
+
   return (
     <>
       <div className="space-y-3">
@@ -115,6 +137,9 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
                 <Badge variant="outline" className="text-xs">{ft.role}</Badge>
                 {ft.hourly_rate != null && (
                   <span className="text-xs text-muted-foreground">{ft.hourly_rate} €/h</span>
+                )}
+                {ft.daily_rate != null && (
+                  <span className="text-xs text-muted-foreground">{ft.daily_rate} €/j</span>
                 )}
               </div>
               <div className="flex items-center gap-2">
@@ -141,6 +166,7 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
           if (!open) {
             setSelectedTrainerId("");
             setSelectedHourlyRate("");
+            setSelectedDailyRate("");
           }
         }}>
         <DialogContent>
@@ -149,26 +175,17 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Select value={selectedTrainerId} onValueChange={(id) => {
-                  setSelectedTrainerId(id);
-                  const trainer = allTrainers.find((t) => t.id === id);
-                  if (trainer?.hourly_rate != null) {
-                    setSelectedHourlyRate(String(trainer.hourly_rate));
-                  } else {
-                    setSelectedHourlyRate("");
-                  }
-                }}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Sélectionner un formateur" />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableTrainers.map((t) => (
-                    <SelectItem key={t.id} value={t.id}>
-                      {t.last_name?.toUpperCase()} {t.first_name} — {t.email || ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <label className="text-sm font-medium mb-1.5 block">Formateur</label>
+              <SearchSelect
+                options={trainerOptions}
+                onSelect={handleSelectTrainer}
+                placeholder="Rechercher un formateur..."
+              />
+              {selectedTrainer && (
+                <p className="text-xs text-green-700 bg-green-50 rounded px-2 py-1 mt-1">
+                  {selectedTrainer.last_name?.toUpperCase()} {selectedTrainer.first_name}
+                </p>
+              )}
             </div>
             <div>
               <Select value={selectedRole} onValueChange={setSelectedRole}>
@@ -182,16 +199,29 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <label className="text-sm font-medium mb-1.5 block">Taux horaire (€/h)</label>
-              <Input
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="Ex : 50"
-                value={selectedHourlyRate}
-                onChange={(e) => setSelectedHourlyRate(e.target.value)}
-              />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium mb-1.5 block">Taux horaire (€/h)</label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="Ex : 50"
+                  value={selectedHourlyRate}
+                  onChange={(e) => setSelectedHourlyRate(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-1.5 block">Taux journalier (€/j)</label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="Ex : 400"
+                  value={selectedDailyRate}
+                  onChange={(e) => setSelectedDailyRate(e.target.value)}
+                />
+              </div>
             </div>
           </div>
           <DialogFooter>

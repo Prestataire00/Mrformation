@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/components/ui/use-toast";
 import {
   Dialog,
@@ -43,6 +44,10 @@ import {
   Loader2,
   Wifi,
   Monitor,
+  LayoutGrid,
+  LayoutList,
+  CheckCircle,
+  Briefcase,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -61,6 +66,7 @@ interface SessionCard {
   type: string | null;
   program_id: string | null;
   training_id: string | null;
+  is_subcontracted?: boolean;
   program?: { id: string; title: string; description: string | null } | null;
   training?: { title: string } | null;
   formation_trainers?: Array<{ trainer: { first_name: string; last_name: string } | null }>;
@@ -86,6 +92,7 @@ interface SessionFormData {
   visio_link: string;
   max_participants: string;
   notes: string;
+  is_subcontracted: boolean;
 }
 
 const emptyForm: SessionFormData = {
@@ -99,6 +106,7 @@ const emptyForm: SessionFormData = {
   visio_link: "",
   max_participants: "",
   notes: "",
+  is_subcontracted: false,
 };
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -139,6 +147,9 @@ export default function FormationsPage() {
   const [saving, setSaving] = useState(false);
   const [programs, setPrograms] = useState<ProgramOption[]>([]);
 
+  // View mode
+  const [viewMode, setViewMode] = useState<"grid" | "kanban">("grid");
+
   // Delete
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [sessionToDelete, setSessionToDelete] = useState<SessionCard | null>(null);
@@ -152,7 +163,7 @@ export default function FormationsPage() {
     const { data, error } = await supabase
       .from("sessions")
       .select(`
-        id, title, start_date, end_date, location, mode, status, max_participants, notes, type, program_id, training_id,
+        id, title, start_date, end_date, location, mode, status, max_participants, notes, type, program_id, training_id, is_subcontracted,
         program:programs(id, title, description),
         training:trainings(title),
         formation_trainers(trainer:trainers(first_name, last_name)),
@@ -259,6 +270,7 @@ export default function FormationsPage() {
       max_participants: formData.max_participants ? parseInt(formData.max_participants) : null,
       notes: formData.notes.trim() || null,
       status: "upcoming",
+      is_subcontracted: formData.is_subcontracted,
     };
 
     const { error } = await supabase.from("sessions").insert(payload);
@@ -271,6 +283,23 @@ export default function FormationsPage() {
       fetchSessions();
     }
     setSaving(false);
+  }
+
+  // ── Complete session (Kanban) ──────────────────────────────────────────────
+
+  async function handleCompleteSession(sessionId: string, e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    const { error } = await supabase
+      .from("sessions")
+      .update({ status: "completed", is_completed: true })
+      .eq("id", sessionId);
+    if (error) {
+      toast({ title: "Erreur", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Session marquée comme terminée" });
+      fetchSessions();
+    }
   }
 
   // ── Delete session ────────────────────────────────────────────────────────
@@ -299,6 +328,24 @@ export default function FormationsPage() {
         <h1 className="text-lg font-bold text-gray-900">Formations</h1>
         <span className="text-xs text-gray-400">{sessions.length} session{sessions.length !== 1 ? "s" : ""}</span>
         <div className="flex-1" />
+        <div className="flex items-center gap-1 border rounded-md p-0.5">
+          <Button
+            variant={viewMode === "grid" ? "default" : "ghost"}
+            size="sm"
+            className="h-7 w-7 p-0"
+            onClick={() => setViewMode("grid")}
+          >
+            <LayoutGrid className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant={viewMode === "kanban" ? "default" : "ghost"}
+            size="sm"
+            className="h-7 w-7 p-0"
+            onClick={() => setViewMode("kanban")}
+          >
+            <LayoutList className="h-3.5 w-3.5" />
+          </Button>
+        </div>
         <Button size="sm" onClick={openCreateForm} className="gap-1.5 h-8 text-xs">
           <Plus className="h-3.5 w-3.5" />
           Planifier une session
@@ -344,7 +391,14 @@ export default function FormationsPage() {
               </SelectContent>
             </Select>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3 flex-wrap">
+            <Select value={formData.type} onValueChange={(v) => setFormData((f) => ({ ...f, type: v as "intra" | "inter" }))}>
+              <SelectTrigger className="h-8 text-sm w-40"><SelectValue placeholder="Type" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="intra">INTRA — Chez le client</SelectItem>
+                <SelectItem value="inter">INTER — Inter-entreprises</SelectItem>
+              </SelectContent>
+            </Select>
             <Select value={formData.program_id || "none"} onValueChange={(v) => setFormData((f) => ({ ...f, program_id: v === "none" ? "" : v }))}>
               <SelectTrigger className="h-8 text-sm w-48"><SelectValue placeholder="Programme (optionnel)" /></SelectTrigger>
               <SelectContent>
@@ -354,6 +408,16 @@ export default function FormationsPage() {
                 ))}
               </SelectContent>
             </Select>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <Checkbox
+                checked={formData.is_subcontracted}
+                onCheckedChange={(checked) => setFormData((f) => ({ ...f, is_subcontracted: checked === true }))}
+              />
+              <span className="text-xs text-gray-600">Sous-traitance</span>
+            </label>
+            {formData.is_subcontracted && (
+              <span className="text-xs text-purple-600 bg-purple-50 px-2 py-0.5 rounded">Les automatisations de sous-traitance seront activées</span>
+            )}
             <div className="flex-1" />
             <Button size="sm" variant="ghost" className="text-xs h-7" onClick={() => setShowCreateForm(false)}>Annuler</Button>
             <Button size="sm" className="text-xs h-7" onClick={handleCreateSession} disabled={saving}>
@@ -399,7 +463,7 @@ export default function FormationsPage() {
         </Select>
       </div>
 
-      {/* Grid */}
+      {/* Content */}
       {loading ? (
         <div className="flex items-center justify-center py-20">
           <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
@@ -410,7 +474,80 @@ export default function FormationsPage() {
           <p className="font-medium text-gray-500">Aucune formation trouvée</p>
           <p className="text-sm mt-1">Modifiez vos filtres ou planifiez une session.</p>
         </div>
+      ) : viewMode === "kanban" ? (
+        /* ═══ VUE KANBAN ═══ */
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {(["upcoming", "in_progress", "completed"] as const).map((col) => {
+            const colCfg = STATUS_CONFIG[col];
+            const colSessions = filtered.filter((s) => s.status === col);
+            return (
+              <div key={col} className="space-y-3">
+                <div className="flex items-center gap-2 px-1">
+                  <span className={cn("inline-block w-2.5 h-2.5 rounded-full", col === "upcoming" ? "bg-blue-500" : col === "in_progress" ? "bg-amber-500" : "bg-green-500")} />
+                  <span className="text-sm font-semibold text-gray-700">{colCfg.label}</span>
+                  <Badge variant="outline" className="text-[10px] ml-auto">{colSessions.length}</Badge>
+                </div>
+                <div className="space-y-2 min-h-[100px]">
+                  {colSessions.map((session) => {
+                    const modeCfg = MODE_CONFIG[session.mode] ?? { label: session.mode, icon: MapPin };
+                    const ModeIcon = modeCfg.icon;
+                    const enrollCount = getEnrollmentCount(session);
+                    const trainerName = session.formation_trainers?.[0]?.trainer
+                      ? `${session.formation_trainers[0].trainer.first_name} ${session.formation_trainers[0].trainer.last_name}`
+                      : null;
+
+                    return (
+                      <Link key={session.id} href={`/admin/formations/${session.id}`}>
+                        <Card className="overflow-hidden transition-shadow hover:shadow-md cursor-pointer">
+                          <CardContent className="p-3 space-y-2">
+                            <h4 className="text-sm font-semibold text-gray-900 line-clamp-2">{session.title}</h4>
+                            <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                              <CalendarDays className="h-3 w-3" />
+                              <span>{formatDate(session.start_date)} — {formatDate(session.end_date)}</span>
+                            </div>
+                            {trainerName && (
+                              <p className="text-xs text-gray-500 truncate">{trainerName}</p>
+                            )}
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <Badge variant="outline" className="text-[10px] font-medium gap-1">
+                                <ModeIcon className="h-3 w-3" />
+                                {modeCfg.label}
+                              </Badge>
+                              {session.is_subcontracted && (
+                                <Badge variant="outline" className="text-[10px] font-medium gap-1 border-purple-300 text-purple-700">
+                                  <Briefcase className="h-3 w-3" /> Sous-traitance
+                                </Badge>
+                              )}
+                              <div className="flex items-center gap-1 text-[10px] text-gray-400 ml-auto">
+                                <Users className="h-3 w-3" />
+                                {enrollCount}
+                              </div>
+                            </div>
+                            {col === "in_progress" && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="w-full h-7 text-xs gap-1 mt-1 border-green-300 text-green-700 hover:bg-green-50"
+                                onClick={(e) => handleCompleteSession(session.id, e)}
+                              >
+                                <CheckCircle className="h-3 w-3" /> Terminer
+                              </Button>
+                            )}
+                          </CardContent>
+                        </Card>
+                      </Link>
+                    );
+                  })}
+                  {colSessions.length === 0 && (
+                    <p className="text-xs text-gray-400 text-center py-6">Aucune session</p>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       ) : (
+        /* ═══ VUE CARDS ═══ */
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((session) => {
             const statusCfg = STATUS_CONFIG[session.status] ?? { label: session.status, color: "bg-gray-100 text-gray-600" };
@@ -473,6 +610,11 @@ export default function FormationsPage() {
                         <ModeIcon className="h-3 w-3" />
                         {modeCfg.label}
                       </Badge>
+                      {session.is_subcontracted && (
+                        <Badge variant="outline" className="text-[10px] font-medium gap-1 border-purple-300 text-purple-700">
+                          <Briefcase className="h-3 w-3" /> S-T
+                        </Badge>
+                      )}
                       <div className="flex items-center gap-1 text-[10px] text-gray-400 ml-auto">
                         <Users className="h-3 w-3" />
                         {enrollCount}{session.max_participants ? `/${session.max_participants}` : ""}

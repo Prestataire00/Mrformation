@@ -5,7 +5,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import {
   Loader2, Eye, CheckCircle, Send, Copy, Clock, Download,
-  ChevronDown, ChevronUp, Plus, FileDown, PenLine,
+  ChevronDown, ChevronUp, Plus, FileDown, PenLine, Undo2,
 } from "lucide-react";
 import DOMPurify from "dompurify";
 import { Button } from "@/components/ui/button";
@@ -60,7 +60,7 @@ const DOC_LABELS_PLURAL: Record<string, string> = {
 
 const DEFAULT_LEARNER_DOCS: ConventionDocType[] = [
   "convocation", "certificat_realisation", "attestation_assiduite",
-  "feuille_emargement", "micro_certificat",
+  "feuille_emargement",
 ];
 
 const STATIC_DOCS: ConventionDocType[] = [
@@ -137,12 +137,15 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
   // ===== INITIALIZE DEFAULT DOCS =====
   const initializeDefaultDocs = useCallback(async () => {
     if (initialized) return;
+    const now = new Date().toISOString();
     const rows: {
       session_id: string;
       doc_type: string;
       owner_type: string;
       owner_id: string;
       requires_signature: boolean;
+      is_confirmed?: boolean;
+      confirmed_at?: string;
     }[] = [];
 
     // For each learner: default docs + static docs
@@ -150,12 +153,14 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
       if (!enrollment.learner) continue;
       const learnerId = enrollment.learner.id;
       for (const dt of [...DEFAULT_LEARNER_DOCS, ...STATIC_DOCS]) {
+        const isStatic = STATIC_DOCS.includes(dt);
         rows.push({
           session_id: formation.id,
           doc_type: dt,
           owner_type: "learner",
           owner_id: learnerId,
           requires_signature: false,
+          ...(isStatic ? { is_confirmed: true, confirmed_at: now } : {}),
         });
       }
     }
@@ -165,12 +170,14 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
       if (!fc.client) continue;
       const clientId = fc.client.id;
       for (const dt of [...DEFAULT_COMPANY_DOCS, ...STATIC_DOCS]) {
+        const isStatic = STATIC_DOCS.includes(dt);
         rows.push({
           session_id: formation.id,
           doc_type: dt,
           owner_type: "company",
           owner_id: clientId,
           requires_signature: REQUIRES_SIGNATURE_TYPES.includes(dt),
+          ...(isStatic ? { is_confirmed: true, confirmed_at: now } : {}),
         });
       }
     }
@@ -180,12 +187,14 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
       if (!ft.trainer) continue;
       const trainerId = ft.trainer.id;
       for (const dt of [...DEFAULT_TRAINER_DOCS, ...STATIC_DOCS]) {
+        const isStatic = STATIC_DOCS.includes(dt);
         rows.push({
           session_id: formation.id,
           doc_type: dt,
           owner_type: "trainer",
           owner_id: trainerId,
           requires_signature: REQUIRES_SIGNATURE_TYPES.includes(dt),
+          ...(isStatic ? { is_confirmed: true, confirmed_at: now } : {}),
         });
       }
     }
@@ -297,6 +306,22 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
       toast({ title: "Erreur", description: error.message, variant: "destructive" });
     } else {
       toast({ title: "Document confirmé" });
+      onRefresh();
+    }
+  };
+
+  const handleResetConfirm = async (docId: string) => {
+    if (!confirm("Réinitialiser la confirmation de ce document ?")) return;
+    setSaving(`reset-${docId}`);
+    const { error } = await supabase
+      .from("formation_convention_documents")
+      .update({ is_confirmed: false, confirmed_at: null })
+      .eq("id", docId);
+    setSaving(null);
+    if (error) {
+      toast({ title: "Erreur", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Confirmation réinitialisée" });
       onRefresh();
     }
   };
@@ -702,6 +727,18 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
                 Date + Confirmer
               </Button>
             </>
+          )}
+          {doc.is_confirmed && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 w-6 p-0 text-gray-400 hover:text-gray-600"
+              onClick={() => handleResetConfirm(doc.id)}
+              disabled={saving === `reset-${doc.id}`}
+              title="Réinitialiser la confirmation"
+            >
+              <Undo2 className="h-3 w-3" />
+            </Button>
           )}
           {doc.requires_signature && doc.is_confirmed && !doc.is_signed && (
             <Button

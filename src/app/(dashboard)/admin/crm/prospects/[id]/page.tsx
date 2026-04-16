@@ -161,6 +161,10 @@ export default function ProspectDetailPage() {
   const [activities, setActivities] = useState<ActivityEntry[]>([]);
   const [actionForm, setActionForm] = useState({ type: "call", subject: "", content: "" });
 
+  // Conversion to client
+  const [convertDialogOpen, setConvertDialogOpen] = useState(false);
+  const [converting, setConverting] = useState(false);
+
   // Training linking
   const [linkTrainingOpen, setLinkTrainingOpen] = useState(false);
   const [existingTrainings, setExistingTrainings] = useState<Training[]>([]);
@@ -607,6 +611,41 @@ export default function ProspectDetailPage() {
 
   // ── Render ────────────────────────────────────────────────────────────────
 
+  const handleConvertToClient = async () => {
+    if (!prospect || !entityId) return;
+    setConverting(true);
+    try {
+      const { data: newClient, error: clientErr } = await supabase
+        .from("clients")
+        .insert({
+          entity_id: entityId,
+          company_name: prospect.company_name,
+          siret: prospect.siret || null,
+          email: prospect.email || null,
+          phone: prospect.phone || null,
+          status: "active",
+        })
+        .select("id")
+        .single();
+      if (clientErr) throw clientErr;
+
+      const { error: updateErr } = await supabase
+        .from("crm_prospects")
+        .update({ converted_client_id: newClient.id, status: "won" })
+        .eq("id", prospect.id);
+      if (updateErr) throw updateErr;
+
+      toast({ title: "Prospect converti en client" });
+      setConvertDialogOpen(false);
+      router.push(`/admin/clients/${newClient.id}`);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Erreur lors de la conversion";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
+    } finally {
+      setConverting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -733,6 +772,13 @@ export default function ProspectDetailPage() {
           >
             <StickyNote className="w-3 h-3" /> Note
           </Button>
+          {prospect.status === "won" && !prospect.converted_client_id && (
+            <Button size="sm" variant="outline" className="text-xs h-8 gap-1.5 border-green-300 text-green-700 hover:bg-green-50"
+              onClick={() => setConvertDialogOpen(true)}
+            >
+              <CheckCircle className="w-3 h-3" /> Convertir en client
+            </Button>
+          )}
           <Button size="sm" variant="ghost" className="text-xs h-8 gap-1.5" onClick={() => { openEdit(); setEditMode(true); }}>
             <Pencil className="w-3 h-3" /> Modifier
           </Button>
@@ -1132,6 +1178,31 @@ export default function ProspectDetailPage() {
             </DialogClose>
             <Button variant="destructive" size="sm" onClick={handleDelete}>
               SUPPRIMER
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Convert to Client Dialog ────────────────────────────────────── */}
+      <Dialog open={convertDialogOpen} onOpenChange={setConvertDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Convertir en client</DialogTitle>
+          </DialogHeader>
+          <div className="text-sm text-muted-foreground space-y-2">
+            <p>Un nouveau client sera créé avec les données suivantes :</p>
+            <ul className="list-disc pl-4 space-y-1">
+              <li><strong>Entreprise :</strong> {prospect?.company_name}</li>
+              {prospect?.siret && <li><strong>SIRET :</strong> {prospect.siret}</li>}
+              {prospect?.email && <li><strong>Email :</strong> {prospect.email}</li>}
+              {prospect?.phone && <li><strong>Téléphone :</strong> {prospect.phone}</li>}
+            </ul>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" size="sm" onClick={() => setConvertDialogOpen(false)}>Annuler</Button>
+            <Button size="sm" onClick={handleConvertToClient} disabled={converting} className="gap-1.5">
+              {converting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              Convertir
             </Button>
           </DialogFooter>
         </DialogContent>
