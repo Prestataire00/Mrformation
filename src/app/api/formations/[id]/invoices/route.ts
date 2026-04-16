@@ -89,6 +89,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
       notes,
       is_avoir = false,
       parent_invoice_id,
+      external_reference,
+      lines,
     } = body;
 
     if (!recipient_type || !recipient_id || !recipient_name) {
@@ -132,6 +134,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         notes: notes || null,
         is_avoir,
         parent_invoice_id: parent_invoice_id || null,
+        external_reference: external_reference || null,
       })
       .select()
       .single();
@@ -141,6 +144,17 @@ export async function POST(request: NextRequest, context: RouteContext) {
         { error: sanitizeDbError(error, "invoices POST") },
         { status: 500 }
       );
+    }
+
+    // Insert invoice lines if provided
+    if (lines && Array.isArray(lines) && lines.length > 0) {
+      const lineRows = lines.map((l: { description: string; quantity: number; unit_price: number }) => ({
+        invoice_id: data.id,
+        description: l.description,
+        quantity: l.quantity,
+        unit_price: l.unit_price,
+      }));
+      await auth.supabase.from("formation_invoice_lines").insert(lineRows);
     }
 
     logAudit({

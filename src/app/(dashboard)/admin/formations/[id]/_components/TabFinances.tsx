@@ -108,11 +108,24 @@ export function TabFinances({ formation, onRefresh }: Props) {
     recipient_type: "learner",
     recipient_name: "",
     recipient_id: "",
-    amount: "",
     due_date: "",
     notes: "",
+    external_reference: "",
+    lines: [{ description: "", quantity: "1", unit_price: "" }] as { description: string; quantity: string; unit_price: string }[],
   });
   const [savingInvoice, setSavingInvoice] = useState(false);
+
+  // Invoice line helpers
+  const addInvoiceLine = () => setInvoiceForm((f) => ({ ...f, lines: [...f.lines, { description: "", quantity: "1", unit_price: "" }] }));
+  const updateInvoiceLine = (idx: number, field: string, value: string) => setInvoiceForm((f) => {
+    const lines = [...f.lines];
+    lines[idx] = { ...lines[idx], [field]: value };
+    return { ...f, lines };
+  });
+  const removeInvoiceLine = (idx: number) => setInvoiceForm((f) => ({ ...f, lines: f.lines.filter((_, i) => i !== idx) }));
+  const calcLineTotal = (l: { quantity: string; unit_price: string }) => (parseFloat(l.quantity.replace(",", ".")) || 0) * (parseFloat(l.unit_price.replace(",", ".")) || 0);
+  const invoiceSubtotal = invoiceForm.lines.reduce((s, l) => s + calcLineTotal(l), 0);
+  const invoiceTotal = invoiceSubtotal; // TVA exonérée par défaut — à ajuster si entity.tva_exempt === false
 
   // Inline charge form
   const [chargeLabel, setChargeLabel] = useState("");
@@ -153,6 +166,25 @@ export function TabFinances({ formation, onRefresh }: Props) {
 
   // ── Create invoice ──
 
+  // Pre-fill invoice lines from session data
+  const prefillInvoiceLines = () => {
+    const enrollCount = (formation.enrollments || []).length || 1;
+    const totalPrice = formation.total_price || 0;
+    const hours = formation.planned_hours;
+    const desc = `Formation ${formation.title}${hours ? ` (${hours}h)` : ""}`;
+    const unitPrice = enrollCount > 1 ? (totalPrice / enrollCount) : totalPrice;
+    // Pre-fill notes with participant names
+    const participantNames = (formation.enrollments || [])
+      .filter(e => e.learner)
+      .map(e => `${e.learner!.first_name} ${e.learner!.last_name}`)
+      .join(", ");
+    setInvoiceForm(f => ({
+      ...f,
+      lines: [{ description: desc, quantity: String(enrollCount), unit_price: unitPrice.toFixed(2).replace(".", ",") }],
+      notes: participantNames ? `Participants : ${participantNames}` : f.notes,
+    }));
+  };
+
   const handleCreateInvoice = async (isAvoir = false, parentInvoice?: Invoice) => {
     const recipientName = isAvoir && parentInvoice
       ? parentInvoice.recipient_name
@@ -160,22 +192,32 @@ export function TabFinances({ formation, onRefresh }: Props) {
     const recipientType = isAvoir && parentInvoice
       ? parentInvoice.recipient_type
       : invoiceForm.recipient_type;
-    const rawAmount = isAvoir && parentInvoice
-      ? -Math.abs(parentInvoice.amount)
-      : parseFloat(invoiceForm.amount);
-    const amount = rawAmount;
 
     if (!recipientName) {
       toast({ title: "Le nom du destinataire est requis", variant: "destructive" });
       return;
     }
-    if (!isAvoir && (isNaN(amount) || amount <= 0)) {
-      toast({ title: "Montant invalide", description: "Entrez un montant positif", variant: "destructive" });
+
+    const amount = isAvoir && parentInvoice
+      ? -Math.abs(parentInvoice.amount)
+      : invoiceTotal;
+
+    if (!isAvoir && amount <= 0) {
+      toast({ title: "Montant invalide", description: "Ajoutez des lignes de produits", variant: "destructive" });
       return;
     }
 
     setSavingInvoice(true);
     try {
+      // Build lines for server
+      const parsedLines = isAvoir ? [] : invoiceForm.lines
+        .filter(l => l.description.trim())
+        .map(l => ({
+          description: l.description.trim(),
+          quantity: parseFloat(l.quantity.replace(",", ".")) || 1,
+          unit_price: parseFloat(l.unit_price.replace(",", ".")) || 0,
+        }));
+
       const res = await fetch(`/api/formations/${formation.id}/invoices`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -189,6 +231,8 @@ export function TabFinances({ formation, onRefresh }: Props) {
           notes: isAvoir ? `Avoir sur ${parentInvoice?.reference}` : invoiceForm.notes || null,
           is_avoir: isAvoir,
           parent_invoice_id: parentInvoice?.id ?? null,
+          external_reference: invoiceForm.external_reference || null,
+          lines: parsedLines,
         }),
       });
       const data = await res.json();
@@ -196,7 +240,7 @@ export function TabFinances({ formation, onRefresh }: Props) {
         toast({ title: isAvoir ? "Avoir créé" : "Facture créée", description: data.invoice.reference });
         if (!isAvoir) {
           setInvoiceDialog(false);
-          setInvoiceForm({ recipient_type: "learner", recipient_name: "", recipient_id: "", amount: "", due_date: "", notes: "" });
+          setInvoiceForm({ recipient_type: "learner", recipient_name: "", recipient_id: "", due_date: "", notes: "", external_reference: "", lines: [{ description: "", quantity: "1", unit_price: "" }] });
         }
         fetchData();
       } else {
@@ -635,105 +679,122 @@ export function TabFinances({ formation, onRefresh }: Props) {
         </div>
       </div>
 
-      {/* Dialog -- Créer une facture (multi-field, kept as dialog) */}
+      {/* Dialog -- Créer une facture avec lignes */}
       <Dialog open={invoiceDialog} onOpenChange={setInvoiceDialog}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Créer une facture</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <div>
-              <Label>Type de destinataire</Label>
-              <Select
-                value={invoiceForm.recipient_type}
-                onValueChange={(v) => setInvoiceForm((f) => ({ ...f, recipient_type: v }))}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="learner">Apprenant</SelectItem>
-                  <SelectItem value="company">Entreprise</SelectItem>
-                  <SelectItem value="financier">Financeur</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Destinataire *</Label>
-              {(() => {
-                // Build options from formation data
-                const options: Array<{ id: string; name: string }> = [];
-                if (invoiceForm.recipient_type === "learner") {
-                  for (const e of formation.enrollments || []) {
-                    if (e.learner) options.push({ id: e.learner.id, name: `${e.learner.last_name?.toUpperCase()} ${e.learner.first_name}` });
+            {/* Destinataire */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Type de destinataire</Label>
+                <Select
+                  value={invoiceForm.recipient_type}
+                  onValueChange={(v) => setInvoiceForm((f) => ({ ...f, recipient_type: v }))}
+                >
+                  <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="learner">Apprenant</SelectItem>
+                    <SelectItem value="company">Entreprise</SelectItem>
+                    <SelectItem value="financier">Financeur</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Destinataire *</Label>
+                {(() => {
+                  const options: Array<{ id: string; name: string }> = [];
+                  if (invoiceForm.recipient_type === "learner") {
+                    for (const e of formation.enrollments || []) {
+                      if (e.learner) options.push({ id: e.learner.id, name: `${e.learner.last_name?.toUpperCase()} ${e.learner.first_name}` });
+                    }
+                  } else if (invoiceForm.recipient_type === "company") {
+                    for (const c of formation.formation_companies || []) {
+                      if (c.client) options.push({ id: c.client_id, name: c.client.company_name });
+                    }
+                  } else if (invoiceForm.recipient_type === "financier") {
+                    for (const f of formation.formation_financiers || []) {
+                      options.push({ id: f.id, name: f.name });
+                    }
                   }
-                } else if (invoiceForm.recipient_type === "company") {
-                  for (const c of formation.formation_companies || []) {
-                    if (c.client) options.push({ id: c.client_id, name: c.client.company_name });
-                  }
-                } else if (invoiceForm.recipient_type === "financier") {
-                  for (const f of formation.formation_financiers || []) {
-                    options.push({ id: f.id, name: f.name });
-                  }
-                }
-                return options.length > 0 ? (
-                  <Select
-                    value={invoiceForm.recipient_name}
-                    onValueChange={(v) => {
-                      const opt = options.find((o) => o.name === v);
-                      setInvoiceForm((f) => ({ ...f, recipient_name: v, recipient_id: opt?.id || "" }));
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Sélectionner..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {options.map((o) => (
-                        <SelectItem key={o.id} value={o.name}>{o.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <Input
-                    value={invoiceForm.recipient_name}
-                    onChange={(e) => setInvoiceForm((f) => ({ ...f, recipient_name: e.target.value }))}
-                    placeholder={RECIPIENT_LABELS[invoiceForm.recipient_type] || "Nom"}
-                  />
-                );
-              })()}
+                  return options.length > 0 ? (
+                    <Select
+                      value={invoiceForm.recipient_name}
+                      onValueChange={(v) => {
+                        const opt = options.find((o) => o.name === v);
+                        setInvoiceForm((f) => ({ ...f, recipient_name: v, recipient_id: opt?.id || "" }));
+                      }}
+                    >
+                      <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Sélectionner..." /></SelectTrigger>
+                      <SelectContent>
+                        {options.map((o) => (
+                          <SelectItem key={o.id} value={o.name}>{o.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Input value={invoiceForm.recipient_name} onChange={(e) => setInvoiceForm((f) => ({ ...f, recipient_name: e.target.value }))} placeholder="Nom" className="h-8 text-sm" />
+                  );
+                })()}
+              </div>
+            </div>
+
+            {/* Lignes de produits */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <Label>Produits</Label>
+                <Button size="sm" variant="ghost" className="h-6 text-xs gap-1" onClick={prefillInvoiceLines}>
+                  Pré-remplir
+                </Button>
+              </div>
+              <div className="border rounded-lg overflow-hidden">
+                <div className="grid grid-cols-[1fr_60px_100px_90px_32px] gap-1 px-2 py-1.5 bg-gray-50 text-[10px] font-semibold text-gray-500 uppercase">
+                  <span>Description</span><span>Qté</span><span>PU HT (€)</span><span>Total</span><span></span>
+                </div>
+                {invoiceForm.lines.map((line, idx) => (
+                  <div key={idx} className="grid grid-cols-[1fr_60px_100px_90px_32px] gap-1 px-2 py-1 border-t items-center">
+                    <Input value={line.description} onChange={(e) => updateInvoiceLine(idx, "description", e.target.value)} placeholder="Description" className="h-7 text-xs border-0 shadow-none px-1" />
+                    <Input value={line.quantity} onChange={(e) => updateInvoiceLine(idx, "quantity", e.target.value)} className="h-7 text-xs text-center" />
+                    <Input value={line.unit_price} onChange={(e) => updateInvoiceLine(idx, "unit_price", e.target.value)} className="h-7 text-xs text-right" />
+                    <span className="text-xs font-medium text-right pr-1">{calcLineTotal(line).toLocaleString("fr-FR", { minimumFractionDigits: 2 })} €</span>
+                    <button onClick={() => removeInvoiceLine(idx)} className="p-0.5 text-gray-300 hover:text-red-500"><Trash2 className="h-3 w-3" /></button>
+                  </div>
+                ))}
+                <div className="px-2 py-1.5 border-t">
+                  <button onClick={addInvoiceLine} className="text-xs text-[#374151] hover:underline flex items-center gap-1"><Plus className="h-3 w-3" /> Ajouter une ligne</button>
+                </div>
+              </div>
+              <div className="flex justify-end mt-2">
+                <div className="w-48 space-y-0.5 text-sm">
+                  <div className="flex justify-between text-gray-500"><span>Total HT</span><span>{invoiceSubtotal.toLocaleString("fr-FR", { minimumFractionDigits: 2 })} €</span></div>
+                  <div className="flex justify-between font-bold text-gray-900 border-t pt-1"><span>Total TTC</span><span>{invoiceTotal.toLocaleString("fr-FR", { minimumFractionDigits: 2 })} €</span></div>
+                </div>
+              </div>
+            </div>
+
+            {/* Infos complémentaires */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Date d&apos;échéance</Label>
+                <Input type="date" value={invoiceForm.due_date} onChange={(e) => setInvoiceForm((f) => ({ ...f, due_date: e.target.value }))} className="h-8 text-sm" />
+              </div>
+              <div>
+                <Label className="text-xs">Référence externe</Label>
+                <Input value={invoiceForm.external_reference} onChange={(e) => setInvoiceForm((f) => ({ ...f, external_reference: e.target.value }))} placeholder="N° commande client" className="h-8 text-sm" />
+              </div>
             </div>
             <div>
-              <Label>Montant (EUR) *</Label>
-              <Input
-                type="number"
-                step="0.01"
-                value={invoiceForm.amount}
-                onChange={(e) => setInvoiceForm((f) => ({ ...f, amount: e.target.value }))}
-                placeholder="0.00"
-              />
-            </div>
-            <div>
-              <Label>Date d&apos;échéance</Label>
-              <Input
-                type="date"
-                value={invoiceForm.due_date}
-                onChange={(e) => setInvoiceForm((f) => ({ ...f, due_date: e.target.value }))}
-              />
-            </div>
-            <div>
-              <Label>Notes</Label>
-              <Input
-                value={invoiceForm.notes}
-                onChange={(e) => setInvoiceForm((f) => ({ ...f, notes: e.target.value }))}
-                placeholder="Notes optionnelles..."
-              />
+              <Label className="text-xs">Notes</Label>
+              <Input value={invoiceForm.notes} onChange={(e) => setInvoiceForm((f) => ({ ...f, notes: e.target.value }))} placeholder="Notes..." className="h-8 text-sm" />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setInvoiceDialog(false)}>Annuler</Button>
             <Button onClick={() => handleCreateInvoice(false)} disabled={savingInvoice}>
               {savingInvoice && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Créer
+              Créer la facture
             </Button>
           </DialogFooter>
         </DialogContent>

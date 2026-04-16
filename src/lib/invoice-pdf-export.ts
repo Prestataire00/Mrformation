@@ -41,6 +41,8 @@ export interface InvoicePdfData {
   // Line items
   amount: number;
   learnerCount?: number;
+  lines?: Array<{ description: string; quantity: number; unit_price: number }>;
+  externalReference?: string;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -187,11 +189,30 @@ export async function generateInvoicePDF(data: InvoicePdfData): Promise<jsPDF> {
 
   // ── Invoice table ──
 
-  const description = data.isAvoir
-    ? `Avoir sur formation "${data.sessionTitle}"`
-    : `Formation "${data.sessionTitle}"${data.sessionDuration ? ` — ${data.sessionDuration}h` : ""}${data.learnerCount ? ` — ${data.learnerCount} stagiaire(s)` : ""}`;
+  // Build line items — use stored lines if available, fallback to single line
+  const tableBody: string[][] = [];
+  let amountHT: number;
 
-  const amountHT = Math.abs(data.amount);
+  if (data.lines && data.lines.length > 0) {
+    amountHT = 0;
+    for (const line of data.lines) {
+      const lineTotal = line.quantity * line.unit_price;
+      amountHT += lineTotal;
+      tableBody.push([
+        line.description,
+        String(line.quantity),
+        formatCurrency(line.unit_price),
+        formatCurrency(lineTotal),
+      ]);
+    }
+  } else {
+    const description = data.isAvoir
+      ? `Avoir sur formation "${data.sessionTitle}"`
+      : `Formation "${data.sessionTitle}"${data.sessionDuration ? ` — ${data.sessionDuration}h` : ""}${data.learnerCount ? ` — ${data.learnerCount} stagiaire(s)` : ""}`;
+    amountHT = Math.abs(data.amount);
+    tableBody.push([description, "1", formatCurrency(amountHT), formatCurrency(amountHT)]);
+  }
+
   const tvaRate = data.entityTvaExempt ? 0 : data.entityTvaRate;
   const tvaAmount = Math.round(amountHT * (tvaRate / 100) * 100) / 100;
   const totalTTC = amountHT + tvaAmount;
@@ -200,9 +221,7 @@ export async function generateInvoicePDF(data: InvoicePdfData): Promise<jsPDF> {
     startY: y,
     margin: { left: MARGIN, right: MARGIN },
     head: [["Description", "Qté", "Prix unitaire HT", "Total HT"]],
-    body: [
-      [description, "1", formatCurrency(amountHT), formatCurrency(amountHT)],
-    ],
+    body: tableBody,
     theme: "grid",
     styles: {
       fontSize: 9,

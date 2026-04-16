@@ -221,6 +221,7 @@ export default function EmailsPage() {
   const [sendDialogOpen, setSendDialogOpen] = useState(false);
   const [sendForm, setSendForm] = useState<SendFormData>({ recipient_email: "", subject: "", body: "", template_id: "" });
   const [sending, setSending] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [originalSubject, setOriginalSubject] = useState("");
   const [originalBody, setOriginalBody] = useState("");
 
@@ -1228,11 +1229,42 @@ export default function EmailsPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setSendDialogOpen(false)}>Annuler</Button>
+            <Button variant="outline" onClick={() => setPreviewOpen(true)} className="gap-2">
+              <Eye className="h-4 w-4" /> Prévisualiser
+            </Button>
             <Button onClick={handleSendEmail} disabled={sending} className="gap-2">
               <Send className="h-4 w-4" />
               {sending ? "Envoi en cours..." : "Envoyer"}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Email Preview Dialog */}
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Prévisualisation de l&apos;email</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 border rounded-lg p-4 bg-white">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground border-b pb-2">
+              <span className="font-medium">De :</span> <span>contact@mrformation.fr</span>
+            </div>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground border-b pb-2">
+              <span className="font-medium">À :</span> <span>{sendForm.recipient_email || "—"}</span>
+            </div>
+            <div className="flex items-center gap-2 text-sm border-b pb-2">
+              <span className="font-medium text-muted-foreground">Objet :</span> <span className="font-semibold">{sendForm.subject || "—"}</span>
+            </div>
+            <div
+              className="prose prose-sm max-w-none pt-2"
+              style={{ fontFamily: "sans-serif", lineHeight: 1.6 }}
+            >
+              {sendForm.body.split("\n").map((line, i) => (
+                <p key={i} className="mb-2 text-sm">{line || "\u00A0"}</p>
+              ))}
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 

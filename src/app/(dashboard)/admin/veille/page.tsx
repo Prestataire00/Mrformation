@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import {
-  Rss, Loader2, Plus, Trash2, ExternalLink, Newspaper, StickyNote,
+  Rss, Loader2, Plus, Trash2, ExternalLink, Newspaper, StickyNote, Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -52,6 +52,19 @@ export default function VeillePage() {
 
   // Delete confirmation
   const [deleteId, setDeleteId] = useState<string | null>(null);
+
+  // AI Analysis
+  const [aiAnalysis, setAiAnalysis] = useState<string>("");
+  const [aiAnalysisDate, setAiAnalysisDate] = useState<string>("");
+  const [analyzingAI, setAnalyzingAI] = useState(false);
+
+  // Load cached AI analysis from localStorage
+  useEffect(() => {
+    const cached = localStorage.getItem("veille_ai_analysis");
+    const cachedDate = localStorage.getItem("veille_ai_analysis_date");
+    if (cached) setAiAnalysis(cached);
+    if (cachedDate) setAiAnalysisDate(cachedDate);
+  }, []);
 
   const fetchFeed = useCallback(async () => {
     setLoadingFeed(true);
@@ -128,14 +141,77 @@ export default function VeillePage() {
     }
   };
 
+  const handleAIAnalysis = async () => {
+    setAnalyzingAI(true);
+    try {
+      const articleTitles = articles.map(a => `${a.title} (${a.source})`);
+      const noteTexts = notes.map(n => `${n.title}${n.content ? ": " + n.content : ""}`);
+
+      const res = await fetch("/api/ai/analyze-veille", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notes: noteTexts, articles: articleTitles }),
+      });
+      const data = await res.json();
+      if (res.ok && data.analysis) {
+        setAiAnalysis(data.analysis);
+        const now = new Date().toLocaleString("fr-FR");
+        setAiAnalysisDate(now);
+        localStorage.setItem("veille_ai_analysis", data.analysis);
+        localStorage.setItem("veille_ai_analysis_date", now);
+        toast({ title: "Analyse IA terminée" });
+      } else {
+        toast({ title: "Erreur", description: data.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Erreur réseau", variant: "destructive" });
+    } finally {
+      setAnalyzingAI(false);
+    }
+  };
+
   return (
     <div className="space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">La Veille Réglementaire</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Actualités de la formation professionnelle et notes internes
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">La Veille Réglementaire</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Actualités de la formation professionnelle et notes internes
+          </p>
+        </div>
+        <Button
+          onClick={handleAIAnalysis}
+          disabled={analyzingAI || (articles.length === 0 && notes.length === 0)}
+          className="gap-1.5"
+        >
+          {analyzingAI ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+          {analyzingAI ? "Analyse en cours..." : "Analyser avec l'IA"}
+        </Button>
       </div>
+
+      {/* AI Analysis Card */}
+      {aiAnalysis && (
+        <Card className="border-purple-200 bg-purple-50/30">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-purple-600" /> Analyse IA
+              </CardTitle>
+              <div className="flex items-center gap-2">
+                {aiAnalysisDate && <span className="text-xs text-muted-foreground">{aiAnalysisDate}</span>}
+                <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={handleAIAnalysis} disabled={analyzingAI}>
+                  Rafraichir
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="prose prose-sm max-w-none text-gray-700 whitespace-pre-wrap text-sm leading-relaxed">
+              {aiAnalysis}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Section 1 — Actualités récentes */}
       <Card>

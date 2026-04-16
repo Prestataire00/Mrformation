@@ -49,6 +49,7 @@ import {
   LayoutList,
   CheckCircle,
   Briefcase,
+  Shield,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -68,6 +69,7 @@ interface SessionCard {
   program_id: string | null;
   training_id: string | null;
   is_subcontracted?: boolean;
+  qualiopi_score?: number;
   program?: { id: string; title: string; description: string | null } | null;
   training?: { title: string } | null;
   formation_trainers?: Array<{ trainer: { first_name: string; last_name: string } | null }>;
@@ -164,7 +166,7 @@ export default function FormationsPage() {
     const { data, error } = await supabase
       .from("sessions")
       .select(`
-        id, title, start_date, end_date, location, mode, status, max_participants, notes, type, program_id, training_id, is_subcontracted,
+        id, title, start_date, end_date, location, mode, status, max_participants, notes, type, program_id, training_id, is_subcontracted, qualiopi_score,
         program:programs(id, title, description),
         training:trainings(title),
         formation_trainers(trainer:trainers(first_name, last_name)),
@@ -522,6 +524,14 @@ export default function FormationsPage() {
                                   <Briefcase className="h-3 w-3" /> Sous-traitance
                                 </Badge>
                               )}
+                              {(session.qualiopi_score ?? 0) > 0 && (
+                                <span className={cn("inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full",
+                                  (session.qualiopi_score ?? 0) >= 67 ? "bg-green-100 text-green-700" :
+                                  (session.qualiopi_score ?? 0) >= 34 ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"
+                                )}>
+                                  <Shield className="h-2.5 w-2.5" /> {session.qualiopi_score}%
+                                </span>
+                              )}
                               <div className="flex items-center gap-1 text-[10px] text-gray-400 ml-auto">
                                 <Users className="h-3 w-3" />
                                 {enrollCount}
@@ -618,6 +628,14 @@ export default function FormationsPage() {
                         <Badge variant="outline" className="text-[10px] font-medium gap-1 border-purple-300 text-purple-700">
                           <Briefcase className="h-3 w-3" /> S-T
                         </Badge>
+                      )}
+                      {(session.qualiopi_score ?? 0) > 0 && (
+                        <span className={cn("inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full",
+                          (session.qualiopi_score ?? 0) >= 67 ? "bg-green-100 text-green-700" :
+                          (session.qualiopi_score ?? 0) >= 34 ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"
+                        )}>
+                          <Shield className="h-2.5 w-2.5" /> {session.qualiopi_score}%
+                        </span>
                       )}
                       <div className="flex items-center gap-1 text-[10px] text-gray-400 ml-auto">
                         <Users className="h-3 w-3" />

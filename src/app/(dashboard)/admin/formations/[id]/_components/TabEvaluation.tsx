@@ -2,11 +2,16 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Loader2, ChevronDown, Trash2 } from "lucide-react";
+import { Loader2, ChevronDown, Trash2, QrCode, Send } from "lucide-react";
+import QRCode from "qrcode";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/use-toast";
 import type { Session, Questionnaire, EvaluationType } from "@/lib/types";
 
@@ -33,6 +38,12 @@ export function TabEvaluation({ formation, onRefresh }: Props) {
 
   const [massSelections, setMassSelections] = useState<Record<string, string>>({});
   const [learnerSelections, setLearnerSelections] = useState<Record<string, string>>({});
+
+  // QR Code dialog
+  const [qrDialog, setQrDialog] = useState<{ open: boolean; url: string; title: string; qrDataUrl: string }>({ open: false, url: "", title: "", qrDataUrl: "" });
+  // Email dialog
+  const [emailDialog, setEmailDialog] = useState<{ open: boolean; email: string; subject: string; body: string }>({ open: false, email: "", subject: "", body: "" });
+  const [sendingEmail, setSendingEmail] = useState(false);
 
   const assignments = formation.formation_evaluation_assignments || [];
   const enrollments = formation.enrollments || [];
@@ -139,6 +150,44 @@ export function TabEvaluation({ formation, onRefresh }: Props) {
   const toggleExpanded = (key: string) =>
     setExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
 
+  const buildQuestionnaireUrl = (questionnaireId: string) => {
+    const base = typeof window !== "undefined" ? window.location.origin : "";
+    return `${base}/learner/questionnaires/${questionnaireId}?session_id=${formation.id}`;
+  };
+
+  const handleShowQR = async (questionnaireId: string, title: string) => {
+    const url = buildQuestionnaireUrl(questionnaireId);
+    try {
+      const qrDataUrl = await QRCode.toDataURL(url, { width: 256, margin: 2 });
+      setQrDialog({ open: true, url, title, qrDataUrl });
+    } catch {
+      toast({ title: "Erreur de génération QR", variant: "destructive" });
+    }
+  };
+
+  const handleSendQuestionnaireEmail = async () => {
+    setSendingEmail(true);
+    try {
+      const res = await fetch("/api/emails/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: emailDialog.email,
+          subject: emailDialog.subject,
+          body: emailDialog.body,
+          session_id: formation.id,
+        }),
+      });
+      if (!res.ok) throw new Error("Envoi échoué");
+      toast({ title: "Email envoyé" });
+      setEmailDialog({ open: false, email: "", subject: "", body: "" });
+    } catch {
+      toast({ title: "Erreur d'envoi", variant: "destructive" });
+    } finally {
+      setSendingEmail(false);
+    }
+  };
+
   // Compact eval row: label + select + button inline
   const renderEvalRow = (
     evalType: EvaluationType,
@@ -163,6 +212,32 @@ export function TabEvaluation({ formation, onRefresh }: Props) {
             <span className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full truncate max-w-[150px]" title={existing.questionnaire?.title}>
               {existing.questionnaire?.title || "Attribué"}
             </span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-5 w-5 text-muted-foreground hover:text-blue-600"
+              title="QR Code"
+              onClick={() => handleShowQR(existing.questionnaire_id, existing.questionnaire?.title || "Questionnaire")}
+            >
+              <QrCode className="h-3 w-3" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-5 w-5 text-muted-foreground hover:text-green-600"
+              title="Envoyer par email"
+              onClick={() => {
+                const url = buildQuestionnaireUrl(existing.questionnaire_id);
+                setEmailDialog({
+                  open: true,
+                  email: "",
+                  subject: `Questionnaire — ${formation.title}`,
+                  body: `Bonjour,\n\nVeuillez remplir le questionnaire suivant :\n${url}\n\nCordialement,`,
+                });
+              }}
+            >
+              <Send className="h-3 w-3" />
+            </Button>
             <Button
               variant="ghost"
               size="icon"
@@ -309,6 +384,72 @@ export function TabEvaluation({ formation, onRefresh }: Props) {
           })}
         </div>
       )}
+      {/* QR Code Dialog */}
+      <Dialog open={qrDialog.open} onOpenChange={(o) => setQrDialog(prev => ({ ...prev, open: o }))}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>QR Code — {qrDialog.title}</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col items-center gap-4">
+            {qrDialog.qrDataUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={qrDialog.qrDataUrl} alt="QR Code" className="w-64 h-64" />
+            )}
+            <p className="text-xs text-muted-foreground break-all text-center select-all">{qrDialog.url}</p>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={() => {
+                navigator.clipboard.writeText(qrDialog.url);
+                toast({ title: "Lien copié" });
+              }}>
+                Copier le lien
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => {
+                const a = document.createElement("a");
+                a.href = qrDialog.qrDataUrl;
+                a.download = `qr-${qrDialog.title}.png`;
+                a.click();
+              }}>
+                Télécharger
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Email Dialog */}
+      <Dialog open={emailDialog.open} onOpenChange={(o) => setEmailDialog(prev => ({ ...prev, open: o }))}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Envoyer le questionnaire</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="text-sm font-medium mb-1 block">Email *</label>
+              <Input value={emailDialog.email} onChange={(e) => setEmailDialog(prev => ({ ...prev, email: e.target.value }))} type="email" placeholder="email@exemple.com" />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Sujet</label>
+              <Input value={emailDialog.subject} onChange={(e) => setEmailDialog(prev => ({ ...prev, subject: e.target.value }))} />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Message</label>
+              <textarea
+                className="w-full border rounded-md p-2 text-sm resize-none"
+                rows={4}
+                value={emailDialog.body}
+                onChange={(e) => setEmailDialog(prev => ({ ...prev, body: e.target.value }))}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEmailDialog(prev => ({ ...prev, open: false }))}>Annuler</Button>
+            <Button onClick={handleSendQuestionnaireEmail} disabled={sendingEmail || !emailDialog.email.trim()}>
+              {sendingEmail && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Envoyer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

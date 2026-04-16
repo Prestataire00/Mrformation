@@ -236,6 +236,12 @@ export function TabQualiopi({ formation, onRefresh }: Props) {
   const scoreColor = score >= 67 ? "text-green-700 bg-green-100" : score >= 34 ? "text-amber-700 bg-amber-100" : "text-red-700 bg-red-100";
   const scoreBarColor = score >= 67 ? "bg-green-500" : score >= 34 ? "bg-amber-500" : "bg-red-500";
 
+  // Persist score to DB for listing views
+  useEffect(() => {
+    if (loading || score === 0) return;
+    supabase.from("sessions").update({ qualiopi_score: score }).eq("id", formation.id);
+  }, [score, loading, formation.id, supabase]);
+
   // Toggle manual check
   const handleManualToggle = async (itemId: string, checked: boolean) => {
     const newChecks = { ...manualChecks, [itemId]: checked };
