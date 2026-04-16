@@ -273,15 +273,22 @@ export async function POST(request: NextRequest) {
         : enrollment.learner;
       if (!learner) continue;
 
-      // Check if non-expired, unused token already exists for this enrollment
-      const { data: existing } = await supabase
+      // Check if non-expired, unused token already exists for this enrollment + slot
+      let existingIndivQuery = supabase
         .from("signing_tokens")
         .select("*")
         .eq("enrollment_id", enrollment.id)
         .eq("token_type", "individual")
         .is("used_at", null)
-        .gt("expires_at", new Date().toISOString())
-        .maybeSingle();
+        .gt("expires_at", new Date().toISOString());
+
+      if (time_slot_id) {
+        existingIndivQuery = existingIndivQuery.eq("time_slot_id", time_slot_id);
+      } else {
+        existingIndivQuery = existingIndivQuery.is("time_slot_id", null);
+      }
+
+      const { data: existing } = await existingIndivQuery.maybeSingle();
 
       if (existing) {
         tokens.push({ ...existing, learner });
@@ -296,6 +303,7 @@ export async function POST(request: NextRequest) {
           learner_id: learner.id,
           entity_id: auth.profile.entity_id,
           token_type: "individual",
+          time_slot_id: time_slot_id || null,
           expires_at: expiresAt,
         })
         .select()

@@ -70,7 +70,10 @@ export function BulkSlotCreator({ formation, onRefresh }: Props) {
       }
 
       if (shouldAdd) {
-        const dateStr = current.toISOString().split("T")[0];
+        const year = current.getFullYear();
+        const month = String(current.getMonth() + 1).padStart(2, "0");
+        const day = String(current.getDate()).padStart(2, "0");
+        const dateStr = `${year}-${month}-${day}`;
         if (withLunch) {
           slots.push({ title: slotTitle, start_time: `${dateStr}T${timeStart}:00`, end_time: `${dateStr}T${lunchStart}:00` });
           slots.push({ title: slotTitle, start_time: `${dateStr}T${lunchEnd}:00`, end_time: `${dateStr}T${timeEnd}:00` });

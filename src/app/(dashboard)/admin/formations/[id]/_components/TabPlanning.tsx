@@ -75,9 +75,10 @@ export function TabPlanning({ formation, onRefresh }: Props) {
 
   // Trouver les slots pour un jour donné
   const getSlotsForDay = (date: Date): FormationTimeSlot[] => {
-    const dateStr = date.toISOString().split("T")[0];
+    const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
     return timeSlots.filter((slot) => {
-      const slotDate = new Date(slot.start_time).toISOString().split("T")[0];
+      const d = new Date(slot.start_time);
+      const slotDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
       return slotDate === dateStr;
     });
   };

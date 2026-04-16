@@ -127,8 +127,9 @@ const adminNavSections: NavSection[] = [
       { label: "Documents", href: "/admin/documents", icon: FileText },
       { label: "Emails", href: "/admin/emails", icon: Mail },
       { label: "Signatures", href: "/admin/signatures", icon: PenLine },
-      { label: "Lieux", href: "/admin/lieux", icon: MapPin },
-      { label: "Certificateurs", href: "/admin/certificateurs", icon: Award },
+      // Masqué V1 — Loris
+      // { label: "Lieux", href: "/admin/lieux", icon: MapPin },
+      // { label: "Certificateurs", href: "/admin/certificateurs", icon: Award },
     ],
   },
   {
@@ -136,8 +137,9 @@ const adminNavSections: NavSection[] = [
     items: [
       { label: "BPF", href: "/admin/reports/bpf", icon: BarChart3 },
       { label: "Factures", href: "/admin/reports/factures", icon: Receipt },
-      { label: "Suivi OPCO", href: "/admin/reports/opco", icon: Building2 },
-      { label: "Affacturage", href: "/admin/affacturage", icon: Banknote },
+      // Masqué V1 — Loris
+      // { label: "Suivi OPCO", href: "/admin/reports/opco", icon: Building2 },
+      // { label: "Affacturage", href: "/admin/affacturage", icon: Banknote },
       {
         label: "Qualité & Suivi",
         icon: Activity,

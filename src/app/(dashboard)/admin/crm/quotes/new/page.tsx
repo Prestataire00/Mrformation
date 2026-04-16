@@ -65,10 +65,12 @@ export default function NewQuotePage() {
   const { entityId } = useEntity();
 
   const prospectId = searchParams.get("prospect_id");
+  const editId = searchParams.get("edit");
   const learnerName = searchParams.get("learner_name");
   const [prospectName, setProspectName] = useState("");
   const [programs, setPrograms] = useState<Program[]>([]);
   const [saving, setSaving] = useState(false);
+  const [loadingEdit, setLoadingEdit] = useState(!!editId);
   const [error, setError] = useState("");
 
   const [form, setForm] = useState<QuoteFormState>({
@@ -87,9 +89,9 @@ export default function NewQuotePage() {
     lines: [{ description: "", quantity: "1", unit_price: "" }],
   });
 
-  // Fetch prospect name, amount & generate reference
+  // Fetch prospect name, amount & generate reference (only in creation mode)
   useEffect(() => {
-    if (!prospectId) return;
+    if (!prospectId || editId) return;
     (async () => {
       const { data } = await supabase
         .from("crm_prospects")
@@ -127,9 +129,9 @@ export default function NewQuotePage() {
   }, [supabase, entityId]);
 
   useEffect(() => {
-    if (entityId === undefined) return;
+    if (entityId === undefined || editId) return;
     generateRef();
-  }, [entityId, generateRef]);
+  }, [entityId, editId, generateRef]);
 
   // Fetch programs for the program_id select
   useEffect(() => {
@@ -141,6 +143,65 @@ export default function NewQuotePage() {
       setPrograms((data as Program[]) ?? []);
     })();
   }, [entityId, supabase]);
+
+  // ─── Load existing quote for edit mode ────────────────────────────────────
+  useEffect(() => {
+    if (!editId) return;
+    (async () => {
+      try {
+        const { data: quote, error: qErr } = await supabase
+          .from("crm_quotes")
+          .select("*")
+          .eq("id", editId)
+          .single();
+        if (qErr || !quote) { setError("Devis introuvable."); setLoadingEdit(false); return; }
+
+        // Load lines from crm_quote_lines
+        const { data: lines } = await supabase
+          .from("crm_quote_lines")
+          .select("description, quantity, unit_price")
+          .eq("quote_id", editId)
+          .order("id");
+
+        // Parse metadata from notes JSON
+        let meta: Record<string, string | null> = {};
+        try { meta = JSON.parse(quote.notes || "{}"); } catch { /* ignore */ }
+
+        setForm({
+          reference: quote.reference || "",
+          date_creation: quote.created_at?.split("T")[0] || today(),
+          date_echeance: quote.valid_until?.split("T")[0] || "",
+          training_start: quote.training_start?.split("T")[0] || "",
+          training_end: quote.training_end?.split("T")[0] || "",
+          tva: quote.tva != null ? String(quote.tva).replace(".", ",") : "20,00",
+          effectifs: quote.effectifs != null ? String(quote.effectifs) : "",
+          duration: quote.duration || "",
+          notes: meta.notes_text || "",
+          mention: meta.mention || DEFAULT_MENTION,
+          bpf_funding_type: quote.bpf_funding_type || "",
+          program_id: quote.program_id || "",
+          lines: lines && lines.length > 0
+            ? lines.map((l: { description: string; quantity: number; unit_price: number }) => ({
+                description: l.description,
+                quantity: String(l.quantity).replace(".", ","),
+                unit_price: String(l.unit_price).replace(".", ","),
+              }))
+            : [{ description: "", quantity: "1", unit_price: "" }],
+        });
+
+        // Load prospect name if linked
+        if (quote.prospect_id) {
+          const { data: p } = await supabase
+            .from("crm_prospects")
+            .select("company_name")
+            .eq("id", quote.prospect_id)
+            .single();
+          if (p) setProspectName(p.company_name);
+        }
+      } catch { setError("Erreur lors du chargement du devis."); }
+      finally { setLoadingEdit(false); }
+    })();
+  }, [editId, supabase]);
 
   // ─── Handlers ─────────────────────────────────────────────────────────────
 
@@ -244,42 +305,73 @@ export default function NewQuotePage() {
         .maybeSingle();
       const nextNumber = (maxRow?.quote_number ?? 0) + 1;
 
-      const payload: Record<string, unknown> = {
-        reference: form.reference.trim() || `DEV-${fiscalYear}-${String(nextNumber).padStart(3, "0")}`,
-        prospect_id: prospectId || null,
-        amount: calcTotal(),
-        status: "draft",
-        valid_until: form.date_echeance || null,
-        notes: JSON.stringify(metadata),
-        tva: parseFloat(String(form.tva).replace(",", ".")) || 20,
-        training_start: form.training_start || null,
-        training_end: form.training_end || null,
-        effectifs: form.effectifs ? parseInt(form.effectifs) : null,
-        duration: form.duration || null,
-        bpf_funding_type: form.bpf_funding_type || null,
-        program_id: form.program_id || null,
-        quote_number: nextNumber,
-        fiscal_year: fiscalYear,
-      };
-      if (entityId) payload.entity_id = entityId;
+      let quoteId: string;
 
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (user) payload.created_by = user.id;
+      if (editId) {
+        // ── UPDATE existing quote ──
+        const updatePayload: Record<string, unknown> = {
+          reference: form.reference.trim(),
+          amount: calcTotal(),
+          valid_until: form.date_echeance || null,
+          notes: JSON.stringify(metadata),
+          tva: parseFloat(String(form.tva).replace(",", ".")) || 20,
+          training_start: form.training_start || null,
+          training_end: form.training_end || null,
+          effectifs: form.effectifs ? parseInt(form.effectifs) : null,
+          duration: form.duration || null,
+          bpf_funding_type: form.bpf_funding_type || null,
+          program_id: form.program_id || null,
+        };
 
-      const { data: insertedQuote, error: insertErr } = await supabase
-        .from("crm_quotes")
-        .insert([payload])
-        .select("id")
-        .single();
-      if (insertErr) throw insertErr;
+        const { error: updateErr } = await supabase
+          .from("crm_quotes")
+          .update(updatePayload)
+          .eq("id", editId);
+        if (updateErr) throw updateErr;
+        quoteId = editId;
+
+        // Replace lines: delete existing then insert new
+        await supabase.from("crm_quote_lines").delete().eq("quote_id", editId);
+      } else {
+        // ── INSERT new quote ──
+        const payload: Record<string, unknown> = {
+          reference: form.reference.trim() || `DEV-${fiscalYear}-${String(nextNumber).padStart(3, "0")}`,
+          prospect_id: prospectId || null,
+          amount: calcTotal(),
+          status: "draft",
+          valid_until: form.date_echeance || null,
+          notes: JSON.stringify(metadata),
+          tva: parseFloat(String(form.tva).replace(",", ".")) || 20,
+          training_start: form.training_start || null,
+          training_end: form.training_end || null,
+          effectifs: form.effectifs ? parseInt(form.effectifs) : null,
+          duration: form.duration || null,
+          bpf_funding_type: form.bpf_funding_type || null,
+          program_id: form.program_id || null,
+          quote_number: nextNumber,
+          fiscal_year: fiscalYear,
+        };
+        if (entityId) payload.entity_id = entityId;
+
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (user) payload.created_by = user.id;
+
+        const { data: insertedQuote, error: insertErr } = await supabase
+          .from("crm_quotes")
+          .insert([payload])
+          .select("id")
+          .single();
+        if (insertErr) throw insertErr;
+        quoteId = insertedQuote.id;
+      }
 
       // Insert lines into crm_quote_lines
       const parsedLines = form.lines
         .filter((l) => l.description.trim())
         .map((l) => ({
-          quote_id: insertedQuote.id,
+          quote_id: quoteId,
           description: l.description.trim(),
           quantity: parseFloat(l.quantity.replace(",", ".")) || 1,
           unit_price: parseFloat(l.unit_price.replace(",", ".")) || 0,
@@ -315,12 +407,12 @@ export default function NewQuotePage() {
             <ArrowLeft className="h-4 w-4" />
           </button>
           <div>
-            <p className="text-xs text-gray-400">Nouveau devis</p>
+            <p className="text-xs text-gray-400">{editId ? "Modifier le devis" : "Nouveau devis"}</p>
             <p className="text-sm font-bold text-gray-900">{prospectName || "Devis"}</p>
           </div>
         </div>
-        <Button onClick={handleSubmit} disabled={saving} size="sm" style={{ background: "#374151" }} className="text-white text-xs">
-          {saving ? "Création..." : "Créer le devis"}
+        <Button onClick={handleSubmit} disabled={saving || loadingEdit} size="sm" style={{ background: "#374151" }} className="text-white text-xs">
+          {saving ? (editId ? "Enregistrement..." : "Création...") : (editId ? "Enregistrer" : "Créer le devis")}
         </Button>
       </div>
 

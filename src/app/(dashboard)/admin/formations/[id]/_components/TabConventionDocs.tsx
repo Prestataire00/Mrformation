@@ -5,7 +5,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import {
   Loader2, Eye, CheckCircle, Send, Copy, Clock, Download,
-  ChevronDown, ChevronUp, Plus, FileDown,
+  ChevronDown, ChevronUp, Plus, FileDown, PenLine,
 } from "lucide-react";
 import DOMPurify from "dompurify";
 import { Button } from "@/components/ui/button";
@@ -602,6 +602,38 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     onRefresh();
   };
 
+  // Send document for electronic signature via /api/documents/sign-request
+  const handleSendForSignature = async (doc: FormationConventionDocument, signerEmail: string | null) => {
+    if (!signerEmail) {
+      toast({ title: "Aucun email trouvé pour le destinataire", variant: "destructive" });
+      return;
+    }
+    const key = `sign-${doc.id}`;
+    setSaving(key);
+    try {
+      const res = await fetch("/api/documents/sign-request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          document_id: doc.id,
+          signer_email: signerEmail,
+          session_id: formation.id,
+        }),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Erreur lors de l'envoi");
+      }
+      toast({ title: "Demande de signature envoyée" });
+      onRefresh();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Erreur lors de l'envoi pour signature";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
+    } finally {
+      setSaving(null);
+    }
+  };
+
   // ===== RENDER HELPERS =====
 
   const renderStatusBadges = (doc: FormationConventionDocument | undefined) => {
@@ -626,10 +658,10 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
   };
 
   // Compact document row
-  const renderDocRow = (doc: FormationConventionDocument | undefined, docType: ConventionDocType) => {
+  const renderDocRow = (doc: FormationConventionDocument | undefined, docType: ConventionDocType, signerEmail?: string | null) => {
     if (!doc) return null;
     const label = doc.custom_label || DOC_LABELS[docType] || docType;
-    const isSaving = saving === doc.id || saving === `date-${doc.id}`;
+    const isSaving = saving === doc.id || saving === `date-${doc.id}` || saving === `sign-${doc.id}`;
 
     return (
       <div key={doc.id} className="flex items-center justify-between py-2 border-b last:border-b-0 gap-2">
@@ -670,6 +702,18 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
                 Date + Confirmer
               </Button>
             </>
+          )}
+          {doc.requires_signature && doc.is_confirmed && !doc.is_signed && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-6 text-xs gap-1 border-orange-300 text-orange-700 hover:bg-orange-50"
+              onClick={() => handleSendForSignature(doc, signerEmail || null)}
+              disabled={saving === `sign-${doc.id}`}
+            >
+              {saving === `sign-${doc.id}` && <Loader2 className="h-3 w-3 animate-spin" />}
+              <PenLine className="h-3 w-3" /> Envoyer pour signature
+            </Button>
           )}
         </div>
       </div>
@@ -779,9 +823,9 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
         </div>
         {/* Documents */}
         <div className="px-4 pb-2">
-          {defaultDocTypes.map((docType) => renderDocRow(getDoc(docType, ownerType, ownerId), docType))}
+          {defaultDocTypes.map((docType) => renderDocRow(getDoc(docType, ownerType, ownerId), docType, email))}
           {STATIC_DOCS.map((docType) => renderStaticDocRow(getDoc(docType, ownerType, ownerId), docType, email))}
-          {customDocs.map((doc) => renderDocRow(doc, "custom"))}
+          {customDocs.map((doc) => renderDocRow(doc, "custom", email))}
           {renderAddCustomDoc(ownerType, ownerId, true, "Avec e-signature")}
           {renderAddCustomDoc(ownerType, ownerId, false, "Sans e-signature")}
         </div>

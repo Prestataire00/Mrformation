@@ -957,6 +957,7 @@ const GENERATORS: Record<string, (data: TemplateData) => string> = {
   certificat_realisation: certificatRealisation,
   attestation_assiduite: attestationAssiduite,
   feuille_emargement: feuilleEmargement,
+  feuille_emargement_collectif: feuilleEmargement,
   convention_entreprise: conventionEntreprise,
   cgv,
   reglement_interieur: reglementInterieur,

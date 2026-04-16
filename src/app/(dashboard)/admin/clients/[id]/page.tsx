@@ -404,32 +404,42 @@ export default function ClientDetailPage() {
       `)
       .eq("client_id", clientId);
 
-    if (!error && data) {
-      const seen = new Set<string>();
-      const mapped: SessionHistory[] = [];
+    // Also fetch sessions via formation_companies (company ↔ session link)
+    const { data: companyFormations } = await supabase
+      .from("formation_companies")
+      .select("session_id, sessions(id, title, start_date, end_date, mode, status, trainers(first_name, last_name), enrollments(id))")
+      .eq("client_id", clientId);
 
-      for (const row of data as Record<string, unknown>[]) {
-        const s = row.sessions as Record<string, unknown> | null;
-        if (!s || seen.has(s.id as string)) continue;
-        seen.add(s.id as string);
-        const trainer = s.trainers as { first_name?: string; last_name?: string } | null;
-        const enrollments = s.enrollments as unknown[] | null;
-        mapped.push({
-          id: s.id as string,
-          title: s.title as string,
-          start_date: s.start_date as string,
-          end_date: s.end_date as string,
-          mode: s.mode as string,
-          status: s.status as string,
-          trainer_first_name: trainer?.first_name ?? null,
-          trainer_last_name: trainer?.last_name ?? null,
-          enrolled_learners: enrollments?.length ?? 0,
-        });
-      }
+    const seen = new Set<string>();
+    const mapped: SessionHistory[] = [];
 
-      mapped.sort((a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime());
-      setSessions(mapped);
+    // Merge both sources
+    const allRows = [
+      ...((data as Record<string, unknown>[]) || []),
+      ...((companyFormations as Record<string, unknown>[]) || []),
+    ];
+
+    for (const row of allRows) {
+      const s = row.sessions as Record<string, unknown> | null;
+      if (!s || seen.has(s.id as string)) continue;
+      seen.add(s.id as string);
+      const trainer = s.trainers as { first_name?: string; last_name?: string } | null;
+      const enrollments = s.enrollments as unknown[] | null;
+      mapped.push({
+        id: s.id as string,
+        title: s.title as string,
+        start_date: s.start_date as string,
+        end_date: s.end_date as string,
+        mode: s.mode as string,
+        status: s.status as string,
+        trainer_first_name: trainer?.first_name ?? null,
+        trainer_last_name: trainer?.last_name ?? null,
+        enrolled_learners: enrollments?.length ?? 0,
+      });
     }
+
+    mapped.sort((a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime());
+    setSessions(mapped);
   }, [supabase, clientId]);
 
   const fetchActivity = useCallback(async () => {
