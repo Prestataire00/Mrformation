@@ -745,9 +745,12 @@ export default function QuotesPage() {
                               </SelectContent>
                             </Select>
                             {needsRelance && (
-                              <Badge className="border-0 text-[10px] bg-amber-100 text-amber-700">
-                                Relance
-                              </Badge>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleSendByEmail(quote); }}
+                                className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 hover:bg-amber-200 font-medium cursor-pointer transition-colors"
+                              >
+                                Relancer
+                              </button>
                             )}
                           </div>
                         </td>
