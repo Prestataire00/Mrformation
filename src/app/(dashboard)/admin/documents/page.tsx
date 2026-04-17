@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { RichTextEditor } from "@/components/editor/RichTextEditor";
 import { plainTextToHtml, isHtmlContent } from "@/lib/migrate-templates";
 import { exportHtmlToPDF } from "@/lib/pdf-export";
+import { getDefaultTemplate } from "@/lib/document-templates-defaults";
 import DOMPurifyLib from "dompurify";
 
 const DOMPurify = typeof window !== "undefined" ? DOMPurifyLib : { sanitize: (html: string) => html };
@@ -151,6 +152,44 @@ function getTemplatePreview(html: string): string {
   return preview;
 }
 
+// ── Official document types — matches exactly what TabConventionDocs uses ──
+
+interface OfficialTemplate {
+  id: string;
+  name: string;
+  category: "learner" | "company" | "trainer" | "common";
+  categoryLabel: string;
+  type: DocumentType;
+  autoConfirmed: boolean;
+}
+
+const OFFICIAL_TEMPLATES: OfficialTemplate[] = [
+  // Apprenant
+  { id: "convocation", name: "CONVOCATION À LA FORMATION", category: "learner", categoryLabel: "Apprenant", type: "certificate", autoConfirmed: false },
+  { id: "certificat_realisation", name: "CERTIFICAT DE RÉALISATION", category: "learner", categoryLabel: "Apprenant", type: "certificate", autoConfirmed: false },
+  { id: "attestation_assiduite", name: "ATTESTATION D'ASSIDUITÉ", category: "learner", categoryLabel: "Apprenant", type: "attendance", autoConfirmed: false },
+  { id: "feuille_emargement", name: "FEUILLE D'ÉMARGEMENT", category: "learner", categoryLabel: "Apprenant", type: "attendance", autoConfirmed: false },
+  // Entreprise
+  { id: "convention_entreprise", name: "CONVENTION ENTREPRISE", category: "company", categoryLabel: "Entreprise", type: "agreement", autoConfirmed: false },
+  { id: "feuille_emargement_collectif", name: "FEUILLE D'ÉMARGEMENT COLLECTIF", category: "company", categoryLabel: "Entreprise", type: "attendance", autoConfirmed: false },
+  // Formateur
+  { id: "convention_intervention", name: "CONVENTION D'INTERVENTION", category: "trainer", categoryLabel: "Formateur", type: "agreement", autoConfirmed: false },
+  { id: "contrat_sous_traitance", name: "CONTRAT CADRE DE SOUS-TRAITANCE", category: "trainer", categoryLabel: "Formateur", type: "agreement", autoConfirmed: false },
+  // Communs (auto-confirmés)
+  { id: "cgv", name: "CGV", category: "common", categoryLabel: "Commun", type: "other", autoConfirmed: true },
+  { id: "politique_confidentialite", name: "POLITIQUE DE CONFIDENTIALITÉ", category: "common", categoryLabel: "Commun", type: "other", autoConfirmed: true },
+  { id: "reglement_interieur", name: "RÈGLEMENT INTÉRIEUR", category: "common", categoryLabel: "Commun", type: "other", autoConfirmed: true },
+  { id: "programme_formation", name: "PROGRAMME DE LA FORMATION", category: "common", categoryLabel: "Commun", type: "other", autoConfirmed: true },
+];
+
+const CATEGORY_COLORS: Record<string, string> = {
+  learner: "bg-blue-100 text-blue-700",
+  company: "bg-purple-100 text-purple-700",
+  trainer: "bg-amber-100 text-amber-700",
+  common: "bg-gray-100 text-gray-600",
+};
+
+// Starter templates for "Nouveau modèle" picker (subset for custom creation)
 interface StarterTemplate {
   id: string;
   name: string;
@@ -171,253 +210,23 @@ const STARTER_TEMPLATES: StarterTemplate[] = [
     description: "Convoque un apprenant avec les détails pratiques",
     type: "certificate",
     variableCount: 9,
-    content: starterWrap("CONVOCATION À LA FORMATION", `
-<p>Madame, Monsieur <strong>{{nom_apprenant}}</strong>,</p>
-<p>Nous avons le plaisir de vous confirmer votre inscription à la formation suivante :</p>
-<table>
-  <tr><td><strong>Formation</strong></td><td>{{titre_formation}}</td></tr>
-  <tr><td><strong>Date de début</strong></td><td>{{date_debut}}</td></tr>
-  <tr><td><strong>Date de fin</strong></td><td>{{date_fin}}</td></tr>
-  <tr><td><strong>Lieu</strong></td><td>{{lieu}}</td></tr>
-  <tr><td><strong>Durée</strong></td><td>{{duree_heures}} heure(s)</td></tr>
-  <tr><td><strong>Formateur</strong></td><td>{{nom_formateur}}</td></tr>
-</table>
-<p>Merci de vous présenter 15 minutes avant le début de la formation muni(e) d'une pièce d'identité.</p>
-<p>Cordialement,</p>
-<p>Le service formation</p>
-<p><em>Fait le {{date_today}}</em></p>`),
-  },
-  {
-    id: "certificat",
-    name: "Certificat de réalisation",
-    description: "Atteste la réalisation d'une formation par un apprenant",
-    type: "certificate",
-    variableCount: 7,
-    content: starterWrap("CERTIFICAT DE RÉALISATION", `
-<p>Je soussigné(e), <strong>{{nom_formateur}}</strong>, formateur, certifie que :</p>
-<p><strong>{{nom_apprenant}}</strong></p>
-<p>a suivi l'action de formation suivante :</p>
-<table>
-  <tr><td><strong>Intitulé</strong></td><td>{{titre_formation}}</td></tr>
-  <tr><td><strong>Du</strong></td><td>{{date_debut}}</td></tr>
-  <tr><td><strong>Au</strong></td><td>{{date_fin}}</td></tr>
-  <tr><td><strong>Durée totale</strong></td><td>{{duree_heures}} heure(s)</td></tr>
-</table>
-<p>En foi de quoi, le présent certificat est établi pour servir et valoir ce que de droit.</p>
-<p><em>Fait le {{date_today}}</em></p>
-<p><br/></p>
-<p><strong>Le formateur</strong></p>
-<p>{{signature_formateur}}</p>`),
-  },
-  {
-    id: "attestation",
-    name: "Attestation d'assiduité",
-    description: "Atteste la présence et l'assiduité d'un apprenant",
-    type: "attendance",
-    variableCount: 8,
-    content: starterWrap("ATTESTATION D'ASSIDUITÉ", `
-<p>Je soussigné(e) atteste que :</p>
-<p><strong>{{nom_apprenant}}</strong></p>
-<p>a fait preuve d'assiduité lors de la formation :</p>
-<table>
-  <tr><td><strong>Intitulé</strong></td><td>{{titre_formation}}</td></tr>
-  <tr><td><strong>Du</strong></td><td>{{date_debut}}</td></tr>
-  <tr><td><strong>Au</strong></td><td>{{date_fin}}</td></tr>
-  <tr><td><strong>Durée</strong></td><td>{{duree_heures}} heure(s)</td></tr>
-</table>
-<p><em>Fait le {{date_today}}</em></p>
-<p><br/></p>
-<table>
-  <tr>
-    <td><strong>Signature de l'apprenant</strong><br/>{{signature_apprenant}}</td>
-    <td><strong>Signature du formateur</strong><br/>{{signature_formateur}}</td>
-  </tr>
-</table>`),
-  },
-  {
-    id: "emargement",
-    name: "Feuille d'émargement",
-    description: "Feuille de présence avec signatures",
-    type: "attendance",
-    variableCount: 7,
-    content: starterWrap("FEUILLE D'ÉMARGEMENT", `
-<table>
-  <tr><td><strong>Formation</strong></td><td>{{titre_formation}}</td></tr>
-  <tr><td><strong>Dates</strong></td><td>Du {{date_debut}} au {{date_fin}}</td></tr>
-  <tr><td><strong>Lieu</strong></td><td>{{lieu}}</td></tr>
-  <tr><td><strong>Formateur</strong></td><td>{{nom_formateur}}</td></tr>
-</table>
-<p><br/></p>
-<table>
-  <tr>
-    <th>Nom et prénom</th>
-    <th>Matin</th>
-    <th>Après-midi</th>
-    <th>Signature</th>
-  </tr>
-  <tr>
-    <td>{{nom_apprenant}}</td>
-    <td></td>
-    <td></td>
-    <td>{{signature_apprenant}}</td>
-  </tr>
-</table>
-<p><em>Fait le {{date_today}}</em></p>`),
+    content: starterWrap("CONVOCATION À LA FORMATION", `<p>Madame, Monsieur <strong>{{nom_apprenant}}</strong>,</p><p>Nous avons le plaisir de vous confirmer votre inscription à la formation <strong>{{titre_formation}}</strong>.</p><p>Du {{date_debut}} au {{date_fin}} — {{lieu}}</p><p>Cordialement,</p>`),
   },
   {
     id: "convention",
     name: "Convention de formation",
-    description: "Convention entre l'organisme et l'entreprise cliente",
+    description: "Convention entre l'organisme et l'entreprise",
     type: "agreement",
     variableCount: 8,
-    content: starterWrap("CONVENTION DE FORMATION PROFESSIONNELLE", `
-<p>Entre les soussignés :</p>
-<p><strong>L'organisme de formation</strong>, ci-après dénommé « le prestataire »,</p>
-<p>et</p>
-<p><strong>{{nom_client}}</strong>, ci-après dénommé « le client »,</p>
-<p>Il a été convenu ce qui suit :</p>
-<h2>Article 1 — Objet</h2>
-<p>Le prestataire s'engage à organiser l'action de formation suivante :</p>
-<table>
-  <tr><td><strong>Intitulé</strong></td><td>{{titre_formation}}</td></tr>
-  <tr><td><strong>Du</strong></td><td>{{date_debut}}</td></tr>
-  <tr><td><strong>Au</strong></td><td>{{date_fin}}</td></tr>
-  <tr><td><strong>Durée</strong></td><td>{{duree_heures}} heure(s)</td></tr>
-  <tr><td><strong>Lieu</strong></td><td>{{lieu}}</td></tr>
-  <tr><td><strong>Formateur</strong></td><td>{{nom_formateur}}</td></tr>
-</table>
-<h2>Article 2 — Tarif</h2>
-<p>Le coût de la formation est fixé à <strong>{{montant}}</strong> HT.</p>
-<h2>Article 3 — Modalités</h2>
-<p>La formation sera réalisée conformément au programme annexé à la présente convention.</p>
-<p><em>Fait le {{date_today}}</em></p>
-<p><br/></p>
-<table>
-  <tr>
-    <td><strong>Pour le prestataire</strong><br/><br/>Signature</td>
-    <td><strong>Pour le client</strong><br/><br/>Signature</td>
-  </tr>
-</table>`),
+    content: starterWrap("CONVENTION DE FORMATION", `<p>Entre <strong>l'organisme de formation</strong> et <strong>{{nom_client}}</strong>.</p><p>Formation : {{titre_formation}}</p><p>Du {{date_debut}} au {{date_fin}} — {{duree_heures}}h</p>`),
   },
   {
-    id: "reglement_interieur",
-    name: "Règlement intérieur",
-    description: "Règlement intérieur applicable aux stagiaires",
-    type: "other",
-    variableCount: 1,
-    content: starterWrap("RÈGLEMENT INTÉRIEUR", `
-<h2>Article 1 — Objet et champ d'application</h2>
-<p>Le présent règlement est établi conformément aux articles L.6352-3 et L.6352-4 et R.6352-1 à R.6352-15 du Code du travail. Il s'applique à tous les stagiaires et ce, pour la durée de la formation suivie.</p>
-<h2>Article 2 — Discipline</h2>
-<p>Il est formellement interdit aux stagiaires :</p>
-<ul>
-<li>D'introduire des boissons alcoolisées dans les locaux</li>
-<li>De se présenter aux sessions en état d'ébriété ou sous l'emprise de stupéfiants</li>
-<li>D'emporter ou modifier les supports de formation sans autorisation</li>
-<li>De fumer dans les locaux</li>
-</ul>
-<h2>Article 3 — Horaires</h2>
-<p>Les stagiaires doivent se conformer aux horaires fixés et communiqués au préalable. En cas d'absence ou de retard, le stagiaire doit prévenir le formateur.</p>
-<h2>Article 4 — Sanctions</h2>
-<p>Tout manquement du stagiaire à l'une des dispositions du présent règlement pourra faire l'objet d'une sanction prononcée par le responsable de l'organisme de formation.</p>
-<p><em>Fait le {{date_today}}</em></p>`),
-  },
-  {
-    id: "politique_confidentialite",
-    name: "Politique RGPD",
-    description: "Politique de confidentialité et protection des données",
-    type: "other",
-    variableCount: 1,
-    content: starterWrap("POLITIQUE DE CONFIDENTIALITÉ — RGPD", `
-<h2>1. Responsable du traitement</h2>
-<p>L'organisme de formation est responsable du traitement des données personnelles collectées dans le cadre de ses activités.</p>
-<h2>2. Données collectées</h2>
-<p>Nous collectons les données suivantes : nom, prénom, adresse email, numéro de téléphone, adresse postale, données relatives au parcours de formation (présence, évaluations, certifications).</p>
-<h2>3. Finalités</h2>
-<ul>
-<li>Gestion administrative des formations</li>
-<li>Suivi pédagogique et évaluation</li>
-<li>Obligations légales (Qualiopi, BPF, OPCO)</li>
-<li>Communication relative aux formations</li>
-</ul>
-<h2>4. Durée de conservation</h2>
-<p>Les données sont conservées pendant la durée de la formation et 5 ans après la fin de celle-ci, conformément aux obligations légales.</p>
-<h2>5. Droits des personnes</h2>
-<p>Conformément au RGPD, vous disposez d'un droit d'accès, de rectification, de suppression et de portabilité de vos données. Contact : <strong>{{email_entite}}</strong></p>
-<p><em>Fait le {{date_today}}</em></p>`),
-  },
-  {
-    id: "cgv",
-    name: "Conditions Générales de Vente",
-    description: "CGV applicables aux prestations de formation",
-    type: "other",
-    variableCount: 1,
-    content: starterWrap("CONDITIONS GÉNÉRALES DE VENTE", `
-<h2>Article 1 — Objet</h2>
-<p>Les présentes CGV régissent les relations entre l'organisme de formation et ses clients pour toute commande de prestation de formation professionnelle.</p>
-<h2>Article 2 — Inscription</h2>
-<p>Toute inscription est confirmée par la signature de la convention de formation et le versement d'un acompte de 30 % du montant total.</p>
-<h2>Article 3 — Tarifs</h2>
-<p>Les prix sont indiqués en euros HT. TVA non applicable, article 261-4-4° du CGI (le cas échéant).</p>
-<h2>Article 4 — Annulation</h2>
-<p>Toute annulation par le client doit intervenir au plus tard 10 jours ouvrés avant le début de la formation. Passé ce délai, le montant total est dû.</p>
-<h2>Article 5 — Règlement</h2>
-<p>Le paiement est dû à réception de facture, à 30 jours. En cas de retard, des pénalités au taux de 3 fois le taux d'intérêt légal seront appliquées.</p>
-<h2>Article 6 — Responsabilité</h2>
-<p>L'organisme de formation s'engage à réaliser les prestations avec diligence. Sa responsabilité est limitée au montant de la prestation concernée.</p>
-<p><em>Fait le {{date_today}}</em></p>`),
-  },
-  {
-    id: "programme_formation",
-    name: "Programme de formation",
-    description: "Programme détaillé d'une action de formation",
-    type: "other",
-    variableCount: 6,
-    content: starterWrap("PROGRAMME DE FORMATION", `
-<table>
-  <tr><td><strong>Intitulé</strong></td><td>{{titre_formation}}</td></tr>
-  <tr><td><strong>Durée</strong></td><td>{{duree_heures}} heure(s)</td></tr>
-  <tr><td><strong>Dates</strong></td><td>Du {{date_debut}} au {{date_fin}}</td></tr>
-  <tr><td><strong>Formateur</strong></td><td>{{nom_formateur}}</td></tr>
-  <tr><td><strong>Lieu</strong></td><td>{{lieu}}</td></tr>
-</table>
-<h2>Objectifs pédagogiques</h2>
-<p>À l'issue de la formation, le stagiaire sera capable de :</p>
-<ul><li>[Objectif 1]</li><li>[Objectif 2]</li><li>[Objectif 3]</li></ul>
-<h2>Public visé</h2>
-<p>[Description du public cible]</p>
-<h2>Prérequis</h2>
-<p>[Prérequis nécessaires ou « Aucun prérequis »]</p>
-<h2>Contenu</h2>
-<p><strong>Module 1 :</strong> [Titre du module]</p>
-<ul><li>[Thème 1]</li><li>[Thème 2]</li></ul>
-<p><strong>Module 2 :</strong> [Titre du module]</p>
-<ul><li>[Thème 1]</li><li>[Thème 2]</li></ul>
-<h2>Méthodes pédagogiques</h2>
-<p>Apports théoriques, mises en situation pratiques, échanges en groupe.</p>
-<h2>Évaluation</h2>
-<p>Évaluation des acquis par questionnaire en fin de formation.</p>`),
-  },
-  {
-    id: "micro_certificat",
-    name: "Certificat de réussite",
-    description: "Certificat de réussite délivré à l'apprenant",
+    id: "certificat",
+    name: "Certificat de réalisation",
+    description: "Atteste la réalisation d'une formation",
     type: "certificate",
-    variableCount: 5,
-    content: starterWrap("CERTIFICAT DE RÉUSSITE", `
-<p>Nous certifions que :</p>
-<p style="font-size:1.2em"><strong>{{nom_apprenant}}</strong></p>
-<p>a suivi avec succès et validé les objectifs pédagogiques de la formation :</p>
-<p style="font-size:1.1em"><strong>{{titre_formation}}</strong></p>
-<table>
-  <tr><td><strong>Du</strong></td><td>{{date_debut}}</td></tr>
-  <tr><td><strong>Au</strong></td><td>{{date_fin}}</td></tr>
-  <tr><td><strong>Durée</strong></td><td>{{duree_heures}} heure(s)</td></tr>
-</table>
-<p>En foi de quoi, le présent certificat est délivré pour servir et valoir ce que de droit.</p>
-<p><em>Fait le {{date_today}}</em></p>
-<p><br/></p>
-<p><strong>Le responsable de l'organisme de formation</strong></p>`),
+    variableCount: 7,
+    content: starterWrap("CERTIFICAT DE RÉALISATION", `<p><strong>{{nom_apprenant}}</strong> a suivi la formation <strong>{{titre_formation}}</strong>.</p><p>Du {{date_debut}} au {{date_fin}} — {{duree_heures}}h</p><p><em>Fait le {{date_today}}</em></p>`),
   },
 ];
 
@@ -932,7 +741,7 @@ export default function DocumentsPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Documents</h1>
           <p className="text-sm text-gray-500 mt-1">
-            {templates.length} modèle{templates.length !== 1 ? "s" : ""} — {generatedDocs.length} document{generatedDocs.length !== 1 ? "s" : ""} générés — {clientDocs.length} document{clientDocs.length !== 1 ? "s" : ""} clients
+            {OFFICIAL_TEMPLATES.length} templates officiels — {templates.length} modèle{templates.length !== 1 ? "s" : ""} personnalisés — {generatedDocs.length} document{generatedDocs.length !== 1 ? "s" : ""} générés
           </p>
         </div>
         {/* Bouton "Générer un document" retiré */}
@@ -950,77 +759,87 @@ export default function DocumentsPage() {
         </TabsList>
 
         {/* ═══ ONGLET 1 : TEMPLATES OFFICIELS ═══ */}
-        <TabsContent value="official" className="space-y-4">
+        <TabsContent value="official" className="space-y-6">
           <p className="text-sm text-muted-foreground">
-            Les 11 modèles officiels MR Formation. Vous pouvez les personnaliser sans modifier le code.
+            Les {OFFICIAL_TEMPLATES.length} documents officiels utilisés dans les fiches formation. Identiques à ceux de l&apos;onglet Convention & Documents.
           </p>
 
-          {templatesLoading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="h-36 rounded-xl bg-gray-100 animate-pulse" />
-              ))}
-            </div>
-          ) : systemTemplates.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <FileText className="h-10 w-10 text-gray-300 mb-3" />
-              <p className="font-medium text-gray-600">Aucun template système trouvé</p>
-              <p className="text-sm text-gray-400 mt-1">Exécutez la migration SQL pour créer les 11 templates.</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {systemTemplates.map((template) => (
-                <Card key={template.id} className="group hover:shadow-md transition-shadow">
-                  <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <div className={cn("p-2 rounded-lg", TYPE_COLORS[template.type as DocumentType])}>
-                          <TypeIcon type={template.type as DocumentType} />
-                        </div>
-                        <div>
-                          <CardTitle className="text-sm">{truncate(template.name, 40)}</CardTitle>
-                          <div className="flex items-center gap-1.5 mt-1">
-                            <Badge className={cn("text-xs font-normal", TYPE_COLORS[template.type as DocumentType])}>
-                              {TYPE_LABELS[template.type as DocumentType]}
-                            </Badge>
-                            <Badge variant="outline" className="text-xs font-normal text-blue-600 border-blue-200">Officiel</Badge>
+          {(["learner", "company", "trainer", "common"] as const).map((cat) => {
+            const catTemplates = OFFICIAL_TEMPLATES.filter((t) => t.category === cat);
+            const catLabel = cat === "learner" ? "Documents Apprenant" : cat === "company" ? "Documents Entreprise" : cat === "trainer" ? "Documents Formateur" : "Documents Communs (auto-confirmés)";
+            return (
+              <div key={cat}>
+                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">{catLabel}</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {catTemplates.map((ot) => {
+                    // Find matching DB template for "Personnaliser"
+                    const dbTemplate = templates.find((t) =>
+                      (t as unknown as { system_key?: string }).system_key === ot.id || t.name.toLowerCase().includes(ot.name.toLowerCase().slice(0, 15))
+                    );
+                    return (
+                      <Card key={ot.id} className="group hover:shadow-md transition-shadow">
+                        <CardHeader className="pb-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <div className={cn("p-2 rounded-lg", TYPE_COLORS[ot.type])}>
+                                <TypeIcon type={ot.type} />
+                              </div>
+                              <div>
+                                <CardTitle className="text-sm">{ot.name}</CardTitle>
+                                <div className="flex items-center gap-1.5 mt-1">
+                                  <Badge className={cn("text-xs font-normal", CATEGORY_COLORS[ot.category])}>
+                                    {ot.categoryLabel}
+                                  </Badge>
+                                  {ot.autoConfirmed && (
+                                    <Badge variant="outline" className="text-xs font-normal text-green-600 border-green-200">Auto-confirmé</Badge>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 text-xs gap-1"
-                        onClick={() => { setPreviewTemplate(template); setPreviewDialogOpen(true); }}
-                      >
-                        <Eye className="h-3 w-3" /> Aperçu
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-7 text-xs gap-1"
-                        onClick={() => openEditTemplate(template)}
-                      >
-                        <Pencil className="h-3 w-3" /> Personnaliser
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 text-xs gap-1"
-                        onClick={() => handleExportTemplateAsPDF(template)}
-                      >
-                        <Download className="h-3 w-3" /> PDF
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
+                        </CardHeader>
+                        <CardContent>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 text-xs gap-1"
+                              onClick={() => {
+                                // Preview using getDefaultTemplate from document-templates-defaults.ts
+                                const demoData = {
+                                  formation: { id: "demo", title: "Formation IA Générative", start_date: "2026-04-15", end_date: "2026-04-17", planned_hours: 21, mode: "presentiel", location: "Paris", enrollments: [], formation_trainers: [], formation_time_slots: [], signatures: [] },
+                                  entityName: entity?.name || "MR FORMATION",
+                                };
+                                const html = getDefaultTemplate(ot.id, demoData as unknown as Parameters<typeof getDefaultTemplate>[1]);
+                                if (html) {
+                                  setPreviewTemplate({ id: ot.id, name: ot.name, type: ot.type, content: html, entity_id: "", created_at: "", updated_at: "", variables: [] } as DocumentTemplate);
+                                  setPreviewDialogOpen(true);
+                                } else {
+                                  toast({ title: "Aperçu non disponible pour ce type", variant: "destructive" });
+                                }
+                              }}
+                            >
+                              <Eye className="h-3 w-3" /> Aperçu
+                            </Button>
+                            {dbTemplate && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs gap-1"
+                                onClick={() => openEditTemplate(dbTemplate)}
+                              >
+                                <Pencil className="h-3 w-3" /> Personnaliser
+                              </Button>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
         </TabsContent>
 
         {/* ═══ ONGLET 2 : MES MODÈLES (custom) ═══ */}
