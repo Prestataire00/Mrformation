@@ -123,13 +123,9 @@ export function TabParcours({ formation, onRefresh }: Props) {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <span className="text-sm text-gray-500">{timeSlots.length} créneau{timeSlots.length > 1 ? "x" : ""}</span>
-          {formation.is_completed ? (
+          {formation.is_completed && (
             <Badge className="bg-green-100 text-green-700 text-xs gap-1"><CheckCircle className="h-3 w-3" /> Terminée</Badge>
-          ) : timeSlots.length > 0 ? (
-            <Button size="sm" variant="outline" className="text-xs h-7 gap-1 text-green-600 hover:text-green-700 hover:bg-green-50" onClick={handleMarkCompleted} disabled={saving}>
-              {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3" />} Terminer la formation
-            </Button>
-          ) : null}
+          )}
         </div>
         <Button size="sm" variant="outline" className="text-xs h-7 gap-1" onClick={handleDownloadBilan}>
           <Download className="h-3 w-3" /> Bilan CSV

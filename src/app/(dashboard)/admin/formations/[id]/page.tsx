@@ -7,12 +7,18 @@ import { createClient } from "@/lib/supabase/client";
 import {
   ArrowLeft, Loader2, Eye, Calendar, FileText, PenLine,
   ClipboardCheck, GraduationCap, Euro, ShieldCheck, MessageSquare,
-  Users, Clock, Briefcase,
+  Users, Clock, Briefcase, CheckCircle, RotateCcw, Copy, MoreHorizontal, Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useToast } from "@/components/ui/use-toast";
 import { useEntity } from "@/contexts/EntityContext";
 import { cn, formatDate, SESSION_STATUS_LABELS, STATUS_COLORS } from "@/lib/utils";
@@ -134,6 +140,46 @@ export default function FormationDetailPage() {
     { value: "communication", label: "Communication", icon: MessageSquare },
   ], [kpis]);
 
+  // ── Complete / Reopen formation ──
+  const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
+  const [completing, setCompleting] = useState(false);
+
+  const handleToggleComplete = async () => {
+    const isCompleting = formation?.status !== "completed";
+    setCompleting(true);
+    try {
+      const { error } = await supabase
+        .from("sessions")
+        .update({
+          status: isCompleting ? "completed" : "in_progress",
+          is_completed: isCompleting,
+        })
+        .eq("id", formationId)
+        .eq("entity_id", entityId);
+      if (error) throw error;
+
+      if (isCompleting) {
+        // Trigger on_session_completion automation rules
+        fetch("/api/formations/automation-rules/trigger-event", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ trigger_type: "on_session_completion", session_id: formationId }),
+        }).catch((err) => console.error("[automation] on_session_completion:", err));
+        toast({ title: "Formation terminée", description: "Les automatisations de clôture ont été déclenchées." });
+      } else {
+        toast({ title: "Formation rouverte" });
+      }
+
+      setCompleteDialogOpen(false);
+      await fetchFormation();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Erreur";
+      toast({ title: "Erreur", description: msg, variant: "destructive" });
+    } finally {
+      setCompleting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -195,6 +241,43 @@ export default function FormationDetailPage() {
               </Button>
             </Link>
           )}
+          {formation.status !== "cancelled" && (
+            formation.status === "completed" ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-xs gap-1.5"
+                onClick={() => setCompleteDialogOpen(true)}
+              >
+                <RotateCcw className="h-3.5 w-3.5" /> Rouvrir
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-xs gap-1.5 border-green-300 text-green-700 hover:bg-green-50"
+                onClick={() => setCompleteDialogOpen(true)}
+              >
+                <CheckCircle className="h-3.5 w-3.5" /> Terminer
+              </Button>
+            )
+          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-8 w-8">
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem className="gap-2 text-xs">
+                <Copy className="h-3.5 w-3.5" /> Dupliquer la formation
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem className="gap-2 text-xs text-red-600 focus:text-red-600">
+                <Trash2 className="h-3.5 w-3.5" /> Supprimer
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
@@ -306,6 +389,33 @@ export default function FormationDetailPage() {
           <TabAbsences formation={formation} onRefresh={fetchFormation} />
         </TabsContent>
       </Tabs>
+
+      {/* ═══ DIALOG TERMINER / ROUVRIR ═══ */}
+      <Dialog open={completeDialogOpen} onOpenChange={setCompleteDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>
+              {formation.status === "completed" ? "Rouvrir la formation ?" : "Terminer la formation ?"}
+            </DialogTitle>
+            <DialogDescription>
+              {formation.status === "completed"
+                ? "La formation repassera en statut 'En cours'. L'émargement et les documents seront de nouveau modifiables."
+                : "Cela va verrouiller l'émargement et déclencher les automatisations de clôture (envoi certificats, questionnaires satisfaction, etc.)."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCompleteDialogOpen(false)}>Annuler</Button>
+            <Button
+              onClick={handleToggleComplete}
+              disabled={completing}
+              className={formation.status === "completed" ? "" : "bg-green-600 hover:bg-green-700 text-white"}
+            >
+              {completing && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              {formation.status === "completed" ? "Rouvrir" : "Terminer"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
