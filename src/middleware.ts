@@ -38,7 +38,7 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Public routes
-  const publicPaths = ["/login", "/select-entity", "/select-role", "/reset-password", "/api/auth", "/emargement", "/api/emargement", "/sign", "/api/documents/sign", "/api/documents/sign-status"];
+  const publicPaths = ["/login", "/select-entity", "/select-role", "/reset-password", "/api/auth", "/emargement", "/api/emargement", "/sign", "/api/documents/sign", "/api/documents/sign-status", "/access"];
   const isPublicPath = publicPaths.some((p) => pathname.startsWith(p));
   const isRoot = pathname === "/";
 

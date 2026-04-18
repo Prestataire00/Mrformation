@@ -14,6 +14,9 @@ interface TemplateData {
   effectiveHours?: number;
   attendanceRate?: number;
   signedSlots?: Array<{ date: string; hours: number }>;
+  // Magic link pour apprenants
+  magicLinkUrl?: string;
+  qrCodeDataUrl?: string;
   missedSlots?: Array<{ date: string; hours: number }>;
 }
 
@@ -692,7 +695,7 @@ function politiqueRgpd(data: TemplateData): string {
 // ──────────────────────────────────────────────
 
 function convocation(data: TemplateData): string {
-  const { formation, learner, entityName } = data;
+  const { formation, learner, entityName, magicLinkUrl, qrCodeDataUrl } = data;
   const co = getCompanyInfo(entityName);
   const fullName = learner ? `${learner.last_name?.toUpperCase()} ${learner.first_name}` : "—";
   const modalite = MODE_LABELS[formation.mode] || "En présentiel";
@@ -723,11 +726,16 @@ function convocation(data: TemplateData): string {
     <p style="font-weight: 700;">Vos dates en détail :</p>
     ${slotsHtml}
 
-    <p><strong>Vous trouverez des informations complémentaires concernant la formation sur la page web dédiée aux stagiaires de cette formation:</strong></p>
+    ${magicLinkUrl && qrCodeDataUrl ? `
+    <div style="margin: 24px 0; padding: 20px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; text-align: center;">
+      <p style="margin: 0 0 8px; font-weight: 700; font-size: 14px; color: #374151;">Votre accès à votre espace personnel</p>
+      <p style="margin: 0 0 16px; font-size: 12px; color: #6b7280;">Documents, planning, questionnaires, émargement électronique</p>
+      <img src="${qrCodeDataUrl}" alt="QR Code" style="width: 160px; height: 160px; margin: 0 auto 12px; display: block;" />
+      <p style="margin: 0; font-size: 11px; color: #374151;"><a href="${magicLinkUrl}" style="color: #DC2626;">Accéder à mon espace →</a></p>
+    </div>
+    ` : `<p style="color: #999; font-style: italic; font-size: 11px;">Un lien d'accès personnel vous sera envoyé par email séparément.</p>`}
 
-    <p style="text-align: center; color: #666; font-size: 11px;">https://mrformationcrm.netlify.app/emargement</p>
-
-    <p>Vous pourrez vous connecter à cette page en scannant le QR code ci-dessus.<br/>En cas d'indisponibilité ou de renoncement, veuillez nous prévenir le plus rapidement possible.</p>
+    <p>En cas d'indisponibilité ou de renoncement, veuillez nous prévenir le plus rapidement possible.</p>
 
     <p><strong>Important :</strong><br/>
     Vous trouverez dans votre extranet notre <strong>règlement intérieur</strong> dont vous devez avoir pris connaissance <strong>avant</strong> votre entrée en formation, afin d'être informé des règles de fonctionnement dans le cadre de la formation.<br/>
