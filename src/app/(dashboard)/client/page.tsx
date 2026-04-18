@@ -36,6 +36,8 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { isAfter, parseISO } from "date-fns";
+import { HeroCard, QuickActionCards, MiniCalendar, PriorityList } from "@/components/dashboard-home";
+import { FileText } from "lucide-react";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -289,9 +291,35 @@ export default function ClientPage() {
 
   // ── render ─────────────────────────────────────────────────────────────────
 
+  const eventDates = [...inProgressSessions, ...upcomingSessions]
+    .map(s => s.start_date?.split("T")[0])
+    .filter(Boolean);
+
   return (
     <div className="space-y-6">
-      {/* ── Header ── */}
+      {/* ── Hero ── */}
+      <HeroCard
+        firstName={client.company_name}
+        message={`Votre entreprise a ${learners.length} apprenant${learners.length !== 1 ? "s" : ""} en formation et ${inProgressSessions.length + upcomingSessions.length} formation${(inProgressSessions.length + upcomingSessions.length) !== 1 ? "s" : ""} en cours ou à venir.`}
+        ctaLabel="Voir mes formations"
+        ctaHref="/client/formations"
+      />
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* ═══ COLONNE PRINCIPALE (2/3) ═══ */}
+        <div className="lg:col-span-2 space-y-6">
+
+      <QuickActionCards
+        title="Accès rapides"
+        actions={[
+          { icon: Users, label: "Apprenants inscrits", count: learners.length, href: "/client/learners", color: "blue" },
+          { icon: GraduationCap, label: "Formations en cours", count: inProgressSessions.length, href: "/client/formations", color: "green" },
+          { icon: CalendarDays, label: "Formations à venir", count: upcomingSessions.length, href: "/client/formations", color: "amber" },
+          { icon: FileText, label: "Documents", count: 0, href: "/client/documents", color: "purple" },
+        ]}
+      />
+
+      {/* ── Ancien header (profil entreprise) ── */}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-4">
           <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-primary/10">
@@ -754,6 +782,36 @@ export default function ClientPage() {
               </CardContent>
             </Card>
           )}
+        </div>
+      </div>
+
+        </div>
+
+        {/* ═══ SIDEBAR DROITE (1/3) ═══ */}
+        <div className="space-y-4">
+          <MiniCalendar eventDates={eventDates} />
+          <PriorityList
+            title="Apprenants actifs"
+            icon={Users}
+            items={learners.slice(0, 5).map(l => ({
+              id: l.id,
+              initials: getInitials(l.first_name, l.last_name),
+              title: `${l.first_name} ${l.last_name}`,
+              subtitle: l.email || undefined,
+            }))}
+            emptyMessage="Aucun apprenant"
+          />
+          <PriorityList
+            title="Formations à venir"
+            icon={CalendarDays}
+            items={upcomingSessions.slice(0, 5).map(s => ({
+              id: s.id,
+              title: s.title,
+              subtitle: formatDate(s.start_date),
+              badge: { label: SESSION_STATUS_LABELS[s.status] || s.status, color: STATUS_COLORS[s.status] || "bg-gray-100" },
+            }))}
+            emptyMessage="Aucune formation à venir"
+          />
         </div>
       </div>
     </div>
