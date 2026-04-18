@@ -41,7 +41,7 @@ const DOC_COLORS: Record<string, string> = {
   attestation_assiduite: "border-l-green-400",
   feuille_emargement: "border-l-amber-500",
   feuille_emargement_collectif: "border-l-amber-500",
-  micro_certificat: "border-l-emerald-500",
+  // micro_certificat retiré (Loris V1)
   cgv: "border-l-gray-400",
   politique_confidentialite: "border-l-gray-400",
   reglement_interieur: "border-l-gray-400",
@@ -58,7 +58,7 @@ const DOC_LABELS: Record<string, string> = {
   certificat_realisation: "CERTIFICAT DE RÉALISATION",
   attestation_assiduite: "ATTESTATION D'ASSIDUITÉ",
   feuille_emargement: "FEUILLE D'ÉMARGEMENT",
-  micro_certificat: "MICRO-CERTIFICAT",
+  // micro_certificat retiré (Loris V1)
   cgv: "CGV",
   politique_confidentialite: "POLITIQUE DE CONFIDENTIALITÉ",
   reglement_interieur: "RÈGLEMENT INTÉRIEUR",
@@ -75,7 +75,7 @@ const DOC_LABELS_PLURAL: Record<string, string> = {
   certificat_realisation: "certificats de réalisation",
   attestation_assiduite: "attestations d'assiduité",
   feuille_emargement: "feuilles d'émargement",
-  micro_certificat: "micro-certificats",
+  // micro_certificat retiré (Loris V1)
 };
 
 const DEFAULT_LEARNER_DOCS: ConventionDocType[] = [
