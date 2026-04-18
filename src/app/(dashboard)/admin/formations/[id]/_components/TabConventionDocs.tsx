@@ -245,7 +245,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
 
     const templateData = {
       formation,
-      learner: learner ? { first_name: learner.first_name, last_name: learner.last_name, email: learner.email ?? undefined } : undefined,
+      learner: learner ? { id: learner.id, first_name: learner.first_name, last_name: learner.last_name, email: learner.email ?? undefined } : undefined,
       company: company || undefined,
       trainer: trainerData || undefined,
       entityName,

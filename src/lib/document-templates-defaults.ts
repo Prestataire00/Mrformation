@@ -6,7 +6,7 @@ import type { Session } from "@/lib/types";
 
 interface TemplateData {
   formation: Session;
-  learner?: { first_name: string; last_name: string; email?: string };
+  learner?: { id?: string; first_name: string; last_name: string; email?: string };
   company?: { company_name: string; address?: string | null; siret?: string | null; contacts?: Array<{ first_name: string; last_name: string; is_primary: boolean }> };
   trainer?: { first_name: string; last_name: string };
   entityName: string;
@@ -88,6 +88,42 @@ function getCompanyInfo(entityName: string) {
     region: "PACA",
     president: "VICHOT Marc",
   };
+}
+
+function signatureToDataUrl(svgData: string): string {
+  if (svgData.startsWith("data:")) return svgData;
+  return `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svgData)))}`;
+}
+
+function findSignature(
+  signatures: Array<{ time_slot_id?: string | null; signer_id?: string | null; signer_type?: string | null; signature_data?: string | null; signed_at?: string | null }>,
+  slotId: string,
+  signerId: string,
+  signerType: string
+): { signature_data: string; signed_at: string } | null {
+  const sig = signatures.find(
+    (s) => s.time_slot_id === slotId && s.signer_id === signerId && s.signer_type === signerType && s.signature_data
+  );
+  return sig ? { signature_data: sig.signature_data!, signed_at: sig.signed_at || "" } : null;
+}
+
+function renderSignatureCell(
+  sig: { signature_data: string; signed_at: string } | null,
+  slotIsPast: boolean,
+  height: string = "50px"
+): string {
+  if (sig) {
+    const dataUrl = signatureToDataUrl(sig.signature_data);
+    const ts = sig.signed_at ? new Date(sig.signed_at).toLocaleString("fr-FR", { timeZone: "Europe/Paris", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+    return `<div style="text-align:center;">
+      <img src="${dataUrl}" alt="Signature" style="max-width:120px;height:${height};object-fit:contain;" />
+      <p style="font-size:8px;color:#6b7280;margin:2px 0 0 0;">${ts}</p>
+    </div>`;
+  }
+  if (slotIsPast) {
+    return `<span style="color:#ef4444;font-size:9px;font-style:italic;">Non signé</span>`;
+  }
+  return "";
 }
 
 const MODE_LABELS: Record<string, string> = {
@@ -296,7 +332,8 @@ function feuilleEmargement(data: TemplateData): string {
   // ── Format INDIVIDUEL (Document 10) quand learner est passé ──
   if (learner) {
     const fullName = `${learner.last_name?.toUpperCase()} ${learner.first_name}`;
-    const learnerId = enrollments.find((e) => e.learner?.last_name === learner.last_name && e.learner?.first_name === learner.first_name)?.learner?.id;
+    const learnerId = learner.id || enrollments.find((e) => e.learner?.last_name === learner.last_name && e.learner?.first_name === learner.first_name)?.learner?.id;
+    const now = new Date();
 
     const infoBlock = `
       <div style="border: 1px solid #333; padding: 12px 16px; margin-bottom: 20px; font-size: 12px; line-height: 1.8;">
@@ -312,37 +349,60 @@ function feuilleEmargement(data: TemplateData): string {
     let slotBlocks = "";
     for (const slot of timeSlots) {
       const dateStr = formatDateFr(slot.start_time);
-      const startTime = new Date(slot.start_time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
-      const endTime = new Date(slot.end_time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+      const startTime = new Date(slot.start_time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" });
+      const endTime = new Date(slot.end_time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" });
+      const slotIsPast = new Date(slot.end_time) < now;
 
-      // Check signatures for this slot
-      const trainerSigned = trainers.some((ft) =>
-        ft.trainer && signatures.some((s) => s.time_slot_id === slot.id && s.signer_id === ft.trainer!.id && s.signer_type === "trainer")
-      );
-      const learnerSigned = learnerId ? signatures.some((s) => s.time_slot_id === slot.id && s.signer_id === learnerId && s.signer_type === "learner") : false;
+      // Find actual signature objects for this slot
+      const trainerSigBlocks = trainers.filter((ft) => ft.trainer).map((ft) => {
+        const sig = findSignature(signatures, slot.id, ft.trainer!.id, "trainer");
+        return `
+          <tr>
+            <td style="border:1px solid #d1d5db;padding:8px 10px;font-size:11px;width:40%;">${ft.trainer!.last_name?.toUpperCase()} ${ft.trainer!.first_name} <span style="color:#6b7280;font-size:9px;">(Formateur)</span></td>
+            <td style="border:1px solid #d1d5db;padding:8px 10px;text-align:center;height:60px;">${renderSignatureCell(sig, slotIsPast)}</td>
+          </tr>`;
+      }).join("");
+
+      const learnerSig = learnerId ? findSignature(signatures, slot.id, learnerId, "learner") : null;
+      const learnerSigBlock = `
+        <tr>
+          <td style="border:1px solid #d1d5db;padding:8px 10px;font-size:11px;font-weight:600;width:40%;">${fullName} <span style="color:#6b7280;font-size:9px;">(Apprenant)</span></td>
+          <td style="border:1px solid #d1d5db;padding:8px 10px;text-align:center;height:60px;">${renderSignatureCell(learnerSig, slotIsPast)}</td>
+        </tr>`;
 
       slotBlocks += `
-        <div style="background: #EFF6FF; border: 0.5px solid #BFDBFE; border-radius: 6px; padding: 12px; margin-bottom: 12px;">
-          <p style="text-decoration: underline; font-size: 11px; margin: 0 0 8px;">Créneau: De ${dateStr} - ${startTime} À ${dateStr} - ${endTime} (${formation.title})</p>
-          ${trainers.filter((ft) => ft.trainer).map((ft) => `
-            <p style="margin: 4px 0; font-size: 11px;">${ft.trainer!.last_name?.toUpperCase()} ${ft.trainer!.first_name}</p>
-            <p style="color: #666; font-size: 10px; margin: 0 0 8px;">${trainerSigned ? "Présent (A signé en présentiel)" : ""}</p>
-          `).join("")}
-          <p style="font-weight: 700; margin: 4px 0; font-size: 11px;">${fullName}</p>
-          <p style="color: #666; font-size: 10px; margin: 0;">${learnerSigned ? "Présent (A signé en présentiel)" : ""}</p>
+        <div style="margin-bottom: 16px;">
+          <p style="font-weight:600;font-size:11px;margin:0 0 6px;color:#374151;">Créneau: ${dateStr} — ${startTime} à ${endTime}</p>
+          <table style="width:100%;border-collapse:collapse;">
+            <tr style="background:#f3f4f6;">
+              <th style="border:1px solid #d1d5db;padding:6px 10px;text-align:left;font-size:10px;width:40%;">Nom</th>
+              <th style="border:1px solid #d1d5db;padding:6px 10px;text-align:center;font-size:10px;">Signature</th>
+            </tr>
+            ${trainerSigBlocks}
+            ${learnerSigBlock}
+          </table>
         </div>`;
     }
+
+    const legend = `
+      <div style="margin-top:20px;padding:10px 14px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;font-size:9px;color:#6b7280;">
+        <strong>Légende :</strong> Les signatures électroniques affichées ci-dessus ont été apposées via la plateforme ${co.name}.
+        <span style="color:#ef4444;">Non signé</span> = créneau passé sans signature enregistrée.
+        Document généré le ${todayFr()}.
+      </div>`;
 
     const body = `
       ${infoBlock}
       <h2 style="text-align: center; font-weight: 700; font-size: 14px; margin: 20px 0 12px 0;">Tableau de signature</h2>
-      ${slotBlocks.length > 0 ? slotBlocks : `<p style="color: #999; font-style: italic;">Aucun créneau planifié.</p>`}`;
+      ${slotBlocks.length > 0 ? slotBlocks : `<p style="color: #999; font-style: italic;">Aucun créneau planifié.</p>`}
+      ${legend}`;
 
     return wrap(entityName, "Feuille d'émargement", body);
   }
 
   // ── Format COLLECTIF (Document 2) — pas de learner passé ──
 
+  const now = new Date();
   const contextLine = `Formation : ${formation.title} - Lieu de formation : ${modalite} (${formation.location || "—"}) - Client : ${companyName}`;
 
   // Info block
@@ -366,8 +426,9 @@ function feuilleEmargement(data: TemplateData): string {
       const hour = start.getHours();
       const period = hour < 13 ? "MATIN" : "APRES MIDI";
       const dateStr = formatDateFr(slot.start_time);
-      const startTime = start.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
-      const endTime = end.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+      const startTime = start.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" });
+      const endTime = end.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" });
+      const slotIsPast = end < now;
 
       slotTables += `
         <p style="font-weight: 600; margin: 16px 0 8px 0; font-size: 11px;">Créneau: De ${dateStr} - ${startTime} À ${dateStr} - ${endTime} (${period})</p>
@@ -376,35 +437,47 @@ function feuilleEmargement(data: TemplateData): string {
             <th style="border: 1px solid #d1d5db; padding: 6px 8px; text-align: left; font-size: 10px; width: 40%;">Formateurs</th>
             <th style="border: 1px solid #d1d5db; padding: 6px 8px; text-align: center; font-size: 10px;">Signature</th>
           </tr>
-          ${trainers.filter((ft) => ft.trainer).map((ft) => `
+          ${trainers.filter((ft) => ft.trainer).map((ft) => {
+            const sig = findSignature(signatures, slot.id, ft.trainer!.id, "trainer");
+            return `
             <tr>
               <td style="border: 1px solid #d1d5db; padding: 6px 8px; font-size: 10px;">${ft.trainer!.last_name?.toUpperCase()} ${ft.trainer!.first_name}</td>
-              <td style="border: 1px solid #d1d5db; padding: 6px 8px; height: 40px;"></td>
-            </tr>
-          `).join("")}
+              <td style="border: 1px solid #d1d5db; padding: 6px 8px; height: 60px; text-align: center;">${renderSignatureCell(sig, slotIsPast)}</td>
+            </tr>`;
+          }).join("")}
         </table>
         <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px;">
           <tr style="background: #f3f4f6;">
             <th style="border: 1px solid #d1d5db; padding: 6px 8px; text-align: left; font-size: 10px; width: 40%;">Apprenants</th>
             <th style="border: 1px solid #d1d5db; padding: 6px 8px; text-align: center; font-size: 10px;">Signature</th>
           </tr>
-          ${enrollments.filter((e) => e.learner).map((e) => `
+          ${enrollments.filter((e) => e.learner).map((e) => {
+            const sig = findSignature(signatures, slot.id, e.learner!.id, "learner");
+            return `
             <tr>
               <td style="border: 1px solid #d1d5db; padding: 6px 8px; font-size: 10px;">${e.learner!.last_name?.toUpperCase()} ${e.learner!.first_name}</td>
-              <td style="border: 1px solid #d1d5db; padding: 6px 8px; height: 40px;"></td>
-            </tr>
-          `).join("")}
+              <td style="border: 1px solid #d1d5db; padding: 6px 8px; height: 60px; text-align: center;">${renderSignatureCell(sig, slotIsPast)}</td>
+            </tr>`;
+          }).join("")}
         </table>`;
     }
   } else {
     slotTables = `<p style="color: #9ca3af; font-style: italic;">Aucun créneau planifié.</p>`;
   }
 
+  const legend = `
+    <div style="margin-top:20px;padding:10px 14px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;font-size:9px;color:#6b7280;">
+      <strong>Légende :</strong> Les signatures électroniques affichées ci-dessus ont été apposées via la plateforme ${co.name}.
+      <span style="color:#ef4444;">Non signé</span> = créneau passé sans signature enregistrée.
+      Document généré le ${todayFr()}.
+    </div>`;
+
   const body = `
     <p style="font-size: 10px; text-align: center; color: #6b7280; font-style: italic; margin: -16px 0 16px 0;">${contextLine}</p>
     ${infoBlock}
     <h2 style="font-size: 14px; font-weight: 700; margin: 20px 0 12px 0;">Tableau de signature</h2>
-    ${slotTables}`;
+    ${slotTables}
+    ${legend}`;
 
   return wrap(entityName, "Feuille d'émargement", body);
 }
@@ -1081,19 +1154,36 @@ function feuilleEmargementMatriciel(data: TemplateData): string {
     else { dayGroups.push({ date: slot.date, slots: [slot] }); }
   }
 
+  const signatures = formation.signatures || [];
+  const now = new Date();
   const hc = "#14B8A6"; // teal header
 
   const dayHeaderCells = dayGroups.map(dg => `<th colspan="${dg.slots.length}" style="background:${hc};color:#fff;border:1px solid #d1d5db;padding:8px 10px;text-align:left;font-size:11px;font-weight:700;">${dg.date}</th>`).join("");
   const slotHeaderCells = slots.map(s => `<th style="background:#f9fafb;border:1px solid #d1d5db;padding:6px 8px;font-size:9px;font-weight:500;color:#374151;min-width:100px;vertical-align:top;">${s.startTime} - ${s.endTime}</th>`).join("");
-  const emptyCells = slots.map(() => `<td style="border:1px solid #d1d5db;padding:14px 8px;min-height:40px;background:#fff;"></td>`).join("");
+
+  function sigCellsForPerson(personId: string, signerType: string): string {
+    return slots.map(s => {
+      const slotEnd = timeSlots.find(ts => ts.id === s.id);
+      const isPast = slotEnd ? new Date(slotEnd.end_time) < now : false;
+      const sig = findSignature(signatures, s.id, personId, signerType);
+      return `<td style="border:1px solid #d1d5db;padding:4px;min-height:40px;background:#fff;text-align:center;vertical-align:middle;">${renderSignatureCell(sig, isPast, "40px")}</td>`;
+    }).join("");
+  }
 
   const learnerRows = filtered.length > 0
-    ? filtered.map(e => `<tr><td style="border:1px solid #d1d5db;padding:10px;font-size:11px;background:#fff;">${e.learner!.last_name?.toUpperCase()} ${e.learner!.first_name}</td>${emptyCells}</tr>`).join("")
+    ? filtered.map(e => `<tr><td style="border:1px solid #d1d5db;padding:10px;font-size:11px;background:#fff;">${e.learner!.last_name?.toUpperCase()} ${e.learner!.first_name}</td>${sigCellsForPerson(e.learner!.id, "learner")}</tr>`).join("")
     : `<tr><td colspan="${slots.length+1}" style="border:1px solid #d1d5db;padding:20px;text-align:center;color:#999;font-style:italic;font-size:11px;">Aucun apprenant inscrit</td></tr>`;
 
   const trainerRows = trainers.length > 0
-    ? trainers.map(ft => `<tr><td style="border:1px solid #d1d5db;padding:10px;font-size:11px;background:#fff;">${ft.trainer!.last_name?.toUpperCase()} ${ft.trainer!.first_name}</td>${emptyCells}</tr>`).join("")
+    ? trainers.map(ft => `<tr><td style="border:1px solid #d1d5db;padding:10px;font-size:11px;background:#fff;">${ft.trainer!.last_name?.toUpperCase()} ${ft.trainer!.first_name}</td>${sigCellsForPerson(ft.trainer!.id, "trainer")}</tr>`).join("")
     : `<tr><td colspan="${slots.length+1}" style="border:1px solid #d1d5db;padding:20px;text-align:center;color:#999;font-style:italic;font-size:11px;">Aucun formateur</td></tr>`;
+
+  const legend = `
+    <div style="margin-top:20px;padding:10px 14px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;font-size:9px;color:#6b7280;">
+      <strong>Légende :</strong> Les signatures électroniques affichées ci-dessus ont été apposées via la plateforme ${co.name}.
+      <span style="color:#ef4444;">Non signé</span> = créneau passé sans signature enregistrée.
+      Document généré le ${todayFr()}.
+    </div>`;
 
   const body = `
     <h1 style="text-align:center;font-size:18px;font-weight:700;margin:0 0 16px;color:#111827;">Feuille d'émargement</h1>
@@ -1118,7 +1208,8 @@ function feuilleEmargementMatriciel(data: TemplateData): string {
         <tr><th style="background:#f9fafb;border:1px solid #d1d5db;padding:6px;"></th>${slotHeaderCells}</tr>
       </thead>
       <tbody>${trainerRows}</tbody>
-    </table>`;
+    </table>
+    ${legend}`;
 
   return wrap(entityName, "", body);
 }
