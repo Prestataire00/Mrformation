@@ -922,6 +922,43 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     return { id: learner.id, name: `${learner.first_name} ${learner.last_name?.charAt(0)}.`, row };
   });
 
+  // ── Build company × docType matrix ──
+  const companyMatrix = companies.filter(c => c.client).map(fc => {
+    const client = fc.client!;
+    const row: Record<string, { status: "signed" | "sent" | "confirmed" | "none"; docId?: string }> = {};
+    for (const dt of DEFAULT_COMPANY_DOCS) {
+      const doc = docs.find(d => d.doc_type === dt && d.owner_type === "company" && d.owner_id === client.id);
+      if (!doc) { row[dt] = { status: "none" }; continue; }
+      if (doc.is_signed) row[dt] = { status: "signed", docId: doc.id };
+      else if (doc.is_sent) row[dt] = { status: "sent", docId: doc.id };
+      else if (doc.is_confirmed) row[dt] = { status: "confirmed", docId: doc.id };
+      else row[dt] = { status: "none", docId: doc.id };
+    }
+    return { id: client.id, name: client.company_name, row };
+  });
+
+  // ── Build trainer × docType matrix ──
+  const trainerMatrix = trainers.filter(t => t.trainer).map(ft => {
+    const trainer = ft.trainer!;
+    const row: Record<string, { status: "signed" | "sent" | "confirmed" | "none"; docId?: string }> = {};
+    for (const dt of DEFAULT_TRAINER_DOCS) {
+      const doc = docs.find(d => d.doc_type === dt && d.owner_type === "trainer" && d.owner_id === trainer.id);
+      if (!doc) { row[dt] = { status: "none" }; continue; }
+      if (doc.is_signed) row[dt] = { status: "signed", docId: doc.id };
+      else if (doc.is_sent) row[dt] = { status: "sent", docId: doc.id };
+      else if (doc.is_confirmed) row[dt] = { status: "confirmed", docId: doc.id };
+      else row[dt] = { status: "none", docId: doc.id };
+    }
+    return { id: trainer.id, name: `${trainer.first_name} ${trainer.last_name}`, row };
+  });
+
+  // ── Avatar color helper ──
+  const getAvatarColor = (name: string) => {
+    const colors = ["bg-blue-100 text-blue-700", "bg-purple-100 text-purple-700", "bg-pink-100 text-pink-700", "bg-amber-100 text-amber-700", "bg-emerald-100 text-emerald-700", "bg-indigo-100 text-indigo-700", "bg-rose-100 text-rose-700", "bg-teal-100 text-teal-700"];
+    const hash = name.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
+    return colors[hash % colors.length];
+  };
+
   const statusDot = (s: "signed" | "sent" | "confirmed" | "none") => {
     if (s === "signed") return <span className="inline-block w-3 h-3 rounded-full bg-green-500" title="Signé" />;
     if (s === "sent") return <span className="inline-block w-3 h-3 rounded-full bg-amber-400" title="Envoyé" />;
@@ -1022,9 +1059,16 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {learnerMatrix.map((lr) => (
-                  <tr key={lr.id} className="border-b last:border-b-0 hover:bg-gray-50/50">
-                    <td className="px-3 py-2 text-sm font-medium">{lr.name}</td>
+                {learnerMatrix.map((lr, idx) => (
+                  <tr key={lr.id} className={cn("border-b last:border-b-0 hover:bg-gray-50/50", idx % 2 === 1 && "bg-gray-50/30")}>
+                    <td className="px-3 py-2 text-sm font-medium">
+                      <div className="flex items-center gap-2">
+                        <div className={cn("h-6 w-6 rounded-md flex items-center justify-center text-[10px] font-semibold shrink-0", getAvatarColor(lr.name))}>
+                          {lr.name.split(" ").map(w => w.charAt(0)).join("").slice(0, 2).toUpperCase()}
+                        </div>
+                        {lr.name}
+                      </div>
+                    </td>
                     {DEFAULT_LEARNER_DOCS.map(dt => (
                       <td key={dt} className="text-center px-2 py-2">
                         {lr.row[dt] ? statusDot(lr.row[dt].status) : <span className="text-gray-300">—</span>}
@@ -1040,6 +1084,86 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
             <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block" /> Envoyé</span>
             <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-blue-400 inline-block" /> Confirmé</span>
             <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-gray-200 inline-block" /> Non traité</span>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ VUE MATRICE — Entreprises ═══ */}
+      {matrixView && companyMatrix.length > 0 && (
+        <div className="border rounded-lg overflow-hidden">
+          <div className="px-4 py-2 bg-muted/30 border-b">
+            <span className="text-sm font-medium">Entreprises — Vue matrice</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-gray-50/50">
+                  <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Entreprise</th>
+                  {DEFAULT_COMPANY_DOCS.map(dt => (
+                    <th key={dt} className="text-center px-2 py-2 text-[10px] font-medium text-gray-500 uppercase">{(DOC_LABELS[dt] || dt).replace("CONVENTION ENTREPRISE", "Conv.").replace("FEUILLE D'ÉMARGEMENT COLLECTIF", "Émarg. coll.").replace("PLANNING DE LA SEMAINE", "Planning")}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {companyMatrix.map((cr, idx) => (
+                  <tr key={cr.id} className={cn("border-b last:border-b-0 hover:bg-gray-50/50", idx % 2 === 1 && "bg-gray-50/30")}>
+                    <td className="px-3 py-2 text-sm font-medium">
+                      <div className="flex items-center gap-2">
+                        <div className={cn("h-6 w-6 rounded-md flex items-center justify-center text-[10px] font-semibold shrink-0", getAvatarColor(cr.name))}>
+                          {cr.name.charAt(0).toUpperCase()}
+                        </div>
+                        {cr.name}
+                      </div>
+                    </td>
+                    {DEFAULT_COMPANY_DOCS.map(dt => (
+                      <td key={dt} className="text-center px-2 py-2">
+                        {cr.row[dt] ? statusDot(cr.row[dt].status) : <span className="text-gray-300">—</span>}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ VUE MATRICE — Formateurs ═══ */}
+      {matrixView && trainerMatrix.length > 0 && (
+        <div className="border rounded-lg overflow-hidden">
+          <div className="px-4 py-2 bg-muted/30 border-b">
+            <span className="text-sm font-medium">Formateurs — Vue matrice</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-gray-50/50">
+                  <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Formateur</th>
+                  {DEFAULT_TRAINER_DOCS.map(dt => (
+                    <th key={dt} className="text-center px-2 py-2 text-[10px] font-medium text-gray-500 uppercase">{(DOC_LABELS[dt] || dt).replace("CONVENTION D'INTERVENTION", "Conv. interv.").replace("CONTRAT CADRE DE SOUS-TRAITANCE", "Contrat S-T")}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {trainerMatrix.map((tr, idx) => (
+                  <tr key={tr.id} className={cn("border-b last:border-b-0 hover:bg-gray-50/50", idx % 2 === 1 && "bg-gray-50/30")}>
+                    <td className="px-3 py-2 text-sm font-medium">
+                      <div className="flex items-center gap-2">
+                        <div className={cn("h-6 w-6 rounded-md flex items-center justify-center text-[10px] font-semibold shrink-0", getAvatarColor(tr.name))}>
+                          {tr.name.split(" ").map(w => w.charAt(0)).join("").slice(0, 2).toUpperCase()}
+                        </div>
+                        {tr.name}
+                      </div>
+                    </td>
+                    {DEFAULT_TRAINER_DOCS.map(dt => (
+                      <td key={dt} className="text-center px-2 py-2">
+                        {tr.row[dt] ? statusDot(tr.row[dt].status) : <span className="text-gray-300">—</span>}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
