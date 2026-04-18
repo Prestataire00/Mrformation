@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Loader2, Smile, Trash2, ChevronDown } from "lucide-react";
+import { Loader2, Smile, Trash2, ChevronDown, Users, CheckCircle2, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -316,11 +316,41 @@ export function TabSatisfaction({ formation, onRefresh }: Props) {
     );
   }
 
+  const totalAssignments = assignments.length;
+  const totalLearnerTargets = enrollments.length;
+
   return (
     <div className="space-y-4">
-      <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-        Satisfaction & Qualité
-      </h3>
+      {/* ═══ HERO STATS ═══ */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="border rounded-lg p-3">
+          <div className="flex items-center gap-2">
+            <Users className="h-4 w-4 text-blue-500" />
+            <div>
+              <p className="text-xl font-bold">{totalLearnerTargets}</p>
+              <p className="text-xs text-muted-foreground">Apprenants</p>
+            </div>
+          </div>
+        </div>
+        <div className="border rounded-lg p-3">
+          <div className="flex items-center gap-2">
+            <Smile className="h-4 w-4 text-amber-500" />
+            <div>
+              <p className="text-xl font-bold">{totalAssignments}</p>
+              <p className="text-xs text-muted-foreground">Attributions</p>
+            </div>
+          </div>
+        </div>
+        <div className="border rounded-lg p-3">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="h-4 w-4 text-green-500" />
+            <div>
+              <p className="text-xl font-bold">{Object.values(satisfactionScores).filter(v => v !== null).length}</p>
+              <p className="text-xs text-muted-foreground">Réponses</p>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* Apprenants */}
       {renderSection(
