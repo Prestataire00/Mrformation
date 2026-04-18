@@ -114,6 +114,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
 
   // Custom doc template selections
   const [customSelections, setCustomSelections] = useState<Record<string, string>>({});
+  const [matrixView, setMatrixView] = useState(true);
 
   // Preview state
   const [previewDoc, setPreviewDoc] = useState<{
@@ -926,8 +927,6 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     }
     return { id: learner.id, name: `${learner.first_name} ${learner.last_name?.charAt(0)}.`, row };
   });
-
-  const [matrixView, setMatrixView] = useState(true);
 
   const statusDot = (s: "signed" | "sent" | "confirmed" | "none") => {
     if (s === "signed") return <span className="inline-block w-3 h-3 rounded-full bg-green-500" title="Signé" />;
