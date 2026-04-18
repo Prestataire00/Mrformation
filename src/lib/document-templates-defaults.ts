@@ -10,6 +10,11 @@ interface TemplateData {
   company?: { company_name: string; address?: string | null; siret?: string | null; contacts?: Array<{ first_name: string; last_name: string; is_primary: boolean }> };
   trainer?: { first_name: string; last_name: string };
   entityName: string;
+  // Heures effectives (calculées depuis signatures)
+  effectiveHours?: number;
+  attendanceRate?: number;
+  signedSlots?: Array<{ date: string; hours: number }>;
+  missedSlots?: Array<{ date: string; hours: number }>;
 }
 
 // ──────────────────────────────────────────────
@@ -738,11 +743,14 @@ function convocation(data: TemplateData): string {
 // ──────────────────────────────────────────────
 
 function certificatRealisation(data: TemplateData): string {
-  const { formation, learner, company, entityName } = data;
+  const { formation, learner, company, entityName, effectiveHours, attendanceRate } = data;
   const co = getCompanyInfo(entityName);
   const fullName = learner ? `${learner.last_name?.toUpperCase()} ${learner.first_name}` : "—";
   const clientName = company?.company_name || formation.formation_companies?.[0]?.client?.company_name || "—";
   const objectives = formation.program?.objectives || "";
+  const planned = formation.planned_hours || 0;
+  const effective = effectiveHours ?? planned;
+  const rate = attendanceRate ?? (planned > 0 ? (effective / planned) * 100 : 100);
 
   const body = `
     <h2 style="text-align: center; color: #374151; font-size: 18px; font-weight: 700; text-transform: uppercase; margin-bottom: 24px;">Certificat réalisation de formation</h2>
@@ -755,9 +763,12 @@ function certificatRealisation(data: TemplateData): string {
       Nom de la formation: <strong>${formation.title}</strong><br/>
       Lieu de la formation: ${formation.location || "—"}<br/>
       Dates de la formation: du <strong>${formatDateFr(formation.start_date)}</strong> au <strong>${formatDateFr(formation.end_date)}</strong><br/>
-      Durée de la formation: <strong>${formation.planned_hours || "—"} heure(s)</strong><br/>
+      Durée prévue: <strong>${planned || "—"} heure(s)</strong><br/>
+      Heures effectivement suivies: <strong>${effective} heure(s)</strong><br/>
+      Taux d'assiduité: <strong>${rate.toFixed(0)}%</strong><br/>
       Présenté par : <strong>${clientName}</strong>
     </p>
+    ${rate < 80 ? `<p style="color: #b45309; font-size: 11px; margin: 8px 0;">⚠️ Le stagiaire a suivi moins de 80% de la durée prévue.</p>` : ""}
 
     <hr style="border: 0; border-top: 0.5px solid #ccc; margin: 16px 0;"/>
 
@@ -796,7 +807,7 @@ function certificatRealisation(data: TemplateData): string {
 // ──────────────────────────────────────────────
 
 function attestationAssiduite(data: TemplateData): string {
-  const { formation, learner, entityName } = data;
+  const { formation, learner, entityName, signedSlots: extSignedSlots, missedSlots: extMissedSlots } = data;
   const co = getCompanyInfo(entityName);
   const fullName = learner ? `${learner.last_name?.toUpperCase()} ${learner.first_name}` : "—";
   const modalite = MODE_LABELS[formation.mode] || "En présentiel";
@@ -845,6 +856,17 @@ function attestationAssiduite(data: TemplateData): string {
 
     <p>Durée effectivement suivie par le/la stagiaire: <strong>${heuresEffectives.toFixed(0)}h</strong>,<br/>
     soit un taux de réalisation de <strong>${tauxRealisation} %</strong>.</p>
+
+    ${extSignedSlots && extSignedSlots.length > 0 ? `
+    <p style="font-weight: 700; margin-top: 16px; font-size: 12px;">Créneaux suivis :</p>
+    <ul style="font-size: 11px; margin: 4px 0 12px 0; padding-left: 20px;">
+      ${extSignedSlots.map(s => `<li>${formatDateFr(s.date)} — ${s.hours.toFixed(1)}h</li>`).join("")}
+    </ul>` : ""}
+    ${extMissedSlots && extMissedSlots.length > 0 ? `
+    <p style="font-weight: 700; margin-top: 12px; color: #b45309; font-size: 12px;">Créneaux manqués :</p>
+    <ul style="font-size: 11px; color: #b45309; margin: 4px 0 12px 0; padding-left: 20px;">
+      ${extMissedSlots.map(s => `<li>${formatDateFr(s.date)} — ${s.hours.toFixed(1)}h</li>`).join("")}
+    </ul>` : ""}
 
     <p>Résultat de l'évaluation des acquis jalonnant ou terminant la formation (QUIZZ, TEST, QCM etc....) : ACQUIS</p>
 
