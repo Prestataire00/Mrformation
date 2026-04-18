@@ -546,27 +546,25 @@ export async function exportHtmlToPDF(
   // Create a hidden container to render the HTML
   const container = document.createElement("div");
   container.style.cssText =
-    "position:fixed;left:-9999px;top:0;width:794px;padding:40px 50px;background:#fff;font-family:Helvetica,Arial,sans-serif;font-size:14px;line-height:1.6;color:#1e293b;";
+    "position:fixed;left:-9999px;top:0;width:794px;padding:40px 50px 60px 50px;background:#fff;font-family:Helvetica,Arial,sans-serif;font-size:14px;line-height:1.8;color:#1e293b;";
 
-  // Render content directly — the template already includes its own header
   container.innerHTML = `<div class="document-html-content">${htmlContent}</div>`;
 
-  // Add styles for rendered HTML content
   const style = document.createElement("style");
   style.textContent = `
     .document-html-content h1 { font-size:20px;font-weight:700;margin:16px 0 8px; }
     .document-html-content h2 { font-size:17px;font-weight:600;margin:14px 0 6px; }
     .document-html-content h3 { font-size:15px;font-weight:600;margin:12px 0 6px; }
-    .document-html-content p { margin:0 0 8px; }
-    .document-html-content ul { list-style:disc;padding-left:24px;margin:0 0 8px; }
-    .document-html-content ol { list-style:decimal;padding-left:24px;margin:0 0 8px; }
-    .document-html-content li { margin:0 0 4px; }
-    .document-html-content table { border-collapse:collapse;width:100%;margin:12px 0; }
+    .document-html-content p { margin:0 0 10px; }
+    .document-html-content ul { list-style:disc;padding-left:24px;margin:0 0 10px; }
+    .document-html-content ol { list-style:decimal;padding-left:24px;margin:0 0 10px; }
+    .document-html-content li { margin:0 0 6px; }
+    .document-html-content table { border-collapse:collapse;width:100%;margin:14px 0; }
     .document-html-content td, .document-html-content th {
-      border:1px solid #e2e8f0;padding:6px 10px;text-align:left;font-size:13px;
+      border:1px solid #e2e8f0;padding:8px 10px;text-align:left;font-size:13px;
     }
     .document-html-content th { background:#f1f5f9;font-weight:600; }
-    .document-html-content blockquote { border-left:3px solid #e2e8f0;padding-left:12px;color:#64748b;margin:8px 0; }
+    .document-html-content blockquote { border-left:3px solid #e2e8f0;padding-left:12px;color:#64748b;margin:10px 0; }
     .document-html-content pre { background:#f1f5f9;padding:10px;border-radius:4px;font-size:12px;overflow-x:auto; }
     .document-html-content .variable-chip {
       display:inline;background:none;border:none;padding:0;font-family:inherit;font-size:inherit;color:inherit;
@@ -589,17 +587,16 @@ export async function exportHtmlToPDF(
     const pageWidth = 210;
     const pageHeight = 297;
     const marginX = 10;
-    const headerH = 0;
-    const footerH = 10;
+    const marginTop = 10;
+    const footerH = 12;
+    const bottomSafety = 8;
     const usableWidth = pageWidth - marginX * 2;
-    const usableTop = headerH + 4;
-    const usableHeight = pageHeight - usableTop - footerH - 4;
+    const usableTop = marginTop;
+    const usableHeight = pageHeight - usableTop - footerH - bottomSafety;
 
-    // Calculate image dimensions to fit page width
     const imgWidth = usableWidth;
     const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-    // Split across pages if needed
     let remainingHeight = imgHeight;
     let sourceY = 0;
     let pageNum = 0;
@@ -608,8 +605,9 @@ export async function exportHtmlToPDF(
       if (pageNum > 0) doc.addPage();
       pageNum++;
 
-      const sliceHeight = Math.min(remainingHeight, usableHeight);
-      const sourceSliceHeight = (sliceHeight / imgHeight) * canvas.height;
+      const isLastPage = remainingHeight <= usableHeight;
+      const sliceHeight = isLastPage ? remainingHeight : usableHeight;
+      const sourceSliceHeight = Math.floor((sliceHeight / imgHeight) * canvas.height);
 
       // Create a canvas slice for this page
       const sliceCanvas = document.createElement("canvas");
@@ -669,7 +667,7 @@ export async function exportHtmlToPDFBase64(
 
   const container = document.createElement("div");
   container.style.cssText =
-    "position:fixed;left:-9999px;top:0;width:794px;padding:40px 50px;background:#fff;font-family:Helvetica,Arial,sans-serif;font-size:14px;line-height:1.6;color:#1e293b;";
+    "position:fixed;left:-9999px;top:0;width:794px;padding:40px 50px 60px 50px;background:#fff;font-family:Helvetica,Arial,sans-serif;font-size:14px;line-height:1.8;color:#1e293b;";
 
   container.innerHTML = `<div class="document-html-content">${htmlContent}</div>`;
 
@@ -678,16 +676,16 @@ export async function exportHtmlToPDFBase64(
     .document-html-content h1 { font-size:20px;font-weight:700;margin:16px 0 8px; }
     .document-html-content h2 { font-size:17px;font-weight:600;margin:14px 0 6px; }
     .document-html-content h3 { font-size:15px;font-weight:600;margin:12px 0 6px; }
-    .document-html-content p { margin:0 0 8px; }
-    .document-html-content ul { list-style:disc;padding-left:24px;margin:0 0 8px; }
-    .document-html-content ol { list-style:decimal;padding-left:24px;margin:0 0 8px; }
-    .document-html-content li { margin:0 0 4px; }
-    .document-html-content table { border-collapse:collapse;width:100%;margin:12px 0; }
+    .document-html-content p { margin:0 0 10px; }
+    .document-html-content ul { list-style:disc;padding-left:24px;margin:0 0 10px; }
+    .document-html-content ol { list-style:decimal;padding-left:24px;margin:0 0 10px; }
+    .document-html-content li { margin:0 0 6px; }
+    .document-html-content table { border-collapse:collapse;width:100%;margin:14px 0; }
     .document-html-content td, .document-html-content th {
-      border:1px solid #e2e8f0;padding:6px 10px;text-align:left;font-size:13px;
+      border:1px solid #e2e8f0;padding:8px 10px;text-align:left;font-size:13px;
     }
     .document-html-content th { background:#f1f5f9;font-weight:600; }
-    .document-html-content blockquote { border-left:3px solid #e2e8f0;padding-left:12px;color:#64748b;margin:8px 0; }
+    .document-html-content blockquote { border-left:3px solid #e2e8f0;padding-left:12px;color:#64748b;margin:10px 0; }
     .document-html-content pre { background:#f1f5f9;padding:10px;border-radius:4px;font-size:12px;overflow-x:auto; }
     .document-html-content .variable-chip {
       display:inline;background:none;border:none;padding:0;font-family:inherit;font-size:inherit;color:inherit;
@@ -710,11 +708,12 @@ export async function exportHtmlToPDFBase64(
     const pageWidth = 210;
     const pageHeight = 297;
     const marginX = 10;
-    const headerH = 0;
-    const footerH = 10;
+    const marginTop = 10;
+    const footerH = 12;
+    const bottomSafety = 8;
     const usableWidth = pageWidth - marginX * 2;
-    const usableTop = headerH + 4;
-    const usableHeight = pageHeight - usableTop - footerH - 4;
+    const usableTop = marginTop;
+    const usableHeight = pageHeight - usableTop - footerH - bottomSafety;
 
     const imgWidth = usableWidth;
     const imgHeight = (canvas.height * imgWidth) / canvas.width;
@@ -727,8 +726,9 @@ export async function exportHtmlToPDFBase64(
       if (pageNum > 0) doc.addPage();
       pageNum++;
 
-      const sliceHeight = Math.min(remainingHeight, usableHeight);
-      const sourceSliceHeight = (sliceHeight / imgHeight) * canvas.height;
+      const isLastPage = remainingHeight <= usableHeight;
+      const sliceHeight = isLastPage ? remainingHeight : usableHeight;
+      const sourceSliceHeight = Math.floor((sliceHeight / imgHeight) * canvas.height);
 
       const sliceCanvas = document.createElement("canvas");
       sliceCanvas.width = canvas.width;
