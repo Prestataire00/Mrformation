@@ -104,6 +104,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Capture IP + UA for legal evidence
+    const ipAddress = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null;
+    const userAgent = request.headers.get("user-agent") || null;
+
     // Insert signature (with time_slot_id if present)
     const { data: signature, error: sigError } = await supabase
       .from("signatures")
@@ -114,6 +118,9 @@ export async function POST(request: NextRequest) {
         signature_data,
         signed_at: new Date().toISOString(),
         time_slot_id: tokenData.time_slot_id || null,
+        ip_address: ipAddress,
+        user_agent: userAgent,
+        signature_method: "handwritten",
       })
       .select()
       .single();
@@ -123,6 +130,17 @@ export async function POST(request: NextRequest) {
         { error: sanitizeDbError(sigError, "emargement/sign insert") },
         { status: 500 }
       );
+    }
+
+    // Log signature evidence
+    if (signature) {
+      await supabase.from("signature_evidence").insert({
+        signature_id: signature.id,
+        evidence_type: "signature_captured",
+        data: { signer_type: signerType, signer_id: signerId, session_id: tokenData.session_id, time_slot_id: tokenData.time_slot_id || null },
+        ip_address: ipAddress,
+        user_agent: userAgent,
+      });
     }
 
     // Mark individual token as used
