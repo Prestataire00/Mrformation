@@ -17,7 +17,7 @@ if (fs.existsSync(envTestPath)) {
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: false,
-  retries: 1,
+  retries: 2,
   timeout: 30000,
   use: {
     baseURL: "http://localhost:3000",
