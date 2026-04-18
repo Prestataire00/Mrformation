@@ -299,6 +299,26 @@ export function TabQualiopi({ formation, onRefresh }: Props) {
     );
   };
 
+  // Map items to target tabs for "Traiter" action
+  const itemTabMap: Record<string, string> = {
+    convention_signed: "documents",
+    convocation_sent: "documents",
+    convention_intervention_signed: "documents",
+    eval_preformation: "evaluations",
+    eval_postformation: "evaluations",
+    satisfaction_learner: "evaluations",
+    certificat_sent: "documents",
+    support_cours: "elearning",
+    contrat_sous_traitance_sent: "documents",
+    docs_formation_sent: "documents",
+  };
+
+  const goToTab = (tab: string) => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", tab);
+    window.location.href = url.toString();
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center py-8">
@@ -347,6 +367,9 @@ export function TabQualiopi({ formation, onRefresh }: Props) {
                 {renderDot(item)}
                 <span className="text-sm">{item.label}</span>
                 {item.subLabel && <span className="text-xs text-muted-foreground">({item.subLabel})</span>}
+                {!item.value && itemTabMap[item.id] && (
+                  <button onClick={() => goToTab(itemTabMap[item.id])} className="text-[10px] text-blue-600 hover:underline">Traiter →</button>
+                )}
               </div>
               {renderBadge(item)}
             </div>
@@ -365,6 +388,9 @@ export function TabQualiopi({ formation, onRefresh }: Props) {
               <div className="flex items-center gap-3">
                 {renderDot(item)}
                 <span className="text-sm">{item.label}</span>
+                {!item.value && itemTabMap[item.id] && (
+                  <button onClick={() => goToTab(itemTabMap[item.id])} className="text-[10px] text-blue-600 hover:underline">Traiter →</button>
+                )}
               </div>
               {renderBadge(item)}
             </div>

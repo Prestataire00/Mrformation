@@ -898,50 +898,154 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     );
   }
 
+  // ── Compute progress stats for hero row ──
+  const docProgress = (() => {
+    const types = ["convocation", "certificat_realisation", "attestation_assiduite", "feuille_emargement", "convention_entreprise"] as const;
+    const labels: Record<string, string> = { convocation: "Convocations", certificat_realisation: "Certificats", attestation_assiduite: "Attestations", feuille_emargement: "Émargements", convention_entreprise: "Conventions" };
+    return types.map(t => {
+      const typeDocs = docs.filter(d => d.doc_type === t);
+      const total = typeDocs.length;
+      const confirmed = typeDocs.filter(d => d.is_confirmed).length;
+      const sent = typeDocs.filter(d => d.is_sent).length;
+      const signed = typeDocs.filter(d => d.is_signed).length;
+      return { type: t, label: labels[t], total, confirmed, sent, signed };
+    }).filter(p => p.total > 0);
+  })();
+
+  // ── Build learner × docType matrix ──
+  const learnerMatrix = enrollments.filter(e => e.learner).map(e => {
+    const learner = e.learner!;
+    const row: Record<string, { status: "signed" | "sent" | "confirmed" | "none"; docId?: string }> = {};
+    for (const dt of DEFAULT_LEARNER_DOCS) {
+      const doc = docs.find(d => d.doc_type === dt && d.owner_type === "learner" && d.owner_id === learner.id);
+      if (!doc) { row[dt] = { status: "none" }; continue; }
+      if (doc.is_signed) row[dt] = { status: "signed", docId: doc.id };
+      else if (doc.is_sent) row[dt] = { status: "sent", docId: doc.id };
+      else if (doc.is_confirmed) row[dt] = { status: "confirmed", docId: doc.id };
+      else row[dt] = { status: "none", docId: doc.id };
+    }
+    return { id: learner.id, name: `${learner.first_name} ${learner.last_name?.charAt(0)}.`, row };
+  });
+
+  const [matrixView, setMatrixView] = useState(true);
+
+  const statusDot = (s: "signed" | "sent" | "confirmed" | "none") => {
+    if (s === "signed") return <span className="inline-block w-3 h-3 rounded-full bg-green-500" title="Signé" />;
+    if (s === "sent") return <span className="inline-block w-3 h-3 rounded-full bg-amber-400" title="Envoyé" />;
+    if (s === "confirmed") return <span className="inline-block w-3 h-3 rounded-full bg-blue-400" title="Confirmé" />;
+    return <span className="inline-block w-3 h-3 rounded-full bg-gray-200" title="Non traité" />;
+  };
+
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div>
-          <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-            Documents de convention
-          </h3>
-          <p className="text-xs text-muted-foreground mt-1 max-w-xl">
-            Les documents avec signature électronique restent dynamiques jusqu&apos;à la signature du destinataire.
-          </p>
+      {/* ═══ HERO ROW — Progress par type ═══ */}
+      {docProgress.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          {docProgress.map(p => {
+            const pct = p.total > 0 ? Math.round(((p.confirmed + p.sent + p.signed) / p.total) * 100) : 0;
+            const barColor = pct === 100 ? "bg-green-500" : pct > 0 ? "bg-amber-400" : "bg-gray-200";
+            return (
+              <div key={p.type} className="border rounded-lg p-3">
+                <p className="text-xs font-medium text-gray-700">{p.label}</p>
+                <div className="flex items-center gap-2 mt-1">
+                  <div className="flex-1 bg-gray-100 rounded-full h-1.5">
+                    <div className={`h-1.5 rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
+                  </div>
+                  <span className="text-xs text-muted-foreground">{p.confirmed + p.sent + p.signed}/{p.total}</span>
+                </div>
+                <div className="flex gap-2 mt-1.5 text-[10px] text-muted-foreground">
+                  {p.signed > 0 && <span className="text-green-600">{p.signed} signé{p.signed > 1 ? "s" : ""}</span>}
+                  {p.sent > 0 && <span className="text-amber-600">{p.sent} envoyé{p.sent > 1 ? "s" : ""}</span>}
+                </div>
+              </div>
+            );
+          })}
         </div>
-        <div className="flex items-center gap-1.5">
-          <Button
-            size="sm"
-            variant="outline"
-            className="text-xs h-7 gap-1"
-            onClick={async () => {
-              setSaving("confirm-all-learners");
-              const { error } = await supabase
-                .from("formation_convention_documents")
-                .update({ is_confirmed: true, confirmed_at: new Date().toISOString() })
-                .eq("session_id", formation.id)
-                .eq("owner_type", "learner")
-                .eq("is_confirmed", false);
-              setSaving(null);
-              if (!error) { toast({ title: "Tous les documents des apprenants confirmés" }); onRefresh(); }
-            }}
-            disabled={saving === "confirm-all-learners"}
-          >
-            {saving === "confirm-all-learners" && <Loader2 className="h-3 w-3 animate-spin" />}
-            <CheckCircle className="h-3 w-3" /> Tout confirmer (apprenants)
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="text-xs h-7 gap-1"
-            onClick={() => setShowAll(!showAll)}
-          >
-            {showAll ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-            {showAll ? "Masquer" : "Afficher"}
-          </Button>
-        </div>
+      )}
+
+      {/* ═══ QUICK ACTIONS ═══ */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <Button
+          size="sm"
+          variant="outline"
+          className="text-xs h-7 gap-1"
+          onClick={async () => {
+            setSaving("confirm-all-learners");
+            const { error } = await supabase
+              .from("formation_convention_documents")
+              .update({ is_confirmed: true, confirmed_at: new Date().toISOString() })
+              .eq("session_id", formation.id)
+              .eq("owner_type", "learner")
+              .eq("is_confirmed", false);
+            setSaving(null);
+            if (!error) { toast({ title: "Tous les documents confirmés" }); onRefresh(); }
+          }}
+          disabled={saving === "confirm-all-learners"}
+        >
+          {saving === "confirm-all-learners" && <Loader2 className="h-3 w-3 animate-spin" />}
+          <CheckCircle className="h-3 w-3" /> Tout confirmer
+        </Button>
+        <div className="flex-1" />
+        <Button
+          size="sm"
+          variant={matrixView ? "default" : "ghost"}
+          className="text-xs h-7"
+          onClick={() => setMatrixView(true)}
+        >
+          Matrice
+        </Button>
+        <Button
+          size="sm"
+          variant={!matrixView ? "default" : "ghost"}
+          className="text-xs h-7"
+          onClick={() => setMatrixView(false)}
+        >
+          Détail
+        </Button>
       </div>
+
+      {/* ═══ VUE MATRICE — Apprenants × Types ═══ */}
+      {matrixView && learnerMatrix.length > 0 && (
+        <div className="border rounded-lg overflow-hidden">
+          <div className="px-4 py-2 bg-muted/30 border-b">
+            <span className="text-sm font-medium">Apprenants — Vue matrice</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-gray-50/50">
+                  <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">Apprenant</th>
+                  {DEFAULT_LEARNER_DOCS.map(dt => (
+                    <th key={dt} className="text-center px-2 py-2 text-[10px] font-medium text-gray-500 uppercase">{(DOC_LABELS[dt] || dt).replace("FEUILLE D'ÉMARGEMENT", "Émarg.").replace("ATTESTATION D'ASSIDUITÉ", "Assiduité").replace("CERTIFICAT DE RÉALISATION", "Certificat").replace("CONVOCATION À LA FORMATION", "Convoc.")}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {learnerMatrix.map((lr) => (
+                  <tr key={lr.id} className="border-b last:border-b-0 hover:bg-gray-50/50">
+                    <td className="px-3 py-2 text-sm font-medium">{lr.name}</td>
+                    {DEFAULT_LEARNER_DOCS.map(dt => (
+                      <td key={dt} className="text-center px-2 py-2">
+                        {lr.row[dt] ? statusDot(lr.row[dt].status) : <span className="text-gray-300">—</span>}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="px-3 py-2 border-t bg-gray-50/50 flex items-center gap-4 text-[10px] text-muted-foreground">
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block" /> Signé</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block" /> Envoyé</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-blue-400 inline-block" /> Confirmé</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-gray-200 inline-block" /> Non traité</span>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ VUE DÉTAIL (existante) ═══ */}
+      {!matrixView && (
+        <>
 
       {/* Mass actions — compact */}
       <div className="border rounded-lg overflow-hidden">
@@ -1146,6 +1250,9 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
             })
           )}
         </div>
+      )}
+
+        </>
       )}
 
       {/* ── Dialog: Document preview ── */}
