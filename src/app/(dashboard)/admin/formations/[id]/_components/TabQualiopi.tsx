@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { CheckCircle, XCircle, Loader2, Shield } from "lucide-react";
+import { CheckCircle, XCircle, Loader2, Shield, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/components/ui/use-toast";
 import type { Session } from "@/lib/types";
@@ -29,6 +30,10 @@ export function TabQualiopi({ formation, onRefresh }: Props) {
   const [manualChecks, setManualChecks] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [responseCounts, setResponseCounts] = useState<Record<string, { total: number; done: number }>>({});
+
+  // Audit blanc IA
+  const [auditRunning, setAuditRunning] = useState(false);
+  const [auditResult, setAuditResult] = useState<{ overall_verdict: string; findings: Array<{ critere: number; status: string; question: string; recommendation: string }>; action_plan: Array<{ title: string; priority: string; estimated_effort?: string }> } | null>(null);
 
   const docs = formation.formation_convention_documents || [];
   const evalAssignments = formation.formation_evaluation_assignments || [];
@@ -353,6 +358,67 @@ export function TabQualiopi({ formation, onRefresh }: Props) {
           className={`h-2 rounded-full transition-all duration-500 ${scoreBarColor}`}
           style={{ width: `${score}%` }}
         />
+      </div>
+
+      {/* ═══ AUDIT BLANC IA ═══ */}
+      <div className="rounded-xl bg-gradient-to-br from-[#374151] to-[#1f2937] text-white p-5">
+        <div className="flex items-start justify-between mb-3">
+          <div>
+            <h3 className="font-semibold text-sm flex items-center gap-2">
+              <Sparkles className="h-4 w-4" /> Auditeur IA Qualiopi
+            </h3>
+            <p className="text-xs text-white/70 mt-1">
+              Simulation d&apos;audit blanc pour identifier les écarts potentiels
+            </p>
+          </div>
+          <Button
+            onClick={async () => {
+              setAuditRunning(true);
+              try {
+                const res = await fetch("/api/ai/qualiopi-mock-audit", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ mode: "formation", session_id: formation.id }),
+                });
+                if (!res.ok) throw new Error("Audit échoué");
+                const data = await res.json();
+                setAuditResult(data);
+                toast({ title: "Audit blanc terminé" });
+              } catch {
+                toast({ title: "Erreur", description: "Audit IA échoué", variant: "destructive" });
+              } finally {
+                setAuditRunning(false);
+              }
+            }}
+            disabled={auditRunning}
+            variant="secondary"
+            size="sm"
+            className="bg-white text-gray-800 hover:bg-gray-100"
+          >
+            {auditRunning ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Analyse...</> : <><Sparkles className="h-3.5 w-3.5 mr-1.5" /> Lancer un audit blanc</>}
+          </Button>
+        </div>
+        {auditResult && (
+          <div className="bg-white/10 rounded-lg p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <Badge className={auditResult.overall_verdict === "conforme" ? "bg-green-500" : auditResult.overall_verdict === "ecarts_majeurs" ? "bg-red-500" : "bg-amber-500"}>
+                {auditResult.overall_verdict === "conforme" ? "Conforme" : auditResult.overall_verdict === "ecarts_majeurs" ? "Écarts majeurs" : "À améliorer"}
+              </Badge>
+              <span className="text-xs text-white/60">
+                {auditResult.findings.filter(f => f.status !== "conforme").length} point(s) d&apos;attention
+              </span>
+            </div>
+            {auditResult.findings.filter(f => f.status !== "conforme").slice(0, 3).map((f, i) => (
+              <div key={i} className="text-xs text-white/80">
+                <span className="font-medium">C{f.critere}</span> — {f.question}
+                {f.recommendation && <p className="text-white/60 mt-0.5">💡 {f.recommendation}</p>}
+              </div>
+            ))}
+            {auditResult.action_plan.length > 0 && (
+              <p className="text-xs text-white/60">{auditResult.action_plan.length} action(s) recommandée(s)</p>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Documents */}
