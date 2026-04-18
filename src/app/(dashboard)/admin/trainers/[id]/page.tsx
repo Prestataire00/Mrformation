@@ -634,39 +634,46 @@ export default function TrainerProfilePage() {
                       )}
                     </span>
                   </label>
-                  {cvUrl && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="gap-1.5"
+                  <label className="cursor-pointer">
+                    <input
+                      type="file"
+                      accept=".pdf,.png,.jpg,.jpeg"
+                      className="hidden"
                       disabled={parsingCv}
-                      onClick={async () => {
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
                         setParsingCv(true);
                         try {
-                          // Fetch the CV file from storage to send to AI
-                          const cvRes = await fetch(cvUrl);
-                          const blob = await cvRes.blob();
                           const fd = new FormData();
-                          fd.append("file", blob, "cv.pdf");
+                          fd.append("file", file);
                           fd.append("trainer_id", trainer?.id || "");
                           fd.append("auto_save", "true");
                           const res = await fetch("/api/ai/parse-cv", { method: "POST", body: fd });
-                          if (!res.ok) throw new Error("Analyse échouée");
+                          if (!res.ok) {
+                            const errData = await res.json().catch(() => ({}));
+                            throw new Error(errData.error || `Erreur ${res.status}`);
+                          }
                           const data = await res.json();
-                          toast({ title: "CV analysé", description: `${data.competencies?.length || 0} compétences, ${data.certifications?.length || 0} certifications` });
-                          // Refresh page
+                          toast({ title: "CV analysé", description: `${data.competencies?.length || 0} compétences, ${data.certifications?.length || 0} certifications détectées` });
                           window.location.reload();
                         } catch (err) {
-                          toast({ title: "Erreur", description: err instanceof Error ? err.message : "Analyse échouée", variant: "destructive" });
+                          console.error("[parse-cv] error:", err);
+                          toast({ title: "Erreur d'analyse", description: err instanceof Error ? err.message : "Analyse échouée", variant: "destructive" });
                         } finally {
                           setParsingCv(false);
+                          e.target.value = "";
                         }
                       }}
-                    >
+                    />
+                    <span className={cn(
+                      "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition cursor-pointer",
+                      parsingCv ? "bg-gray-100 text-gray-400 cursor-not-allowed" : "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
+                    )}>
                       {parsingCv ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                      Analyser avec l&apos;IA
-                    </Button>
-                  )}
+                      {parsingCv ? "Analyse IA en cours..." : "Analyser un CV avec l'IA"}
+                    </span>
+                  </label>
                 </div>
               </div>
 

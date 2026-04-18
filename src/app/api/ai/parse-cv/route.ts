@@ -79,6 +79,38 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "L'IA n'a pas pu analyser ce CV." }, { status: 422 });
     }
 
+    // Auto-save if trainer_id provided
+    const trainerId = formData.get("trainer_id") as string | null;
+    const autoSave = formData.get("auto_save") === "true";
+
+    if (trainerId && autoSave) {
+      // Update trainer fields
+      await auth.supabase.from("trainers").update({
+        bio: parsed.bio || undefined,
+        experience_years: parsed.experience_years || undefined,
+        seniority_level: parsed.seniority_level || undefined,
+        education: parsed.education || [],
+        certifications: parsed.certifications || [],
+        languages: parsed.languages || [],
+        formation_domains: parsed.formation_domains || [],
+        ai_summary: parsed.bio || undefined,
+        ai_keywords: parsed.ai_keywords || [],
+        cv_uploaded_at: new Date().toISOString(),
+      }).eq("id", trainerId);
+
+      // Upsert competencies
+      if (parsed.competencies?.length) {
+        await auth.supabase.from("trainer_competencies").delete().eq("trainer_id", trainerId);
+        await auth.supabase.from("trainer_competencies").insert(
+          parsed.competencies.map((c: { name: string; level: string }) => ({
+            trainer_id: trainerId,
+            competency: c.name,
+            level: c.level || "intermediate",
+          }))
+        );
+      }
+    }
+
     return NextResponse.json(parsed);
   } catch (err) {
     console.error("[parse-cv]", err);
