@@ -47,6 +47,11 @@ import {
   Loader2,
   ExternalLink,
   Mail,
+  Sparkles,
+  CheckCircle2,
+  AlertCircle,
+  XCircle,
+  Shield,
 } from "lucide-react";
 import { useEntity } from "@/contexts/EntityContext";
 
@@ -120,6 +125,7 @@ export default function TrainerProfilePage() {
 
   // CV upload
   const [uploading, setUploading] = useState(false);
+  const [parsingCv, setParsingCv] = useState(false);
   const [cvUrl, setCvUrl] = useState<string | null>(null);
   const [cvTextLength, setCvTextLength] = useState(0);
 
@@ -628,6 +634,39 @@ export default function TrainerProfilePage() {
                       )}
                     </span>
                   </label>
+                  {cvUrl && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5"
+                      disabled={parsingCv}
+                      onClick={async () => {
+                        setParsingCv(true);
+                        try {
+                          // Fetch the CV file from storage to send to AI
+                          const cvRes = await fetch(cvUrl);
+                          const blob = await cvRes.blob();
+                          const fd = new FormData();
+                          fd.append("file", blob, "cv.pdf");
+                          fd.append("trainer_id", trainer?.id || "");
+                          fd.append("auto_save", "true");
+                          const res = await fetch("/api/ai/parse-cv", { method: "POST", body: fd });
+                          if (!res.ok) throw new Error("Analyse échouée");
+                          const data = await res.json();
+                          toast({ title: "CV analysé", description: `${data.competencies?.length || 0} compétences, ${data.certifications?.length || 0} certifications` });
+                          // Refresh page
+                          window.location.reload();
+                        } catch (err) {
+                          toast({ title: "Erreur", description: err instanceof Error ? err.message : "Analyse échouée", variant: "destructive" });
+                        } finally {
+                          setParsingCv(false);
+                        }
+                      }}
+                    >
+                      {parsingCv ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                      Analyser avec l&apos;IA
+                    </Button>
+                  )}
                 </div>
               </div>
 
@@ -837,6 +876,42 @@ export default function TrainerProfilePage() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Qualiopi Readiness Card */}
+          {trainer && (() => {
+            const checks = [
+              { key: "cv", label: "CV uploadé", ok: !!cvUrl },
+              { key: "bio", label: "Biographie (50+ car.)", ok: !!trainer.bio && trainer.bio.length >= 50 },
+              { key: "competencies", label: "≥ 3 compétences", ok: (trainer.competencies || []).length >= 3 },
+              { key: "nda", label: "NDA si externe", ok: trainer.type === "internal" || !!(trainer as unknown as Record<string, unknown>).nda },
+              { key: "email", label: "Email renseigné", ok: !!trainer.email },
+            ];
+            const passed = checks.filter(c => c.ok).length;
+            const ready = passed === checks.length;
+            return (
+              <Card className={cn("mt-4", ready ? "bg-emerald-50 border-emerald-200" : "bg-amber-50 border-amber-200")}>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Shield className="h-4 w-4" />
+                    Conformité Qualiopi
+                    <span className={cn("ml-auto text-sm font-bold", ready ? "text-emerald-700" : "text-amber-700")}>
+                      {passed}/{checks.length}
+                    </span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ul className="space-y-1.5">
+                    {checks.map(c => (
+                      <li key={c.key} className="flex items-center gap-2 text-xs">
+                        {c.ok ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" /> : <XCircle className="h-3.5 w-3.5 text-amber-600 shrink-0" />}
+                        <span className={c.ok ? "text-gray-700" : "text-amber-900 font-medium"}>{c.label}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </CardContent>
+              </Card>
+            );
+          })()}
         </TabsContent>
 
         {/* DOCUMENTS TAB */}
