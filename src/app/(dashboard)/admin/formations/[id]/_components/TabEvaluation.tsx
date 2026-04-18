@@ -2,7 +2,9 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Loader2, ChevronDown, Trash2, QrCode, Send } from "lucide-react";
+import { Loader2, ChevronDown, Trash2, QrCode, Send, Users, ClipboardCheck, CheckCircle2, TrendingUp, Mail, BarChart3 } from "lucide-react";
+import { StatusCell } from "@/components/formations/StatusCell";
+import type { StatusType } from "@/components/formations/StatusCell";
 import QRCode from "qrcode";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +15,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/use-toast";
+import { cn } from "@/lib/utils";
 import type { Session, Questionnaire, EvaluationType } from "@/lib/types";
 
 interface Props {
@@ -38,6 +41,7 @@ export function TabEvaluation({ formation, onRefresh }: Props) {
 
   const [massSelections, setMassSelections] = useState<Record<string, string>>({});
   const [learnerSelections, setLearnerSelections] = useState<Record<string, string>>({});
+  const [gridView, setGridView] = useState(true);
 
   // QR Code dialog
   const [qrDialog, setQrDialog] = useState<{ open: boolean; url: string; title: string; qrDataUrl: string }>({ open: false, url: "", title: "", qrDataUrl: "" });
@@ -359,11 +363,150 @@ export function TabEvaluation({ formation, onRefresh }: Props) {
     );
   }
 
+  // ── Grid helper: get status for a cell ──
+  const getCellStatus = (evalType: EvaluationType, learnerId: string | null): StatusType => {
+    const assignment = assignments.find(
+      a => a.evaluation_type === evalType && a.learner_id === learnerId
+    );
+    if (!assignment) return "not_assigned";
+    const count = responseCounts[`${assignment.questionnaire_id}-${evalType}`] || 0;
+    if (count > 0) return "completed";
+    return "assigned";
+  };
+
+  // ── Avatar color helper ──
+  const getAvatarColor = (name: string) => {
+    const colors = ["bg-blue-100 text-blue-700", "bg-purple-100 text-purple-700", "bg-pink-100 text-pink-700", "bg-amber-100 text-amber-700", "bg-emerald-100 text-emerald-700", "bg-indigo-100 text-indigo-700", "bg-rose-100 text-rose-700", "bg-teal-100 text-teal-700"];
+    return colors[name.split("").reduce((a, c) => a + c.charCodeAt(0), 0) % colors.length];
+  };
+
+  // ── Hero metrics ──
+  const totalLearners = enrollments.length;
+  const totalAssigned = assignments.length;
+  const totalResponded = Object.values(responseCounts).reduce((s, c) => s + c, 0);
+  const completionRate = totalAssigned > 0 ? Math.round((totalResponded / (totalAssigned * totalLearners || 1)) * 100) : 0;
+
   return (
     <div className="space-y-4">
-      <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-        Évaluations
-      </h3>
+      {/* ═══ HERO STATS ═══ */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="border rounded-lg p-3">
+          <div className="flex items-center gap-2">
+            <Users className="h-4 w-4 text-blue-500" />
+            <div>
+              <p className="text-xl font-bold">{totalLearners}</p>
+              <p className="text-xs text-muted-foreground">Apprenants</p>
+            </div>
+          </div>
+        </div>
+        <div className="border rounded-lg p-3">
+          <div className="flex items-center gap-2">
+            <ClipboardCheck className="h-4 w-4 text-purple-500" />
+            <div>
+              <p className="text-xl font-bold">{questionnaires.length}</p>
+              <p className="text-xs text-muted-foreground">Questionnaires</p>
+            </div>
+          </div>
+        </div>
+        <div className="border rounded-lg p-3">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="h-4 w-4 text-green-500" />
+            <div>
+              <p className="text-xl font-bold">{completionRate}%</p>
+              <p className="text-xs text-muted-foreground">Taux réponse</p>
+            </div>
+          </div>
+        </div>
+        <div className="border rounded-lg p-3">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="h-4 w-4 text-amber-500" />
+            <div>
+              <p className="text-xl font-bold">{totalResponded}</p>
+              <p className="text-xs text-muted-foreground">Réponses</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ═══ TOGGLE + ACTIONS ═══ */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <Button size="sm" variant={gridView ? "default" : "ghost"} className="text-xs h-7" onClick={() => setGridView(true)}>
+          Grille
+        </Button>
+        <Button size="sm" variant={!gridView ? "default" : "ghost"} className="text-xs h-7" onClick={() => setGridView(false)}>
+          Détail
+        </Button>
+        <div className="flex-1" />
+        <Button size="sm" variant="outline" className="text-xs h-7 gap-1" onClick={handleSendQuestionnaireEmail}>
+          <Mail className="h-3 w-3" /> Relancer
+        </Button>
+      </div>
+
+      {/* ═══ VUE GRILLE ═══ */}
+      {gridView && enrollments.length > 0 && (
+        <div className="border rounded-lg overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-muted/30 border-b">
+                  <th className="text-left px-4 py-2.5 font-medium text-xs uppercase text-muted-foreground sticky left-0 bg-muted/30 min-w-[160px]">
+                    Apprenant
+                  </th>
+                  {EVAL_TYPES.map(et => (
+                    <th key={et.type} className="text-center px-2 py-2.5 font-medium text-[10px] uppercase text-gray-500 whitespace-nowrap">
+                      {et.short}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {enrollments.map((enrollment, idx) => {
+                  const learner = enrollment.learner;
+                  if (!learner) return null;
+                  const fullName = `${learner.first_name} ${learner.last_name}`;
+                  return (
+                    <tr key={enrollment.id} className={cn("border-b last:border-b-0 hover:bg-muted/10", idx % 2 === 1 && "bg-gray-50/30")}>
+                      <td className="px-4 py-2.5 sticky left-0" style={{ background: idx % 2 === 1 ? "#f9fafb" : "#fff" }}>
+                        <div className="flex items-center gap-2">
+                          <div className={cn("h-7 w-7 rounded-md flex items-center justify-center text-[10px] font-semibold shrink-0", getAvatarColor(fullName))}>
+                            {learner.first_name?.charAt(0)}{learner.last_name?.charAt(0)}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-medium text-sm truncate">{fullName}</p>
+                            {learner.email && <p className="text-[11px] text-muted-foreground truncate">{learner.email}</p>}
+                          </div>
+                        </div>
+                      </td>
+                      {EVAL_TYPES.map(et => {
+                        const status = getCellStatus(et.type, learner.id);
+                        const count = responseCounts[`${assignments.find(a => a.evaluation_type === et.type && a.learner_id === learner.id)?.questionnaire_id}-${et.type}`] || 0;
+                        return (
+                          <td key={et.type} className="text-center px-2 py-2">
+                            <StatusCell
+                              status={status}
+                              size="sm"
+                              score={status === "completed" && count > 0 ? undefined : undefined}
+                            />
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="px-3 py-2 border-t bg-gray-50/50 flex items-center gap-4 text-[10px] text-muted-foreground">
+            <span className="flex items-center gap-1"><StatusCell status="completed" size="sm" /> Répondu</span>
+            <span className="flex items-center gap-1"><StatusCell status="assigned" size="sm" /> En attente</span>
+            <span className="flex items-center gap-1"><StatusCell status="not_assigned" size="sm" /> Non attribué</span>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ VUE DÉTAIL (existante) ═══ */}
+      {!gridView && (
+      <>
 
       {/* Attribution en masse */}
       <div className="border rounded-lg overflow-hidden">
@@ -444,6 +587,9 @@ export function TabEvaluation({ formation, onRefresh }: Props) {
           })}
         </div>
       )}
+      </>
+      )}
+
       {/* Responses Dialog */}
       <Dialog open={responsesDialogOpen} onOpenChange={setResponsesDialogOpen}>
         <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
