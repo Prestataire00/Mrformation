@@ -3,9 +3,10 @@
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
-  Plus, CheckCircle, Loader2, Trash2, Undo2, FileDown, Send,
+  Plus, CheckCircle, Loader2, Trash2, Undo2, FileDown, Send, Upload, Eye,
 } from "lucide-react";
 import { useEntity } from "@/contexts/EntityContext";
+import { ImportInvoiceDialog } from "./ImportInvoiceDialog";
 import { downloadInvoicePDF, invoicePDFBase64 } from "@/lib/invoice-pdf-export";
 import type { InvoicePdfData } from "@/lib/invoice-pdf-export";
 import { Button } from "@/components/ui/button";
@@ -138,6 +139,8 @@ export function TabFinances({ formation, onRefresh }: Props) {
   // Auto-generate
   const [autoGenerating, setAutoGenerating] = useState(false);
   const [previewDialog, setPreviewDialog] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importRecipientType, setImportRecipientType] = useState("company");
   const [previewData, setPreviewData] = useState<{ preview: Array<{ recipientType: string; recipientName: string; amount: number; detail: string }>; warnings: string[] } | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
 
@@ -523,6 +526,14 @@ export function TabFinances({ formation, onRefresh }: Props) {
               >
                 <Plus className="h-3 w-3 mr-1" /> Facture
               </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 text-xs"
+                onClick={() => { setImportRecipientType(type); setImportDialogOpen(true); }}
+              >
+                <Upload className="h-3 w-3 mr-1" /> Importer
+              </Button>
             </div>
             {sectionInvoices.length === 0 ? (
               <div className="text-center py-6 border border-dashed rounded-lg">
@@ -892,6 +903,14 @@ export function TabFinances({ formation, onRefresh }: Props) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* Import dialog */}
+      <ImportInvoiceDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+        sessionId={formation.id}
+        defaultRecipientType={importRecipientType}
+        onSuccess={() => { fetchData(); onRefresh(); }}
+      />
     </div>
   );
 }
