@@ -169,6 +169,7 @@ export function TabEvaluation({ formation, onRefresh }: Props) {
       toast({ title: "Évaluation attribuée" });
       await onRefresh();
     } catch (err: unknown) {
+      console.error("[handleAssign] error:", err);
       const message = err instanceof Error ? err.message : "Impossible d'attribuer l'évaluation";
       toast({ title: "Erreur", description: message, variant: "destructive" });
     } finally {
@@ -188,6 +189,7 @@ export function TabEvaluation({ formation, onRefresh }: Props) {
       toast({ title: "Attribution supprimée" });
       await onRefresh();
     } catch (err: unknown) {
+      console.error("[handleRemove] error:", err);
       const message = err instanceof Error ? err.message : "Impossible de supprimer";
       toast({ title: "Erreur", description: message, variant: "destructive" });
     } finally {
@@ -197,6 +199,39 @@ export function TabEvaluation({ formation, onRefresh }: Props) {
 
   const toggleExpanded = (key: string) =>
     setExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
+
+  // ── Relaunch all non-respondents ──
+  const handleRelaunchAll = async () => {
+    const pendingLearners = enrollments.filter(e => {
+      if (!e.learner?.email) return false;
+      const hasAssignment = assignments.some(a => a.learner_id === e.learner!.id || a.learner_id === null);
+      const responseCount = Object.entries(responseCounts).reduce((sum, [, c]) => sum + c, 0);
+      return hasAssignment && responseCount === 0;
+    });
+
+    if (pendingLearners.length === 0) {
+      toast({ title: "Aucun apprenant à relancer" });
+      return;
+    }
+
+    if (!confirm(`Envoyer un rappel à ${pendingLearners.length} apprenant${pendingLearners.length > 1 ? "s" : ""} ?`)) return;
+
+    setSaving("relaunch-all");
+    try {
+      const res = await fetch("/api/questionnaires/relaunch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: formation.id, learner_ids: pendingLearners.map(e => e.learner!.id) }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Envoi échoué");
+      toast({ title: "Rappels envoyés", description: `${data.sent} envoyé${data.sent > 1 ? "s" : ""}${data.failed > 0 ? `, ${data.failed} échec(s)` : ""}` });
+    } catch (err) {
+      toast({ title: "Erreur", description: err instanceof Error ? err.message : "Erreur", variant: "destructive" });
+    } finally {
+      setSaving(null);
+    }
+  };
 
   const buildQuestionnaireUrl = (questionnaireId: string) => {
     const base = typeof window !== "undefined" ? window.location.origin : "";
@@ -437,8 +472,8 @@ export function TabEvaluation({ formation, onRefresh }: Props) {
           Détail
         </Button>
         <div className="flex-1" />
-        <Button size="sm" variant="outline" className="text-xs h-7 gap-1" onClick={handleSendQuestionnaireEmail}>
-          <Mail className="h-3 w-3" /> Relancer
+        <Button size="sm" variant="outline" className="text-xs h-7 gap-1" onClick={handleRelaunchAll} disabled={saving === "relaunch-all"}>
+          {saving === "relaunch-all" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Mail className="h-3 w-3" />} Relancer les non-répondus
         </Button>
       </div>
 
