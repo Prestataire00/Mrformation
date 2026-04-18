@@ -19,10 +19,15 @@ interface Props {
   onRefresh: () => Promise<void>;
 }
 
+interface ClientWithContacts extends Omit<Client, "contacts"> {
+  automation_contact?: { id: string; email: string; first_name: string; last_name: string } | null;
+  contacts?: Array<{ id: string; email: string | null; first_name: string; last_name: string; is_primary: boolean }>;
+}
+
 export function ResumeCompanies({ formation, onRefresh }: Props) {
   const { toast } = useToast();
   const supabase = createClient();
-  const [allClients, setAllClients] = useState<Client[]>([]);
+  const [allClients, setAllClients] = useState<ClientWithContacts[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState("");
   const [amount, setAmount] = useState("");
@@ -33,16 +38,79 @@ export function ResumeCompanies({ formation, onRefresh }: Props) {
   const companies = formation.formation_companies || [];
 
   useEffect(() => {
-    const fetch = async () => {
+    const fetchClients = async () => {
       const { data } = await supabase
         .from("clients")
-        .select("*")
+        .select(`
+          *,
+          contacts(id, email, first_name, last_name, is_primary)
+        `)
         .eq("entity_id", formation.entity_id)
         .order("company_name");
-      if (data) setAllClients(data);
+      if (data) setAllClients(data as ClientWithContacts[]);
     };
-    fetch();
+    fetchClients();
   }, [formation.entity_id, supabase]);
+
+  // ── Auto-fill amount + email on client selection ──
+  const handleClientSelect = (clientId: string) => {
+    setSelectedClientId(clientId);
+
+    const client = allClients.find((c) => c.id === clientId);
+    if (!client) return;
+
+    // 1. Compute suggested amount
+    const enrollments = formation.enrollments || [];
+    const clientLearners = enrollments.filter((e) => e.client_id === clientId);
+    const totalLearners = enrollments.length || 1;
+    const totalPrice = formation.total_price || 0;
+
+    let suggestedAmount = 0;
+
+    if (clientLearners.length > 0) {
+      // Sum individual prices if defined
+      const individualSum = clientLearners.reduce((sum, e) => {
+        const ip = (e as unknown as { individual_price?: number }).individual_price;
+        return sum + (ip || 0);
+      }, 0);
+
+      if (individualSum > 0) {
+        suggestedAmount = individualSum;
+      } else {
+        const pricePerLearner = totalPrice / totalLearners;
+        suggestedAmount = pricePerLearner * clientLearners.length;
+      }
+    } else {
+      const expectedCompanies = Math.max(1, companies.length + 1);
+      suggestedAmount = totalPrice / expectedCompanies;
+    }
+
+    setAmount(suggestedAmount > 0 ? suggestedAmount.toFixed(2) : "");
+
+    // 2. Pre-fill email
+    let suggestedEmail = "";
+
+    // Priority 1: automation contact
+    if (client.automation_contact?.email) {
+      suggestedEmail = client.automation_contact.email;
+    }
+    // Priority 2: primary contact
+    else if (client.contacts?.length) {
+      const primary = client.contacts.find((c) => c.is_primary);
+      if (primary?.email) {
+        suggestedEmail = primary.email;
+      } else {
+        const withEmail = client.contacts.find((c) => c.email);
+        if (withEmail?.email) suggestedEmail = withEmail.email;
+      }
+    }
+    // Priority 3: client email field
+    if (!suggestedEmail && (client as unknown as { email?: string }).email) {
+      suggestedEmail = (client as unknown as { email: string }).email;
+    }
+
+    setEmail(suggestedEmail);
+  };
 
   const handleAdd = async () => {
     if (!selectedClientId) return;
@@ -94,7 +162,6 @@ export function ResumeCompanies({ formation, onRefresh }: Props) {
         <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Entreprises ({companies.length})</h3>
         <div className="space-y-3">
           {companies.map((fc) => {
-            // Trouver les apprenants liés à cette entreprise
             const companyLearners = (formation.enrollments || []).filter(
               (e) => e.client_id === fc.client_id
             );
@@ -153,7 +220,7 @@ export function ResumeCompanies({ formation, onRefresh }: Props) {
                   label: c.company_name,
                   sublabel: c.siret || "",
                 }))}
-                onSelect={setSelectedClientId}
+                onSelect={handleClientSelect}
                 placeholder="Rechercher une entreprise..."
               />
               {selectedClientId && (
@@ -165,10 +232,16 @@ export function ResumeCompanies({ formation, onRefresh }: Props) {
             <div>
               <Label>Montant (EUR)</Label>
               <Input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" />
+              {selectedClientId && amount && (
+                <p className="text-[11px] text-muted-foreground mt-1">Montant suggéré automatiquement — modifiable</p>
+              )}
             </div>
             <div>
               <Label>Email de contact</Label>
               <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@entreprise.fr" />
+              {selectedClientId && email && (
+                <p className="text-[11px] text-muted-foreground mt-1">Email récupéré depuis la fiche entreprise</p>
+              )}
             </div>
           </div>
           <DialogFooter>
