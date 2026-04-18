@@ -548,14 +548,8 @@ export async function exportHtmlToPDF(
   container.style.cssText =
     "position:fixed;left:-9999px;top:0;width:794px;padding:40px 50px;background:#fff;font-family:Helvetica,Arial,sans-serif;font-size:14px;line-height:1.6;color:#1e293b;";
 
-  // Add a title header
-  container.innerHTML = `
-    <div style="border-bottom:2px solid ${BRAND_BLUE};padding-bottom:12px;margin-bottom:24px;">
-      <h1 style="font-size:22px;font-weight:700;color:${DARK_TEXT};margin:0 0 4px 0;">${title}</h1>
-      <p style="font-size:11px;color:${MUTED_TEXT};margin:0;">Document etabli le ${formatDateFr()} | ${entityName}</p>
-    </div>
-    <div class="document-html-content">${htmlContent}</div>
-  `;
+  // Render content directly — the template already includes its own header
+  container.innerHTML = `<div class="document-html-content">${htmlContent}</div>`;
 
   // Add styles for rendered HTML content
   const style = document.createElement("style");
@@ -595,7 +589,7 @@ export async function exportHtmlToPDF(
     const pageWidth = 210;
     const pageHeight = 297;
     const marginX = 10;
-    const headerH = 18;
+    const headerH = 0;
     const footerH = 10;
     const usableWidth = pageWidth - marginX * 2;
     const usableTop = headerH + 4;
@@ -613,8 +607,6 @@ export async function exportHtmlToPDF(
     while (remainingHeight > 0) {
       if (pageNum > 0) doc.addPage();
       pageNum++;
-
-      addPageHeader(doc, entityName);
 
       const sliceHeight = Math.min(remainingHeight, usableHeight);
       const sourceSliceHeight = (sliceHeight / imgHeight) * canvas.height;
@@ -679,13 +671,7 @@ export async function exportHtmlToPDFBase64(
   container.style.cssText =
     "position:fixed;left:-9999px;top:0;width:794px;padding:40px 50px;background:#fff;font-family:Helvetica,Arial,sans-serif;font-size:14px;line-height:1.6;color:#1e293b;";
 
-  container.innerHTML = `
-    <div style="border-bottom:2px solid ${BRAND_BLUE};padding-bottom:12px;margin-bottom:24px;">
-      <h1 style="font-size:22px;font-weight:700;color:${DARK_TEXT};margin:0 0 4px 0;">${title}</h1>
-      <p style="font-size:11px;color:${MUTED_TEXT};margin:0;">Document etabli le ${formatDateFr()} | ${entityName}</p>
-    </div>
-    <div class="document-html-content">${htmlContent}</div>
-  `;
+  container.innerHTML = `<div class="document-html-content">${htmlContent}</div>`;
 
   const style = document.createElement("style");
   style.textContent = `
@@ -724,7 +710,7 @@ export async function exportHtmlToPDFBase64(
     const pageWidth = 210;
     const pageHeight = 297;
     const marginX = 10;
-    const headerH = 18;
+    const headerH = 0;
     const footerH = 10;
     const usableWidth = pageWidth - marginX * 2;
     const usableTop = headerH + 4;
@@ -740,8 +726,6 @@ export async function exportHtmlToPDFBase64(
     while (remainingHeight > 0) {
       if (pageNum > 0) doc.addPage();
       pageNum++;
-
-      addPageHeader(doc, entityName);
 
       const sliceHeight = Math.min(remainingHeight, usableHeight);
       const sourceSliceHeight = (sliceHeight / imgHeight) * canvas.height;
