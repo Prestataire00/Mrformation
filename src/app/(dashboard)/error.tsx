@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { AlertTriangle, RotateCcw, Home } from "lucide-react";
+import { AlertTriangle, RotateCcw, Home, ChevronDown } from "lucide-react";
 import Link from "next/link";
 
 export default function DashboardError({
@@ -12,28 +12,52 @@ export default function DashboardError({
   reset: () => void;
 }) {
   useEffect(() => {
-    console.error("[Dashboard Error]:", error);
+    console.error("[Dashboard Error]:", error.name, error.message, error.stack);
   }, [error]);
 
   return (
     <div className="flex flex-1 items-center justify-center p-8">
-      <div className="w-full max-w-md rounded-xl bg-white p-8 shadow-lg text-center">
+      <div className="w-full max-w-lg rounded-xl bg-white p-8 shadow-lg text-center">
         <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-red-100">
           <AlertTriangle className="h-7 w-7 text-red-600" />
         </div>
         <h2 className="mb-2 text-xl font-semibold text-gray-900">
           Erreur de chargement
         </h2>
-        <p className="mb-6 text-sm text-gray-500">
+        <p className="mb-4 text-sm text-gray-500">
           Une erreur est survenue lors du chargement de cette page.
         </p>
+
+        {/* Error details — always visible in dev, expandable in prod */}
+        <div className="mb-6 text-left">
+          <details className="group">
+            <summary className="flex items-center justify-center gap-1 text-xs text-gray-400 cursor-pointer hover:text-gray-600">
+              <ChevronDown className="h-3 w-3 group-open:rotate-180 transition-transform" />
+              Détails techniques
+            </summary>
+            <div className="mt-3 p-3 bg-gray-50 rounded-lg text-left overflow-auto max-h-64">
+              <p className="text-xs font-mono text-red-700 font-semibold break-all">
+                {error.name}: {error.message}
+              </p>
+              {error.digest && (
+                <p className="text-xs text-gray-500 mt-1">Digest: {error.digest}</p>
+              )}
+              {error.stack && (
+                <pre className="text-[10px] text-gray-500 mt-2 whitespace-pre-wrap break-all leading-relaxed">
+                  {error.stack}
+                </pre>
+              )}
+            </div>
+          </details>
+        </div>
+
         <div className="flex gap-3 justify-center">
           <button
             onClick={reset}
             className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
           >
             <RotateCcw className="h-4 w-4" />
-            R&eacute;essayer
+            Réessayer
           </button>
           <Link
             href="/admin"

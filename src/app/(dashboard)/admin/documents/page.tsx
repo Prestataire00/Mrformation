@@ -10,9 +10,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { RichTextEditor } from "@/components/editor/RichTextEditor";
+import dynamic from "next/dynamic";
+const RichTextEditor = dynamic(
+  () => import("@/components/editor/RichTextEditor").then(mod => mod.RichTextEditor),
+  { ssr: false, loading: () => <div className="h-64 bg-gray-50 rounded-lg animate-pulse flex items-center justify-center text-sm text-gray-400">Chargement de l&apos;éditeur...</div> }
+);
 import { plainTextToHtml, isHtmlContent } from "@/lib/migrate-templates";
-import { exportHtmlToPDF } from "@/lib/pdf-export";
+import { exportHtmlToPDF, exportToPDF } from "@/lib/pdf-export";
 import { getDefaultTemplate } from "@/lib/document-templates-defaults";
 import DOMPurifyLib from "dompurify";
 
@@ -71,7 +75,7 @@ import {
   Users,
   GraduationCap,
 } from "lucide-react";
-import { exportToPDF } from "@/lib/pdf-export";
+// exportToPDF already imported above
 
 type DocumentType = "agreement" | "certificate" | "attendance" | "invoice" | "other";
 
@@ -806,17 +810,21 @@ export default function DocumentsPage() {
                               variant="ghost"
                               className="h-7 text-xs gap-1"
                               onClick={() => {
-                                // Preview using getDefaultTemplate from document-templates-defaults.ts
-                                const demoData = {
-                                  formation: { id: "demo", title: "Formation IA Générative", start_date: "2026-04-15", end_date: "2026-04-17", planned_hours: 21, mode: "presentiel", location: "Paris", enrollments: [], formation_trainers: [], formation_time_slots: [], signatures: [] },
-                                  entityName: entity?.name || "MR FORMATION",
-                                };
-                                const html = getDefaultTemplate(ot.id, demoData as unknown as Parameters<typeof getDefaultTemplate>[1]);
-                                if (html) {
-                                  setPreviewTemplate({ id: ot.id, name: ot.name, type: ot.type, content: html, entity_id: "", created_at: "", updated_at: "", variables: [] } as DocumentTemplate);
-                                  setPreviewDialogOpen(true);
-                                } else {
-                                  toast({ title: "Aperçu non disponible pour ce type", variant: "destructive" });
+                                try {
+                                  const demoData = {
+                                    formation: { id: "demo", title: "Formation IA Générative", start_date: "2026-04-15", end_date: "2026-04-17", planned_hours: 21, mode: "presentiel", location: "Paris", enrollments: [], formation_trainers: [], formation_time_slots: [], signatures: [] },
+                                    entityName: entity?.name || "MR FORMATION",
+                                  };
+                                  const html = getDefaultTemplate(ot.id, demoData as unknown as Parameters<typeof getDefaultTemplate>[1]);
+                                  if (html) {
+                                    setPreviewTemplate({ id: ot.id, name: ot.name, type: ot.type, content: html, entity_id: "", created_at: "", updated_at: "", variables: [] } as DocumentTemplate);
+                                    setPreviewDialogOpen(true);
+                                  } else {
+                                    toast({ title: "Aperçu non disponible pour ce type" });
+                                  }
+                                } catch (err) {
+                                  console.error("[documents] preview error:", err);
+                                  toast({ title: "Erreur de prévisualisation", description: err instanceof Error ? err.message : "Erreur", variant: "destructive" });
                                 }
                               }}
                             >
