@@ -265,6 +265,7 @@ export default function ClientDetailPage() {
       fetchSessions(),
       fetchActivity(),
       fetchDocuments(),
+      fetchFormationDocs(),
     ]);
     setLoading(false);
   }
@@ -386,6 +387,35 @@ export default function ClientDetailPage() {
     }
   }
 
+  // Attach existing learner to this client
+  const [attachLearnerOpen, setAttachLearnerOpen] = useState(false);
+  const [allLearnersForAttach, setAllLearnersForAttach] = useState<Array<{ id: string; first_name: string; last_name: string; email: string | null }>>([]);
+
+  const fetchAllLearnersForAttach = async () => {
+    if (!entityId) return;
+    const { data } = await supabase
+      .from("learners")
+      .select("id, first_name, last_name, email")
+      .eq("entity_id", entityId)
+      .is("client_id", null)
+      .order("last_name");
+    setAllLearnersForAttach(data || []);
+  };
+
+  const handleAttachLearner = async (learnerId: string) => {
+    const { error } = await supabase
+      .from("learners")
+      .update({ client_id: clientId })
+      .eq("id", learnerId);
+    if (error) {
+      toast({ title: "Erreur", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Apprenant rattaché" });
+      setAttachLearnerOpen(false);
+      fetchLearners();
+    }
+  };
+
   const fetchSessions = useCallback(async () => {
     const { data, error } = await supabase
       .from("enrollments")
@@ -479,22 +509,62 @@ export default function ClientDetailPage() {
     }
   }, [supabase, clientId]);
 
+  // Formation convention documents for this client
+  const [formationDocs, setFormationDocs] = useState<Array<{ id: string; doc_type: string; is_confirmed: boolean; is_sent: boolean; is_signed: boolean; session_id: string; session_title: string; created_at: string }>>([]);
+
+  const fetchFormationDocs = useCallback(async () => {
+    const { data } = await supabase
+      .from("formation_convention_documents")
+      .select("id, doc_type, is_confirmed, is_sent, is_signed, session_id, created_at")
+      .eq("owner_type", "company")
+      .eq("owner_id", clientId);
+    if (data && data.length > 0) {
+      // Fetch session titles
+      const sessionIds = [...new Set(data.map((d: { session_id: string }) => d.session_id))];
+      const { data: sessionsData } = await supabase
+        .from("sessions")
+        .select("id, title")
+        .in("id", sessionIds);
+      const titleMap: Record<string, string> = {};
+      for (const s of sessionsData || []) titleMap[s.id] = s.title;
+      setFormationDocs(data.map((d: Record<string, unknown>) => ({
+        ...d,
+        session_title: titleMap[d.session_id as string] || "Formation",
+      })) as typeof formationDocs);
+    }
+  }, [supabase, clientId]);
+
+  const [docFile, setDocFile] = useState<File | null>(null);
+
   async function handleAddDocument() {
     if (!docForm.name.trim()) return;
     setSavingDoc(true);
-    const { error } = await supabase.from("client_documents").insert({
-      client_id: clientId,
-      name: docForm.name.trim(),
-      type: docForm.type,
-      notes: docForm.notes.trim() || null,
-    });
-    if (error) {
-      toast({ title: "Erreur", description: error.message, variant: "destructive" });
-    } else {
+    try {
+      let fileUrl: string | null = null;
+      if (docFile) {
+        const ext = docFile.name.split(".").pop();
+        const path = `clients/${clientId}/${Date.now()}.${ext}`;
+        const { error: uploadErr } = await supabase.storage.from("documents").upload(path, docFile);
+        if (uploadErr) throw uploadErr;
+        const { data: urlData } = supabase.storage.from("documents").getPublicUrl(path);
+        fileUrl = urlData.publicUrl;
+      }
+      const { error } = await supabase.from("client_documents").insert({
+        client_id: clientId,
+        name: docForm.name.trim(),
+        type: docForm.type,
+        notes: docForm.notes.trim() || null,
+        file_url: fileUrl,
+      });
+      if (error) throw error;
       toast({ title: "Document ajouté" });
       setDocDialogOpen(false);
       setDocForm({ name: "", type: "contract", notes: "" });
+      setDocFile(null);
       await fetchDocuments();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Erreur";
+      toast({ title: "Erreur", description: msg, variant: "destructive" });
     }
     setSavingDoc(false);
   }
@@ -711,13 +781,18 @@ export default function ClientDetailPage() {
     }
   }
 
+  const [accessDialogOpen, setAccessDialogOpen] = useState(false);
+  const [accessCredentials, setAccessCredentials] = useState<{ email: string; password: string; login_url: string } | null>(null);
+  const [creatingAccess, setCreatingAccess] = useState(false);
+
   async function handleCreateClientAccess() {
     const primaryEmail = contacts.find((c: Contact) => c.email)?.email;
     const primaryContact = contacts[0];
     if (!primaryEmail || !primaryContact) {
-      toast({ title: "Aucun contact avec email", variant: "destructive" });
+      toast({ title: "Aucun contact avec email", description: "Ajoutez d'abord un contact avec une adresse email.", variant: "destructive" });
       return;
     }
+    setCreatingAccess(true);
     try {
       const res = await fetch("/api/admin/create-access", {
         method: "POST",
@@ -733,7 +808,8 @@ export default function ClientDetailPage() {
       });
       const data = await res.json();
       if (res.ok) {
-        toast({ title: `Accès créé — MDP: ${data.password}`, description: `Email envoyé à ${data.email}` });
+        setAccessCredentials({ email: data.email, password: data.password, login_url: data.login_url });
+        setAccessDialogOpen(true);
         // Auto-send email
         await fetch("/api/emails/send", {
           method: "POST",
@@ -749,6 +825,8 @@ export default function ClientDetailPage() {
       }
     } catch {
       toast({ title: "Erreur", variant: "destructive" });
+    } finally {
+      setCreatingAccess(false);
     }
   }
 
@@ -1056,7 +1134,7 @@ export default function ClientDetailPage() {
         <TabsList className="w-full justify-start border-b rounded-none h-auto p-0 bg-transparent gap-0 flex-wrap">
           {[
             { value: "overview", label: "Vue d'ensemble", icon: Building2 },
-            { value: "formations", label: `Formations (${sessions.length})`, icon: Calendar },
+            { value: "formations", label: `Formations (${sessions.filter(s => s.status === "upcoming" || s.status === "in_progress").length} en cours · ${sessions.filter(s => s.status === "completed").length} terminées)`, icon: Calendar },
             { value: "communication", label: "Communication", icon: Send },
             { value: "documents", label: `Documents (${documents.length})`, icon: FolderOpen },
           ].map(({ value, label, icon: Icon }) => (
@@ -1196,9 +1274,14 @@ export default function ClientDetailPage() {
             ) : (
               <div className="flex items-center justify-between mb-3">
                 <span className="text-sm text-gray-500">{learners.length} apprenant{learners.length !== 1 ? "s" : ""}</span>
-                <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={() => setShowAddLearner(true)}>
-                  <UserPlus className="h-3.5 w-3.5" /> Ajouter un apprenant
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={() => { setAttachLearnerOpen(true); fetchAllLearnersForAttach(); }}>
+                    <Users className="h-3.5 w-3.5" /> Rattacher un existant
+                  </Button>
+                  <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={() => setShowAddLearner(true)}>
+                    <UserPlus className="h-3.5 w-3.5" /> Créer un apprenant
+                  </Button>
+                </div>
               </div>
             )}
 
@@ -1623,67 +1706,69 @@ export default function ClientDetailPage() {
         </TabsContent>
 
         {/* ════ Tab: Formations ════ */}
-        <TabsContent value="formations" className="mt-6">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base font-semibold">Historique des sessions</CardTitle>
-              <CardDescription>
-                {sessions.length} session{sessions.length !== 1 ? "s" : ""} associée{sessions.length !== 1 ? "s" : ""} à ce client
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {sessions.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-14 text-center">
-                  <Calendar className="h-10 w-10 text-muted-foreground/30 mb-3" />
-                  <p className="font-medium text-gray-700">Aucune session trouvée</p>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Les sessions apparaissent via les inscriptions des apprenants.
-                  </p>
-                </div>
-              ) : (
-                <ScrollArea className="max-h-[500px]">
-                  <div className="space-y-3">
-                    {sessions.map((session) => (
-                      <div key={session.id} className="flex items-start gap-4 rounded-lg border p-4 hover:bg-gray-50/50 transition-colors">
-                        <div className="flex-shrink-0 text-center bg-violet-50 rounded-lg px-3 py-2 min-w-[56px]">
-                          <p className="text-xs font-medium text-violet-600 uppercase">
-                            {formatDate(session.start_date, "MMM")}
-                          </p>
-                          <p className="text-xl font-bold text-violet-700">
-                            {formatDate(session.start_date, "dd")}
-                          </p>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-start justify-between gap-2">
-                            <div>
-                              <p className="font-medium text-gray-900">{session.title}</p>
-                              <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                                {session.trainer_first_name && (
-                                  <span>
-                                    {session.trainer_first_name} {session.trainer_last_name}
-                                  </span>
-                                )}
-                                <span>{formatDate(session.start_date)} – {formatDate(session.end_date)}</span>
-                                <span>{session.enrolled_learners} inscrits</span>
-                              </div>
-                            </div>
-                            <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                              <Badge className={cn("border-0 text-xs", STATUS_COLORS[session.status])}>
-                                {SESSION_STATUS_LABELS[session.status] ?? session.status}
-                              </Badge>
-                              <Badge variant="outline" className="text-xs">
-                                {MODE_LABELS[session.mode] ?? session.mode}
-                              </Badge>
-                            </div>
-                          </div>
+        <TabsContent value="formations" className="mt-6 space-y-6">
+          {(() => {
+            const activeSessions = sessions.filter(s => s.status === "upcoming" || s.status === "in_progress");
+            const completedSessions = sessions.filter(s => s.status === "completed");
+            const renderSessionCard = (session: SessionHistory) => (
+              <Link key={session.id} href={`/admin/formations/${session.id}`}>
+                <div className="flex items-start gap-4 rounded-lg border p-4 hover:bg-gray-50/50 transition-colors cursor-pointer">
+                  <div className="flex-shrink-0 text-center bg-violet-50 rounded-lg px-3 py-2 min-w-[56px]">
+                    <p className="text-xs font-medium text-violet-600 uppercase">{formatDate(session.start_date, "MMM")}</p>
+                    <p className="text-xl font-bold text-violet-700">{formatDate(session.start_date, "dd")}</p>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-medium text-gray-900">{session.title}</p>
+                        <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                          {session.trainer_first_name && <span>{session.trainer_first_name} {session.trainer_last_name}</span>}
+                          <span>{formatDate(session.start_date)} – {formatDate(session.end_date)}</span>
+                          <span>{session.enrolled_learners} inscrits</span>
                         </div>
                       </div>
-                    ))}
+                      <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                        <Badge className={cn("border-0 text-xs", STATUS_COLORS[session.status])}>
+                          {SESSION_STATUS_LABELS[session.status] ?? session.status}
+                        </Badge>
+                        <Badge variant="outline" className="text-xs">{MODE_LABELS[session.mode] ?? session.mode}</Badge>
+                      </div>
+                    </div>
                   </div>
-                </ScrollArea>
-              )}
-            </CardContent>
-          </Card>
+                </div>
+              </Link>
+            );
+            return sessions.length === 0 ? (
+              <Card>
+                <CardContent className="py-14">
+                  <div className="flex flex-col items-center justify-center text-center">
+                    <Calendar className="h-10 w-10 text-muted-foreground/30 mb-3" />
+                    <p className="font-medium text-gray-700">Aucune session trouvée</p>
+                    <p className="text-sm text-muted-foreground mt-1">Les sessions apparaissent via les inscriptions des apprenants ou les entreprises liées.</p>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <>
+                {activeSessions.length > 0 && (
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base font-semibold">En cours & à venir ({activeSessions.length})</CardTitle>
+                    </CardHeader>
+                    <CardContent><div className="space-y-3">{activeSessions.map(renderSessionCard)}</div></CardContent>
+                  </Card>
+                )}
+                {completedSessions.length > 0 && (
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base font-semibold">Terminées ({completedSessions.length})</CardTitle>
+                    </CardHeader>
+                    <CardContent><div className="space-y-3">{completedSessions.map(renderSessionCard)}</div></CardContent>
+                  </Card>
+                )}
+              </>
+            );
+          })()}
         </TabsContent>
 
         {/* ════ Tab: Communication ════ */}
@@ -1749,7 +1834,39 @@ export default function ClientDetailPage() {
         </TabsContent>
 
         {/* ════ Tab: Documents ════ */}
-        <TabsContent value="documents" className="mt-6">
+        <TabsContent value="documents" className="mt-6 space-y-6">
+          {/* Documents des formations (lecture seule) */}
+          {formationDocs.length > 0 && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base font-semibold">Documents des formations</CardTitle>
+                <CardDescription>{formationDocs.length} document{formationDocs.length > 1 ? "s" : ""} générés depuis les fiches formation</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-1.5">
+                  {formationDocs.map((fd) => (
+                    <div key={fd.id} className="flex items-center justify-between py-2 border-b last:border-b-0 text-sm">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <FileText className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+                        <span className="font-medium truncate">{(DOC_TYPE_LABELS as Record<string, string>)[fd.doc_type] || fd.doc_type}</span>
+                        <span className="text-xs text-muted-foreground truncate">— {fd.session_title}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {fd.is_signed && <Badge className="text-[10px] bg-green-100 text-green-700 border-0">Signé</Badge>}
+                        {fd.is_sent && !fd.is_signed && <Badge className="text-[10px] bg-blue-100 text-blue-700 border-0">Envoyé</Badge>}
+                        {fd.is_confirmed && !fd.is_sent && <Badge className="text-[10px] bg-gray-100 text-gray-600 border-0">Confirmé</Badge>}
+                        <Link href={`/admin/formations/${fd.session_id}`}>
+                          <Button variant="ghost" size="sm" className="h-6 text-xs">Voir</Button>
+                        </Link>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Documents uploadés (CRUD) */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-3">
               <div>
@@ -1856,6 +1973,22 @@ export default function ClientDetailPage() {
                   </Select>
                 </div>
                 <div className="space-y-1.5">
+                  <Label>Fichier</Label>
+                  <Input
+                    type="file"
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) {
+                        setDocFile(f);
+                        if (!docForm.name.trim()) setDocForm((p) => ({ ...p, name: f.name.replace(/\.[^/.]+$/, "") }));
+                      }
+                    }}
+                    className="h-9 text-sm"
+                  />
+                  {docFile && <p className="text-xs text-muted-foreground">{docFile.name} — {(docFile.size / 1024).toFixed(0)} Ko</p>}
+                </div>
+                <div className="space-y-1.5">
                   <Label>Notes (optionnel)</Label>
                   <Textarea
                     value={docForm.notes}
@@ -1866,9 +1999,9 @@ export default function ClientDetailPage() {
                 </div>
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setDocDialogOpen(false)}>Annuler</Button>
+                <Button variant="outline" onClick={() => { setDocDialogOpen(false); setDocFile(null); }}>Annuler</Button>
                 <Button onClick={handleAddDocument} disabled={savingDoc || !docForm.name.trim()}>
-                  {savingDoc ? "Ajout..." : "Ajouter"}
+                  {savingDoc ? "Envoi..." : "Ajouter"}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -1949,6 +2082,62 @@ export default function ClientDetailPage() {
               {deletingContact && <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />}
               Supprimer
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* ═══ ATTACH LEARNER DIALOG ═══ */}
+      <Dialog open={attachLearnerOpen} onOpenChange={setAttachLearnerOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Rattacher un apprenant existant</DialogTitle>
+            <DialogDescription>Sélectionnez un apprenant sans entreprise à rattacher à {client?.company_name}.</DialogDescription>
+          </DialogHeader>
+          <div className="max-h-64 overflow-y-auto space-y-1 py-2">
+            {allLearnersForAttach.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">Aucun apprenant disponible (tous sont déjà rattachés).</p>
+            ) : (
+              allLearnersForAttach.map((l) => (
+                <button
+                  key={l.id}
+                  onClick={() => handleAttachLearner(l.id)}
+                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 rounded-lg transition-colors"
+                >
+                  <span className="font-medium">{l.last_name?.toUpperCase()} {l.first_name}</span>
+                  {l.email && <span className="text-xs text-muted-foreground ml-2">— {l.email}</span>}
+                </button>
+              ))
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ═══ ACCESS CREDENTIALS DIALOG ═══ */}
+      <Dialog open={accessDialogOpen} onOpenChange={setAccessDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Accès plateforme créé</DialogTitle>
+            <DialogDescription>Les identifiants ont été envoyés par email. Conservez le mot de passe ci-dessous.</DialogDescription>
+          </DialogHeader>
+          {accessCredentials && (
+            <div className="space-y-3 py-2">
+              <div className="p-3 bg-gray-50 rounded-lg space-y-2 text-sm">
+                <div className="flex justify-between"><span className="text-muted-foreground">Email</span><span className="font-medium">{accessCredentials.email}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Mot de passe</span><span className="font-mono font-bold text-lg">{accessCredentials.password}</span></div>
+              </div>
+              <Button
+                variant="outline"
+                className="w-full gap-1.5"
+                onClick={() => {
+                  navigator.clipboard.writeText(`Email: ${accessCredentials.email}\nMot de passe: ${accessCredentials.password}`);
+                  toast({ title: "Identifiants copiés" });
+                }}
+              >
+                Copier les identifiants
+              </Button>
+            </div>
+          )}
+          <DialogFooter>
+            <Button onClick={() => setAccessDialogOpen(false)}>Fermer</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
