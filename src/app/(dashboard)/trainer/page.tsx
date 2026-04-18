@@ -52,6 +52,8 @@ import {
   isWithinInterval,
   isAfter,
 } from "date-fns";
+import { HeroCard, QuickActionCards, MiniCalendar, PriorityList } from "@/components/dashboard-home";
+import { FileText, ClipboardCheck } from "lucide-react";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -285,9 +287,40 @@ export default function TrainerPage() {
 
   // ── render ──────────────────────────────────────────────────────────────────
 
+  const weekSessionCount = sessions.filter((s) => {
+    const d = parseISO(s.start_date);
+    return isWithinInterval(d, { start: weekStart, end: weekEnd }) && s.status !== "cancelled";
+  }).length;
+
+  const eventDates = sessions
+    .filter(s => s.status !== "cancelled")
+    .map(s => s.start_date?.split("T")[0])
+    .filter(Boolean);
+
   return (
     <div className="space-y-6">
-      {/* ── Header ── */}
+      {/* ── Hero + Quick Actions ── */}
+      <HeroCard
+        firstName={trainer.first_name}
+        message={`Vous avez ${weekSessionCount} session${weekSessionCount !== 1 ? "s" : ""} cette semaine et ${upcomingSessions.length} formation${upcomingSessions.length !== 1 ? "s" : ""} à venir.`}
+        ctaLabel="Voir mon planning"
+        ctaHref="/trainer/planning"
+      />
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* ═══ COLONNE PRINCIPALE (2/3) ═══ */}
+        <div className="lg:col-span-2 space-y-6">
+          <QuickActionCards
+            title="Accès rapides"
+            actions={[
+              { icon: CalendarDays, label: "Sessions cette semaine", count: weekSessionCount, href: "/trainer/planning", color: "blue" },
+              { icon: PenLine, label: "Contrats à signer", count: 0, href: "/trainer/documents", color: "amber" },
+              { icon: ClipboardCheck, label: "Évaluations", count: 0, href: "/trainer/evaluations", color: "green" },
+              { icon: FileText, label: "Documents", count: 0, href: "/trainer/documents", color: "purple" },
+            ]}
+          />
+
+      {/* ── Profil formateur (ancien header) ── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-center gap-4">
           <Avatar className="h-16 w-16 text-lg">
@@ -708,6 +741,26 @@ export default function TrainerPage() {
               </CardContent>
             </Card>
           )}
+        </div>
+      </div>
+
+        </div>
+
+        {/* ═══ SIDEBAR DROITE (1/3) ═══ */}
+        <div className="space-y-4">
+          <MiniCalendar eventDates={eventDates} />
+          <PriorityList
+            title="Prochaines sessions"
+            icon={CalendarDays}
+            items={upcomingSessions.slice(0, 5).map(s => ({
+              id: s.id,
+              initials: formatDate(s.start_date, "dd"),
+              title: s.title,
+              subtitle: `${formatDate(s.start_date)} · ${s.enrollments?.length || 0} apprenants`,
+              href: `/admin/formations/${s.id}`,
+            }))}
+            emptyMessage="Aucune session à venir"
+          />
         </div>
       </div>
     </div>
