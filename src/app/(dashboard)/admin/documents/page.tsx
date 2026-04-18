@@ -20,7 +20,11 @@ import { exportHtmlToPDF, exportToPDF } from "@/lib/pdf-export";
 import { getDefaultTemplate } from "@/lib/document-templates-defaults";
 import DOMPurifyLib from "dompurify";
 
-const DOMPurify = typeof window !== "undefined" ? DOMPurifyLib : { sanitize: (html: string) => html };
+// Safe sanitize — avoid hydration mismatch by always using the same function reference
+function sanitizeHtml(html: string): string {
+  if (typeof window === "undefined") return html;
+  return DOMPurifyLib.sanitize(html);
+}
 import { useToast } from "@/components/ui/use-toast";
 import {
   Card,
@@ -1372,7 +1376,7 @@ export default function DocumentsPage() {
                     <div
                       className="prose prose-sm max-w-none text-gray-700 leading-relaxed"
                       dangerouslySetInnerHTML={{
-                        __html: DOMPurify.sanitize(getTemplatePreview(templateForm.content)),
+                        __html: sanitizeHtml(getTemplatePreview(templateForm.content)),
                       }}
                     />
                   </div>
@@ -1403,7 +1407,7 @@ export default function DocumentsPage() {
             <div
               className="p-6 border rounded-lg bg-white prose prose-sm max-w-none text-gray-700 leading-relaxed max-h-96 overflow-y-auto"
               dangerouslySetInnerHTML={{
-                __html: DOMPurify.sanitize(
+                __html: sanitizeHtml(
                   getTemplatePreview(previewTemplate ? getTemplateContent(previewTemplate) : "") || "<p>Aucun contenu</p>"
                 ),
               }}
@@ -1570,7 +1574,7 @@ export default function DocumentsPage() {
                 <div
                   className="p-4 border rounded-lg bg-gray-50 prose prose-sm max-w-none text-gray-700 leading-relaxed max-h-52 overflow-y-auto"
                   dangerouslySetInnerHTML={{
-                    __html: DOMPurify.sanitize(previewContent),
+                    __html: sanitizeHtml(previewContent),
                   }}
                 />
               </div>

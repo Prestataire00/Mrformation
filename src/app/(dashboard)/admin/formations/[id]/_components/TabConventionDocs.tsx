@@ -891,13 +891,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     );
   };
 
-  if (!initialized && enrollments.length > 0) {
-    return (
-      <div className="flex justify-center py-8">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
+  const isInitializing = !initialized && enrollments.length > 0;
 
   // ── Compute progress stats for hero row ──
   const docProgress = (() => {
@@ -934,6 +928,14 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     if (s === "confirmed") return <span className="inline-block w-3 h-3 rounded-full bg-blue-400" title="Confirmé" />;
     return <span className="inline-block w-3 h-3 rounded-full bg-gray-200" title="Non traité" />;
   };
+
+  if (isInitializing) {
+    return (
+      <div className="flex justify-center py-8">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
