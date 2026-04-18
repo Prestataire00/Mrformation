@@ -1,3 +1,7 @@
+/**
+ * @deprecated Remplacé par TabQuestionnaires.tsx (fusion Évaluations + Satisfaction).
+ * Conservé temporairement pour référence. Peut être supprimé après validation.
+ */
 "use client";
 
 import { useState, useEffect, useCallback } from "react";

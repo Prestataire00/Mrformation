@@ -31,8 +31,7 @@ import { TabAbsences } from "./_components/TabAbsences";
 import { TabDocsPartages } from "./_components/TabDocsPartages";
 import { TabMessagerie } from "./_components/TabMessagerie";
 import { TabProgramme } from "./_components/TabProgramme";
-import { TabEvaluation } from "./_components/TabEvaluation";
-import { TabSatisfaction } from "./_components/TabSatisfaction";
+import { TabQuestionnaires } from "./_components/TabQuestionnaires";
 import { TabConventionDocs } from "./_components/TabConventionDocs";
 import { TabElearning } from "./_components/TabElearning";
 import { TabFinances } from "./_components/TabFinances";
@@ -134,7 +133,7 @@ export default function FormationDetailPage() {
     { value: "planning", label: "Planning", icon: Calendar, count: kpis.slots },
     { value: "documents", label: "Documents", icon: FileText, count: kpis.docs },
     { value: "emargement", label: "Émargement", icon: PenLine },
-    { value: "evaluations", label: "Évaluations", icon: ClipboardCheck },
+    { value: "questionnaires", label: "Questionnaires", icon: ClipboardCheck },
     { value: "elearning", label: "E-Learning", icon: GraduationCap },
     { value: "finances", label: "Finances", icon: Euro },
     { value: "qualiopi", label: "Qualiopi", icon: ShieldCheck },
@@ -364,10 +363,9 @@ export default function FormationDetailPage() {
           <TabEmargements formation={formation} onRefresh={fetchFormation} />
         </TabsContent>
 
-        {/* 5. Évaluations */}
-        <TabsContent value="evaluations" className="mt-6 space-y-8">
-          <TabEvaluation formation={formation} onRefresh={fetchFormation} />
-          <TabSatisfaction formation={formation} onRefresh={fetchFormation} />
+        {/* 5. Questionnaires */}
+        <TabsContent value="questionnaires" className="mt-6">
+          <TabQuestionnaires formation={formation} onRefresh={fetchFormation} />
         </TabsContent>
 
         {/* 6. E-Learning */}
