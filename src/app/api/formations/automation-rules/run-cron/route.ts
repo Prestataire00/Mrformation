@@ -98,6 +98,11 @@ export async function POST(request: NextRequest) {
       let emailsSent = 0;
 
       for (const rule of rules) {
+        // Filter by subcontracted condition
+        const condSub = (rule as Record<string, unknown>).condition_subcontracted;
+        if (condSub === true && !(session as Record<string, unknown>).is_subcontracted) continue;
+        if (condSub === false && (session as Record<string, unknown>).is_subcontracted) continue;
+
         const recipientType = rule.recipient_type || "learners";
         type Recipient = { id: string; email: string; first_name: string; last_name: string; type: "learner" | "trainer" };
         const recipients: Recipient[] = [];

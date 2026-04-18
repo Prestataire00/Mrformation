@@ -49,6 +49,7 @@ const DOC_COLORS: Record<string, string> = {
   convention_entreprise: "border-l-purple-500",
   convention_intervention: "border-l-purple-400",
   contrat_sous_traitance: "border-l-rose-500",
+  planning_semaine: "border-l-teal-500",
   custom: "border-l-slate-500",
 };
 
@@ -66,6 +67,7 @@ const DOC_LABELS: Record<string, string> = {
   feuille_emargement_collectif: "FEUILLE D'ÉMARGEMENT COLLECTIF",
   convention_intervention: "CONVENTION D'INTERVENTION",
   contrat_sous_traitance: "CONTRAT CADRE DE SOUS-TRAITANCE",
+  planning_semaine: "PLANNING DE LA SEMAINE",
 };
 
 const DOC_LABELS_PLURAL: Record<string, string> = {
@@ -86,7 +88,7 @@ const STATIC_DOCS: ConventionDocType[] = [
 ];
 
 const DEFAULT_COMPANY_DOCS: ConventionDocType[] = [
-  "convention_entreprise", "feuille_emargement_collectif",
+  "convention_entreprise", "feuille_emargement_collectif", "planning_semaine",
 ];
 
 const DEFAULT_TRAINER_DOCS: ConventionDocType[] = [

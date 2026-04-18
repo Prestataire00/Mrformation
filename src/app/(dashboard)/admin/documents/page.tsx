@@ -172,6 +172,7 @@ const OFFICIAL_TEMPLATES: OfficialTemplate[] = [
   // Entreprise
   { id: "convention_entreprise", name: "CONVENTION ENTREPRISE", category: "company", categoryLabel: "Entreprise", type: "agreement", autoConfirmed: false },
   { id: "feuille_emargement_collectif", name: "FEUILLE D'ÉMARGEMENT COLLECTIF", category: "company", categoryLabel: "Entreprise", type: "attendance", autoConfirmed: false },
+  { id: "planning_semaine", name: "PLANNING DE LA SEMAINE", category: "company", categoryLabel: "Entreprise", type: "attendance", autoConfirmed: false },
   // Formateur
   { id: "convention_intervention", name: "CONVENTION D'INTERVENTION", category: "trainer", categoryLabel: "Formateur", type: "agreement", autoConfirmed: false },
   { id: "contrat_sous_traitance", name: "CONTRAT CADRE DE SOUS-TRAITANCE", category: "trainer", categoryLabel: "Formateur", type: "agreement", autoConfirmed: false },

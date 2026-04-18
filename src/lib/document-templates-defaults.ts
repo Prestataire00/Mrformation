@@ -952,6 +952,70 @@ function microCertificat(data: TemplateData): string {
 // Public API
 // ──────────────────────────────────────────────
 
+// ──────────────────────────────────────────────
+// DOCUMENT — PLANNING SEMAINE
+// ──────────────────────────────────────────────
+function planningSemaine(data: TemplateData): string {
+  const { formation, entityName } = data;
+  const co = getCompanyInfo(entityName);
+  const enrollments = formation.enrollments || [];
+  const trainers = formation.formation_trainers || [];
+  const formateursNoms = trainers.filter((ft) => ft.trainer).map((ft) => `${ft.trainer!.last_name?.toUpperCase()} ${ft.trainer!.first_name}`).join(", ") || "[Formateur]";
+
+  const jours = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi"];
+  const colHeaders = jours.flatMap((j) => [`${j} M`, `${j} AM`]);
+
+  const headerCells = colHeaders.map((h) => `<th style="border:1px solid #d1d5db;padding:4px 2px;font-size:8px;text-align:center;writing-mode:vertical-lr;min-width:28px;height:70px;">${h}</th>`).join("");
+
+  const learnerRows = enrollments.filter((e) => e.learner).map((e) => {
+    const name = `${e.learner!.last_name?.toUpperCase()} ${e.learner!.first_name}`;
+    const cells = colHeaders.map(() => `<td style="border:1px solid #d1d5db;padding:2px;min-width:28px;height:30px;"></td>`).join("");
+    return `<tr><td style="border:1px solid #d1d5db;padding:4px 6px;font-size:10px;white-space:nowrap;">${name}</td>${cells}</tr>`;
+  }).join("");
+
+  // Add empty rows to reach at least 12
+  const emptyCount = Math.max(0, 12 - enrollments.filter((e) => e.learner).length);
+  const emptyRows = Array.from({ length: emptyCount }, () => {
+    const cells = colHeaders.map(() => `<td style="border:1px solid #d1d5db;padding:2px;min-width:28px;height:30px;"></td>`).join("");
+    return `<tr><td style="border:1px solid #d1d5db;padding:4px 6px;font-size:10px;">&nbsp;</td>${cells}</tr>`;
+  }).join("");
+
+  const body = `
+    <div style="border:1px solid #d1d5db;border-radius:6px;padding:12px 16px;margin-bottom:16px;font-size:11px;">
+      <p style="margin:2px 0;">Formation: <strong>${formation.title}</strong></p>
+      <p style="margin:2px 0;">Dates: du ${formatDateFr(formation.start_date)} au ${formatDateFr(formation.end_date)}</p>
+      <p style="margin:2px 0;">Formateur(s): ${formateursNoms}</p>
+      <p style="margin:2px 0;">Prestataire: ${co.name} — NDA: ${co.nda}</p>
+    </div>
+    <div style="overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;">
+        <thead>
+          <tr style="background:#f3f4f6;">
+            <th style="border:1px solid #d1d5db;padding:4px 6px;text-align:left;font-size:10px;min-width:140px;">Nom</th>
+            ${headerCells}
+          </tr>
+        </thead>
+        <tbody>
+          ${learnerRows}${emptyRows}
+        </tbody>
+      </table>
+    </div>
+    <div style="margin-top:16px;">
+      <table style="width:100%;border-collapse:collapse;">
+        <tr style="background:#f3f4f6;">
+          <th style="border:1px solid #d1d5db;padding:4px 6px;text-align:left;font-size:10px;width:50%;">Signature Formateur</th>
+          <th style="border:1px solid #d1d5db;padding:4px 6px;text-align:left;font-size:10px;width:50%;">Signature Responsable</th>
+        </tr>
+        <tr>
+          <td style="border:1px solid #d1d5db;padding:4px;height:60px;"></td>
+          <td style="border:1px solid #d1d5db;padding:4px;height:60px;"></td>
+        </tr>
+      </table>
+    </div>`;
+
+  return wrap(entityName, "Planning de la semaine — Feuille d'émargement", body);
+}
+
 const GENERATORS: Record<string, (data: TemplateData) => string> = {
   convocation,
   certificat_realisation: certificatRealisation,
@@ -964,6 +1028,7 @@ const GENERATORS: Record<string, (data: TemplateData) => string> = {
   politique_confidentialite: politiqueRgpd,
   programme_formation: programmeFormation,
   micro_certificat: microCertificat,
+  planning_semaine: planningSemaine,
 };
 
 export function getDefaultTemplate(docType: string, data: TemplateData): string | null {

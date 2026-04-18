@@ -45,6 +45,12 @@ export function TabEvaluation({ formation, onRefresh }: Props) {
   const [emailDialog, setEmailDialog] = useState<{ open: boolean; email: string; subject: string; body: string }>({ open: false, email: "", subject: "", body: "" });
   const [sendingEmail, setSendingEmail] = useState(false);
 
+  // Response counts per questionnaire
+  const [responseCounts, setResponseCounts] = useState<Record<string, number>>({});
+  const [responsesDialogOpen, setResponsesDialogOpen] = useState(false);
+  const [responsesData, setResponsesData] = useState<Array<{ learner_name: string; responded: boolean; responded_at: string | null }>>([]);
+  const [responsesTitle, setResponsesTitle] = useState("");
+
   const assignments = formation.formation_evaluation_assignments || [];
   const enrollments = formation.enrollments || [];
 
@@ -68,6 +74,44 @@ export function TabEvaluation({ formation, onRefresh }: Props) {
   }, [supabase]);
 
   useEffect(() => { fetchQuestionnaires(); }, [fetchQuestionnaires]);
+
+  // Fetch response counts per questionnaire
+  useEffect(() => {
+    const fetchCounts = async () => {
+      const counts: Record<string, number> = {};
+      for (const a of assignments) {
+        const { count } = await supabase
+          .from("questionnaire_responses")
+          .select("id", { count: "exact", head: true })
+          .eq("questionnaire_id", a.questionnaire_id)
+          .eq("session_id", formation.id);
+        counts[`${a.questionnaire_id}-${a.evaluation_type}`] = count || 0;
+      }
+      setResponseCounts(counts);
+    };
+    if (assignments.length > 0) fetchCounts();
+  }, [assignments, formation.id, supabase]);
+
+  // Show responses detail
+  const handleShowResponses = async (questionnaireId: string, title: string) => {
+    const learnerList = enrollments.filter(e => e.learner).map(e => ({
+      id: e.learner!.id,
+      name: `${e.learner!.first_name} ${e.learner!.last_name}`,
+    }));
+    const { data: responses } = await supabase
+      .from("questionnaire_responses")
+      .select("learner_id, created_at")
+      .eq("questionnaire_id", questionnaireId)
+      .eq("session_id", formation.id);
+    const respondedMap = new Map((responses || []).map((r: { learner_id: string; created_at: string }) => [r.learner_id, r.created_at]));
+    setResponsesData(learnerList.map(l => ({
+      learner_name: l.name,
+      responded: respondedMap.has(l.id),
+      responded_at: respondedMap.get(l.id) || null,
+    })));
+    setResponsesTitle(title);
+    setResponsesDialogOpen(true);
+  };
 
   useEffect(() => {
     const mass: Record<string, string> = {};
@@ -247,6 +291,22 @@ export function TabEvaluation({ formation, onRefresh }: Props) {
             >
               {saving === existing.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
             </Button>
+            {/* Response count */}
+            {(() => {
+              const count = responseCounts[`${existing.questionnaire_id}-${evalType}`] || 0;
+              const total = enrollments.length || 1;
+              const pct = Math.round((count / total) * 100);
+              const color = pct === 0 ? "text-red-600 bg-red-50" : pct < 100 ? "text-amber-600 bg-amber-50" : "text-green-600 bg-green-50";
+              return (
+                <button
+                  onClick={() => handleShowResponses(existing.questionnaire_id, existing.questionnaire?.title || "Questionnaire")}
+                  className={`text-[10px] px-1.5 py-0.5 rounded-full ${color} hover:opacity-80`}
+                  title="Consulter les réponses"
+                >
+                  {pct}% ({count}/{total})
+                </button>
+              );
+            })()}
           </div>
         )}
         <Select
@@ -384,6 +444,36 @@ export function TabEvaluation({ formation, onRefresh }: Props) {
           })}
         </div>
       )}
+      {/* Responses Dialog */}
+      <Dialog open={responsesDialogOpen} onOpenChange={setResponsesDialogOpen}>
+        <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Réponses — {responsesTitle}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-1 py-2">
+            {responsesData.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">Aucun apprenant inscrit</p>
+            ) : (
+              responsesData.map((r, i) => (
+                <div key={i} className="flex items-center justify-between py-1.5 border-b last:border-b-0">
+                  <span className="text-sm">{r.learner_name}</span>
+                  {r.responded ? (
+                    <span className="text-xs text-green-700 bg-green-50 px-1.5 py-0.5 rounded-full">
+                      Répondu {r.responded_at ? `le ${new Date(r.responded_at).toLocaleDateString("fr-FR")}` : ""}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-gray-400">Non répondu</span>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setResponsesDialogOpen(false)}>Fermer</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* QR Code Dialog */}
       <Dialog open={qrDialog.open} onOpenChange={(o) => setQrDialog(prev => ({ ...prev, open: o }))}>
         <DialogContent className="max-w-sm">
