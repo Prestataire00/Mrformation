@@ -215,7 +215,7 @@ export function TabEmargements({ formation, onRefresh }: Props) {
   const isSlotPast = (slot: FormationTimeSlot) => new Date(slot.end_time) < new Date();
 
   const formatTime = (dateStr: string) =>
-    new Date(dateStr).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+    new Date(dateStr).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" });
 
   const formatSlotLabel = (slot: FormationTimeSlot) => {
     const start = new Date(slot.start_time);

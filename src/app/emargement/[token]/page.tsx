@@ -60,7 +60,7 @@ interface TokenData {
 }
 
 function formatTimeFr(dateStr: string): string {
-  return new Date(dateStr).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+  return new Date(dateStr).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" });
 }
 
 function formatSlotDateFr(dateStr: string): string {
@@ -69,6 +69,7 @@ function formatSlotDateFr(dateStr: string): string {
     day: "2-digit",
     month: "long",
     year: "numeric",
+    timeZone: "Europe/Paris",
   });
 }
 
