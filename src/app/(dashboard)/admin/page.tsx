@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { SlidersHorizontal } from "lucide-react";
+import { SlidersHorizontal, Clock, PenLine, ClipboardList, FileText, Receipt } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,8 @@ import {
   AdminSessionCalendar,
   AdminUpcomingSessions,
   AdminQuickAccess,
+  AdminHero,
+  AdminAttentionPanel,
   AdminDashboardSettings,
 } from "./_components";
 import {
@@ -46,6 +48,7 @@ export default function AdminDashboardPage() {
 
   const year = new Date().getFullYear();
   const [loading,        setLoading]        = useState(true);
+  const [adminFirstName, setAdminFirstName] = useState("");
 
   // KPIs
   const [activeClients,  setActiveClients]  = useState(0);
@@ -157,6 +160,12 @@ export default function AdminDashboardPage() {
   // ── orchestrateur ─────────────────────────────────────────────────────────
   async function fetchAll() {
     setLoading(true);
+    // Fetch admin name
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data: profile } = await supabase.from("profiles").select("first_name").eq("id", user.id).single();
+      if (profile?.first_name) setAdminFirstName(profile.first_name);
+    }
     await Promise.all([
       fetchKPIs(),
       fetchAlerts(),
@@ -578,12 +587,14 @@ export default function AdminDashboardPage() {
         </Button>
       </div>
 
-      {/* Alertes et Notifications */}
-      {isWidgetVisible("alerts") && (
-        <AdminAlerts alerts={alerts} overdueTasks={overdueTasks} />
-      )}
+      {/* ═══ HERO BANNER ═══ */}
+      <AdminHero
+        firstName={adminFirstName || "Admin"}
+        ongoingSessions={ongoingSessions}
+        attentionCount={overdueTasks.length + alerts.length}
+      />
 
-      {/* KPI Cards */}
+      {/* ═══ KPI Cards ═══ */}
       {isWidgetVisible("kpis") && (
         <AdminKPICards
           loading={loading}
@@ -600,35 +611,60 @@ export default function AdminDashboardPage() {
         />
       )}
 
-      {/* Activités récentes */}
-      {isWidgetVisible("activity") && (
-        <AdminRecentActivity activities={activities} isSuperAdmin={isSuperAdmin} />
-      )}
+      {/* ═══ GRILLE 2/3 + 1/3 ═══ */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Colonne gauche (2/3) */}
+        <div className="lg:col-span-2 space-y-4">
+          {/* Actions requises */}
+          <AdminAttentionPanel
+            items={[
+              { id: "overdue-tasks", icon: Clock, label: "Tâches en retard", count: overdueTasks.length, href: "/admin/crm/tasks", severity: "urgent" },
+              { id: "missing-reports", icon: FileText, label: "Bilans manquants", count: alerts.length, href: "/admin/reports/qualite", severity: "warning" },
+              { id: "overdue-invoices", icon: Receipt, label: "Factures en retard", count: 0, href: "/admin/reports/factures?status=late", severity: "urgent" },
+            ]}
+          />
 
-      {/* Calendrier des sessions */}
-      {isWidgetVisible("calendar") && (
-        <AdminSessionCalendar
-          calMonth={calMonth}
-          calYear={calYear}
-          calSessions={calSessions}
-          calendarView={calendarView}
-          calSelectedDay={calSelectedDay}
-          setCalMonth={setCalMonth}
-          setCalYear={setCalYear}
-          setCalendarView={setCalendarView}
-          setCalSelectedDay={setCalSelectedDay}
-        />
-      )}
+          {/* Alertes détaillées */}
+          {isWidgetVisible("alerts") && overdueTasks.length > 0 && (
+            <AdminOverdueTasks overdueTasks={overdueTasks} />
+          )}
 
-      {/* Tâches en retard (sous le calendrier) */}
-      {isWidgetVisible("alerts") && (
-        <AdminOverdueTasks overdueTasks={overdueTasks} />
-      )}
+          {/* Activités récentes */}
+          {isWidgetVisible("activity") && (
+            <AdminRecentActivity activities={activities} isSuperAdmin={isSuperAdmin} />
+          )}
+        </div>
 
-      {/* Sessions à venir */}
-      {isWidgetVisible("upcoming") && (
-        <AdminUpcomingSessions upcoming={upcoming} />
-      )}
+        {/* Colonne droite (1/3) */}
+        <div className="space-y-4">
+          {/* Sessions à venir (compact) */}
+          {isWidgetVisible("upcoming") && (
+            <AdminUpcomingSessions upcoming={upcoming} />
+          )}
+
+          {/* Calendrier collapsible */}
+          {isWidgetVisible("calendar") && (
+            <details className="rounded-xl border bg-white">
+              <summary className="px-4 py-3 cursor-pointer text-sm font-semibold text-gray-700 hover:bg-gray-50">
+                Calendrier mensuel
+              </summary>
+              <div className="p-4 border-t">
+                <AdminSessionCalendar
+                  calMonth={calMonth}
+                  calYear={calYear}
+                  calSessions={calSessions}
+                  calendarView={calendarView}
+                  calSelectedDay={calSelectedDay}
+                  setCalMonth={setCalMonth}
+                  setCalYear={setCalYear}
+                  setCalendarView={setCalendarView}
+                  setCalSelectedDay={setCalSelectedDay}
+                />
+              </div>
+            </details>
+          )}
+        </div>
+      </div>
 
       {/* Dialog Personnaliser le tableau de bord */}
       <AdminDashboardSettings

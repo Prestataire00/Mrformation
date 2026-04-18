@@ -6,3 +6,6 @@ export { AdminSessionCalendar } from "./AdminSessionCalendar";
 export { AdminUpcomingSessions } from "./AdminUpcomingSessions";
 export { AdminQuickAccess } from "./AdminQuickAccess";
 export { AdminDashboardSettings } from "./AdminDashboardSettings";
+export { AdminHero } from "./AdminHero";
+export { AdminAttentionPanel } from "./AdminAttentionPanel";
+export type { AttentionItem } from "./AdminAttentionPanel";
