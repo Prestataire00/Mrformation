@@ -4,10 +4,12 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { exportToCSV } from "@/lib/utils/export-csv";
 import {
   Building2,
   Plus,
   Search,
+  Download,
   Pencil,
   Trash2,
   Eye,
@@ -282,9 +284,22 @@ export default function ClientsPage() {
           <h1 className="text-lg font-bold text-gray-900">Entreprises</h1>
           <span className="text-xs text-gray-500"><span className="font-bold text-sm text-gray-900">{clients.length}</span> entreprises</span>
         </div>
-        <Button size="sm" onClick={() => setShowAddForm(true)} style={{ background: "#374151" }} className="text-white gap-1.5 text-xs">
-          <Plus className="h-3.5 w-3.5" /> Ajouter
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" className="gap-1.5 text-xs" onClick={() => {
+            exportToCSV(clients.map((c) => ({
+              entreprise: c.company_name || "",
+              siret: c.siret || "",
+              statut: c.status || "",
+              email: (c as unknown as Record<string, string>).email || "",
+              telephone: (c as unknown as Record<string, string>).phone || "",
+            })), `clients-${new Date().toISOString().split("T")[0]}`);
+          }}>
+            <Download className="h-3.5 w-3.5" /> CSV
+          </Button>
+          <Button size="sm" onClick={() => setShowAddForm(true)} style={{ background: "#374151" }} className="text-white gap-1.5 text-xs">
+            <Plus className="h-3.5 w-3.5" /> Ajouter
+          </Button>
+        </div>
       </div>
 
       {/* Inline Add Form */}

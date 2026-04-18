@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
 import { useDebounce } from "@/hooks/useDebounce";
 import { cn, formatDate } from "@/lib/utils";
+import { exportToCSV } from "@/lib/utils/export-csv";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -50,6 +51,7 @@ import {
   CheckCircle,
   Briefcase,
   Shield,
+  Download,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -349,6 +351,20 @@ export default function FormationsPage() {
             <LayoutList className="h-3.5 w-3.5" />
           </Button>
         </div>
+        <Button size="sm" variant="outline" className="gap-1.5 h-8 text-xs" onClick={() => {
+          exportToCSV(filtered.map(s => ({
+            titre: s.title,
+            debut: s.start_date,
+            fin: s.end_date,
+            statut: s.status,
+            mode: s.mode,
+            type: s.type || "",
+            lieu: s.location || "",
+            apprenants: String(s.enrollments?.length || 0),
+          })), `formations-${new Date().toISOString().split("T")[0]}`);
+        }}>
+          <Download className="h-3.5 w-3.5" /> CSV
+        </Button>
         <Button size="sm" onClick={openCreateForm} className="gap-1.5 h-8 text-xs">
           <Plus className="h-3.5 w-3.5" />
           Planifier une session
