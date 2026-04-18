@@ -454,23 +454,32 @@ export function TabFinances({ formation, onRefresh }: Props) {
 
   return (
     <div className="space-y-6">
-      {/* Inline stats */}
-      <div className="flex items-center gap-6 flex-wrap">
-        <span className="text-xs text-gray-500">
-          <span className="font-bold text-sm text-gray-900">{formatCurrency(stats.total_invoiced)}</span> facturé
-        </span>
-        <span className="text-xs text-gray-500">
-          <span className="font-bold text-sm text-green-700">{formatCurrency(stats.total_paid)}</span> payé
-        </span>
-        <span className="text-xs text-gray-500">
-          <span className="font-bold text-sm text-amber-600">{formatCurrency(stats.total_pending)}</span> en attente
-        </span>
-        <span className="text-xs text-gray-500">
-          <span className="font-bold text-sm text-red-600">{formatCurrency(stats.total_late)}</span> en retard
-        </span>
-        <span className="text-xs text-gray-500">
-          <span className="font-bold text-sm text-gray-900">{formatCurrency(stats.total_charges)}</span> charges
-        </span>
+      {/* ═══ HERO ROW — Stats financières ═══ */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="border rounded-lg p-3">
+          <p className="text-xs text-muted-foreground">Facturé</p>
+          <p className="text-xl font-bold text-gray-900">{formatCurrency(stats.total_invoiced)}</p>
+          {formation.total_price && stats.total_invoiced > 0 && (
+            <div className="mt-1.5">
+              <div className="bg-gray-100 rounded-full h-1.5">
+                <div className="bg-blue-500 h-1.5 rounded-full" style={{ width: `${Math.min(100, (stats.total_invoiced / formation.total_price) * 100)}%` }} />
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-0.5">sur {formatCurrency(formation.total_price)} objectif</p>
+            </div>
+          )}
+        </div>
+        <div className="border rounded-lg p-3">
+          <p className="text-xs text-muted-foreground">Payé</p>
+          <p className="text-xl font-bold text-green-700">{formatCurrency(stats.total_paid)}</p>
+        </div>
+        <div className="border rounded-lg p-3">
+          <p className="text-xs text-muted-foreground">En attente</p>
+          <p className="text-xl font-bold text-amber-600">{formatCurrency(stats.total_pending)}</p>
+        </div>
+        <div className="border rounded-lg p-3">
+          <p className="text-xs text-muted-foreground">Charges</p>
+          <p className="text-xl font-bold text-red-600">{formatCurrency(stats.total_charges)}</p>
+        </div>
       </div>
 
       {/* Auto-generate button */}
@@ -516,7 +525,17 @@ export function TabFinances({ formation, onRefresh }: Props) {
               </Button>
             </div>
             {sectionInvoices.length === 0 ? (
-              <p className="text-sm text-muted-foreground italic">Aucune facture</p>
+              <div className="text-center py-6 border border-dashed rounded-lg">
+                <p className="text-sm text-muted-foreground">Aucune facture {title.toLowerCase()}</p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="mt-2 text-xs gap-1"
+                  onClick={() => { setInvoiceForm((f) => ({ ...f, recipient_type: type })); setInvoiceDialog(true); }}
+                >
+                  <Plus className="h-3 w-3" /> Créer
+                </Button>
+              </div>
             ) : (
               <table className="w-full text-sm">
                 <thead>

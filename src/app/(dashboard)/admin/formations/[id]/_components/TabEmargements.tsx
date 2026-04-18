@@ -655,22 +655,29 @@ export function TabEmargements({ formation, onRefresh }: Props) {
 
   return (
     <div className="space-y-6">
-      {/* Header compact + toolbar */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-            Émargements
-          </h3>
-          {timeSlots.length > 0 && (
-            <div className="flex items-center gap-3 mt-1">
-              <span className="text-sm text-muted-foreground">
-                <span className="font-medium text-foreground">{totalSigned}/{totalExpected}</span> signatures
-              </span>
-              <Progress value={completionPct} className="w-32 h-1.5" />
-              <span className="text-xs font-medium text-muted-foreground">{completionPct}%</span>
+      {/* ═══ HERO ROW ═══ */}
+      {timeSlots.length > 0 && (
+        <div className="grid grid-cols-3 gap-3">
+          <div className="border rounded-lg p-3">
+            <p className="text-xs text-muted-foreground">Signatures</p>
+            <p className="text-xl font-bold">{totalSigned}<span className="text-sm font-normal text-muted-foreground">/{totalExpected}</span></p>
+            <div className="mt-1.5 bg-gray-100 rounded-full h-1.5">
+              <div className={`h-1.5 rounded-full transition-all ${completionPct === 100 ? "bg-green-500" : completionPct > 0 ? "bg-amber-400" : "bg-gray-200"}`} style={{ width: `${completionPct}%` }} />
             </div>
-          )}
+          </div>
+          <div className="border rounded-lg p-3">
+            <p className="text-xs text-muted-foreground">Taux de présence</p>
+            <p className="text-xl font-bold">{completionPct}%</p>
+          </div>
+          <div className="border rounded-lg p-3">
+            <p className="text-xs text-muted-foreground">Créneaux</p>
+            <p className="text-xl font-bold">{timeSlots.length}</p>
+          </div>
         </div>
+      )}
+
+      {/* Quick actions */}
+      <div className="flex items-center justify-end flex-wrap gap-1.5">
         <div className="flex items-center gap-1.5">
           <Button
             size="sm"

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Loader2, ChevronDown } from "lucide-react";
+import { Loader2, ChevronDown, GraduationCap, BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -198,18 +198,48 @@ export function TabElearning({ formation, onRefresh }: Props) {
     );
   }
 
+  // Compute hero stats
+  const assignedCount = assignments.length;
+  const completedCount = assignments.filter(a => a.is_completed).length;
+
   return (
     <div className="space-y-4">
-      {/* Header compact */}
-      <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-        e-Learning ({enrollments.length} apprenant{enrollments.length !== 1 ? "s" : ""})
-      </h3>
+      {/* Hero row */}
+      {assignedCount > 0 && (
+        <div className="grid grid-cols-3 gap-3">
+          <div className="border rounded-lg p-3">
+            <p className="text-xs text-muted-foreground">Cours attribués</p>
+            <p className="text-xl font-bold">{assignedCount}</p>
+          </div>
+          <div className="border rounded-lg p-3">
+            <p className="text-xs text-muted-foreground">Terminés</p>
+            <p className="text-xl font-bold text-green-700">{completedCount}</p>
+          </div>
+          <div className="border rounded-lg p-3">
+            <p className="text-xs text-muted-foreground">Progression</p>
+            <p className="text-xl font-bold">{assignedCount > 0 ? Math.round((completedCount / assignedCount) * 100) : 0}%</p>
+          </div>
+        </div>
+      )}
 
       {enrollments.length === 0 ? (
-        <p className="text-sm text-muted-foreground py-8 text-center">
-          Aucun apprenant inscrit.
-        </p>
-      ) : (
+        <div className="flex flex-col items-center justify-center py-16 text-center border border-dashed rounded-lg">
+          <GraduationCap className="h-12 w-12 text-gray-300 mb-3" />
+          <p className="font-medium text-gray-600">Aucun apprenant inscrit</p>
+          <p className="text-sm text-muted-foreground mt-1">Inscrivez des apprenants pour leur attribuer des cours e-learning.</p>
+        </div>
+      ) : assignedCount === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-center border border-dashed rounded-lg">
+          <BookOpen className="h-12 w-12 text-gray-300 mb-3" />
+          <p className="font-medium text-gray-600">Aucun cours e-learning attribué</p>
+          <p className="text-sm text-muted-foreground mt-1 max-w-sm">
+            Attribuez un cours à vos {enrollments.length} apprenant{enrollments.length > 1 ? "s" : ""} pour qu&apos;ils puissent le suivre en autonomie.
+          </p>
+          <p className="text-xs text-muted-foreground mt-3">Cliquez sur un apprenant ci-dessous pour attribuer un cours.</p>
+        </div>
+      ) : null}
+
+      {enrollments.length > 0 && (
         <div className="border rounded-lg overflow-hidden">
           {/* Table header */}
           <div className="grid grid-cols-[1fr_180px_100px_90px_40px] gap-2 px-4 py-2 bg-muted/30 border-b text-xs font-medium text-muted-foreground">
