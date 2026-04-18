@@ -94,6 +94,7 @@ export default function LearnerDetailPage() {
   const [company, setCompany] = useState<ClientOption | null>(null);
   const [creatingAccess, setCreatingAccess] = useState(false);
   const [accessCreated, setAccessCreated] = useState<{ email: string; password: string; login_url: string } | null>(null);
+  const [sendingWelcome, setSendingWelcome] = useState(false);
   const [learnerActive, setLearnerActive] = useState(true);
   const [togglingAccess, setTogglingAccess] = useState(false);
 
@@ -343,6 +344,33 @@ export default function LearnerDetailPage() {
               >
                 {togglingAccess ? <Loader2 className="h-3 w-3 animate-spin" /> : learnerActive ? <ShieldOff className="h-3 w-3" /> : <ShieldCheck className="h-3 w-3" />}
                 {learnerActive ? "Suspendre" : "Réactiver"}
+              </Button>
+            )}
+            {learner.email && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-xs gap-1.5"
+                disabled={sendingWelcome}
+                onClick={async () => {
+                  setSendingWelcome(true);
+                  try {
+                    const res = await fetch(`/api/learners/${learner.id}/send-welcome`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({}),
+                    });
+                    if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
+                    toast({ title: "Lien d'accès envoyé", description: `Email envoyé à ${learner.email}` });
+                  } catch (err) {
+                    toast({ title: "Erreur", description: err instanceof Error ? err.message : "Envoi échoué", variant: "destructive" });
+                  } finally {
+                    setSendingWelcome(false);
+                  }
+                }}
+              >
+                {sendingWelcome ? <Loader2 className="h-3 w-3 animate-spin" /> : <Mail className="h-3 w-3" />}
+                Envoyer lien d&apos;accès
               </Button>
             )}
             <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={toggleEdit}>
