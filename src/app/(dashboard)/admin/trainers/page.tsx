@@ -26,8 +26,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
-  Plus,
+  Plus, Sparkles, Briefcase, Loader2,
   Search,
   Pencil,
   Trash2,
@@ -108,6 +109,10 @@ export default function TrainersPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [trainerToDelete, setTrainerToDelete] = useState<TrainerWithCompetencies | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // CVthèque IA search
+  const [aiSearching, setAiSearching] = useState(false);
+  const [aiMode, setAiMode] = useState(false);
 
   const fetchTrainers = useCallback(async () => {
     if (!entityId) return;
@@ -300,121 +305,134 @@ export default function TrainersPage() {
     setDeleting(false);
   };
 
+  // AI search handler
+  const handleAISearch = async () => {
+    if (search.trim().length < 3) { setAiMode(false); return; }
+    setAiSearching(true);
+    setAiMode(true);
+    try {
+      const res = await fetch("/api/ai/search-trainers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: search.trim() }),
+      });
+      if (!res.ok) throw new Error("Recherche échouée");
+      const data = await res.json();
+      setTrainers(data.trainers || []);
+    } catch {
+      toast({ title: "Erreur recherche IA", variant: "destructive" });
+    } finally {
+      setAiSearching(false);
+    }
+  };
+
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Formateurs</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            {filtered.length} formateur{filtered.length !== 1 ? "s" : ""} sur {trainers.length}
-            {competencyFilter && ` — filtre: ${competencyFilter}`}
-          </p>
+    <div className="p-4 md:p-6 space-y-4 bg-gray-50 min-h-screen">
+      {/* Hero CVthèque */}
+      <div className="rounded-2xl bg-gradient-to-br from-[#374151] to-[#1f2937] text-white p-6">
+        <div className="flex items-start justify-between gap-4 mb-4">
+          <div>
+            <h1 className="text-2xl font-bold mb-1 flex items-center gap-2">
+              <Briefcase className="h-6 w-6" /> CVthèque formateurs
+            </h1>
+            <p className="text-sm text-white/70">
+              {trainers.length} formateur{trainers.length > 1 ? "s" : ""}
+            </p>
+          </div>
+          <Button onClick={openAddDialog} variant="secondary" className="bg-white text-gray-800 hover:bg-gray-100">
+            <Plus className="h-4 w-4 mr-1.5" /> Nouveau formateur
+          </Button>
         </div>
-        <Button onClick={openAddDialog} className="gap-2">
-          <Plus className="h-4 w-4" />
-          Ajouter un formateur
-        </Button>
+        <div className="flex gap-2">
+          <div className="flex-1 relative">
+            <Sparkles className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/50" />
+            <Input
+              className="bg-white/10 border-white/20 text-white placeholder:text-white/50 pl-10 h-11"
+              placeholder='Recherche IA : "expert data science anglais"'
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); if (aiMode && !e.target.value) { setAiMode(false); fetchTrainers(); } }}
+              onKeyDown={(e) => e.key === "Enter" && handleAISearch()}
+            />
+          </div>
+          <Button onClick={handleAISearch} disabled={aiSearching || search.length < 3} className="bg-[#DC2626] hover:bg-[#b91c1c] text-white">
+            {aiSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Sparkles className="h-4 w-4 mr-1.5" /> Recherche IA</>}
+          </Button>
+        </div>
+        {aiMode && <p className="text-xs text-white/60 mt-2">✨ Résultats classés par pertinence IA</p>}
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-          <Input
-            placeholder="Rechercher par nom, email..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
-          />
-        </div>
+      {/* Filtres compacts */}
+      <div className="flex flex-wrap gap-2 items-center">
         <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v as typeof typeFilter)}>
-          <SelectTrigger className="w-full sm:w-48">
-            <SelectValue placeholder="Type" />
-          </SelectTrigger>
+          <SelectTrigger className="w-36 h-9"><SelectValue placeholder="Type" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Tous les types</SelectItem>
+            <SelectItem value="all">Tous types</SelectItem>
             <SelectItem value="internal">Interne</SelectItem>
             <SelectItem value="external">Externe</SelectItem>
           </SelectContent>
         </Select>
         <Select value={competencyFilter || "all"} onValueChange={(v) => setCompetencyFilter(v === "all" ? "" : v)}>
-          <SelectTrigger className="w-full sm:w-56">
-            <SelectValue placeholder="Compétence" />
-          </SelectTrigger>
+          <SelectTrigger className="w-44 h-9"><SelectValue placeholder="Compétence" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Toutes les compétences</SelectItem>
+            <SelectItem value="all">Toutes compétences</SelectItem>
             {allCompetencies.map((comp) => (
               <SelectItem key={comp} value={comp}>{comp}</SelectItem>
             ))}
           </SelectContent>
         </Select>
-        <Select value={levelFilter} onValueChange={setLevelFilter}>
-          <SelectTrigger className="w-full sm:w-44">
-            <SelectValue placeholder="Niveau" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Tous les niveaux</SelectItem>
-            <SelectItem value="beginner">Débutant</SelectItem>
-            <SelectItem value="intermediate">Intermédiaire</SelectItem>
-            <SelectItem value="expert">Expert</SelectItem>
-          </SelectContent>
-        </Select>
+        <p className="text-sm text-muted-foreground ml-auto">{filtered.length} résultat{filtered.length > 1 ? "s" : ""}</p>
       </div>
 
-      {/* Card Grid */}
+      {/* Grille cards formateurs */}
       {loading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="bg-white border border-gray-200 rounded-xl p-5 animate-pulse">
-              <div className="flex items-center gap-4">
-                <div className="w-16 h-16 rounded-full bg-gray-200 shrink-0" />
-                <div className="flex-1 space-y-2">
-                  <div className="h-4 bg-gray-200 rounded w-3/4" />
-                  <div className="h-3 bg-gray-100 rounded w-1/2" />
-                  <div className="h-3 bg-gray-100 rounded w-2/3" />
-                </div>
-              </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          {[1,2,3,4,5,6].map(i => (
+            <div key={i} className="rounded-xl border bg-white p-4 animate-pulse">
+              <div className="flex gap-3 mb-3"><div className="h-12 w-12 rounded-full bg-gray-200" /><div className="flex-1 space-y-2"><div className="h-4 bg-gray-200 rounded w-3/4" /><div className="h-3 bg-gray-200 rounded w-1/2" /></div></div>
+              <div className="space-y-2"><div className="h-3 bg-gray-200 rounded" /><div className="h-3 bg-gray-200 rounded w-5/6" /></div>
             </div>
           ))}
         </div>
       ) : filtered.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <UserCircle className="h-12 w-12 text-gray-300 mb-3" />
-          <p className="font-medium text-gray-600">Aucun formateur trouvé</p>
-          <p className="text-xs text-gray-400 mt-1">Modifiez vos filtres ou ajoutez un formateur.</p>
+        <div className="rounded-xl border bg-white p-12 text-center">
+          <Briefcase className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+          <p className="text-sm font-medium text-gray-700">{aiMode ? "Aucun résultat" : "Aucun formateur"}</p>
+          <p className="text-xs text-muted-foreground mt-1">{aiMode ? "Essayez une recherche différente" : "Ajoutez votre premier formateur"}</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           {filtered.map((trainer) => (
-            <Link
-              key={trainer.id}
-              href={`/admin/trainers/${trainer.id}`}
-              className="bg-white border border-gray-200 rounded-xl p-5 hover:shadow-md hover:border-[#374151]/40 transition-all group"
-            >
-              <div className="flex items-center gap-4">
-                {/* Avatar circle */}
-                <div className="w-16 h-16 rounded-full flex items-center justify-center shrink-0" style={{ background: "#374151" }}>
-                  <span className="text-white font-bold text-xl">
-                    {getInitials(trainer.first_name, trainer.last_name)}
-                  </span>
+            <Link key={trainer.id} href={`/admin/trainers/${trainer.id}`} className="block group">
+              <div className="rounded-xl border bg-white p-4 hover:shadow-md hover:border-gray-300 transition-all h-full flex flex-col">
+                <div className="flex items-start gap-3 mb-3">
+                  <Avatar className="h-12 w-12 flex-shrink-0">
+                    <AvatarFallback className={cn("text-sm font-semibold", ["bg-blue-100 text-blue-700","bg-purple-100 text-purple-700","bg-pink-100 text-pink-700","bg-amber-100 text-amber-700","bg-emerald-100 text-emerald-700"][(trainer.first_name + trainer.last_name).split("").reduce((a,c)=>a+c.charCodeAt(0),0) % 5])}>
+                      {getInitials(trainer.first_name, trainer.last_name)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-sm truncate group-hover:text-[#DC2626]">{trainer.first_name} {trainer.last_name}</p>
+                    <p className="text-xs text-muted-foreground">{trainer.email || ""}</p>
+                  </div>
                 </div>
-
-                {/* Info */}
-                <div className="flex-1 min-w-0">
-                  <p className="font-bold text-gray-900 group-hover:text-[#374151] transition-colors">
-                    {trainer.last_name} {trainer.first_name}
-                  </p>
-                  <p className="text-sm text-gray-500 mt-0.5">
-                    {trainer.competencies.length > 0 ? trainer.competencies[0].competency : "NA"}
-                  </p>
-                  {trainer.email && (
-                    <p className="text-xs text-gray-400 mt-1 truncate">{trainer.email}</p>
-                  )}
-                  {trainer.phone && (
-                    <p className="text-xs text-gray-400">{trainer.phone}</p>
-                  )}
+                {trainer.bio && <p className="text-xs text-gray-600 line-clamp-2 mb-3">{trainer.bio}</p>}
+                {trainer.competencies.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mb-3">
+                    {trainer.competencies.slice(0, 3).map((c, i) => (
+                      <span key={i} className="text-[10px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">{c.competency}</span>
+                    ))}
+                    {trainer.competencies.length > 3 && <span className="text-[10px] text-muted-foreground">+{trainer.competencies.length - 3}</span>}
+                  </div>
+                )}
+                <div className="flex items-center gap-3 text-xs text-muted-foreground pt-3 mt-auto border-t">
+                  <span className="flex items-center gap-1"><Briefcase className="h-3 w-3" /> {(trainer as any).total_sessions || 0} sessions</span>
                 </div>
+                {(trainer as any).relevance && (
+                  <div className="mt-2 bg-purple-50 border border-purple-100 rounded-md p-2">
+                    <span className="text-[10px] font-semibold text-purple-700">✨ Pertinence : {(trainer as any).relevance}%</span>
+                    {(trainer as any).why && <p className="text-[11px] text-purple-900 mt-0.5">{(trainer as any).why}</p>}
+                  </div>
+                )}
               </div>
             </Link>
           ))}

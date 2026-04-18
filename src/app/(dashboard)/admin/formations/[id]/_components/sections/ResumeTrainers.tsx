@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Plus, Trash2, Loader2 } from "lucide-react";
+import { Plus, Trash2, Loader2, Sparkles } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -34,6 +34,8 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
   const [selectedDailyRate, setSelectedDailyRate] = useState("");
   const [saving, setSaving] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestions, setSuggestions] = useState<Array<{ trainer_id: string; trainer_name: string; score: number; reasons_match: string[]; gaps: string[] }>>([]);
 
   const formationTrainers = formation.formation_trainers || [];
 
@@ -163,7 +165,58 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
           <Button size="sm" onClick={() => setDialogOpen(true)}>
             <Plus className="h-4 w-4 mr-1" /> Ajouter un Formateur
           </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1"
+            disabled={suggesting}
+            onClick={async () => {
+              setSuggesting(true);
+              try {
+                const res = await fetch("/api/ai/match-trainer", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ session_id: formation.id }),
+                });
+                if (!res.ok) throw new Error("Suggestion échouée");
+                const data = await res.json();
+                setSuggestions(data.matches || []);
+              } catch {
+                toast({ title: "Erreur suggestions IA", variant: "destructive" });
+              } finally {
+                setSuggesting(false);
+              }
+            }}
+          >
+            {suggesting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+            Suggérer
+          </Button>
         </div>
+
+        {/* Suggestions IA */}
+        {suggestions.length > 0 && (
+          <div className="rounded-lg border bg-purple-50/50 border-purple-100 p-3 space-y-2">
+            <p className="text-xs font-semibold text-purple-900 flex items-center gap-1">
+              <Sparkles className="h-3 w-3" /> Suggestions IA
+            </p>
+            {suggestions.slice(0, 3).map(m => (
+              <div key={m.trainer_id} className="rounded-md bg-white border p-3 flex items-start justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="font-medium text-sm">{m.trainer_name}</span>
+                    <Badge variant="outline" className="bg-emerald-50 text-emerald-700 text-[10px]">Match {m.score}%</Badge>
+                  </div>
+                  {m.reasons_match?.length > 0 && (
+                    <ul className="text-xs text-gray-700 space-y-0.5 ml-4 list-disc">
+                      {m.reasons_match.slice(0, 2).map((r, i) => <li key={i}>{r}</li>)}
+                    </ul>
+                  )}
+                </div>
+                <Button size="sm" onClick={() => { handleSelectTrainer(m.trainer_id); setSuggestions([]); }}>Choisir</Button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Add Dialog */}
