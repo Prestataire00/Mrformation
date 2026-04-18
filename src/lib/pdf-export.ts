@@ -539,14 +539,16 @@ export async function exportHtmlToPDF(
   title: string,
   htmlContent: string,
   filename: string,
-  entityName = "MR FORMATION"
+  entityName = "MR FORMATION",
+  orientation: "portrait" | "landscape" = "portrait"
 ): Promise<void> {
   const { default: html2canvas } = await import("html2canvas");
 
   // Create a hidden container to render the HTML
+  const containerWidth = orientation === "landscape" ? 1123 : 794;
   const container = document.createElement("div");
   container.style.cssText =
-    "position:fixed;left:-9999px;top:0;width:794px;padding:40px 50px 60px 50px;background:#fff;font-family:Helvetica,Arial,sans-serif;font-size:14px;line-height:1.8;color:#1e293b;";
+    `position:fixed;left:-9999px;top:0;width:${containerWidth}px;padding:40px 50px 60px 50px;background:#fff;font-family:Helvetica,Arial,sans-serif;font-size:14px;line-height:1.8;color:#1e293b;`;
 
   container.innerHTML = `<div class="document-html-content">${htmlContent}</div>`;
 
@@ -582,10 +584,10 @@ export async function exportHtmlToPDF(
     });
 
     const imgData = canvas.toDataURL("image/png");
-    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+    const doc = new jsPDF({ orientation, unit: "mm", format: "a4" });
 
-    const pageWidth = 210;
-    const pageHeight = 297;
+    const pageWidth = orientation === "landscape" ? 297 : 210;
+    const pageHeight = orientation === "landscape" ? 210 : 297;
     const marginX = 10;
     const marginTop = 10;
     const footerH = 12;
@@ -661,13 +663,15 @@ export async function exportHtmlToPDF(
 export async function exportHtmlToPDFBase64(
   title: string,
   htmlContent: string,
-  entityName = "MR FORMATION"
+  entityName = "MR FORMATION",
+  orientation: "portrait" | "landscape" = "portrait"
 ): Promise<string> {
   const { default: html2canvas } = await import("html2canvas");
 
+  const containerWidth2 = orientation === "landscape" ? 1123 : 794;
   const container = document.createElement("div");
   container.style.cssText =
-    "position:fixed;left:-9999px;top:0;width:794px;padding:40px 50px 60px 50px;background:#fff;font-family:Helvetica,Arial,sans-serif;font-size:14px;line-height:1.8;color:#1e293b;";
+    `position:fixed;left:-9999px;top:0;width:${containerWidth2}px;padding:40px 50px 60px 50px;background:#fff;font-family:Helvetica,Arial,sans-serif;font-size:14px;line-height:1.8;color:#1e293b;`;
 
   container.innerHTML = `<div class="document-html-content">${htmlContent}</div>`;
 
@@ -703,10 +707,10 @@ export async function exportHtmlToPDFBase64(
     });
 
     const imgData = canvas.toDataURL("image/png");
-    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+    const doc = new jsPDF({ orientation, unit: "mm", format: "a4" });
 
-    const pageWidth = 210;
-    const pageHeight = 297;
+    const pageWidth = orientation === "landscape" ? 297 : 210;
+    const pageHeight = orientation === "landscape" ? 210 : 297;
     const marginX = 10;
     const marginTop = 10;
     const footerH = 12;

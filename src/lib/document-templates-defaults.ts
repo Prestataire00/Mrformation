@@ -1046,12 +1046,89 @@ function planningSemaine(data: TemplateData): string {
   return wrap(entityName, "Planning de la semaine — Feuille d'émargement", body);
 }
 
+// ──────────────────────────────────────────────
+// DOCUMENT — FEUILLE D'ÉMARGEMENT COLLECTIVE MATRICIELLE
+// ──────────────────────────────────────────────
+function feuilleEmargementMatriciel(data: TemplateData): string {
+  const { formation, company, entityName } = data;
+  const co = getCompanyInfo(entityName);
+  const modalite = MODE_LABELS[formation.mode] || formation.mode;
+  const enrollments = (formation.enrollments || []).filter(e => e.learner);
+  const trainers = (formation.formation_trainers || []).filter(ft => ft.trainer);
+  const timeSlots = formation.formation_time_slots || [];
+  const formateursNoms = trainers.map(ft => `${ft.trainer!.last_name?.toUpperCase()} ${ft.trainer!.first_name}`).join(", ") || "[Formateur]";
+
+  // Filtrer apprenants par entreprise si fournie
+  const filtered = company ? enrollments.filter(e => e.client_id === (company as unknown as { id?: string }).id) : enrollments;
+
+  // Grouper créneaux par jour
+  const slots = timeSlots.map(slot => {
+    const s = new Date(slot.start_time);
+    const e = new Date(slot.end_time);
+    return {
+      id: slot.id,
+      date: formatDateFr(slot.start_time),
+      dateIso: `${s.getFullYear()}-${String(s.getMonth()+1).padStart(2,"0")}-${String(s.getDate()).padStart(2,"0")}`,
+      startTime: s.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" }),
+      endTime: e.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" }),
+    };
+  }).sort((a, b) => a.dateIso.localeCompare(b.dateIso) || a.startTime.localeCompare(b.startTime));
+
+  const dayGroups: Array<{ date: string; slots: typeof slots }> = [];
+  for (const slot of slots) {
+    const last = dayGroups[dayGroups.length - 1];
+    if (last && last.slots[0]?.dateIso === slot.dateIso) { last.slots.push(slot); }
+    else { dayGroups.push({ date: slot.date, slots: [slot] }); }
+  }
+
+  const hc = "#14B8A6"; // teal header
+
+  const dayHeaderCells = dayGroups.map(dg => `<th colspan="${dg.slots.length}" style="background:${hc};color:#fff;border:1px solid #d1d5db;padding:8px 10px;text-align:left;font-size:11px;font-weight:700;">${dg.date}</th>`).join("");
+  const slotHeaderCells = slots.map(s => `<th style="background:#f9fafb;border:1px solid #d1d5db;padding:6px 8px;font-size:9px;font-weight:500;color:#374151;min-width:100px;vertical-align:top;">${s.startTime} - ${s.endTime}</th>`).join("");
+  const emptyCells = slots.map(() => `<td style="border:1px solid #d1d5db;padding:14px 8px;min-height:40px;background:#fff;"></td>`).join("");
+
+  const learnerRows = filtered.length > 0
+    ? filtered.map(e => `<tr><td style="border:1px solid #d1d5db;padding:10px;font-size:11px;background:#fff;">${e.learner!.last_name?.toUpperCase()} ${e.learner!.first_name}</td>${emptyCells}</tr>`).join("")
+    : `<tr><td colspan="${slots.length+1}" style="border:1px solid #d1d5db;padding:20px;text-align:center;color:#999;font-style:italic;font-size:11px;">Aucun apprenant inscrit</td></tr>`;
+
+  const trainerRows = trainers.length > 0
+    ? trainers.map(ft => `<tr><td style="border:1px solid #d1d5db;padding:10px;font-size:11px;background:#fff;">${ft.trainer!.last_name?.toUpperCase()} ${ft.trainer!.first_name}</td>${emptyCells}</tr>`).join("")
+    : `<tr><td colspan="${slots.length+1}" style="border:1px solid #d1d5db;padding:20px;text-align:center;color:#999;font-style:italic;font-size:11px;">Aucun formateur</td></tr>`;
+
+  const body = `
+    <h1 style="text-align:center;font-size:18px;font-weight:700;margin:0 0 16px;color:#111827;">Feuille d'émargement</h1>
+    <div style="margin-bottom:16px;font-size:11px;">
+      <p style="margin:2px 0;"><strong>Formation :</strong> ${formation.title}</p>
+      <p style="margin:2px 0;"><strong>Dates :</strong> du ${formatDateFr(formation.start_date)} au ${formatDateFr(formation.end_date)}</p>
+      <p style="margin:2px 0;"><strong>Lieu :</strong> ${modalite}${formation.location ? ` - ${formation.location}` : ""}${company?.company_name ? ` (${company.company_name})` : ""}</p>
+      <p style="margin:2px 0;"><strong>Durée :</strong> ${formation.planned_hours || "—"} heures</p>
+      <p style="margin:2px 0;"><strong>Prestataire :</strong> ${co.name} — NDA : ${co.nda}</p>
+      <p style="margin:2px 0;"><strong>Formateur(s) :</strong> ${formateursNoms}</p>
+    </div>
+    <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
+      <thead>
+        <tr><th style="background:${hc};color:#fff;border:1px solid #d1d5db;padding:8px 10px;text-align:left;font-size:11px;font-weight:700;min-width:140px;">APPRENANTS</th>${dayHeaderCells}</tr>
+        <tr><th style="background:#f9fafb;border:1px solid #d1d5db;padding:6px;"></th>${slotHeaderCells}</tr>
+      </thead>
+      <tbody>${learnerRows}</tbody>
+    </table>
+    <table style="width:100%;border-collapse:collapse;page-break-inside:avoid;">
+      <thead>
+        <tr><th style="background:${hc};color:#fff;border:1px solid #d1d5db;padding:8px 10px;text-align:left;font-size:11px;font-weight:700;min-width:140px;">FORMATEURS</th>${dayHeaderCells}</tr>
+        <tr><th style="background:#f9fafb;border:1px solid #d1d5db;padding:6px;"></th>${slotHeaderCells}</tr>
+      </thead>
+      <tbody>${trainerRows}</tbody>
+    </table>`;
+
+  return wrap(entityName, "", body);
+}
+
 const GENERATORS: Record<string, (data: TemplateData) => string> = {
   convocation,
   certificat_realisation: certificatRealisation,
   attestation_assiduite: attestationAssiduite,
   feuille_emargement: feuilleEmargement,
-  feuille_emargement_collectif: feuilleEmargement,
+  feuille_emargement_collectif: feuilleEmargementMatriciel,
   convention_entreprise: conventionEntreprise,
   cgv,
   reglement_interieur: reglementInterieur,
