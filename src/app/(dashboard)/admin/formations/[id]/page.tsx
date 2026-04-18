@@ -1,12 +1,17 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useEffect, useState, useCallback, useMemo } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import {
+  ArrowLeft, Loader2, Eye, Calendar, FileText, PenLine,
+  ClipboardCheck, GraduationCap, Euro, ShieldCheck, MessageSquare,
+  Users, Clock, Briefcase,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/use-toast";
 import { useEntity } from "@/contexts/EntityContext";
@@ -36,6 +41,7 @@ const MODE_LABELS: Record<string, string> = {
 export default function FormationDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
   const { entityId } = useEntity();
   const supabase = createClient();
@@ -43,7 +49,17 @@ export default function FormationDetailPage() {
 
   const [formation, setFormation] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("overview");
+
+  // Tab persistence via URL query param
+  const initialTab = searchParams.get("tab") || "overview";
+  const [activeTab, setActiveTab] = useState(initialTab);
+
+  const handleTabChange = (value: string) => {
+    setActiveTab(value);
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", value);
+    router.replace(url.pathname + url.search, { scroll: false });
+  };
 
   const fetchFormation = useCallback(async () => {
     if (!entityId) return;
@@ -75,7 +91,6 @@ export default function FormationDetailPage() {
 
       if (error) throw error;
 
-      // Trier les time_slots par slot_order
       if (data?.formation_time_slots) {
         data.formation_time_slots.sort(
           (a: { slot_order: number }, b: { slot_order: number }) => a.slot_order - b.slot_order
@@ -85,11 +100,7 @@ export default function FormationDetailPage() {
       setFormation(data as unknown as Session);
     } catch (err) {
       console.error("Erreur chargement formation:", err);
-      toast({
-        title: "Erreur",
-        description: "Impossible de charger la formation",
-        variant: "destructive",
-      });
+      toast({ title: "Erreur", description: "Impossible de charger la formation", variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -98,6 +109,30 @@ export default function FormationDetailPage() {
   useEffect(() => {
     fetchFormation();
   }, [fetchFormation]);
+
+  // KPI counts
+  const kpis = useMemo(() => {
+    if (!formation) return { enrollments: 0, docs: 0, slots: 0, qualiopi: 0 };
+    return {
+      enrollments: formation.enrollments?.length || 0,
+      docs: formation.formation_convention_documents?.length || 0,
+      slots: formation.formation_time_slots?.length || 0,
+      qualiopi: (formation as unknown as { qualiopi_score?: number }).qualiopi_score || 0,
+    };
+  }, [formation]);
+
+  // Tab definitions with counts
+  const tabs = useMemo(() => [
+    { value: "overview", label: "Résumé", icon: Eye },
+    { value: "planning", label: "Planning", icon: Calendar, count: kpis.slots },
+    { value: "documents", label: "Documents", icon: FileText, count: kpis.docs },
+    { value: "emargement", label: "Émargement", icon: PenLine },
+    { value: "evaluations", label: "Évaluations", icon: ClipboardCheck },
+    { value: "elearning", label: "E-Learning", icon: GraduationCap },
+    { value: "finances", label: "Finances", icon: Euro },
+    { value: "qualiopi", label: "Qualiopi", icon: ShieldCheck },
+    { value: "communication", label: "Communication", icon: MessageSquare },
+  ], [kpis]);
 
   if (loading) {
     return (
@@ -119,130 +154,156 @@ export default function FormationDetailPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => router.back()}>
+    <div className="p-6 space-y-5">
+      {/* ═══ HEADER ═══ */}
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start gap-4">
+          <Button variant="ghost" size="icon" className="mt-1" onClick={() => router.back()}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold">{formation.title}</h1>
+            <h1 className="text-2xl font-bold text-gray-900">{formation.title}</h1>
+            <div className="flex items-center gap-2 mt-2 flex-wrap">
+              <Badge className={cn("border-0", STATUS_COLORS[formation.status] || "bg-gray-100")}>
+                {SESSION_STATUS_LABELS[formation.status] || formation.status}
+              </Badge>
               {formation.type && (
-                <Badge variant="outline" className="text-sm">
-                  {formation.type === "intra" ? "Intra" : "Inter"}
+                <Badge variant="outline" className={formation.type === "intra" ? "border-blue-300 text-blue-700" : "border-purple-300 text-purple-700"}>
+                  {formation.type === "intra" ? "INTRA" : "INTER"}
+                </Badge>
+              )}
+              <Badge variant="outline">
+                {MODE_LABELS[formation.mode] || formation.mode}
+              </Badge>
+              {(formation as unknown as { is_subcontracted?: boolean }).is_subcontracted && (
+                <Badge variant="outline" className="border-purple-300 text-purple-700 gap-1">
+                  <Briefcase className="h-3 w-3" /> Sous-traitance
                 </Badge>
               )}
             </div>
-            <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
-              {formation.domain && <span>Domaine: {formation.domain}</span>}
-              <span>
-                Du {formatDate(formation.start_date)} au {formatDate(formation.end_date)}
-              </span>
-              {formation.training?.category && <span>{formation.training.category}</span>}
-            </div>
+            <p className="text-sm text-muted-foreground mt-1">
+              Du {formatDate(formation.start_date)} au {formatDate(formation.end_date)}
+              {formation.updated_at && <span className="ml-3">· Mis à jour le {formatDate(formation.updated_at)}</span>}
+            </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Badge className={cn(STATUS_COLORS[formation.status] || "bg-gray-100")}>
-            {SESSION_STATUS_LABELS[formation.status] || formation.status}
-          </Badge>
-          <Badge variant="outline">
-            {MODE_LABELS[formation.mode] || formation.mode}
-          </Badge>
+        <div className="flex items-center gap-2 shrink-0">
+          {formation.program_id && (
+            <Link href={`/admin/programs/${formation.program_id}`}>
+              <Button variant="outline" size="sm" className="text-xs gap-1.5">
+                <FileText className="h-3.5 w-3.5" /> Programme
+              </Button>
+            </Link>
+          )}
         </div>
       </div>
 
-      {/* Tabs — 5 groupes */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="w-full justify-start border-b rounded-none h-auto p-0 bg-transparent gap-0">
-          {[
-            { value: "overview", label: "Vue d'ensemble" },
-            { value: "suivi", label: "Suivi" },
-            { value: "communication", label: "Communication" },
-            { value: "documents", label: "Documents" },
-            { value: "qualiopi", label: "Qualiopi" },
-            { value: "finances", label: "Finances" },
-          ].map((tab) => (
+      {/* ═══ KPI CARDS ═══ */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <Card className="p-3">
+          <div className="flex items-center gap-2">
+            <Users className="h-4 w-4 text-blue-500" />
+            <div>
+              <p className="text-xl font-bold">{kpis.enrollments}</p>
+              <p className="text-xs text-muted-foreground">Apprenants</p>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-3">
+          <div className="flex items-center gap-2">
+            <FileText className="h-4 w-4 text-purple-500" />
+            <div>
+              <p className="text-xl font-bold">{kpis.docs}</p>
+              <p className="text-xs text-muted-foreground">Documents</p>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-3">
+          <div className="flex items-center gap-2">
+            <Clock className="h-4 w-4 text-amber-500" />
+            <div>
+              <p className="text-xl font-bold">{kpis.slots}</p>
+              <p className="text-xs text-muted-foreground">Créneaux</p>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-3">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="h-4 w-4 text-green-500" />
+            <div>
+              <p className="text-xl font-bold">{kpis.qualiopi}%</p>
+              <p className="text-xs text-muted-foreground">Qualiopi</p>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      {/* ═══ 10 ONGLETS ATOMIQUES ═══ */}
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
+        <TabsList className="w-full justify-start border-b rounded-none h-auto p-0 bg-transparent gap-0 overflow-x-auto flex-nowrap">
+          {tabs.map((tab) => (
             <TabsTrigger
               key={tab.value}
               value={tab.value}
-              className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-2.5 text-sm"
+              className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-3 py-2.5 text-sm gap-1.5 shrink-0 whitespace-nowrap"
             >
+              <tab.icon className="h-3.5 w-3.5" />
               {tab.label}
+              {tab.count !== undefined && tab.count > 0 && (
+                <span className="text-[10px] bg-gray-100 text-gray-500 rounded-full px-1.5 py-0.5 ml-0.5">{tab.count}</span>
+              )}
             </TabsTrigger>
           ))}
         </TabsList>
 
-        {/* ═══ VUE D'ENSEMBLE ═══ */}
-        <TabsContent value="overview" className="mt-6 space-y-8">
+        {/* 1. Résumé */}
+        <TabsContent value="overview" className="mt-6">
           <TabResume formation={formation} onRefresh={fetchFormation} />
-          <hr className="border-gray-100" />
-          <div>
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Planning & Parcours</h3>
-            <TabPlanning formation={formation} onRefresh={fetchFormation} />
-          </div>
-          <hr className="border-gray-100" />
-          <div>
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Parcours</h3>
-            <TabParcours formation={formation} onRefresh={fetchFormation} />
-          </div>
         </TabsContent>
 
-        {/* ═══ SUIVI ═══ */}
-        <TabsContent value="suivi" className="mt-6 space-y-8">
-          <TabEmargements formation={formation} onRefresh={fetchFormation} />
-          <hr className="border-gray-100" />
-          <div>
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Absences</h3>
-            <TabAbsences formation={formation} onRefresh={fetchFormation} />
-          </div>
-          <hr className="border-gray-100" />
-          <div>
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">e-Learning</h3>
-            <TabElearning formation={formation} onRefresh={fetchFormation} />
-          </div>
+        {/* 2. Planning */}
+        <TabsContent value="planning" className="mt-6 space-y-8">
+          <TabPlanning formation={formation} onRefresh={fetchFormation} />
+          <TabParcours formation={formation} onRefresh={fetchFormation} />
         </TabsContent>
 
-        {/* ═══ COMMUNICATION ═══ */}
-        <TabsContent value="communication" className="mt-6 space-y-8">
-          <TabMessagerie formation={formation} onRefresh={fetchFormation} />
-          <hr className="border-gray-100" />
-          <div>
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Évaluation</h3>
-            <TabEvaluation formation={formation} onRefresh={fetchFormation} />
-          </div>
-          <hr className="border-gray-100" />
-          <div>
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Satisfaction & Qualité</h3>
-            <TabSatisfaction formation={formation} onRefresh={fetchFormation} />
-          </div>
-        </TabsContent>
-
-        {/* ═══ DOCUMENTS ═══ */}
+        {/* 3. Documents */}
         <TabsContent value="documents" className="mt-6 space-y-8">
           <TabConventionDocs formation={formation} onRefresh={fetchFormation} />
-          <hr className="border-gray-100" />
-          <div>
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Documents partagés</h3>
-            <TabDocsPartages formation={formation} onRefresh={fetchFormation} />
-          </div>
-          <hr className="border-gray-100" />
-          <div>
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Programme</h3>
-            <TabProgramme formation={formation} onRefresh={fetchFormation} />
-          </div>
+          <TabDocsPartages formation={formation} onRefresh={fetchFormation} />
+          <TabProgramme formation={formation} onRefresh={fetchFormation} />
         </TabsContent>
 
-        {/* ═══ QUALIOPI ═══ */}
+        {/* 4. Émargement */}
+        <TabsContent value="emargement" className="mt-6">
+          <TabEmargements formation={formation} onRefresh={fetchFormation} />
+        </TabsContent>
+
+        {/* 5. Évaluations */}
+        <TabsContent value="evaluations" className="mt-6 space-y-8">
+          <TabEvaluation formation={formation} onRefresh={fetchFormation} />
+          <TabSatisfaction formation={formation} onRefresh={fetchFormation} />
+        </TabsContent>
+
+        {/* 6. E-Learning */}
+        <TabsContent value="elearning" className="mt-6">
+          <TabElearning formation={formation} onRefresh={fetchFormation} />
+        </TabsContent>
+
+        {/* 7. Finances */}
+        <TabsContent value="finances" className="mt-6">
+          <TabFinances formation={formation} onRefresh={fetchFormation} />
+        </TabsContent>
+
+        {/* 8. Qualiopi */}
         <TabsContent value="qualiopi" className="mt-6">
           <TabQualiopi formation={formation} onRefresh={fetchFormation} />
         </TabsContent>
 
-        {/* ═══ FINANCES ═══ */}
-        <TabsContent value="finances" className="mt-6">
-          <TabFinances formation={formation} onRefresh={fetchFormation} />
+        {/* 9. Communication */}
+        <TabsContent value="communication" className="mt-6 space-y-8">
+          <TabMessagerie formation={formation} onRefresh={fetchFormation} />
+          <TabAbsences formation={formation} onRefresh={fetchFormation} />
         </TabsContent>
       </Tabs>
     </div>
