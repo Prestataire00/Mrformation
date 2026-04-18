@@ -1,26 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/require-role";
 
-const PROMPT = `Tu es un assistant expert RH spécialisé en formation professionnelle.
-
-Analyse ce CV et extrais les informations suivantes en JSON strict (pas de markdown) :
-
-{
-  "first_name": "prénom",
-  "last_name": "nom",
-  "email": "email ou null",
-  "phone": "téléphone ou null",
-  "specialties": ["domaine1", "domaine2"],
-  "skills": ["compétence1", "compétence2"],
-  "experience_years": nombre,
-  "education": ["diplôme1", "diplôme2"],
-  "certifications": ["certif1", "certif2"],
-  "languages": ["langue1", "langue2"],
-  "bio": "résumé 2-3 phrases du profil professionnel",
-  "formation_domains": ["domaines qu'il peut enseigner"]
-}
-
-Réponds UNIQUEMENT avec le JSON.`;
+const PROMPT = `Extrais du CV en JSON strict (pas de markdown):
+{"first_name":"","last_name":"","email":null,"phone":null,"competencies":[{"name":"compétence","level":"beginner|intermediate|expert"}],"experience_years":0,"seniority_level":"junior|confirmed|senior|expert","education":[{"degree":"","school":"","year":null}],"certifications":[{"name":"","organism":""}],"languages":[{"language":"","level":"A1-C2|native"}],"bio":"2 phrases max","formation_domains":["domaines enseignables"],"ai_keywords":["10 mots-clés métier"]}
+JSON uniquement.`;
 
 export async function POST(req: NextRequest) {
   const auth = await requireRole(["super_admin", "admin"]);
@@ -36,8 +19,8 @@ export async function POST(req: NextRequest) {
     if (!allowedTypes.includes(file.type)) {
       return NextResponse.json({ error: "PDF, PNG ou JPG uniquement" }, { status: 400 });
     }
-    if (file.size > 10 * 1024 * 1024) {
-      return NextResponse.json({ error: "Max 10 MB" }, { status: 400 });
+    if (file.size > 5 * 1024 * 1024) {
+      return NextResponse.json({ error: "Fichier trop volumineux (max 5 MB)" }, { status: 400 });
     }
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -60,7 +43,7 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         model: "claude-haiku-4-5-20251001",
-        max_tokens: 2048,
+        max_tokens: 1024,
         messages: [{ role: "user", content: [contentBlock, { type: "text", text: PROMPT }] }],
       }),
     });
