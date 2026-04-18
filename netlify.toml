@@ -9,7 +9,6 @@
 [functions]
   external_node_modules = ["youtube-transcript"]
   node_bundler = "esbuild"
-  timeout = 26
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
