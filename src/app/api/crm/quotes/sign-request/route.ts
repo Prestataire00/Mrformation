@@ -19,7 +19,8 @@ export async function POST(request: NextRequest) {
   if (auth.error) return auth.error;
 
   try {
-    const { quote_id } = await request.json();
+    const body = await request.json();
+    const { quote_id, custom_subject, custom_body, attachments } = body;
     if (!quote_id) return NextResponse.json({ error: "quote_id requis" }, { status: 400 });
 
     // Fetch quote
@@ -72,29 +73,72 @@ export async function POST(request: NextRequest) {
 
     if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 });
 
-    // Build sign URL
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.URL || "https://mrformationcrm.netlify.app";
+    // Build sign URL — strip trailing slash from appUrl
+    const rawAppUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.URL || "https://mrformationcrm.netlify.app";
+    const appUrl = rawAppUrl.replace(/\/+$/, "");
     const signUrl = `${appUrl}/sign/${signToken}`;
+    console.log("[sign-request] Generated sign URL:", signUrl, "from appUrl:", appUrl);
 
-    // Send email
+    // Build email content — try loading template from email_templates, fallback to hardcoded
     const amount = Number(quote.amount) || 0;
-    const emailBody = `Bonjour${recipientName ? ` ${recipientName}` : ""},\n\nVeuillez trouver notre proposition commerciale ${quote.reference}${amount > 0 ? ` d'un montant de ${amount.toLocaleString("fr-FR")}€ HT` : ""}.\n\nPour accepter cette proposition, veuillez la signer électroniquement en cliquant sur le lien suivant :\n\n${signUrl}\n\nCe lien est valide${quote.valid_until ? ` jusqu'au ${new Date(quote.valid_until).toLocaleDateString("fr-FR")}` : " pendant 30 jours"}.\n\nN'hésitez pas à nous contacter pour toute question.\n\nCordialement,\nL'équipe ${entityName}`;
+    const validUntilFr = quote.valid_until
+      ? new Date(quote.valid_until).toLocaleDateString("fr-FR")
+      : null;
+
+    const { data: emailTemplate } = await serviceDb
+      .from("email_templates")
+      .select("subject, body")
+      .eq("entity_id", quote.entity_id)
+      .eq("type", "quote_sign_request")
+      .maybeSingle();
+
+    let subject: string;
+    let emailBody: string;
+
+    if (custom_subject && custom_body) {
+      // User provided custom content from preview dialog
+      subject = custom_subject;
+      emailBody = custom_body.replace(/\{\{lien_signature\}\}/g, signUrl);
+    } else if (emailTemplate) {
+      // Resolve template variables
+      subject = emailTemplate.subject
+        .replace(/\{\{reference\}\}/g, quote.reference)
+        .replace(/\{\{entite\}\}/g, entityName);
+      emailBody = emailTemplate.body
+        .replace(/\{\{reference\}\}/g, quote.reference)
+        .replace(/\{\{montant\}\}/g, amount > 0 ? `${amount.toLocaleString("fr-FR")}€ HT` : "")
+        .replace(/\{\{destinataire\}\}/g, recipientName)
+        .replace(/\{\{lien_signature\}\}/g, signUrl)
+        .replace(/\{\{date_validite\}\}/g, validUntilFr || "30 jours")
+        .replace(/\{\{entite\}\}/g, entityName);
+    } else {
+      // Fallback hardcoded
+      subject = `Proposition ${quote.reference} — ${entityName}`;
+      emailBody = `Bonjour${recipientName ? ` ${recipientName}` : ""},\n\nVeuillez trouver notre proposition commerciale ${quote.reference}${amount > 0 ? ` d'un montant de ${amount.toLocaleString("fr-FR")}€ HT` : ""}.\n\nPour accepter cette proposition, veuillez la signer électroniquement en cliquant sur le lien suivant :\n\n${signUrl}\n\nCe lien est valide${validUntilFr ? ` jusqu'au ${validUntilFr}` : " pendant 30 jours"}.\n\nN'hésitez pas à nous contacter pour toute question.\n\nCordialement,\nL'équipe ${entityName}`;
+    }
 
     // Send email directly via Resend (not via /api/emails/send which requires auth)
     const fromAddress = entityName.toLowerCase().includes("c3v")
       ? "C3V Formation <noreply@c3vformation.fr>"
       : "MR Formation <noreply@mrformation.fr>";
-    const subject = `Proposition ${quote.reference} — ${entityName}`;
     const htmlBody = `<div style="font-family:sans-serif;font-size:14px;line-height:1.6;color:#374151;white-space:pre-wrap;">${emailBody.replace(/\n/g, "<br/>")}</div>`;
 
     if (resend) {
-      await resend.emails.send({
+      const emailPayload: Parameters<typeof resend.emails.send>[0] = {
         from: fromAddress,
         to: [recipientEmail],
         subject,
         html: htmlBody,
         text: emailBody,
-      });
+      };
+      // Add attachments if provided (base64 files from preview dialog)
+      if (attachments && Array.isArray(attachments) && attachments.length > 0) {
+        emailPayload.attachments = attachments.map((a: { filename: string; content: string }) => ({
+          filename: a.filename,
+          content: Buffer.from(a.content, "base64"),
+        }));
+      }
+      await resend.emails.send(emailPayload);
     } else {
       console.log("[sign-request] Simulated email to:", recipientEmail, "—", subject);
     }

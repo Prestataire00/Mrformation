@@ -111,6 +111,14 @@ export default function QuotesPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedQuote, setSelectedQuote] = useState<CrmQuote | null>(null);
 
+  // Sign preview dialog
+  const [signPreviewOpen, setSignPreviewOpen] = useState(false);
+  const [signQuote, setSignQuote] = useState<CrmQuote | null>(null);
+  const [signSubject, setSignSubject] = useState("");
+  const [signBody, setSignBody] = useState("");
+  const [signAttachments, setSignAttachments] = useState<{ filename: string; content: string }[]>([]);
+  const [sendingSign, setSendingSign] = useState(false);
+
 
 
   useEffect(() => {
@@ -616,6 +624,60 @@ export default function QuotesPage() {
 
   const hasActiveFilters = search || statusFilter !== "all";
 
+  // Open sign preview dialog
+  const openSignPreview = (quote: CrmQuote) => {
+    const amount = Number(quote.amount) || 0;
+    const recipientName = (quote as unknown as Record<string, string>).prospect_name || quote.prospect?.company_name || "";
+    const entityName = entity?.name || "MR FORMATION";
+    const validUntilFr = quote.valid_until
+      ? new Date(quote.valid_until).toLocaleDateString("fr-FR")
+      : "30 jours";
+
+    setSignQuote(quote);
+    setSignSubject(`Proposition ${quote.reference} — ${entityName}`);
+    setSignBody(`Bonjour${recipientName ? ` ${recipientName}` : ""},\n\nVeuillez trouver notre proposition commerciale ${quote.reference}${amount > 0 ? ` d'un montant de ${amount.toLocaleString("fr-FR")}€ HT` : ""}.\n\nPour accepter cette proposition, veuillez la signer électroniquement en cliquant sur le lien suivant :\n\n{{lien_signature}}\n\nCe lien est valide jusqu'au ${validUntilFr}.\n\nN'hésitez pas à nous contacter pour toute question.\n\nCordialement,\nL'équipe ${entityName}`);
+    setSignAttachments([]);
+    setSignPreviewOpen(true);
+  };
+
+  const handleAddSignAttachment = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = (reader.result as string).split(",")[1];
+      setSignAttachments((prev) => [...prev, { filename: file.name, content: base64 }]);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  const handleSendSign = async () => {
+    if (!signQuote) return;
+    setSendingSign(true);
+    try {
+      const res = await fetch("/api/crm/quotes/sign-request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          quote_id: signQuote.id,
+          custom_subject: signSubject,
+          custom_body: signBody,
+          attachments: signAttachments.length > 0 ? signAttachments : undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast({ title: "Envoyé pour signature", description: `Email envoyé à ${data.email_sent_to}` });
+      setSignPreviewOpen(false);
+      fetchQuotes();
+    } catch (err) {
+      toast({ title: "Erreur", description: err instanceof Error ? err.message : "Erreur", variant: "destructive" });
+    } finally {
+      setSendingSign(false);
+    }
+  };
+
   return (
     <div className="p-6 space-y-4">
       {/* Header compact */}
@@ -785,22 +847,7 @@ export default function QuotesPage() {
                             <Button
                               size="sm"
                               className="h-7 text-xs gap-1 bg-indigo-600 hover:bg-indigo-700 text-white"
-                              onClick={async () => {
-                                try {
-                                  toast({ title: "Envoi en cours..." });
-                                  const res = await fetch("/api/crm/quotes/sign-request", {
-                                    method: "POST",
-                                    headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify({ quote_id: quote.id }),
-                                  });
-                                  const data = await res.json();
-                                  if (!res.ok) throw new Error(data.error);
-                                  toast({ title: "Envoyé pour signature", description: `Email envoyé à ${data.email_sent_to}` });
-                                  fetchQuotes();
-                                } catch (err) {
-                                  toast({ title: "Erreur", description: err instanceof Error ? err.message : "Erreur", variant: "destructive" });
-                                }
-                              }}
+                              onClick={() => openSignPreview(quote)}
                             >
                               <PenLine className="h-3 w-3" /> Envoyer pour signature
                             </Button>
@@ -963,6 +1010,57 @@ export default function QuotesPage() {
             <Button variant="destructive" onClick={handleDelete} disabled={deleting} className="gap-2">
               {deleting && <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />}
               Supprimer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* ═══ SIGN PREVIEW DIALOG ═══ */}
+      <Dialog open={signPreviewOpen} onOpenChange={setSignPreviewOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Envoyer pour signature — {signQuote?.reference}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label className="text-xs">Sujet</Label>
+              <Input value={signSubject} onChange={(e) => setSignSubject(e.target.value)} className="h-8 text-sm" />
+            </div>
+            <div>
+              <Label className="text-xs">Corps du message</Label>
+              <textarea
+                className="w-full border rounded-md p-3 text-sm resize-none"
+                rows={10}
+                value={signBody}
+                onChange={(e) => setSignBody(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                {"{{lien_signature}}"} sera remplacé par le lien de signature.
+              </p>
+            </div>
+            <div>
+              <Label className="text-xs">Pièces jointes</Label>
+              <div className="mt-1 space-y-1">
+                <p className="text-xs text-muted-foreground">Le PDF du devis sera généré et joint automatiquement au moment de l&apos;envoi.</p>
+                {signAttachments.map((att, i) => (
+                  <div key={i} className="flex items-center justify-between bg-gray-50 rounded px-3 py-1.5 text-xs">
+                    <span>{att.filename}</span>
+                    <button onClick={() => setSignAttachments(prev => prev.filter((_, j) => j !== i))} className="text-red-500 hover:text-red-700">✕</button>
+                  </div>
+                ))}
+                <label className="cursor-pointer">
+                  <input type="file" className="hidden" onChange={handleAddSignAttachment} accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" />
+                  <span className="inline-flex items-center gap-1 text-xs text-[#374151] hover:underline cursor-pointer">
+                    + Ajouter une pièce jointe
+                  </span>
+                </label>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSignPreviewOpen(false)}>Annuler</Button>
+            <Button onClick={handleSendSign} disabled={sendingSign} className="gap-1.5">
+              {sendingSign && <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />}
+              Envoyer
             </Button>
           </DialogFooter>
         </DialogContent>
