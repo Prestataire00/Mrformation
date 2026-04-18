@@ -48,6 +48,8 @@ import {
   PenLine,
 } from "lucide-react";
 import { isAfter, parseISO } from "date-fns";
+import { HeroCard, QuickActionCards, MiniCalendar, PriorityList } from "@/components/dashboard-home";
+import { FileText, ClipboardCheck, Monitor } from "lucide-react";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -397,38 +399,36 @@ export default function LearnerPage() {
 
   // ── render ─────────────────────────────────────────────────────────────────
 
+  const nextSession = upcomingEnrollments[0]?.session;
+  const eventDates = enrollments
+    .filter(e => e.session && e.status !== "cancelled")
+    .map(e => e.session!.start_date?.split("T")[0])
+    .filter(Boolean);
+
   return (
     <main aria-label="Tableau de bord apprenant" className="space-y-6">
-      {/* ── Welcome header ── */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex items-center gap-4">
-          <Avatar className="h-16 w-16">
-            <AvatarImage src={undefined} alt={`${learner.first_name} ${learner.last_name}`} />
-            <AvatarFallback className="bg-primary/10 text-primary font-bold text-xl">
-              {getInitials(learner.first_name, learner.last_name)}
-            </AvatarFallback>
-          </Avatar>
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">
-              Bienvenue, {learner.first_name} !
-            </h1>
-            <div className="flex items-center gap-2 mt-1 flex-wrap">
-              {learner.job_title && (
-                <span className="text-sm text-muted-foreground flex items-center gap-1">
-                  <Briefcase className="h-3.5 w-3.5" />
-                  {learner.job_title}
-                </span>
-              )}
-              {learner.client?.company_name && (
-                <span className="text-sm text-muted-foreground flex items-center gap-1">
-                  <Building2 className="h-3.5 w-3.5" />
-                  {learner.client.company_name}
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
+      {/* ── Hero ── */}
+      <HeroCard
+        firstName={learner.first_name}
+        message={`Vous suivez ${enrollments.length} formation${enrollments.length !== 1 ? "s" : ""}.${nextSession ? ` Votre prochaine session est le ${formatDate(nextSession.start_date)}.` : ""}`}
+        ctaLabel="Voir mes formations"
+        ctaHref="/learner/formations"
+      />
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* ═══ COLONNE PRINCIPALE (2/3) ═══ */}
+        <div className="lg:col-span-2 space-y-6">
+
+      <QuickActionCards
+        title="Accès rapides"
+        actions={[
+          { icon: GraduationCap, label: "Mes formations", count: enrollments.length, href: "/learner/formations", color: "blue" },
+          { icon: Monitor, label: "E-Learning", count: 0, href: "/learner/elearning", color: "green" },
+          { icon: ClipboardCheck, label: "Questionnaires", count: 0, href: "/learner/questionnaires", color: "amber", urgent: false },
+          { icon: FileText, label: "Documents", count: 0, href: "/learner/documents", color: "purple" },
+          { icon: Award, label: "Certificats", count: completedEnrollments.length, href: "/learner/certificates", color: "red" },
+        ]}
+      />
 
       {/* ── Stats ── */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -840,6 +840,37 @@ export default function LearnerPage() {
               )}
             </CardContent>
           </Card>
+        </div>
+      </div>
+
+        </div>
+
+        {/* ═══ SIDEBAR DROITE (1/3) ═══ */}
+        <div className="space-y-4">
+          <MiniCalendar eventDates={eventDates} />
+          <PriorityList
+            title="Prochaines sessions"
+            icon={CalendarDays}
+            items={upcomingEnrollments.slice(0, 5).map(e => ({
+              id: e.id,
+              title: e.session?.title || "Formation",
+              subtitle: e.session ? formatDate(e.session.start_date) : undefined,
+              href: e.session ? `/learner/formations/${e.session.id}` : undefined,
+              badge: e.session ? { label: SESSION_STATUS_LABELS[e.session.status] || e.session.status, color: STATUS_COLORS[e.session.status] || "bg-gray-100" } : undefined,
+            }))}
+            emptyMessage="Aucune session à venir"
+          />
+          <PriorityList
+            title="Certificats disponibles"
+            icon={Award}
+            items={completedEnrollments.slice(0, 3).map(e => ({
+              id: e.id,
+              title: e.session?.title || "Formation",
+              subtitle: "Téléchargeable",
+              badge: { label: "Terminé", color: "bg-green-100 text-green-700" },
+            }))}
+            emptyMessage="Aucun certificat"
+          />
         </div>
       </div>
     </main>
