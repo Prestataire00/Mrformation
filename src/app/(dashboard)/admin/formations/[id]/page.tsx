@@ -6,7 +6,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import {
   ArrowLeft, Loader2, Eye, Calendar, FileText, PenLine,
-  ClipboardCheck, GraduationCap, Euro, ShieldCheck, MessageSquare,
+  ClipboardCheck, GraduationCap, Euro, ShieldCheck, MessageSquare, Zap,
   Users, Clock, Briefcase, CheckCircle, RotateCcw, Copy, MoreHorizontal, Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -37,6 +37,7 @@ import { TabConventionDocs } from "./_components/TabConventionDocs";
 import { TabElearning } from "./_components/TabElearning";
 import { TabFinances } from "./_components/TabFinances";
 import { TabQualiopi } from "./_components/TabQualiopi";
+import { TabAutomation } from "./_components/TabAutomation";
 
 const MODE_LABELS: Record<string, string> = {
   presentiel: "Présentiel",
@@ -137,6 +138,7 @@ export default function FormationDetailPage() {
     { value: "elearning", label: "E-Learning", icon: GraduationCap },
     { value: "finances", label: "Finances", icon: Euro },
     { value: "qualiopi", label: "Qualiopi", icon: ShieldCheck },
+    { value: "automation", label: "Automatisation", icon: Zap },
     { value: "communication", label: "Communication", icon: MessageSquare },
   ], [kpis]);
 
@@ -383,7 +385,12 @@ export default function FormationDetailPage() {
           <TabQualiopi formation={formation} onRefresh={fetchFormation} />
         </TabsContent>
 
-        {/* 9. Communication */}
+        {/* 9. Automatisation */}
+        <TabsContent value="automation" className="mt-6">
+          <TabAutomation formation={formation} onRefresh={fetchFormation} />
+        </TabsContent>
+
+        {/* 10. Communication */}
         <TabsContent value="communication" className="mt-6 space-y-8">
           <TabMessagerie formation={formation} onRefresh={fetchFormation} />
           <TabAbsences formation={formation} onRefresh={fetchFormation} />
