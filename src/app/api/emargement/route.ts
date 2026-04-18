@@ -14,6 +14,7 @@ function createServiceClient() {
 
 // GET: Validate a token (public, no auth required)
 export async function GET(request: NextRequest) {
+  try {
   const token = request.nextUrl.searchParams.get("token");
   if (!token) {
     return NextResponse.json({ error: "Token manquant" }, { status: 400 });
@@ -195,10 +196,15 @@ export async function GET(request: NextRequest) {
         : null,
     });
   }
+  } catch (err) {
+    console.error("[emargement GET]", err);
+    return NextResponse.json({ error: "Erreur interne" }, { status: 500 });
+  }
 }
 
 // POST: Generate signing tokens (admin/trainer only)
 export async function POST(request: NextRequest) {
+  try {
   const auth = await requireRole(["super_admin", "admin", "trainer"]);
   if (auth.error) return auth.error;
 
@@ -315,5 +321,9 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ tokens });
+  }
+  } catch (err) {
+    console.error("[emargement POST]", err);
+    return NextResponse.json({ error: "Erreur interne" }, { status: 500 });
   }
 }

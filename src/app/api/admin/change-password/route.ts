@@ -4,6 +4,7 @@ import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 import { NextResponse } from "next/server";
 
 export async function POST(request: Request) {
+  try {
   const supabase = createClient();
 
   // Verify the caller is an admin
@@ -67,4 +68,8 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ success: true });
+  } catch (err) {
+    console.error("[change-password]", err);
+    return NextResponse.json({ error: sanitizeError(err as Error, "change-password") }, { status: 500 });
+  }
 }

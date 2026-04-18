@@ -16,6 +16,7 @@ const DOC_LABELS: Record<string, string> = {
 
 // GET /api/documents/sign-status?token= — PUBLIC
 export async function GET(request: NextRequest) {
+  try {
   const token = request.nextUrl.searchParams.get("token");
   if (!token) return NextResponse.json({ error: "Token requis" }, { status: 400 });
 
@@ -108,4 +109,8 @@ export async function GET(request: NextRequest) {
     entity_name: entity?.name || "MR FORMATION",
     entity_slug: entity?.slug || "mr-formation",
   });
+  } catch (err) {
+    console.error("[sign-status] ERROR:", err);
+    return NextResponse.json({ error: "Erreur interne" }, { status: 500 });
+  }
 }

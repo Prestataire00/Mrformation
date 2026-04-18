@@ -10,6 +10,7 @@ function createServiceClient() {
 }
 
 export async function GET(request: NextRequest) {
+  try {
   const auth = await requireRole(["super_admin", "admin"]);
   if (auth.error) return auth.error;
 
@@ -36,4 +37,8 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.json({ history: data ?? [] });
+  } catch (err) {
+    console.error("[emails/history]", err);
+    return NextResponse.json({ error: "Erreur interne" }, { status: 500 });
+  }
 }
