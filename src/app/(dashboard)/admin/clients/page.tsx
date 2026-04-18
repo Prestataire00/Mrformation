@@ -170,9 +170,10 @@ export default function ClientsPage() {
   const fetchClients = useCallback(async () => {
     setLoading(true);
     try {
+      // Query clients WITHOUT joining contacts (avoids RLS issues on contacts table)
       let query = supabase
         .from("clients")
-        .select(`*, contacts(id)`, { count: "exact" })
+        .select("*", { count: "exact" })
         .order("company_name", { ascending: true });
 
       if (entityId) query = query.eq("entity_id", entityId);
@@ -183,11 +184,27 @@ export default function ClientsPage() {
       query = query.range(from, from + PAGE_SIZE - 1);
 
       const { data, error, count } = await query;
-      if (error) throw error;
+      if (error) {
+        console.error("fetchClients query error:", error.message, error.code);
+        throw error;
+      }
+
+      // Fetch contacts count separately (non-blocking)
+      const clientIds = (data ?? []).map((c: { id: string }) => c.id);
+      let contactsByClient = new Map<string, number>();
+      if (clientIds.length > 0) {
+        const { data: contactsData } = await supabase
+          .from("contacts")
+          .select("client_id")
+          .in("client_id", clientIds);
+        for (const c of contactsData ?? []) {
+          contactsByClient.set(c.client_id, (contactsByClient.get(c.client_id) ?? 0) + 1);
+        }
+      }
 
       const mapped: ClientWithCount[] = (data ?? []).map((c: Record<string, unknown>) => ({
         ...(c as unknown as Client),
-        contacts_count: Array.isArray(c.contacts) ? (c.contacts as unknown[]).length : 0,
+        contacts_count: contactsByClient.get(c.id as string) ?? 0,
       }));
 
       setClients(mapped);
@@ -196,7 +213,7 @@ export default function ClientsPage() {
       console.error("fetchClients error:", err);
       toast({
         title: "Erreur",
-        description: "Impossible de charger les clients.",
+        description: err instanceof Error ? err.message : "Impossible de charger les clients.",
         variant: "destructive",
       });
     } finally {
