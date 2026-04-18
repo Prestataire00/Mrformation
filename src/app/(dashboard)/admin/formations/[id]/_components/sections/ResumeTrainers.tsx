@@ -141,6 +141,12 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
                 {ft.daily_rate != null && (
                   <span className="text-xs text-muted-foreground">{ft.daily_rate} €/j</span>
                 )}
+                {ft.hours_done != null && (
+                  <span className="text-xs text-muted-foreground">{ft.hours_done}h effectuées</span>
+                )}
+                {ft.notes && (
+                  <span className="text-xs text-muted-foreground italic truncate max-w-[150px]">{ft.notes}</span>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <Button size="sm" variant="ghost" className="text-red-600 hover:text-red-700" onClick={() => setDeleteId(ft.id)}>

@@ -214,6 +214,16 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
                 <Badge className={ENROLLMENT_STATUS_COLORS[e.status] || "bg-gray-100"}>
                   {ENROLLMENT_STATUS_LABELS[e.status] || e.status}
                 </Badge>
+                {(e as unknown as { individual_price?: number }).individual_price != null && (
+                  <Badge variant="secondary" className="text-[10px]">
+                    {((e as unknown as { individual_price: number }).individual_price).toLocaleString("fr-FR")} €
+                  </Badge>
+                )}
+                {(e as unknown as { individual_hours?: number }).individual_hours != null && (
+                  <Badge variant="outline" className="text-[10px]">
+                    {(e as unknown as { individual_hours: number }).individual_hours}h
+                  </Badge>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <Button size="sm" variant="ghost" className="text-red-600 hover:text-red-700" onClick={() => setDeleteId(e.id)}>
