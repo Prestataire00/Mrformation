@@ -5,6 +5,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
 import { Download, Loader2, CheckCircle } from "lucide-react";
+import { SkeletonTable, SkeletonStats } from "@/components/ui/skeleton-rows";
 import { Badge } from "@/components/ui/badge";
 import { downloadXlsx } from "@/lib/export-xlsx";
 import { formatCurrency } from "@/lib/utils";
@@ -162,8 +163,9 @@ export default function SuiviFacturesPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="p-6 space-y-6">
+        <SkeletonStats count={5} />
+        <SkeletonTable rows={8} cols={7} />
       </div>
     );
   }

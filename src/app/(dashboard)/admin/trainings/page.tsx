@@ -6,6 +6,7 @@ import { useEntity } from "@/contexts/EntityContext";
 import { useDebounce } from "@/hooks/useDebounce";
 import { cn, formatDate } from "@/lib/utils";
 import { exportToCSV } from "@/lib/utils/export-csv";
+import { SkeletonCards } from "@/components/ui/skeleton-rows";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -487,9 +488,7 @@ export default function FormationsPage() {
 
       {/* Content */}
       {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
-        </div>
+        <SkeletonCards count={6} />
       ) : filtered.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-gray-400">
           <BookOpen className="h-12 w-12 mb-3 text-gray-300" />

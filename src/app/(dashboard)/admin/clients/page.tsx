@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { exportToCSV } from "@/lib/utils/export-csv";
+import { SkeletonTable } from "@/components/ui/skeleton-rows";
 import {
   Building2,
   Plus,
@@ -485,9 +486,7 @@ export default function ClientsPage() {
       <Card>
         <CardContent className="p-0">
           {loading ? (
-            <div className="flex items-center justify-center py-20">
-              <div className="h-8 w-8 animate-spin rounded-full border-4 border-violet-600 border-t-transparent" />
-            </div>
+            <SkeletonTable rows={8} cols={5} />
           ) : clients.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <Building2 className="h-12 w-12 text-muted-foreground/30 mb-4" />
