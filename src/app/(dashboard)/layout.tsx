@@ -5,6 +5,7 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
 import { MobileSidebarWrapper } from "@/components/layout/MobileSidebarWrapper";
 import { EntityProvider } from "@/contexts/EntityContext";
+import { GlobalProviders } from "@/components/layout/GlobalProviders";
 import type { Entity } from "@/lib/types";
 
 export default async function DashboardLayout({
@@ -73,6 +74,7 @@ export default async function DashboardLayout({
           </main>
         </div>
       </div>
+      <GlobalProviders>{null}</GlobalProviders>
     </EntityProvider>
   );
 }
