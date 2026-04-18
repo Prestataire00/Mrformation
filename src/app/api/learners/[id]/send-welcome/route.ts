@@ -41,8 +41,10 @@ export async function POST(req: NextRequest, context: RouteContext) {
       created_by: auth.user.id,
     });
 
-    // Generate QR code
-    const qrDataUrl = await QRCode.toDataURL(magicUrl, { width: 200, margin: 2, color: { dark: "#374151", light: "#FFFFFF" } });
+    // Generate QR code as SVG (no canvas dependency — works on serverless)
+    const qrSvg = await QRCode.toString(magicUrl, { type: "svg", width: 180, margin: 2, color: { dark: "#374151", light: "#FFFFFF" } });
+    // Encode SVG as data URL for embedding in email HTML
+    const qrDataUrl = `data:image/svg+xml;base64,${Buffer.from(qrSvg).toString("base64")}`;
 
     // Get entity + session info
     const { data: entity } = await auth.supabase.from("entities").select("name").eq("id", auth.profile.entity_id).single();
