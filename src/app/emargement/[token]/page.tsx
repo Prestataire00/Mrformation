@@ -84,6 +84,7 @@ export default function EmargementPage() {
   const [signing, setSigning] = useState(false);
   const [signed, setSigned] = useState(false);
   const [signedName, setSignedName] = useState("");
+  const [remainingSlots, setRemainingSlots] = useState<Array<{ id: string; start_time: string; end_time: string; signed: boolean }>>([]);
 
   useEffect(() => {
     async function validate() {
@@ -163,6 +164,17 @@ export default function EmargementPage() {
 
       setSignedName(name);
       setSigned(true);
+
+      // After signing, reload to check if there are more slots to sign
+      try {
+        const refreshRes = await fetch(`/api/emargement?token=${token}`);
+        if (refreshRes.ok) {
+          const refreshData = await refreshRes.json();
+          if (refreshData.all_slots) {
+            setRemainingSlots(refreshData.all_slots);
+          }
+        }
+      } catch { /* ignore */ }
     } catch {
       setError("Une erreur est survenue");
     }
@@ -237,6 +249,23 @@ export default function EmargementPage() {
                   {data.session.location}
                 </>
               )}
+            </div>
+          )}
+          {/* Remaining unsigned slots */}
+          {remainingSlots.filter(s => !s.signed).length > 0 && (
+            <div className="w-full mt-4 border-t pt-4">
+              <p className="text-sm font-medium text-gray-700 mb-2 text-center">Autres créneaux à signer :</p>
+              <div className="space-y-2">
+                {remainingSlots.filter(s => !s.signed).map(slot => (
+                  <div key={slot.id} className="flex items-center justify-between p-2 bg-amber-50 rounded-lg text-sm">
+                    <span>{formatSlotDateFr(slot.start_time)} — {formatTimeFr(slot.start_time)} → {formatTimeFr(slot.end_time)}</span>
+                    <span className="text-xs text-amber-600">En attente</span>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground text-center mt-2">
+                Demandez un nouveau lien à votre formateur pour signer les créneaux restants.
+              </p>
             </div>
           )}
         </CardContent>
