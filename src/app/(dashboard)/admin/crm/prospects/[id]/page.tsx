@@ -543,9 +543,15 @@ export default function ProspectDetailPage() {
         title: "Données Pappers récupérées",
         description: opco ? `OPCO probable : ${opco.opco}` : "OPCO non détecté",
       });
-      // Auto-update NAF if missing
-      if (data.naf_code && !prospect.naf_code) {
-        await supabase.from("crm_prospects").update({ naf_code: data.naf_code }).eq("id", prospect.id);
+      // Auto-update NAF + address if missing
+      const autoUpdate: Record<string, string> = {};
+      if (data.naf_code && !prospect.naf_code) autoUpdate.naf_code = data.naf_code;
+      if (data.address && !prospect.address) autoUpdate.address = data.address;
+      if (data.city && !prospect.city) autoUpdate.city = data.city;
+      if (data.postal_code && !prospect.postal_code) autoUpdate.postal_code = data.postal_code;
+      if (Object.keys(autoUpdate).length > 0) {
+        await supabase.from("crm_prospects").update(autoUpdate).eq("id", prospect.id);
+        fetchProspect();
       }
     } catch (err) {
       toast({ title: "Erreur Pappers", description: err instanceof Error ? err.message : "Service indisponible", variant: "destructive" });
@@ -969,6 +975,11 @@ export default function ProspectDetailPage() {
                 <Input value={editForm.email} onChange={e => setEditForm(f => ({...f, email: e.target.value}))} placeholder="Email" className="h-8 text-xs" />
                 <Input value={editForm.phone} onChange={e => setEditForm(f => ({...f, phone: e.target.value}))} placeholder="Téléphone" className="h-8 text-xs" />
                 <Input value={editForm.siret} onChange={e => setEditForm(f => ({...f, siret: e.target.value}))} placeholder="SIRET" className="h-8 text-xs" />
+                <Input value={editForm.address} onChange={e => setEditForm(f => ({...f, address: e.target.value}))} placeholder="Adresse" className="h-8 text-xs" />
+                <div className="grid grid-cols-2 gap-2">
+                  <Input value={editForm.postal_code} onChange={e => setEditForm(f => ({...f, postal_code: e.target.value}))} placeholder="Code postal" className="h-8 text-xs" />
+                  <Input value={editForm.city} onChange={e => setEditForm(f => ({...f, city: e.target.value}))} placeholder="Ville" className="h-8 text-xs" />
+                </div>
                 <Input value={editForm.source} onChange={e => setEditForm(f => ({...f, source: e.target.value}))} placeholder="Source" className="h-8 text-xs" />
                 <Input type="number" value={editForm.amount} onChange={e => setEditForm(f => ({...f, amount: e.target.value}))} placeholder="Montant HT" className="h-8 text-xs" />
               </div>
@@ -986,6 +997,9 @@ export default function ProspectDetailPage() {
                 )}
                 {prospect.naf_code && (
                   <div className="flex justify-between"><span className="text-muted-foreground">NAF</span><span className="font-medium">{prospect.naf_code}</span></div>
+                )}
+                {(prospect.address || prospect.city || prospect.postal_code) && (
+                  <div className="flex justify-between"><span className="text-muted-foreground">Adresse</span><span className="font-medium text-right">{[prospect.address, prospect.postal_code, prospect.city].filter(Boolean).join(", ")}</span></div>
                 )}
                 {prospect.source && (
                   <div className="flex justify-between"><span className="text-muted-foreground">Source</span><span className="font-medium">{prospect.source}</span></div>
