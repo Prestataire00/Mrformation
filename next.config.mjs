@@ -1,3 +1,5 @@
+import { withSentryConfig } from "@sentry/nextjs";
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -44,7 +46,7 @@ const nextConfig = {
           {
             key: "Content-Security-Policy",
             value:
-              "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.supabase.co; font-src 'self'; connect-src 'self' https://*.supabase.co wss://*.supabase.co; frame-src 'self' https://gamma.app https://*.gamma.app; frame-ancestors 'none'",
+              "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.supabase.co; font-src 'self'; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.ingest.sentry.io; frame-src 'self' https://gamma.app https://*.gamma.app; frame-ancestors 'none'",
           },
           {
             key: "Permissions-Policy",
@@ -56,4 +58,19 @@ const nextConfig = {
   },
 };
 
-export default nextConfig;
+export default withSentryConfig(nextConfig, {
+  // Supprime les logs Sentry en build CI
+  silent: true,
+
+  // Upload des source maps pour un meilleur debugging
+  widenClientFileUpload: true,
+
+  // Ne pas ajouter de tunnel (les requêtes Sentry passent directement)
+  tunnelRoute: undefined,
+
+  // Désactiver le logging des source maps en dev
+  disableLogger: true,
+
+  // Automatiquement instrumenter les API routes et server components
+  automaticVercelMonitors: false,
+});
