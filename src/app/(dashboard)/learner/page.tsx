@@ -412,7 +412,7 @@ export default function LearnerPage() {
         firstName={learner.first_name}
         message={`Vous suivez ${enrollments.length} formation${enrollments.length !== 1 ? "s" : ""}.${nextSession ? ` Votre prochaine session est le ${formatDate(nextSession.start_date)}.` : ""}`}
         ctaLabel="Voir mes formations"
-        ctaHref="/learner/formations"
+        ctaHref="/learner/my-trainings"
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -422,7 +422,7 @@ export default function LearnerPage() {
       <QuickActionCards
         title="Accès rapides"
         actions={[
-          { icon: GraduationCap, label: "Mes formations", count: enrollments.length, href: "/learner/formations", color: "blue" },
+          { icon: GraduationCap, label: "Mes formations", count: enrollments.length, href: "/learner/my-trainings", color: "blue" },
           { icon: Monitor, label: "E-Learning", count: 0, href: "/learner/elearning", color: "green" },
           { icon: ClipboardCheck, label: "Questionnaires", count: 0, href: "/learner/questionnaires", color: "amber", urgent: false },
           { icon: FileText, label: "Documents", count: 0, href: "/learner/documents", color: "purple" },
@@ -855,7 +855,7 @@ export default function LearnerPage() {
               id: e.id,
               title: e.session?.title || "Formation",
               subtitle: e.session ? formatDate(e.session.start_date) : undefined,
-              href: e.session ? `/learner/formations/${e.session.id}` : undefined,
+              href: e.session ? `/learner/my-trainings/${e.session.id}` : undefined,
               badge: e.session ? { label: SESSION_STATUS_LABELS[e.session.status] || e.session.status, color: STATUS_COLORS[e.session.status] || "bg-gray-100" } : undefined,
             }))}
             emptyMessage="Aucune session à venir"
