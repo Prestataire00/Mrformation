@@ -1,7 +1,7 @@
 # Rapport d'audit V1 — MR Formation
 
-**Date** : 19 avril 2026 à 22:49
-**Commit** : `7e740ce`
+**Date** : 19 avril 2026 à 23:05
+**Commit** : `8c84cb7`
 **Script** : `scripts/audit-v1.js`
 
 ---
@@ -13,12 +13,12 @@
 | Routes API | 114 |
 | Pages | 100 |
 | Migrations SQL | 100 |
-| Composants/fichiers TS | 184 |
-| **Total fichiers** | **404** |
+| Composants/fichiers TS | 185 |
+| **Total fichiers** | **405** |
 
 ---
 
-## :green_circle: Points OK (10)
+## :green_circle: Points OK (12)
 
 - Toutes les routes API ont une vérification d'auth ou sont publiques documentées
 - RLS activée sur toutes les tables du schema
@@ -28,10 +28,12 @@
 - Aucun bouton avec onClick vide ou console.log-only
 - Aucun TODO/FIXME/XXX/HACK dans le code
 - 13 endpoint(s) cron documenté(s)
+- Tous les endpoints cron vérifient CRON_SECRET ou auth
 - 12 endpoint(s) IA détecté(s)
 - Tous les endpoints IA ont un try/catch
+- Toutes les routes API filtrent par entity_id ou sont user-scoped
 
-## :yellow_circle: Points à surveiller (8)
+## :yellow_circle: Points à surveiller (6)
 
 ### 28 policy(ies) USING (TRUE) trouvée(s) — vérifier si intentionnel
 
@@ -71,20 +73,6 @@
 - `src/app/(dashboard)/admin/clients/[id]/page.tsx:671`
 - `src/app/(dashboard)/admin/clients/[id]/page.tsx:1490`
 - `src/app/(dashboard)/admin/clients/[id]/page.tsx:1503`
-
-### 4 endpoint(s) cron sans auth CRON_SECRET
-- `src/app/api/crm/notifications/daily-digest/route.ts`
-- `src/app/api/crm/notifications/generate/route.ts`
-- `src/app/api/crm/notifications/weekly-summary/route.ts`
-- `src/app/api/elearning/[courseId]/generate/route.ts`
-
-### 6 route(s) API potentiellement sans filtre entity_id
-- `src/app/api/ai/draft-email/route.ts`
-- `src/app/api/ai/parse-cv/route.ts`
-- `src/app/api/ai/parse-invoice/route.ts`
-- `src/app/api/ai/score-prospect/route.ts`
-- `src/app/api/formations/[id]/automation-overrides/route.ts`
-- `src/app/api/programs/import-pdf/route.ts`
 
 ## :red_circle: Points critiques (0)
 

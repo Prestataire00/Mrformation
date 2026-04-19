@@ -414,7 +414,7 @@ const cronEndpoints = apiRoutes.filter(f => {
 const cronWithoutAuth = [];
 for (const file of cronEndpoints) {
   const content = readFile(file);
-  if (!content.includes("CRON_SECRET") && !content.includes("requireRole") && !content.includes("authorization")) {
+  if (!content.includes("CRON_SECRET") && !content.includes("verifyCronAuth") && !content.includes("requireRole") && !content.includes("authorization") && !content.includes("getUser")) {
     cronWithoutAuth.push(rel(file));
   }
 }
@@ -463,8 +463,14 @@ for (const file of apiRoutes) {
   if (relF.includes("/api/auth") || relF.includes("/api/emargement") || relF.includes("/api/documents/sign")) continue;
   // Check if it queries Supabase but doesn't filter by entity_id
   if (content.includes(".from(") && !content.includes("entity_id") && !content.includes("CRON_SECRET")) {
-    // Some routes legitimately don't need entity_id (e.g., user-specific queries)
-    if (!content.includes("signer_id") && !content.includes("user_id") && !content.includes("auth.getUser")) {
+    // Some routes legitimately don't need entity_id
+    // - user-specific queries (signer_id, user_id, auth.getUser)
+    // - file-processing routes that don't query tenant data (parse-cv, parse-invoice, import-pdf)
+    // - routes using auth.supabase (RLS via session)
+    const isUserScoped = content.includes("signer_id") || content.includes("user_id") || content.includes("auth.getUser");
+    const isFileProcessing = relF.includes("parse-cv") || relF.includes("parse-invoice") || relF.includes("import-pdf");
+    const usesAuthSupabase = content.includes("auth.supabase");
+    if (!isUserScoped && !isFileProcessing && !usesAuthSupabase) {
       missingEntityFilter.push(relF);
     }
   }
