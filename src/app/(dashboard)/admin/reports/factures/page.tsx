@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
-import { Download, Loader2, CheckCircle } from "lucide-react";
+import { Download, Loader2, CheckCircle, Eye } from "lucide-react";
 import { SkeletonTable, SkeletonStats } from "@/components/ui/skeleton-rows";
 import { Badge } from "@/components/ui/badge";
 import { downloadXlsx } from "@/lib/export-xlsx";
@@ -302,14 +302,23 @@ export default function SuiviFacturesPage() {
                       {inv.due_date ? new Date(inv.due_date).toLocaleDateString("fr-FR") : "—"}
                     </td>
                     <td className="px-4 py-3">
-                      {inv.status !== "paid" && inv.status !== "cancelled" && !inv.is_avoir && (
-                        <button
-                          onClick={() => handleMarkPaid(inv)}
-                          className="text-green-600 hover:text-green-800 text-xs font-medium flex items-center gap-1"
+                      <div className="flex items-center gap-2">
+                        <Link
+                          href={`/admin/formations/${inv.session_id}?tab=finances`}
+                          className="text-gray-500 hover:text-gray-800 text-xs font-medium flex items-center gap-1"
+                          title="Voir la facture"
                         >
-                          <CheckCircle className="h-3 w-3" /> Payée
-                        </button>
-                      )}
+                          <Eye className="h-3 w-3" /> Voir
+                        </Link>
+                        {inv.status !== "paid" && inv.status !== "cancelled" && !inv.is_avoir && (
+                          <button
+                            onClick={() => handleMarkPaid(inv)}
+                            className="text-green-600 hover:text-green-800 text-xs font-medium flex items-center gap-1"
+                          >
+                            <CheckCircle className="h-3 w-3" /> Payée
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
