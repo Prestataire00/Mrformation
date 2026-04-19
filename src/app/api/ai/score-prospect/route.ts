@@ -14,27 +14,32 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "prospect_id requis" }, { status: 400 });
     }
 
-    // Fetch prospect
+    // Fetch prospect (filtré par entity_id pour isolation multi-tenant)
     const { data: prospect } = await auth.supabase
       .from("crm_prospects")
       .select("id, siret, email, phone, naf_code, source, amount, notes")
       .eq("id", prospect_id)
+      .eq("entity_id", auth.profile.entity_id)
       .single();
 
     if (!prospect) {
       return NextResponse.json({ error: "Prospect introuvable" }, { status: 404 });
     }
 
+    const entityId = auth.profile.entity_id;
+
     // Fetch interaction counts
     const { count: emailsCount } = await auth.supabase
       .from("email_history")
       .select("id", { count: "exact", head: true })
-      .eq("recipient_id", prospect_id);
+      .eq("recipient_id", prospect_id)
+      .eq("entity_id", entityId);
 
     const { data: actions } = await auth.supabase
       .from("crm_commercial_actions")
       .select("id, created_at")
       .eq("prospect_id", prospect_id)
+      .eq("entity_id", entityId)
       .order("created_at", { ascending: false });
 
     const lastContactDate = actions && actions.length > 0 ? actions[0].created_at : null;
@@ -43,7 +48,8 @@ export async function POST(request: NextRequest) {
     const { data: quotes } = await auth.supabase
       .from("crm_quotes")
       .select("status")
-      .eq("prospect_id", prospect_id);
+      .eq("prospect_id", prospect_id)
+      .eq("entity_id", entityId);
 
     const quoteSent = (quotes || []).some((q) => q.status === "sent" || q.status === "accepted");
     const quoteAccepted = (quotes || []).some((q) => q.status === "accepted");
@@ -68,7 +74,8 @@ export async function POST(request: NextRequest) {
     await auth.supabase
       .from("crm_prospects")
       .update({ score, updated_at: new Date().toISOString() })
-      .eq("id", prospect_id);
+      .eq("id", prospect_id)
+      .eq("entity_id", entityId);
 
     return NextResponse.json({ score, details });
   } catch (err) {

@@ -9,6 +9,20 @@ export async function GET(request: NextRequest, context: RouteContext) {
     if (auth.error) return auth.error;
 
     const sessionId = context.params.id;
+    const entityId = auth.profile.entity_id;
+
+    // Vérifier que la session appartient à l'entité
+    const { data: session } = await auth.supabase
+      .from("sessions")
+      .select("id")
+      .eq("id", sessionId)
+      .eq("entity_id", entityId)
+      .maybeSingle();
+
+    if (!session) {
+      return NextResponse.json({ error: "Ressource introuvable" }, { status: 404 });
+    }
+
     const { data, error } = await auth.supabase
       .from("session_automation_overrides")
       .select("*")
@@ -27,6 +41,19 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (auth.error) return auth.error;
 
     const sessionId = context.params.id;
+    const entityId = auth.profile.entity_id;
+
+    const { data: session } = await auth.supabase
+      .from("sessions")
+      .select("id")
+      .eq("id", sessionId)
+      .eq("entity_id", entityId)
+      .maybeSingle();
+
+    if (!session) {
+      return NextResponse.json({ error: "Ressource introuvable" }, { status: 404 });
+    }
+
     const { rule_id, is_enabled, days_offset_override, template_id_override } = await request.json();
 
     if (!rule_id) return NextResponse.json({ error: "rule_id requis" }, { status: 400 });
@@ -56,6 +83,19 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     if (auth.error) return auth.error;
 
     const sessionId = context.params.id;
+    const entityId = auth.profile.entity_id;
+
+    const { data: session } = await auth.supabase
+      .from("sessions")
+      .select("id")
+      .eq("id", sessionId)
+      .eq("entity_id", entityId)
+      .maybeSingle();
+
+    if (!session) {
+      return NextResponse.json({ error: "Ressource introuvable" }, { status: 404 });
+    }
+
     const { rule_id } = await request.json();
 
     const { error } = await auth.supabase
