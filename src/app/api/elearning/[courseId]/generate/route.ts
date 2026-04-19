@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest } from "next/server";
 import { sanitizeError } from "@/lib/api-error";
+import { verifyCronAuth } from "@/lib/cron-auth";
 import {
   generateCourseOutline,
   generateChapterContent,
@@ -29,25 +30,29 @@ export async function POST(
 
       try {
         const supabase = createClient();
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        if (!user) {
-          send("error", 0, "Non autorisé");
-          controller.close();
-          return;
-        }
+        const isCron = verifyCronAuth(request);
 
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("role")
-          .eq("id", user.id)
-          .single();
+        if (!isCron) {
+          const {
+            data: { user },
+          } = await supabase.auth.getUser();
+          if (!user) {
+            send("error", 0, "Non autorisé");
+            controller.close();
+            return;
+          }
 
-        if (!["admin","super_admin"].includes(profile?.role ?? "")) {
-          send("error", 0, "Accès non autorisé");
-          controller.close();
-          return;
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("role")
+            .eq("id", user.id)
+            .single();
+
+          if (!["admin","super_admin"].includes(profile?.role ?? "")) {
+            send("error", 0, "Accès non autorisé");
+            controller.close();
+            return;
+          }
         }
 
         // Get course with extracted text

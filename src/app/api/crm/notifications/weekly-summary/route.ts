@@ -1,31 +1,41 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { sanitizeError } from "@/lib/api-error";
+import { verifyCronAuth, unauthorizedCronResponse } from "@/lib/cron-auth";
 
 export async function POST(request: NextRequest) {
   try {
+    const isCron = verifyCronAuth(request);
     const supabase = createClient();
+    let entityId: string;
 
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+    if (isCron) {
+      const body = await request.json().catch(() => ({}));
+      if (!body.entity_id) {
+        return NextResponse.json({ data: null, error: "entity_id requis en mode cron" }, { status: 400 });
+      }
+      entityId = body.entity_id;
+    } else {
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
 
-    if (authError || !user) {
-      return NextResponse.json({ data: null, error: "Unauthorized" }, { status: 401 });
+      if (authError || !user) {
+        return unauthorizedCronResponse();
+      }
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("entity_id, role")
+        .eq("id", user.id)
+        .single();
+
+      if (!profile?.entity_id || !["admin","super_admin"].includes(profile.role)) {
+        return NextResponse.json({ data: null, error: "Admin access required" }, { status: 403 });
+      }
+      entityId = profile.entity_id;
     }
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("entity_id, role")
-      .eq("id", user.id)
-      .single();
-
-    if (!profile?.entity_id || !["admin","super_admin"].includes(profile.role)) {
-      return NextResponse.json({ data: null, error: "Admin access required" }, { status: 403 });
-    }
-
-    const entityId = profile.entity_id;
     const now = new Date();
     const weekStart = new Date(now);
     weekStart.setDate(now.getDate() - now.getDay() + 1); // Monday

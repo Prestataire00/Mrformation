@@ -2,29 +2,56 @@ import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 import { DORMANCY_THRESHOLD_DAYS } from "@/lib/crm/constants";
+import { verifyCronAuth, unauthorizedCronResponse } from "@/lib/cron-auth";
 
 export async function POST(request: NextRequest) {
   try {
+    const isCron = verifyCronAuth(request);
     const supabase = createClient();
+    let userId: string | null = null;
+    let entityId: string;
 
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+    if (isCron) {
+      const body = await request.clone().json().catch(() => ({}));
+      if (!body.entity_id) {
+        return NextResponse.json({ data: null, error: "entity_id requis en mode cron" }, { status: 400 });
+      }
+      entityId = body.entity_id;
+    } else {
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
 
-    if (authError || !user) {
-      return NextResponse.json({ data: null, error: "Unauthorized" }, { status: 401 });
+      if (authError || !user) {
+        return unauthorizedCronResponse();
+      }
+      userId = user.id;
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("entity_id, role")
+        .eq("id", user.id)
+        .single();
+
+      if (!profile?.entity_id) {
+        return NextResponse.json({ data: null, error: "Profile not found" }, { status: 403 });
+      }
+      entityId = profile.entity_id;
     }
 
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("entity_id, role")
-      .eq("id", user.id)
-      .single();
-
-    if (!profile?.entity_id) {
-      return NextResponse.json({ data: null, error: "Profile not found" }, { status: 403 });
+    // En mode cron, récupérer le premier admin comme fallback pour les notifications sans assigned_to
+    if (!userId) {
+      const { data: firstAdmin } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("entity_id", entityId)
+        .eq("role", "admin")
+        .limit(1)
+        .single();
+      userId = firstAdmin?.id || null;
     }
+    const fallbackUserId = userId || "system";
 
     const today = new Date().toISOString().split("T")[0];
     const threeDaysFromNow = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
@@ -43,13 +70,13 @@ export async function POST(request: NextRequest) {
     const { data: overdueTasks } = await supabase
       .from("crm_tasks")
       .select("id, title, due_date, assigned_to")
-      .eq("entity_id", profile.entity_id)
+      .eq("entity_id", entityId)
       .lt("due_date", today)
       .in("status", ["pending", "in_progress"]);
 
     if (overdueTasks) {
       for (const task of overdueTasks) {
-        const targetUser = task.assigned_to || user.id;
+        const targetUser = task.assigned_to || fallbackUserId;
         // Check if we already have an unread notification for this task
         const { count } = await supabase
           .from("crm_notifications")
@@ -62,7 +89,7 @@ export async function POST(request: NextRequest) {
 
         if (!count || count === 0) {
           notifications.push({
-            entity_id: profile.entity_id,
+            entity_id: entityId,
             user_id: targetUser,
             type: "task_overdue",
             title: "Tâche en retard",
@@ -79,13 +106,13 @@ export async function POST(request: NextRequest) {
     const { data: todayTasks } = await supabase
       .from("crm_tasks")
       .select("id, title, assigned_to")
-      .eq("entity_id", profile.entity_id)
+      .eq("entity_id", entityId)
       .eq("due_date", today)
       .in("status", ["pending", "in_progress"]);
 
     if (todayTasks) {
       for (const task of todayTasks) {
-        const targetUser = task.assigned_to || user.id;
+        const targetUser = task.assigned_to || fallbackUserId;
         const { count } = await supabase
           .from("crm_notifications")
           .select("id", { count: "exact", head: true })
@@ -97,7 +124,7 @@ export async function POST(request: NextRequest) {
 
         if (!count || count === 0) {
           notifications.push({
-            entity_id: profile.entity_id,
+            entity_id: entityId,
             user_id: targetUser,
             type: "task_due_today",
             title: "Tâche à faire aujourd'hui",
@@ -117,14 +144,14 @@ export async function POST(request: NextRequest) {
     const { data: reminderTasks } = await supabase
       .from("crm_tasks")
       .select("id, title, due_date, assigned_to, prospect_id, reminder_at")
-      .eq("entity_id", profile.entity_id)
+      .eq("entity_id", entityId)
       .not("reminder_at", "is", null)
       .lte("reminder_at", now)
       .in("status", ["pending", "in_progress"]);
 
     if (reminderTasks) {
       for (const task of reminderTasks) {
-        const targetUser = task.assigned_to || user.id;
+        const targetUser = task.assigned_to || fallbackUserId;
 
         // Deduplicate: skip if a task_reminder was created in the last 24h
         const { count } = await supabase
@@ -142,7 +169,7 @@ export async function POST(request: NextRequest) {
             : `Rappel : "${task.title}"`;
 
           notifications.push({
-            entity_id: profile.entity_id,
+            entity_id: entityId,
             user_id: targetUser,
             type: "task_reminder",
             title: "Rappel de tâche",
@@ -161,14 +188,14 @@ export async function POST(request: NextRequest) {
     const { data: expiringQuotes } = await supabase
       .from("crm_quotes")
       .select("id, reference, valid_until, created_by")
-      .eq("entity_id", profile.entity_id)
+      .eq("entity_id", entityId)
       .eq("status", "sent")
       .lte("valid_until", threeDaysFromNow)
       .gte("valid_until", today);
 
     if (expiringQuotes) {
       for (const quote of expiringQuotes) {
-        const targetUser = quote.created_by || user.id;
+        const targetUser = quote.created_by || fallbackUserId;
         const { count } = await supabase
           .from("crm_notifications")
           .select("id", { count: "exact", head: true })
@@ -180,7 +207,7 @@ export async function POST(request: NextRequest) {
 
         if (!count || count === 0) {
           notifications.push({
-            entity_id: profile.entity_id,
+            entity_id: entityId,
             user_id: targetUser,
             type: "quote_expiring",
             title: "Devis bientôt expiré",
@@ -198,13 +225,13 @@ export async function POST(request: NextRequest) {
     const { data: followupQuotes } = await supabase
       .from("crm_quotes")
       .select("id, reference, created_by, created_at")
-      .eq("entity_id", profile.entity_id)
+      .eq("entity_id", entityId)
       .eq("status", "sent")
       .lt("created_at", sevenDaysAgo);
 
     if (followupQuotes) {
       for (const quote of followupQuotes) {
-        const targetUser = quote.created_by || user.id;
+        const targetUser = quote.created_by || fallbackUserId;
         const { count } = await supabase
           .from("crm_notifications")
           .select("id", { count: "exact", head: true })
@@ -216,7 +243,7 @@ export async function POST(request: NextRequest) {
 
         if (!count || count === 0) {
           notifications.push({
-            entity_id: profile.entity_id,
+            entity_id: entityId,
             user_id: targetUser,
             type: "quote_followup",
             title: "Relance devis nécessaire",
@@ -238,7 +265,7 @@ export async function POST(request: NextRequest) {
     const { data: activeProspects } = await supabase
       .from("crm_prospects")
       .select("id, company_name, assigned_to")
-      .eq("entity_id", profile.entity_id)
+      .eq("entity_id", entityId)
       .not("status", "in", '("won","lost","dormant")');
 
     if (activeProspects && activeProspects.length > 0) {
@@ -246,7 +273,7 @@ export async function POST(request: NextRequest) {
       const { data: recentActions } = await supabase
         .from("crm_commercial_actions")
         .select("prospect_id")
-        .eq("entity_id", profile.entity_id)
+        .eq("entity_id", entityId)
         .gte("created_at", dormancyThreshold);
 
       const recentlyActiveIds = new Set(
@@ -258,7 +285,7 @@ export async function POST(request: NextRequest) {
       );
 
       for (const prospect of dormantProspects) {
-        const targetUser = prospect.assigned_to || user.id;
+        const targetUser = prospect.assigned_to || fallbackUserId;
 
         // Deduplicate: skip if unread prospect_dormant notification already exists
         const { count } = await supabase
@@ -272,7 +299,7 @@ export async function POST(request: NextRequest) {
 
         if (!count || count === 0) {
           notifications.push({
-            entity_id: profile.entity_id,
+            entity_id: entityId,
             user_id: targetUser,
             type: "prospect_dormant",
             title: "Prospect dormant",
