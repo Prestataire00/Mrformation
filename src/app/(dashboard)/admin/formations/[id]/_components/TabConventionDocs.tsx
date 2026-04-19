@@ -18,6 +18,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
+import { EmailPreviewDialog } from "@/components/emails/EmailPreviewDialog";
 import { useEntity } from "@/contexts/EntityContext";
 import { getDefaultTemplate } from "@/lib/document-templates-defaults";
 import { resolveVariables } from "@/lib/utils/resolve-variables";
@@ -123,6 +124,15 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     html: string;
     title: string;
     filename: string;
+  } | null>(null);
+
+  const [emailPreview, setEmailPreview] = useState<{
+    docId: string;
+    recipientEmail: string;
+    subject: string;
+    body: string;
+    pdfFilename: string;
+    pdfBase64: string;
   } | null>(null);
 
   const { entity } = useEntity();
@@ -372,7 +382,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     }
   };
 
-  const handleSend = async (docId: string, recipientEmail: string | null) => {
+  const handleSendPreview = async (docId: string, recipientEmail: string | null) => {
     if (!recipientEmail) {
       toast({ title: "Pas d'email pour ce destinataire", variant: "destructive" });
       return;
@@ -386,35 +396,50 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
       const html = await generateDocHtml(doc);
       const base64 = await exportHtmlToPDFBase64(docLabel, html, entityName);
 
-      const res = await fetch("/api/emails/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          to: recipientEmail,
-          subject: `${docLabel} — ${formation.title}`,
-          body: `Bonjour,\n\nVeuillez trouver ci-joint votre document "${docLabel}" pour la formation "${formation.title}".\n\nCordialement,\nL'équipe formation`,
-          session_id: formation.id,
-          attachments: [{
-            filename: `${doc.doc_type.replace(/_/g, "-")}.pdf`,
-            content: base64,
-            type: "application/pdf",
-          }],
-        }),
+      setEmailPreview({
+        docId,
+        recipientEmail,
+        subject: `${docLabel} — ${formation.title}`,
+        body: `Bonjour,\n\nVeuillez trouver ci-joint votre document "${docLabel}" pour la formation "${formation.title}".\n\nCordialement,\nL'équipe ${entityName}`,
+        pdfFilename: `${doc.doc_type.replace(/_/g, "-")}.pdf`,
+        pdfBase64: base64,
       });
-
-      if (!res.ok) throw new Error("Erreur envoi");
-
-      await supabase
-        .from("formation_convention_documents")
-        .update({ is_sent: true, sent_at: new Date().toISOString() })
-        .eq("id", docId);
-
-      toast({ title: `${docLabel} envoyé avec PDF` });
-      onRefresh();
     } catch {
-      toast({ title: "Erreur d'envoi", variant: "destructive" });
+      toast({ title: "Erreur de génération du PDF", variant: "destructive" });
     }
     setSaving(null);
+  };
+
+  const handleSendConfirmed = async ({ subject, body }: { subject: string; body: string }) => {
+    if (!emailPreview) return;
+    const { docId, recipientEmail, pdfFilename, pdfBase64 } = emailPreview;
+
+    const res = await fetch("/api/emails/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        to: recipientEmail,
+        subject,
+        body,
+        session_id: formation.id,
+        attachments: [{
+          filename: pdfFilename,
+          content: pdfBase64,
+          type: "application/pdf",
+        }],
+      }),
+    });
+
+    if (!res.ok) throw new Error("Erreur envoi");
+
+    await supabase
+      .from("formation_convention_documents")
+      .update({ is_sent: true, sent_at: new Date().toISOString() })
+      .eq("id", docId);
+
+    toast({ title: "Document envoyé par email" });
+    setEmailPreview(null);
+    onRefresh();
   };
 
   // ===== MASS SEND WITH PDF =====
@@ -798,7 +823,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
             size="sm"
             variant="outline"
             className="h-6 text-xs gap-1"
-            onClick={() => handleSend(doc.id, email)}
+            onClick={() => handleSendPreview(doc.id, email)}
             disabled={saving === `send-${doc.id}`}
           >
             {saving === `send-${doc.id}` && <Loader2 className="h-3 w-3 animate-spin" />}
@@ -1355,6 +1380,19 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+      )}
+      {/* Email Preview Dialog */}
+      {emailPreview && (
+        <EmailPreviewDialog
+          open={!!emailPreview}
+          onClose={() => setEmailPreview(null)}
+          onSend={handleSendConfirmed}
+          defaultSubject={emailPreview.subject}
+          defaultBody={emailPreview.body}
+          recipientEmail={emailPreview.recipientEmail}
+          attachments={[{ filename: emailPreview.pdfFilename, content: emailPreview.pdfBase64, type: "application/pdf" }]}
+          entityName={entityName}
+        />
       )}
     </div>
   );
