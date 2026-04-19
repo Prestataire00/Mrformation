@@ -971,89 +971,7 @@ function attestationAssiduite(data: TemplateData): string {
 // DOCUMENT 11 — CERTIFICAT DE RÉUSSITE (design graphique)
 // ──────────────────────────────────────────────
 
-function microCertificat(data: TemplateData): string {
-  const { formation, learner, entityName } = data;
-  const co = getCompanyInfo(entityName);
-  const fullName = learner ? `${learner.last_name?.toUpperCase()} ${learner.first_name?.toUpperCase()}` : "—";
-  const titleUpper = (formation.title || "—").toUpperCase();
-  const code = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`.slice(0, 13);
-
-  return `<div style="font-family: Arial, sans-serif; text-align: center; min-height: 900px; width: 794px; position: relative; background: white; overflow: hidden; padding: 40px 60px; box-sizing: border-box;">
-
-  <!-- Bande teal bas -->
-  <div style="position: absolute; bottom: 0; left: 0; right: 0; height: 70px; background: #00897B;"></div>
-
-  <!-- Diagonales dorées -->
-  <div style="position: absolute; bottom: 35px; left: -20px; width: 280px; height: 6px; background: linear-gradient(90deg, #B8860B, #FFD700, #B8860B); transform: rotate(-8deg);"></div>
-  <div style="position: absolute; bottom: 35px; right: -20px; width: 280px; height: 6px; background: linear-gradient(90deg, #B8860B, #FFD700, #B8860B); transform: rotate(8deg);"></div>
-
-  <!-- Contenu -->
-  <div style="position: relative; z-index: 2;">
-
-    <!-- Couronne -->
-    <div style="margin-bottom: 8px;">
-      <svg width="50" height="40" viewBox="0 0 50 40">
-        <polygon points="5,35 10,10 25,25 40,10 45,35" fill="#B8860B" stroke="#FFD700" stroke-width="1"/>
-        <circle cx="5" cy="10" r="3" fill="#FFD700"/>
-        <circle cx="25" cy="5" r="3" fill="#FFD700"/>
-        <circle cx="45" cy="10" r="3" fill="#FFD700"/>
-      </svg>
-    </div>
-
-    <p style="font-size: 13px; font-weight: 700; margin: 0 0 4px;">Délivré Le ${todayFrShort()}</p>
-
-    <h1 style="font-size: 52px; font-weight: 900; letter-spacing: -1px; margin: 8px 0; color: #111;">Certificat</h1>
-
-    <p style="font-size: 14px; color: #555; margin: 0 0 16px;">Ce certificat atteste que:</p>
-
-    <h2 style="font-size: 36px; font-weight: 900; color: #374151; margin: 0 0 16px; text-transform: uppercase; letter-spacing: 1px;">${fullName}</h2>
-
-    <p style="font-size: 14px; color: #333; margin: 0 0 8px;">A suivi la formation avec succès</p>
-
-    <h3 style="font-size: 22px; font-weight: 900; text-transform: uppercase; margin: 0 0 32px; letter-spacing: 0.5px; color: #111;">${titleUpper}</h3>
-
-    <p style="font-size: 12px; color: #666; margin: 0 0 4px;">Nom de l'Organisme de Formation</p>
-    <p style="font-size: 14px; font-weight: 700; margin: 0 0 24px;">${co.name}</p>
-
-    <p style="font-size: 12px; color: #666; margin: 0 0 4px;">Code d'Identification du Certificat</p>
-    <p style="font-size: 14px; font-weight: 700; margin: 0 0 24px;">CODE: ${code}</p>
-
-    <!-- Médailles -->
-    <div style="display: flex; justify-content: center; gap: 24px; margin-bottom: 24px;">
-      <svg width="70" height="70" viewBox="0 0 70 70">
-        <circle cx="35" cy="40" r="25" fill="#E5E7EB" stroke="#D1D5DB" stroke-width="2"/>
-        <polygon points="35,18 28,30 35,37 42,30" fill="#B8860B"/>
-        <text x="35" y="48" text-anchor="middle" font-size="10" font-weight="bold" fill="#374151">★★★</text>
-      </svg>
-      <svg width="70" height="70" viewBox="0 0 70 70">
-        <circle cx="35" cy="40" r="25" fill="#E5E7EB" stroke="#D1D5DB" stroke-width="2"/>
-        <polygon points="35,18 28,30 35,37 42,30" fill="#B8860B"/>
-        <text x="35" y="48" text-anchor="middle" font-size="14" font-weight="bold" fill="#374151">1</text>
-      </svg>
-    </div>
-
-    <!-- Lignes signature -->
-    <div style="display: flex; justify-content: space-around; margin-bottom: 16px;">
-      <div style="width: 180px; border-top: 1px solid #333; padding-top: 4px; font-size: 11px; color: #666;">Signature</div>
-      <div style="width: 180px; border-top: 1px solid #333; padding-top: 4px; font-size: 11px; color: #666;">Signature</div>
-    </div>
-
-    <!-- Médaille dorée centrale -->
-    <div style="margin-bottom: 80px;">
-      <svg width="60" height="60" viewBox="0 0 60 60">
-        <circle cx="30" cy="30" r="26" fill="#D4AF37" stroke="#B8860B" stroke-width="3"/>
-        <circle cx="30" cy="30" r="19" fill="#FFD700" stroke="#B8860B" stroke-width="1"/>
-        <text x="30" y="35" text-anchor="middle" font-size="16" font-weight="bold" fill="#7B3F00">★</text>
-      </svg>
-    </div>
-
-  </div>
-</div>`;
-}
-
-// ──────────────────────────────────────────────
-// Public API
-// ──────────────────────────────────────────────
+// microCertificat supprimé (demande Loris V1)
 
 // ──────────────────────────────────────────────
 // DOCUMENT — PLANNING SEMAINE
@@ -1225,7 +1143,6 @@ const GENERATORS: Record<string, (data: TemplateData) => string> = {
   reglement_interieur: reglementInterieur,
   politique_confidentialite: politiqueRgpd,
   programme_formation: programmeFormation,
-  micro_certificat: microCertificat,
   planning_semaine: planningSemaine,
 };
 

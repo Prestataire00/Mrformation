@@ -390,7 +390,7 @@ export interface FormationSatisfactionAssignment {
 // ===== FORMATION CONVENTION DOCUMENTS =====
 export type ConventionDocType =
   | "convocation" | "certificat_realisation" | "attestation_assiduite"
-  | "feuille_emargement" | "micro_certificat"
+  | "feuille_emargement"
   | "cgv" | "politique_confidentialite" | "reglement_interieur" | "programme_formation"
   | "convention_entreprise" | "feuille_emargement_collectif" | "planning_semaine"
   | "convention_intervention" | "contrat_sous_traitance"

@@ -19,7 +19,6 @@ const DOC_LABELS: Record<string, string> = {
   certificat_realisation: "Certificat de réalisation",
   attestation_assiduite: "Attestation d'assiduité",
   feuille_emargement: "Feuille d'émargement",
-  micro_certificat: "Micro-certificat",
   cgv: "CGV",
   politique_confidentialite: "Politique de confidentialité",
   reglement_interieur: "Règlement intérieur",
