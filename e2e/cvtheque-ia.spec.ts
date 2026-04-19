@@ -141,6 +141,7 @@ test.describe("CVthèque IA formateurs", () => {
   test("API /api/ai/search-trainers protégée par auth", async ({ request }) => {
     const response = await request.post("/api/ai/search-trainers", {
       data: { query: "test" },
+      timeout: 20000,
     });
     expect([401, 403]).toContain(response.status());
   });
@@ -148,6 +149,7 @@ test.describe("CVthèque IA formateurs", () => {
   test("API /api/ai/parse-cv protégée par auth", async ({ request }) => {
     const response = await request.post("/api/ai/parse-cv", {
       data: {},
+      timeout: 20000,
     });
     expect([401, 403]).toContain(response.status());
   });
@@ -155,6 +157,7 @@ test.describe("CVthèque IA formateurs", () => {
   test("API /api/ai/match-trainer protégée par auth", async ({ request }) => {
     const response = await request.post("/api/ai/match-trainer", {
       data: {},
+      timeout: 20000,
     });
     expect([401, 403]).toContain(response.status());
   });
