@@ -182,23 +182,30 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
   try {
     const body = await request.json();
-    const { invoice_id, status, paid_at } = body;
+    const { invoice_id, status, paid_at, recipient_name, recipient_type, due_date, notes, external_reference, amount, lines } = body;
 
-    if (!invoice_id || !status) {
+    if (!invoice_id) {
       return NextResponse.json(
-        { error: "Les champs invoice_id et status sont requis." },
+        { error: "Le champ invoice_id est requis." },
         { status: 400 }
       );
     }
 
     const updateData: Record<string, unknown> = {
-      status,
       updated_at: new Date().toISOString(),
     };
 
-    if (status === "paid") {
-      updateData.paid_at = paid_at || new Date().toISOString();
-    }
+    // Status update
+    if (status) updateData.status = status;
+    if (status === "paid") updateData.paid_at = paid_at || new Date().toISOString();
+
+    // Full edit fields (only for pending invoices)
+    if (recipient_name !== undefined) updateData.recipient_name = recipient_name;
+    if (recipient_type !== undefined) updateData.recipient_type = recipient_type;
+    if (due_date !== undefined) updateData.due_date = due_date;
+    if (notes !== undefined) updateData.notes = notes;
+    if (external_reference !== undefined) updateData.external_reference = external_reference;
+    if (amount !== undefined) updateData.amount = amount;
 
     const { data, error } = await auth.supabase
       .from("formation_invoices")
@@ -215,6 +222,25 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       );
     }
 
+    // Update lines if provided (delete + re-insert)
+    if (lines && Array.isArray(lines)) {
+      await auth.supabase
+        .from("formation_invoice_lines")
+        .delete()
+        .eq("invoice_id", invoice_id);
+
+      if (lines.length > 0) {
+        const lineInserts = lines.map((l: { description: string; quantity: number; unit_price: number }, idx: number) => ({
+          invoice_id,
+          description: l.description,
+          quantity: l.quantity,
+          unit_price: l.unit_price,
+          order_index: idx,
+        }));
+        await auth.supabase.from("formation_invoice_lines").insert(lineInserts);
+      }
+    }
+
     logAudit({
       supabase: auth.supabase,
       entityId: auth.profile.entity_id,
@@ -222,7 +248,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       action: "update",
       resourceType: "formation_invoice",
       resourceId: invoice_id,
-      details: { status, reference: data.reference },
+      details: { status: status || data.status, reference: data.reference },
     });
 
     return NextResponse.json({ invoice: data });

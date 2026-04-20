@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
-  Plus, CheckCircle, Loader2, Trash2, Undo2, FileDown, Send, Upload, Eye,
+  Plus, CheckCircle, Loader2, Trash2, Undo2, FileDown, Send, Upload, Eye, Pencil,
 } from "lucide-react";
 import { useEntity } from "@/contexts/EntityContext";
 import { ImportInvoiceDialog } from "./ImportInvoiceDialog";
@@ -43,6 +43,7 @@ interface Invoice {
   created_at: string;
   reminder_count?: number;
   auto_generated?: boolean;
+  external_reference?: string | null;
 }
 
 const REMINDER_BADGES: Record<number, { label: string; className: string }> = {
@@ -115,6 +116,7 @@ export function TabFinances({ formation, onRefresh }: Props) {
     lines: [{ description: "", quantity: "1", unit_price: "" }] as { description: string; quantity: string; unit_price: string }[],
   });
   const [savingInvoice, setSavingInvoice] = useState(false);
+  const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
 
   // Invoice line helpers
   const addInvoiceLine = () => setInvoiceForm((f) => ({ ...f, lines: [...f.lines, { description: "", quantity: "1", unit_price: "" }] }));
@@ -247,6 +249,74 @@ export function TabFinances({ formation, onRefresh }: Props) {
         }
         fetchData();
       } else {
+        toast({ title: "Erreur", description: data.error, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Erreur réseau", variant: "destructive" });
+    } finally {
+      setSavingInvoice(false);
+    }
+  };
+
+  // ── Edit existing invoice ──
+
+  const handleEditInvoice = async (inv: Invoice) => {
+    // Fetch existing lines
+    const { data: lines } = await supabase
+      .from("formation_invoice_lines")
+      .select("description, quantity, unit_price")
+      .eq("invoice_id", inv.id)
+      .order("order_index");
+
+    setInvoiceForm({
+      recipient_type: inv.recipient_type,
+      recipient_name: inv.recipient_name,
+      recipient_id: inv.recipient_id,
+      due_date: inv.due_date ? inv.due_date.split("T")[0] : "",
+      notes: inv.notes || "",
+      external_reference: inv.external_reference || "",
+      lines: lines && lines.length > 0
+        ? lines.map(l => ({ description: l.description, quantity: String(l.quantity), unit_price: String(l.unit_price) }))
+        : [{ description: "", quantity: "1", unit_price: "" }],
+    });
+    setEditingInvoiceId(inv.id);
+    setInvoiceDialog(true);
+  };
+
+  const handleUpdateInvoice = async () => {
+    if (!editingInvoiceId) return;
+    setSavingInvoice(true);
+    try {
+      const parsedLines = invoiceForm.lines
+        .filter(l => l.description.trim())
+        .map(l => ({
+          description: l.description.trim(),
+          quantity: parseFloat(l.quantity.replace(",", ".")) || 1,
+          unit_price: parseFloat(l.unit_price.replace(",", ".")) || 0,
+        }));
+
+      const res = await fetch(`/api/formations/${formation.id}/invoices`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          invoice_id: editingInvoiceId,
+          recipient_name: invoiceForm.recipient_name.trim(),
+          recipient_type: invoiceForm.recipient_type,
+          due_date: invoiceForm.due_date || null,
+          notes: invoiceForm.notes || null,
+          external_reference: invoiceForm.external_reference || null,
+          amount: invoiceTotal,
+          lines: parsedLines,
+        }),
+      });
+      if (res.ok) {
+        toast({ title: "Facture mise à jour" });
+        setInvoiceDialog(false);
+        setEditingInvoiceId(null);
+        setInvoiceForm({ recipient_type: "learner", recipient_name: "", recipient_id: "", due_date: "", notes: "", external_reference: "", lines: [{ description: "", quantity: "1", unit_price: "" }] });
+        fetchData();
+      } else {
+        const data = await res.json();
         toast({ title: "Erreur", description: data.error, variant: "destructive" });
       }
     } catch {
@@ -622,6 +692,16 @@ export function TabFinances({ formation, onRefresh }: Props) {
                                 <CheckCircle className="h-3 w-3 mr-0.5" /> Payée
                               </Button>
                             )}
+                            {inv.status === "pending" && !inv.is_avoir && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 text-[11px] px-1.5 text-gray-600"
+                                onClick={() => handleEditInvoice(inv)}
+                              >
+                                <Pencil className="h-3 w-3 mr-0.5" /> Modifier
+                              </Button>
+                            )}
                             {!inv.is_avoir && inv.status !== "cancelled" && (
                               <Button
                                 variant="ghost"
@@ -713,7 +793,7 @@ export function TabFinances({ formation, onRefresh }: Props) {
       <Dialog open={invoiceDialog} onOpenChange={setInvoiceDialog}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Créer une facture</DialogTitle>
+            <DialogTitle>{editingInvoiceId ? "Modifier la facture" : "Créer une facture"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             {/* Destinataire */}
@@ -821,10 +901,10 @@ export function TabFinances({ formation, onRefresh }: Props) {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setInvoiceDialog(false)}>Annuler</Button>
-            <Button onClick={() => handleCreateInvoice(false)} disabled={savingInvoice}>
+            <Button variant="outline" onClick={() => { setInvoiceDialog(false); setEditingInvoiceId(null); }}>Annuler</Button>
+            <Button onClick={() => editingInvoiceId ? handleUpdateInvoice() : handleCreateInvoice(false)} disabled={savingInvoice}>
               {savingInvoice && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Créer la facture
+              {editingInvoiceId ? "Enregistrer" : "Créer la facture"}
             </Button>
           </DialogFooter>
         </DialogContent>
