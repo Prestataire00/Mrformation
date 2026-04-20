@@ -9,6 +9,7 @@ import type { Entity } from "@/lib/types";
 import {
   LayoutDashboard,
   CalendarCheck,
+  Zap,
   TrendingUp,
   Users,
   UserCheck,
@@ -120,7 +121,7 @@ const adminNavSections: NavSection[] = [
           { label: "Qualité", href: "/admin/questionnaires/dashboard", icon: Star },
         ],
       },
-      { label: "Automatisation", href: "/admin/trainings/automation", icon: RefreshCw },
+      { label: "Automatisations", href: "/admin/automation", icon: Zap },
     ],
   },
   {
