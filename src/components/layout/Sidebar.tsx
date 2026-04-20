@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import type { Entity } from "@/lib/types";
 import {
   LayoutDashboard,
+  CalendarCheck,
   TrendingUp,
   Users,
   UserCheck,
@@ -66,6 +67,7 @@ const adminNavSections: NavSection[] = [
   {
     items: [
       { label: "Tableau de Bord", href: "/admin", icon: LayoutDashboard },
+      { label: "Ma semaine", href: "/admin/ma-semaine", icon: CalendarCheck },
     ],
   },
   {
