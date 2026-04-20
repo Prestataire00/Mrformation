@@ -477,7 +477,7 @@ export default function ClientDetailPage() {
 
   const fetchActivity = useCallback(async () => {
     const { data, error } = await supabase
-      .from("activity_logs")
+      .from("activity_log")
       .select(`id, action, resource_type, created_at, profiles(first_name, last_name)`)
       .eq("resource_id", clientId)
       .order("created_at", { ascending: false })
