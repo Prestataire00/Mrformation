@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import DOMPurify from "dompurify";
 import { createClient } from "@/lib/supabase/client";
+import { InsertVariableButton } from "@/components/editor/InsertVariableButton";
 import { RelancesTab } from "@/components/emails/RelancesTab";
 import { useEntity } from "@/contexts/EntityContext";
 import { EmailTemplate, EmailHistory, Session, Client, Learner } from "@/lib/types";
@@ -958,18 +959,10 @@ export default function EmailsPage() {
                   {/* Variables panel */}
                   <div className="space-y-2 col-span-1">
                     <Label>Variables disponibles</Label>
-                    <div className="border rounded-lg p-2 space-y-1 max-h-48 overflow-y-auto bg-gray-50">
-                      {AVAILABLE_VARIABLES.map((v) => (
-                        <button
-                          key={v.key}
-                          onClick={() => insertVariable(v.key)}
-                          className="w-full text-left px-2 py-1.5 rounded text-xs hover:bg-white hover:shadow-sm transition-all group"
-                        >
-                          <p className="font-mono text-blue-700 group-hover:text-blue-800">{v.key}</p>
-                          <p className="text-gray-500 text-xs">{v.label}</p>
-                        </button>
-                      ))}
-                    </div>
+                    <InsertVariableButton
+                      context="email"
+                      onInsert={(placeholder) => insertVariable(placeholder)}
+                    />
                     <p className="text-xs text-gray-400">
                       Champ actif:{" "}
                       <span className="font-medium text-gray-600">

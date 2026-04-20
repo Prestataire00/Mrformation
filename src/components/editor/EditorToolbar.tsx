@@ -26,8 +26,8 @@ import {
   Code,
   Undo,
   Redo,
-  Variable,
 } from "lucide-react";
+import { InsertVariableButton } from "./InsertVariableButton";
 import { cn } from "@/lib/utils";
 
 interface VariableOption {
@@ -221,44 +221,17 @@ export function EditorToolbar({ editor, variables }: EditorToolbarProps) {
         <Code className="h-4 w-4" />
       </ToolbarButton>
 
-      {/* Variables dropdown */}
+      {/* Variables — categorized insert button */}
       {variables && variables.length > 0 && (
         <>
           <Separator />
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-8 gap-1.5 text-xs"
-              >
-                <Variable className="h-3.5 w-3.5" />
-                Inserer une variable
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="start"
-              className="max-h-64 overflow-y-auto"
-            >
-              {variables.map((v) => (
-                <DropdownMenuItem
-                  key={v.key}
-                  onClick={() =>
-                    editor.chain().focus().insertVariable(v.key).run()
-                  }
-                  className="gap-2"
-                >
-                  <span className="rounded bg-blue-100 px-1.5 py-0.5 font-mono text-xs text-blue-700">
-                    {`{{${v.key}}}`}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {v.label}
-                  </span>
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <InsertVariableButton
+            context="document"
+            onInsert={(placeholder) => {
+              const key = placeholder.replace(/^\{\{|\}\}$/g, "");
+              editor.chain().focus().insertVariable(key).run();
+            }}
+          />
         </>
       )}
     </div>
