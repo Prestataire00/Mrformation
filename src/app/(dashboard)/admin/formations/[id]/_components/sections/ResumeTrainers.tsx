@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Plus, Trash2, Loader2, Sparkles } from "lucide-react";
+import { Plus, Trash2, Loader2, Sparkles, Clock, CalendarDays } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -38,6 +38,33 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
   const [suggestions, setSuggestions] = useState<Array<{ trainer_id: string; trainer_name: string; score: number; reasons_match: string[]; gaps: string[] }>>([]);
 
   const formationTrainers = formation.formation_trainers || [];
+  const signatures = formation.signatures || [];
+  const timeSlots = formation.formation_time_slots || [];
+
+  /** Calcule heures effectuées + dates signées pour un formateur */
+  function getTrainerStats(trainerId: string) {
+    const signedSlotIds = signatures
+      .filter((s) => s.signer_id === trainerId && s.signer_type === "trainer")
+      .map((s) => s.time_slot_id);
+
+    const signedSlots = timeSlots.filter((ts) => signedSlotIds.includes(ts.id));
+
+    let totalHours = 0;
+    const dates = new Set<string>();
+
+    for (const slot of signedSlots) {
+      const start = new Date(slot.start_time);
+      const end = new Date(slot.end_time);
+      totalHours += (end.getTime() - start.getTime()) / 3600000;
+      dates.add(start.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Europe/Paris" }));
+    }
+
+    return {
+      hours: Math.round(totalHours * 10) / 10,
+      dates: [...dates].sort(),
+      slotCount: signedSlots.length,
+    };
+  }
 
   useEffect(() => {
     const fetch = async () => {
@@ -120,43 +147,60 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
       <div className="space-y-3">
         <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Formateurs ({formationTrainers.length})</h3>
         <div className="space-y-3">
-          {formationTrainers.map((ft) => (
-            <div key={ft.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-              <div className="flex items-center gap-3">
-                <Avatar className="h-8 w-8">
-                  <AvatarFallback className="text-xs">
-                    {getInitials(ft.trainer?.first_name, ft.trainer?.last_name)}
-                  </AvatarFallback>
-                </Avatar>
-                <div>
-                  <p className="font-medium text-sm">
-                    {ft.trainer?.last_name?.toUpperCase()} {ft.trainer?.first_name}
-                  </p>
-                  {ft.trainer?.email && (
-                    <p className="text-xs text-muted-foreground">{ft.trainer.email}</p>
+          {formationTrainers.map((ft) => {
+            const stats = ft.trainer ? getTrainerStats(ft.trainer.id) : null;
+            return (
+            <div key={ft.id} className="p-3 bg-muted/50 rounded-lg space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Avatar className="h-8 w-8">
+                    <AvatarFallback className="text-xs">
+                      {getInitials(ft.trainer?.first_name, ft.trainer?.last_name)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <p className="font-medium text-sm">
+                      {ft.trainer?.last_name?.toUpperCase()} {ft.trainer?.first_name}
+                    </p>
+                    {ft.trainer?.email && (
+                      <p className="text-xs text-muted-foreground">{ft.trainer.email}</p>
+                    )}
+                  </div>
+                  <Badge variant="outline" className="text-xs">{ft.role}</Badge>
+                  {ft.hourly_rate != null && (
+                    <span className="text-xs text-muted-foreground">{ft.hourly_rate} €/h</span>
+                  )}
+                  {ft.daily_rate != null && (
+                    <span className="text-xs text-muted-foreground">{ft.daily_rate} €/j</span>
                   )}
                 </div>
-                <Badge variant="outline" className="text-xs">{ft.role}</Badge>
-                {ft.hourly_rate != null && (
-                  <span className="text-xs text-muted-foreground">{ft.hourly_rate} €/h</span>
-                )}
-                {ft.daily_rate != null && (
-                  <span className="text-xs text-muted-foreground">{ft.daily_rate} €/j</span>
-                )}
-                {ft.hours_done != null && (
-                  <span className="text-xs text-muted-foreground">{ft.hours_done}h effectuées</span>
-                )}
-                {ft.notes && (
-                  <span className="text-xs text-muted-foreground italic truncate max-w-[150px]">{ft.notes}</span>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
                 <Button size="sm" variant="ghost" className="text-red-600 hover:text-red-700" onClick={() => setDeleteId(ft.id)}>
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
+
+              {/* Heures effectuées + dates signées */}
+              {stats && stats.slotCount > 0 && (
+                <div className="ml-11 flex flex-wrap items-center gap-3 text-xs">
+                  <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full font-medium">
+                    <Clock className="h-3 w-3" />
+                    {stats.hours}h effectuées
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full font-medium">
+                    <CalendarDays className="h-3 w-3" />
+                    {stats.slotCount} créneau{stats.slotCount > 1 ? "x" : ""} signé{stats.slotCount > 1 ? "s" : ""}
+                  </span>
+                  <span className="text-muted-foreground">
+                    ({stats.dates.join(", ")})
+                  </span>
+                </div>
+              )}
+              {stats && stats.slotCount === 0 && (
+                <p className="ml-11 text-xs text-muted-foreground italic">Aucun créneau signé</p>
+              )}
             </div>
-          ))}
+            );
+          })}
           {formationTrainers.length === 0 && (
             <p className="text-sm text-muted-foreground">Aucun formateur assigné</p>
           )}
