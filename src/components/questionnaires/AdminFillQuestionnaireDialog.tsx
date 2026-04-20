@@ -94,6 +94,7 @@ export function AdminFillQuestionnaireDialog({
       }
     } else {
       setResponses({});
+      setFillMode("admin_for_learner");
       setAdminNotes("");
       setExistingId(null);
     }
