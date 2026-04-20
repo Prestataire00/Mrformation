@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   Zap, Loader2, CheckCircle, XCircle, Clock, Send, Play,
-  Settings, ChevronDown, ExternalLink,
+  Settings, ChevronDown, ExternalLink, CalendarDays,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +15,8 @@ import {
 import { useToast } from "@/components/ui/use-toast";
 import { formatDate } from "@/lib/utils";
 import Link from "next/link";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { AutomationTimeline } from "./AutomationTimeline";
 import type { Session } from "@/lib/types";
 
 interface Props {
@@ -216,6 +218,17 @@ export function TabAutomation({ formation, onRefresh }: Props) {
   ];
 
   return (
+    <Tabs defaultValue="timeline" className="space-y-4">
+      <TabsList className="h-9">
+        <TabsTrigger value="timeline" className="text-xs gap-1.5"><CalendarDays className="h-3.5 w-3.5" /> Timeline</TabsTrigger>
+        <TabsTrigger value="rules" className="text-xs gap-1.5"><Settings className="h-3.5 w-3.5" /> Règles</TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="timeline">
+        <AutomationTimeline sessionId={formation.id} />
+      </TabsContent>
+
+      <TabsContent value="rules">
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -364,5 +377,7 @@ export function TabAutomation({ formation, onRefresh }: Props) {
         </DialogContent>
       </Dialog>
     </div>
+      </TabsContent>
+    </Tabs>
   );
 }
