@@ -32,6 +32,7 @@ export function ResumeCompanies({ formation, onRefresh }: Props) {
   const [selectedClientId, setSelectedClientId] = useState("");
   const [amount, setAmount] = useState("");
   const [email, setEmail] = useState("");
+  const [linkedLearners, setLinkedLearners] = useState<Array<{ id: string; first_name: string; last_name: string }>>([]);
   const [saving, setSaving] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
@@ -53,7 +54,7 @@ export function ResumeCompanies({ formation, onRefresh }: Props) {
   }, [formation.entity_id, supabase]);
 
   // ── Auto-fill amount + email on client selection ──
-  const handleClientSelect = (clientId: string) => {
+  const handleClientSelect = async (clientId: string) => {
     setSelectedClientId(clientId);
 
     const client = allClients.find((c) => c.id === clientId);
@@ -110,6 +111,19 @@ export function ResumeCompanies({ formation, onRefresh }: Props) {
     }
 
     setEmail(suggestedEmail);
+
+    // Fetch learners linked to this company
+    const existingLearnerIds = new Set(
+      (formation.enrollments || []).map((e) => e.learner_id)
+    );
+    const { data: learners } = await supabase
+      .from("learners")
+      .select("id, first_name, last_name")
+      .eq("client_id", clientId)
+      .eq("entity_id", formation.entity_id);
+    setLinkedLearners(
+      (learners || []).filter((l) => !existingLearnerIds.has(l.id))
+    );
   };
 
   const handleAdd = async () => {
@@ -121,17 +135,59 @@ export function ResumeCompanies({ formation, onRefresh }: Props) {
       amount: amount ? parseFloat(amount) : null,
       email: email || null,
     });
-    setSaving(false);
+
     if (error) {
+      setSaving(false);
       toast({ title: "Erreur", description: error.message, variant: "destructive" });
+      return;
+    }
+
+    // Auto-inscrire les apprenants rattachés à cette entreprise
+    const existingLearnerIds = new Set(
+      (formation.enrollments || []).map((e) => e.learner_id)
+    );
+
+    const { data: companyLearners } = await supabase
+      .from("learners")
+      .select("id, first_name, last_name")
+      .eq("client_id", selectedClientId)
+      .eq("entity_id", formation.entity_id);
+
+    const toEnroll = (companyLearners || []).filter(
+      (l) => !existingLearnerIds.has(l.id)
+    );
+
+    if (toEnroll.length > 0) {
+      const { error: enrollError } = await supabase.from("enrollments").insert(
+        toEnroll.map((l) => ({
+          session_id: formation.id,
+          learner_id: l.id,
+          client_id: selectedClientId,
+          status: "registered",
+        }))
+      );
+
+      if (enrollError) {
+        // Non-bloquant : l'entreprise est ajoutée même si l'inscription échoue
+        toast({ title: "Entreprise ajoutée", description: `Attention : ${enrollError.message}`, variant: "destructive" });
+      } else {
+        const names = toEnroll.map((l) => `${l.first_name} ${l.last_name}`).join(", ");
+        toast({
+          title: "Entreprise ajoutée",
+          description: `${toEnroll.length} apprenant(s) inscrit(s) automatiquement : ${names}`,
+        });
+      }
     } else {
       toast({ title: "Entreprise ajoutée" });
-      setDialogOpen(false);
-      setSelectedClientId("");
-      setAmount("");
-      setEmail("");
-      onRefresh();
     }
+
+    setSaving(false);
+    setDialogOpen(false);
+    setSelectedClientId("");
+    setAmount("");
+    setEmail("");
+    setLinkedLearners([]);
+    onRefresh();
   };
 
   const [deleting, setDeleting] = useState(false);
@@ -243,12 +299,24 @@ export function ResumeCompanies({ formation, onRefresh }: Props) {
                 <p className="text-[11px] text-muted-foreground mt-1">Email récupéré depuis la fiche entreprise</p>
               )}
             </div>
+            {selectedClientId && linkedLearners.length > 0 && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <p className="text-xs font-semibold text-blue-800 mb-1">
+                  {linkedLearners.length} apprenant(s) seront inscrits automatiquement :
+                </p>
+                <ul className="text-xs text-blue-700 space-y-0.5">
+                  {linkedLearners.map((l) => (
+                    <li key={l.id}>• {l.last_name?.toUpperCase()} {l.first_name}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Annuler</Button>
             <Button onClick={handleAdd} disabled={saving || !selectedClientId}>
               {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Ajouter
+              Ajouter{linkedLearners.length > 0 ? ` + ${linkedLearners.length} apprenant(s)` : ""}
             </Button>
           </DialogFooter>
         </DialogContent>
