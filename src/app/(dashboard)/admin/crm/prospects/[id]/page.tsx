@@ -530,26 +530,47 @@ export default function ProspectDetailPage() {
 
   // ── AI Functions ──────────────────────────────────────────────────────────
 
-  const handleEnrichPappers = async () => {
-    if (!prospect?.siret) return;
+  const [pappersSearchOpen, setPappersSearchOpen] = useState(false);
+
+  const handleEnrichPappers = async (siretOverride?: string) => {
+    const siretToUse = siretOverride || prospect?.siret;
+    if (!siretToUse) {
+      // Pas de SIRET → ouvrir recherche par nom
+      setPappersSearchOpen(true);
+      return;
+    }
     setEnriching(true);
     try {
-      const res = await fetch(`/api/pappers/company?siret=${prospect.siret}`);
+      const res = await fetch(`/api/pappers/company?siret=${siretToUse}`);
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Erreur Pappers");
-      setEnrichData(data);
-      const opco = detectOPCO(data.naf_code);
+
+      if (!res.ok) {
+        const errorMessages: Record<number, string> = {
+          404: "Ce SIRET n'existe pas chez Pappers. Vérifiez le numéro ou recherchez par nom.",
+          429: "Limite Pappers atteinte. Réessayez dans 1h.",
+          503: "Service Pappers en maintenance.",
+        };
+        const message = errorMessages[data.status_code || res.status] || data.error || "Erreur Pappers inattendue";
+        toast({ title: "Enrichissement impossible", description: message, variant: "destructive" });
+        if (res.status === 404) setPappersSearchOpen(true);
+        return;
+      }
+
+      const detail = data.data || data;
+      setEnrichData(detail);
+      const opco = detectOPCO(detail.naf_code);
       toast({
-        title: "Données Pappers récupérées",
+        title: data.cached ? "Données Pappers (cache)" : "Données Pappers récupérées",
         description: opco ? `OPCO probable : ${opco.opco}` : "OPCO non détecté",
       });
-      // Auto-update NAF + address if missing
+      // Auto-update NAF + address + SIRET if missing
       const autoUpdate: Record<string, string> = {};
-      if (data.naf_code && !prospect.naf_code) autoUpdate.naf_code = data.naf_code;
-      if (data.address && !prospect.address) autoUpdate.address = data.address;
-      if (data.city && !prospect.city) autoUpdate.city = data.city;
-      if (data.postal_code && !prospect.postal_code) autoUpdate.postal_code = data.postal_code;
-      if (Object.keys(autoUpdate).length > 0) {
+      if (detail.naf_code && !prospect?.naf_code) autoUpdate.naf_code = detail.naf_code;
+      if (detail.address && !prospect?.address) autoUpdate.address = detail.address;
+      if (detail.city && !prospect?.city) autoUpdate.city = detail.city;
+      if (detail.postal_code && !prospect?.postal_code) autoUpdate.postal_code = detail.postal_code;
+      if (detail.siret && !prospect?.siret) autoUpdate.siret = detail.siret;
+      if (Object.keys(autoUpdate).length > 0 && prospect) {
         await supabase.from("crm_prospects").update(autoUpdate).eq("id", prospect.id);
         fetchProspect();
       }
@@ -558,6 +579,11 @@ export default function ProspectDetailPage() {
     } finally {
       setEnriching(false);
     }
+  };
+
+  const handlePappersSearchSelect = async (siret: string) => {
+    setPappersSearchOpen(false);
+    await handleEnrichPappers(siret);
   };
 
   const handleAiInsights = async () => {
@@ -1035,12 +1061,10 @@ export default function ProspectDetailPage() {
             <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Intelligence commerciale</h3>
 
             {/* Bouton Enrichir Pappers */}
-            {prospect.siret && (
-              <Button size="sm" variant="outline" className="w-full text-xs h-7 gap-1" onClick={handleEnrichPappers} disabled={enriching}>
-                {enriching ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
-                Enrichir via Pappers
-              </Button>
-            )}
+            <Button size="sm" variant="outline" className="w-full text-xs h-7 gap-1" onClick={() => handleEnrichPappers()} disabled={enriching}>
+              {enriching ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
+              {prospect.siret ? "Enrichir via Pappers" : "Rechercher l'entreprise"}
+            </Button>
 
             {/* Résultat Pappers */}
             {enrichData && (
@@ -1301,6 +1325,73 @@ export default function ProspectDetailPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Pappers search dialog */}
+      <Dialog open={pappersSearchOpen} onOpenChange={setPappersSearchOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Rechercher l&apos;entreprise sur Pappers</DialogTitle>
+          </DialogHeader>
+          <PappersSearchPanel companyName={prospect?.company_name || ""} onSelect={handlePappersSearchSelect} />
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function PappersSearchPanel({ companyName, onSelect }: { companyName: string; onSelect: (siret: string) => void }) {
+  const [query, setQuery] = useState(companyName);
+  const [results, setResults] = useState<Array<{ company_name: string; siret: string; city: string; naf_code: string | null }>>([]);
+  const [searching, setSearching] = useState(false);
+
+  const handleSearch = async () => {
+    if (!query.trim() || query.trim().length < 2) return;
+    setSearching(true);
+    try {
+      const res = await fetch(`/api/pappers/search?q=${encodeURIComponent(query.trim())}`);
+      const data = await res.json();
+      if (res.ok) setResults(data.data || []);
+    } catch { /* ignore */ }
+    finally { setSearching(false); }
+  };
+
+  useEffect(() => { if (companyName.length >= 2) handleSearch(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-2">
+        <input
+          className="flex-1 border rounded-md px-3 py-1.5 text-sm"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+          placeholder="Nom de l'entreprise..."
+        />
+        <button
+          onClick={handleSearch}
+          disabled={searching}
+          className="px-3 py-1.5 bg-[#374151] text-white text-sm rounded-md disabled:opacity-50"
+        >
+          {searching ? "..." : "Chercher"}
+        </button>
+      </div>
+      <div className="max-h-60 overflow-y-auto space-y-1">
+        {results.map((r) => (
+          <button
+            key={r.siret}
+            onClick={() => onSelect(r.siret)}
+            className="w-full text-left p-2 rounded-md hover:bg-gray-50 border text-sm flex justify-between items-center"
+          >
+            <div>
+              <p className="font-medium">{r.company_name}</p>
+              <p className="text-xs text-muted-foreground">{r.city} — SIRET: {r.siret}</p>
+            </div>
+            <span className="text-xs text-gray-400">{r.naf_code}</span>
+          </button>
+        ))}
+        {!searching && results.length === 0 && query.length >= 2 && (
+          <p className="text-xs text-muted-foreground text-center py-4">Aucun résultat</p>
+        )}
+      </div>
     </div>
   );
 }

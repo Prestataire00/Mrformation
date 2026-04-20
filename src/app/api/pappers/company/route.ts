@@ -132,24 +132,37 @@ export async function GET(request: NextRequest) {
 
     const apiKey = process.env.PAPPERS_API_KEY;
     const isDemo = !apiKey || apiKey === "votre-cle-pappers" || apiKey.trim() === "";
+    const cleanSiret = siret.trim().replace(/\s/g, "");
 
     // ── Mode démo ─────────────────────────────────────────────────────────────
     if (isDemo) {
       return NextResponse.json({
-        data: { ...MOCK_DETAIL, siret: siret.trim() },
+        data: { ...MOCK_DETAIL, siret: cleanSiret },
         demo: true,
         message: "Mode démo — configurez PAPPERS_API_KEY pour des données réelles",
       });
     }
 
+    // ── Cache DB (30 jours) ───────────────────────────────────────────────────
+    const { data: cached } = await auth.supabase
+      .from("pappers_cache")
+      .select("data, expires_at")
+      .eq("siret", cleanSiret)
+      .eq("endpoint", "company")
+      .gt("expires_at", new Date().toISOString())
+      .maybeSingle();
+
+    if (cached) {
+      return NextResponse.json({ data: cached.data, demo: false, cached: true });
+    }
+
     // ── Appel API Pappers réel ─────────────────────────────────────────────────
     const url = new URL("https://api.pappers.fr/v2/entreprise");
-    url.searchParams.set("siret", siret.trim());
+    url.searchParams.set("siret", cleanSiret);
     url.searchParams.set("api_token", apiKey);
 
     const response = await fetch(url.toString(), {
       headers: { Accept: "application/json" },
-      next: { revalidate: 600 }, // cache 10 min
     });
 
     if (!response.ok) {
@@ -157,18 +170,37 @@ export async function GET(request: NextRequest) {
       console.error("[Pappers company] API error:", response.status, text);
       if (response.status === 404) {
         return NextResponse.json(
-          { error: "Entreprise non trouvée" },
+          { error: "Ce SIRET n'existe pas chez Pappers. Vérifiez le numéro ou recherchez par nom.", status_code: 404 },
           { status: 404 }
         );
       }
+      if (response.status === 429) {
+        return NextResponse.json(
+          { error: "Limite Pappers atteinte. Réessayez dans 1h.", status_code: 429 },
+          { status: 429 }
+        );
+      }
       return NextResponse.json(
-        { error: `Erreur API Pappers (${response.status})` },
+        { error: `Service Pappers indisponible (${response.status})`, status_code: response.status },
         { status: response.status }
       );
     }
 
     const json = (await response.json()) as Record<string, unknown>;
     const detail = mapPappersDetail(json);
+
+    // ── Stocker en cache ──────────────────────────────────────────────────────
+    await auth.supabase
+      .from("pappers_cache")
+      .upsert({
+        siret: cleanSiret,
+        siren: detail.siren,
+        endpoint: "company",
+        data: detail,
+        fetched_at: new Date().toISOString(),
+        expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      }, { onConflict: "siret" })
+      .then(() => {}); // fire & forget
 
     return NextResponse.json({ data: detail, demo: false });
   } catch (error) {

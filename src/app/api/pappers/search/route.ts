@@ -112,16 +112,16 @@ export async function GET(request: NextRequest) {
 
     const apiKey = process.env.PAPPERS_API_KEY;
     const isDemo = !apiKey || apiKey === "votre-cle-pappers" || apiKey.trim() === "";
+    const cleanQ = q.trim().toLowerCase();
 
     // ── Mode démo ─────────────────────────────────────────────────────────────
     if (isDemo) {
-      const query = q.toLowerCase();
       const filtered = MOCK_COMPANIES.filter(
         (c) =>
-          c.company_name.toLowerCase().includes(query) ||
-          c.siret.includes(query) ||
-          c.siren.includes(query) ||
-          c.city.toLowerCase().includes(query)
+          c.company_name.toLowerCase().includes(cleanQ) ||
+          c.siret.includes(cleanQ) ||
+          c.siren.includes(cleanQ) ||
+          c.city.toLowerCase().includes(cleanQ)
       );
 
       return NextResponse.json({
@@ -139,14 +139,19 @@ export async function GET(request: NextRequest) {
 
     const response = await fetch(url.toString(), {
       headers: { Accept: "application/json" },
-      next: { revalidate: 300 }, // cache 5 min
     });
 
     if (!response.ok) {
       const text = await response.text();
       console.error("[Pappers search] API error:", response.status, text);
+      if (response.status === 429) {
+        return NextResponse.json(
+          { error: "Limite Pappers atteinte. Réessayez dans 1h.", status_code: 429 },
+          { status: 429 }
+        );
+      }
       return NextResponse.json(
-        { error: `Erreur API Pappers (${response.status})` },
+        { error: `Service Pappers indisponible (${response.status})`, status_code: response.status },
         { status: response.status }
       );
     }
