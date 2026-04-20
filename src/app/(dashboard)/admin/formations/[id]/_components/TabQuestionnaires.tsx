@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   ClipboardList, Target, Clock, TrendingUp, CheckCircle2,
-  AlertCircle, Plus, ChevronRight, Mail, Eye, X, Loader2, BarChart3,
+  AlertCircle, Plus, ChevronRight, Mail, Eye, X, Loader2, BarChart3, Pencil, ShieldAlert,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { useToast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
 import type { Session } from "@/lib/types";
+import { AdminFillQuestionnaireDialog } from "@/components/questionnaires/AdminFillQuestionnaireDialog";
 
 interface Props { formation: Session; onRefresh: () => Promise<void>; }
 
@@ -184,6 +185,7 @@ export function TabQuestionnaires({ formation, onRefresh }: Props) {
 function ItemDetail({ stage, item, formation, questionnaires, assignments, enrollments, companies, responses, supabase, toast, onRefresh }: Record<string, unknown> & { stage: Stage; item: ItemType }) {
   const [selectedQId, setSelectedQId] = useState("");
   const [saving, setSaving] = useState(false);
+  const [adminFillTarget, setAdminFillTarget] = useState<{ learnerId: string; learnerName: string } | null>(null);
   const sb = supabase as ReturnType<typeof createClient>;
   const t = toast as (p: Record<string, unknown>) => void;
   const current = (assignments as Array<Record<string, unknown>>)[0];
@@ -271,7 +273,67 @@ function ItemDetail({ stage, item, formation, questionnaires, assignments, enrol
             <Button variant="outline" className="w-full justify-start text-red-600 hover:bg-red-50" onClick={handleRemove} disabled={saving}><X className="h-4 w-4 mr-2" />Retirer</Button>
           </div>
         )}
+
+        {/* Liste apprenants avec saisie admin */}
+        {current && enr.length > 0 && (
+          <div className="space-y-2">
+            <h4 className="font-semibold text-sm">Réponses par apprenant</h4>
+            <div className="space-y-1 max-h-60 overflow-y-auto">
+              {enr.map((enrollment) => {
+                const learner = (enrollment as Record<string, unknown>).learner as { id: string; first_name: string; last_name: string } | null;
+                if (!learner) return null;
+                const hasResponded = resp.some(r => r.questionnaire_id === current.questionnaire_id && r.learner_id === learner.id);
+                const adminFilled = resp.find(r => r.questionnaire_id === current.questionnaire_id && r.learner_id === learner.id && (r as Record<string, unknown>).fill_mode && (r as Record<string, unknown>).fill_mode !== "learner");
+                const learnerName = `${learner.last_name?.toUpperCase()} ${learner.first_name}`;
+
+                return (
+                  <div key={learner.id} className="flex items-center justify-between p-2 rounded border text-sm">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-sm truncate">{learnerName}</span>
+                      {hasResponded ? (
+                        <Badge variant="outline" className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200 shrink-0">Répondu</Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-[10px] shrink-0">En attente</Badge>
+                      )}
+                      {adminFilled && (
+                        <Badge variant="outline" className="text-[10px] bg-orange-50 text-orange-700 border-orange-200 shrink-0">
+                          <ShieldAlert className="h-2.5 w-2.5 mr-0.5" />
+                          Saisie admin
+                        </Badge>
+                      )}
+                    </div>
+                    {!hasResponded && (
+                      <Button size="sm" variant="ghost" className="h-6 text-xs gap-1 shrink-0"
+                        onClick={() => setAdminFillTarget({ learnerId: learner.id, learnerName })}>
+                        <Pencil className="h-3 w-3" /> Saisir
+                      </Button>
+                    )}
+                    {adminFilled && (
+                      <Button size="sm" variant="ghost" className="h-6 text-xs gap-1 shrink-0"
+                        onClick={() => setAdminFillTarget({ learnerId: learner.id, learnerName })}>
+                        <Pencil className="h-3 w-3" /> Modifier
+                      </Button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Admin fill dialog */}
+      {adminFillTarget && current && (
+        <AdminFillQuestionnaireDialog
+          open={!!adminFillTarget}
+          onClose={() => setAdminFillTarget(null)}
+          questionnaireId={current.questionnaire_id as string}
+          learnerId={adminFillTarget.learnerId}
+          learnerName={adminFillTarget.learnerName}
+          sessionId={fm.id}
+          onSuccess={async () => { setAdminFillTarget(null); await (onRefresh as () => Promise<void>)(); }}
+        />
+      )}
     </>
   );
 }
