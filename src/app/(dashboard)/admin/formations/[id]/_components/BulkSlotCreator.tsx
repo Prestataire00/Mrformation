@@ -74,20 +74,11 @@ export function BulkSlotCreator({ formation, onRefresh }: Props) {
         const month = String(current.getMonth() + 1).padStart(2, "0");
         const day = String(current.getDate()).padStart(2, "0");
         const dateStr = `${year}-${month}-${day}`;
-        // Compute local timezone offset (e.g. "+02:00" for Paris summer)
-        const offset = (() => {
-          const d = new Date(`${dateStr}T12:00:00`);
-          const off = -d.getTimezoneOffset();
-          const sign = off >= 0 ? "+" : "-";
-          const h = String(Math.floor(Math.abs(off) / 60)).padStart(2, "0");
-          const m = String(Math.abs(off) % 60).padStart(2, "0");
-          return `${sign}${h}:${m}`;
-        })();
         if (withLunch) {
-          slots.push({ title: slotTitle, start_time: `${dateStr}T${timeStart}:00${offset}`, end_time: `${dateStr}T${lunchStart}:00${offset}` });
-          slots.push({ title: slotTitle, start_time: `${dateStr}T${lunchEnd}:00${offset}`, end_time: `${dateStr}T${timeEnd}:00${offset}` });
+          slots.push({ title: slotTitle, start_time: `${dateStr}T${timeStart}:00`, end_time: `${dateStr}T${lunchStart}:00` });
+          slots.push({ title: slotTitle, start_time: `${dateStr}T${lunchEnd}:00`, end_time: `${dateStr}T${timeEnd}:00` });
         } else {
-          slots.push({ title: slotTitle, start_time: `${dateStr}T${timeStart}:00${offset}`, end_time: `${dateStr}T${timeEnd}:00${offset}` });
+          slots.push({ title: slotTitle, start_time: `${dateStr}T${timeStart}:00`, end_time: `${dateStr}T${timeEnd}:00` });
         }
       }
       current.setDate(current.getDate() + 1);
