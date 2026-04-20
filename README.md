@@ -370,3 +370,6 @@ npm run lint       # Analyse le code avec ESLint
 ## Licence
 
 Projet privé - MR FORMATION / C3V FORMATION. Tous droits réservés.
+
+
+<!-- CodeRabbit integration test -->
