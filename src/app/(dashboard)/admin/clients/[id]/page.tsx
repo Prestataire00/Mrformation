@@ -199,6 +199,9 @@ export default function ClientDetailPage() {
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Tab state
+  const [activeTab, setActiveTab] = useState("overview");
+
   // Client edit
   const [editingClient, setEditingClient] = useState(false);
 
@@ -937,7 +940,7 @@ export default function ClientDetailPage() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setEditingClient(true)}
+                onClick={() => { setEditingClient(true); setActiveTab("overview"); }}
                 className="text-white/70 hover:text-white hover:bg-white/10 gap-1.5"
               >
                 <Pencil className="h-3.5 w-3.5" />
@@ -984,10 +987,7 @@ export default function ClientDetailPage() {
           size="sm"
           className="gap-1.5 text-xs"
           style={{ background: "#374151" }}
-          onClick={() => {
-            const tabsList = document.querySelector('[data-state="active"][value="emails"]') || document.querySelector('[value="emails"]');
-            if (tabsList) (tabsList as HTMLElement).click();
-          }}
+          onClick={() => setActiveTab("communication")}
         >
           <Send className="h-3.5 w-3.5" />
           Envoyer un email
@@ -996,10 +996,7 @@ export default function ClientDetailPage() {
           size="sm"
           variant="outline"
           className="gap-1.5 text-xs"
-          onClick={() => {
-            const tabsList = document.querySelector('[value="documents"]');
-            if (tabsList) (tabsList as HTMLElement).click();
-          }}
+          onClick={() => setActiveTab("documents")}
         >
           <FileText className="h-3.5 w-3.5" />
           Documents
@@ -1130,7 +1127,7 @@ export default function ClientDetailPage() {
       </div>
 
       {/* ===== MAIN TABS ===== */}
-      <Tabs defaultValue="overview">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="w-full justify-start border-b rounded-none h-auto p-0 bg-transparent gap-0 flex-wrap">
           {[
             { value: "overview", label: "Vue d'ensemble", icon: Building2 },
