@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
   Plus, CheckCircle, Loader2, Trash2, Undo2, FileDown, Send, Upload, Eye, Pencil,
@@ -96,6 +97,7 @@ export function TabFinances({ formation, onRefresh }: Props) {
   const { toast } = useToast();
   const { entity } = useEntity();
   const supabase = createClient();
+  const searchParams = useSearchParams();
 
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [charges, setCharges] = useState<Charge[]>([]);
@@ -168,6 +170,18 @@ export function TabFinances({ formation, onRefresh }: Props) {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Auto-open edit dialog from URL param ?edit_invoice=xxx
+  useEffect(() => {
+    const editId = searchParams.get("edit_invoice");
+    if (editId && invoices.length > 0 && !editingInvoiceId) {
+      const inv = invoices.find(i => i.id === editId);
+      if (inv && inv.status === "pending" && !inv.is_avoir) {
+        handleEditInvoice(inv);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, invoices]);
 
   // ── Create invoice ──
 

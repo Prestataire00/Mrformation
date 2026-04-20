@@ -4,9 +4,13 @@ import { useEffect, useState, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
-import { Download, Loader2, CheckCircle, Eye } from "lucide-react";
+import { Download, Loader2, MoreHorizontal, Eye, CheckCircle, Pencil, ExternalLink, Building2 } from "lucide-react";
 import { SkeletonTable, SkeletonStats } from "@/components/ui/skeleton-rows";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { downloadXlsx } from "@/lib/export-xlsx";
 import { formatCurrency } from "@/lib/utils";
 import { useToast } from "@/components/ui/use-toast";
@@ -17,6 +21,7 @@ interface InvoiceRow {
   session_title: string;
   session_start_date: string | null;
   recipient_type: string;
+  recipient_id: string;
   recipient_name: string;
   amount: number;
   reference: string;
@@ -42,11 +47,27 @@ const STATUS_COLORS: Record<string, string> = {
   cancelled: "bg-gray-100 text-gray-500 line-through",
 };
 
+const STATUS_DOT: Record<string, string> = {
+  pending: "bg-amber-400",
+  sent: "bg-blue-400",
+  paid: "bg-emerald-500",
+  late: "bg-red-500",
+  cancelled: "bg-gray-300",
+};
+
 const TYPE_LABELS: Record<string, string> = {
   learner: "Apprenant",
   company: "Entreprise",
   financier: "Financeur",
 };
+
+function getRecipientHref(inv: InvoiceRow): string | null {
+  if (!inv.recipient_id) return null;
+  if (inv.recipient_type === "company") return `/admin/clients/${inv.recipient_id}`;
+  if (inv.recipient_type === "learner") return `/admin/clients/apprenants/${inv.recipient_id}`;
+  if (inv.recipient_type === "financier") return "/admin/clients/financeurs";
+  return null;
+}
 
 export default function SuiviFacturesPage() {
   const supabase = createClient();
@@ -68,7 +89,7 @@ export default function SuiviFacturesPage() {
     try {
       const { data } = await supabase
         .from("formation_invoices")
-        .select("id, session_id, recipient_type, recipient_name, amount, reference, status, due_date, is_avoir, created_at, prefix, number")
+        .select("id, session_id, recipient_type, recipient_id, recipient_name, amount, reference, status, due_date, is_avoir, created_at, prefix, number")
         .eq("entity_id", entityId)
         .order("created_at", { ascending: false });
 
@@ -196,29 +217,18 @@ export default function SuiviFacturesPage() {
       <div className="flex flex-wrap items-end gap-3 mb-6">
         <div>
           <label className="block text-xs text-gray-500 mb-1">Date début</label>
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#374151]"
-          />
+          <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
+            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#374151]" />
         </div>
         <div>
           <label className="block text-xs text-gray-500 mb-1">Date fin</label>
-          <input
-            type="date"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#374151]"
-          />
+          <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
+            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#374151]" />
         </div>
         <div>
           <label className="block text-xs text-gray-500 mb-1">Statut</label>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#374151]"
-          >
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
+            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#374151]">
             <option value="all">Tous</option>
             <option value="pending">En attente</option>
             <option value="sent">Envoyée</option>
@@ -229,11 +239,8 @@ export default function SuiviFacturesPage() {
         </div>
         <div>
           <label className="block text-xs text-gray-500 mb-1">Type</label>
-          <select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#374151]"
-          >
+          <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}
+            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#374151]">
             <option value="all">Tous</option>
             <option value="learner">Apprenant</option>
             <option value="company">Entreprise</option>
@@ -262,7 +269,7 @@ export default function SuiviFacturesPage() {
               <th className="px-4 py-3 text-right font-semibold text-gray-600">Montant</th>
               <th className="px-4 py-3 text-left font-semibold text-gray-600">Statut</th>
               <th className="px-4 py-3 text-left font-semibold text-gray-600">Échéance</th>
-              <th className="px-4 py-3 text-left font-semibold text-gray-600">Actions</th>
+              <th className="px-4 py-3 text-center font-semibold text-gray-600 w-10"></th>
             </tr>
           </thead>
           <tbody>
@@ -274,51 +281,106 @@ export default function SuiviFacturesPage() {
               </tr>
             ) : (
               filtered.map((inv) => {
-                const badge = STATUS_COLORS[inv.status] ?? STATUS_COLORS.pending;
+                const badgeColor = STATUS_COLORS[inv.status] ?? STATUS_COLORS.pending;
+                const dotColor = STATUS_DOT[inv.status] ?? STATUS_DOT.pending;
+                const recipientHref = getRecipientHref(inv);
+                const isPending = inv.status === "pending";
+                const canMarkPaid = !inv.is_avoir && inv.status !== "paid" && inv.status !== "cancelled";
+
                 return (
                   <tr key={inv.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                    {/* Référence — cliquable */}
                     <td className="px-4 py-3 font-mono text-xs font-semibold">
-                      {inv.reference}
+                      <Link
+                        href={`/admin/formations/${inv.session_id}?tab=finances`}
+                        className="text-[#374151] hover:underline"
+                      >
+                        {inv.reference}
+                      </Link>
                       {inv.is_avoir && (
                         <Badge variant="outline" className="ml-2 text-xs border-purple-300 text-purple-600">Avoir</Badge>
                       )}
                     </td>
+
+                    {/* Formation — cliquable */}
                     <td className="px-4 py-3 text-xs">
                       <Link href={`/admin/formations/${inv.session_id}`} className="text-[#374151] hover:underline font-medium">
                         {inv.session_title}
                       </Link>
                     </td>
-                    <td className="px-4 py-3 text-gray-700">{inv.recipient_name}</td>
+
+                    {/* Destinataire — cliquable */}
+                    <td className="px-4 py-3 text-gray-700">
+                      {recipientHref ? (
+                        <Link href={recipientHref} className="text-[#374151] hover:underline font-medium flex items-center gap-1">
+                          <Building2 className="h-3 w-3 text-gray-400" />
+                          {inv.recipient_name}
+                        </Link>
+                      ) : (
+                        <span>{inv.recipient_name}</span>
+                      )}
+                    </td>
+
                     <td className="px-4 py-3 text-gray-600 text-xs">{TYPE_LABELS[inv.recipient_type] || inv.recipient_type}</td>
                     <td className={`px-4 py-3 text-right font-medium ${inv.is_avoir ? "text-purple-600" : "text-gray-900"}`}>
                       {formatCurrency(inv.amount)}
                     </td>
+
+                    {/* Statut avec dot coloré */}
                     <td className="px-4 py-3">
-                      <Badge className={`${badge} hover:${badge} text-xs`}>
-                        {STATUS_LABELS[inv.status] || inv.status}
-                      </Badge>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`} />
+                        <Badge className={`${badgeColor} hover:${badgeColor} text-xs`}>
+                          {STATUS_LABELS[inv.status] || inv.status}
+                        </Badge>
+                      </div>
                     </td>
+
                     <td className="px-4 py-3 text-gray-600 text-xs">
                       {inv.due_date ? new Date(inv.due_date).toLocaleDateString("fr-FR") : "—"}
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <Link
-                          href={`/admin/formations/${inv.session_id}?tab=finances`}
-                          className="text-gray-500 hover:text-gray-800 text-xs font-medium flex items-center gap-1"
-                          title="Voir la facture"
-                        >
-                          <Eye className="h-3 w-3" /> Voir
-                        </Link>
-                        {inv.status !== "paid" && inv.status !== "cancelled" && !inv.is_avoir && (
-                          <button
-                            onClick={() => handleMarkPaid(inv)}
-                            className="text-green-600 hover:text-green-800 text-xs font-medium flex items-center gap-1"
-                          >
-                            <CheckCircle className="h-3 w-3" /> Payée
-                          </button>
-                        )}
-                      </div>
+
+                    {/* Actions dropdown */}
+                    <td className="px-4 py-3 text-center">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-48">
+                          <DropdownMenuItem asChild>
+                            <Link href={`/admin/formations/${inv.session_id}?tab=finances`} className="gap-2">
+                              <Eye className="h-3.5 w-3.5" /> Voir la facture
+                            </Link>
+                          </DropdownMenuItem>
+                          {isPending && !inv.is_avoir && (
+                            <DropdownMenuItem asChild>
+                              <Link href={`/admin/formations/${inv.session_id}?tab=finances&edit_invoice=${inv.id}`} className="gap-2">
+                                <Pencil className="h-3.5 w-3.5" /> Modifier
+                              </Link>
+                            </DropdownMenuItem>
+                          )}
+                          {canMarkPaid && (
+                            <DropdownMenuItem onClick={() => handleMarkPaid(inv)} className="gap-2 text-green-700">
+                              <CheckCircle className="h-3.5 w-3.5" /> Marquer payée
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem asChild>
+                            <Link href={`/admin/formations/${inv.session_id}`} className="gap-2">
+                              <ExternalLink className="h-3.5 w-3.5" /> Ouvrir la formation
+                            </Link>
+                          </DropdownMenuItem>
+                          {recipientHref && (
+                            <DropdownMenuItem asChild>
+                              <Link href={recipientHref} className="gap-2">
+                                <Building2 className="h-3.5 w-3.5" /> Voir le destinataire
+                              </Link>
+                            </DropdownMenuItem>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </td>
                   </tr>
                 );
