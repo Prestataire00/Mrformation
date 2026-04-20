@@ -147,10 +147,13 @@ export function TabQuestionnaires({ formation, onRefresh }: Props) {
                         <div className="flex items-center gap-3 shrink-0">
                           {stats.configured ? (
                             <>
+                              <div className={cn("flex items-center justify-center w-10 h-10 rounded-full text-xs font-bold border-2",
+                                stats.total > 0 && stats.responded === stats.total ? "border-emerald-500 text-emerald-700 bg-emerald-50" :
+                                stats.responded > 0 ? "border-blue-500 text-blue-700 bg-blue-50" : "border-amber-400 text-amber-700 bg-amber-50"
+                              )}>
+                                {stats.total > 0 ? Math.round((stats.responded / stats.total) * 100) : 0}%
+                              </div>
                               <div className="text-right"><p className="text-xs font-semibold text-gray-700">{stats.responded}/{stats.total}</p><p className="text-[10px] text-muted-foreground">réponses</p></div>
-                              <Badge className={cn("text-[10px]", stats.responded === stats.total && stats.total > 0 ? "bg-emerald-100 text-emerald-700" : stats.responded > 0 ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700")}>
-                                {stats.responded === stats.total && stats.total > 0 ? "Complet" : stats.responded > 0 ? "En cours" : "Envoyé"}
-                              </Badge>
                             </>
                           ) : (
                             <Badge variant="outline" className="text-[10px] bg-gray-50 text-gray-500"><Plus className="h-2.5 w-2.5 mr-0.5" />À configurer</Badge>
@@ -201,6 +204,7 @@ function ItemDetail({ stage, item, formation, questionnaires, assignments, enrol
       if (current) await sb.from(table).delete().eq("id", current.id);
       const ins: Record<string, unknown> = { session_id: fm.id, questionnaire_id: selectedQId };
       if (item.category === "evaluation") { ins.evaluation_type = item.type; ins.learner_id = null; }
+      else { ins.satisfaction_type = item.type; }
       const { error } = await sb.from(table).insert(ins);
       if (error) throw error;
       t({ title: "Questionnaire attribué" });
