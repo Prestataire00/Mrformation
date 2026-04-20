@@ -55,6 +55,40 @@ const DOC_COLORS: Record<string, string> = {
   custom: "border-l-slate-500",
 };
 
+const DOC_BADGE_COLORS: Record<string, string> = {
+  convocation: "bg-blue-50 text-blue-700 border-blue-200",
+  certificat_realisation: "bg-green-50 text-green-700 border-green-200",
+  attestation_assiduite: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  feuille_emargement: "bg-amber-50 text-amber-700 border-amber-200",
+  feuille_emargement_collectif: "bg-amber-50 text-amber-700 border-amber-200",
+  cgv: "bg-gray-50 text-gray-600 border-gray-200",
+  politique_confidentialite: "bg-gray-50 text-gray-600 border-gray-200",
+  reglement_interieur: "bg-gray-50 text-gray-600 border-gray-200",
+  programme_formation: "bg-gray-50 text-gray-600 border-gray-200",
+  convention_entreprise: "bg-purple-50 text-purple-700 border-purple-200",
+  convention_intervention: "bg-purple-50 text-purple-700 border-purple-200",
+  contrat_sous_traitance: "bg-rose-50 text-rose-700 border-rose-200",
+  planning_semaine: "bg-teal-50 text-teal-700 border-teal-200",
+  custom: "bg-slate-50 text-slate-600 border-slate-200",
+};
+
+const DOC_SHORT: Record<string, string> = {
+  convocation: "Conv.",
+  certificat_realisation: "Cert.",
+  attestation_assiduite: "Att.",
+  feuille_emargement: "Émarg.",
+  feuille_emargement_collectif: "Émarg. coll.",
+  cgv: "CGV",
+  politique_confidentialite: "RGPD",
+  reglement_interieur: "R.I.",
+  programme_formation: "Prog.",
+  convention_entreprise: "Convention",
+  convention_intervention: "Conv. interv.",
+  contrat_sous_traitance: "Sous-trait.",
+  planning_semaine: "Planning",
+  custom: "Custom",
+};
+
 const DOC_LABELS: Record<string, string> = {
   convocation: "CONVOCATION À LA FORMATION",
   certificat_realisation: "CERTIFICAT DE RÉALISATION",
@@ -738,6 +772,9 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     return (
       <div key={doc.id} className={cn("flex items-center justify-between py-2 border-b last:border-b-0 gap-2 border-l-2 pl-3", DOC_COLORS[docType] || "border-l-slate-300")}>
         <div className="flex items-center gap-2 min-w-0">
+          <span className={cn("text-[10px] font-semibold px-1.5 py-0.5 rounded border shrink-0", DOC_BADGE_COLORS[docType] || DOC_BADGE_COLORS.custom)}>
+            {DOC_SHORT[docType] || docType}
+          </span>
           <span className="text-xs font-medium truncate">{label}</span>
           {renderStatusBadges(doc)}
         </div>
@@ -812,6 +849,9 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     return (
       <div key={doc.id} className={cn("flex items-center justify-between py-2 border-b last:border-b-0 gap-2 border-l-2 pl-3", DOC_COLORS[docType] || "border-l-slate-300")}>
         <div className="flex items-center gap-2 min-w-0">
+          <span className={cn("text-[10px] font-semibold px-1.5 py-0.5 rounded border shrink-0", DOC_BADGE_COLORS[docType] || DOC_BADGE_COLORS.custom)}>
+            {DOC_SHORT[docType] || docType}
+          </span>
           <span className="text-xs font-medium truncate">{label}</span>
           {renderStatusBadges(doc)}
         </div>
