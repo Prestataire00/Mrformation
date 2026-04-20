@@ -442,6 +442,17 @@ export default function NewQuotePage() {
           <div className="space-y-4">
             <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Informations</h3>
             <div className="space-y-3">
+              {prospectName && (
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Destinataire</label>
+                  <div className="flex items-center gap-2 h-8 px-3 bg-gray-50 border rounded-md text-sm">
+                    <span className="font-medium text-gray-900">{prospectName}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-600">
+                      {clientId ? "Client" : "Prospect"}
+                    </span>
+                  </div>
+                </div>
+              )}
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">N° devis</label>
                 <Input value={form.reference} onChange={(e) => updateField("reference", e.target.value)} className="h-8 text-sm font-mono" />
