@@ -33,6 +33,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { SearchSelect } from "@/components/ui/search-select";
 import {
   Plus,
   Search,
@@ -99,6 +100,7 @@ interface SessionFormData {
   location: string;
   meeting_url: string;
   mode: "presentiel" | "distanciel" | "hybride";
+  type: "inter" | "intra";
   status: "upcoming" | "in_progress" | "completed" | "cancelled";
   max_participants: string;
   trainer_id: string;
@@ -114,6 +116,7 @@ const emptyForm: SessionFormData = {
   location: "",
   meeting_url: "",
   mode: "presentiel",
+  type: "inter",
   status: "upcoming",
   max_participants: "",
   trainer_id: "",
@@ -248,6 +251,7 @@ export default function SessionsPage() {
       location: session.location || "",
       meeting_url: (session as unknown as Record<string, unknown>).meeting_url as string || "",
       mode: session.mode,
+      type: (session.type as "inter" | "intra") || "inter",
       status: session.status,
       max_participants: session.max_participants?.toString() || "",
       trainer_id: session.trainer_id || "",
@@ -280,6 +284,7 @@ export default function SessionsPage() {
       location: formData.location.trim() || null,
       meeting_url: formData.meeting_url.trim() || null,
       mode: formData.mode,
+      type: formData.type,
       status: formData.status,
       max_participants: formData.max_participants ? parseInt(formData.max_participants) : null,
       trainer_id: formData.trainer_id || null,
@@ -734,18 +739,29 @@ export default function SessionsPage() {
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="s_training">Formation associée</Label>
+              <SearchSelect
+                options={trainings.map((t) => ({ value: t.id, label: t.title, sublabel: t.classification || "" }))}
+                onSelect={(v) => setFormData((p) => ({ ...p, training_id: v }))}
+                placeholder="Rechercher une formation..."
+              />
+              {formData.training_id && (
+                <p className="text-xs text-green-700 bg-green-50 rounded px-2 py-1 mt-1">
+                  {trainings.find((t) => t.id === formData.training_id)?.title}
+                </p>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label>Type de session</Label>
               <Select
-                value={formData.training_id || "none"}
-                onValueChange={(v) => setFormData((p) => ({ ...p, training_id: v === "none" ? "" : v }))}
+                value={formData.type}
+                onValueChange={(v) => setFormData((p) => ({ ...p, type: v as "inter" | "intra" }))}
               >
-                <SelectTrigger id="s_training">
-                  <SelectValue placeholder="Sélectionner une formation..." />
+                <SelectTrigger>
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">Aucune formation</SelectItem>
-                  {trainings.map((t) => (
-                    <SelectItem key={t.id} value={t.id}>{t.title}</SelectItem>
-                  ))}
+                  <SelectItem value="inter">INTER — Inter-entreprises</SelectItem>
+                  <SelectItem value="intra">INTRA — Chez le client</SelectItem>
                 </SelectContent>
               </Select>
             </div>
