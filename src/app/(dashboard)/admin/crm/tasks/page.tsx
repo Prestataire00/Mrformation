@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
 import {
@@ -1095,7 +1096,12 @@ function TaskKanbanCard({ task, onToggle, completingTask, completionNotes, onCom
           <div className="flex items-center gap-2 mt-1.5 text-[10px] text-gray-400">
             {task.due_date && <span>{task.due_date}</span>}
             {task.assignee && <span>{task.assignee.first_name}</span>}
-            {task.prospect && <span className="truncate">{task.prospect.company_name}</span>}
+            {task.prospect && task.prospect_id && (
+              <Link href={`/admin/crm/prospects/${task.prospect_id}`} className="truncate text-[#374151] hover:underline font-medium" onClick={(e) => e.stopPropagation()}>
+                {task.prospect.company_name}
+              </Link>
+            )}
+            {task.prospect && !task.prospect_id && <span className="truncate">{task.prospect.company_name}</span>}
           </div>
           {task.completion_notes && task.status === "completed" && (
             <p className="text-xs text-gray-500 italic mt-1">{"\uD83D\uDCDD"} {task.completion_notes}</p>
