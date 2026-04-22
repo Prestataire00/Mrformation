@@ -44,6 +44,11 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
   const [saving, setSaving] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
+  // Company selection for INTER
+  const [selectedClientId, setSelectedClientId] = useState("");
+  const companies = formation.formation_companies || [];
+  const showCompanySelect = companies.length > 1;
+
   // Create learner form
   const [newFirstName, setNewFirstName] = useState("");
   const [newLastName, setNewLastName] = useState("");
@@ -69,16 +74,15 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
   const handleAdd = async () => {
     if (!selectedLearnerId) return;
     setSaving(true);
-    // Auto-link to company for INTRA formations with a single company
-    const companies = formation.formation_companies || [];
-    const autoClientId = formation.type === "intra" && companies.length === 1
-      ? companies[0].client_id
-      : null;
+    // Link to company: manual selection (INTER multi) or auto (INTRA single)
+    const fcs = formation.formation_companies || [];
+    const clientId = selectedClientId
+      || (fcs.length === 1 ? fcs[0].client_id : null);
 
     const { error } = await supabase.from("enrollments").insert({
       session_id: formation.id,
       learner_id: selectedLearnerId,
-      client_id: autoClientId,
+      client_id: clientId,
       status: "registered",
     });
     setSaving(false);
@@ -92,6 +96,7 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
       toast({ title: "Apprenant ajouté" });
       setDialogOpen(false);
       setSelectedLearnerId("");
+      setSelectedClientId("");
       onRefresh();
     }
   };
@@ -269,6 +274,22 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
                 </p>
               )}
             </div>
+            {showCompanySelect && (
+              <div>
+                <label className="text-sm font-medium mb-1.5 block">Entreprise de rattachement</label>
+                <SearchSelect
+                  options={companies.filter(c => c.client).map(c => ({
+                    value: c.client_id,
+                    label: c.client!.company_name,
+                  }))}
+                  onSelect={setSelectedClientId}
+                  placeholder="Choisir l'entreprise..."
+                />
+                {!selectedClientId && (
+                  <p className="text-xs text-muted-foreground mt-1">Optionnel — utile pour les formations INTER multi-entreprises</p>
+                )}
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Annuler</Button>
