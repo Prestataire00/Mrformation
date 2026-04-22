@@ -772,6 +772,10 @@ export default function DocumentsPage() {
 
         {/* ═══ ONGLET 1 : TEMPLATES OFFICIELS ═══ */}
         <TabsContent value="official" className="space-y-6">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-900 flex gap-2">
+            <span className="shrink-0 mt-0.5">ℹ️</span>
+            <span>Modèles de base fournis par la plateforme. Cliquez <strong>Utiliser comme base</strong> pour créer votre propre version personnalisée.</span>
+          </div>
           <p className="text-sm text-muted-foreground">
             Les {OFFICIAL_TEMPLATES.length} documents officiels utilisés dans les fiches formation. Identiques à ceux de l&apos;onglet Convention & Documents.
           </p>
@@ -895,6 +899,10 @@ export default function DocumentsPage() {
 
         {/* ═══ ONGLET 2 : MES MODÈLES (custom) ═══ */}
         <TabsContent value="custom" className="space-y-4">
+          <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-sm text-emerald-900 flex gap-2">
+            <span className="shrink-0 mt-0.5">✏️</span>
+            <span>Vos modèles personnalisés. Ils remplacent les modèles officiels dans vos formations quand ils sont associés.</span>
+          </div>
           <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
             <div className="flex flex-col sm:flex-row gap-3 flex-1">
               <div className="relative flex-1 min-w-[200px]">
