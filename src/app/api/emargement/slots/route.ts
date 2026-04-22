@@ -139,7 +139,8 @@ export async function POST(request: NextRequest) {
         : enrollment.learner;
       if (!learner) continue;
 
-      // Check if non-expired, unused token already exists
+      // Check if ANY token exists for this (session, slot, learner)
+      // including used ones — prevents duplicate creation
       const { data: existing } = await supabase
         .from("signing_tokens")
         .select("*")
@@ -148,8 +149,8 @@ export async function POST(request: NextRequest) {
         .eq("learner_id", learner.id)
         .eq("signer_type", "learner")
         .eq("token_type", "individual")
-        .is("used_at", null)
         .gt("expires_at", new Date().toISOString())
+        .order("created_at", { ascending: true })
         .maybeSingle();
 
       if (existing) {
@@ -190,8 +191,8 @@ export async function POST(request: NextRequest) {
         .eq("trainer_id", trainer.id)
         .eq("signer_type", "trainer")
         .eq("token_type", "individual")
-        .is("used_at", null)
         .gt("expires_at", new Date().toISOString())
+        .order("created_at", { ascending: true })
         .maybeSingle();
 
       if (existing) {
