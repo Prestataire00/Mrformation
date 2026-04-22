@@ -274,14 +274,32 @@ function ItemDetail({ stage, item, formation, questionnaires, assignments, enrol
             <Button variant="outline" className="w-full justify-start" onClick={async () => {
               const qId = current.questionnaire_id as string;
               const qTitle = (current.questionnaire as Record<string, string>)?.title || "Questionnaire";
-              const base = typeof window !== "undefined" ? window.location.origin : "";
-              const url = `${base}/learner/questionnaires/${qId}?session_id=${fm.id}`;
               try {
+                // Generate public tokens
+                const res = await fetch(`/api/formations/${fm.id}/questionnaire-tokens`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ questionnaire_id: qId }),
+                });
+                if (!res.ok) throw new Error("Erreur génération");
+                const { tokens } = await res.json();
+
+                if (tokens.length === 0) { t({ title: "Aucun apprenant inscrit" }); return; }
+
+                // Show first token QR as preview
+                const base = typeof window !== "undefined" ? window.location.origin : "";
+                const firstUrl = `${base}/questionnaire/${tokens[0].token}`;
                 const QRCode = (await import("qrcode")).default;
-                const qrDataUrl = await QRCode.toDataURL(url, { width: 256, margin: 2 });
-                setQrDialog({ open: true, url, title: qTitle, qrDataUrl });
-              } catch { t({ title: "Erreur QR", variant: "destructive" }); }
-            }}><QrCode className="h-4 w-4 mr-2" />QR Code pour présentiel</Button>
+                const qrDataUrl = await QRCode.toDataURL(firstUrl, { width: 256, margin: 2 });
+                setQrDialog({ open: true, url: firstUrl, title: `${qTitle} (${tokens.length} QR)`, qrDataUrl });
+
+                // Also generate + download PDF with all QR codes
+                const { exportQuestionnaireQRPdf } = await import("@/lib/questionnaire-qr-pdf-export");
+                const doc = await exportQuestionnaireQRPdf({ tokens, questionnaireTitle: qTitle, sessionTitle: fm.title, baseUrl: base });
+                doc.save(`QR_${qTitle.replace(/\s+/g, "_")}.pdf`);
+                t({ title: `${tokens.length} QR codes générés`, description: "PDF téléchargé" });
+              } catch (err) { t({ title: "Erreur QR", description: err instanceof Error ? err.message : "Erreur", variant: "destructive" }); }
+            }}><QrCode className="h-4 w-4 mr-2" />QR Codes présentiel (PDF)</Button>
             <Button variant="outline" className="w-full justify-start text-red-600 hover:bg-red-50" onClick={handleRemove} disabled={saving}><X className="h-4 w-4 mr-2" />Retirer</Button>
           </div>
         )}
