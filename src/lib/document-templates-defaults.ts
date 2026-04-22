@@ -114,10 +114,8 @@ function renderSignatureCell(
 ): string {
   if (sig) {
     const dataUrl = signatureToDataUrl(sig.signature_data);
-    const ts = sig.signed_at ? new Date(sig.signed_at).toLocaleString("fr-FR", { timeZone: "Europe/Paris", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
     return `<div style="text-align:center;">
       <img src="${dataUrl}" alt="Signature" style="max-width:120px;height:${height};object-fit:contain;" />
-      <p style="font-size:8px;color:#6b7280;margin:2px 0 0 0;">${ts}</p>
     </div>`;
   }
   if (slotIsPast) {
