@@ -57,5 +57,7 @@
   "update_program_secretariat_medical.sql",
   "add_sent_via_column.sql",
   "add_automation_template.sql",
-  "add_default_crm_automations.sql"
+  "add_default_crm_automations.sql",
+  "fix_signatures_unique_slot_aware.sql",
+  "fix_signing_tokens_duplicates.sql"
 ]
