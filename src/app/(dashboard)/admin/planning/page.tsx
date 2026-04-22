@@ -142,7 +142,7 @@ function formatTime(iso: string): string {
   const d = new Date(iso);
   // If time part is midnight, just show the date
   if (d.getHours() === 0 && d.getMinutes() === 0) return "";
-  return d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" });
 }
 
 function isSameDay(a: Date, b: Date): boolean {

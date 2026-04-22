@@ -198,6 +198,7 @@ export async function generateEmargementPDF(params: EmargementPdfParams): Promis
         hour: "2-digit",
         minute: "2-digit",
         second: "2-digit",
+        timeZone: "Europe/Paris",
       });
       const title = (slot.title || formationTitle).toUpperCase();
       return `LE ${start} À ${end}\n(${title})`;

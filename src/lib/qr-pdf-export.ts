@@ -89,7 +89,7 @@ function formatDateFr(date: Date = new Date()): string {
 
 function formatTimeFr(dateStr: string): string {
   const d = new Date(dateStr);
-  return d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" });
 }
 
 function formatSlotDate(dateStr: string): string {

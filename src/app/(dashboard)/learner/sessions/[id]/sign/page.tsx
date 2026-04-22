@@ -68,7 +68,7 @@ export default function LearnerSignPage() {
   const [learnerId, setLearnerId] = useState<string | null>(null);
 
   const formatTime = (dateStr: string) =>
-    new Date(dateStr).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+    new Date(dateStr).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" });
 
   const loadData = useCallback(async () => {
     setLoading(true);

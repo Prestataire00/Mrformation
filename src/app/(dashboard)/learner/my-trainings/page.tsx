@@ -271,6 +271,7 @@ export default function LearnerMyTrainingsPage() {
     return new Date(dateStr).toLocaleTimeString("fr-FR", {
       hour: "2-digit",
       minute: "2-digit",
+      timeZone: "Europe/Paris",
     });
   }
 
