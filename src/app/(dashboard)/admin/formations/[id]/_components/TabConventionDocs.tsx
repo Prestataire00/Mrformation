@@ -978,8 +978,34 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
           {defaultDocTypes.map((docType) => renderDocRow(getDoc(docType, ownerType, ownerId), docType, email))}
           {STATIC_DOCS.map((docType) => renderStaticDocRow(getDoc(docType, ownerType, ownerId), docType, email))}
           {customDocs.map((doc) => renderDocRow(doc, "custom", email))}
-          {renderAddCustomDoc(ownerType, ownerId, true, "Avec e-signature")}
-          {renderAddCustomDoc(ownerType, ownerId, false, "Sans e-signature")}
+          {templates.length > 0 && (
+            <div className="flex items-center gap-2 pt-2">
+              <Select
+                value={customSelections[`${ownerType}-${ownerId}`] || ""}
+                onValueChange={(val) => setCustomSelections((prev) => ({ ...prev, [`${ownerType}-${ownerId}`]: val }))}
+              >
+                <SelectTrigger className="h-7 text-xs flex-1 min-w-0">
+                  <SelectValue placeholder="Ajouter un document personnalisé..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {templates.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                size="sm"
+                className="h-7 text-xs shrink-0"
+                onClick={() => {
+                  const templateId = customSelections[`${ownerType}-${ownerId}`];
+                  if (templateId) handleAddCustomDoc(ownerType, ownerId, templateId, false);
+                }}
+                disabled={!customSelections[`${ownerType}-${ownerId}`]}
+              >
+                <Plus className="h-3 w-3 mr-1" /> Ajouter
+              </Button>
+            </div>
+          )}
         </div>
       </div>
     );
