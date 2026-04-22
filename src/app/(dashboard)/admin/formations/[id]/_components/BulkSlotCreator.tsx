@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { toUtcIsoFromParisTime } from "@/lib/timezone";
 import { CalendarPlus, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -75,10 +76,10 @@ export function BulkSlotCreator({ formation, onRefresh }: Props) {
         const day = String(current.getDate()).padStart(2, "0");
         const dateStr = `${year}-${month}-${day}`;
         if (withLunch) {
-          slots.push({ title: slotTitle, start_time: `${dateStr}T${timeStart}:00`, end_time: `${dateStr}T${lunchStart}:00` });
-          slots.push({ title: slotTitle, start_time: `${dateStr}T${lunchEnd}:00`, end_time: `${dateStr}T${timeEnd}:00` });
+          slots.push({ title: slotTitle, start_time: toUtcIsoFromParisTime(dateStr, timeStart), end_time: toUtcIsoFromParisTime(dateStr, lunchStart) });
+          slots.push({ title: slotTitle, start_time: toUtcIsoFromParisTime(dateStr, lunchEnd), end_time: toUtcIsoFromParisTime(dateStr, timeEnd) });
         } else {
-          slots.push({ title: slotTitle, start_time: `${dateStr}T${timeStart}:00`, end_time: `${dateStr}T${timeEnd}:00` });
+          slots.push({ title: slotTitle, start_time: toUtcIsoFromParisTime(dateStr, timeStart), end_time: toUtcIsoFromParisTime(dateStr, timeEnd) });
         }
       }
       current.setDate(current.getDate() + 1);
