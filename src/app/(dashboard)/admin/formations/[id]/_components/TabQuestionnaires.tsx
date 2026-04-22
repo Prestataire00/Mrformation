@@ -206,7 +206,7 @@ function ItemDetail({ stage, item, formation, questionnaires, assignments, enrol
       if (current) await sb.from(table).delete().eq("id", current.id);
       const ins: Record<string, unknown> = { session_id: fm.id, questionnaire_id: selectedQId };
       if (item.category === "evaluation") { ins.evaluation_type = item.type; ins.learner_id = null; }
-      else { ins.satisfaction_type = item.type; }
+      else { ins.satisfaction_type = item.type; ins.target_type = item.target || "learner"; }
       const { error } = await sb.from(table).insert(ins);
       if (error) throw error;
       t({ title: "Questionnaire attribué" });
