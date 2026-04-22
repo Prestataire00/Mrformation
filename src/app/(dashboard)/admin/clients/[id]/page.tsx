@@ -936,17 +936,7 @@ export default function ClientDetailPage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => { setEditingClient(true); setActiveTab("overview"); }}
-                className="text-white/70 hover:text-white hover:bg-white/10 gap-1.5"
-              >
-                <Pencil className="h-3.5 w-3.5" />
-                Modifier
-              </Button>
-            </div>
+            {/* Bouton Modifier retiré du header — édition disponible dans Vue d'ensemble */}
           </div>
 
           {/* KPI Cards */}
