@@ -1149,6 +1149,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
               docTypes={DEFAULT_LEARNER_DOCS as unknown as string[]}
               docLabels={DOC_LABELS}
               avatarColorFn={getAvatarColor}
+              onCellClick={(_ownerId, _docType, docId) => { if (docId) { const d = docs.find(x => x.id === docId); if (d) handleView(d); } }}
             />
           )}
           {companyMatrix.length > 0 && (
@@ -1161,6 +1162,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
               docTypes={DEFAULT_COMPANY_DOCS as unknown as string[]}
               docLabels={DOC_LABELS}
               avatarColorFn={getAvatarColor}
+              onCellClick={(_ownerId, _docType, docId) => { if (docId) { const d = docs.find(x => x.id === docId); if (d) handleView(d); } }}
             />
           )}
           {trainerMatrix.length > 0 && (
@@ -1173,6 +1175,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
               docTypes={DEFAULT_TRAINER_DOCS as unknown as string[]}
               docLabels={DOC_LABELS}
               avatarColorFn={getAvatarColor}
+              onCellClick={(_ownerId, _docType, docId) => { if (docId) { const d = docs.find(x => x.id === docId); if (d) handleView(d); } }}
             />
           )}
 
