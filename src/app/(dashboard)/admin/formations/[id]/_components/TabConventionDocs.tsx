@@ -5,7 +5,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import {
   Loader2, Eye, CheckCircle, Send, Copy, Clock, Download,
-  ChevronDown, ChevronUp, Plus, FileDown, PenLine, Undo2,
+  ChevronDown, ChevronUp, Plus, FileDown, PenLine, Undo2, Pencil,
 } from "lucide-react";
 import DOMPurify from "dompurify";
 import { Button } from "@/components/ui/button";
@@ -770,32 +770,24 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
 
   // ===== RENDER HELPERS =====
 
-  const renderStatusBadges = (doc: FormationConventionDocument | undefined) => {
+  const renderStatusBadge = (doc: FormationConventionDocument | undefined) => {
     if (!doc) return null;
-    return (
-      <div className="flex items-center gap-1.5">
-        {!STATIC_DOCS.includes(doc.doc_type as ConventionDocType) && (
-          <span className={`text-xs px-1.5 py-0.5 rounded-full ${doc.is_confirmed ? "bg-green-100 text-green-700" : "bg-red-50 text-red-600"}`}>
-            {doc.is_confirmed ? "Figé" : "Modifiable"}
-          </span>
-        )}
-        <span className={`text-xs px-1.5 py-0.5 rounded-full ${doc.is_sent ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
-          {doc.is_sent ? "Envoyé" : "Non envoyé"}
-        </span>
-        {doc.requires_signature && (
-          <span
-            className={`text-xs px-1.5 py-0.5 rounded-full ${doc.is_signed ? "bg-green-100 text-green-700" : doc.is_sent ? "bg-orange-100 text-orange-700" : "bg-orange-50 text-orange-600"}`}
-            title={
-              doc.is_signed ? "Document signé électroniquement"
-              : doc.is_sent ? `En attente de signature — envoyé à ${(doc as unknown as Record<string, string>).signer_email || "destinataire"}`
-              : "Signature non demandée"
-            }
-          >
-            {doc.is_signed ? "Signé" : doc.is_sent ? "En attente signature" : "Non signé"}
-          </span>
-        )}
-      </div>
-    );
+    const signerEmail = (doc as unknown as Record<string, string>).signer_email;
+
+    // État progressif : Signé > En attente signature > Figé > Brouillon
+    if (doc.is_signed) {
+      return <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-100 text-green-700 border border-green-200 flex items-center gap-1" title="Document signé électroniquement"><CheckCircle className="h-3 w-3" />Signé</span>;
+    }
+    if (doc.requires_signature && doc.is_sent && doc.is_confirmed) {
+      return <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 border border-orange-200 flex items-center gap-1" title={signerEmail ? `Envoyé à ${signerEmail}` : "Envoyé pour signature"}><Clock className="h-3 w-3" />En attente</span>;
+    }
+    if (doc.is_confirmed) {
+      return <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 border border-blue-200 flex items-center gap-1" title="Document figé — prêt pour envoi"><CheckCircle className="h-3 w-3" />Figé</span>;
+    }
+    if (STATIC_DOCS.includes(doc.doc_type as ConventionDocType)) {
+      return <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-100 flex items-center gap-1"><CheckCircle className="h-3 w-3" />Auto</span>;
+    }
+    return <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 border border-gray-200 flex items-center gap-1"><Pencil className="h-3 w-3" />Brouillon</span>;
   };
 
   // Compact document row
@@ -811,7 +803,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
             {DOC_SHORT[docType] || docType}
           </span>
           <span className="text-xs font-medium truncate">{label}</span>
-          {renderStatusBadges(doc)}
+          {renderStatusBadge(doc)}
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           <Button size="sm" variant="ghost" className="h-6 text-xs gap-1" onClick={() => handleView(doc)}>
@@ -889,7 +881,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
             {DOC_SHORT[docType] || docType}
           </span>
           <span className="text-xs font-medium truncate">{label}</span>
-          {renderStatusBadges(doc)}
+          {renderStatusBadge(doc)}
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           <Button size="sm" variant="ghost" className="h-6 text-xs gap-1" onClick={() => handleView(doc)}>
