@@ -80,19 +80,38 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Check if already signed (slot-aware)
+    // Check if already signed (strict slot-aware)
+    console.log("[emargement/sign] Pre-check duplicate", {
+      sessionId: tokenData.session_id,
+      signerId,
+      signerType,
+      timeSlotId: tokenData.time_slot_id,
+      tokenId: tokenData.id,
+      tokenType: tokenData.token_type,
+    });
+
     let existingQuery = supabase
       .from("signatures")
-      .select("id")
+      .select("id, time_slot_id, signed_at")
       .eq("session_id", tokenData.session_id)
       .eq("signer_id", signerId)
       .eq("signer_type", signerType);
 
+    // Strict scoping: match exactly the slot (or null if no slot)
     if (tokenData.time_slot_id) {
       existingQuery = existingQuery.eq("time_slot_id", tokenData.time_slot_id);
+    } else {
+      existingQuery = existingQuery.is("time_slot_id", null);
     }
 
-    const { data: existing } = await existingQuery.maybeSingle();
+    const { data: existing, error: existingErr } = await existingQuery.maybeSingle();
+
+    console.log("[emargement/sign] Check result", {
+      found: !!existing,
+      existingId: existing?.id,
+      existingSlot: existing?.time_slot_id,
+      error: existingErr?.message,
+    });
 
     if (existing) {
       return NextResponse.json(
