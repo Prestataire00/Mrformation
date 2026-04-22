@@ -192,15 +192,30 @@ export function TabFinances({ formation, onRefresh }: Props) {
     const hours = formation.planned_hours;
     const desc = `Formation ${formation.title}${hours ? ` (${hours}h)` : ""}`;
     const unitPrice = enrollCount > 1 ? (totalPrice / enrollCount) : totalPrice;
-    // Pre-fill notes with participant names
+
+    // Participant names
     const participantNames = (formation.enrollments || [])
       .filter(e => e.learner)
       .map(e => `${e.learner!.first_name} ${e.learner!.last_name}`)
       .join(", ");
+
+    // Company SIRET + address (from first linked company)
+    const firstCompany = (formation.formation_companies || [])[0]?.client as unknown as Record<string, string | null> | undefined;
+    const companyInfo: string[] = [];
+    if (firstCompany) {
+      if (firstCompany.siret) companyInfo.push(`SIRET : ${firstCompany.siret}`);
+      const addr = [firstCompany.address, firstCompany.postal_code, firstCompany.city].filter(Boolean).join(" ");
+      if (addr) companyInfo.push(`Adresse : ${addr}`);
+    }
+
+    const notesParts: string[] = [];
+    if (participantNames) notesParts.push(`Participants : ${participantNames}`);
+    if (companyInfo.length > 0) notesParts.push(companyInfo.join("\n"));
+
     setInvoiceForm(f => ({
       ...f,
       lines: [{ description: desc, quantity: String(enrollCount), unit_price: unitPrice.toFixed(2).replace(".", ",") }],
-      notes: participantNames ? `Participants : ${participantNames}` : f.notes,
+      notes: notesParts.length > 0 ? notesParts.join("\n") : f.notes,
     }));
   };
 
