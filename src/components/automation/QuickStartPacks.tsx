@@ -81,7 +81,11 @@ export function QuickStartPacks({ onActivated, existingRuleNames }: Props) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ rules: allRules }),
         });
-        if (!res.ok) throw new Error("Erreur activation formation");
+        if (!res.ok) {
+          const errBody = await res.text();
+          console.error("[pack-activation] PUT failed:", res.status, errBody);
+          throw new Error(`Erreur serveur (${res.status})`);
+        }
       }
 
       toast({
@@ -90,8 +94,9 @@ export function QuickStartPacks({ onActivated, existingRuleNames }: Props) {
       });
       setSelectedPack(null);
       onActivated();
-    } catch {
-      toast({ title: "Erreur", description: "Impossible d'activer le pack", variant: "destructive" });
+    } catch (err) {
+      console.error("[pack-activation]", err);
+      toast({ title: "Erreur d'activation", description: err instanceof Error ? err.message : "Impossible d'activer le pack", variant: "destructive" });
     } finally {
       setActivating(false);
     }
