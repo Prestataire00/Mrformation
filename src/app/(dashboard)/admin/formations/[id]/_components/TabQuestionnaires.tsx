@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   ClipboardList, Target, Clock, TrendingUp, CheckCircle2,
-  AlertCircle, Plus, ChevronRight, Mail, Eye, X, Loader2, BarChart3, Pencil, ShieldAlert,
+  AlertCircle, Plus, ChevronRight, Mail, Eye, X, Loader2, BarChart3, Pencil, ShieldAlert, QrCode, Copy,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -186,6 +186,7 @@ function ItemDetail({ stage, item, formation, questionnaires, assignments, enrol
   const [selectedQId, setSelectedQId] = useState("");
   const [saving, setSaving] = useState(false);
   const [adminFillTarget, setAdminFillTarget] = useState<{ learnerId: string; learnerName: string } | null>(null);
+  const [qrDialog, setQrDialog] = useState<{ open: boolean; url: string; title: string; qrDataUrl: string } | null>(null);
   const sb = supabase as ReturnType<typeof createClient>;
   const t = toast as (p: Record<string, unknown>) => void;
   const current = (assignments as Array<Record<string, unknown>>)[0];
@@ -270,6 +271,17 @@ function ItemDetail({ stage, item, formation, questionnaires, assignments, enrol
                 t({ title: "Rappels envoyés", description: `${d.sent} envoyé(s)` });
               } catch { t({ title: "Erreur", variant: "destructive" }); }
             }}><Mail className="h-4 w-4 mr-2" />Relancer les non-répondants</Button>
+            <Button variant="outline" className="w-full justify-start" onClick={async () => {
+              const qId = current.questionnaire_id as string;
+              const qTitle = (current.questionnaire as Record<string, string>)?.title || "Questionnaire";
+              const base = typeof window !== "undefined" ? window.location.origin : "";
+              const url = `${base}/learner/questionnaires/${qId}?session_id=${fm.id}`;
+              try {
+                const QRCode = (await import("qrcode")).default;
+                const qrDataUrl = await QRCode.toDataURL(url, { width: 256, margin: 2 });
+                setQrDialog({ open: true, url, title: qTitle, qrDataUrl });
+              } catch { t({ title: "Erreur QR", variant: "destructive" }); }
+            }}><QrCode className="h-4 w-4 mr-2" />QR Code pour présentiel</Button>
             <Button variant="outline" className="w-full justify-start text-red-600 hover:bg-red-50" onClick={handleRemove} disabled={saving}><X className="h-4 w-4 mr-2" />Retirer</Button>
           </div>
         )}
@@ -321,6 +333,27 @@ function ItemDetail({ stage, item, formation, questionnaires, assignments, enrol
           </div>
         )}
       </div>
+
+      {/* QR code dialog */}
+      {qrDialog && (
+        <Dialog open={qrDialog.open} onOpenChange={() => setQrDialog(null)}>
+          <DialogContent className="max-w-sm text-center">
+            <DialogHeader>
+              <DialogTitle>QR Code — {qrDialog.title}</DialogTitle>
+            </DialogHeader>
+            <div className="flex flex-col items-center gap-4 py-4">
+              <img src={qrDialog.qrDataUrl} alt="QR Code" className="w-48 h-48" />
+              <p className="text-xs text-muted-foreground break-all px-4">{qrDialog.url}</p>
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={() => {
+                navigator.clipboard.writeText(qrDialog.url);
+                t({ title: "Lien copié" });
+              }}>
+                <Copy className="h-3.5 w-3.5" /> Copier le lien
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* Admin fill dialog */}
       {adminFillTarget && current && (
