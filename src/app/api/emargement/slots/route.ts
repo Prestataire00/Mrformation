@@ -173,7 +173,20 @@ export async function POST(request: NextRequest) {
         .select()
         .single();
 
-      if (!error && newToken) {
+      if (error) {
+        if (error.code === "23505") {
+          // Race condition: re-fetch the existing token
+          const { data: raceToken } = await supabase
+            .from("signing_tokens").select("*")
+            .eq("session_id", session_id).eq("time_slot_id", slot.id)
+            .eq("learner_id", learner.id).eq("signer_type", "learner")
+            .gt("expires_at", new Date().toISOString())
+            .order("created_at", { ascending: true }).maybeSingle();
+          if (raceToken) learnerTokens.push({ ...raceToken, person: learner });
+        } else {
+          console.error("[emargement/slots] Learner token insert failed", { code: error.code, message: error.message, slotId: slot.id, learnerId: learner.id });
+        }
+      } else if (newToken) {
         learnerTokens.push({ ...newToken, person: learner });
       }
     }
@@ -214,7 +227,19 @@ export async function POST(request: NextRequest) {
         .select()
         .single();
 
-      if (!error && newToken) {
+      if (error) {
+        if (error.code === "23505") {
+          const { data: raceToken } = await supabase
+            .from("signing_tokens").select("*")
+            .eq("session_id", session_id).eq("time_slot_id", slot.id)
+            .eq("trainer_id", trainer.id).eq("signer_type", "trainer")
+            .gt("expires_at", new Date().toISOString())
+            .order("created_at", { ascending: true }).maybeSingle();
+          if (raceToken) trainerTokens.push({ ...raceToken, person: trainer });
+        } else {
+          console.error("[emargement/slots] Trainer token insert failed", { code: error.code, message: error.message, slotId: slot.id, trainerId: trainer.id });
+        }
+      } else if (newToken) {
         trainerTokens.push({ ...newToken, person: trainer });
       }
     }
