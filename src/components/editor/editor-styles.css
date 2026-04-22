@@ -42,9 +42,29 @@
   line-height: 1.4;
 }
 
-/* Paragraphs */
+.tiptap-editor .ProseMirror h1:first-child,
+.tiptap-editor .ProseMirror h2:first-child,
+.tiptap-editor .ProseMirror h3:first-child {
+  margin-top: 0;
+}
+
+/* Paragraphs — espacement généreux entre blocs */
 .tiptap-editor .ProseMirror p {
-  margin-bottom: 0.75rem;
+  margin-top: 0;
+  margin-bottom: 1em;
+  min-height: 1.5em;
+}
+
+/* Préserver les paragraphes vides (espacement manuel via Entrée) */
+.tiptap-editor .ProseMirror p:empty::before,
+.tiptap-editor .ProseMirror p br:only-child {
+  content: "\00a0";
+  display: inline-block;
+}
+
+/* Espacement naturel entre listes et le texte suivant */
+.tiptap-editor .ProseMirror li > p {
+  margin-bottom: 0.25em;
 }
 
 /* Lists */
