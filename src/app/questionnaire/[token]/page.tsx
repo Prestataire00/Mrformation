@@ -56,11 +56,11 @@ export default function PublicQuestionnairePage() {
     setResponses(prev => ({ ...prev, [qId]: value }));
   };
 
-  const answeredCount = info?.questions.filter(q => responses[q.id] !== undefined && responses[q.id] !== "").length || 0;
-  const totalQuestions = info?.questions.length || 0;
+  const answeredCount = info?.questions?.filter(q => responses[q.id] !== undefined && responses[q.id] !== "").length || 0;
+  const totalQuestions = info?.questions?.length || 0;
 
   const handleSubmit = async () => {
-    if (!info) return;
+    if (!info?.questions) return;
     const missing = info.questions.filter(q => q.is_required && (responses[q.id] === undefined || responses[q.id] === ""));
     if (missing.length > 0) {
       setError(`${missing.length} question(s) obligatoire(s) non remplie(s)`);
