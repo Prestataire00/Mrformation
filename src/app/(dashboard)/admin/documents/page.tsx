@@ -306,6 +306,9 @@ export default function DocumentsPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [learners, setLearners] = useState<Learner[]>([]);
 
+  // Active tab
+  const [activeTab, setActiveTab] = useState("official");
+
   // Template dialog
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   const [showStarterPicker, setShowStarterPicker] = useState(false);
@@ -756,7 +759,7 @@ export default function DocumentsPage() {
         {/* Bouton "Générer un document" retiré */}
       </div>
 
-      <Tabs defaultValue="official" className="space-y-4">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList>
           <TabsTrigger value="official">Templates officiels</TabsTrigger>
           <TabsTrigger value="custom">Mes modèles</TabsTrigger>
@@ -834,14 +837,49 @@ export default function DocumentsPage() {
                             >
                               <Eye className="h-3 w-3" /> Aperçu
                             </Button>
-                            {dbTemplate && (
+                            {dbTemplate ? (
                               <Button
                                 size="sm"
                                 variant="outline"
                                 className="h-7 text-xs gap-1"
                                 onClick={() => openEditTemplate(dbTemplate)}
                               >
-                                <Pencil className="h-3 w-3" /> Personnaliser
+                                <Pencil className="h-3 w-3" /> Modifier ma version
+                              </Button>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs gap-1"
+                                onClick={async () => {
+                                  try {
+                                    const demoData = {
+                                      formation: { id: "demo", title: "Formation", start_date: "2026-01-01", end_date: "2026-01-03", planned_hours: 21, mode: "presentiel", location: "Marseille", enrollments: [], formation_trainers: [], formation_time_slots: [], signatures: [] },
+                                      entityName: entity?.name || "MR FORMATION",
+                                    };
+                                    const html = getDefaultTemplate(ot.id, demoData as unknown as Parameters<typeof getDefaultTemplate>[1]) || "";
+                                    const { data: newTpl, error } = await supabase
+                                      .from("document_templates")
+                                      .insert({
+                                        name: `${ot.name} (personnalisé)`,
+                                        type: ot.type,
+                                        content: html,
+                                        entity_id: entityId,
+                                        system_key: ot.id,
+                                      })
+                                      .select()
+                                      .single();
+                                    if (error) throw error;
+                                    await fetchTemplates();
+                                    setActiveTab("custom");
+                                    openEditTemplate(newTpl as DocumentTemplate);
+                                    toast({ title: "Modèle créé", description: `"${newTpl.name}" prêt à personnaliser` });
+                                  } catch (err) {
+                                    toast({ title: "Erreur", description: err instanceof Error ? err.message : "Erreur", variant: "destructive" });
+                                  }
+                                }}
+                              >
+                                <Copy className="h-3 w-3" /> Utiliser comme base
                               </Button>
                             )}
                           </div>
