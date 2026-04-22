@@ -707,3 +707,14 @@ export async function downloadDevisPDF(data: DevisData, entityName?: string): Pr
   const doc = await generateDevisPDF(data, entityName);
   doc.save(`Devis_${data.reference}.pdf`);
 }
+
+export async function generateDevisPDFBase64(data: DevisData, entityName?: string): Promise<string> {
+  const doc = await generateDevisPDF(data, entityName);
+  const arrayBuffer = doc.output("arraybuffer");
+  const bytes = new Uint8Array(arrayBuffer);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}

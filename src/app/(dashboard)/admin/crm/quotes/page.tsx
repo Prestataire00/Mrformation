@@ -31,7 +31,7 @@ import {
   PenLine,
   CheckCircle,
 } from "lucide-react";
-import { downloadDevisPDF, generateDevisPDF, type DevisData } from "@/lib/devis-pdf";
+import { downloadDevisPDF, generateDevisPDF, generateDevisPDFBase64, type DevisData } from "@/lib/devis-pdf";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -286,102 +286,104 @@ export default function QuotesPage() {
     }
   }
 
+  async function buildDevisData(quote: CrmQuote): Promise<DevisData | null> {
+    let meta: Record<string, unknown> = {};
+    try { meta = quote.notes ? JSON.parse(quote.notes) : {}; } catch { /* notes is plain text */ }
+
+    let prospectName = "";
+    let prospectEmail: string | undefined;
+    let prospectPhone: string | undefined;
+    let prospectSiret: string | undefined;
+
+    if (quote.prospect_id) {
+      const { data: p } = await supabase
+        .from("crm_prospects")
+        .select("company_name, email, phone, siret, notes")
+        .eq("id", quote.prospect_id)
+        .single();
+      if (p) {
+        prospectName = p.company_name;
+        prospectEmail = p.email ?? undefined;
+        prospectPhone = p.phone ?? undefined;
+        prospectSiret = p.siret ?? undefined;
+      }
+    } else if (quote.client_id) {
+      const { data: c } = await supabase
+        .from("clients")
+        .select("company_name, email, phone, siret")
+        .eq("id", quote.client_id)
+        .single();
+      if (c) {
+        prospectName = c.company_name;
+        prospectEmail = c.email ?? undefined;
+        prospectPhone = c.phone ?? undefined;
+        prospectSiret = c.siret ?? undefined;
+      }
+    }
+
+    let lines: Array<Record<string, unknown>> = [];
+    const { data: dbLines } = await supabase
+      .from("crm_quote_lines")
+      .select("description, quantity, unit_price")
+      .eq("quote_id", quote.id)
+      .order("created_at", { ascending: true });
+    if (dbLines && dbLines.length > 0) {
+      lines = dbLines;
+    } else if (Array.isArray(meta.lines)) {
+      lines = meta.lines as Array<Record<string, unknown>>;
+    }
+
+    let tvaRate = 20;
+    if ((quote as unknown as Record<string, unknown>).tva != null) {
+      tvaRate = Number((quote as unknown as Record<string, unknown>).tva) || 20;
+    } else if (typeof meta.tva === "number") {
+      tvaRate = meta.tva;
+    } else if (typeof meta.tva === "string") {
+      tvaRate = parseFloat(String(meta.tva).replace(",", ".")) || 20;
+    }
+
+    const devisData: DevisData = {
+      reference: quote.reference ?? `DEV-${quote.id.slice(0, 6).toUpperCase()}`,
+      date_creation: quote.created_at?.slice(0, 10) ?? new Date().toISOString().slice(0, 10),
+      date_echeance: quote.valid_until ?? quote.created_at?.slice(0, 10) ?? "",
+      training_start: (meta.training_start as string) || undefined,
+      training_end: (meta.training_end as string) || undefined,
+      tva: tvaRate,
+      effectifs: meta.effectifs ? Number(meta.effectifs) : undefined,
+      duration: (meta.duration as string) || undefined,
+      notes: (meta.notes_text as string) || undefined,
+      mention: (meta.mention as string) || undefined,
+      training_title: (meta.training_title as string) || undefined,
+      signer_name: (meta.signer_name as string) || undefined,
+      validity_days: meta.validity_days ? Number(meta.validity_days) : 30,
+      lines: lines.map((l: Record<string, unknown>) => ({
+        description: String(l.description ?? ""),
+        quantity: Number(l.quantity ?? 1),
+        unit_price: Number(l.unit_price ?? 0),
+      })),
+      prospect_name: prospectName,
+      prospect_address: (meta.prospect_address as string) || undefined,
+      prospect_email: prospectEmail,
+      prospect_phone: prospectPhone,
+      prospect_siret: prospectSiret,
+      signature_data: (quote as unknown as Record<string, unknown>).signature_data as string | undefined,
+      signed_at: (quote as unknown as Record<string, unknown>).signed_at as string | undefined,
+      signer_ip: (quote as unknown as Record<string, unknown>).signer_ip as string | undefined,
+    };
+
+    if (devisData.lines.length === 0 && quote.amount && quote.amount > 0) {
+      const amountHT = quote.amount / (1 + tvaRate / 100);
+      const fallbackDesc = (meta.training_title as string) || quote.reference || "Formation";
+      devisData.lines = [{ description: fallbackDesc, quantity: 1, unit_price: Math.round(amountHT * 100) / 100 }];
+    }
+
+    return devisData;
+  }
+
   async function handleDownloadDevis(quote: CrmQuote) {
     try {
-      let meta: Record<string, unknown> = {};
-      try { meta = quote.notes ? JSON.parse(quote.notes) : {}; } catch { /* notes is plain text */ }
-
-      // Fetch prospect or client details for the PDF
-      let prospectName = "";
-      let prospectEmail: string | undefined;
-      let prospectPhone: string | undefined;
-      let prospectSiret: string | undefined;
-
-      if (quote.prospect_id) {
-        const { data: p } = await supabase
-          .from("crm_prospects")
-          .select("company_name, email, phone, siret, notes")
-          .eq("id", quote.prospect_id)
-          .single();
-        if (p) {
-          prospectName = p.company_name;
-          prospectEmail = p.email ?? undefined;
-          prospectPhone = p.phone ?? undefined;
-          prospectSiret = p.siret ?? undefined;
-        }
-      } else if (quote.client_id) {
-        const { data: c } = await supabase
-          .from("clients")
-          .select("company_name, email, phone, siret")
-          .eq("id", quote.client_id)
-          .single();
-        if (c) {
-          prospectName = c.company_name;
-          prospectEmail = c.email ?? undefined;
-          prospectPhone = c.phone ?? undefined;
-          prospectSiret = c.siret ?? undefined;
-        }
-      }
-
-      // Fetch lines from crm_quote_lines (with fallback to JSON meta.lines)
-      let lines: Array<Record<string, unknown>> = [];
-      const { data: dbLines } = await supabase
-        .from("crm_quote_lines")
-        .select("description, quantity, unit_price")
-        .eq("quote_id", quote.id)
-        .order("created_at", { ascending: true });
-      if (dbLines && dbLines.length > 0) {
-        lines = dbLines;
-      } else if (Array.isArray(meta.lines)) {
-        lines = meta.lines as Array<Record<string, unknown>>;
-      }
-
-      let tvaRate = 20;
-      // Use column first, then meta fallback
-      if ((quote as unknown as Record<string, unknown>).tva != null) {
-        tvaRate = Number((quote as unknown as Record<string, unknown>).tva) || 20;
-      } else if (typeof meta.tva === "number") {
-        tvaRate = meta.tva;
-      } else if (typeof meta.tva === "string") {
-        tvaRate = parseFloat(String(meta.tva).replace(",", ".")) || 20;
-      }
-
-      const devisData: DevisData = {
-        reference: quote.reference ?? `DEV-${quote.id.slice(0, 6).toUpperCase()}`,
-        date_creation: quote.created_at?.slice(0, 10) ?? new Date().toISOString().slice(0, 10),
-        date_echeance: quote.valid_until ?? quote.created_at?.slice(0, 10) ?? "",
-        training_start: (meta.training_start as string) || undefined,
-        training_end: (meta.training_end as string) || undefined,
-        tva: tvaRate,
-        effectifs: meta.effectifs ? Number(meta.effectifs) : undefined,
-        duration: (meta.duration as string) || undefined,
-        notes: (meta.notes_text as string) || undefined,
-        mention: (meta.mention as string) || undefined,
-        training_title: (meta.training_title as string) || undefined,
-        signer_name: (meta.signer_name as string) || undefined,
-        validity_days: meta.validity_days ? Number(meta.validity_days) : 30,
-        lines: lines.map((l: Record<string, unknown>) => ({
-          description: String(l.description ?? ""),
-          quantity: Number(l.quantity ?? 1),
-          unit_price: Number(l.unit_price ?? 0),
-        })),
-        prospect_name: prospectName,
-        prospect_address: (meta.prospect_address as string) || undefined,
-        prospect_email: prospectEmail,
-        prospect_phone: prospectPhone,
-        prospect_siret: prospectSiret,
-        // Signature data (if signed)
-        signature_data: (quote as unknown as Record<string, unknown>).signature_data as string | undefined,
-        signed_at: (quote as unknown as Record<string, unknown>).signed_at as string | undefined,
-        signer_ip: (quote as unknown as Record<string, unknown>).signer_ip as string | undefined,
-      };
-
-      if (devisData.lines.length === 0 && quote.amount && quote.amount > 0) {
-        const amountHT = quote.amount / (1 + tvaRate / 100);
-        const fallbackDesc = (meta.training_title as string) || quote.reference || "Formation";
-        devisData.lines = [{ description: fallbackDesc, quantity: 1, unit_price: Math.round(amountHT * 100) / 100 }];
-      }
-
+      const devisData = await buildDevisData(quote);
+      if (!devisData) throw new Error("Données manquantes");
       await downloadDevisPDF(devisData, entity?.name);
     } catch (err) {
       console.error("PDF download error:", err);
@@ -640,6 +642,17 @@ export default function QuotesPage() {
     setSignBody(`Bonjour${recipientName ? ` ${recipientName}` : ""},\n\nVeuillez trouver notre proposition commerciale ${quote.reference}${amount > 0 ? ` d'un montant de ${amount.toLocaleString("fr-FR")}€ HT` : ""}.\n\nPour accepter cette proposition, veuillez la signer électroniquement en cliquant sur le lien suivant :\n\n{{lien_signature}}\n\nCe lien est valide jusqu'au ${validUntilFr}.\n\nN'hésitez pas à nous contacter pour toute question.\n\nCordialement,\nL'équipe ${entityName}`);
     setSignAttachments([]);
     setSignPreviewOpen(true);
+
+    // Auto-generate and attach the quote PDF
+    (async () => {
+      try {
+        const devisData = await buildDevisData(quote);
+        if (devisData) {
+          const base64 = await generateDevisPDFBase64(devisData, entity?.name);
+          setSignAttachments([{ filename: `Devis_${quote.reference}.pdf`, content: base64 }]);
+        }
+      } catch { /* PDF generation failed silently — user can still add manually */ }
+    })();
   };
 
   const handleAddSignAttachment = (e: React.ChangeEvent<HTMLInputElement>) => {
