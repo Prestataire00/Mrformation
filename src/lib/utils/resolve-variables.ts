@@ -126,6 +126,34 @@ export function resolveVariables(content: string, data: ResolveContext): string 
     "{{liste_apprenants}}": listeApprenants,
     "{{formation_modalite}}": formationModalite,
     "{{formateurs_noms}}": formateursNoms,
+
+    // Programme
+    "{{programme_objectifs}}": (() => {
+      const p = data.session?.program;
+      if (!p) return data.session?.training?.objectives || "[Objectifs]";
+      return p.objectives || "[Objectifs]";
+    })(),
+    "{{programme_prerequis}}": (() => {
+      const c = (data.session?.program?.content || {}) as Record<string, string>;
+      return c.prerequisites || data.session?.training?.prerequisites || "Aucun prérequis particulier";
+    })(),
+    "{{programme_public}}": (() => {
+      const c = (data.session?.program?.content || {}) as Record<string, string>;
+      return c.target_audience || "[Public visé]";
+    })(),
+    "{{programme_contenu}}": (() => {
+      const c = (data.session?.program?.content || {}) as Record<string, string>;
+      return c.progression || c.content || "[Contenu du programme]";
+    })(),
+
+    // Organisme
+    "{{signature_organisme}}": (() => {
+      const name = data.session?.entity_id ? "" : "";
+      // Use hardcoded company info (same source as PDF templates)
+      return "[Signature organisme]";
+    })(),
+    "{{nda_organisme}}": "[NDA]",
+    "{{siret_organisme}}": "[SIRET organisme]",
   };
 
   let result = content;

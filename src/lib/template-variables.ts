@@ -332,4 +332,68 @@ export const TEMPLATE_VARIABLES: TemplateVariable[] = [
     category: "autres",
     availableIn: ["email"],
   },
+
+  // ── Programme (objectifs, contenu, prérequis) ──
+  {
+    key: "programme_objectifs",
+    placeholder: "{{programme_objectifs}}",
+    label: "Objectifs pédagogiques",
+    description: "Liste des objectifs du programme de formation",
+    example: "Maîtriser les techniques de management",
+    category: "formation",
+    availableIn: ["document"],
+  },
+  {
+    key: "programme_prerequis",
+    placeholder: "{{programme_prerequis}}",
+    label: "Prérequis",
+    description: "Prérequis nécessaires pour suivre la formation",
+    example: "Aucun prérequis particulier",
+    category: "formation",
+    availableIn: ["document"],
+  },
+  {
+    key: "programme_public",
+    placeholder: "{{programme_public}}",
+    label: "Public visé",
+    example: "Managers et chefs d'équipe",
+    category: "formation",
+    availableIn: ["document"],
+  },
+  {
+    key: "programme_contenu",
+    placeholder: "{{programme_contenu}}",
+    label: "Contenu du programme",
+    description: "Description détaillée du contenu pédagogique",
+    example: "Jour 1 : Introduction...",
+    category: "formation",
+    availableIn: ["document"],
+  },
+
+  // ── Signature organisme ──
+  {
+    key: "signature_organisme",
+    placeholder: "{{signature_organisme}}",
+    label: "Signature organisme",
+    description: "Nom et fonction du signataire de l'organisme",
+    example: "VICHOT Marc — Gérant",
+    category: "autres",
+    availableIn: ["document"],
+  },
+  {
+    key: "nda_organisme",
+    placeholder: "{{nda_organisme}}",
+    label: "N° déclaration d'activité",
+    example: "93132013113",
+    category: "autres",
+    availableIn: ["document", "email"],
+  },
+  {
+    key: "siret_organisme",
+    placeholder: "{{siret_organisme}}",
+    label: "SIRET de l'organisme",
+    example: "91311329600036",
+    category: "autres",
+    availableIn: ["document", "email"],
+  },
 ];
