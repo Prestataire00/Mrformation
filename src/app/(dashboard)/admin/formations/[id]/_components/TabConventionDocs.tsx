@@ -300,6 +300,19 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     const company = companies.find((c) => c.client_id === doc.owner_id)?.client;
     const trainerData = trainers.find((t) => t.trainer_id === doc.owner_id)?.trainer;
 
+    // Charger la signature client si le document est signé
+    let clientSignature: { signature_data: string; signer_name: string; signed_at: string; ip_address: string | null } | null = null;
+    if (doc.is_signed) {
+      const { data: sig } = await supabase
+        .from("document_signatures")
+        .select("signature_data, signer_name, signed_at, ip_address")
+        .eq("document_id", doc.id)
+        .order("signed_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (sig) clientSignature = sig;
+    }
+
     const templateData = {
       formation,
       learner: learner ? { id: learner.id, first_name: learner.first_name, last_name: learner.last_name, email: learner.email ?? undefined } : undefined,
@@ -307,6 +320,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
       trainer: trainerData || undefined,
       entityName,
       doc: { document_date: doc.document_date || null, confirmed_at: doc.confirmed_at || null },
+      clientSignature,
     };
 
     const resolveCtx = {

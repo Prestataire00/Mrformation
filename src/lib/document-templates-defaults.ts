@@ -20,6 +20,8 @@ interface TemplateData {
   missedSlots?: Array<{ date: string; hours: number }>;
   // Date figée du document (exigence Qualiopi)
   doc?: { document_date?: string | null; confirmed_at?: string | null };
+  // Signature électronique du client (convention, contrat)
+  clientSignature?: { signature_data: string; signer_name: string; signed_at: string; ip_address: string | null } | null;
 }
 
 // ──────────────────────────────────────────────
@@ -323,8 +325,20 @@ function conventionEntreprise(data: TemplateData): string {
       <div>
         <p style="font-size: 11px; color: #6b7280; margin: 0;">Pour le bénéficiaire</p>
         <p style="font-weight: 600; margin: 4px 0;">${companyName},</p>
-        <p style="margin: 0 0 48px 0;">${representant}</p>
-        <div style="border-bottom: 1px solid #d1d5db; width: 200px;"></div>
+        <p style="margin: 0 0 8px 0;">${representant}</p>
+        ${data.clientSignature ? `
+          <div style="margin: 8px 0;">
+            <img src="${signatureToDataUrl(data.clientSignature.signature_data)}" alt="Signature" style="max-width:180px;height:60px;object-fit:contain;" />
+          </div>
+          <p style="font-size: 8px; color: #6b7280; margin: 2px 0;">
+            Signé électroniquement par ${data.clientSignature.signer_name}<br/>
+            Le ${new Date(data.clientSignature.signed_at).toLocaleString("fr-FR", { timeZone: "Europe/Paris", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+            ${data.clientSignature.ip_address ? ` — IP : ${data.clientSignature.ip_address}` : ""}
+          </p>
+        ` : `
+          <div style="height: 48px;"></div>
+          <div style="border-bottom: 1px solid #d1d5db; width: 200px;"></div>
+        `}
       </div>
     </div>`;
 
