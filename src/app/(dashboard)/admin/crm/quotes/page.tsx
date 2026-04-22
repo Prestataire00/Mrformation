@@ -378,7 +378,8 @@ export default function QuotesPage() {
 
       if (devisData.lines.length === 0 && quote.amount && quote.amount > 0) {
         const amountHT = quote.amount / (1 + tvaRate / 100);
-        devisData.lines = [{ description: "Formation", quantity: 1, unit_price: Math.round(amountHT * 100) / 100 }];
+        const fallbackDesc = (meta.training_title as string) || quote.reference || "Formation";
+        devisData.lines = [{ description: fallbackDesc, quantity: 1, unit_price: Math.round(amountHT * 100) / 100 }];
       }
 
       await downloadDevisPDF(devisData, entity?.name);
@@ -440,7 +441,8 @@ export default function QuotesPage() {
 
       if (devisData.lines.length === 0 && quote.amount && quote.amount > 0) {
         const amountHT = quote.amount / (1 + tvaRate / 100);
-        devisData.lines = [{ description: "Formation", quantity: 1, unit_price: Math.round(amountHT * 100) / 100 }];
+        const fallbackDesc = (meta.training_title as string) || quote.reference || "Formation";
+        devisData.lines = [{ description: fallbackDesc, quantity: 1, unit_price: Math.round(amountHT * 100) / 100 }];
       }
 
       const doc = await generateDevisPDF(devisData, entity?.name);
