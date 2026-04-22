@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
 import { ArrowLeft, Plus, Trash2 } from "lucide-react";
+import { SearchSelect } from "@/components/ui/search-select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -500,13 +501,17 @@ export default function NewQuotePage() {
               </div>
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">Programme</label>
-                <Select value={form.program_id || "none"} onValueChange={(v) => handleProgramChange(v === "none" ? "" : v)}>
-                  <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Aucun" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Aucun</SelectItem>
-                    {programs.map((p) => <SelectItem key={p.id} value={p.id}>{p.title}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <SearchSelect
+                  options={programs.map((p) => ({ value: p.id, label: p.title, sublabel: p.duration_hours ? `${p.duration_hours}h` : "" }))}
+                  onSelect={(v) => handleProgramChange(v)}
+                  placeholder="Rechercher un programme..."
+                />
+                {form.program_id && (
+                  <div className="flex items-center justify-between mt-1">
+                    <p className="text-xs text-green-700 bg-green-50 rounded px-2 py-0.5">{programs.find(p => p.id === form.program_id)?.title}</p>
+                    <button onClick={() => handleProgramChange("")} className="text-xs text-gray-400 hover:text-gray-600">Retirer</button>
+                  </div>
+                )}
               </div>
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">Source BPF</label>
