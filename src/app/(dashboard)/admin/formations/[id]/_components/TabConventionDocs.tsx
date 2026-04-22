@@ -1182,6 +1182,13 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
             />
           )}
 
+          {/* Lien vers gestion des templates */}
+          <div className="flex justify-end">
+            <Link href="/admin/documents" className="text-xs text-blue-600 hover:underline flex items-center gap-1">
+              Gérer les modèles de documents →
+            </Link>
+          </div>
+
           {/* Documents communs — auto-confirmés */}
           <div className="border rounded-lg overflow-hidden">
             <div className="bg-emerald-50 border-b border-emerald-100 px-4 py-2">
