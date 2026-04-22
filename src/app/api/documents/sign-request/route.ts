@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Resend } from "resend";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { requireRole } from "@/lib/auth/require-role";
 import { sanitizeError } from "@/lib/api-error";
 import { logAudit } from "@/lib/audit-log";
 import { exportHtmlToPDFBase64 } from "@/lib/pdf-export";
 import { getDefaultTemplate } from "@/lib/document-templates-defaults";
-import { resolveVariables } from "@/lib/utils/resolve-variables";
+
+const isResendConfigured = !!process.env.RESEND_API_KEY && process.env.RESEND_API_KEY !== "votre-cle-resend";
+const resend = isResendConfigured ? new Resend(process.env.RESEND_API_KEY) : null;
 
 function getFromAddress(entityName: string): string {
   return entityName.toLowerCase().includes("c3v")
@@ -122,28 +126,46 @@ export async function POST(request: NextRequest) {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.URL || "https://mrformationcrm.netlify.app";
     const signUrl = `${appUrl}/sign/${token.token}`;
 
-    // Send email
+    // Send email directly via Resend (not via /api/emails/send which requires auth)
+    const subject = `Document à signer — ${docLabel} — ${session.title}`;
     const emailBody = `Bonjour${signer_name ? ` ${signer_name}` : ""},\n\nVeuillez trouver ci-joint le document "${docLabel}" relatif à la formation "${session.title}".\n\nPour signer ce document électroniquement, veuillez cliquer sur le lien suivant :\n${signUrl}\n\nCe lien est valide pendant 30 jours.\n\nCordialement,\nL'équipe ${entityName}`;
+    const fromAddress = getFromAddress(entityName);
+    const htmlBody = `<div style="font-family:sans-serif;font-size:14px;line-height:1.6;color:#374151;white-space:pre-wrap;">${emailBody.replace(/\n/g, "<br/>")}</div>`;
 
-    const emailPayload: Record<string, unknown> = {
-      to: signer_email,
-      subject: `Document à signer — ${docLabel} — ${session.title}`,
-      body: emailBody,
-      session_id,
-    };
-
-    if (pdfBase64) {
-      emailPayload.attachments = [{
-        filename: `${doc.doc_type}.pdf`,
-        content: pdfBase64,
-        type: "application/pdf",
-      }];
+    if (resend) {
+      const emailPayload: Parameters<typeof resend.emails.send>[0] = {
+        from: fromAddress,
+        to: [signer_email],
+        subject,
+        html: htmlBody,
+        text: emailBody,
+      };
+      if (pdfBase64) {
+        emailPayload.attachments = [{
+          filename: `${doc.doc_type}.pdf`,
+          content: Buffer.from(pdfBase64, "base64"),
+        }];
+      }
+      await resend.emails.send(emailPayload);
+    } else {
+      console.log("[sign-request] Simulated email to:", signer_email, "—", subject);
     }
 
-    await fetch(`${appUrl}/api/emails/send`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(emailPayload),
+    // Log in email_history
+    const serviceDb = createSupabaseClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    );
+    await serviceDb.from("email_history").insert({
+      entity_id: session.entity_id,
+      recipient_email: signer_email,
+      subject,
+      body: emailBody,
+      status: "sent",
+      sent_at: new Date().toISOString(),
+      sent_via: "resend",
+      session_id,
     });
 
     logAudit({
