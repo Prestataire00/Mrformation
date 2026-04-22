@@ -399,7 +399,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     if (error) {
       toast({ title: "Erreur", description: error.message, variant: "destructive" });
     } else {
-      toast({ title: "Document confirmé" });
+      toast({ title: "Document figé" });
       onRefresh();
     }
   };
@@ -415,7 +415,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     if (error) {
       toast({ title: "Erreur", description: error.message, variant: "destructive" });
     } else {
-      toast({ title: "Confirmation réinitialisée" });
+      toast({ title: "Document déverrouillé" });
       onRefresh();
     }
   };
@@ -439,7 +439,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     if (error) {
       toast({ title: "Erreur", description: error.message, variant: "destructive" });
     } else {
-      toast({ title: "Document confirmé avec date" });
+      toast({ title: "Document figé avec date" });
       onRefresh();
     }
   };
@@ -673,7 +673,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     if (error) {
       toast({ title: "Erreur", variant: "destructive" });
     } else {
-      toast({ title: "Tous les documents confirmés" });
+      toast({ title: "Tous les documents figés" });
       onRefresh();
     }
   };
@@ -776,7 +776,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
       <div className="flex items-center gap-1.5">
         {!STATIC_DOCS.includes(doc.doc_type as ConventionDocType) && (
           <span className={`text-xs px-1.5 py-0.5 rounded-full ${doc.is_confirmed ? "bg-green-100 text-green-700" : "bg-red-50 text-red-600"}`}>
-            {doc.is_confirmed ? "Confirmé" : "Non confirmé"}
+            {doc.is_confirmed ? "Figé" : "Modifiable"}
           </span>
         )}
         <span className={`text-xs px-1.5 py-0.5 rounded-full ${doc.is_sent ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
@@ -820,7 +820,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
                 disabled={isSaving}
               >
                 {saving === doc.id && <Loader2 className="h-3 w-3 animate-spin" />}
-                <CheckCircle className="h-3 w-3" /> Confirmer
+                <CheckCircle className="h-3 w-3" /> Figer
               </Button>
               <Input
                 type="date"
@@ -836,7 +836,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
                 disabled={saving === `date-${doc.id}`}
               >
                 {saving === `date-${doc.id}` && <Loader2 className="h-3 w-3 animate-spin" />}
-                Date + Confirmer
+                Date + Figer
               </Button>
             </>
           )}
@@ -970,7 +970,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
               disabled={saving === `confirm-all-${ownerId}`}
             >
               {saving === `confirm-all-${ownerId}` && <Loader2 className="h-3 w-3 animate-spin" />}
-              <CheckCircle className="h-3 w-3" /> Tout confirmer
+              <CheckCircle className="h-3 w-3" /> Tout figer
             </Button>
           </div>
         </div>
@@ -1057,7 +1057,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
   const statusDot = (s: "signed" | "sent" | "confirmed" | "none") => {
     if (s === "signed") return <span className="inline-block w-3 h-3 rounded-full bg-green-500" title="Signé" />;
     if (s === "sent") return <span className="inline-block w-3 h-3 rounded-full bg-amber-400" title="Envoyé" />;
-    if (s === "confirmed") return <span className="inline-block w-3 h-3 rounded-full bg-blue-400" title="Confirmé" />;
+    if (s === "confirmed") return <span className="inline-block w-3 h-3 rounded-full bg-blue-400" title="Figé" />;
     return <span className="inline-block w-3 h-3 rounded-full bg-gray-200" title="Non traité" />;
   };
 
@@ -1111,12 +1111,12 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
               .eq("owner_type", "learner")
               .eq("is_confirmed", false);
             setSaving(null);
-            if (!error) { toast({ title: "Tous les documents confirmés" }); onRefresh(); }
+            if (!error) { toast({ title: "Tous les documents figés" }); onRefresh(); }
           }}
           disabled={saving === "confirm-all-learners"}
         >
           {saving === "confirm-all-learners" && <Loader2 className="h-3 w-3 animate-spin" />}
-          <CheckCircle className="h-3 w-3" /> Tout confirmer
+          <CheckCircle className="h-3 w-3" /> Tout figer
         </Button>
         <div className="flex-1" />
         <Button
@@ -1236,7 +1236,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
                     disabled={isMassConfirming}
                   >
                     {isMassConfirming && <Loader2 className="h-3 w-3 animate-spin" />}
-                    <CheckCircle className="h-3 w-3" /> Confirmer
+                    <CheckCircle className="h-3 w-3" /> Figer
                   </Button>
                   <Button
                     size="sm"
@@ -1307,12 +1307,12 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
                   .eq("doc_type", "custom")
                   .eq("is_confirmed", false);
                 setSaving(null);
-                toast({ title: "Autres documents confirmés" });
+                toast({ title: "Documents figés" });
                 onRefresh();
               }}
               disabled={saving === "confirm-custom"}
             >
-              Tout confirmer
+              Tout figer
             </Button>
           </div>
         </div>
