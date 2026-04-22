@@ -198,9 +198,9 @@ export function TabPlanning({ formation, onRefresh }: Props) {
                         <div
                           key={slot.id}
                           className="text-xs p-1 mb-0.5 bg-primary/10 text-primary rounded truncate"
-                          title={`${new Date(slot.start_time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })} - ${slot.title || formation.title}`}
+                          title={`${new Date(slot.start_time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })} - ${slot.title || formation.title}`}
                         >
-                          {new Date(slot.start_time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}{" "}
+                          {new Date(slot.start_time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })}{" "}
                           {slot.title || formation.title}
                         </div>
                       ))}
@@ -241,8 +241,8 @@ export function TabPlanning({ formation, onRefresh }: Props) {
                         return (
                           <div key={slot.id} className="text-xs p-2 mb-1 bg-primary/10 text-primary rounded">
                             <div className="font-medium">
-                              {start.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })} -{" "}
-                              {end.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+                              {start.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })} -{" "}
+                              {end.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })}
                             </div>
                             <div className="truncate">{slot.title || formation.title}</div>
                           </div>
@@ -277,8 +277,8 @@ export function TabPlanning({ formation, onRefresh }: Props) {
                           const end = new Date(slot.end_time);
                           return (
                             <div key={slot.id} className="text-xs p-2 bg-primary/10 text-primary rounded">
-                              {start.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })} -{" "}
-                              {end.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })} |{" "}
+                              {start.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })} -{" "}
+                              {end.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })} |{" "}
                               {slot.title || formation.title}
                             </div>
                           );

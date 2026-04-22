@@ -74,9 +74,9 @@ export function TimeSlotCard({ slot, index, formationTitle, onRefresh }: Props) 
             <CardTitle className="text-base">Créneau {index + 1}</CardTitle>
           </div>
           <p className="text-sm text-muted-foreground">
-            {start.toLocaleDateString("fr-FR")} {start.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+            {start.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" })} {start.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })}
             {" - "}
-            {end.toLocaleDateString("fr-FR")} {end.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+            {end.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" })} {end.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })}
             {" "}({durationStr}) - {slot.title || formationTitle}
           </p>
         </CardHeader>

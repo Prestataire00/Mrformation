@@ -342,7 +342,7 @@ export function TabEmargements({ formation, onRefresh }: Props) {
       for (const slotData of tokens.slots) {
         const start = new Date(slotData.slot.start_time);
         const end = new Date(slotData.slot.end_time);
-        emailBody += `━━━ Créneau: ${start.toLocaleDateString("fr-FR")} ${start.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })} - ${end.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })} ━━━\n\n`;
+        emailBody += `━━━ Créneau: ${start.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" })} ${start.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })} - ${end.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })} ━━━\n\n`;
 
         if (slotData.trainer_tokens.length > 0) {
           emailBody += "Formateurs:\n";
@@ -572,7 +572,7 @@ export function TabEmargements({ formation, onRefresh }: Props) {
           })
           .join("");
         return `
-          <h3>Créneau ${i + 1} — ${start.toLocaleDateString("fr-FR")} ${start.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })} - ${end.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</h3>
+          <h3>Créneau ${i + 1} — ${start.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" })} ${start.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })} - ${end.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })}</h3>
           <table style="width:100%;border-collapse:collapse;margin-bottom:24px;">
             <thead><tr><th style="padding:8px;border:1px solid #ddd;text-align:left;">Nom</th><th style="padding:8px;border:1px solid #ddd;text-align:left;">Signature</th></tr></thead>
             <tbody>${trainerRows}${learnerRows}</tbody>

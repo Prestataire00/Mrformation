@@ -777,8 +777,8 @@ function convocation(data: TemplateData): string {
   const slotsHtml = timeSlots.length > 0
     ? `<ul style="margin: 8px 0; padding-left: 20px; font-size: 12px;">${timeSlots.map((slot) => {
         const d = formatDateFr(slot.start_time);
-        const s = new Date(slot.start_time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
-        const e = new Date(slot.end_time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+        const s = new Date(slot.start_time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" });
+        const e = new Date(slot.end_time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" });
         return `<li>De ${d} - ${s} À ${d} - ${e}</li>`;
       }).join("")}</ul>`
     : `<p style="color: #999; font-style: italic;">Créneaux non encore planifiés.</p>`;

@@ -18,7 +18,7 @@ interface Props {
 
 function formatSlotTime(isoStr: string): string {
   const d = new Date(isoStr);
-  return d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" });
 }
 
 function formatSlotDate(isoStr: string): string {

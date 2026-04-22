@@ -151,7 +151,7 @@ export function TabAbsences({ formation, onRefresh }: Props) {
   };
 
   const formatSlotTime = (dateStr: string) =>
-    new Date(dateStr).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+    new Date(dateStr).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" });
 
   return (
     <div className="space-y-4">
@@ -321,9 +321,9 @@ export function TabAbsences({ formation, onRefresh }: Props) {
                     return (
                       <SelectItem key={slot.id} value={slot.id}>
                         Créneau {i + 1} — {start.toLocaleDateString("fr-FR")}{" "}
-                        {start.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+                        {start.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })}
                         {" - "}
-                        {end.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+                        {end.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })}
                       </SelectItem>
                     );
                   })}
