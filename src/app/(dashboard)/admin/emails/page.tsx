@@ -165,7 +165,19 @@ interface TemplateFormData {
   type: string;
   subject: string;
   body: string;
+  attachment_doc_types: string[];
 }
+
+const ATTACHMENT_OPTIONS = [
+  { value: "convocation", label: "Convocation" },
+  { value: "convention_entreprise", label: "Convention entreprise" },
+  { value: "programme_formation", label: "Programme de formation" },
+  { value: "certificat_realisation", label: "Certificat de réalisation" },
+  { value: "attestation_assiduite", label: "Attestation d'assiduité" },
+  { value: "feuille_emargement", label: "Feuille d'émargement" },
+  { value: "cgv", label: "CGV" },
+  { value: "reglement_interieur", label: "Règlement intérieur" },
+];
 
 interface SendFormData {
   recipient_email: string;
@@ -179,6 +191,7 @@ const emptyTemplateForm: TemplateFormData = {
   type: "convocation",
   subject: "",
   body: "",
+  attachment_doc_types: [],
 };
 
 type EmailHistoryWithTemplate = EmailHistory & {
@@ -366,6 +379,7 @@ export default function EmailsPage() {
       type: (t.type || "autre") as string,
       subject: t.subject,
       body: t.body,
+      attachment_doc_types: (t as unknown as Record<string, unknown>).attachment_doc_types as string[] || [],
     });
     setActiveField("body");
     setTemplateDialogOpen(true);
@@ -389,6 +403,7 @@ export default function EmailsPage() {
       subject: templateForm.subject.trim(),
       body: templateForm.body.trim(),
       variables: uniqueVars,
+      attachment_doc_types: templateForm.attachment_doc_types,
     };
 
     if (editingTemplate) {
@@ -1003,6 +1018,32 @@ export default function EmailsPage() {
                     </div>
                   </div>
                 </div>
+              </div>
+
+              {/* Pièces jointes automatiques */}
+              <div className="space-y-2 col-span-3">
+                <Label className="text-xs">Documents joints automatiquement</Label>
+                <div className="flex flex-wrap gap-2">
+                  {ATTACHMENT_OPTIONS.map(opt => (
+                    <label key={opt.value} className="flex items-center gap-1.5 text-xs cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={templateForm.attachment_doc_types.includes(opt.value)}
+                        onChange={(e) => {
+                          setTemplateForm(f => ({
+                            ...f,
+                            attachment_doc_types: e.target.checked
+                              ? [...f.attachment_doc_types, opt.value]
+                              : f.attachment_doc_types.filter(v => v !== opt.value),
+                          }));
+                        }}
+                        className="h-3.5 w-3.5 rounded border-gray-300"
+                      />
+                      {opt.label}
+                    </label>
+                  ))}
+                </div>
+                <p className="text-[10px] text-muted-foreground">Ces documents seront générés et joints au PDF lors de l&apos;envoi automatique.</p>
               </div>
 
               {/* Right: Preview */}
