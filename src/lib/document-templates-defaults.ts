@@ -18,6 +18,8 @@ interface TemplateData {
   magicLinkUrl?: string;
   qrCodeDataUrl?: string;
   missedSlots?: Array<{ date: string; hours: number }>;
+  // Date figée du document (exigence Qualiopi)
+  doc?: { document_date?: string | null; confirmed_at?: string | null };
 }
 
 // ──────────────────────────────────────────────
@@ -56,6 +58,23 @@ function todayFrShort(): string {
     month: "2-digit",
     year: "numeric",
   });
+}
+
+/**
+ * Résout la date "officielle" d'un document pour affichage PDF.
+ * Priorité : document_date > confirmed_at > aujourd'hui.
+ * Une fois confirmé, la date ne change plus (exigence Qualiopi).
+ */
+function docDate(doc?: { document_date?: string | null; confirmed_at?: string | null }): string {
+  if (doc?.document_date) return formatDateFr(doc.document_date);
+  if (doc?.confirmed_at) return formatDateFr(doc.confirmed_at);
+  return todayFrShort();
+}
+
+function docDateLong(doc?: { document_date?: string | null; confirmed_at?: string | null }): string {
+  if (doc?.document_date) return formatDateFrLong(doc.document_date);
+  if (doc?.confirmed_at) return formatDateFrLong(doc.confirmed_at);
+  return todayFr();
 }
 
 function getLogoPath(entityName: string): string {
@@ -290,7 +309,7 @@ function conventionEntreprise(data: TemplateData): string {
 
     <div style="margin-top: 24px; border-top: 1px solid #e5e7eb; padding-top: 16px;">
       <p>Date du terme de la convention : ${formatDateFr(formation.end_date)}</p>
-      <p>Convention établie en double exemplaires à Marseille, le ${todayFrShort()}</p>
+      <p>Convention établie en double exemplaires à Marseille, le ${docDate(data.doc)}</p>
       <p style="font-style: italic; font-size: 10px; color: #6b7280; margin-top: 8px;">La signature de cette convention vaut acceptation du livret d'accueil disponible sur notre site internet.</p>
     </div>
 
@@ -386,7 +405,7 @@ function feuilleEmargement(data: TemplateData): string {
       <div style="margin-top:20px;padding:10px 14px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;font-size:9px;color:#6b7280;">
         <strong>Légende :</strong> Les signatures électroniques affichées ci-dessus ont été apposées via la plateforme ${co.name}.
         <span style="color:#ef4444;">Non signé</span> = créneau passé sans signature enregistrée.
-        Document généré le ${todayFr()}.
+        Document généré le ${docDateLong(data.doc)}.
       </div>`;
 
     const body = `
@@ -467,7 +486,7 @@ function feuilleEmargement(data: TemplateData): string {
     <div style="margin-top:20px;padding:10px 14px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;font-size:9px;color:#6b7280;">
       <strong>Légende :</strong> Les signatures électroniques affichées ci-dessus ont été apposées via la plateforme ${co.name}.
       <span style="color:#ef4444;">Non signé</span> = créneau passé sans signature enregistrée.
-      Document généré le ${todayFr()}.
+      Document généré le ${docDateLong(data.doc)}.
     </div>`;
 
   const body = `
@@ -876,7 +895,7 @@ function certificatRealisation(data: TemplateData): string {
 
     <p>La feuille d'émargement attestant cette assiduité est fournie en annexe.</p>
 
-    <p style="margin-top: 24px;">Fait à Marseille, le ${todayFrShort()}</p>`;
+    <p style="margin-top: 24px;">Fait à Marseille, le ${docDate(data.doc)}</p>`;
 
   return wrap(entityName, "", body);
 }
@@ -951,7 +970,7 @@ function attestationAssiduite(data: TemplateData): string {
 
     <p>La feuille d'émargement attestant cette assiduité est fournie en annexe.</p>
 
-    <p style="margin-top: 24px;">Fait à Marseille, le ${todayFrShort()}</p>`;
+    <p style="margin-top: 24px;">Fait à Marseille, le ${docDate(data.doc)}</p>`;
 
   return wrap(entityName, "", body);
 }
@@ -1098,7 +1117,7 @@ function feuilleEmargementMatriciel(data: TemplateData): string {
     <div style="margin-top:20px;padding:10px 14px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;font-size:9px;color:#6b7280;">
       <strong>Légende :</strong> Les signatures électroniques affichées ci-dessus ont été apposées via la plateforme ${co.name}.
       <span style="color:#ef4444;">Non signé</span> = créneau passé sans signature enregistrée.
-      Document généré le ${todayFr()}.
+      Document généré le ${docDateLong(data.doc)}.
     </div>`;
 
   const body = `
