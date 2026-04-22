@@ -55,6 +55,8 @@ import {
   FileSpreadsheet,
   User,
   LayoutDashboard,
+  Sparkles,
+  Loader2,
 } from "lucide-react";
 import { exportToPDF } from "@/lib/pdf-export";
 import Link from "next/link";
@@ -168,6 +170,8 @@ export default function QuestionnairesPage() {
   const [questionForm, setQuestionForm] = useState<QuestionFormData>(emptyQuestionForm);
   const [addingQuestion, setAddingQuestion] = useState(false);
   const [showAddQuestion, setShowAddQuestion] = useState(false);
+
+  const [generatingFromObjectives, setGeneratingFromObjectives] = useState(false);
 
   // Distribute dialog
   const [distributeDialogOpen, setDistributeDialogOpen] = useState(false);
@@ -348,6 +352,59 @@ export default function QuestionnairesPage() {
     if (error) { toast({ title: "Erreur", description: error.message, variant: "destructive" }); return; }
     setQuestions((prev) => prev.filter((q) => q.id !== questionId));
     await fetchQuestionnaires();
+  };
+
+  const handleGenerateFromObjectives = async () => {
+    if (!selectedQ) return;
+    setGeneratingFromObjectives(true);
+    try {
+      // Find programs with objectives
+      const { data: programs } = await supabase
+        .from("programs")
+        .select("id, title, objectives")
+        .eq("entity_id", entityId)
+        .not("objectives", "is", null)
+        .order("title");
+
+      if (!programs || programs.length === 0) {
+        toast({ title: "Aucun programme avec des objectifs", description: "Ajoutez des objectifs à un programme d'abord", variant: "destructive" });
+        return;
+      }
+
+      // Use the first program with objectives (or let user choose if multiple)
+      const program = programs[0];
+      const objectiveLines = (program.objectives || "")
+        .split(/[\n•\-]+/)
+        .map((s: string) => s.trim())
+        .filter(Boolean);
+
+      if (objectiveLines.length === 0) {
+        toast({ title: "Aucun objectif exploitable", variant: "destructive" });
+        return;
+      }
+
+      const startOrder = questions.length > 0 ? Math.max(...questions.map(q => q.order_index)) + 1 : 1;
+      const newQuestions = objectiveLines.map((obj: string, i: number) => ({
+        questionnaire_id: selectedQ.id,
+        text: `Niveau de maîtrise : ${obj}`,
+        type: "rating",
+        is_required: true,
+        options: null,
+        order_index: startOrder + i,
+      }));
+
+      const { error } = await supabase.from("questions").insert(newQuestions);
+      if (error) throw error;
+
+      toast({ title: `${newQuestions.length} questions générées`, description: `Depuis les objectifs de "${program.title}"` });
+      const { data } = await supabase.from("questions").select("*").eq("questionnaire_id", selectedQ.id).order("order_index");
+      setQuestions((data as Question[]) || []);
+      await fetchQuestionnaires();
+    } catch (err) {
+      toast({ title: "Erreur", description: err instanceof Error ? err.message : "Erreur", variant: "destructive" });
+    } finally {
+      setGeneratingFromObjectives(false);
+    }
   };
 
   const handleReorderQuestion = async (questionId: string, direction: "up" | "down") => {
@@ -965,6 +1022,15 @@ export default function QuestionnairesPage() {
                 Ajouter une question
               </Button>
             )}
+            <Button
+              variant="outline"
+              className="w-full gap-2 border-dashed text-purple-700 border-purple-300 hover:bg-purple-50"
+              onClick={handleGenerateFromObjectives}
+              disabled={generatingFromObjectives}
+            >
+              {generatingFromObjectives ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              Générer depuis les objectifs du programme
+            </Button>
           </div>
 
           <DialogFooter>
