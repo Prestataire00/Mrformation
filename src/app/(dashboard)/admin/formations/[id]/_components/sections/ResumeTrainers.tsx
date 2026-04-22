@@ -32,6 +32,7 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
   const [selectedRole, setSelectedRole] = useState("formateur");
   const [selectedHourlyRate, setSelectedHourlyRate] = useState("");
   const [selectedDailyRate, setSelectedDailyRate] = useState("");
+  const [selectedHoursDone, setSelectedHoursDone] = useState("");
   const [saving, setSaving] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [suggesting, setSuggesting] = useState(false);
@@ -87,6 +88,7 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
       role: selectedRole,
       hourly_rate: parseFloat(selectedHourlyRate) || null,
       daily_rate: parseFloat(selectedDailyRate) || null,
+      hours_done: parseFloat(selectedHoursDone) || null,
     });
     setSaving(false);
     if (error) {
@@ -97,6 +99,7 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
       setSelectedTrainerId("");
       setSelectedHourlyRate("");
       setSelectedDailyRate("");
+      setSelectedHoursDone("");
       onRefresh();
     }
   };
@@ -270,6 +273,7 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
             setSelectedTrainerId("");
             setSelectedHourlyRate("");
             setSelectedDailyRate("");
+            setSelectedHoursDone("");
           }
         }}>
         <DialogContent>
@@ -325,6 +329,18 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
                   onChange={(e) => setSelectedDailyRate(e.target.value)}
                 />
               </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1.5 block">Heures effectuées (optionnel)</label>
+              <Input
+                type="number"
+                min="0"
+                step="0.5"
+                placeholder={formation.planned_hours ? `Par défaut : ${formation.planned_hours}h (session)` : "Ex : 21"}
+                value={selectedHoursDone}
+                onChange={(e) => setSelectedHoursDone(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground mt-1">Si vide, les heures seront calculées depuis les signatures</p>
             </div>
           </div>
           <DialogFooter>
