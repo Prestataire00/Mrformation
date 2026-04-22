@@ -852,16 +852,17 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
               <Undo2 className="h-3 w-3" />
             </Button>
           )}
-          {doc.requires_signature && doc.is_confirmed && !doc.is_signed && (
+          {doc.requires_signature && !doc.is_signed && (
             <Button
               size="sm"
               variant="outline"
-              className="h-6 text-xs gap-1 border-orange-300 text-orange-700 hover:bg-orange-50"
-              onClick={() => handleSendForSignature(doc, signerEmail || null)}
+              className={`h-6 text-xs gap-1 ${doc.is_confirmed ? "border-orange-300 text-orange-700 hover:bg-orange-50" : "text-gray-400"}`}
+              onClick={() => doc.is_confirmed ? handleSendForSignature(doc, signerEmail || null) : toast({ title: "Figez d'abord le document", description: "Le document doit être figé avant de pouvoir être envoyé pour signature.", variant: "destructive" })}
               disabled={saving === `sign-${doc.id}`}
+              title={doc.is_confirmed ? "Envoyer pour signature électronique" : "Figez d'abord le document pour l'envoyer en signature"}
             >
               {saving === `sign-${doc.id}` && <Loader2 className="h-3 w-3 animate-spin" />}
-              <PenLine className="h-3 w-3" /> Envoyer pour signature
+              <PenLine className="h-3 w-3" /> {doc.is_confirmed ? "Envoyer pour signature" : "Signature"}
             </Button>
           )}
         </div>
