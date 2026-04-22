@@ -261,6 +261,19 @@ export function EditorToolbar({ editor, variables }: EditorToolbarProps) {
         </>
       )}
 
+      {/* Lien variables */}
+      {variables && variables.length > 0 && (
+        <a
+          href="/admin/documents/variables"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[10px] text-gray-400 hover:text-blue-600 flex items-center gap-0.5 px-1"
+          title="Voir toutes les variables disponibles"
+        >
+          Toutes les variables
+        </a>
+      )}
+
       {/* Import Word */}
       <Separator />
       <input type="file" accept=".docx" ref={fileInputRef} onChange={handleWordImport} className="hidden" />
