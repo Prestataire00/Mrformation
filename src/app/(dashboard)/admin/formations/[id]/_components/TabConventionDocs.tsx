@@ -1103,15 +1103,17 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
           variant="outline"
           className="text-xs h-7 gap-1"
           onClick={async () => {
+            const unfrozenCount = docs.filter(d => !d.is_confirmed).length;
+            if (unfrozenCount === 0) { toast({ title: "Tous les documents sont déjà figés" }); return; }
+            if (!confirm(`Figer ${unfrozenCount} document(s) ? Les informations ne seront plus modifiables ensuite.`)) return;
             setSaving("confirm-all-learners");
             const { error } = await supabase
               .from("formation_convention_documents")
               .update({ is_confirmed: true, confirmed_at: new Date().toISOString() })
               .eq("session_id", formation.id)
-              .eq("owner_type", "learner")
               .eq("is_confirmed", false);
             setSaving(null);
-            if (!error) { toast({ title: "Tous les documents figés" }); onRefresh(); }
+            if (!error) { toast({ title: `${unfrozenCount} document(s) figé(s)` }); onRefresh(); }
           }}
           disabled={saving === "confirm-all-learners"}
         >
