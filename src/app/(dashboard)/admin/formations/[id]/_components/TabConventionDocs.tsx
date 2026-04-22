@@ -783,8 +783,15 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
           {doc.is_sent ? "Envoyé" : "Non envoyé"}
         </span>
         {doc.requires_signature && (
-          <span className={`text-xs px-1.5 py-0.5 rounded-full ${doc.is_signed ? "bg-green-100 text-green-700" : "bg-orange-50 text-orange-600"}`}>
-            {doc.is_signed ? "Signé" : "Non signé"}
+          <span
+            className={`text-xs px-1.5 py-0.5 rounded-full ${doc.is_signed ? "bg-green-100 text-green-700" : doc.is_sent ? "bg-orange-100 text-orange-700" : "bg-orange-50 text-orange-600"}`}
+            title={
+              doc.is_signed ? "Document signé électroniquement"
+              : doc.is_sent ? `En attente de signature — envoyé à ${(doc as unknown as Record<string, string>).signer_email || "destinataire"}`
+              : "Signature non demandée"
+            }
+          >
+            {doc.is_signed ? "Signé" : doc.is_sent ? "En attente signature" : "Non signé"}
           </span>
         )}
       </div>
