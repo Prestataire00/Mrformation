@@ -235,6 +235,7 @@ export default function EmailsPage() {
   const [sendDialogOpen, setSendDialogOpen] = useState(false);
   const [sendForm, setSendForm] = useState<SendFormData>({ recipient_email: "", subject: "", body: "", template_id: "" });
   const [sending, setSending] = useState(false);
+  const [sendAttachments, setSendAttachments] = useState<Array<{ filename: string; content: string; type: string }>>([]);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [originalSubject, setOriginalSubject] = useState("");
   const [originalBody, setOriginalBody] = useState("");
@@ -508,6 +509,7 @@ export default function EmailsPage() {
           subject: sendForm.subject.trim(),
           body: sendForm.body.trim(),
           template_id: sendForm.template_id || undefined,
+          attachments: sendAttachments.length > 0 ? sendAttachments : undefined,
         }),
       });
 
@@ -1261,6 +1263,31 @@ export default function EmailsPage() {
               </div>
             )}
           </div>
+          {/* Pièces jointes manuelles */}
+          <div className="space-y-2 px-1">
+            <Label className="text-xs">Pièces jointes</Label>
+            {sendAttachments.map((att, i) => (
+              <div key={i} className="flex items-center justify-between bg-gray-50 rounded px-3 py-1.5 text-xs">
+                <span>{att.filename}</span>
+                <button onClick={() => setSendAttachments(prev => prev.filter((_, j) => j !== i))} className="text-red-500 hover:text-red-700">✕</button>
+              </div>
+            ))}
+            <label className="cursor-pointer">
+              <input type="file" className="hidden" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = () => {
+                  const base64 = (reader.result as string).split(",")[1];
+                  setSendAttachments(prev => [...prev, { filename: file.name, content: base64, type: file.type }]);
+                };
+                reader.readAsDataURL(file);
+                e.target.value = "";
+              }} />
+              <span className="inline-flex items-center gap-1 text-xs text-[#374151] hover:underline cursor-pointer">+ Ajouter une pièce jointe</span>
+            </label>
+          </div>
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setSendDialogOpen(false)}>Annuler</Button>
             <Button variant="outline" onClick={() => setPreviewOpen(true)} className="gap-2">
