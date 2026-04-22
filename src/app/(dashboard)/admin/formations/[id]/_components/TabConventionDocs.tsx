@@ -1068,6 +1068,28 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     );
   }
 
+  // Matrix cell overlay: download button on hover
+  const renderMatrixOverlay = (_ownerId: string, _docType: string, docId?: string) => {
+    if (!docId) return null;
+    const doc = docs.find(d => d.id === docId);
+    if (!doc) return null;
+    return (
+      <button
+        onClick={async (e) => {
+          e.stopPropagation();
+          const html = await generateDocHtml(doc);
+          const label = doc.custom_label || DOC_LABELS[doc.doc_type] || doc.doc_type;
+          await exportHtmlToPDF(label, html, `${doc.doc_type}_${doc.id}`, entityName);
+          toast({ title: "PDF téléchargé" });
+        }}
+        className="bg-white border shadow-sm rounded-full p-1 hover:bg-gray-50"
+        title="Télécharger PDF"
+      >
+        <Download className="h-3 w-3 text-gray-600" />
+      </button>
+    );
+  };
+
   return (
     <div className="space-y-4">
       {/* ═══ HERO ROW — Progress par type ═══ */}
@@ -1152,6 +1174,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
               docLabels={DOC_LABELS}
               avatarColorFn={getAvatarColor}
               onCellClick={(_ownerId, _docType, docId) => { if (docId) { const d = docs.find(x => x.id === docId); if (d) handleView(d); } }}
+              renderCellOverlay={renderMatrixOverlay}
             />
           )}
           {companyMatrix.length > 0 && (
@@ -1165,6 +1188,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
               docLabels={DOC_LABELS}
               avatarColorFn={getAvatarColor}
               onCellClick={(_ownerId, _docType, docId) => { if (docId) { const d = docs.find(x => x.id === docId); if (d) handleView(d); } }}
+              renderCellOverlay={renderMatrixOverlay}
             />
           )}
           {trainerMatrix.length > 0 && (
@@ -1178,6 +1202,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
               docLabels={DOC_LABELS}
               avatarColorFn={getAvatarColor}
               onCellClick={(_ownerId, _docType, docId) => { if (docId) { const d = docs.find(x => x.id === docId); if (d) handleView(d); } }}
+              renderCellOverlay={renderMatrixOverlay}
             />
           )}
 

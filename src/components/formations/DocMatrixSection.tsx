@@ -16,6 +16,7 @@ interface Props {
   docTypes: string[];
   docLabels: Record<string, string>;
   onCellClick?: (ownerId: string, docType: string, docId?: string) => void;
+  renderCellOverlay?: (ownerId: string, docType: string, docId?: string) => React.ReactNode;
   avatarColorFn?: (name: string) => string;
 }
 
@@ -44,7 +45,7 @@ function shortLabel(label: string): string {
     .replace("PLANNING DE LA SEMAINE", "Planning");
 }
 
-export function DocMatrixSection({ title, rows, docTypes, docLabels, onCellClick, avatarColorFn }: Props) {
+export function DocMatrixSection({ title, rows, docTypes, docLabels, onCellClick, renderCellOverlay, avatarColorFn }: Props) {
   const getColor = avatarColorFn || defaultAvatarColor;
 
   if (rows.length === 0) return null;
@@ -91,11 +92,18 @@ export function DocMatrixSection({ title, rows, docTypes, docLabels, onCellClick
                 {docTypes.map(dt => (
                   <td key={dt} className="text-center px-2 py-2">
                     {row.cells[dt] ? (
-                      <StatusCell
-                        status={row.cells[dt].status as StatusType}
-                        size="sm"
-                        onClick={onCellClick ? () => onCellClick(row.id, dt, row.cells[dt].docId) : undefined}
-                      />
+                      <div className="relative group inline-block">
+                        <StatusCell
+                          status={row.cells[dt].status as StatusType}
+                          size="sm"
+                          onClick={onCellClick ? () => onCellClick(row.id, dt, row.cells[dt].docId) : undefined}
+                        />
+                        {renderCellOverlay && row.cells[dt].docId && (
+                          <div className="absolute -top-1 -right-3 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                            {renderCellOverlay(row.id, dt, row.cells[dt].docId)}
+                          </div>
+                        )}
+                      </div>
                     ) : (
                       <span className="text-gray-300">—</span>
                     )}
