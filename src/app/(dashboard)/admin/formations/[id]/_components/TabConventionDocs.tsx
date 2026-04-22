@@ -203,6 +203,12 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
   // ===== INITIALIZE DEFAULT DOCS =====
   const initializeDefaultDocs = useCallback(async () => {
     if (initialized) return;
+
+    // Build a set of existing docs to avoid duplicates
+    const existingKeys = new Set(
+      docs.map(d => `${d.doc_type}|${d.owner_type}|${d.owner_id}`)
+    );
+
     const now = new Date().toISOString();
     const rows: {
       session_id: string;
@@ -210,6 +216,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
       owner_type: string;
       owner_id: string;
       requires_signature: boolean;
+      template_id: null;
       is_confirmed?: boolean;
       confirmed_at?: string;
     }[] = [];
@@ -219,6 +226,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
       if (!enrollment.learner) continue;
       const learnerId = enrollment.learner.id;
       for (const dt of [...DEFAULT_LEARNER_DOCS, ...STATIC_DOCS]) {
+        if (existingKeys.has(`${dt}|learner|${learnerId}`)) continue;
         const isStatic = STATIC_DOCS.includes(dt);
         rows.push({
           session_id: formation.id,
@@ -226,6 +234,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
           owner_type: "learner",
           owner_id: learnerId,
           requires_signature: false,
+          template_id: null,
           ...(isStatic ? { is_confirmed: true, confirmed_at: now } : {}),
         });
       }
@@ -236,6 +245,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
       if (!fc.client) continue;
       const clientId = fc.client.id;
       for (const dt of [...DEFAULT_COMPANY_DOCS, ...STATIC_DOCS]) {
+        if (existingKeys.has(`${dt}|company|${clientId}`)) continue;
         const isStatic = STATIC_DOCS.includes(dt);
         rows.push({
           session_id: formation.id,
@@ -243,6 +253,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
           owner_type: "company",
           owner_id: clientId,
           requires_signature: REQUIRES_SIGNATURE_TYPES.includes(dt),
+          template_id: null,
           ...(isStatic ? { is_confirmed: true, confirmed_at: now } : {}),
         });
       }
@@ -253,6 +264,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
       if (!ft.trainer) continue;
       const trainerId = ft.trainer.id;
       for (const dt of [...DEFAULT_TRAINER_DOCS, ...STATIC_DOCS]) {
+        if (existingKeys.has(`${dt}|trainer|${trainerId}`)) continue;
         const isStatic = STATIC_DOCS.includes(dt);
         rows.push({
           session_id: formation.id,
@@ -260,6 +272,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
           owner_type: "trainer",
           owner_id: trainerId,
           requires_signature: REQUIRES_SIGNATURE_TYPES.includes(dt),
+          template_id: null,
           ...(isStatic ? { is_confirmed: true, confirmed_at: now } : {}),
         });
       }
@@ -268,11 +281,11 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     if (rows.length > 0) {
       await supabase
         .from("formation_convention_documents")
-        .upsert(rows, { onConflict: "session_id,doc_type,owner_type,owner_id,template_id", ignoreDuplicates: true });
+        .insert(rows);
       await onRefresh();
     }
     setInitialized(true);
-  }, [formation.id, enrollments, companies, trainers, supabase, onRefresh, initialized]);
+  }, [formation.id, enrollments, companies, trainers, supabase, onRefresh, initialized, docs]);
 
   useEffect(() => {
     if (!loadingTemplates && enrollments.length > 0) {
