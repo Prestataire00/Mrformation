@@ -126,6 +126,21 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (sigError) {
+      console.error("[emargement/sign] Insert failed:", {
+        code: sigError.code,
+        message: sigError.message,
+        details: sigError.details,
+        sessionId: tokenData.session_id,
+        signerId,
+        signerType,
+        timeSlotId: tokenData.time_slot_id,
+      });
+      if (sigError.code === "23505") {
+        return NextResponse.json(
+          { error: "Vous avez déjà signé pour ce créneau" },
+          { status: 409 }
+        );
+      }
       return NextResponse.json(
         { error: sanitizeDbError(sigError, "emargement/sign insert") },
         { status: 500 }
@@ -175,6 +190,7 @@ export async function POST(request: NextRequest) {
       time_slot: timeSlotInfo,
     });
   } catch (err) {
+    console.error("[emargement/sign] Unexpected error:", err instanceof Error ? { message: err.message, stack: err.stack } : err);
     return NextResponse.json(
       { error: sanitizeError(err, "emargement/sign") },
       { status: 500 }
