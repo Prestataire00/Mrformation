@@ -26,7 +26,9 @@ import {
   Code,
   Undo,
   Redo,
+  FileUp,
 } from "lucide-react";
+import { useRef, type ChangeEvent } from "react";
 import { InsertVariableButton } from "./InsertVariableButton";
 import { cn } from "@/lib/utils";
 
@@ -73,6 +75,30 @@ function Separator() {
 }
 
 export function EditorToolbar({ editor, variables }: EditorToolbarProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleWordImport = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const mammoth = await import("mammoth");
+      const result = await mammoth.convertToHtml(
+        { arrayBuffer },
+        { styleMap: [
+          "p[style-name='Heading 1'] => h1",
+          "p[style-name='Heading 2'] => h2",
+          "p[style-name='Heading 3'] => h3",
+          "p[style-name='Title'] => h1",
+        ] }
+      );
+      editor.commands.setContent(result.value);
+    } catch (err) {
+      console.error("[Word import]", err);
+    }
+    e.target.value = "";
+  };
+
   return (
     <div className="flex flex-wrap items-center gap-0.5 border-b bg-muted/30 px-2 py-1.5">
       {/* Undo / Redo */}
@@ -234,6 +260,21 @@ export function EditorToolbar({ editor, variables }: EditorToolbarProps) {
           />
         </>
       )}
+
+      {/* Import Word */}
+      <Separator />
+      <input type="file" accept=".docx" ref={fileInputRef} onChange={handleWordImport} className="hidden" />
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="h-8 gap-1 text-xs px-2"
+        onClick={() => fileInputRef.current?.click()}
+        title="Importer un document Word (.docx)"
+      >
+        <FileUp className="h-4 w-4" />
+        <span className="hidden md:inline">Word</span>
+      </Button>
     </div>
   );
 }
