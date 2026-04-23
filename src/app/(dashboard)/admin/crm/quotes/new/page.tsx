@@ -152,7 +152,7 @@ export default function NewQuotePage() {
   useEffect(() => {
     if (entityId === undefined) return;
     (async () => {
-      let query = supabase.from("programs").select("id, title, bpf_funding_type").eq("is_active", true).order("title");
+      let query = supabase.from("programs").select("id, title, bpf_funding_type, price, tva_rate, duration_hours").eq("is_active", true).order("title");
       if (entityId) query = query.eq("entity_id", entityId);
       const { data } = await query;
       setPrograms((data as Program[]) ?? []);
@@ -225,26 +225,58 @@ export default function NewQuotePage() {
   }
 
   async function handleProgramChange(programId: string) {
-    setForm((f) => ({ ...f, program_id: programId }));
-    if (programId) {
-      // Auto-derive bpf_funding_type from selected program
-      const program = programs.find((p) => p.id === programId);
-      if (program?.bpf_funding_type) {
-        setForm((f) => ({ ...f, program_id: programId, bpf_funding_type: program.bpf_funding_type! }));
-        return;
+    if (!programId) {
+      setForm((f) => ({ ...f, program_id: "" }));
+      // Fallback: if prospect is selected, try client's bpf_category
+      if (prospectId) {
+        const { data: prospect } = await supabase
+          .from("crm_prospects")
+          .select("bpf_category")
+          .eq("id", prospectId)
+          .single();
+        if (prospect?.bpf_category) {
+          setForm((f) => ({ ...f, bpf_funding_type: prospect.bpf_category }));
+        }
       }
+      return;
     }
-    // Fallback: if prospect is selected and no program funding type, try client's bpf_category
-    if (!programId && prospectId) {
-      const { data: prospect } = await supabase
-        .from("crm_prospects")
-        .select("bpf_category")
-        .eq("id", prospectId)
-        .single();
-      if (prospect?.bpf_category) {
-        setForm((f) => ({ ...f, bpf_funding_type: prospect.bpf_category }));
+
+    const program = programs.find((p) => p.id === programId);
+    if (!program) {
+      setForm((f) => ({ ...f, program_id: programId }));
+      return;
+    }
+
+    // Auto-fill from program data
+    setForm((f) => {
+      const updates: Partial<QuoteFormState> = { program_id: programId };
+
+      // BPF funding type
+      if (program.bpf_funding_type) {
+        updates.bpf_funding_type = program.bpf_funding_type;
       }
-    }
+
+      // Duration
+      if (program.duration_hours && !f.duration) {
+        updates.duration = `${program.duration_hours} heures`;
+      }
+
+      // TVA rate from program
+      if (program.tva_rate != null) {
+        updates.tva = String(program.tva_rate).replace(".", ",");
+      }
+
+      // Pre-fill first product line with program title + price
+      if (f.lines.length <= 1 && (!f.lines[0]?.description || f.lines[0].description === "")) {
+        updates.lines = [{
+          description: `Formation : ${program.title}`,
+          quantity: f.effectifs || "1",
+          unit_price: program.price ? String(program.price).replace(".", ",") : "",
+        }];
+      }
+
+      return { ...f, ...updates };
+    });
   }
 
   function addLine() {
@@ -298,6 +330,7 @@ export default function NewQuotePage() {
 
     try {
       // Build metadata JSON for notes (WITHOUT lines — stored in crm_quote_lines)
+      const selectedProgram = form.program_id ? programs.find((p) => p.id === form.program_id) : null;
       const metadata = {
         tva: form.tva,
         training_start: form.training_start || null,
@@ -306,6 +339,7 @@ export default function NewQuotePage() {
         duration: form.duration || null,
         mention: form.mention || null,
         notes_text: form.notes || null,
+        training_title: selectedProgram?.title || null,
       };
 
       // Get next quote number

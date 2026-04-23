@@ -321,6 +321,17 @@ export default function QuotesPage() {
       }
     }
 
+    // Fetch program title if linked and not in metadata
+    let trainingTitle = (meta.training_title as string) || undefined;
+    if (!trainingTitle && (quote as unknown as Record<string, string | null>).program_id) {
+      const { data: prog } = await supabase
+        .from("programs")
+        .select("title")
+        .eq("id", (quote as unknown as Record<string, string>).program_id)
+        .single();
+      if (prog?.title) trainingTitle = prog.title;
+    }
+
     let lines: Array<Record<string, unknown>> = [];
     const { data: dbLines } = await supabase
       .from("crm_quote_lines")
@@ -353,7 +364,7 @@ export default function QuotesPage() {
       duration: (meta.duration as string) || undefined,
       notes: (meta.notes_text as string) || undefined,
       mention: (meta.mention as string) || undefined,
-      training_title: (meta.training_title as string) || undefined,
+      training_title: trainingTitle,
       signer_name: (meta.signer_name as string) || undefined,
       validity_days: meta.validity_days ? Number(meta.validity_days) : 30,
       lines: lines.map((l: Record<string, unknown>) => ({
@@ -373,7 +384,7 @@ export default function QuotesPage() {
 
     if (devisData.lines.length === 0 && quote.amount && quote.amount > 0) {
       const amountHT = quote.amount / (1 + tvaRate / 100);
-      const fallbackDesc = (meta.training_title as string) || quote.reference || "Formation";
+      const fallbackDesc = trainingTitle || quote.reference || "Formation";
       devisData.lines = [{ description: fallbackDesc, quantity: 1, unit_price: Math.round(amountHT * 100) / 100 }];
     }
 
@@ -421,6 +432,17 @@ export default function QuotesPage() {
         sendLines = meta.lines as Array<Record<string, unknown>>;
       }
 
+      // Fetch program title if available
+      let sendTrainingTitle = (meta.training_title as string) || undefined;
+      if (!sendTrainingTitle && (quote as unknown as Record<string, string | null>).program_id) {
+        const { data: prog } = await supabase
+          .from("programs")
+          .select("title")
+          .eq("id", (quote as unknown as Record<string, string>).program_id)
+          .single();
+        if (prog?.title) sendTrainingTitle = prog.title;
+      }
+
       let tvaRate = 20;
       if ((quote as unknown as Record<string, unknown>).tva != null) {
         tvaRate = Number((quote as unknown as Record<string, unknown>).tva) || 20;
@@ -431,6 +453,7 @@ export default function QuotesPage() {
         reference: quote.reference ?? "",
         date_creation: quote.created_at?.slice(0, 10) ?? new Date().toISOString().slice(0, 10),
         date_echeance: quote.valid_until ?? "",
+        training_title: sendTrainingTitle,
         tva: tvaRate,
         lines: sendLines.map((l: Record<string, unknown>) => ({
           description: String(l.description ?? ""),
@@ -443,7 +466,7 @@ export default function QuotesPage() {
 
       if (devisData.lines.length === 0 && quote.amount && quote.amount > 0) {
         const amountHT = quote.amount / (1 + tvaRate / 100);
-        const fallbackDesc = (meta.training_title as string) || quote.reference || "Formation";
+        const fallbackDesc = sendTrainingTitle || quote.reference || "Formation";
         devisData.lines = [{ description: fallbackDesc, quantity: 1, unit_price: Math.round(amountHT * 100) / 100 }];
       }
 
