@@ -98,6 +98,18 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
       setSelectedLearnerId("");
       setSelectedClientId("");
       onRefresh();
+
+      // Auto-envoi lien d'accès (fire & forget)
+      const learner = allLearners.find(l => l.id === selectedLearnerId);
+      if (learner?.email) {
+        fetch(`/api/learners/${selectedLearnerId}/send-welcome`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: formation.id }),
+        }).then(res => {
+          if (res.ok) toast({ title: "Lien d'accès envoyé", description: `Email envoyé à ${learner.email}` });
+        }).catch(() => { /* silencieux — l'accès peut être envoyé manuellement */ });
+      }
     }
   };
 
@@ -129,6 +141,19 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
 
       toast({ title: "Apprenant créé et inscrit" });
       setCreateDialogOpen(false);
+
+      // Auto-envoi lien d'accès (fire & forget)
+      const email = newEmail.trim();
+      if (email) {
+        fetch(`/api/learners/${data.id}/send-welcome`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: formation.id }),
+        }).then(res => {
+          if (res.ok) toast({ title: "Lien d'accès envoyé", description: `Email envoyé à ${email}` });
+        }).catch(() => {});
+      }
+
       setNewFirstName("");
       setNewLastName("");
       setNewEmail("");
