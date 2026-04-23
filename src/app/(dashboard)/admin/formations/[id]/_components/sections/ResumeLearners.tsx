@@ -46,8 +46,9 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
 
   // Company selection for INTER
   const [selectedClientId, setSelectedClientId] = useState("");
+  const [newLearnerClientId, setNewLearnerClientId] = useState("");
   const companies = formation.formation_companies || [];
-  const showCompanySelect = companies.length > 1;
+  const showCompanySelect = companies.length >= 1;
 
   // Create learner form
   const [newFirstName, setNewFirstName] = useState("");
@@ -118,13 +119,13 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
         .single();
       if (error) throw error;
 
-      // Auto-enroll the new learner (auto-link company for INTRA)
+      // Auto-enroll the new learner — link to selected company or auto for single company
       const fcs = formation.formation_companies || [];
-      const autoClient = formation.type === "intra" && fcs.length === 1 ? fcs[0].client_id : null;
+      const clientId = newLearnerClientId || (fcs.length === 1 ? fcs[0].client_id : null);
       await supabase.from("enrollments").insert({
         session_id: formation.id,
         learner_id: data.id,
-        client_id: autoClient,
+        client_id: clientId,
         status: "registered",
       });
 
@@ -133,6 +134,7 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
       setNewFirstName("");
       setNewLastName("");
       setNewEmail("");
+      setNewLearnerClientId("");
       fetchLearners();
       onRefresh();
     } catch (err: unknown) {
@@ -313,8 +315,16 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
                   onSelect={setSelectedClientId}
                   placeholder="Choisir l'entreprise..."
                 />
-                {!selectedClientId && (
-                  <p className="text-xs text-muted-foreground mt-1">Optionnel — utile pour les formations INTER multi-entreprises</p>
+                {selectedClientId ? (
+                  <p className="text-xs text-green-700 bg-green-50 rounded px-2 py-0.5 mt-1">
+                    {companies.find(c => c.client_id === selectedClientId)?.client?.company_name}
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {companies.length === 1
+                      ? `Par défaut : ${companies[0]?.client?.company_name || "entreprise liée"}`
+                      : "Sélectionnez l'entreprise de rattachement (INTER)"}
+                  </p>
                 )}
               </div>
             )}
@@ -330,7 +340,7 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
       </Dialog>
 
       {/* Create Learner Dialog */}
-      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+      <Dialog open={createDialogOpen} onOpenChange={(open) => { setCreateDialogOpen(open); if (!open) { setNewFirstName(""); setNewLastName(""); setNewEmail(""); setNewLearnerClientId(""); } }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>Créer un apprenant</DialogTitle>
@@ -348,6 +358,24 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
               <label className="text-sm font-medium mb-1 block">Email</label>
               <Input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="email@exemple.com" />
             </div>
+            {showCompanySelect && (
+              <div>
+                <label className="text-sm font-medium mb-1 block">Entreprise de rattachement</label>
+                <SearchSelect
+                  options={companies.filter(c => c.client).map(c => ({
+                    value: c.client_id,
+                    label: c.client!.company_name,
+                  }))}
+                  onSelect={setNewLearnerClientId}
+                  placeholder="Choisir l'entreprise..."
+                />
+                {newLearnerClientId && (
+                  <p className="text-xs text-green-700 bg-green-50 rounded px-2 py-0.5 mt-1">
+                    {companies.find(c => c.client_id === newLearnerClientId)?.client?.company_name}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>Annuler</Button>
