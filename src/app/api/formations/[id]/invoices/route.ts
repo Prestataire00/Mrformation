@@ -83,6 +83,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
       recipient_type,
       recipient_id,
       recipient_name,
+      recipient_siret,
+      recipient_address,
       amount,
       prefix = "FAC",
       due_date,
@@ -135,6 +137,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
         is_avoir,
         parent_invoice_id: parent_invoice_id || null,
         external_reference: external_reference || null,
+        recipient_siret: recipient_siret || null,
+        recipient_address: recipient_address || null,
       })
       .select()
       .single();
@@ -182,7 +186,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
   try {
     const body = await request.json();
-    const { invoice_id, status, paid_at, recipient_name, recipient_type, due_date, notes, external_reference, amount, lines } = body;
+    const { invoice_id, status, paid_at, recipient_name, recipient_type, recipient_siret, recipient_address, due_date, notes, external_reference, amount, lines } = body;
 
     if (!invoice_id) {
       return NextResponse.json(
@@ -205,6 +209,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (due_date !== undefined) updateData.due_date = due_date;
     if (notes !== undefined) updateData.notes = notes;
     if (external_reference !== undefined) updateData.external_reference = external_reference;
+    if (recipient_siret !== undefined) updateData.recipient_siret = recipient_siret;
+    if (recipient_address !== undefined) updateData.recipient_address = recipient_address;
     if (amount !== undefined) updateData.amount = amount;
 
     const { data, error } = await auth.supabase

@@ -112,6 +112,8 @@ export function TabFinances({ formation, onRefresh }: Props) {
     recipient_type: "learner",
     recipient_name: "",
     recipient_id: "",
+    recipient_siret: "",
+    recipient_address: "",
     due_date: "",
     notes: "",
     external_reference: "",
@@ -185,38 +187,85 @@ export function TabFinances({ formation, onRefresh }: Props) {
 
   // ── Create invoice ──
 
-  // Pre-fill invoice lines from session data
+  // Pre-fill invoice from session data
   const prefillInvoiceLines = () => {
-    const enrollCount = (formation.enrollments || []).length || 1;
+    const enrollments = formation.enrollments || [];
+    const enrollCount = enrollments.length || 1;
     const totalPrice = formation.total_price || 0;
     const hours = formation.planned_hours;
-    const desc = `Formation ${formation.title}${hours ? ` (${hours}h)` : ""}`;
+    const desc = `Formation : ${formation.title}${hours ? ` — ${hours}h` : ""}`;
     const unitPrice = enrollCount > 1 ? (totalPrice / enrollCount) : totalPrice;
 
     // Participant names
-    const participantNames = (formation.enrollments || [])
+    const participantNames = enrollments
       .filter(e => e.learner)
-      .map(e => `${e.learner!.first_name} ${e.learner!.last_name}`)
+      .map(e => `${e.learner!.last_name?.toUpperCase()} ${e.learner!.first_name}`)
       .join(", ");
 
-    // Company SIRET + address (from first linked company)
-    const firstCompany = (formation.formation_companies || [])[0]?.client as unknown as Record<string, string | null> | undefined;
-    const companyInfo: string[] = [];
-    if (firstCompany) {
-      if (firstCompany.siret) companyInfo.push(`SIRET : ${firstCompany.siret}`);
-      const addr = [firstCompany.address, firstCompany.postal_code, firstCompany.city].filter(Boolean).join(" ");
-      if (addr) companyInfo.push(`Adresse : ${addr}`);
+    // Auto-fill recipient from first company if type is "company"
+    const firstCompany = (formation.formation_companies || [])[0];
+    const client = firstCompany?.client as unknown as Record<string, string | null> | undefined;
+
+    const updates: Partial<typeof invoiceForm> = {
+      lines: [{ description: desc, quantity: String(enrollCount), unit_price: unitPrice.toFixed(2).replace(".", ",") }],
+    };
+
+    // Auto-fill recipient info
+    if (client) {
+      updates.recipient_name = client.company_name || "";
+      updates.recipient_id = firstCompany.client_id || "";
+      updates.recipient_type = "company";
+      updates.recipient_siret = client.siret || "";
+      const addr = [client.address, client.postal_code, client.city].filter(Boolean).join(" ");
+      updates.recipient_address = addr;
     }
 
+    // Due date: end_date + 30 days
+    if (formation.end_date) {
+      const due = new Date(formation.end_date);
+      due.setDate(due.getDate() + 30);
+      updates.due_date = due.toISOString().split("T")[0];
+    }
+
+    // Notes with participant list
     const notesParts: string[] = [];
     if (participantNames) notesParts.push(`Participants : ${participantNames}`);
-    if (companyInfo.length > 0) notesParts.push(companyInfo.join("\n"));
+    if (notesParts.length > 0) updates.notes = notesParts.join("\n");
 
-    setInvoiceForm(f => ({
-      ...f,
-      lines: [{ description: desc, quantity: String(enrollCount), unit_price: unitPrice.toFixed(2).replace(".", ",") }],
-      notes: notesParts.length > 0 ? notesParts.join("\n") : f.notes,
-    }));
+    setInvoiceForm(f => ({ ...f, ...updates }));
+  };
+
+  // Auto-fill recipient details when selecting from dropdown
+  const handleRecipientSelect = (name: string) => {
+    const updates: Partial<typeof invoiceForm> = { recipient_name: name };
+
+    if (invoiceForm.recipient_type === "company") {
+      const fc = (formation.formation_companies || []).find(c => c.client?.company_name === name);
+      const client = fc?.client as unknown as Record<string, string | null> | undefined;
+      if (client) {
+        updates.recipient_id = fc!.client_id || "";
+        updates.recipient_siret = client.siret || "";
+        updates.recipient_address = [client.address, client.postal_code, client.city].filter(Boolean).join(" ");
+      }
+    } else if (invoiceForm.recipient_type === "learner") {
+      const enrollment = (formation.enrollments || []).find(e =>
+        e.learner && `${e.learner.last_name?.toUpperCase()} ${e.learner.first_name}` === name
+      );
+      if (enrollment?.learner) {
+        updates.recipient_id = enrollment.learner.id;
+        updates.recipient_siret = "";
+        updates.recipient_address = "";
+      }
+    } else if (invoiceForm.recipient_type === "financier") {
+      const fin = (formation.formation_financiers || []).find(f => f.name === name);
+      if (fin) {
+        updates.recipient_id = fin.id;
+        updates.recipient_siret = "";
+        updates.recipient_address = "";
+      }
+    }
+
+    setInvoiceForm(f => ({ ...f, ...updates }));
   };
 
   const handleCreateInvoice = async (isAvoir = false, parentInvoice?: Invoice) => {
@@ -259,6 +308,8 @@ export function TabFinances({ formation, onRefresh }: Props) {
           recipient_type: recipientType,
           recipient_id: parentInvoice?.recipient_id ?? (invoiceForm.recipient_id || crypto.randomUUID()),
           recipient_name: recipientName,
+          recipient_siret: invoiceForm.recipient_siret || null,
+          recipient_address: invoiceForm.recipient_address || null,
           amount,
           prefix: isAvoir ? "AV" : prefix,
           due_date: isAvoir ? null : invoiceForm.due_date || null,
@@ -274,7 +325,7 @@ export function TabFinances({ formation, onRefresh }: Props) {
         toast({ title: isAvoir ? "Avoir créé" : "Facture créée", description: data.invoice.reference });
         if (!isAvoir) {
           setInvoiceDialog(false);
-          setInvoiceForm({ recipient_type: "learner", recipient_name: "", recipient_id: "", due_date: "", notes: "", external_reference: "", lines: [{ description: "", quantity: "1", unit_price: "" }] });
+          setInvoiceForm({ recipient_type: "learner", recipient_name: "", recipient_id: "", recipient_siret: "", recipient_address: "", due_date: "", notes: "", external_reference: "", lines: [{ description: "", quantity: "1", unit_price: "" }] });
         }
         fetchData();
       } else {
@@ -297,10 +348,13 @@ export function TabFinances({ formation, onRefresh }: Props) {
       .eq("invoice_id", inv.id)
       .order("order_index");
 
+    const invRecord = inv as unknown as Record<string, string | null>;
     setInvoiceForm({
       recipient_type: inv.recipient_type,
       recipient_name: inv.recipient_name,
       recipient_id: inv.recipient_id,
+      recipient_siret: invRecord.recipient_siret || "",
+      recipient_address: invRecord.recipient_address || "",
       due_date: inv.due_date ? inv.due_date.split("T")[0] : "",
       notes: inv.notes || "",
       external_reference: inv.external_reference || "",
@@ -331,6 +385,8 @@ export function TabFinances({ formation, onRefresh }: Props) {
           invoice_id: editingInvoiceId,
           recipient_name: invoiceForm.recipient_name.trim(),
           recipient_type: invoiceForm.recipient_type,
+          recipient_siret: invoiceForm.recipient_siret || null,
+          recipient_address: invoiceForm.recipient_address || null,
           due_date: invoiceForm.due_date || null,
           notes: invoiceForm.notes || null,
           external_reference: invoiceForm.external_reference || null,
@@ -342,7 +398,7 @@ export function TabFinances({ formation, onRefresh }: Props) {
         toast({ title: "Facture mise à jour" });
         setInvoiceDialog(false);
         setEditingInvoiceId(null);
-        setInvoiceForm({ recipient_type: "learner", recipient_name: "", recipient_id: "", due_date: "", notes: "", external_reference: "", lines: [{ description: "", quantity: "1", unit_price: "" }] });
+        setInvoiceForm({ recipient_type: "learner", recipient_name: "", recipient_id: "", recipient_siret: "", recipient_address: "", due_date: "", notes: "", external_reference: "", lines: [{ description: "", quantity: "1", unit_price: "" }] });
         fetchData();
       } else {
         const data = await res.json();
@@ -443,11 +499,14 @@ export function TabFinances({ formation, onRefresh }: Props) {
     notes: inv.notes,
     recipientName: inv.recipient_name,
     recipientType: inv.recipient_type,
+    recipientSiret: (inv as unknown as Record<string, string>).recipient_siret || undefined,
+    recipientAddress: (inv as unknown as Record<string, string>).recipient_address || undefined,
     sessionTitle: formation.title,
     sessionStartDate: formation.start_date,
     sessionEndDate: formation.end_date,
     sessionDuration: formation.planned_hours ? Number(formation.planned_hours) : null,
     amount: inv.amount,
+    learnerCount: (formation.enrollments || []).length || undefined,
   });
 
   const handleDownloadPdf = async (inv: Invoice) => {
@@ -826,57 +885,66 @@ export function TabFinances({ formation, onRefresh }: Props) {
           </DialogHeader>
           <div className="space-y-4">
             {/* Destinataire */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Type de destinataire</Label>
-                <Select
-                  value={invoiceForm.recipient_type}
-                  onValueChange={(v) => setInvoiceForm((f) => ({ ...f, recipient_type: v }))}
-                >
-                  <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="learner">Apprenant</SelectItem>
-                    <SelectItem value="company">Entreprise</SelectItem>
-                    <SelectItem value="financier">Financeur</SelectItem>
-                  </SelectContent>
-                </Select>
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Type de destinataire</Label>
+                  <Select
+                    value={invoiceForm.recipient_type}
+                    onValueChange={(v) => setInvoiceForm((f) => ({ ...f, recipient_type: v, recipient_siret: "", recipient_address: "" }))}
+                  >
+                    <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="learner">Apprenant</SelectItem>
+                      <SelectItem value="company">Entreprise</SelectItem>
+                      <SelectItem value="financier">Financeur</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Destinataire *</Label>
+                  {(() => {
+                    const options: Array<{ id: string; name: string }> = [];
+                    if (invoiceForm.recipient_type === "learner") {
+                      for (const e of formation.enrollments || []) {
+                        if (e.learner) options.push({ id: e.learner.id, name: `${e.learner.last_name?.toUpperCase()} ${e.learner.first_name}` });
+                      }
+                    } else if (invoiceForm.recipient_type === "company") {
+                      for (const c of formation.formation_companies || []) {
+                        if (c.client) options.push({ id: c.client_id, name: c.client.company_name });
+                      }
+                    } else if (invoiceForm.recipient_type === "financier") {
+                      for (const f of formation.formation_financiers || []) {
+                        options.push({ id: f.id, name: f.name });
+                      }
+                    }
+                    return options.length > 0 ? (
+                      <Select
+                        value={invoiceForm.recipient_name}
+                        onValueChange={(v) => handleRecipientSelect(v)}
+                      >
+                        <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Sélectionner..." /></SelectTrigger>
+                        <SelectContent>
+                          {options.map((o) => (
+                            <SelectItem key={o.id} value={o.name}>{o.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input value={invoiceForm.recipient_name} onChange={(e) => setInvoiceForm((f) => ({ ...f, recipient_name: e.target.value }))} placeholder="Nom" className="h-8 text-sm" />
+                    );
+                  })()}
+                </div>
               </div>
-              <div>
-                <Label>Destinataire *</Label>
-                {(() => {
-                  const options: Array<{ id: string; name: string }> = [];
-                  if (invoiceForm.recipient_type === "learner") {
-                    for (const e of formation.enrollments || []) {
-                      if (e.learner) options.push({ id: e.learner.id, name: `${e.learner.last_name?.toUpperCase()} ${e.learner.first_name}` });
-                    }
-                  } else if (invoiceForm.recipient_type === "company") {
-                    for (const c of formation.formation_companies || []) {
-                      if (c.client) options.push({ id: c.client_id, name: c.client.company_name });
-                    }
-                  } else if (invoiceForm.recipient_type === "financier") {
-                    for (const f of formation.formation_financiers || []) {
-                      options.push({ id: f.id, name: f.name });
-                    }
-                  }
-                  return options.length > 0 ? (
-                    <Select
-                      value={invoiceForm.recipient_name}
-                      onValueChange={(v) => {
-                        const opt = options.find((o) => o.name === v);
-                        setInvoiceForm((f) => ({ ...f, recipient_name: v, recipient_id: opt?.id || "" }));
-                      }}
-                    >
-                      <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Sélectionner..." /></SelectTrigger>
-                      <SelectContent>
-                        {options.map((o) => (
-                          <SelectItem key={o.id} value={o.name}>{o.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <Input value={invoiceForm.recipient_name} onChange={(e) => setInvoiceForm((f) => ({ ...f, recipient_name: e.target.value }))} placeholder="Nom" className="h-8 text-sm" />
-                  );
-                })()}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">SIRET</Label>
+                  <Input value={invoiceForm.recipient_siret} onChange={(e) => setInvoiceForm((f) => ({ ...f, recipient_siret: e.target.value }))} placeholder="N° SIRET" className="h-8 text-sm" />
+                </div>
+                <div>
+                  <Label className="text-xs">Adresse</Label>
+                  <Input value={invoiceForm.recipient_address} onChange={(e) => setInvoiceForm((f) => ({ ...f, recipient_address: e.target.value }))} placeholder="Adresse complète" className="h-8 text-sm" />
+                </div>
               </div>
             </div>
 
