@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Plus, Trash2, Download, Loader2, UserPlus } from "lucide-react";
+import { Plus, Trash2, Download, Loader2, UserPlus, Mail } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -54,6 +54,7 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
   const [newLastName, setNewLastName] = useState("");
   const [newEmail, setNewEmail] = useState("");
   const [creatingLearner, setCreatingLearner] = useState(false);
+  const [sendingAccessAll, setSendingAccessAll] = useState(false);
 
   const enrollments = formation.enrollments || [];
 
@@ -251,6 +252,33 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
           <Button size="sm" variant="outline" onClick={handleExportExcel}>
             <Download className="h-4 w-4 mr-1" /> Exporter (CSV)
           </Button>
+          {enrollments.some(e => e.learner?.email) && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1"
+              disabled={sendingAccessAll}
+              onClick={async () => {
+                const withEmail = enrollments.filter(e => e.learner?.email);
+                if (withEmail.length === 0) return;
+                if (!confirm(`Envoyer l'email d'accès à ${withEmail.length} apprenant(s) ?`)) return;
+                setSendingAccessAll(true);
+                let sent = 0;
+                for (const e of withEmail) {
+                  try {
+                    const res = await fetch(`/api/learners/${e.learner!.id}/send-welcome`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: formation.id }) });
+                    if (res.ok) sent++;
+                  } catch { /* skip */ }
+                }
+                setSendingAccessAll(false);
+                toast({ title: `${sent} email(s) envoyé(s)` });
+                onRefresh();
+              }}
+            >
+              {sendingAccessAll ? <Loader2 className="h-3 w-3 animate-spin" /> : <Mail className="h-3 w-3" />}
+              Envoyer l&apos;accès à tous
+            </Button>
+          )}
         </div>
       </div>
 
