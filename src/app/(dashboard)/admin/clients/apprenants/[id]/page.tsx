@@ -326,6 +326,11 @@ export default function LearnerDetailPage() {
               {learner.email && <span className="flex items-center gap-1"><Mail className="h-3 w-3" />{learner.email}</span>}
               {learner.phone && <span className="flex items-center gap-1"><Phone className="h-3 w-3" />{learner.phone}</span>}
               {company && <Link href={`/admin/clients/${company.id}`} className="flex items-center gap-1 text-[#374151] hover:underline"><Building2 className="h-3 w-3" />{company.company_name}</Link>}
+              {learner.profile_id ? (
+                <span className="flex items-center gap-1 text-green-600"><ShieldCheck className="h-3 w-3" />Accès actif</span>
+              ) : (
+                <span className="flex items-center gap-1 text-gray-400"><Key className="h-3 w-3" />Pas d&apos;accès</span>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-2">
