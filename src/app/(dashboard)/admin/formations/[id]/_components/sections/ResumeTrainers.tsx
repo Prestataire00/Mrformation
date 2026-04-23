@@ -152,6 +152,17 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
         <div className="space-y-3">
           {formationTrainers.map((ft) => {
             const stats = ft.trainer ? getTrainerStats(ft.trainer.id) : null;
+            const plannedHours = ft.hours_done ?? formation.planned_hours ?? null;
+            const actualHours = stats?.hours || 0;
+            const progressPct = plannedHours && plannedHours > 0
+              ? Math.min(100, Math.round((actualHours / plannedHours) * 100))
+              : null;
+
+            // Dates: from emargement if available, otherwise session dates
+            const effectiveDates = stats && stats.dates.length > 0
+              ? stats.dates
+              : null;
+
             return (
             <div key={ft.id} className="p-3 bg-muted/50 rounded-lg space-y-2">
               <div className="flex items-center justify-between">
@@ -182,25 +193,49 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
                 </Button>
               </div>
 
-              {/* Heures effectuées + dates signées */}
-              {stats && stats.slotCount > 0 && (
-                <div className="ml-11 flex flex-wrap items-center gap-3 text-xs">
-                  <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full font-medium">
+              {/* Heures prévues vs réalisées + dates */}
+              <div className="ml-11 space-y-1.5">
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  {/* Heures prévues */}
+                  <span className="inline-flex items-center gap-1 text-gray-600 bg-gray-100 px-2 py-0.5 rounded-full">
                     <Clock className="h-3 w-3" />
-                    {stats.hours}h effectuées
+                    {plannedHours ? `${plannedHours}h prévues` : "Durée non définie"}
                   </span>
-                  <span className="inline-flex items-center gap-1 text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full font-medium">
-                    <CalendarDays className="h-3 w-3" />
-                    {stats.slotCount} créneau{stats.slotCount > 1 ? "x" : ""} signé{stats.slotCount > 1 ? "s" : ""}
+                  {/* Heures réalisées */}
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-medium ${
+                    actualHours > 0 ? "text-emerald-700 bg-emerald-50" : "text-gray-500 bg-gray-50"
+                  }`}>
+                    <Clock className="h-3 w-3" />
+                    {actualHours > 0 ? `${actualHours}h réalisées` : "0h réalisées"}
                   </span>
-                  <span className="text-muted-foreground">
-                    ({stats.dates.join(", ")})
-                  </span>
+                  {/* Progression */}
+                  {progressPct !== null && actualHours > 0 && (
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full font-medium ${
+                      progressPct >= 100 ? "text-emerald-700 bg-emerald-50" : "text-amber-700 bg-amber-50"
+                    }`}>
+                      {progressPct}%
+                    </span>
+                  )}
                 </div>
-              )}
-              {stats && stats.slotCount === 0 && (
-                <p className="ml-11 text-xs text-muted-foreground italic">Aucun créneau signé</p>
-              )}
+
+                {/* Dates effectuées */}
+                {effectiveDates ? (
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="inline-flex items-center gap-1 text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full font-medium">
+                      <CalendarDays className="h-3 w-3" />
+                      {stats!.slotCount} créneau{stats!.slotCount > 1 ? "x" : ""} signé{stats!.slotCount > 1 ? "s" : ""}
+                    </span>
+                    <span className="text-muted-foreground">
+                      {effectiveDates.join(", ")}
+                    </span>
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground italic flex items-center gap-1">
+                    <CalendarDays className="h-3 w-3" />
+                    Aucun créneau signé — dates session : {formation.start_date ? new Date(formation.start_date).toLocaleDateString("fr-FR") : "?"} → {formation.end_date ? new Date(formation.end_date).toLocaleDateString("fr-FR") : "?"}
+                  </p>
+                )}
+              </div>
             </div>
             );
           })}
