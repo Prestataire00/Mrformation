@@ -95,28 +95,15 @@ export function TabResume({ formation, onRefresh }: TabResumeProps) {
             </CardContent>
           </Card>
 
-          {/* Budget & durée */}
+          {/* Infos formation */}
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base font-semibold flex items-center gap-2">
                 <Euro className="h-4 w-4 text-emerald-500" />
-                Budget & durée
+                Infos formation
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-center space-y-1 mb-4">
-                <p className="text-3xl font-bold text-gray-900">
-                  {formation.total_price ? `${formation.total_price.toLocaleString("fr-FR")} €` : "—"}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  {formation.planned_hours ? `${formation.planned_hours}h planifiées` : "Durée non définie"}
-                </p>
-                {formation.total_price && formation.planned_hours && (
-                  <p className="text-xs text-muted-foreground">
-                    {(formation.total_price / formation.planned_hours).toFixed(2)} €/h
-                  </p>
-                )}
-              </div>
               <ResumePriceHours formation={formation} onRefresh={onRefresh} />
             </CardContent>
           </Card>
