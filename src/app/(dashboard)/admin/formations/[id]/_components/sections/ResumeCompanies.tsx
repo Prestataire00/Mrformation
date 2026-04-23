@@ -40,12 +40,10 @@ export function ResumeCompanies({ formation, onRefresh }: Props) {
 
   useEffect(() => {
     const fetchClients = async () => {
+      // Query clients WITHOUT joining contacts (avoids RLS issues on contacts table)
       const { data } = await supabase
         .from("clients")
-        .select(`
-          *,
-          contacts(id, email, first_name, last_name, is_primary)
-        `)
+        .select("*")
         .eq("entity_id", formation.entity_id)
         .order("company_name");
       if (data) setAllClients(data as ClientWithContacts[]);
@@ -59,6 +57,13 @@ export function ResumeCompanies({ formation, onRefresh }: Props) {
 
     const client = allClients.find((c) => c.id === clientId);
     if (!client) return;
+
+    // Fetch contacts for this client (separate query to avoid RLS issues)
+    const { data: contactsData } = await supabase
+      .from("contacts")
+      .select("id, email, first_name, last_name, is_primary")
+      .eq("client_id", clientId);
+    const contacts = contactsData || [];
 
     // 1. Compute suggested amount
     const enrollments = formation.enrollments || [];
@@ -96,12 +101,12 @@ export function ResumeCompanies({ formation, onRefresh }: Props) {
       suggestedEmail = client.automation_contact.email;
     }
     // Priority 2: primary contact
-    else if (client.contacts?.length) {
-      const primary = client.contacts.find((c) => c.is_primary);
+    else if (contacts.length > 0) {
+      const primary = contacts.find((c) => c.is_primary);
       if (primary?.email) {
         suggestedEmail = primary.email;
       } else {
-        const withEmail = client.contacts.find((c) => c.email);
+        const withEmail = contacts.find((c) => c.email);
         if (withEmail?.email) suggestedEmail = withEmail.email;
       }
     }
