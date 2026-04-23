@@ -313,6 +313,29 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
       if (sig) clientSignature = sig;
     }
 
+    // Charger le magic link pour les docs apprenant (convocation)
+    let magicLinkUrl: string | undefined;
+    let qrCodeDataUrl: string | undefined;
+    if (learner?.email && doc.doc_type === "convocation") {
+      const { data: accessToken } = await supabase
+        .from("learner_access_tokens")
+        .select("token")
+        .eq("learner_id", learner.id)
+        .eq("purpose", "access")
+        .gt("expires_at", new Date().toISOString())
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (accessToken) {
+        const base = typeof window !== "undefined" ? window.location.origin : "";
+        magicLinkUrl = `${base}/access/${accessToken.token}`;
+        try {
+          const QRCode = (await import("qrcode")).default;
+          qrCodeDataUrl = await QRCode.toDataURL(magicLinkUrl, { width: 200, margin: 1 });
+        } catch { /* QR generation failed silently */ }
+      }
+    }
+
     const templateData = {
       formation,
       learner: learner ? { id: learner.id, first_name: learner.first_name, last_name: learner.last_name, email: learner.email ?? undefined } : undefined,
@@ -321,6 +344,8 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
       entityName,
       doc: { document_date: doc.document_date || null, confirmed_at: doc.confirmed_at || null },
       clientSignature,
+      magicLinkUrl,
+      qrCodeDataUrl,
     };
 
     const resolveCtx = {
