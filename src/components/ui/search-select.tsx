@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import { Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -20,11 +20,22 @@ interface SearchSelectProps {
   disabled?: boolean;
 }
 
+/** Normalise pour recherche : lowercase, sans accents, sans ponctuation */
+function normalize(str: string): string {
+  return str
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function SearchSelect({
   options,
   onSelect,
   placeholder = "Rechercher...",
-  maxResults = 5,
+  maxResults = 20,
   className,
   disabled,
 }: SearchSelectProps) {
@@ -33,11 +44,23 @@ export function SearchSelect({
   const ref = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const filtered = query.trim()
-    ? options.filter((o) =>
-        `${o.label} ${o.sublabel || ""}`.toLowerCase().includes(query.toLowerCase())
-      ).slice(0, maxResults)
-    : options.slice(0, maxResults);
+  // Pre-normalize all options for search performance
+  const indexed = useMemo(
+    () => options.map(o => ({
+      ...o,
+      _norm: normalize(`${o.label || ""} ${o.sublabel || ""}`),
+    })),
+    [options]
+  );
+
+  const { filtered, totalMatching } = useMemo(() => {
+    if (!query.trim()) {
+      return { filtered: indexed.slice(0, maxResults), totalMatching: indexed.length };
+    }
+    const q = normalize(query);
+    const matching = indexed.filter(o => o._norm.includes(q));
+    return { filtered: matching.slice(0, maxResults), totalMatching: matching.length };
+  }, [query, indexed, maxResults]);
 
   // Close on outside click
   useEffect(() => {
@@ -56,6 +79,8 @@ export function SearchSelect({
     setOpen(false);
   }, [onSelect]);
 
+  const truncated = totalMatching > filtered.length;
+
   return (
     <div ref={ref} className={cn("relative", className)}>
       <div className="relative">
@@ -71,6 +96,7 @@ export function SearchSelect({
         />
         {query && (
           <button
+            type="button"
             onClick={() => { setQuery(""); inputRef.current?.focus(); }}
             className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
           >
@@ -78,25 +104,39 @@ export function SearchSelect({
           </button>
         )}
       </div>
+
       {open && filtered.length > 0 && (
-        <div className="absolute z-50 w-full mt-1 bg-white border rounded-md shadow-lg max-h-48 overflow-y-auto">
+        <div className="absolute z-50 w-full mt-1 bg-white border rounded-md shadow-lg max-h-72 overflow-y-auto">
           {filtered.map((option) => (
             <button
+              type="button"
               key={option.value}
               className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 transition-colors"
               onClick={() => handleSelect(option.value)}
             >
-              <span className="font-medium">{option.label}</span>
+              <span className="font-medium">{option.label || "(sans nom)"}</span>
               {option.sublabel && (
                 <span className="text-xs text-muted-foreground ml-2">— {option.sublabel}</span>
               )}
             </button>
           ))}
+          {truncated && (
+            <div className="px-3 py-1.5 text-xs text-gray-500 bg-gray-50 border-t italic">
+              {totalMatching - filtered.length} résultat(s) supplémentaire(s). Précisez votre recherche.
+            </div>
+          )}
         </div>
       )}
+
       {open && query.trim() && filtered.length === 0 && (
         <div className="absolute z-50 w-full mt-1 bg-white border rounded-md shadow-lg">
-          <p className="px-3 py-2 text-sm text-muted-foreground">Aucun résultat</p>
+          <p className="px-3 py-2 text-sm text-muted-foreground">Aucun résultat pour &quot;{query}&quot;</p>
+        </div>
+      )}
+
+      {open && !query.trim() && options.length === 0 && (
+        <div className="absolute z-50 w-full mt-1 bg-white border rounded-md shadow-lg">
+          <p className="px-3 py-2 text-sm text-muted-foreground">Aucune option disponible</p>
         </div>
       )}
     </div>
