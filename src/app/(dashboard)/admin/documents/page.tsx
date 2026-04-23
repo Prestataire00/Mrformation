@@ -953,11 +953,38 @@ export default function DocumentsPage() {
                       const uploadResult = await res.json();
                       if (!res.ok) throw new Error(uploadResult.error);
 
-                      // Extract HTML via mammoth (client-side)
+                      // Extract HTML via mammoth with full styleMap
                       const mammoth = await import("mammoth");
                       const arrayBuffer = await file.arrayBuffer();
-                      const result = await mammoth.convertToHtml({ arrayBuffer });
-                      const html = result.value;
+                      const result = await mammoth.convertToHtml(
+                        { arrayBuffer },
+                        {
+                          styleMap: [
+                            "p[style-name='Title'] => h1:fresh",
+                            "p[style-name='Heading 1'] => h1:fresh",
+                            "p[style-name='Heading 2'] => h2:fresh",
+                            "p[style-name='Heading 3'] => h3:fresh",
+                            "p[style-name='Heading 4'] => h4:fresh",
+                            "p[style-name='Quote'] => blockquote:fresh",
+                            "p[style-name='List Bullet'] => ul > li:fresh",
+                            "p[style-name='List Number'] => ol > li:fresh",
+                            "r[style-name='Strong'] => strong",
+                            "r[style-name='Emphasis'] => em",
+                          ],
+                          convertImage: mammoth.images.imgElement(async (image: { readAsBase64String: () => Promise<string>; contentType: string }) => {
+                            const base64 = await image.readAsBase64String();
+                            return { src: `data:${image.contentType};base64,${base64}` };
+                          }),
+                          includeDefaultStyleMap: true,
+                        }
+                      );
+                      let html = result.value;
+                      // Wrapper avec styles de base pour rendu propre
+                      html = `<div style="font-family:'Calibri','Arial',sans-serif;font-size:11pt;line-height:1.5;color:#333;">${html}</div>`;
+
+                      if (result.messages.length > 0) {
+                        console.warn("[word-import] conversion warnings:", result.messages);
+                      }
 
                       // Open in editor
                       setEditingTemplate(null);
@@ -969,7 +996,12 @@ export default function DocumentsPage() {
                       setShowStarterPicker(false);
                       setTemplateDialogOpen(true);
 
-                      toast({ title: "Document importé", description: "Modifiez-le puis sauvegardez." });
+                      toast({
+                        title: "Document importé",
+                        description: result.messages.length > 0
+                          ? `${result.messages.length} style(s) adapté(s). Vérifiez le rendu.`
+                          : "Modifiez-le puis sauvegardez.",
+                      });
                     } catch (err) {
                       const msg = err instanceof Error ? err.message : "Erreur import";
                       toast({ title: "Erreur", description: msg, variant: "destructive" });
