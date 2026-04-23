@@ -656,6 +656,7 @@ export default function ProspectDetailPage() {
     if (!prospect || !entityId) return;
     setConverting(true);
     try {
+      // 1. Create client with all transferable data
       const { data: newClient, error: clientErr } = await supabase
         .from("clients")
         .insert({
@@ -667,19 +668,37 @@ export default function ProspectDetailPage() {
           address: prospect.address || null,
           city: prospect.city || null,
           postal_code: prospect.postal_code || null,
+          naf_code: prospect.naf_code || null,
+          notes: prospect.notes || null,
           status: "active",
         })
         .select("id")
         .single();
       if (clientErr) throw clientErr;
 
+      // 2. Create contact from prospect contact_name if available
+      if (prospect.contact_name && newClient.id) {
+        const nameParts = prospect.contact_name.trim().split(/\s+/);
+        const firstName = nameParts[0] || "";
+        const lastName = nameParts.slice(1).join(" ") || nameParts[0] || "";
+        await supabase.from("contacts").insert({
+          client_id: newClient.id,
+          first_name: firstName,
+          last_name: lastName || firstName,
+          email: prospect.email || null,
+          phone: prospect.phone || null,
+          is_primary: true,
+        });
+      }
+
+      // 3. Mark prospect as converted
       const { error: updateErr } = await supabase
         .from("crm_prospects")
         .update({ converted_client_id: newClient.id, status: "won" })
         .eq("id", prospect.id);
       if (updateErr) throw updateErr;
 
-      toast({ title: "Prospect converti en client" });
+      toast({ title: "Prospect converti en client", description: "Redirection vers la fiche client..." });
       setConvertDialogOpen(false);
       router.push(`/admin/clients/${newClient.id}`);
     } catch (err: unknown) {
@@ -816,11 +835,17 @@ export default function ProspectDetailPage() {
           >
             <StickyNote className="w-3 h-3" /> Note
           </Button>
-          {prospect.status === "won" && !prospect.converted_client_id && (
+          {!prospect.converted_client_id ? (
             <Button size="sm" variant="outline" className="text-xs h-8 gap-1.5 border-green-300 text-green-700 hover:bg-green-50"
               onClick={() => setConvertDialogOpen(true)}
             >
               <CheckCircle className="w-3 h-3" /> Convertir en client
+            </Button>
+          ) : (
+            <Button size="sm" variant="outline" className="text-xs h-8 gap-1.5 border-green-300 text-green-700 bg-green-50"
+              onClick={() => router.push(`/admin/clients/${prospect.converted_client_id}`)}
+            >
+              <CheckCircle className="w-3 h-3" /> Voir le client
             </Button>
           )}
           <Button size="sm" variant="ghost" className="text-xs h-8 gap-1.5" onClick={() => { openEdit(); setEditMode(true); }}>
@@ -1235,24 +1260,34 @@ export default function ProspectDetailPage() {
 
       {/* ── Convert to Client Dialog ────────────────────────────────────── */}
       <Dialog open={convertDialogOpen} onOpenChange={setConvertDialogOpen}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Convertir en client</DialogTitle>
+            <DialogTitle>Convertir en entreprise cliente</DialogTitle>
           </DialogHeader>
-          <div className="text-sm text-muted-foreground space-y-2">
-            <p>Un nouveau client sera créé avec les données suivantes :</p>
-            <ul className="list-disc pl-4 space-y-1">
-              <li><strong>Entreprise :</strong> {prospect?.company_name}</li>
-              {prospect?.siret && <li><strong>SIRET :</strong> {prospect.siret}</li>}
-              {prospect?.email && <li><strong>Email :</strong> {prospect.email}</li>}
-              {prospect?.phone && <li><strong>Téléphone :</strong> {prospect.phone}</li>}
-            </ul>
+          <div className="text-sm space-y-3">
+            <p className="text-muted-foreground">Un nouveau client sera créé dans l&apos;onglet <strong>Entreprises</strong> avec les données suivantes :</p>
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3 space-y-1.5">
+              <p><strong>Entreprise :</strong> {prospect?.company_name}</p>
+              {prospect?.siret && <p className="text-xs text-muted-foreground">SIRET : {prospect.siret}</p>}
+              {prospect?.contact_name && <p className="text-xs text-muted-foreground">Contact : {prospect.contact_name}</p>}
+              {prospect?.email && <p className="text-xs text-muted-foreground">Email : {prospect.email}</p>}
+              {prospect?.phone && <p className="text-xs text-muted-foreground">Tél : {prospect.phone}</p>}
+              {(prospect?.address || prospect?.city) && (
+                <p className="text-xs text-muted-foreground">Adresse : {[prospect.address, prospect.postal_code, prospect.city].filter(Boolean).join(" ")}</p>
+              )}
+            </div>
+            {prospect?.contact_name && (
+              <p className="text-xs text-green-700 bg-green-50 px-2 py-1 rounded">
+                Le contact <strong>{prospect.contact_name}</strong> sera automatiquement créé comme contact principal du client.
+              </p>
+            )}
+            <p className="text-xs text-muted-foreground">Le prospect passera en statut &quot;Gagné&quot; et un lien vers le client sera ajouté.</p>
           </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" size="sm" onClick={() => setConvertDialogOpen(false)}>Annuler</Button>
-            <Button size="sm" onClick={handleConvertToClient} disabled={converting} className="gap-1.5">
+            <Button size="sm" onClick={handleConvertToClient} disabled={converting} className="gap-1.5 bg-green-600 hover:bg-green-700">
               {converting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              Convertir
+              Convertir en client
             </Button>
           </DialogFooter>
         </DialogContent>
