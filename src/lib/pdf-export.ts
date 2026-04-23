@@ -575,12 +575,29 @@ export async function exportHtmlToPDF(
   container.prepend(style);
   document.body.appendChild(container);
 
+  // Wait for browser paint + images to load
+  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  const imgs = Array.from(container.querySelectorAll("img"));
+  if (imgs.length > 0) {
+    await Promise.all(imgs.map(img => {
+      if (img.complete && img.naturalHeight !== 0) return Promise.resolve();
+      return new Promise<void>(resolve => {
+        img.onload = () => resolve();
+        img.onerror = () => resolve();
+        setTimeout(resolve, 5000);
+      });
+    }));
+  }
+
   try {
     const canvas = await html2canvas(container, {
       scale: 2,
       useCORS: true,
       logging: false,
       backgroundColor: "#ffffff",
+      foreignObjectRendering: false,
+      allowTaint: true,
+      imageTimeout: 10000,
     });
 
     const imgData = canvas.toDataURL("image/png");
@@ -698,12 +715,29 @@ export async function exportHtmlToPDFBase64(
   container.prepend(style);
   document.body.appendChild(container);
 
+  // Wait for browser paint + images to load
+  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  const imgs = Array.from(container.querySelectorAll("img"));
+  if (imgs.length > 0) {
+    await Promise.all(imgs.map(img => {
+      if (img.complete && img.naturalHeight !== 0) return Promise.resolve();
+      return new Promise<void>(resolve => {
+        img.onload = () => resolve();
+        img.onerror = () => resolve();
+        setTimeout(resolve, 5000);
+      });
+    }));
+  }
+
   try {
     const canvas = await html2canvas(container, {
       scale: 2,
       useCORS: true,
       logging: false,
       backgroundColor: "#ffffff",
+      foreignObjectRendering: false,
+      allowTaint: true,
+      imageTimeout: 10000,
     });
 
     const imgData = canvas.toDataURL("image/png");
