@@ -160,6 +160,7 @@ const adminNavSections: NavSection[] = [
     section: "Paramètres",
     items: [
       { label: "Utilisateurs", href: "/admin/users", icon: Users },
+      { label: "Mon organisme", href: "/admin/settings/organization", icon: Building2 },
       { label: "Veille", href: "/admin/veille", icon: Rss },
       { label: "Support", href: "/admin/support", icon: LifeBuoy },
     ],

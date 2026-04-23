@@ -756,7 +756,14 @@ export default function DocumentsPage() {
             {OFFICIAL_TEMPLATES.length} templates officiels — {templates.length} modèle{templates.length !== 1 ? "s" : ""} personnalisés — {generatedDocs.length} document{generatedDocs.length !== 1 ? "s" : ""} générés
           </p>
         </div>
-        {/* Bouton "Générer un document" retiré */}
+        <div className="flex items-center gap-3">
+          <a href="/admin/settings/organization" className="text-xs text-gray-500 hover:text-blue-600 flex items-center gap-1">
+            <Building2 className="h-3 w-3" /> Infos organisme
+          </a>
+          <a href="/admin/documents/variables" className="text-xs text-gray-500 hover:text-blue-600 flex items-center gap-1">
+            Toutes les variables
+          </a>
+        </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
