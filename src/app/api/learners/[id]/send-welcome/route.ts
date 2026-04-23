@@ -89,6 +89,12 @@ export async function POST(req: NextRequest, context: RouteContext) {
       });
     }
 
+    // Track welcome email sent
+    await auth.supabase
+      .from("learners")
+      .update({ welcome_email_sent_at: new Date().toISOString() })
+      .eq("id", learnerId);
+
     return NextResponse.json({ success: true, magic_url: magicUrl, expires_at: expiresAt.toISOString() });
   } catch (err) {
     console.error("[send-welcome]", err);
