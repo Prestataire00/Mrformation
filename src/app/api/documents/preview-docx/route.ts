@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/require-role";
 import { convertDocxToPdfWithVariables } from "@/lib/services/docx-converter";
+import { computeCacheKey, getCachedPdf, setCachedPdf } from "@/lib/services/pdf-cache";
 
 /**
  * GET /api/documents/preview-docx?url=<docx_url>
@@ -33,15 +34,43 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    // Cache key basé uniquement sur l'URL .docx (preview brut, pas de variables).
+    // Le path Storage du .docx contient un UUID immuable → si l'admin re-upload
+    // un nouveau .docx, l'URL change donc le hash change automatiquement.
+    const cacheKey = computeCacheKey({
+      entity_id: auth.profile.entity_id,
+      template_id: docxUrl, // utilise l'URL comme clé (immuable par UUID)
+    });
+
+    const cachedBuffer = await getCachedPdf(auth.supabase, auth.profile.entity_id, cacheKey);
+    if (cachedBuffer) {
+      console.log(`[preview-docx] Cache HIT (${cacheKey.slice(0, 8)})`);
+      return new Response(new Uint8Array(cachedBuffer), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `inline; filename="preview.pdf"`,
+          "Content-Length": String(cachedBuffer.byteLength),
+          "Cache-Control": "private, max-age=300",
+          "X-Pdf-Cache": "hit",
+        },
+      });
+    }
+
+    console.log(`[preview-docx] Cache MISS (${cacheKey.slice(0, 8)}) — generating`);
     const pdf = await convertDocxToPdfWithVariables(docxUrl, null);
+
+    // Sauvegarde best-effort
+    setCachedPdf(auth.supabase, auth.profile.entity_id, cacheKey, pdf.buffer).catch(() => { /* silent */ });
+
     return new Response(new Uint8Array(pdf.buffer), {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
         "Content-Disposition": `inline; filename="preview.pdf"`,
         "Content-Length": String(pdf.buffer.byteLength),
-        // Cache 5 min (preview rarement modifiée puisque .docx immutable)
         "Cache-Control": "private, max-age=300",
+        "X-Pdf-Cache": "miss",
       },
     });
   } catch (err) {

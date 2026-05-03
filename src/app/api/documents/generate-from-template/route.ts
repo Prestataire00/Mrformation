@@ -5,6 +5,7 @@ import { sanitizeError } from "@/lib/api-error";
 import { convertDocxToPdfWithVariables } from "@/lib/services/docx-converter";
 import { generatePdfFromFragment } from "@/lib/services/pdf-generator";
 import { getDefaultTemplate } from "@/lib/document-templates-defaults";
+import { computeCacheKey, getCachedPdf, setCachedPdf } from "@/lib/services/pdf-cache";
 import type { Session } from "@/lib/types";
 
 /**
@@ -72,17 +73,17 @@ export async function POST(request: NextRequest) {
     //    - template_id explicite : on charge ce template
     //    - doc_type : on cherche un template Word custom marqué default_for_doc_type
     //                 (override admin) ; sinon on prendra le template système hardcodé
-    let template: { id: string; name: string; mode: string | null; source_docx_url: string | null; content: string | null } | null = null;
+    let template: { id: string; name: string; mode: string | null; source_docx_url: string | null; content: string | null; updated_at?: string | null } | null = null;
     let isSystemFallback = false;
 
     if (payload.template_id) {
       const { data } = await auth.supabase
         .from("document_templates")
-        .select("id, name, mode, source_docx_url, content")
+        .select("id, name, mode, source_docx_url, content, created_at")
         .eq("id", payload.template_id)
         .eq("entity_id", auth.profile.entity_id)
         .single();
-      template = data;
+      template = data ? { ...data, updated_at: data.created_at } : null;
       if (!template) {
         return NextResponse.json({ error: "Template introuvable" }, { status: 404 });
       }
@@ -90,14 +91,14 @@ export async function POST(request: NextRequest) {
       // Cherche un override "modèle par défaut" pour ce type
       const { data: overrideTpl } = await auth.supabase
         .from("document_templates")
-        .select("id, name, mode, source_docx_url, content")
+        .select("id, name, mode, source_docx_url, content, created_at")
         .eq("entity_id", auth.profile.entity_id)
         .eq("default_for_doc_type", payload.doc_type)
         .eq("mode", "docx_fidelity")
         .maybeSingle();
 
       if (overrideTpl) {
-        template = overrideTpl;
+        template = { ...overrideTpl, updated_at: overrideTpl.created_at };
       } else {
         // Pas d'override → on basculera sur le template système hardcodé après
         // avoir construit les variables (cf. plus bas)
@@ -106,26 +107,34 @@ export async function POST(request: NextRequest) {
     }
 
     // 2. Construit les variables auto-déduites depuis le contexte
+    // (on capture aussi updated_at pour le cache key)
     const autoVars: Record<string, string> = {};
+    let sessionUpdatedAt: string | null = null;
+    let learnerUpdatedAt: string | null = null;
+    let clientUpdatedAt: string | null = null;
+    let trainerUpdatedAt: string | null = null;
+    let sessionDataForFallback: Record<string, unknown> | null = null;
 
     if (payload.context.session_id) {
       const { data: session } = await auth.supabase
         .from("sessions")
-        .select("title, start_date, end_date, location")
+        .select("*, training:trainings(*)")
         .eq("id", payload.context.session_id)
         .single();
       if (session) {
-        autoVars.titre_formation = session.title ?? "";
-        autoVars.date_debut = session.start_date ?? "";
-        autoVars.date_fin = session.end_date ?? "";
-        autoVars.lieu = session.location ?? "";
+        autoVars.titre_formation = (session.title as string) ?? "";
+        autoVars.date_debut = (session.start_date as string) ?? "";
+        autoVars.date_fin = (session.end_date as string) ?? "";
+        autoVars.lieu = (session.location as string) ?? "";
+        sessionUpdatedAt = (session.updated_at as string) ?? (session.created_at as string) ?? null;
+        sessionDataForFallback = session as Record<string, unknown>;
       }
     }
 
     if (payload.context.learner_id) {
       const { data: learner } = await auth.supabase
         .from("learners")
-        .select("first_name, last_name, email, phone")
+        .select("first_name, last_name, email, phone, updated_at, created_at")
         .eq("id", payload.context.learner_id)
         .single();
       if (learner) {
@@ -133,28 +142,31 @@ export async function POST(request: NextRequest) {
         autoVars.prenom_apprenant = learner.first_name ?? "";
         autoVars.email_apprenant = learner.email ?? "";
         autoVars.telephone_apprenant = learner.phone ?? "";
+        learnerUpdatedAt = (learner.updated_at as string | null) ?? (learner.created_at as string | null) ?? null;
       }
     }
 
     if (payload.context.client_id) {
       const { data: client } = await auth.supabase
         .from("clients")
-        .select("company_name")
+        .select("company_name, updated_at, created_at")
         .eq("id", payload.context.client_id)
         .single();
       if (client) {
         autoVars.nom_client = client.company_name ?? "";
+        clientUpdatedAt = (client.updated_at as string | null) ?? (client.created_at as string | null) ?? null;
       }
     }
 
     if (payload.context.trainer_id) {
       const { data: trainer } = await auth.supabase
         .from("trainers")
-        .select("first_name, last_name")
+        .select("first_name, last_name, updated_at, created_at")
         .eq("id", payload.context.trainer_id)
         .single();
       if (trainer) {
         autoVars.nom_formateur = `${trainer.first_name ?? ""} ${trainer.last_name ?? ""}`.trim();
+        trainerUpdatedAt = (trainer.updated_at as string | null) ?? (trainer.created_at as string | null) ?? null;
       }
     }
 
@@ -162,6 +174,41 @@ export async function POST(request: NextRequest) {
 
     // Custom variables override les auto-déduites
     const finalVars = { ...autoVars, ...(payload.custom_variables ?? {}) };
+
+    // 2.5 — Cache lookup : si on a déjà généré ce PDF avec ce contexte → réutilise
+    // (économise 1 conversion CloudConvert par hit ; invalidation auto si template
+    // ou entité modifié grâce aux updated_at dans le hash).
+    // Note : on n'inclut PAS date_today dans le hash pour ne pas invalider chaque
+    // jour. Si tu veux date_today dynamique, passe-la en custom_variables.
+    const cacheKey = computeCacheKey({
+      entity_id: auth.profile.entity_id,
+      template_id: template?.id ?? null,
+      doc_type: payload.doc_type ?? null,
+      session_id: payload.context.session_id ?? null,
+      learner_id: payload.context.learner_id ?? null,
+      client_id: payload.context.client_id ?? null,
+      trainer_id: payload.context.trainer_id ?? null,
+      template_updated_at: template?.updated_at ?? null,
+      session_updated_at: sessionUpdatedAt,
+      learner_updated_at: learnerUpdatedAt,
+      client_updated_at: clientUpdatedAt,
+      trainer_updated_at: trainerUpdatedAt,
+      custom_variables: payload.custom_variables ?? null,
+    });
+
+    const cachedBuffer = await getCachedPdf(auth.supabase, auth.profile.entity_id, cacheKey);
+    if (cachedBuffer) {
+      const pdfNameBase = template?.name ?? payload.doc_type ?? "document";
+      const filename = `${pdfNameBase.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.pdf`;
+      console.log(`[generate-from-template] Cache HIT (${cacheKey.slice(0, 8)})`);
+      return NextResponse.json({
+        base64: cachedBuffer.toString("base64"),
+        filename,
+        sizeBytes: cachedBuffer.byteLength,
+        cached: true,
+      });
+    }
+    console.log(`[generate-from-template] Cache MISS (${cacheKey.slice(0, 8)}) — generating`);
 
     // 3. Génération PDF — 3 cas :
     //    a) Cas template (custom OU override default) en mode docx_fidelity → CloudConvert LibreOffice
@@ -203,10 +250,8 @@ export async function POST(request: NextRequest) {
         sizeBytes = result.sizeBytes;
       }
     } else if (isSystemFallback && payload.doc_type) {
-      // Charger les données du contexte pour passer à getDefaultTemplate
-      const { data: session } = payload.context.session_id
-        ? await auth.supabase.from("sessions").select("*, training:trainings(*)").eq("id", payload.context.session_id).single()
-        : { data: null };
+      // Réutilise les données déjà fetchées plus haut + fetch les manquantes
+      const session = sessionDataForFallback;
       const learnerData = payload.context.learner_id
         ? (await auth.supabase.from("learners").select("id, first_name, last_name, email").eq("id", payload.context.learner_id).single()).data
         : null;
@@ -217,7 +262,7 @@ export async function POST(request: NextRequest) {
         ? (await auth.supabase.from("trainers").select("first_name, last_name").eq("id", payload.context.trainer_id).single()).data
         : null;
       const { data: entity } = session?.entity_id
-        ? await auth.supabase.from("entities").select("name").eq("id", session.entity_id).single()
+        ? await auth.supabase.from("entities").select("name").eq("id", session.entity_id as string).single()
         : { data: null };
 
       const html = getDefaultTemplate(payload.doc_type, {
@@ -243,12 +288,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Aucun template ni doc_type valide fourni" }, { status: 400 });
     }
 
+    // Sauvegarde dans le cache pour économiser CloudConvert sur les prochaines requêtes
+    // identiques (best effort — un échec d'upload ne bloque pas la réponse).
+    const pdfBuffer = Buffer.from(pdfBase64, "base64");
+    setCachedPdf(auth.supabase, auth.profile.entity_id, cacheKey, pdfBuffer).catch(() => { /* silent */ });
+
     const filename = `${pdfNameBase.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.pdf`;
 
     return NextResponse.json({
       base64: pdfBase64,
       filename,
       sizeBytes,
+      cached: false,
     });
   } catch (err) {
     console.error("[documents/generate-from-template] error:", err);
