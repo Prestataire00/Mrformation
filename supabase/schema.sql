@@ -1032,8 +1032,28 @@ ALTER TABLE client_documents ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "client_documents_admin_all" ON client_documents
   FOR ALL TO authenticated
-  USING (true)
-  WITH CHECK (true);
+  USING (
+    user_role() IN ('admin', 'super_admin')
+    AND client_id IN (SELECT id FROM clients WHERE entity_id = user_entity_id())
+  )
+  WITH CHECK (
+    user_role() IN ('admin', 'super_admin')
+    AND client_id IN (SELECT id FROM clients WHERE entity_id = user_entity_id())
+  );
+
+CREATE POLICY "client_documents_trainer_read" ON client_documents
+  FOR SELECT TO authenticated
+  USING (
+    user_role() = 'trainer'
+    AND client_id IN (SELECT id FROM clients WHERE entity_id = user_entity_id())
+  );
+
+CREATE POLICY "client_documents_client_read_own" ON client_documents
+  FOR SELECT TO authenticated
+  USING (
+    user_role() = 'client'
+    AND client_id IN (SELECT client_id FROM learners WHERE profile_id = auth.uid())
+  );
 
 -- ============================================================
 -- TABLE: client_comments (commentaires internes sur les clients)
@@ -1051,8 +1071,15 @@ ALTER TABLE client_comments ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "client_comments_admin_all" ON client_comments
   FOR ALL TO authenticated
-  USING (true)
-  WITH CHECK (true);
+  USING (
+    user_role() IN ('admin', 'super_admin')
+    AND client_id IN (SELECT id FROM clients WHERE entity_id = user_entity_id())
+  )
+  WITH CHECK (
+    user_role() IN ('admin', 'super_admin')
+    AND client_id IN (SELECT id FROM clients WHERE entity_id = user_entity_id())
+    AND author_id = auth.uid()
+  );
 
 
 -- ============================================================
@@ -1073,8 +1100,14 @@ ALTER TABLE bpf_financial_data ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "bpf_financial_data_admin_all" ON bpf_financial_data
   FOR ALL TO authenticated
-  USING (true)
-  WITH CHECK (true);
+  USING (
+    user_role() IN ('admin', 'super_admin')
+    AND entity_id = user_entity_id()
+  )
+  WITH CHECK (
+    user_role() IN ('admin', 'super_admin')
+    AND entity_id = user_entity_id()
+  );
 
 -- ============================================================
 -- ALTER: learners - ajout learner_type pour BPF section F-1

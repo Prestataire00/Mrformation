@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
 function getServiceSupabase() {
   return createClient(
@@ -9,8 +10,16 @@ function getServiceSupabase() {
   );
 }
 
+function getClientIp(request: NextRequest): string {
+  return request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+}
+
 // GET: validate token and return questionnaire info + questions
 export async function GET(request: NextRequest) {
+  // Rate limit : protège contre l'énumération de tokens
+  const { allowed, resetAt } = checkRateLimit(`questionnaire-get:${getClientIp(request)}`, { limit: 30, windowSeconds: 60 });
+  if (!allowed) return rateLimitResponse(resetAt);
+
   const token = request.nextUrl.searchParams.get("token");
   if (!token) return NextResponse.json({ valid: false });
 
@@ -52,6 +61,10 @@ export async function GET(request: NextRequest) {
 
 // POST: submit responses
 export async function POST(request: NextRequest) {
+  // Rate limit : protège contre le spam de soumissions
+  const { allowed, resetAt } = checkRateLimit(`questionnaire-submit:${getClientIp(request)}`, { limit: 10, windowSeconds: 60 });
+  if (!allowed) return rateLimitResponse(resetAt);
+
   try {
     const { token, responses } = await request.json();
 

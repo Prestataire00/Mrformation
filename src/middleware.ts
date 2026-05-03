@@ -69,25 +69,28 @@ export async function middleware(request: NextRequest) {
 
   // RBAC: Role-based access control
   if (user && !isPublicPath && !isRoot) {
-    let userRole = request.cookies.get("user_role")?.value;
+    // Sécurité : le rôle est TOUJOURS lu depuis la DB et jamais depuis le cookie.
+    // Un cookie client-side est modifiable (XSS, dev tools) → ne peut pas être
+    // source de vérité pour une décision d'autorisation. Le cookie `user_role`
+    // n'est conservé que pour l'affichage UI côté client (sans valeur de sécurité).
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single();
 
-    // If cookie is missing, fetch role from DB and set it
-    if (!userRole) {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .single();
+    const userRole = profile?.role;
 
-      if (profile?.role) {
-        userRole = profile.role;
-        // Set the cookie on the response so it persists for future requests
-        response.cookies.set("user_role", profile.role, {
-          path: "/",
-          maxAge: 60 * 60 * 24 * 30,
-          sameSite: "lax",
-        });
-      }
+    // Re-synchronise le cookie UI si nécessaire (httpOnly: false volontairement,
+    // car lu par les pages client pour de l'affichage conditionnel uniquement).
+    const cookieRole = request.cookies.get("user_role")?.value;
+    if (userRole && cookieRole !== userRole) {
+      response.cookies.set("user_role", userRole, {
+        path: "/",
+        maxAge: 60 * 60 * 24 * 30,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+      });
     }
 
     // Check page routes (first match wins — PAGE_PERMISSIONS is ordered most-specific first)

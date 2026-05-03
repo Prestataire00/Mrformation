@@ -27,6 +27,9 @@ export default async () => {
   }
 };
 
+// Toutes les 5 minutes : la queue email est traitée par batch de 50 (cf.
+// /api/emails/process-scheduled). Avec 200+ users actifs, il faut éviter
+// l'accumulation entre runs.
 export const config: Config = {
-  schedule: "0 * * * *",
+  schedule: "*/5 * * * *",
 };

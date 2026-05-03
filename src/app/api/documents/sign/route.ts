@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
 function createServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -10,6 +11,11 @@ function createServiceClient() {
 
 // POST /api/documents/sign — PUBLIC endpoint (no auth required, token validates identity)
 export async function POST(request: NextRequest) {
+  // Rate limit : route publique sensible (service role + signatures de documents)
+  const rateLimitIp = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  const { allowed, resetAt } = checkRateLimit(`documents-sign:${rateLimitIp}`, { limit: 10, windowSeconds: 60 });
+  if (!allowed) return rateLimitResponse(resetAt);
+
   try {
     const { token, signature_data, signer_name } = await request.json();
 
