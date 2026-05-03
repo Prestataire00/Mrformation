@@ -239,8 +239,14 @@ export function ResumePriceHours({ formation, onRefresh }: Props) {
           <Input type="number" step="0.01" value={form.total_price} onChange={u("total_price")} placeholder="0.00" className="h-8 text-sm" />
         </div>
         <div>
-          <Label className="text-xs">Heures planifiées</Label>
+          <Label className="text-xs flex items-center gap-1">
+            Heures planifiées
+            <span className="text-[9px] font-normal text-emerald-600 bg-emerald-50 px-1 rounded">auto</span>
+          </Label>
           <Input type="number" step="0.5" value={form.planned_hours} onChange={u("planned_hours")} placeholder="0" className="h-8 text-sm" />
+          <p className="text-[10px] text-gray-400 mt-1">
+            Recalculé auto à chaque modification du planning. Modification manuelle écrasée au prochain changement de créneau.
+          </p>
           {autoComputedHours !== null && Number(form.planned_hours || "0") !== autoComputedHours && (
             <button
               type="button"
@@ -248,7 +254,7 @@ export function ResumePriceHours({ formation, onRefresh }: Props) {
               className="mt-1 text-[10px] text-emerald-600 hover:text-emerald-700 flex items-center gap-1"
             >
               <Sparkles className="h-2.5 w-2.5" />
-              Utiliser la durée du planning : {autoComputedHours}h
+              Forcer la durée du planning : {autoComputedHours}h
             </button>
           )}
         </div>
@@ -264,8 +270,14 @@ export function ResumePriceHours({ formation, onRefresh }: Props) {
         </div>
       </div>
       <div>
-        <Label className="text-xs">Lieu</Label>
+        <Label className="text-xs flex items-center gap-1">
+          Lieu
+          <span className="text-[9px] font-normal text-emerald-600 bg-emerald-50 px-1 rounded">auto</span>
+        </Label>
         <Input value={form.location} onChange={u("location")} placeholder="Adresse ou salle" className="h-8 text-sm" />
+        <p className="text-[10px] text-gray-400 mt-1">
+          Si vide : adresse {form.type === "intra" ? "de la 1ère entreprise liée" : "de l'organisme"}. Modifiable librement, votre saisie est conservée.
+        </p>
         {(() => {
           const suggestion = form.type === "intra" ? defaultLocationByType.intra : defaultLocationByType.inter;
           if (!suggestion || form.location === suggestion) return null;
@@ -277,7 +289,7 @@ export function ResumePriceHours({ formation, onRefresh }: Props) {
               className="mt-1 text-[10px] text-emerald-600 hover:text-emerald-700 flex items-center gap-1 text-left"
             >
               <Sparkles className="h-2.5 w-2.5 shrink-0" />
-              <span className="truncate">Utiliser l&apos;{label} : {suggestion}</span>
+              <span className="truncate">Forcer l&apos;{label} : {suggestion}</span>
             </button>
           );
         })()}
