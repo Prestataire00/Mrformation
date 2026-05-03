@@ -599,14 +599,26 @@ export default function DocumentsPage() {
       source_docx_path: templateForm.source_docx_path,
     };
 
+    console.log("[saveTemplate] payload", payload, "entityId", entityId);
     if (editingTemplate) {
       const { error } = await supabase.from("document_templates").update(payload).eq("id", editingTemplate.id);
-      if (error) { toast({ title: "Erreur", description: error.message, variant: "destructive" }); setSaving(false); return; }
+      if (error) {
+        console.error("[saveTemplate] UPDATE failed", error);
+        toast({ title: "Erreur enregistrement", description: error.message, variant: "destructive" });
+        setSaving(false);
+        return;
+      }
       toast({ title: "Modèle mis à jour" });
     } else {
-      const { error } = await supabase.from("document_templates").insert({ ...payload, entity_id: entityId });
-      if (error) { toast({ title: "Erreur", description: error.message, variant: "destructive" }); setSaving(false); return; }
-      toast({ title: "Modèle créé" });
+      const { data: inserted, error } = await supabase.from("document_templates").insert({ ...payload, entity_id: entityId }).select("id").single();
+      if (error) {
+        console.error("[saveTemplate] INSERT failed", error);
+        toast({ title: "Erreur enregistrement", description: error.message, variant: "destructive" });
+        setSaving(false);
+        return;
+      }
+      console.log("[saveTemplate] INSERT OK", inserted);
+      toast({ title: "Modèle créé", description: `ID: ${inserted?.id?.slice(0, 8)}...` });
     }
     setSaving(false);
     setTemplateDialogOpen(false);
