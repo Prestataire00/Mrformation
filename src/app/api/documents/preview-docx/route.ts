@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/require-role";
-import { sanitizeError } from "@/lib/api-error";
 import { convertDocxToPdfWithVariables } from "@/lib/services/docx-converter";
 
 /**
@@ -46,9 +45,12 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (err) {
+    // Route admin-only → on retourne le vrai message d'erreur pour faciliter
+    // le debug (config CloudConvert, URL Storage, etc.) au lieu du sanitize.
+    const message = err instanceof Error ? err.message : "Erreur inconnue";
     console.error("[documents/preview-docx] error:", err);
     return NextResponse.json(
-      { error: sanitizeError(err, "documents/preview-docx") },
+      { error: `Échec génération PDF preview : ${message}` },
       { status: 500 }
     );
   }
