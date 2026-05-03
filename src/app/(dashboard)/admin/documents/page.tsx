@@ -78,6 +78,7 @@ import {
   Building2,
   Users,
   GraduationCap,
+  Send,
 } from "lucide-react";
 // exportToPDF already imported above
 
@@ -506,6 +507,48 @@ export default function DocumentsPage() {
     setShowStarterPicker(false);
   };
 
+  // Handler import .docx réutilisable (déclenchable depuis QuickActions ou bouton secondaire)
+  const handleImportDocx = () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".docx";
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file || !entityId) return;
+      toast({ title: "Import en cours..." });
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("entity_id", entityId);
+        const res = await fetch("/api/documents/upload-template", { method: "POST", body: formData });
+        const uploadResult = await res.json();
+        if (!res.ok) throw new Error(uploadResult.error);
+
+        // Mode "Fidélité Word" — le .docx original est conservé pour rendu LibreOffice fidèle.
+        setEditingTemplate(null);
+        setTemplateForm({
+          name: file.name.replace(/\.docx$/i, ""),
+          type: "other",
+          content: "",
+          mode: "docx_fidelity",
+          source_docx_url: uploadResult.url,
+          source_docx_path: uploadResult.path,
+        });
+        setShowStarterPicker(false);
+        setTemplateDialogOpen(true);
+
+        toast({
+          title: "Document importé",
+          description: "Mode Fidélité Word activé. L'aperçu PDF s'affiche dans la fenêtre.",
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Erreur import";
+        toast({ title: "Erreur", description: msg, variant: "destructive" });
+      }
+    };
+    input.click();
+  };
+
   const openEditTemplate = (t: DocumentTemplate) => {
     setEditingTemplate(t);
     const effectiveContent = getTemplateContent(t);
@@ -797,6 +840,63 @@ export default function DocumentsPage() {
         </div>
       </div>
 
+      {/* Actions rapides — point d'entrée principal */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <button
+          type="button"
+          onClick={handleImportDocx}
+          className="group text-left p-5 rounded-xl border-2 border-dashed border-blue-200 bg-blue-50/50 hover:border-blue-400 hover:bg-blue-50 transition-all flex items-start gap-4"
+        >
+          <div className="shrink-0 p-3 rounded-lg bg-blue-100 group-hover:bg-blue-200 transition-colors">
+            <Upload className="h-5 w-5 text-blue-700" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="font-semibold text-gray-900">Importer un document Word</h3>
+            <p className="text-sm text-gray-500 mt-1">
+              Upload .docx — fidélité 99% (couleurs, tableaux, logos préservés)
+            </p>
+          </div>
+        </button>
+
+        <button
+          type="button"
+          onClick={openAddTemplate}
+          className="group text-left p-5 rounded-xl border-2 border-dashed border-gray-200 bg-gray-50/50 hover:border-gray-400 hover:bg-gray-50 transition-all flex items-start gap-4"
+        >
+          <div className="shrink-0 p-3 rounded-lg bg-gray-100 group-hover:bg-gray-200 transition-colors">
+            <Plus className="h-5 w-5 text-gray-700" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="font-semibold text-gray-900">Créer un modèle vierge</h3>
+            <p className="text-sm text-gray-500 mt-1">
+              Éditeur HTML avec variables dynamiques {"{{nom_apprenant}}"}, etc.
+            </p>
+          </div>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab("custom");
+            toast({
+              title: "Choisissez un modèle",
+              description: "Cliquez sur «Envoyer» depuis la carte du modèle voulu.",
+            });
+          }}
+          className="group text-left p-5 rounded-xl border-2 border-dashed border-emerald-200 bg-emerald-50/50 hover:border-emerald-400 hover:bg-emerald-50 transition-all flex items-start gap-4"
+        >
+          <div className="shrink-0 p-3 rounded-lg bg-emerald-100 group-hover:bg-emerald-200 transition-colors">
+            <Send className="h-5 w-5 text-emerald-700" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="font-semibold text-gray-900">Envoyer à un apprenant</h3>
+            <p className="text-sm text-gray-500 mt-1">
+              Choisir un modèle + destinataire — envoi automatique avec PDF
+            </p>
+          </div>
+        </button>
+      </div>
+
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList>
           <TabsTrigger value="official">Templates officiels</TabsTrigger>
@@ -974,50 +1074,7 @@ export default function DocumentsPage() {
               <Button
                 variant="outline"
                 className="gap-2 shrink-0"
-                onClick={() => {
-                  const input = document.createElement("input");
-                  input.type = "file";
-                  input.accept = ".docx";
-                  input.onchange = async (e) => {
-                    const file = (e.target as HTMLInputElement).files?.[0];
-                    if (!file || !entityId) return;
-                    toast({ title: "Import en cours..." });
-                    try {
-                      // Upload to storage — on garde le .docx ORIGINAL pour fidélité 99% à l'envoi
-                      const formData = new FormData();
-                      formData.append("file", file);
-                      formData.append("entity_id", entityId);
-                      const res = await fetch("/api/documents/upload-template", { method: "POST", body: formData });
-                      const uploadResult = await res.json();
-                      if (!res.ok) throw new Error(uploadResult.error);
-
-                      // Mode "Fidélité Word" : on n'extrait PAS le HTML via mammoth
-                      // (qui perdait les couleurs, logos, tableaux stylisés). Le .docx
-                      // original sera converti en PDF par CloudConvert (LibreOffice)
-                      // au moment de l'envoi → fidélité ~99% au document original.
-                      setEditingTemplate(null);
-                      setTemplateForm({
-                        name: file.name.replace(/\.docx$/i, ""),
-                        type: "other",
-                        content: "", // pas de HTML édité
-                        mode: "docx_fidelity",
-                        source_docx_url: uploadResult.url,
-                        source_docx_path: uploadResult.path,
-                      });
-                      setShowStarterPicker(false);
-                      setTemplateDialogOpen(true);
-
-                      toast({
-                        title: "Document importé",
-                        description: "Mode fidélité Word activé : le PDF sera identique au .docx d'origine.",
-                      });
-                    } catch (err) {
-                      const msg = err instanceof Error ? err.message : "Erreur import";
-                      toast({ title: "Erreur", description: msg, variant: "destructive" });
-                    }
-                  };
-                  input.click();
-                }}
+                onClick={handleImportDocx}
               >
                 <Upload className="h-4 w-4" />
                 Importer .docx
@@ -1039,75 +1096,101 @@ export default function DocumentsPage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {customTemplates.map((template) => (
-                <Card key={template.id} className="group hover:shadow-md transition-shadow">
-                  <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <div className={cn("p-2 rounded-lg", TYPE_COLORS[template.type as DocumentType])}>
-                          <TypeIcon type={template.type as DocumentType} />
+              {customTemplates.map((template) => {
+                const tplExt = template as DocumentTemplate & { mode?: "editable" | "docx_fidelity" };
+                const isWordMode = tplExt.mode === "docx_fidelity";
+                return (
+                  <Card key={template.id} className="group hover:shadow-md transition-shadow flex flex-col">
+                    <CardHeader className="pb-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className={cn("p-2 rounded-lg shrink-0", TYPE_COLORS[template.type as DocumentType])}>
+                            <TypeIcon type={template.type as DocumentType} />
+                          </div>
+                          <div className="min-w-0">
+                            <CardTitle className="text-sm truncate">{truncate(template.name, 40)}</CardTitle>
+                            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                              <Badge className={cn("text-xs font-normal", TYPE_COLORS[template.type as DocumentType])}>
+                                {TYPE_LABELS[template.type as DocumentType]}
+                              </Badge>
+                              {isWordMode ? (
+                                <Badge className="text-xs font-normal bg-blue-100 text-blue-700 border-blue-200">
+                                  📄 Fidélité Word
+                                </Badge>
+                              ) : (
+                                <Badge className="text-xs font-normal bg-gray-100 text-gray-600 border-gray-200">
+                                  ✍️ Éditable
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                        <div>
-                          <CardTitle className="text-sm">{truncate(template.name, 40)}</CardTitle>
-                          <Badge className={cn("mt-1 text-xs font-normal", TYPE_COLORS[template.type as DocumentType])}>
-                            {TYPE_LABELS[template.type as DocumentType]}
-                          </Badge>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => handleExportTemplateAsPDF(template)} className="gap-2">
+                              <Download className="h-4 w-4" />
+                              Exporter PDF
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => openEditTemplate(template)} className="gap-2">
+                              <Pencil className="h-4 w-4" />
+                              Modifier
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={() => openDeleteTemplate(template)} className="gap-2 text-red-600 focus:text-red-600">
+                              <Trash2 className="h-4 w-4" />
+                              Supprimer
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-3 flex-1 flex flex-col">
+                      {!isWordMode && template.content && (
+                        <CardDescription className="text-xs leading-relaxed line-clamp-3">
+                          {truncate(template.content.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " "), 120)}
+                        </CardDescription>
+                      )}
+                      {isWordMode && (
+                        <CardDescription className="text-xs leading-relaxed text-gray-500 italic">
+                          Document Word — édité dans Word, rendu PDF fidèle au document d&apos;origine.
+                        </CardDescription>
+                      )}
+                      <div className="mt-auto pt-3 border-t">
+                        <p className="text-xs text-gray-400 mb-2">Créé le {formatDate(template.created_at)}</p>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="flex-1 h-8 text-xs gap-1"
+                            onClick={() => { setPreviewTemplate(template); setPreviewDialogOpen(true); }}
+                          >
+                            <Eye className="h-3 w-3" />
+                            Aperçu
+                          </Button>
+                          <Button
+                            size="sm"
+                            className="flex-1 h-8 text-xs gap-1 bg-emerald-600 hover:bg-emerald-700"
+                            onClick={() => {
+                              setGenerateForm((prev) => ({ ...prev, template_id: template.id, name: `${template.name} — ${new Date().toLocaleDateString("fr-FR")}` }));
+                              setShowPreview(false);
+                              setPreviewContent("");
+                              setGenerateDialogOpen(true);
+                            }}
+                          >
+                            <Send className="h-3 w-3" />
+                            Envoyer
+                          </Button>
                         </div>
                       </div>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => { setPreviewTemplate(template); setPreviewDialogOpen(true); }} className="gap-2">
-                            <Eye className="h-4 w-4" />
-                            Aperçu
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleExportTemplateAsPDF(template)} className="gap-2">
-                            <Download className="h-4 w-4" />
-                            Exporter PDF
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => openEditTemplate(template)} className="gap-2">
-                            <Pencil className="h-4 w-4" />
-                            Modifier
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => openDeleteTemplate(template)} className="gap-2 text-red-600 focus:text-red-600">
-                            <Trash2 className="h-4 w-4" />
-                            Supprimer
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {template.content && (
-                      <CardDescription className="text-xs leading-relaxed">
-                        {truncate(template.content.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " "), 100)}
-                      </CardDescription>
-                    )}
-                    <div className="flex items-center justify-between pt-2 border-t text-xs text-gray-400">
-                      <span>Créé le {formatDate(template.created_at)}</span>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 text-xs gap-1 text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-2"
-                        onClick={() => {
-                          setGenerateForm((prev) => ({ ...prev, template_id: template.id, name: `${template.name} — ${new Date().toLocaleDateString("fr-FR")}` }));
-                          setShowPreview(false);
-                          setPreviewContent("");
-                          setGenerateDialogOpen(true);
-                        }}
-                      >
-                        <Wand2 className="h-3 w-3" />
-                        Utiliser
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           )}
         </TabsContent>
