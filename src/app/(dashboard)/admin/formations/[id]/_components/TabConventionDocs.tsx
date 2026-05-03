@@ -152,12 +152,14 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
   const [customSelections, setCustomSelections] = useState<Record<string, string>>({});
   const [matrixView, setMatrixView] = useState(true);
 
-  // Preview state
+  // Preview state — supporte 2 modes : `html` (rendu HTML legacy) ou `pdfDataUrl`
+  // (PDF blob URL pour les templates en mode docx_fidelity).
   const [previewDoc, setPreviewDoc] = useState<{
     open: boolean;
     html: string;
     title: string;
     filename: string;
+    pdfDataUrl?: string;
   } | null>(null);
 
   const [emailPreview, setEmailPreview] = useState<{
@@ -387,12 +389,62 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
   // ===== VIEW DOCUMENT =====
 
   const handleView = async (doc: FormationConventionDocument) => {
+    const label = doc.custom_label || DOC_LABELS[doc.doc_type] || doc.doc_type;
+
+    // Si le doc est lié à un template DB, vérifier son mode
+    if (doc.template_id) {
+      const { data: template } = await supabase
+        .from("document_templates")
+        .select("mode, source_docx_url")
+        .eq("id", doc.template_id)
+        .single();
+
+      const tplMode = (template?.mode as "editable" | "docx_fidelity" | null) ?? "editable";
+
+      // Mode docx_fidelity : génère PDF côté serveur avec variables résolues
+      if (tplMode === "docx_fidelity" && template?.source_docx_url) {
+        try {
+          const ownerLearnerId = doc.owner_type === "learner" ? doc.owner_id : undefined;
+          const ownerClientId = doc.owner_type === "company" ? doc.owner_id : undefined;
+          const ownerTrainerId = doc.owner_type === "trainer" ? doc.owner_id : undefined;
+          const res = await fetch("/api/documents/generate-from-template", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              template_id: doc.template_id,
+              context: {
+                session_id: formation.id,
+                learner_id: ownerLearnerId,
+                client_id: ownerClientId,
+                trainer_id: ownerTrainerId,
+              },
+            }),
+          });
+          const json = await res.json();
+          if (!res.ok) throw new Error(json.error ?? "Échec génération PDF");
+          const pdfDataUrl = `data:application/pdf;base64,${json.base64}`;
+          setPreviewDoc({
+            open: true,
+            html: "",
+            pdfDataUrl,
+            title: label,
+            filename: `${doc.doc_type}_${Date.now()}`,
+          });
+          return;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "Erreur génération PDF";
+          toast({ title: "Erreur d'aperçu", description: msg, variant: "destructive" });
+          return;
+        }
+      }
+    }
+
+    // Sinon : fallback HTML legacy
     const html = await generateDocHtml(doc);
     if (!html) {
       toast({ title: "Aucun modèle disponible pour ce type de document", variant: "destructive" });
       return;
     }
-    const label = doc.custom_label || DOC_LABELS[doc.doc_type] || doc.doc_type;
     setPreviewDoc({ open: true, html, title: label, filename: `${doc.doc_type}_${Date.now()}` });
   };
 
@@ -480,8 +532,40 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     const docLabel = DOC_LABELS[doc.doc_type] || doc.doc_type;
 
     try {
-      const html = await generateDocHtml(doc);
-      const base64 = await exportHtmlToPDFBase64(docLabel, html, entityName);
+      let base64: string;
+
+      // Si le doc est lié à un template DB (custom OU système enregistré),
+      // on passe par la route serveur qui gère les 2 modes (HTML→PDF ou DOCX→PDF
+      // via CloudConvert). Cela résout le bug html2canvas qui plantait silencieusement
+      // côté serveur, et permet d'utiliser les templates Word custom uploadés
+      // par l'admin (mode docx_fidelity = fidélité ~99%).
+      const ownerLearnerId = doc.owner_type === "learner" ? doc.owner_id : undefined;
+      const ownerClientId = doc.owner_type === "company" ? doc.owner_id : undefined;
+      const ownerTrainerId = doc.owner_type === "trainer" ? doc.owner_id : undefined;
+
+      if (doc.template_id) {
+        const res = await fetch("/api/documents/generate-from-template", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            template_id: doc.template_id,
+            context: {
+              session_id: formation.id,
+              learner_id: ownerLearnerId,
+              client_id: ownerClientId,
+              trainer_id: ownerTrainerId,
+            },
+          }),
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error ?? "Échec génération PDF serveur");
+        base64 = json.base64;
+      } else {
+        // Pas de template lié → fallback sur le rendu legacy (HTML → html2canvas
+        // côté client). Limite : peut crasher sur les gros docs ou côté serveur.
+        const html = await generateDocHtml(doc);
+        base64 = await exportHtmlToPDFBase64(docLabel, html, entityName);
+      }
 
       setEmailPreview({
         docId,
@@ -491,8 +575,10 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
         pdfFilename: `${doc.doc_type.replace(/_/g, "-")}.pdf`,
         pdfBase64: base64,
       });
-    } catch {
-      toast({ title: "Erreur de génération du PDF", variant: "destructive" });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Erreur génération PDF";
+      console.error("[handleSendPreview] error:", err);
+      toast({ title: "Erreur de génération du PDF", description: msg, variant: "destructive" });
     }
     setSaving(null);
   };
@@ -1508,28 +1594,54 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
       {/* ── Dialog: Document preview ── */}
       {previewDoc && (
         <Dialog open={previewDoc.open} onOpenChange={(open) => { if (!open) setPreviewDoc(null); }}>
-          <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+          <DialogContent className="max-w-4xl h-[85vh] flex flex-col overflow-hidden">
             <DialogHeader>
               <DialogTitle>{previewDoc.title}</DialogTitle>
             </DialogHeader>
-            <div
-              className="prose prose-sm max-w-none"
-              dangerouslySetInnerHTML={{ __html: previewDoc.html }}
-            />
+            {previewDoc.pdfDataUrl ? (
+              /* Mode docx_fidelity : aperçu PDF généré par CloudConvert */
+              <div className="flex-1 border rounded-lg overflow-hidden bg-gray-50">
+                <iframe
+                  src={previewDoc.pdfDataUrl}
+                  className="w-full h-full"
+                  title={previewDoc.title}
+                />
+              </div>
+            ) : (
+              /* Mode editable / legacy : rendu HTML inline */
+              <div
+                className="prose prose-sm max-w-none flex-1 overflow-y-auto"
+                dangerouslySetInnerHTML={{ __html: previewDoc.html }}
+              />
+            )}
             <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={async () => {
-                  await exportHtmlToPDF(
-                    previewDoc.title,
-                    previewDoc.html,
-                    previewDoc.filename,
-                    entityName
-                  );
-                }}
-              >
-                <FileDown className="h-4 w-4 mr-2" /> Télécharger PDF
-              </Button>
+              {previewDoc.pdfDataUrl ? (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    const a = document.createElement("a");
+                    a.href = previewDoc.pdfDataUrl!;
+                    a.download = `${previewDoc.filename}.pdf`;
+                    a.click();
+                  }}
+                >
+                  <FileDown className="h-4 w-4 mr-2" /> Télécharger PDF
+                </Button>
+              ) : (
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    await exportHtmlToPDF(
+                      previewDoc.title,
+                      previewDoc.html,
+                      previewDoc.filename,
+                      entityName
+                    );
+                  }}
+                >
+                  <FileDown className="h-4 w-4 mr-2" /> Télécharger PDF
+                </Button>
+              )}
               <Button variant="outline" onClick={() => setPreviewDoc(null)}>
                 Fermer
               </Button>
