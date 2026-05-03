@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/require-role";
-import { Resend } from "resend";
-
-const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+import { enqueueEmails } from "@/lib/services/email-queue";
 
 export async function POST(req: NextRequest) {
   const auth = await requireRole(["super_admin", "admin"]);
@@ -23,17 +21,9 @@ export async function POST(req: NextRequest) {
 
     if (!session) return NextResponse.json({ error: "Session introuvable" }, { status: 404 });
 
-    const { data: entity } = await auth.supabase
-      .from("entities")
-      .select("name")
-      .eq("id", session.entity_id)
-      .single();
-
-    const entityName = entity?.name || "MR FORMATION";
-
     const { data: learners } = await auth.supabase
       .from("learners")
-      .select("id, first_name, last_name, email")
+      .select("id, first_name, email")
       .in("id", learner_ids);
 
     if (!learners?.length) {
@@ -41,40 +31,25 @@ export async function POST(req: NextRequest) {
     }
 
     const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://mrformationcrm.netlify.app").replace(/\/+$/, "");
-    const fromAddress = entityName.toLowerCase().includes("c3v")
-      ? "C3V Formation <noreply@c3vformation.fr>"
-      : "MR Formation <noreply@mrformation.fr>";
+    const accessUrl = `${baseUrl}/learner/questionnaires?session=${session_id}`;
 
-    let sent = 0;
-    let failed = 0;
+    const payloads = learners
+      .filter((l) => !!l.email)
+      .map((l) => ({
+        to: l.email!,
+        subject: `Rappel : Questionnaire à compléter — ${session.title}`,
+        body: `Bonjour ${l.first_name},\n\nVous avez un questionnaire à compléter pour la formation "${session.title}".\n\nAccéder au questionnaire : ${accessUrl}\n\nCordialement,\nL'équipe formation`,
+        entity_id: session.entity_id,
+        session_id: session.id,
+        recipient_type: "learner" as const,
+        recipient_id: l.id,
+        sent_by: auth.profile.id,
+      }));
 
-    for (const learner of learners) {
-      if (!learner.email) { failed++; continue; }
+    const skipped = learners.length - payloads.length;
+    const { inserted } = await enqueueEmails(auth.supabase, payloads);
 
-      const accessUrl = `${baseUrl}/learner/questionnaires?session=${session_id}`;
-
-      try {
-        if (resend) {
-          await resend.emails.send({
-            from: fromAddress,
-            to: [learner.email],
-            subject: `Rappel : Questionnaire à compléter — ${session.title}`,
-            html: `<div style="font-family:sans-serif;font-size:14px;line-height:1.6;color:#374151;">
-              <p>Bonjour ${learner.first_name},</p>
-              <p>Vous avez un questionnaire à compléter pour la formation <strong>${session.title}</strong>.</p>
-              <p style="margin:20px 0;"><a href="${accessUrl}" style="display:inline-block;background:#374151;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600;">Accéder au questionnaire</a></p>
-              <p>Cordialement,<br>L'équipe ${entityName}</p>
-            </div>`,
-          });
-        }
-        sent++;
-      } catch (err) {
-        console.error("[relaunch] email failed", learner.id, err);
-        failed++;
-      }
-    }
-
-    return NextResponse.json({ sent, failed });
+    return NextResponse.json({ enqueued: inserted, skipped });
   } catch (err) {
     console.error("[relaunch]", err);
     return NextResponse.json({ error: "Erreur serveur" }, { status: 500 });

@@ -1,21 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Resend } from "resend";
 import { createClient } from "@supabase/supabase-js";
 import { resolveVariables } from "@/lib/utils/resolve-variables";
+import { enqueueEmail } from "@/lib/services/email-queue";
 
-const isResendConfigured =
-  !!process.env.RESEND_API_KEY &&
-  process.env.RESEND_API_KEY !== "votre-cle-resend";
-
-const resend = isResendConfigured
-  ? new Resend(process.env.RESEND_API_KEY)
-  : null;
-
-function getFromAddress(entityName: string): string {
-  return entityName.toLowerCase().includes("c3v")
-    ? "C3V Formation <noreply@c3vformation.fr>"
-    : "MR Formation <noreply@mrformation.fr>";
-}
+// Note : ce cron n'envoie plus d'email synchronously. Il enqueue dans email_history
+// (status='pending') ; le worker /api/emails/process-scheduled (toutes les 5 min)
+// gère l'envoi avec retry exponential backoff. Bénéfices : pas de timeout Netlify
+// même sur 500+ destinataires, retry automatique, rate-limit Resend respecté.
 
 const DOCUMENT_TYPE_SUBJECTS: Record<string, string> = {
   convention_entreprise: "Convention de formation",
@@ -23,14 +14,6 @@ const DOCUMENT_TYPE_SUBJECTS: Record<string, string> = {
   certificat_realisation: "Certificat de réalisation",
   questionnaire_satisfaction: "Questionnaire de satisfaction",
 };
-
-function toHtmlBody(body: string): string {
-  return `<div style="font-family: sans-serif; font-size: 14px; line-height: 1.6; color: #374151; white-space: pre-wrap;">${body
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/\n/g, "<br />")}</div>`;
-}
 
 function createServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -71,10 +54,6 @@ export async function POST(request: NextRequest) {
       if (!session) {
         return NextResponse.json({ error: "Session not found" }, { status: 404 });
       }
-
-      const { data: entity } = await supabase
-        .from("entities").select("id, name").eq("id", session.entity_id).single();
-      const FROM_ADDRESS = getFromAddress(entity?.name || "MR FORMATION");
 
       const { data: rules } = await supabase
         .from("formation_automation_rules")
@@ -155,31 +134,20 @@ export async function POST(request: NextRequest) {
             textBody = `Bonjour ${recipient.first_name} ${recipient.last_name},\n\nVeuillez trouver ci-joint votre document : ${DOCUMENT_TYPE_SUBJECTS[rule.document_type] ?? rule.document_type}.\n\nFormation : ${session.title}\n\nCordialement,\nL'équipe de formation`;
           }
 
-          let emailStatus: "sent" | "failed" = "sent";
-          let errorMessage: string | null = null;
-
-          if (resend) {
-            try {
-              const result = await resend.emails.send({ from: FROM_ADDRESS, to: [recipient.email], subject, html: toHtmlBody(textBody), text: textBody });
-              if (result.error) { emailStatus = "failed"; errorMessage = result.error.message ?? "Resend error"; }
-            } catch (err) { emailStatus = "failed"; errorMessage = err instanceof Error ? err.message : "Erreur inconnue"; }
-          } else {
-            console.log(`[automation] Simulated ${specificTrigger} email to:`, recipient.email, "—", subject);
-          }
-
-          await supabase.from("email_history").insert({
-            entity_id: session.entity_id, recipient_email: recipient.email,
-            subject, body: textBody, status: emailStatus,
-            sent_at: new Date().toISOString(), sent_via: "resend",
-            session_id: session.id, recipient_type: recipient.type,
-            recipient_id: recipient.id, error_message: errorMessage,
+          await enqueueEmail(supabase, {
+            to: recipient.email,
+            subject,
+            body: textBody,
+            entity_id: session.entity_id,
+            session_id: session.id,
+            recipient_type: recipient.type,
+            recipient_id: recipient.id,
           });
-
-          if (emailStatus === "sent") emailsSent++;
+          emailsSent++;
         }
       }
 
-      return NextResponse.json({ success: true, sent: emailsSent, trigger: specificTrigger, session: session.title });
+      return NextResponse.json({ success: true, enqueued: emailsSent, trigger: specificTrigger, session: session.title });
     } catch (err) {
       console.error(`[automation] ${specificTrigger} error:`, err);
       return NextResponse.json({ error: "Internal server error" }, { status: 500 });
@@ -195,7 +163,6 @@ export async function POST(request: NextRequest) {
 
     for (const entity of entities ?? []) {
       const entityId = entity.id;
-      const FROM_ADDRESS = getFromAddress(entity.name);
       let emailsSent = 0;
       let processed = 0;
       const errors: string[] = [];
@@ -304,31 +271,16 @@ export async function POST(request: NextRequest) {
               textBody = `Bonjour ${recipient.first_name} ${recipient.last_name},\n\nVeuillez trouver ci-joint votre document : ${DOCUMENT_TYPE_SUBJECTS[rule.document_type] ?? rule.document_type}.\n\nFormation : ${session.title}\n\nCordialement,\nL'équipe de formation`;
             }
 
-            let emailStatus: "sent" | "failed" = "sent";
-            let errorMessage: string | null = null;
-
-            if (resend) {
-              try {
-                const result = await resend.emails.send({
-                  from: FROM_ADDRESS, to: [recipient.email], subject,
-                  html: toHtmlBody(textBody), text: textBody,
-                });
-                if (result.error) { emailStatus = "failed"; errorMessage = result.error.message ?? "Resend error"; }
-              } catch (err) { emailStatus = "failed"; errorMessage = err instanceof Error ? err.message : "Erreur inconnue"; }
-            } else {
-              console.log("[cron] Simulated email to:", recipient.email, "—", subject);
-            }
-
-            await supabase.from("email_history").insert({
-              entity_id: entityId, recipient_email: recipient.email,
-              subject, body: textBody, status: emailStatus,
-              sent_at: new Date().toISOString(), sent_via: "resend",
-              session_id: session.id, recipient_type: recipient.type,
-              recipient_id: recipient.id, error_message: errorMessage,
+            await enqueueEmail(supabase, {
+              to: recipient.email,
+              subject,
+              body: textBody,
+              entity_id: entityId,
+              session_id: session.id,
+              recipient_type: recipient.type,
+              recipient_id: recipient.id,
             });
-
-            if (emailStatus === "sent") emailsSent++;
-            else errors.push(`${recipient.first_name} ${recipient.last_name}: ${errorMessage}`);
+            emailsSent++;
           }
         }
       }
@@ -340,8 +292,6 @@ export async function POST(request: NextRequest) {
     // ── OPCO DEPOSIT REMINDERS ──
     // Check formation_financiers with status='a_deposer' where session starts within X days
     for (const entity of entities ?? []) {
-      const FROM_ADDR = getFromAddress(entity.name);
-
       const { data: opcoRules } = await supabase
         .from("formation_automation_rules")
         .select("*")
@@ -384,20 +334,14 @@ export async function POST(request: NextRequest) {
             const subject = `Rappel : demande OPCO à déposer — ${sessionTitle}`;
             const textBody = `Bonjour ${admin.first_name},\n\nLa demande de prise en charge OPCO "${opco.name}" pour la formation "${sessionTitle}" n'a pas encore été déposée.\n\nLa formation commence le ${targetDateStr}.\n\nPensez à déposer la demande rapidement.\n\nCordialement,\nL'équipe ${entity.name}`;
 
-            if (resend) {
-              try {
-                await resend.emails.send({ from: FROM_ADDR, to: [admin.email], subject, html: toHtmlBody(textBody), text: textBody });
-              } catch { /* continue */ }
-            } else {
-              console.log(`[cron] Simulated OPCO reminder to ${admin.email}: ${subject}`);
-            }
-
-            await supabase.from("email_history").insert({
-              entity_id: entity.id, recipient_email: admin.email,
-              subject, body: textBody, status: "sent",
-              sent_at: new Date().toISOString(), sent_via: "resend",
+            await enqueueEmail(supabase, {
+              to: admin.email,
+              subject,
+              body: textBody,
+              entity_id: entity.id,
               session_id: (session as Record<string, string>).id,
-              recipient_type: "admin", recipient_id: admin.id,
+              recipient_type: "manager",
+              recipient_id: admin.id,
             });
 
             totalSent++;

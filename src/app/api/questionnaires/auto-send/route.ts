@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { enqueueEmail } from "@/lib/services/email-queue";
 
 function createServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -114,56 +115,16 @@ export async function POST(request: NextRequest) {
 
         const emailBody = `Bonjour ${learner.first_name},\n\nLa formation "${session.title}" est terminée. Nous vous invitons à remplir le questionnaire de satisfaction :\n\n${link_url}\n\nMerci pour vos retours,\nL'équipe formation`;
 
-        // Get entity name for FROM address
-        const { data: entity } = await supabase
-          .from("entities")
-          .select("name")
-          .eq("id", session.entity_id)
-          .single();
-
-        const fromAddress = (entity?.name || "").toLowerCase().includes("c3v")
-          ? "C3V Formation <noreply@c3vformation.fr>"
-          : "MR Formation <noreply@mrformation.fr>";
-
-        // Send via Resend if configured
-        const isResendConfigured = !!process.env.RESEND_API_KEY && process.env.RESEND_API_KEY !== "votre-cle-resend";
-
-        if (isResendConfigured) {
-          try {
-            const { Resend } = await import("resend");
-            const resend = new Resend(process.env.RESEND_API_KEY);
-            const result = await resend.emails.send({
-              from: fromAddress,
-              to: [learner.email],
-              subject: `Questionnaire — ${questionnaire.title}`,
-              text: emailBody,
-              html: `<div style="font-family:sans-serif;font-size:14px;line-height:1.6;color:#374151;white-space:pre-wrap;">${emailBody.replace(/\n/g, "<br/>")}</div>`,
-            });
-
-            if (!result.error) {
-              sent++;
-              // Log to email_history
-              await supabase.from("email_history").insert({
-                entity_id: session.entity_id,
-                recipient_email: learner.email,
-                subject: `Questionnaire — ${questionnaire.title}`,
-                body: emailBody,
-                status: "sent",
-                sent_at: new Date().toISOString(),
-                sent_via: "resend",
-                session_id: session.id,
-                recipient_type: "learner",
-                recipient_id: learner.id,
-              });
-            }
-          } catch {
-            // Silent — continue to next learner
-          }
-        } else {
-          // Simulated mode
-          console.log(`[auto-send] Simulated email to ${learner.email}: ${questionnaire.title}`);
-          sent++;
-        }
+        await enqueueEmail(supabase, {
+          to: learner.email,
+          subject: `Questionnaire — ${questionnaire.title}`,
+          body: emailBody,
+          entity_id: session.entity_id,
+          session_id: session.id,
+          recipient_type: "learner",
+          recipient_id: learner.id,
+        });
+        sent++;
       }
 
       if (sent > 0) {

@@ -1,24 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Resend } from "resend";
 import { createClient } from "@supabase/supabase-js";
+import { enqueueEmail } from "@/lib/services/email-queue";
 
-const isResendConfigured =
-  !!process.env.RESEND_API_KEY &&
-  process.env.RESEND_API_KEY !== "votre-cle-resend";
-
-const resend = isResendConfigured ? new Resend(process.env.RESEND_API_KEY) : null;
+// Note : ce cron enqueue les relances via la queue email (status='pending').
+// Le worker /api/emails/process-scheduled gère l'envoi avec retry.
 
 function createServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) throw new Error("Missing Supabase service role configuration");
   return createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
-}
-
-function getFromAddress(entityName: string): string {
-  return entityName.toLowerCase().includes("c3v")
-    ? "C3V Formation <noreply@c3vformation.fr>"
-    : "MR Formation <noreply@mrformation.fr>";
 }
 
 // ── Reminder templates ──
@@ -41,13 +32,6 @@ const REMINDER_TEMPLATES = {
   },
 };
 
-function toHtml(text: string): string {
-  return `<div style="font-family:sans-serif;font-size:14px;line-height:1.6;color:#374151;white-space:pre-wrap;">${text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/\n/g, "<br/>")}</div>`;
-}
 
 function formatDate(d: string): string {
   return new Date(d).toLocaleDateString("fr-FR");
@@ -179,7 +163,6 @@ export async function POST(request: NextRequest) {
       }
 
       // Build email — check DB template first, fallback to hardcoded
-      const entityName = entityMap[invoice.entity_id] || "MR FORMATION";
       const sessionTitle = sessionMap[invoice.session_id] || "Formation";
 
       let subject: string;
@@ -221,63 +204,37 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      // Send email
-      let emailSent = false;
-      if (resend) {
-        try {
-          const result = await resend.emails.send({
-            from: getFromAddress(entityName),
-            to: [recipientEmail],
-            subject,
-            html: toHtml(textBody),
-            text: textBody,
-          });
-          emailSent = !result.error;
-        } catch {
-          emailSent = false;
-        }
-      } else {
-        console.log(`[reminders] Simulated ${reminderType} to ${recipientEmail}: ${subject}`);
-        emailSent = true; // simulated
-      }
+      // Enqueue email (le worker s'occupera de l'envoi avec retry exponential)
+      await enqueueEmail(supabase, {
+        to: recipientEmail,
+        subject,
+        body: textBody,
+        entity_id: invoice.entity_id,
+        session_id: invoice.session_id,
+        recipient_type: invoice.recipient_type,
+        recipient_id: invoice.recipient_id,
+      });
 
-      if (emailSent) {
-        // Update invoice
-        await supabase
-          .from("formation_invoices")
-          .update({
-            reminder_count: reminderCount + 1,
-            last_reminder_at: now.toISOString(),
-            updated_at: now.toISOString(),
-          })
-          .eq("id", invoice.id);
+      // Met à jour les compteurs immédiatement (le worker enverra l'email
+      // avec retry — si tous les retries échouent, l'email passera en
+      // failed_permanent mais les compteurs reflètent la tentative).
+      await supabase
+        .from("formation_invoices")
+        .update({
+          reminder_count: reminderCount + 1,
+          last_reminder_at: now.toISOString(),
+          updated_at: now.toISOString(),
+        })
+        .eq("id", invoice.id);
 
-        // Insert reminder record
-        await supabase.from("invoice_reminders").insert({
-          invoice_id: invoice.id,
-          entity_id: invoice.entity_id,
-          reminder_type: reminderType,
-          email_to: recipientEmail,
-        });
+      await supabase.from("invoice_reminders").insert({
+        invoice_id: invoice.id,
+        entity_id: invoice.entity_id,
+        reminder_type: reminderType,
+        email_to: recipientEmail,
+      });
 
-        // Log in email_history
-        await supabase.from("email_history").insert({
-          entity_id: invoice.entity_id,
-          recipient_email: recipientEmail,
-          subject,
-          body: textBody,
-          status: "sent",
-          sent_at: now.toISOString(),
-          sent_via: "resend",
-          session_id: invoice.session_id,
-          recipient_type: invoice.recipient_type,
-          recipient_id: invoice.recipient_id,
-        });
-
-        totalReminders++;
-      } else {
-        errors.push(`${invoice.reference}: échec envoi à ${recipientEmail}`);
-      }
+      totalReminders++;
     }
 
     console.log(`[reminders] Processed: ${totalReminders} reminders sent, ${errors.length} errors`);
