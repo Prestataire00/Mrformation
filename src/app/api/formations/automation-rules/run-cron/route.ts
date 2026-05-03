@@ -1,7 +1,68 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { resolveVariables } from "@/lib/utils/resolve-variables";
-import { enqueueEmail } from "@/lib/services/email-queue";
+import { enqueueEmail, type EmailAttachmentDescriptor } from "@/lib/services/email-queue";
+
+/**
+ * Construit les descripteurs d'attachments pour un destinataire donné,
+ * en fonction des types de doc déclarés dans le template email.
+ *
+ * Map les `attachment_doc_types` du template vers le bon descripteur :
+ *   - convocation, certificat_realisation, attestation_assiduite → besoin learner_id
+ *   - convention_entreprise → besoin client_id (recipientType='companies')
+ *   - convention_intervention, contrat_sous_traitance → besoin trainer_id
+ *   - programme_formation, planning_semaine → juste session_id
+ */
+function buildAttachmentsForRecipient(
+  attachmentDocTypes: string[] | null | undefined,
+  sessionId: string,
+  recipient: { id: string; type: "learner" | "trainer" },
+  recipientType: string
+): EmailAttachmentDescriptor[] {
+  if (!attachmentDocTypes || attachmentDocTypes.length === 0) return [];
+
+  const descriptors: EmailAttachmentDescriptor[] = [];
+  for (const docType of attachmentDocTypes) {
+    switch (docType) {
+      case "convocation":
+      case "certificat_realisation":
+        if (recipient.type === "learner") {
+          descriptors.push({
+            type: docType,
+            payload: { session_id: sessionId, learner_id: recipient.id },
+          });
+        }
+        break;
+      case "convention_entreprise":
+        // Le code mappe les "companies" en `recipient.type='learner'` (héritage)
+        // → on s'appuie sur recipientType de la règle, pas recipient.type
+        if (recipientType === "companies") {
+          descriptors.push({
+            type: "convention_entreprise",
+            payload: { session_id: sessionId, client_id: recipient.id },
+          });
+        }
+        break;
+      case "convention_intervention":
+      case "contrat_sous_traitance":
+        if (recipient.type === "trainer") {
+          descriptors.push({
+            type: docType,
+            payload: { session_id: sessionId, trainer_id: recipient.id },
+          });
+        }
+        break;
+      case "programme_formation":
+        descriptors.push({
+          type: "programme_formation",
+          payload: { session_id: sessionId },
+        });
+        break;
+      // Autres types ignorés silencieusement (pas de descripteur défini pour eux)
+    }
+  }
+  return descriptors;
+}
 
 // Note : ce cron n'envoie plus d'email synchronously. Il enqueue dans email_history
 // (status='pending') ; le worker /api/emails/process-scheduled (toutes les 5 min)
@@ -68,9 +129,9 @@ export async function POST(request: NextRequest) {
 
       // Pre-load templates
       const templateIds = rules.filter((r) => r.template_id).map((r) => r.template_id);
-      let templateMap: Record<string, { subject: string; body: string }> = {};
+      let templateMap: Record<string, { subject: string; body: string; attachment_doc_types: string[] | null }> = {};
       if (templateIds.length > 0) {
-        const { data: tplData } = await supabase.from("email_templates").select("id, subject, body").in("id", templateIds);
+        const { data: tplData } = await supabase.from("email_templates").select("id, subject, body, attachment_doc_types").in("id", templateIds);
         if (tplData) templateMap = Object.fromEntries(tplData.map((t) => [t.id, t]));
       }
 
@@ -142,6 +203,12 @@ export async function POST(request: NextRequest) {
             session_id: session.id,
             recipient_type: recipient.type,
             recipient_id: recipient.id,
+            attachments: buildAttachmentsForRecipient(
+              tpl?.attachment_doc_types,
+              session.id,
+              recipient,
+              recipientType
+            ),
           });
           emailsSent++;
         }
@@ -182,9 +249,9 @@ export async function POST(request: NextRequest) {
 
       // Pre-load templates
       const templateIds = rules.filter((r) => r.template_id).map((r) => r.template_id);
-      let templateMap: Record<string, { subject: string; body: string }> = {};
+      let templateMap: Record<string, { subject: string; body: string; attachment_doc_types: string[] | null }> = {};
       if (templateIds.length > 0) {
-        const { data: tplData } = await supabase.from("email_templates").select("id, subject, body").in("id", templateIds);
+        const { data: tplData } = await supabase.from("email_templates").select("id, subject, body, attachment_doc_types").in("id", templateIds);
         if (tplData) templateMap = Object.fromEntries(tplData.map((t) => [t.id, t]));
       }
 
@@ -279,6 +346,12 @@ export async function POST(request: NextRequest) {
               session_id: session.id,
               recipient_type: recipient.type,
               recipient_id: recipient.id,
+              attachments: buildAttachmentsForRecipient(
+                tpl?.attachment_doc_types,
+                session.id,
+                recipient,
+                recipientType
+              ),
             });
             emailsSent++;
           }

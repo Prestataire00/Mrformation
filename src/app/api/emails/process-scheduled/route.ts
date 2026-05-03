@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
-import { createClient } from "@supabase/supabase-js";
-import { computeNextRetryAt } from "@/lib/services/email-queue";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { computeNextRetryAt, type EmailAttachmentDescriptor } from "@/lib/services/email-queue";
+import { resolveAttachments } from "@/lib/services/email-attachments-resolver";
 
 const isResendConfigured =
   !!process.env.RESEND_API_KEY &&
@@ -46,6 +47,7 @@ interface PendingEmail {
   entity_id: string;
   retry_count: number;
   max_retries: number;
+  attachments: EmailAttachmentDescriptor[] | null;
   entities: { name: string } | null;
 }
 
@@ -57,7 +59,7 @@ interface SendResult {
   maxRetries: number;
 }
 
-async function sendOne(email: PendingEmail): Promise<SendResult> {
+async function sendOne(supabase: SupabaseClient, email: PendingEmail): Promise<SendResult> {
   if (!resend) {
     // Mode simulé (pas de RESEND_API_KEY) : on marque sent pour ne pas saturer la queue
     console.log("[process-scheduled] Simulated:", email.recipient_email);
@@ -71,12 +73,22 @@ async function sendOne(email: PendingEmail): Promise<SendResult> {
   }
 
   try {
+    // Résout les pièces jointes (génération PDF via PDFShift, fetch URL, etc.)
+    const attachmentDescriptors = email.attachments ?? [];
+    const resolvedAttachments =
+      attachmentDescriptors.length > 0
+        ? await resolveAttachments(supabase, attachmentDescriptors)
+        : [];
+
     const result = await resend.emails.send({
       from: getFromAddress(email.entities?.name || ""),
       to: [email.recipient_email],
       subject: email.subject,
       html: toHtmlBody(email.body || ""),
       text: email.body || "",
+      attachments: resolvedAttachments.length > 0
+        ? resolvedAttachments.map((a) => ({ filename: a.filename, content: a.content }))
+        : undefined,
     });
 
     if (result.error) {
@@ -135,7 +147,7 @@ export async function POST(request: NextRequest) {
     const { data: pending, error: fetchError } = await supabase
       .from("email_history")
       .select(
-        "id, recipient_email, subject, body, entity_id, retry_count, max_retries, entities:entities(name)"
+        "id, recipient_email, subject, body, entity_id, retry_count, max_retries, attachments, entities:entities(name)"
       )
       .eq("status", "pending")
       .or(`next_retry_at.is.null,next_retry_at.lte.${now}`)
@@ -167,7 +179,7 @@ export async function POST(request: NextRequest) {
     const results: SendResult[] = [];
     const chunks = chunk(pending as unknown as PendingEmail[], PARALLEL_CHUNK);
     for (const c of chunks) {
-      const chunkResults = await Promise.all(c.map(sendOne));
+      const chunkResults = await Promise.all(c.map((email) => sendOne(supabase, email)));
       results.push(...chunkResults);
       // Pause entre chunks sauf pour le dernier
       if (c !== chunks[chunks.length - 1]) await wait(RESEND_PAUSE_MS);

@@ -19,6 +19,45 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+/**
+ * Descripteur d'une pièce jointe à résoudre au moment de l'envoi par le worker.
+ *
+ * Types supportés :
+ *   - "convocation"     : génère la convocation pour {session_id, learner_id}
+ *   - "convention_entreprise" : convention pour {session_id, client_id}
+ *   - "convention_intervention" : convention intervention pour {session_id, trainer_id}
+ *   - "contrat_sous_traitance" : contrat pour {session_id, trainer_id}
+ *   - "certificat_realisation" : certificat pour {session_id, learner_id}
+ *   - "programme_formation" : programme pour {session_id}
+ *   - "facture"         : facture pour {invoice_id}
+ *   - "devis"           : devis pour {quote_id}
+ *   - "file_url"        : fichier déjà uploadé (ex: Storage), {url, filename}
+ *
+ * Le worker `/api/emails/process-scheduled` résout chaque descripteur via
+ * `pdf-generator.generatePdfFromHtml()` ou en téléchargeant l'URL.
+ */
+export type EmailAttachmentDescriptor =
+  | { type: "convocation"; payload: { session_id: string; learner_id: string } }
+  | { type: "convention_entreprise"; payload: { session_id: string; client_id: string } }
+  | { type: "convention_intervention"; payload: { session_id: string; trainer_id: string } }
+  | { type: "contrat_sous_traitance"; payload: { session_id: string; trainer_id: string } }
+  | { type: "certificat_realisation"; payload: { session_id: string; learner_id: string } }
+  | { type: "programme_formation"; payload: { session_id: string } }
+  | { type: "facture"; payload: { invoice_id: string } }
+  | { type: "devis"; payload: { quote_id: string } }
+  | { type: "file_url"; filename: string; url: string }
+  /**
+   * Document Word personnalisé uploadé par l'admin.
+   * Si `variables` fourni : substitue les placeholders {{xxx}} via docxtemplater
+   * puis convertit en PDF via CloudConvert (LibreOffice). Fidélité ~99%.
+   */
+  | {
+      type: "uploaded_docx";
+      filename: string;
+      url: string;
+      variables?: Record<string, string | number | boolean | null | undefined>;
+    };
+
 export interface EnqueueEmailPayload {
   to: string;
   subject: string;
@@ -34,6 +73,8 @@ export interface EnqueueEmailPayload {
   scheduled_for?: Date | null;
   /** Nombre max de tentatives avant abandon. Défaut : 5. */
   max_retries?: number;
+  /** Pièces jointes à générer/joindre au moment de l'envoi (résolu par le worker). */
+  attachments?: EmailAttachmentDescriptor[];
 }
 
 export interface EnqueueResult {
@@ -83,6 +124,7 @@ export async function enqueueEmail(
       recipient_id: payload.recipient_id ?? null,
       retry_count: 0,
       max_retries: payload.max_retries ?? 5,
+      attachments: payload.attachments ?? [],
     })
     .select("id, scheduled_for")
     .single();
@@ -129,6 +171,7 @@ export async function enqueueEmails(
       recipient_id: p.recipient_id ?? null,
       retry_count: 0,
       max_retries: p.max_retries ?? 5,
+      attachments: p.attachments ?? [],
     };
   });
 

@@ -4,7 +4,7 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { requireRole } from "@/lib/auth/require-role";
 import { sanitizeError } from "@/lib/api-error";
 import { logAudit } from "@/lib/audit-log";
-import { exportHtmlToPDFBase64 } from "@/lib/pdf-export";
+import { generatePdfFromFragment } from "@/lib/services/pdf-generator";
 import { getDefaultTemplate } from "@/lib/document-templates-defaults";
 
 const isResendConfigured = !!process.env.RESEND_API_KEY && process.env.RESEND_API_KEY !== "votre-cle-resend";
@@ -114,12 +114,16 @@ export async function POST(request: NextRequest) {
 
     htmlContent = templateHtml || `<p>Document ${docLabel}</p>`;
 
-    // Generate PDF base64
+    // Generate PDF base64 via PDFShift (Chrome headless en SaaS)
+    // Note : remplace l'ancien `exportHtmlToPDFBase64` qui dépendait de
+    // html2canvas (DOM browser) et plantait silencieusement côté serveur.
     let pdfBase64 = "";
     try {
-      pdfBase64 = await exportHtmlToPDFBase64(docLabel, htmlContent, entityName);
-    } catch {
-      // PDF generation optional — send email without attachment if it fails
+      const pdf = await generatePdfFromFragment(htmlContent, docLabel);
+      pdfBase64 = pdf.base64;
+    } catch (pdfErr) {
+      console.error("[sign-request] PDF generation failed:", pdfErr);
+      // PDF optional — l'email part avec le lien de signature même sans PDF
     }
 
     // Build sign URL
