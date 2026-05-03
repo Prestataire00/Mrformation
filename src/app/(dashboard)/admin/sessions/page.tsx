@@ -270,8 +270,9 @@ export default function SessionsPage() {
       toast({ title: "Dates requises", description: "Les dates de début et de fin sont obligatoires.", variant: "destructive" });
       return;
     }
-    if (new Date(formData.start_date) >= new Date(formData.end_date)) {
-      toast({ title: "Dates invalides", description: "La date de fin doit être après la date de début.", variant: "destructive" });
+    // Autorise les sessions d'1 seul jour (start_date == end_date)
+    if (new Date(formData.start_date) > new Date(formData.end_date)) {
+      toast({ title: "Dates invalides", description: "La date de fin doit être égale ou postérieure à la date de début.", variant: "destructive" });
       return;
     }
     setSaving(true);

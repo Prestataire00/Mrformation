@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Euro, Clock, Save, X, Pencil, CalendarDays, MapPin, Users } from "lucide-react";
+import { Euro, Clock, Save, X, Pencil, CalendarDays, MapPin, Users, Sparkles, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,11 +18,25 @@ interface Props {
   onRefresh: () => Promise<void>;
 }
 
+/**
+ * Compose une adresse complète depuis ses parties (organisme ou client).
+ * Retourne null si rien d'utile.
+ */
+function composeAddress(parts: { address?: string | null; postal_code?: string | null; city?: string | null }): string | null {
+  const segments = [parts.address, [parts.postal_code, parts.city].filter(Boolean).join(" ")].filter((s) => s && s.trim());
+  return segments.length > 0 ? segments.join(", ") : null;
+}
+
 export function ResumePriceHours({ formation, onRefresh }: Props) {
   const { toast } = useToast();
   const supabase = createClient();
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  // Données auxiliaires pour les calculs auto (durée depuis planning, adresses par défaut)
+  const [autoComputedHours, setAutoComputedHours] = useState<number | null>(null);
+  const [companyCount, setCompanyCount] = useState<number>(0);
+  const [defaultLocationByType, setDefaultLocationByType] = useState<{ intra: string | null; inter: string | null }>({ intra: null, inter: null });
 
   const [form, setForm] = useState({
     total_price: formation.total_price?.toString() || "",
@@ -35,6 +49,57 @@ export function ResumePriceHours({ formation, onRefresh }: Props) {
     max_participants: formation.max_participants?.toString() || "",
     status: formation.status || "upcoming",
   });
+
+  // Charge les données auxiliaires : créneaux planning (pour durée auto),
+  // entreprises liées (pour adresse intra + count), entité (pour adresse inter)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      // 1. Créneaux planning → calcul durée auto
+      const { data: slots } = await supabase
+        .from("formation_time_slots")
+        .select("start_time, end_time")
+        .eq("session_id", formation.id);
+      if (cancelled) return;
+      if (slots && slots.length > 0) {
+        const totalMs = slots.reduce((acc, s) => {
+          const start = new Date(s.start_time as string).getTime();
+          const end = new Date(s.end_time as string).getTime();
+          return acc + Math.max(0, end - start);
+        }, 0);
+        setAutoComputedHours(Math.round((totalMs / 3_600_000) * 100) / 100);
+      } else {
+        setAutoComputedHours(null);
+      }
+
+      // 2. Entreprises liées → adresse intra + count
+      const { data: companies } = await supabase
+        .from("formation_companies")
+        .select("client:clients!formation_companies_client_id_fkey(address, postal_code, city)")
+        .eq("session_id", formation.id);
+      if (cancelled) return;
+      const companiesArr = (companies ?? []) as Array<{ client: { address?: string | null; postal_code?: string | null; city?: string | null } | null }>;
+      setCompanyCount(companiesArr.length);
+      const firstClientAddress = companiesArr[0]?.client ? composeAddress(companiesArr[0].client) : null;
+
+      // 3. Entité → adresse inter (organisme)
+      const { data: entity } = formation.entity_id
+        ? await supabase
+            .from("entities")
+            .select("address, postal_code, city")
+            .eq("id", formation.entity_id)
+            .single()
+        : { data: null };
+      if (cancelled) return;
+      const entityAddress = entity ? composeAddress(entity) : null;
+
+      setDefaultLocationByType({
+        intra: firstClientAddress,
+        inter: entityAddress,
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [formation.id, formation.entity_id, supabase]);
 
   const openEdit = () => {
     setForm({
@@ -89,6 +154,20 @@ export function ResumePriceHours({ formation, onRefresh }: Props) {
     const pricePerLearner = formation.total_price && enrollCount > 0
       ? formation.total_price / enrollCount
       : null;
+    const pricePerCompany = formation.total_price && companyCount > 0
+      ? formation.total_price / companyCount
+      : null;
+
+    // Adresse par défaut selon type (intra → client, inter → organisme)
+    const defaultLocationForType = formation.type === "intra"
+      ? defaultLocationByType.intra
+      : defaultLocationByType.inter;
+    const isLocationAutoSuggested = !formation.location && defaultLocationForType;
+
+    // Hint si la durée saisie ne correspond pas à la durée auto-calculée
+    const durationMismatch = autoComputedHours !== null
+      && formation.planned_hours
+      && Math.abs(Number(formation.planned_hours) - autoComputedHours) > 0.1;
 
     return (
       <div className="space-y-3">
@@ -100,18 +179,44 @@ export function ResumePriceHours({ formation, onRefresh }: Props) {
           <div>
             <p className="text-xs text-muted-foreground flex items-center gap-1"><Clock className="h-3 w-3" /> Durée</p>
             <p className="font-medium">{formation.planned_hours ? `${formation.planned_hours}h` : "—"}</p>
+            {autoComputedHours !== null && (
+              <p className={`text-[10px] mt-0.5 flex items-center gap-1 ${durationMismatch ? "text-orange-600" : "text-emerald-600"}`}>
+                <Sparkles className="h-2.5 w-2.5" />
+                Planning : {autoComputedHours}h
+                {durationMismatch && " (différent de la durée saisie)"}
+              </p>
+            )}
           </div>
           <div>
             <p className="text-xs text-muted-foreground flex items-center gap-1"><Euro className="h-3 w-3" /> Prix total</p>
             <p className="font-medium">{formatCurrency(formation.total_price)}</p>
           </div>
           <div>
-            <p className="text-xs text-muted-foreground flex items-center gap-1"><Users className="h-3 w-3" /> Prix / apprenant</p>
-            <p className="font-medium">{pricePerLearner ? `${pricePerLearner.toFixed(2)} €` : "—"}</p>
+            {/* Prix / entreprise (si plusieurs entreprises ou intra) sinon Prix / apprenant */}
+            {companyCount > 1 ? (
+              <>
+                <p className="text-xs text-muted-foreground flex items-center gap-1"><Building2 className="h-3 w-3" /> Prix / entreprise</p>
+                <p className="font-medium">{pricePerCompany ? `${pricePerCompany.toFixed(2)} €` : "—"}</p>
+                <p className="text-[10px] text-gray-400 mt-0.5">{companyCount} entreprises</p>
+              </>
+            ) : (
+              <>
+                <p className="text-xs text-muted-foreground flex items-center gap-1"><Users className="h-3 w-3" /> Prix / apprenant</p>
+                <p className="font-medium">{pricePerLearner ? `${pricePerLearner.toFixed(2)} €` : "—"}</p>
+              </>
+            )}
           </div>
           <div>
             <p className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="h-3 w-3" /> Lieu</p>
-            <p className="font-medium">{formation.location || "—"}</p>
+            <p className={`font-medium ${isLocationAutoSuggested ? "text-gray-500 italic" : ""}`}>
+              {formation.location || defaultLocationForType || "—"}
+            </p>
+            {isLocationAutoSuggested && (
+              <p className="text-[10px] text-emerald-600 mt-0.5 flex items-center gap-1">
+                <Sparkles className="h-2.5 w-2.5" />
+                Adresse {formation.type === "intra" ? "client" : "organisme"} (par défaut)
+              </p>
+            )}
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Places max</p>
@@ -136,6 +241,16 @@ export function ResumePriceHours({ formation, onRefresh }: Props) {
         <div>
           <Label className="text-xs">Heures planifiées</Label>
           <Input type="number" step="0.5" value={form.planned_hours} onChange={u("planned_hours")} placeholder="0" className="h-8 text-sm" />
+          {autoComputedHours !== null && Number(form.planned_hours || "0") !== autoComputedHours && (
+            <button
+              type="button"
+              onClick={() => setForm((f) => ({ ...f, planned_hours: String(autoComputedHours) }))}
+              className="mt-1 text-[10px] text-emerald-600 hover:text-emerald-700 flex items-center gap-1"
+            >
+              <Sparkles className="h-2.5 w-2.5" />
+              Utiliser la durée du planning : {autoComputedHours}h
+            </button>
+          )}
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3">
@@ -151,6 +266,21 @@ export function ResumePriceHours({ formation, onRefresh }: Props) {
       <div>
         <Label className="text-xs">Lieu</Label>
         <Input value={form.location} onChange={u("location")} placeholder="Adresse ou salle" className="h-8 text-sm" />
+        {(() => {
+          const suggestion = form.type === "intra" ? defaultLocationByType.intra : defaultLocationByType.inter;
+          if (!suggestion || form.location === suggestion) return null;
+          const label = form.type === "intra" ? "adresse client" : "adresse organisme";
+          return (
+            <button
+              type="button"
+              onClick={() => setForm((f) => ({ ...f, location: suggestion }))}
+              className="mt-1 text-[10px] text-emerald-600 hover:text-emerald-700 flex items-center gap-1 text-left"
+            >
+              <Sparkles className="h-2.5 w-2.5 shrink-0" />
+              <span className="truncate">Utiliser l&apos;{label} : {suggestion}</span>
+            </button>
+          );
+        })()}
       </div>
       <div className="grid grid-cols-3 gap-3">
         <div>
