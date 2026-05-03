@@ -83,7 +83,21 @@ async function resolveOne(
     };
   }
 
-  // Cas 3 : Génération PDF via template HTML existant (templates de la plateforme)
+  // Cas 3a : Override "Modèle par défaut" — si un template Word custom a été
+  // marqué default_for_doc_type pour ce type, on l'utilise À LA PLACE du HTML
+  // système. Bénéfice client : 1 seul changement = effet partout.
+  const defaultOverride = await findDefaultOverride(supabase, desc);
+  if (defaultOverride) {
+    const variables = await buildAutoVariables(supabase, desc);
+    const pdf = await convertDocxToPdfWithVariables(defaultOverride.source_docx_url, variables);
+    const filenameSlug = (FILENAME_LABELS[desc.type] ?? desc.type).toLowerCase().replace(/[^a-z0-9]+/g, "-");
+    return {
+      filename: `${filenameSlug}.pdf`,
+      content: pdf.buffer,
+    };
+  }
+
+  // Cas 3b : Génération PDF via template HTML existant (templates de la plateforme)
   const html = await renderTemplateHtml(supabase, desc);
   if (!html) return null;
 
@@ -96,6 +110,102 @@ async function resolveOne(
     filename: `${filenameSlug}.pdf`,
     content: pdf.buffer,
   };
+}
+
+/**
+ * Cherche un template Word custom marqué `default_for_doc_type = desc.type`
+ * pour l'entité du contexte (déduite via session_id ou client_id).
+ * Retourne null si aucun override → comportement classique (HTML système).
+ */
+async function findDefaultOverride(
+  supabase: SupabaseClient,
+  desc: Exclude<EmailAttachmentDescriptor, { type: "file_url" } | { type: "uploaded_docx" }>
+): Promise<{ source_docx_url: string } | null> {
+  // Déduire l'entity_id depuis le payload (via session, client, ou direct)
+  let entityId: string | null = null;
+
+  if ("session_id" in desc.payload && desc.payload.session_id) {
+    const { data } = await supabase
+      .from("sessions")
+      .select("entity_id")
+      .eq("id", desc.payload.session_id)
+      .single();
+    entityId = data?.entity_id ?? null;
+  }
+
+  if (!entityId) return null;
+
+  const { data: override } = await supabase
+    .from("document_templates")
+    .select("source_docx_url, mode")
+    .eq("entity_id", entityId)
+    .eq("default_for_doc_type", desc.type)
+    .eq("mode", "docx_fidelity")
+    .maybeSingle();
+
+  if (!override?.source_docx_url) return null;
+  return { source_docx_url: override.source_docx_url };
+}
+
+/**
+ * Construit le set de variables auto-déduites pour le rendu du template Word
+ * default override (depuis session, learner, client, trainer du contexte).
+ */
+async function buildAutoVariables(
+  supabase: SupabaseClient,
+  desc: Exclude<EmailAttachmentDescriptor, { type: "file_url" } | { type: "uploaded_docx" }>
+): Promise<Record<string, string>> {
+  const vars: Record<string, string> = {
+    date_today: new Date().toLocaleDateString("fr-FR"),
+  };
+
+  if ("session_id" in desc.payload && desc.payload.session_id) {
+    const { data: session } = await supabase
+      .from("sessions")
+      .select("title, start_date, end_date, location")
+      .eq("id", desc.payload.session_id)
+      .single();
+    if (session) {
+      vars.titre_formation = session.title ?? "";
+      vars.date_debut = session.start_date ?? "";
+      vars.date_fin = session.end_date ?? "";
+      vars.lieu = session.location ?? "";
+    }
+  }
+
+  if ("learner_id" in desc.payload && desc.payload.learner_id) {
+    const { data: learner } = await supabase
+      .from("learners")
+      .select("first_name, last_name, email, phone")
+      .eq("id", desc.payload.learner_id)
+      .single();
+    if (learner) {
+      vars.nom_apprenant = `${learner.first_name ?? ""} ${learner.last_name ?? ""}`.trim();
+      vars.prenom_apprenant = learner.first_name ?? "";
+      vars.email_apprenant = learner.email ?? "";
+      vars.telephone_apprenant = learner.phone ?? "";
+    }
+  }
+
+  if ("client_id" in desc.payload && desc.payload.client_id) {
+    const { data: client } = await supabase
+      .from("clients")
+      .select("company_name")
+      .eq("id", desc.payload.client_id)
+      .single();
+    if (client) vars.nom_client = client.company_name ?? "";
+  }
+
+  if ("trainer_id" in desc.payload && desc.payload.trainer_id) {
+    const { data: trainer } = await supabase
+      .from("trainers")
+      .select("first_name, last_name")
+      .eq("id", desc.payload.trainer_id)
+      .single();
+    if (trainer) vars.nom_formateur = `${trainer.first_name ?? ""} ${trainer.last_name ?? ""}`.trim();
+  }
+
+  return vars;
 }
 
 /**

@@ -392,60 +392,56 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     const label = doc.custom_label || DOC_LABELS[doc.doc_type] || doc.doc_type;
 
     // Si le doc est lié à un template DB, vérifier son mode
-    if (doc.template_id) {
-      const { data: template } = await supabase
-        .from("document_templates")
-        .select("mode, source_docx_url")
-        .eq("id", doc.template_id)
-        .single();
+    // Appel unifié à la route serveur (gère 3 cas : template explicite, override
+    // default pour ce doc_type, ou fallback HTML système hardcodé).
+    try {
+      const ownerLearnerId = doc.owner_type === "learner" ? doc.owner_id : undefined;
+      const ownerClientId = doc.owner_type === "company" ? doc.owner_id : undefined;
+      const ownerTrainerId = doc.owner_type === "trainer" ? doc.owner_id : undefined;
+      const res = await fetch("/api/documents/generate-from-template", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          template_id: doc.template_id || undefined,
+          doc_type: doc.template_id ? undefined : doc.doc_type,
+          context: {
+            session_id: formation.id,
+            learner_id: ownerLearnerId,
+            client_id: ownerClientId,
+            trainer_id: ownerTrainerId,
+          },
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Échec génération PDF");
 
-      const tplMode = (template?.mode as "editable" | "docx_fidelity" | null) ?? "editable";
+      // base64 → Blob → blob URL (Chrome bloque data:pdf en iframe)
+      const byteChars = atob(json.base64);
+      const byteArray = new Uint8Array(byteChars.length);
+      for (let i = 0; i < byteChars.length; i++) byteArray[i] = byteChars.charCodeAt(i);
+      const blob = new Blob([byteArray], { type: "application/pdf" });
+      const pdfDataUrl = URL.createObjectURL(blob);
 
-      // Mode docx_fidelity : génère PDF côté serveur avec variables résolues
-      if (tplMode === "docx_fidelity" && template?.source_docx_url) {
-        try {
-          const ownerLearnerId = doc.owner_type === "learner" ? doc.owner_id : undefined;
-          const ownerClientId = doc.owner_type === "company" ? doc.owner_id : undefined;
-          const ownerTrainerId = doc.owner_type === "trainer" ? doc.owner_id : undefined;
-          const res = await fetch("/api/documents/generate-from-template", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              template_id: doc.template_id,
-              context: {
-                session_id: formation.id,
-                learner_id: ownerLearnerId,
-                client_id: ownerClientId,
-                trainer_id: ownerTrainerId,
-              },
-            }),
-          });
-          const json = await res.json();
-          if (!res.ok) throw new Error(json.error ?? "Échec génération PDF");
-          const pdfDataUrl = `data:application/pdf;base64,${json.base64}`;
-          setPreviewDoc({
-            open: true,
-            html: "",
-            pdfDataUrl,
-            title: label,
-            filename: `${doc.doc_type}_${Date.now()}`,
-          });
-          return;
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : "Erreur génération PDF";
-          toast({ title: "Erreur d'aperçu", description: msg, variant: "destructive" });
+      setPreviewDoc({
+        open: true,
+        html: "",
+        pdfDataUrl,
+        title: label,
+        filename: `${doc.doc_type}_${Date.now()}`,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Erreur génération PDF";
+      console.error("[handleView] error:", err);
+      // Fallback : tente le rendu HTML legacy si la route serveur échoue
+      try {
+        const html = await generateDocHtml(doc);
+        if (html) {
+          setPreviewDoc({ open: true, html, title: label, filename: `${doc.doc_type}_${Date.now()}` });
           return;
         }
-      }
+      } catch { /* fallthrough */ }
+      toast({ title: "Erreur d'aperçu", description: msg, variant: "destructive" });
     }
-
-    // Sinon : fallback HTML legacy
-    const html = await generateDocHtml(doc);
-    if (!html) {
-      toast({ title: "Aucun modèle disponible pour ce type de document", variant: "destructive" });
-      return;
-    }
-    setPreviewDoc({ open: true, html, title: label, filename: `${doc.doc_type}_${Date.now()}` });
   };
 
   // ===== HELPERS =====
@@ -543,29 +539,27 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
       const ownerClientId = doc.owner_type === "company" ? doc.owner_id : undefined;
       const ownerTrainerId = doc.owner_type === "trainer" ? doc.owner_id : undefined;
 
-      if (doc.template_id) {
-        const res = await fetch("/api/documents/generate-from-template", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            template_id: doc.template_id,
-            context: {
-              session_id: formation.id,
-              learner_id: ownerLearnerId,
-              client_id: ownerClientId,
-              trainer_id: ownerTrainerId,
-            },
-          }),
-        });
-        const json = await res.json();
-        if (!res.ok) throw new Error(json.error ?? "Échec génération PDF serveur");
-        base64 = json.base64;
-      } else {
-        // Pas de template lié → fallback sur le rendu legacy (HTML → html2canvas
-        // côté client). Limite : peut crasher sur les gros docs ou côté serveur.
-        const html = await generateDocHtml(doc);
-        base64 = await exportHtmlToPDFBase64(docLabel, html, entityName);
-      }
+      // Appel unifié à la route serveur :
+      //   - Si doc.template_id : génère depuis ce template explicite
+      //   - Sinon : la route cherche un template Word custom marqué default_for_doc_type
+      //     pour ce doc_type ; si trouvé l'utilise, sinon fallback sur getDefaultTemplate (HTML)
+      const res = await fetch("/api/documents/generate-from-template", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          template_id: doc.template_id || undefined,
+          doc_type: doc.template_id ? undefined : doc.doc_type,
+          context: {
+            session_id: formation.id,
+            learner_id: ownerLearnerId,
+            client_id: ownerClientId,
+            trainer_id: ownerTrainerId,
+          },
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Échec génération PDF serveur");
+      base64 = json.base64;
 
       setEmailPreview({
         docId,
@@ -1593,7 +1587,15 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
 
       {/* ── Dialog: Document preview ── */}
       {previewDoc && (
-        <Dialog open={previewDoc.open} onOpenChange={(open) => { if (!open) setPreviewDoc(null); }}>
+        <Dialog open={previewDoc.open} onOpenChange={(open) => {
+          if (!open) {
+            // Cleanup blob URL pour éviter fuite mémoire
+            if (previewDoc.pdfDataUrl?.startsWith("blob:")) {
+              URL.revokeObjectURL(previewDoc.pdfDataUrl);
+            }
+            setPreviewDoc(null);
+          }
+        }}>
           <DialogContent className="max-w-4xl h-[85vh] flex flex-col overflow-hidden">
             <DialogHeader>
               <DialogTitle>{previewDoc.title}</DialogTitle>

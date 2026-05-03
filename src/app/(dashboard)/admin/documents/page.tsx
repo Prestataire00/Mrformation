@@ -328,6 +328,51 @@ export default function DocumentsPage() {
   const [templateForm, setTemplateForm] = useState<TemplateFormData>(emptyTemplateForm);
   const [saving, setSaving] = useState(false);
 
+  // ── Dialog "Définir comme modèle par défaut" ──
+  // Permet d'assigner un template Word custom comme modèle par défaut pour
+  // un type de doc système (convocation, convention, etc.). Le modèle remplace
+  // alors le template HTML hardcodé partout (TabConventionDocs, emails auto, etc.).
+  const [defaultDialog, setDefaultDialog] = useState<{ open: boolean; template: DocumentTemplate | null }>({ open: false, template: null });
+  const [defaultDocTypeChoice, setDefaultDocTypeChoice] = useState<string>("");
+  const [savingDefault, setSavingDefault] = useState(false);
+
+  const handleSaveDefaultDocType = async () => {
+    if (!defaultDialog.template) return;
+    setSavingDefault(true);
+    try {
+      // Si l'admin choisit "Aucun" → on met NULL pour retirer le statut "par défaut"
+      const newValue = defaultDocTypeChoice === "" ? null : defaultDocTypeChoice;
+      const { error } = await supabase
+        .from("document_templates")
+        .update({ default_for_doc_type: newValue })
+        .eq("id", defaultDialog.template.id);
+      if (error) {
+        // Cas typique : un autre template est déjà default pour ce type → contrainte unique violée
+        if (error.code === "23505") {
+          toast({
+            title: "Un autre modèle est déjà par défaut",
+            description: "Retirez d'abord le statut « par défaut » de l'autre modèle pour ce type de document.",
+            variant: "destructive",
+          });
+        } else {
+          toast({ title: "Erreur", description: error.message, variant: "destructive" });
+        }
+        return;
+      }
+      toast({
+        title: newValue ? "Modèle défini par défaut" : "Statut retiré",
+        description: newValue
+          ? `Toutes les formations utiliseront ce modèle pour le type "${newValue}".`
+          : "Les formations reviendront au modèle système.",
+      });
+      setDefaultDialog({ open: false, template: null });
+      setDefaultDocTypeChoice("");
+      await fetchTemplates();
+    } finally {
+      setSavingDefault(false);
+    }
+  };
+
   // ── Variables détectées dans le .docx en cours d'édition (mode docx_fidelity) ──
   const [detectedVariables, setDetectedVariables] = useState<string[]>([]);
   const [detectingVariables, setDetectingVariables] = useState(false);
@@ -1225,8 +1270,9 @@ export default function DocumentsPage() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               {customTemplates.map((template) => {
-                const tplExt = template as DocumentTemplate & { mode?: "editable" | "docx_fidelity" };
+                const tplExt = template as DocumentTemplate & { mode?: "editable" | "docx_fidelity"; default_for_doc_type?: string | null };
                 const isWordMode = tplExt.mode === "docx_fidelity";
+                const defaultDocType = tplExt.default_for_doc_type ?? null;
                 return (
                   <Card key={template.id} className="group hover:shadow-md transition-shadow flex flex-col">
                     <CardHeader className="pb-3">
@@ -1250,6 +1296,14 @@ export default function DocumentsPage() {
                                   ✍️ Éditable
                                 </Badge>
                               )}
+                              {defaultDocType && (
+                                <Badge
+                                  className="text-xs font-normal bg-violet-100 text-violet-700 border-violet-200"
+                                  title="Ce modèle remplace le template système pour toutes les formations"
+                                >
+                                  ⭐ Par défaut : {defaultDocType.replace(/_/g, " ")}
+                                </Badge>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -1268,6 +1322,21 @@ export default function DocumentsPage() {
                               <Pencil className="h-4 w-4" />
                               Modifier
                             </DropdownMenuItem>
+                            {isWordMode && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setDefaultDialog({ open: true, template });
+                                    setDefaultDocTypeChoice(defaultDocType ?? "");
+                                  }}
+                                  className="gap-2"
+                                >
+                                  <span className="text-base leading-none">⭐</span>
+                                  {defaultDocType ? "Modifier le statut « par défaut »" : "Définir comme modèle par défaut"}
+                                </DropdownMenuItem>
+                              </>
+                            )}
                             <DropdownMenuSeparator />
                             <DropdownMenuItem onClick={() => openDeleteTemplate(template)} className="gap-2 text-red-600 focus:text-red-600">
                               <Trash2 className="h-4 w-4" />
@@ -1873,6 +1942,50 @@ export default function DocumentsPage() {
               );
             })()}
             <Button variant="outline" onClick={() => setPreviewDialogOpen(false)}>Fermer</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Default doc_type Dialog */}
+      <Dialog open={defaultDialog.open} onOpenChange={(open) => { if (!open) setDefaultDialog({ open: false, template: null }); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <span className="text-xl">⭐</span>
+              Définir comme modèle par défaut
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-gray-600">
+              Choisis le type de document que ce modèle Word remplacera <strong>partout dans la plateforme</strong> (formations, emails automatiques).
+              Si tu mets à jour ce modèle, le changement sera répercuté automatiquement.
+            </p>
+            <div>
+              <Label className="text-sm">Type de document à remplacer</Label>
+              <Select value={defaultDocTypeChoice} onValueChange={setDefaultDocTypeChoice}>
+                <SelectTrigger className="mt-1.5">
+                  <SelectValue placeholder="Choisir un type..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Aucun (revenir au modèle système)</SelectItem>
+                  {OFFICIAL_TEMPLATES.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="bg-violet-50 border border-violet-200 rounded-lg p-3 text-xs text-violet-900 leading-relaxed">
+              ⚠️ Une seule entrée par type est possible. Si un autre modèle est déjà défini par défaut pour ce type,
+              tu devras d&apos;abord retirer son statut.
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDefaultDialog({ open: false, template: null })}>Annuler</Button>
+            <Button onClick={handleSaveDefaultDocType} disabled={savingDefault}>
+              {savingDefault ? "Enregistrement..." : "Enregistrer"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
