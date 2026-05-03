@@ -1188,6 +1188,15 @@ export default function DocumentsPage() {
                             size="sm"
                             className="flex-1 h-8 text-xs gap-1 bg-emerald-600 hover:bg-emerald-700"
                             onClick={() => {
+                              if (isWordMode) {
+                                // TODO Phase 3 : modal "Envoyer à un apprenant" qui utilise enqueueEmail
+                                // avec descripteur uploaded_docx + variables {{xxx}} substituées via docxtemplater
+                                toast({
+                                  title: "Envoi à venir",
+                                  description: "La fonctionnalité d'envoi direct depuis cette card est en cours de développement. Pour le moment, attache ce template à une session puis envoie depuis le module Emails.",
+                                });
+                                return;
+                              }
                               setGenerateForm((prev) => ({ ...prev, template_id: template.id, name: `${template.name} — ${new Date().toLocaleDateString("fr-FR")}` }));
                               setShowPreview(false);
                               setPreviewContent("");
@@ -1610,37 +1619,72 @@ export default function DocumentsPage() {
 
       {/* Preview Template Dialog */}
       <Dialog open={previewDialogOpen} onOpenChange={setPreviewDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl h-[85vh] flex flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Eye className="h-5 w-5" />
               Aperçu — {previewTemplate?.name}
             </DialogTitle>
           </DialogHeader>
-          <div className="py-2">
-            <div
-              className="p-6 border rounded-lg bg-white prose prose-sm max-w-none text-gray-700 leading-relaxed max-h-96 overflow-y-auto"
-              dangerouslySetInnerHTML={{
-                __html: sanitizeHtml(
-                  getTemplatePreview(previewTemplate ? getTemplateContent(previewTemplate) : "") || "<p>Aucun contenu</p>"
-                ),
-              }}
-            />
-          </div>
+          {(() => {
+            const tplExt = previewTemplate as (DocumentTemplate & { mode?: "editable" | "docx_fidelity"; source_docx_url?: string | null }) | null;
+            const isWordMode = tplExt?.mode === "docx_fidelity" && !!tplExt?.source_docx_url;
+            return isWordMode ? (
+              <div className="flex flex-col flex-1 min-h-0 gap-2 py-2">
+                <div className="flex items-center gap-2">
+                  <Badge className="bg-blue-100 text-blue-700 border-blue-200">📄 Mode Fidélité Word</Badge>
+                  <p className="text-xs text-gray-500">PDF généré par CloudConvert (LibreOffice)</p>
+                </div>
+                <div className="flex-1 border rounded-lg overflow-hidden bg-gray-50">
+                  <iframe
+                    src={`/api/documents/preview-docx?url=${encodeURIComponent(tplExt!.source_docx_url!)}`}
+                    className="w-full h-full"
+                    title="Aperçu PDF"
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="py-2 flex-1 overflow-y-auto">
+                <div
+                  className="p-6 border rounded-lg bg-white prose prose-sm max-w-none text-gray-700 leading-relaxed"
+                  dangerouslySetInnerHTML={{
+                    __html: sanitizeHtml(
+                      getTemplatePreview(previewTemplate ? getTemplateContent(previewTemplate) : "") || "<p>Aucun contenu</p>"
+                    ),
+                  }}
+                />
+              </div>
+            );
+          })()}
           <DialogFooter>
-            <Button
-              variant="outline"
-              className="gap-2"
-              onClick={() => {
-                if (previewTemplate?.content) {
-                  navigator.clipboard.writeText(previewTemplate.content);
-                  toast({ title: "Contenu copié" });
-                }
-              }}
-            >
-              <Copy className="h-4 w-4" />
-              Copier
-            </Button>
+            {(() => {
+              const tplExt = previewTemplate as (DocumentTemplate & { mode?: "editable" | "docx_fidelity"; source_docx_url?: string | null }) | null;
+              const isWordMode = tplExt?.mode === "docx_fidelity" && !!tplExt?.source_docx_url;
+              return isWordMode ? (
+                <Button
+                  variant="outline"
+                  className="gap-2"
+                  onClick={() => window.open(tplExt!.source_docx_url!, "_blank")}
+                >
+                  <Download className="h-4 w-4" />
+                  Télécharger le .docx
+                </Button>
+              ) : (
+                <Button
+                  variant="outline"
+                  className="gap-2"
+                  onClick={() => {
+                    if (previewTemplate?.content) {
+                      navigator.clipboard.writeText(previewTemplate.content);
+                      toast({ title: "Contenu copié" });
+                    }
+                  }}
+                >
+                  <Copy className="h-4 w-4" />
+                  Copier
+                </Button>
+              );
+            })()}
             <Button variant="outline" onClick={() => setPreviewDialogOpen(false)}>Fermer</Button>
           </DialogFooter>
         </DialogContent>
