@@ -328,6 +328,59 @@ export default function DocumentsPage() {
   const [templateForm, setTemplateForm] = useState<TemplateFormData>(emptyTemplateForm);
   const [saving, setSaving] = useState(false);
 
+  // ── Variables détectées dans le .docx en cours d'édition (mode docx_fidelity) ──
+  const [detectedVariables, setDetectedVariables] = useState<string[]>([]);
+  const [detectingVariables, setDetectingVariables] = useState(false);
+
+  // Re-détection chaque fois qu'on bascule sur un nouveau .docx en édition
+  useEffect(() => {
+    const url = templateForm.source_docx_url;
+    if (!url || templateForm.mode !== "docx_fidelity") {
+      setDetectedVariables([]);
+      return;
+    }
+    setDetectingVariables(true);
+    fetch(`/api/documents/extract-docx-variables?url=${encodeURIComponent(url)}`)
+      .then((r) => r.json())
+      .then((d) => setDetectedVariables(Array.isArray(d.variables) ? d.variables : []))
+      .catch(() => setDetectedVariables([]))
+      .finally(() => setDetectingVariables(false));
+  }, [templateForm.source_docx_url, templateForm.mode]);
+
+  // Replace docx file (garde le même template_id, remplace l'URL Storage)
+  const handleReplaceDocx = () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".docx";
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file || !entityId) return;
+      toast({ title: "Remplacement en cours..." });
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("entity_id", entityId);
+        const res = await fetch("/api/documents/upload-template", { method: "POST", body: formData });
+        const uploadResult = await res.json();
+        if (!res.ok) throw new Error(uploadResult.error);
+
+        setTemplateForm((p) => ({
+          ...p,
+          source_docx_url: uploadResult.url,
+          source_docx_path: uploadResult.path,
+        }));
+        toast({
+          title: "Fichier remplacé",
+          description: "L'aperçu et la liste des variables vont se rafraîchir.",
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Erreur remplacement";
+        toast({ title: "Erreur", description: msg, variant: "destructive" });
+      }
+    };
+    input.click();
+  };
+
   // ── Send Document Dialog (Phase 3 UX v2) ──
   const [sendDialogOpen, setSendDialogOpen] = useState(false);
   const [sendDialogTemplate, setSendDialogTemplate] = useState<DocumentTemplate | null>(null);
@@ -1581,35 +1634,120 @@ export default function DocumentsPage() {
                 </div>
               </div>
 
-              {/* Mode "Fidélité Word" : aperçu PDF du .docx original via CloudConvert */}
+              {/* Mode "Fidélité Word" : aperçu PDF + assistant variables */}
               {templateForm.mode === "docx_fidelity" && templateForm.source_docx_url ? (
-                <div className="flex flex-col flex-1 gap-2 px-1 pb-2 overflow-hidden min-h-0" style={{ minHeight: "400px" }}>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Badge className="bg-blue-100 text-blue-700 border-blue-200">Mode Fidélité Word</Badge>
-                      <p className="text-xs text-gray-500">
-                        Le PDF envoyé sera identique au .docx d&apos;origine (LibreOffice cloud).
-                      </p>
+                <div className="flex gap-4 flex-1 px-1 pb-2 overflow-hidden min-h-0" style={{ minHeight: "400px" }}>
+                  {/* Gauche — Aperçu PDF */}
+                  <div className="flex-1 flex flex-col gap-2 min-w-0">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <Badge className="bg-blue-100 text-blue-700 border-blue-200">📄 Mode Fidélité Word</Badge>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => window.open(templateForm.source_docx_url!, "_blank")}
+                          className="h-7 text-xs gap-1"
+                        >
+                          <Download className="h-3 w-3" /> Télécharger
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={handleReplaceDocx}
+                          className="h-7 text-xs gap-1"
+                        >
+                          <Upload className="h-3 w-3" /> Remplacer
+                        </Button>
+                      </div>
                     </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => window.open(templateForm.source_docx_url!, "_blank")}
-                      className="h-7 text-xs gap-1"
-                    >
-                      <Download className="h-3 w-3" /> Télécharger le .docx
-                    </Button>
+                    <div className="flex-1 border rounded-lg overflow-hidden bg-gray-50">
+                      <iframe
+                        src={`/api/documents/preview-docx?url=${encodeURIComponent(templateForm.source_docx_url)}`}
+                        className="w-full h-full"
+                        title="Aperçu PDF du .docx"
+                      />
+                    </div>
                   </div>
-                  <div className="flex-1 border rounded-lg overflow-hidden bg-gray-50">
-                    <iframe
-                      src={`/api/documents/preview-docx?url=${encodeURIComponent(templateForm.source_docx_url)}`}
-                      className="w-full h-full"
-                      title="Aperçu PDF du .docx"
-                    />
+
+                  {/* Droite — Assistant variables */}
+                  <div className="w-72 shrink-0 flex flex-col gap-3 overflow-y-auto">
+                    {/* Variables détectées dans le .docx */}
+                    <div className="border rounded-lg p-3 bg-white">
+                      <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
+                        Variables dans votre .docx
+                      </h4>
+                      {detectingVariables ? (
+                        <p className="text-xs text-gray-400 italic">Analyse en cours...</p>
+                      ) : detectedVariables.length === 0 ? (
+                        <p className="text-xs text-gray-400 italic">
+                          Aucune variable {"{{xxx}}"} détectée. Ajoutez-en depuis la liste ci-dessous.
+                        </p>
+                      ) : (
+                        <div className="flex flex-wrap gap-1.5">
+                          {detectedVariables.map((v) => {
+                            const isKnown = AVAILABLE_VARIABLES.some((av) => av.key === v);
+                            return (
+                              <Badge
+                                key={v}
+                                className={cn(
+                                  "text-xs font-mono",
+                                  isKnown
+                                    ? "bg-emerald-100 text-emerald-700 border-emerald-200"
+                                    : "bg-orange-100 text-orange-700 border-orange-200"
+                                )}
+                                title={
+                                  isKnown
+                                    ? "Variable reconnue, sera remplie automatiquement"
+                                    : "Variable inconnue : devra être renseignée à l'envoi"
+                                }
+                              >
+                                {`{{${v}}}`}
+                              </Badge>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Variables disponibles à insérer */}
+                    <div className="border rounded-lg p-3 bg-white">
+                      <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
+                        Variables disponibles
+                      </h4>
+                      <p className="text-xs text-gray-500 mb-2">
+                        Cliquez pour copier, puis collez dans Word.
+                      </p>
+                      <div className="space-y-1 max-h-64 overflow-y-auto">
+                        {AVAILABLE_VARIABLES.map((v) => (
+                          <button
+                            key={v.key}
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(`{{${v.key}}}`);
+                              toast({ title: `Copié : {{${v.key}}}`, description: v.label });
+                            }}
+                            className="w-full text-left p-1.5 hover:bg-gray-50 rounded flex items-center justify-between gap-2 group"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <code className="text-xs text-blue-700 truncate">{`{{${v.key}}}`}</code>
+                              <p className="text-xs text-gray-500 truncate">{v.label}</p>
+                            </div>
+                            <Copy className="h-3 w-3 text-gray-400 group-hover:text-gray-700 shrink-0" />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Workflow rappel */}
+                    <div className="border border-blue-100 rounded-lg p-3 bg-blue-50 text-xs text-blue-900 leading-relaxed">
+                      <strong>Comment éditer ?</strong>
+                      <ol className="list-decimal list-inside mt-1 space-y-0.5">
+                        <li>Téléchargez le .docx</li>
+                        <li>Modifiez dans Word, collez les variables</li>
+                        <li>Cliquez Remplacer pour ré-uploader</li>
+                      </ol>
+                    </div>
                   </div>
-                  <p className="text-xs text-gray-400">
-                    Pour modifier ce document : éditez-le dans Word puis ré-importez la nouvelle version.
-                  </p>
                 </div>
               ) : (
                 /* Mode "Éditable" : éditeur Tiptap + preview HTML live */
