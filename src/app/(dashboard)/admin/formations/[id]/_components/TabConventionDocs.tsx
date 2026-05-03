@@ -144,7 +144,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
   const [dates, setDates] = useState<Record<string, string>>({});
   const [templates, setTemplates] = useState<DocumentTemplate[]>([]);
   const [loadingTemplates, setLoadingTemplates] = useState(true);
-  const [initialized, setInitialized] = useState(false);
+  const [initializing, setInitializing] = useState(false);
   const [massSending, setMassSending] = useState<string | null>(null);
   const [massDownloading, setMassDownloading] = useState<string | null>(null);
 
@@ -203,94 +203,114 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
   }, [fetchTemplates]);
 
   // ===== INITIALIZE DEFAULT DOCS =====
+  // Crée les docs par défaut pour chaque (learner/company/trainer) qui n'en a pas encore.
+  // Est ré-exécutée à chaque ajout d'apprenant/entreprise/formateur (le flag `initializing`
+  // garantit qu'on ne lance qu'un seul appel concurrent). Le fetch direct depuis la DB
+  // (au lieu du state local `docs`) évite les race conditions sur le state React.
   const initializeDefaultDocs = useCallback(async () => {
-    if (initialized) return;
+    if (initializing) return;
+    if (loadingTemplates) return;
+    if (enrollments.length === 0 && companies.length === 0 && trainers.length === 0) return;
 
-    // Build a set of existing docs to avoid duplicates
-    const existingKeys = new Set(
-      docs.map(d => `${d.doc_type}|${d.owner_type}|${d.owner_id}`)
-    );
-
-    const now = new Date().toISOString();
-    const rows: {
-      session_id: string;
-      doc_type: string;
-      owner_type: string;
-      owner_id: string;
-      requires_signature: boolean;
-      template_id: null;
-      is_confirmed?: boolean;
-      confirmed_at?: string;
-    }[] = [];
-
-    // For each learner: default docs + static docs
-    for (const enrollment of enrollments) {
-      if (!enrollment.learner) continue;
-      const learnerId = enrollment.learner.id;
-      for (const dt of [...DEFAULT_LEARNER_DOCS, ...STATIC_DOCS]) {
-        if (existingKeys.has(`${dt}|learner|${learnerId}`)) continue;
-        const isStatic = STATIC_DOCS.includes(dt);
-        rows.push({
-          session_id: formation.id,
-          doc_type: dt,
-          owner_type: "learner",
-          owner_id: learnerId,
-          requires_signature: false,
-          template_id: null,
-          ...(isStatic ? { is_confirmed: true, confirmed_at: now } : {}),
-        });
-      }
-    }
-
-    // For each company: default docs + static docs
-    for (const fc of companies) {
-      if (!fc.client) continue;
-      const clientId = fc.client.id;
-      for (const dt of [...DEFAULT_COMPANY_DOCS, ...STATIC_DOCS]) {
-        if (existingKeys.has(`${dt}|company|${clientId}`)) continue;
-        const isStatic = STATIC_DOCS.includes(dt);
-        rows.push({
-          session_id: formation.id,
-          doc_type: dt,
-          owner_type: "company",
-          owner_id: clientId,
-          requires_signature: REQUIRES_SIGNATURE_TYPES.includes(dt),
-          template_id: null,
-          ...(isStatic ? { is_confirmed: true, confirmed_at: now } : {}),
-        });
-      }
-    }
-
-    // For each trainer: default docs + static docs
-    for (const ft of trainers) {
-      if (!ft.trainer) continue;
-      const trainerId = ft.trainer.id;
-      for (const dt of [...DEFAULT_TRAINER_DOCS, ...STATIC_DOCS]) {
-        if (existingKeys.has(`${dt}|trainer|${trainerId}`)) continue;
-        const isStatic = STATIC_DOCS.includes(dt);
-        rows.push({
-          session_id: formation.id,
-          doc_type: dt,
-          owner_type: "trainer",
-          owner_id: trainerId,
-          requires_signature: REQUIRES_SIGNATURE_TYPES.includes(dt),
-          template_id: null,
-          ...(isStatic ? { is_confirmed: true, confirmed_at: now } : {}),
-        });
-      }
-    }
-
-    if (rows.length > 0) {
-      await supabase
+    setInitializing(true);
+    try {
+      // Fetch direct depuis la DB pour avoir la vue la plus à jour (évite race conditions)
+      const { data: existingDocs } = await supabase
         .from("formation_convention_documents")
-        .insert(rows);
-      await onRefresh();
-    }
-    setInitialized(true);
-  }, [formation.id, enrollments, companies, trainers, supabase, onRefresh, initialized, docs]);
+        .select("doc_type, owner_type, owner_id")
+        .eq("session_id", formation.id);
+      const existingKeys = new Set(
+        (existingDocs ?? []).map((d) => `${d.doc_type}|${d.owner_type}|${d.owner_id}`)
+      );
 
+      const now = new Date().toISOString();
+      const rows: {
+        session_id: string;
+        doc_type: string;
+        owner_type: string;
+        owner_id: string;
+        requires_signature: boolean;
+        template_id: null;
+        is_confirmed?: boolean;
+        confirmed_at?: string;
+      }[] = [];
+
+      // For each learner: default docs + static docs
+      for (const enrollment of enrollments) {
+        if (!enrollment.learner) continue;
+        const learnerId = enrollment.learner.id;
+        for (const dt of [...DEFAULT_LEARNER_DOCS, ...STATIC_DOCS]) {
+          if (existingKeys.has(`${dt}|learner|${learnerId}`)) continue;
+          const isStatic = STATIC_DOCS.includes(dt);
+          rows.push({
+            session_id: formation.id,
+            doc_type: dt,
+            owner_type: "learner",
+            owner_id: learnerId,
+            requires_signature: false,
+            template_id: null,
+            ...(isStatic ? { is_confirmed: true, confirmed_at: now } : {}),
+          });
+        }
+      }
+
+      // For each company: default docs + static docs
+      for (const fc of companies) {
+        if (!fc.client) continue;
+        const clientId = fc.client.id;
+        for (const dt of [...DEFAULT_COMPANY_DOCS, ...STATIC_DOCS]) {
+          if (existingKeys.has(`${dt}|company|${clientId}`)) continue;
+          const isStatic = STATIC_DOCS.includes(dt);
+          rows.push({
+            session_id: formation.id,
+            doc_type: dt,
+            owner_type: "company",
+            owner_id: clientId,
+            requires_signature: REQUIRES_SIGNATURE_TYPES.includes(dt),
+            template_id: null,
+            ...(isStatic ? { is_confirmed: true, confirmed_at: now } : {}),
+          });
+        }
+      }
+
+      // For each trainer: default docs + static docs
+      for (const ft of trainers) {
+        if (!ft.trainer) continue;
+        const trainerId = ft.trainer.id;
+        for (const dt of [...DEFAULT_TRAINER_DOCS, ...STATIC_DOCS]) {
+          if (existingKeys.has(`${dt}|trainer|${trainerId}`)) continue;
+          const isStatic = STATIC_DOCS.includes(dt);
+          rows.push({
+            session_id: formation.id,
+            doc_type: dt,
+            owner_type: "trainer",
+            owner_id: trainerId,
+            requires_signature: REQUIRES_SIGNATURE_TYPES.includes(dt),
+            template_id: null,
+            ...(isStatic ? { is_confirmed: true, confirmed_at: now } : {}),
+          });
+        }
+      }
+
+      if (rows.length > 0) {
+        const { error } = await supabase.from("formation_convention_documents").insert(rows);
+        if (error) {
+          console.error("[initializeDefaultDocs] insert error:", error);
+        } else {
+          console.log(`[initializeDefaultDocs] Created ${rows.length} default docs`);
+          await onRefresh();
+        }
+      }
+    } finally {
+      setInitializing(false);
+    }
+  }, [formation.id, enrollments, companies, trainers, supabase, onRefresh, loadingTemplates, initializing]);
+
+  // Re-déclenche l'init à chaque changement de count d'enrollments/companies/trainers.
+  // Le check existingKeys (depuis DB) évite les doublons.
+  // On utilise les .length comme dépendance pour éviter les re-renders infinis sur identité d'array.
   useEffect(() => {
-    if (!loadingTemplates && enrollments.length > 0) {
+    if (!loadingTemplates && (enrollments.length > 0 || companies.length > 0 || trainers.length > 0)) {
       initializeDefaultDocs();
     }
   }, [loadingTemplates, initializeDefaultDocs, enrollments.length]);
@@ -1116,7 +1136,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     );
   };
 
-  const isInitializing = !initialized && enrollments.length > 0;
+  const isInitializing = initializing && docs.length === 0 && enrollments.length > 0;
 
   // ── Compute progress stats for hero row ──
   const docProgress = (() => {
