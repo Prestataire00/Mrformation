@@ -226,6 +226,16 @@ export default function EmailsPage() {
 
   // Templates Word custom de l'entité (mode docx_fidelity), pour cocher comme attachments auto
   const [wordTemplates, setWordTemplates] = useState<Array<{ id: string; name: string }>>([]);
+
+  // Lien email_template ↔ formation_automation_rules : combien de rules utilisent chaque template
+  type AutomationRuleInfo = { id: string; name: string | null; trigger_type: string; days_offset: number; is_enabled: boolean };
+  const [rulesByTemplate, setRulesByTemplate] = useState<Record<string, AutomationRuleInfo[]>>({});
+
+  // Si on ouvre la modale d'édition avec scroll initial sur la section attachments
+  const [openOnAttachments, setOpenOnAttachments] = useState(false);
+
+  // Tab actif (controlled pour permettre la navigation depuis les cards d'action)
+  const [activeTab, setActiveTab] = useState<"templates" | "history" | "relances">("templates");
   const [activeField, setActiveField] = useState<"subject" | "body">("body");
   const subjectRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
@@ -291,6 +301,30 @@ export default function EmailsPage() {
     setWordTemplates((data ?? []) as Array<{ id: string; name: string }>);
   }, [entityId]);
 
+  // Charge les rules d'automation et regroupe par template_id pour afficher le badge "Utilisé par X automations"
+  const fetchAutomationRules = useCallback(async () => {
+    if (!entityId) return;
+    const { data } = await supabase
+      .from("formation_automation_rules")
+      .select("id, name, trigger_type, days_offset, is_enabled, template_id")
+      .eq("entity_id", entityId)
+      .not("template_id", "is", null);
+    const map: Record<string, AutomationRuleInfo[]> = {};
+    for (const r of data ?? []) {
+      const tplId = (r as Record<string, string>).template_id;
+      if (!tplId) continue;
+      if (!map[tplId]) map[tplId] = [];
+      map[tplId].push({
+        id: r.id as string,
+        name: (r.name as string | null) ?? null,
+        trigger_type: r.trigger_type as string,
+        days_offset: (r.days_offset as number) ?? 0,
+        is_enabled: (r.is_enabled as boolean) ?? true,
+      });
+    }
+    setRulesByTemplate(map);
+  }, [entityId]);
+
   const fetchHistory = useCallback(async () => {
     setHistoryLoading(true);
     let query = supabase
@@ -324,7 +358,8 @@ export default function EmailsPage() {
     fetchTemplates();
     fetchHistory();
     fetchWordTemplates();
-  }, [fetchTemplates, fetchHistory, fetchWordTemplates]);
+    fetchAutomationRules();
+  }, [fetchTemplates, fetchHistory, fetchWordTemplates, fetchAutomationRules]);
 
   // Re-resolve variables when context selection changes
   useEffect(() => {
@@ -615,7 +650,68 @@ export default function EmailsPage() {
         </Button>
       </div>
 
-      <Tabs defaultValue="templates" className="space-y-4">
+      {/* Actions rapides — point d'entrée principal */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <button
+          type="button"
+          onClick={openAddTemplate}
+          className="group text-left p-5 rounded-xl border-2 border-dashed border-blue-200 bg-blue-50/50 hover:border-blue-400 hover:bg-blue-50 transition-all flex items-start gap-4"
+        >
+          <div className="shrink-0 p-3 rounded-lg bg-blue-100 group-hover:bg-blue-200 transition-colors">
+            <Plus className="h-5 w-5 text-blue-700" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="font-semibold text-gray-900">Créer un modèle d&apos;email</h3>
+            <p className="text-sm text-gray-500 mt-1">Sujet, corps, variables, pièces jointes auto</p>
+          </div>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setSendForm({ recipient_email: "", subject: "", body: "", template_id: "" });
+            setOriginalSubject("");
+            setOriginalBody("");
+            setSelectedSessionId("");
+            setSelectedClientId("");
+            setSelectedLearnerId("");
+            setSendDialogOpen(true);
+            fetchSendContext();
+          }}
+          className="group text-left p-5 rounded-xl border-2 border-dashed border-emerald-200 bg-emerald-50/50 hover:border-emerald-400 hover:bg-emerald-50 transition-all flex items-start gap-4"
+        >
+          <div className="shrink-0 p-3 rounded-lg bg-emerald-100 group-hover:bg-emerald-200 transition-colors">
+            <Send className="h-5 w-5 text-emerald-700" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="font-semibold text-gray-900">Envoyer un email maintenant</h3>
+            <p className="text-sm text-gray-500 mt-1">Choix destinataire + modèle ou rédaction libre</p>
+          </div>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab("history")}
+          className="group text-left p-5 rounded-xl border-2 border-dashed border-gray-200 bg-gray-50/50 hover:border-gray-400 hover:bg-gray-50 transition-all flex items-start gap-4"
+        >
+          <div className="shrink-0 p-3 rounded-lg bg-gray-100 group-hover:bg-gray-200 transition-colors relative">
+            <Mail className="h-5 w-5 text-gray-700" />
+            {failedCount > 0 && (
+              <span className="absolute -top-1 -right-1 inline-flex items-center justify-center h-4 w-4 text-[10px] rounded-full bg-red-500 text-white font-semibold">
+                {failedCount}
+              </span>
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="font-semibold text-gray-900">Voir l&apos;historique des envois</h3>
+            <p className="text-sm text-gray-500 mt-1">
+              Suivi des emails envoyés{failedCount > 0 ? `, ${failedCount} échec${failedCount > 1 ? "s" : ""} à vérifier` : ""}
+            </p>
+          </div>
+        </button>
+      </div>
+
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)} className="space-y-4">
         <TabsList>
           <TabsTrigger value="templates">Modèles d&apos;emails</TabsTrigger>
           <TabsTrigger value="history">
@@ -668,7 +764,12 @@ export default function EmailsPage() {
             </div>
           ) : (
             <div className="space-y-3">
-              {filteredTemplates.map((template) => (
+              {filteredTemplates.map((template) => {
+                const tplExt = template as EmailTemplate & { attachment_doc_types?: string[] | null };
+                const attachmentsCount = (tplExt.attachment_doc_types ?? []).length;
+                const automationRules = rulesByTemplate[template.id] ?? [];
+                const enabledAutomations = automationRules.filter((r) => r.is_enabled).length;
+                return (
                 <div
                   key={template.id}
                   className="group border rounded-xl bg-white p-4 hover:shadow-md transition-shadow"
@@ -684,6 +785,24 @@ export default function EmailsPage() {
                           <Badge className={cn("text-xs font-normal", EMAIL_TYPE_COLORS[(template.type || "autre") as string])}>
                             {EMAIL_TYPE_LABELS[(template.type || "autre") as string]}
                           </Badge>
+                          {attachmentsCount > 0 && (
+                            <Badge className="text-xs font-normal bg-purple-100 text-purple-700 border-purple-200" title="Pièces jointes auto">
+                              📎 {attachmentsCount} PJ
+                            </Badge>
+                          )}
+                          {automationRules.length > 0 && (
+                            <Badge
+                              className={cn(
+                                "text-xs font-normal cursor-help",
+                                enabledAutomations > 0
+                                  ? "bg-emerald-100 text-emerald-700 border-emerald-200"
+                                  : "bg-gray-100 text-gray-600 border-gray-200"
+                              )}
+                              title={`Utilisé par ${automationRules.length} automation${automationRules.length > 1 ? "s" : ""} (${enabledAutomations} activée${enabledAutomations > 1 ? "s" : ""})`}
+                            >
+                              🤖 {enabledAutomations}/{automationRules.length} auto
+                            </Badge>
+                          )}
                         </div>
                         <p className="text-sm text-gray-600 mt-0.5 font-medium">
                           Objet: <span className="font-normal text-gray-500">{truncate(template.subject, 80)}</span>
@@ -710,11 +829,20 @@ export default function EmailsPage() {
                       <Button
                         size="sm"
                         variant="outline"
+                        className="gap-1.5 text-xs h-8"
+                        onClick={() => { setOpenOnAttachments(true); openEditTemplate(template); }}
+                        title="Gérer les pièces jointes auto"
+                      >
+                        📎 Pièces jointes
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
                         className="gap-1.5 text-xs h-8 opacity-0 group-hover:opacity-100 transition-opacity"
                         onClick={() => openSendFromTemplate(template)}
                       >
                         <Send className="h-3.5 w-3.5" />
-                        Utiliser ce modèle
+                        Utiliser
                       </Button>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -751,7 +879,8 @@ export default function EmailsPage() {
                     </div>
                   </div>
                 </div>
-              ))}
+              );
+              })}
             </div>
           )}
         </TabsContent>
@@ -1037,6 +1166,40 @@ export default function EmailsPage() {
                   </div>
                 </div>
               </div>
+
+              {/* Automatisations qui utilisent ce template */}
+              {editingTemplate && (rulesByTemplate[editingTemplate.id]?.length ?? 0) > 0 && (
+                <div className="space-y-2 col-span-3 border rounded-lg p-3 bg-emerald-50 border-emerald-200">
+                  <Label className="text-xs flex items-center gap-2">
+                    <span className="text-base">🤖</span>
+                    Automatisations qui utilisent ce template
+                  </Label>
+                  <div className="space-y-1.5">
+                    {(rulesByTemplate[editingTemplate.id] ?? []).map((r) => {
+                      const triggerLabel = r.trigger_type === "session_start_minus_days"
+                        ? `${r.days_offset}j avant le début de la session`
+                        : r.trigger_type === "session_end_plus_days"
+                          ? `${r.days_offset}j après la fin de la session`
+                          : r.trigger_type;
+                      return (
+                        <div key={r.id} className="flex items-center justify-between text-xs bg-white rounded px-2 py-1.5">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className={cn("inline-block h-2 w-2 rounded-full shrink-0", r.is_enabled ? "bg-emerald-500" : "bg-gray-300")} />
+                            <span className="font-medium truncate">{r.name ?? "(sans nom)"}</span>
+                            <span className="text-gray-500 text-[10px] shrink-0">— {triggerLabel}</span>
+                          </div>
+                          <span className={cn("text-[10px] px-1.5 py-0.5 rounded shrink-0", r.is_enabled ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500")}>
+                            {r.is_enabled ? "Activée" : "Désactivée"}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[10px] text-emerald-800">
+                    Ces règles déclenchent l&apos;envoi automatique de cet email. Modifie-les depuis la fiche formation correspondante (onglet Automation).
+                  </p>
+                </div>
+              )}
 
               {/* Pièces jointes automatiques */}
               <div className="space-y-3 col-span-3">
