@@ -328,6 +328,69 @@ export default function DocumentsPage() {
   const [templateForm, setTemplateForm] = useState<TemplateFormData>(emptyTemplateForm);
   const [saving, setSaving] = useState(false);
 
+  // ── Send Document Dialog (Phase 3 UX v2) ──
+  const [sendDialogOpen, setSendDialogOpen] = useState(false);
+  const [sendDialogTemplate, setSendDialogTemplate] = useState<DocumentTemplate | null>(null);
+  const [sendStep, setSendStep] = useState<1 | 2>(1);
+  const [sendTargetType, setSendTargetType] = useState<"learner" | "session">("learner");
+  const [sendLearnerId, setSendLearnerId] = useState<string>("");
+  const [sendSessionId, setSendSessionId] = useState<string>("");
+  const [sendSubject, setSendSubject] = useState("");
+  const [sendBody, setSendBody] = useState("");
+  const [sending, setSending] = useState(false);
+
+  const openSendDialog = (template: DocumentTemplate) => {
+    setSendDialogTemplate(template);
+    setSendStep(1);
+    setSendTargetType("learner");
+    setSendLearnerId("");
+    setSendSessionId("");
+    setSendSubject(`Document : ${template.name}`);
+    setSendBody(
+      `Bonjour {{prenom_apprenant}},\n\nVous trouverez en pièce jointe le document "${template.name}".\n\nCordialement,\nL'équipe formation`
+    );
+    setSendDialogOpen(true);
+  };
+
+  const handleSendDocument = async () => {
+    if (!sendDialogTemplate) return;
+    setSending(true);
+    try {
+      const target =
+        sendTargetType === "learner"
+          ? { type: "learner" as const, learner_id: sendLearnerId }
+          : { type: "session" as const, session_id: sendSessionId };
+
+      const res = await fetch("/api/documents/send-to-recipient", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          template_id: sendDialogTemplate.id,
+          target,
+          subject: sendSubject,
+          body: sendBody,
+        }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error ?? "Échec envoi");
+
+      toast({
+        title: `${result.enqueued} email${result.enqueued !== 1 ? "s" : ""} programmé${result.enqueued !== 1 ? "s" : ""}`,
+        description:
+          result.errors?.length > 0
+            ? `${result.errors.length} erreur(s) — voir la console`
+            : "Envoi par le worker dans les 5 min.",
+      });
+      if (result.errors?.length > 0) console.warn("[send-document] errors:", result.errors);
+      setSendDialogOpen(false);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Erreur inconnue";
+      toast({ title: "Erreur envoi", description: msg, variant: "destructive" });
+    } finally {
+      setSending(false);
+    }
+  };
+
   // Delete template
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [templateToDelete, setTemplateToDelete] = useState<DocumentTemplate | null>(null);
@@ -1187,21 +1250,7 @@ export default function DocumentsPage() {
                           <Button
                             size="sm"
                             className="flex-1 h-8 text-xs gap-1 bg-emerald-600 hover:bg-emerald-700"
-                            onClick={() => {
-                              if (isWordMode) {
-                                // TODO Phase 3 : modal "Envoyer à un apprenant" qui utilise enqueueEmail
-                                // avec descripteur uploaded_docx + variables {{xxx}} substituées via docxtemplater
-                                toast({
-                                  title: "Envoi à venir",
-                                  description: "La fonctionnalité d'envoi direct depuis cette card est en cours de développement. Pour le moment, attache ce template à une session puis envoie depuis le module Emails.",
-                                });
-                                return;
-                              }
-                              setGenerateForm((prev) => ({ ...prev, template_id: template.id, name: `${template.name} — ${new Date().toLocaleDateString("fr-FR")}` }));
-                              setShowPreview(false);
-                              setPreviewContent("");
-                              setGenerateDialogOpen(true);
-                            }}
+                            onClick={() => openSendDialog(template)}
                           >
                             <Send className="h-3 w-3" />
                             Envoyer
@@ -1686,6 +1735,169 @@ export default function DocumentsPage() {
               );
             })()}
             <Button variant="outline" onClick={() => setPreviewDialogOpen(false)}>Fermer</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Send Document Dialog (Phase 3 UX v2) */}
+      <Dialog open={sendDialogOpen} onOpenChange={setSendDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Send className="h-5 w-5 text-emerald-600" />
+              Envoyer le document — {sendDialogTemplate?.name}
+            </DialogTitle>
+          </DialogHeader>
+
+          {sendStep === 1 ? (
+            <div className="space-y-5 py-2">
+              {/* Étape 1 — Choix destinataire */}
+              <div>
+                <Label className="text-sm font-semibold mb-3 block">Destinataire</Label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setSendTargetType("learner")}
+                    className={cn(
+                      "p-3 rounded-lg border-2 text-left transition-all",
+                      sendTargetType === "learner"
+                        ? "border-emerald-500 bg-emerald-50"
+                        : "border-gray-200 hover:border-gray-300"
+                    )}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Users className="h-4 w-4 text-emerald-700" />
+                      <span className="font-medium text-sm">Un apprenant</span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">Envoi unique ciblé</p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSendTargetType("session")}
+                    className={cn(
+                      "p-3 rounded-lg border-2 text-left transition-all",
+                      sendTargetType === "session"
+                        ? "border-emerald-500 bg-emerald-50"
+                        : "border-gray-200 hover:border-gray-300"
+                    )}
+                  >
+                    <div className="flex items-center gap-2">
+                      <GraduationCap className="h-4 w-4 text-emerald-700" />
+                      <span className="font-medium text-sm">Une session entière</span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">Tous les inscrits</p>
+                  </button>
+                </div>
+              </div>
+
+              {sendTargetType === "learner" && (
+                <div>
+                  <Label htmlFor="send_learner" className="text-sm">Apprenant *</Label>
+                  <Select value={sendLearnerId} onValueChange={setSendLearnerId}>
+                    <SelectTrigger id="send_learner"><SelectValue placeholder="Choisir un apprenant" /></SelectTrigger>
+                    <SelectContent>
+                      {learners.map((l) => (
+                        <SelectItem key={l.id} value={l.id}>
+                          {l.first_name} {l.last_name} {l.email ? `— ${l.email}` : "(pas d'email)"}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {sendTargetType === "session" && (
+                <div>
+                  <Label htmlFor="send_session" className="text-sm">Session *</Label>
+                  <Select value={sendSessionId} onValueChange={setSendSessionId}>
+                    <SelectTrigger id="send_session"><SelectValue placeholder="Choisir une session" /></SelectTrigger>
+                    <SelectContent>
+                      {sessions.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-gray-500 mt-1">L&apos;email sera envoyé à tous les apprenants inscrits.</p>
+                </div>
+              )}
+
+              <div className="border-t pt-4">
+                <Label htmlFor="send_subject" className="text-sm">Sujet de l&apos;email *</Label>
+                <Input
+                  id="send_subject"
+                  value={sendSubject}
+                  onChange={(e) => setSendSubject(e.target.value)}
+                  placeholder="Sujet de l'email"
+                />
+                <Label htmlFor="send_body" className="text-sm mt-3 block">Corps de l&apos;email *</Label>
+                <textarea
+                  id="send_body"
+                  value={sendBody}
+                  onChange={(e) => setSendBody(e.target.value)}
+                  rows={6}
+                  className="w-full mt-1 p-2 border rounded-md text-sm resize-y"
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  Variables disponibles : <code className="bg-gray-100 px-1 rounded">{"{{prenom_apprenant}}"}</code>{" "}
+                  <code className="bg-gray-100 px-1 rounded">{"{{nom_apprenant}}"}</code>{" "}
+                  {sendTargetType === "session" && (
+                    <code className="bg-gray-100 px-1 rounded">{"{{titre_formation}}"}</code>
+                  )}
+                </p>
+              </div>
+            </div>
+          ) : (
+            /* Étape 2 — Confirmation */
+            <div className="space-y-4 py-2">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
+                <h4 className="font-semibold text-emerald-900 text-sm mb-2">Récapitulatif</h4>
+                <ul className="text-sm text-emerald-800 space-y-1">
+                  <li>• <strong>Document :</strong> {sendDialogTemplate?.name}</li>
+                  <li>
+                    • <strong>Destinataire :</strong>{" "}
+                    {sendTargetType === "learner"
+                      ? learners.find((l) => l.id === sendLearnerId)?.email ?? "—"
+                      : `Tous les apprenants de "${sessions.find((s) => s.id === sendSessionId)?.title ?? "—"}"`}
+                  </li>
+                  <li>• <strong>Sujet :</strong> {sendSubject}</li>
+                </ul>
+              </div>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-900">
+                ℹ️ L&apos;email sera placé dans la file d&apos;attente. Le worker Netlify l&apos;envoie dans les 5 minutes maximum
+                (avec retry automatique en cas d&apos;échec). Tu pourras suivre le statut dans le module Emails.
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2">
+            {sendStep === 1 ? (
+              <>
+                <Button variant="outline" onClick={() => setSendDialogOpen(false)}>Annuler</Button>
+                <Button
+                  onClick={() => setSendStep(2)}
+                  disabled={
+                    !sendSubject.trim() ||
+                    !sendBody.trim() ||
+                    (sendTargetType === "learner" && !sendLearnerId) ||
+                    (sendTargetType === "session" && !sendSessionId)
+                  }
+                >
+                  Suivant
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button variant="outline" onClick={() => setSendStep(1)} disabled={sending}>← Retour</Button>
+                <Button
+                  onClick={handleSendDocument}
+                  disabled={sending}
+                  className="bg-emerald-600 hover:bg-emerald-700 gap-2"
+                >
+                  <Send className="h-4 w-4" />
+                  {sending ? "Envoi..." : "Confirmer l'envoi"}
+                </Button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
