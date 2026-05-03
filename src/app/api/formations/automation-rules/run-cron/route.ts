@@ -3,26 +3,82 @@ import { createClient } from "@supabase/supabase-js";
 import { resolveVariables } from "@/lib/utils/resolve-variables";
 import { enqueueEmail, type EmailAttachmentDescriptor } from "@/lib/services/email-queue";
 
+// Map UUID → template Word custom (chargée au début du cron, utilisée par buildAttachmentsForRecipient)
+type CustomTemplateInfo = {
+  id: string;
+  name: string;
+  mode: "editable" | "docx_fidelity" | null;
+  source_docx_url: string | null;
+};
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+interface RecipientInfo {
+  id: string;
+  type: "learner" | "trainer";
+  first_name?: string;
+  last_name?: string;
+  email?: string;
+}
+
+interface SessionInfo {
+  id: string;
+  title?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  location?: string | null;
+}
+
 /**
  * Construit les descripteurs d'attachments pour un destinataire donné,
  * en fonction des types de doc déclarés dans le template email.
  *
- * Map les `attachment_doc_types` du template vers le bon descripteur :
- *   - convocation, certificat_realisation, attestation_assiduite → besoin learner_id
- *   - convention_entreprise → besoin client_id (recipientType='companies')
- *   - convention_intervention, contrat_sous_traitance → besoin trainer_id
- *   - programme_formation, planning_semaine → juste session_id
+ * Supporte 2 sources de templates :
+ *   1. Types système (string lisible) : convocation, convention_entreprise, etc.
+ *      → mappe vers les types correspondants du resolver (templates HTML hardcodés)
+ *   2. Templates Word custom (UUID) : référence vers document_templates.id
+ *      → descripteur uploaded_docx avec variables auto-substituées via docxtemplater
  */
 function buildAttachmentsForRecipient(
   attachmentDocTypes: string[] | null | undefined,
-  sessionId: string,
-  recipient: { id: string; type: "learner" | "trainer" },
-  recipientType: string
+  session: SessionInfo,
+  recipient: RecipientInfo,
+  recipientType: string,
+  customTemplatesById: Record<string, CustomTemplateInfo>
 ): EmailAttachmentDescriptor[] {
   if (!attachmentDocTypes || attachmentDocTypes.length === 0) return [];
 
+  const sessionId = session.id;
   const descriptors: EmailAttachmentDescriptor[] = [];
+
   for (const docType of attachmentDocTypes) {
+    // Cas 1 : UUID → template Word custom
+    if (UUID_REGEX.test(docType)) {
+      const tpl = customTemplatesById[docType];
+      if (!tpl || tpl.mode !== "docx_fidelity" || !tpl.source_docx_url) continue;
+
+      // Variables auto-déduites depuis recipient + session
+      const variables: Record<string, string> = {
+        nom_apprenant: `${recipient.first_name ?? ""} ${recipient.last_name ?? ""}`.trim(),
+        prenom_apprenant: recipient.first_name ?? "",
+        email_apprenant: recipient.email ?? "",
+        titre_formation: session.title ?? "",
+        date_debut: session.start_date ?? "",
+        date_fin: session.end_date ?? "",
+        lieu: session.location ?? "",
+        date_today: new Date().toLocaleDateString("fr-FR"),
+      };
+
+      descriptors.push({
+        type: "uploaded_docx",
+        filename: `${tpl.name}.pdf`,
+        url: tpl.source_docx_url,
+        variables,
+      });
+      continue;
+    }
+
+    // Cas 2 : type système
     switch (docType) {
       case "convocation":
       case "certificat_realisation":
@@ -34,8 +90,6 @@ function buildAttachmentsForRecipient(
         }
         break;
       case "convention_entreprise":
-        // Le code mappe les "companies" en `recipient.type='learner'` (héritage)
-        // → on s'appuie sur recipientType de la règle, pas recipient.type
         if (recipientType === "companies") {
           descriptors.push({
             type: "convention_entreprise",
@@ -58,7 +112,6 @@ function buildAttachmentsForRecipient(
           payload: { session_id: sessionId },
         });
         break;
-      // Autres types ignorés silencieusement (pas de descripteur défini pour eux)
     }
   }
   return descriptors;
@@ -135,6 +188,23 @@ export async function POST(request: NextRequest) {
         if (tplData) templateMap = Object.fromEntries(tplData.map((t) => [t.id, t]));
       }
 
+      // Pre-load les templates Word custom (mode docx_fidelity) référencés par UUID dans les attachment_doc_types
+      const customTplIds = new Set<string>();
+      for (const t of Object.values(templateMap)) {
+        for (const v of t.attachment_doc_types ?? []) {
+          if (UUID_REGEX.test(v)) customTplIds.add(v);
+        }
+      }
+      let customTemplatesById: Record<string, CustomTemplateInfo> = {};
+      if (customTplIds.size > 0) {
+        const { data: customTpls } = await supabase
+          .from("document_templates")
+          .select("id, name, mode, source_docx_url")
+          .in("id", Array.from(customTplIds))
+          .eq("entity_id", session.entity_id);
+        if (customTpls) customTemplatesById = Object.fromEntries(customTpls.map((t) => [t.id, t as CustomTemplateInfo]));
+      }
+
       let emailsSent = 0;
 
       for (const rule of rules) {
@@ -205,9 +275,10 @@ export async function POST(request: NextRequest) {
             recipient_id: recipient.id,
             attachments: buildAttachmentsForRecipient(
               tpl?.attachment_doc_types,
-              session.id,
+              { id: session.id, title: session.title, start_date: session.start_date, end_date: session.end_date, location: session.location },
               recipient,
-              recipientType
+              recipientType,
+              customTemplatesById
             ),
           });
           emailsSent++;
@@ -253,6 +324,23 @@ export async function POST(request: NextRequest) {
       if (templateIds.length > 0) {
         const { data: tplData } = await supabase.from("email_templates").select("id, subject, body, attachment_doc_types").in("id", templateIds);
         if (tplData) templateMap = Object.fromEntries(tplData.map((t) => [t.id, t]));
+      }
+
+      // Pre-load Word custom templates referenced by UUID in attachment_doc_types
+      const customTplIds = new Set<string>();
+      for (const t of Object.values(templateMap)) {
+        for (const v of t.attachment_doc_types ?? []) {
+          if (UUID_REGEX.test(v)) customTplIds.add(v);
+        }
+      }
+      let customTemplatesById: Record<string, CustomTemplateInfo> = {};
+      if (customTplIds.size > 0) {
+        const { data: customTpls } = await supabase
+          .from("document_templates")
+          .select("id, name, mode, source_docx_url")
+          .in("id", Array.from(customTplIds))
+          .eq("entity_id", entityId);
+        if (customTpls) customTemplatesById = Object.fromEntries(customTpls.map((t) => [t.id, t as CustomTemplateInfo]));
       }
 
       for (const rule of rules) {
@@ -348,9 +436,10 @@ export async function POST(request: NextRequest) {
               recipient_id: recipient.id,
               attachments: buildAttachmentsForRecipient(
                 tpl?.attachment_doc_types,
-                session.id,
+                { id: session.id, title: session.title, start_date: session.start_date, end_date: session.end_date, location: session.location },
                 recipient,
-                recipientType
+                recipientType,
+                customTemplatesById
               ),
             });
             emailsSent++;

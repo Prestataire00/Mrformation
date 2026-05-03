@@ -223,6 +223,9 @@ export default function EmailsPage() {
   const [editingTemplate, setEditingTemplate] = useState<EmailTemplate | null>(null);
   const [templateForm, setTemplateForm] = useState<TemplateFormData>(emptyTemplateForm);
   const [saving, setSaving] = useState(false);
+
+  // Templates Word custom de l'entité (mode docx_fidelity), pour cocher comme attachments auto
+  const [wordTemplates, setWordTemplates] = useState<Array<{ id: string; name: string }>>([]);
   const [activeField, setActiveField] = useState<"subject" | "body">("body");
   const subjectRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
@@ -276,6 +279,18 @@ export default function EmailsPage() {
     setTemplatesLoading(false);
   }, [entityId]);
 
+  // Charge les templates Word custom (mode docx_fidelity) pour la sélection des attachments auto
+  const fetchWordTemplates = useCallback(async () => {
+    if (!entityId) return;
+    const { data } = await supabase
+      .from("document_templates")
+      .select("id, name")
+      .eq("entity_id", entityId)
+      .eq("mode", "docx_fidelity")
+      .order("name");
+    setWordTemplates((data ?? []) as Array<{ id: string; name: string }>);
+  }, [entityId]);
+
   const fetchHistory = useCallback(async () => {
     setHistoryLoading(true);
     let query = supabase
@@ -308,7 +323,8 @@ export default function EmailsPage() {
   useEffect(() => {
     fetchTemplates();
     fetchHistory();
-  }, [fetchTemplates, fetchHistory]);
+    fetchWordTemplates();
+  }, [fetchTemplates, fetchHistory, fetchWordTemplates]);
 
   // Re-resolve variables when context selection changes
   useEffect(() => {
@@ -1023,29 +1039,65 @@ export default function EmailsPage() {
               </div>
 
               {/* Pièces jointes automatiques */}
-              <div className="space-y-2 col-span-3">
-                <Label className="text-xs">Documents joints automatiquement</Label>
-                <div className="flex flex-wrap gap-2">
-                  {ATTACHMENT_OPTIONS.map(opt => (
-                    <label key={opt.value} className="flex items-center gap-1.5 text-xs cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={templateForm.attachment_doc_types.includes(opt.value)}
-                        onChange={(e) => {
-                          setTemplateForm(f => ({
-                            ...f,
-                            attachment_doc_types: e.target.checked
-                              ? [...f.attachment_doc_types, opt.value]
-                              : f.attachment_doc_types.filter(v => v !== opt.value),
-                          }));
-                        }}
-                        className="h-3.5 w-3.5 rounded border-gray-300"
-                      />
-                      {opt.label}
-                    </label>
-                  ))}
+              <div className="space-y-3 col-span-3">
+                <div>
+                  <Label className="text-xs">Documents système (générés depuis les templates par défaut)</Label>
+                  <div className="flex flex-wrap gap-2 mt-1.5">
+                    {ATTACHMENT_OPTIONS.map(opt => (
+                      <label key={opt.value} className="flex items-center gap-1.5 text-xs cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={templateForm.attachment_doc_types.includes(opt.value)}
+                          onChange={(e) => {
+                            setTemplateForm(f => ({
+                              ...f,
+                              attachment_doc_types: e.target.checked
+                                ? [...f.attachment_doc_types, opt.value]
+                                : f.attachment_doc_types.filter(v => v !== opt.value),
+                            }));
+                          }}
+                          className="h-3.5 w-3.5 rounded border-gray-300"
+                        />
+                        {opt.label}
+                      </label>
+                    ))}
+                  </div>
                 </div>
-                <p className="text-[10px] text-muted-foreground">Ces documents seront générés et joints au PDF lors de l&apos;envoi automatique.</p>
+
+                {/* Templates Word custom (mode docx_fidelity) */}
+                {wordTemplates.length > 0 && (
+                  <div className="border-t pt-3">
+                    <Label className="text-xs flex items-center gap-2">
+                      <span className="inline-block px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-[10px] font-semibold">📄 Fidélité Word</span>
+                      Mes modèles Word personnalisés
+                    </Label>
+                    <div className="flex flex-wrap gap-2 mt-1.5">
+                      {wordTemplates.map((tpl) => (
+                        <label key={tpl.id} className="flex items-center gap-1.5 text-xs cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={templateForm.attachment_doc_types.includes(tpl.id)}
+                            onChange={(e) => {
+                              setTemplateForm(f => ({
+                                ...f,
+                                attachment_doc_types: e.target.checked
+                                  ? [...f.attachment_doc_types, tpl.id]
+                                  : f.attachment_doc_types.filter(v => v !== tpl.id),
+                              }));
+                            }}
+                            className="h-3.5 w-3.5 rounded border-gray-300"
+                          />
+                          {tpl.name}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <p className="text-[10px] text-muted-foreground">
+                  Ces documents seront générés et joints au PDF lors de l&apos;envoi automatique.
+                  Les variables {"{{nom_apprenant}}"}, {"{{titre_formation}}"}, etc. sont substituées automatiquement.
+                </p>
               </div>
 
               {/* Right: Preview */}
