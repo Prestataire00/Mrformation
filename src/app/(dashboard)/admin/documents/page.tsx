@@ -340,8 +340,11 @@ export default function DocumentsPage() {
     if (!defaultDialog.template) return;
     setSavingDefault(true);
     try {
-      // Si l'admin choisit "Aucun" → on met NULL pour retirer le statut "par défaut"
-      const newValue = defaultDocTypeChoice === "" ? null : defaultDocTypeChoice;
+      // Si l'admin choisit "Aucun" (sentinelle "__none__") → on met NULL pour
+      // retirer le statut "par défaut". Radix UI <Select> interdit value="".
+      const newValue = defaultDocTypeChoice === "__none__" || defaultDocTypeChoice === ""
+        ? null
+        : defaultDocTypeChoice;
       const { error } = await supabase
         .from("document_templates")
         .update({ default_for_doc_type: newValue })
@@ -1962,12 +1965,12 @@ export default function DocumentsPage() {
             </p>
             <div>
               <Label className="text-sm">Type de document à remplacer</Label>
-              <Select value={defaultDocTypeChoice} onValueChange={setDefaultDocTypeChoice}>
+              <Select value={defaultDocTypeChoice || "__none__"} onValueChange={setDefaultDocTypeChoice}>
                 <SelectTrigger className="mt-1.5">
                   <SelectValue placeholder="Choisir un type..." />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Aucun (revenir au modèle système)</SelectItem>
+                  <SelectItem value="__none__">Aucun (revenir au modèle système)</SelectItem>
                   {OFFICIAL_TEMPLATES.map((t) => (
                     <SelectItem key={t.id} value={t.id}>
                       {t.name}
