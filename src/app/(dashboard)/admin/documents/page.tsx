@@ -243,6 +243,14 @@ interface TemplateFormData {
   name: string;
   type: DocumentType;
   content: string;
+  /**
+   * - 'editable'      : contenu HTML éditable via l'éditeur Tiptap. PDF généré via HTML→CloudConvert.
+   * - 'docx_fidelity' : .docx original stocké dans Storage. Pas d'édition côté plateforme.
+   *                     PDF généré via .docx→CloudConvert (LibreOffice, fidélité ~99%).
+   */
+  mode: "editable" | "docx_fidelity";
+  source_docx_url: string | null;
+  source_docx_path: string | null;
 }
 
 interface GenerateFormData {
@@ -257,6 +265,9 @@ const emptyTemplateForm: TemplateFormData = {
   name: "",
   type: "agreement",
   content: "",
+  mode: "editable",
+  source_docx_url: null,
+  source_docx_path: null,
 };
 
 const emptyGenerateForm: GenerateFormData = {
@@ -487,6 +498,9 @@ export default function DocumentsPage() {
         name: starter.name,
         type: starter.type,
         content: starter.content,
+        mode: "editable",
+        source_docx_url: null,
+        source_docx_path: null,
       });
     }
     setShowStarterPicker(false);
@@ -495,10 +509,18 @@ export default function DocumentsPage() {
   const openEditTemplate = (t: DocumentTemplate) => {
     setEditingTemplate(t);
     const effectiveContent = getTemplateContent(t);
+    const tExt = t as DocumentTemplate & {
+      mode?: "editable" | "docx_fidelity";
+      source_docx_url?: string | null;
+      source_docx_path?: string | null;
+    };
     setTemplateForm({
       name: t.name,
       type: t.type as DocumentType,
       content: plainTextToHtml(effectiveContent),
+      mode: tExt.mode === "docx_fidelity" ? "docx_fidelity" : "editable",
+      source_docx_url: tExt.source_docx_url ?? null,
+      source_docx_path: tExt.source_docx_path ?? null,
     });
     setTemplateDialogOpen(true);
   };
@@ -508,13 +530,19 @@ export default function DocumentsPage() {
       toast({ title: "Nom requis", variant: "destructive" });
       return;
     }
-    if (!templateForm.content || templateForm.content.replace(/<[^>]*>/g, "").trim() === "") {
+    // Validation différente selon le mode
+    if (templateForm.mode === "docx_fidelity") {
+      if (!templateForm.source_docx_url) {
+        toast({ title: "Aucun fichier .docx importé", variant: "destructive" });
+        return;
+      }
+    } else if (!templateForm.content || templateForm.content.replace(/<[^>]*>/g, "").trim() === "") {
       toast({ title: "Contenu requis", variant: "destructive" });
       return;
     }
     setSaving(true);
 
-    // Extract variables used in content
+    // Extract variables : depuis le HTML édité OU depuis le .docx source (à défaut, [])
     const variableMatches = templateForm.content.match(/\{\{[^}]+\}\}/g) || [];
     const uniqueVars = [...new Set(variableMatches)];
 
@@ -523,6 +551,9 @@ export default function DocumentsPage() {
       type: templateForm.type,
       content: templateForm.content,
       variables: uniqueVars,
+      mode: templateForm.mode,
+      source_docx_url: templateForm.source_docx_url,
+      source_docx_path: templateForm.source_docx_path,
     };
 
     if (editingTemplate) {
@@ -952,7 +983,7 @@ export default function DocumentsPage() {
                     if (!file || !entityId) return;
                     toast({ title: "Import en cours..." });
                     try {
-                      // Upload to storage
+                      // Upload to storage — on garde le .docx ORIGINAL pour fidélité 99% à l'envoi
                       const formData = new FormData();
                       formData.append("file", file);
                       formData.append("entity_id", entityId);
@@ -960,54 +991,25 @@ export default function DocumentsPage() {
                       const uploadResult = await res.json();
                       if (!res.ok) throw new Error(uploadResult.error);
 
-                      // Extract HTML via mammoth with full styleMap
-                      const mammoth = await import("mammoth");
-                      const arrayBuffer = await file.arrayBuffer();
-                      const result = await mammoth.convertToHtml(
-                        { arrayBuffer },
-                        {
-                          styleMap: [
-                            "p[style-name='Title'] => h1:fresh",
-                            "p[style-name='Heading 1'] => h1:fresh",
-                            "p[style-name='Heading 2'] => h2:fresh",
-                            "p[style-name='Heading 3'] => h3:fresh",
-                            "p[style-name='Heading 4'] => h4:fresh",
-                            "p[style-name='Quote'] => blockquote:fresh",
-                            "p[style-name='List Bullet'] => ul > li:fresh",
-                            "p[style-name='List Number'] => ol > li:fresh",
-                            "r[style-name='Strong'] => strong",
-                            "r[style-name='Emphasis'] => em",
-                          ],
-                          convertImage: mammoth.images.imgElement(async (image: { readAsBase64String: () => Promise<string>; contentType: string }) => {
-                            const base64 = await image.readAsBase64String();
-                            return { src: `data:${image.contentType};base64,${base64}` };
-                          }),
-                          includeDefaultStyleMap: true,
-                        }
-                      );
-                      let html = result.value;
-                      // Wrapper avec styles de base pour rendu propre
-                      html = `<div style="font-family:'Calibri','Arial',sans-serif;font-size:11pt;line-height:1.5;color:#333;">${html}</div>`;
-
-                      if (result.messages.length > 0) {
-                        console.warn("[word-import] conversion warnings:", result.messages);
-                      }
-
-                      // Open in editor
+                      // Mode "Fidélité Word" : on n'extrait PAS le HTML via mammoth
+                      // (qui perdait les couleurs, logos, tableaux stylisés). Le .docx
+                      // original sera converti en PDF par CloudConvert (LibreOffice)
+                      // au moment de l'envoi → fidélité ~99% au document original.
                       setEditingTemplate(null);
                       setTemplateForm({
                         name: file.name.replace(/\.docx$/i, ""),
                         type: "other",
-                        content: html,
+                        content: "", // pas de HTML édité
+                        mode: "docx_fidelity",
+                        source_docx_url: uploadResult.url,
+                        source_docx_path: uploadResult.path,
                       });
                       setShowStarterPicker(false);
                       setTemplateDialogOpen(true);
 
                       toast({
                         title: "Document importé",
-                        description: result.messages.length > 0
-                          ? `${result.messages.length} style(s) adapté(s). Vérifiez le rendu.`
-                          : "Modifiez-le puis sauvegardez.",
+                        description: "Mode fidélité Word activé : le PDF sera identique au .docx d'origine.",
                       });
                     } catch (err) {
                       const msg = err instanceof Error ? err.message : "Erreur import";
@@ -1426,47 +1428,79 @@ export default function DocumentsPage() {
                 </div>
               </div>
 
-              {/* Split screen */}
-              <div className="flex flex-1 gap-4 px-1 pb-2 overflow-hidden min-h-0" style={{ minHeight: "400px" }}>
-                {/* Gauche — Éditeur */}
-                <div className="flex-1 flex flex-col overflow-hidden">
-                  <p className="text-xs font-medium text-gray-500 mb-2">Éditeur</p>
-                  <div className="flex-1 overflow-y-auto border rounded-lg">
-                    <RichTextEditor
-                      content={templateForm.content}
-                      onChange={(html) => setTemplateForm((p) => ({ ...p, content: html }))}
-                      variables={AVAILABLE_VARIABLES}
-                      placeholder="Saisissez le contenu du document..."
-                    />
-                  </div>
-                  <p className="text-xs text-gray-400 mt-1">
-                    {templateForm.content.match(/\{\{[^}]+\}\}/g)?.length || 0} variable{(templateForm.content.match(/\{\{[^}]+\}\}/g)?.length || 0) !== 1 ? "s" : ""} détectée{(templateForm.content.match(/\{\{[^}]+\}\}/g)?.length || 0) !== 1 ? "s" : ""}
-                  </p>
-                </div>
-
-                {/* Droite — Preview live */}
-                <div className="flex-1 flex flex-col overflow-hidden">
-                  <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs font-medium text-gray-500">Aperçu</p>
+              {/* Mode "Fidélité Word" : aperçu PDF du .docx original via CloudConvert */}
+              {templateForm.mode === "docx_fidelity" && templateForm.source_docx_url ? (
+                <div className="flex flex-col flex-1 gap-2 px-1 pb-2 overflow-hidden min-h-0" style={{ minHeight: "400px" }}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Badge className="bg-blue-100 text-blue-700 border-blue-200">Mode Fidélité Word</Badge>
+                      <p className="text-xs text-gray-500">
+                        Le PDF envoyé sera identique au .docx d&apos;origine (LibreOffice cloud).
+                      </p>
+                    </div>
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => handleExportTemplateAsPDF()}
-                      className="h-6 text-xs gap-1"
+                      onClick={() => window.open(templateForm.source_docx_url!, "_blank")}
+                      className="h-7 text-xs gap-1"
                     >
-                      <Download className="h-3 w-3" /> Exporter PDF
+                      <Download className="h-3 w-3" /> Télécharger le .docx
                     </Button>
                   </div>
-                  <div className="flex-1 overflow-y-auto border rounded-lg bg-white p-4">
-                    <div
-                      className="prose prose-sm max-w-none text-gray-700 leading-relaxed"
-                      dangerouslySetInnerHTML={{
-                        __html: sanitizeHtml(getTemplatePreview(templateForm.content)),
-                      }}
+                  <div className="flex-1 border rounded-lg overflow-hidden bg-gray-50">
+                    <iframe
+                      src={`/api/documents/preview-docx?url=${encodeURIComponent(templateForm.source_docx_url)}`}
+                      className="w-full h-full"
+                      title="Aperçu PDF du .docx"
                     />
                   </div>
+                  <p className="text-xs text-gray-400">
+                    Pour modifier ce document : éditez-le dans Word puis ré-importez la nouvelle version.
+                  </p>
                 </div>
-              </div>
+              ) : (
+                /* Mode "Éditable" : éditeur Tiptap + preview HTML live */
+                <div className="flex flex-1 gap-4 px-1 pb-2 overflow-hidden min-h-0" style={{ minHeight: "400px" }}>
+                  {/* Gauche — Éditeur */}
+                  <div className="flex-1 flex flex-col overflow-hidden">
+                    <p className="text-xs font-medium text-gray-500 mb-2">Éditeur</p>
+                    <div className="flex-1 overflow-y-auto border rounded-lg">
+                      <RichTextEditor
+                        content={templateForm.content}
+                        onChange={(html) => setTemplateForm((p) => ({ ...p, content: html }))}
+                        variables={AVAILABLE_VARIABLES}
+                        placeholder="Saisissez le contenu du document..."
+                      />
+                    </div>
+                    <p className="text-xs text-gray-400 mt-1">
+                      {templateForm.content.match(/\{\{[^}]+\}\}/g)?.length || 0} variable{(templateForm.content.match(/\{\{[^}]+\}\}/g)?.length || 0) !== 1 ? "s" : ""} détectée{(templateForm.content.match(/\{\{[^}]+\}\}/g)?.length || 0) !== 1 ? "s" : ""}
+                    </p>
+                  </div>
+
+                  {/* Droite — Preview live */}
+                  <div className="flex-1 flex flex-col overflow-hidden">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs font-medium text-gray-500">Aperçu</p>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleExportTemplateAsPDF()}
+                        className="h-6 text-xs gap-1"
+                      >
+                        <Download className="h-3 w-3" /> Exporter PDF
+                      </Button>
+                    </div>
+                    <div className="flex-1 overflow-y-auto border rounded-lg bg-white p-4">
+                      <div
+                        className="prose prose-sm max-w-none text-gray-700 leading-relaxed"
+                        dangerouslySetInnerHTML={{
+                          __html: sanitizeHtml(getTemplatePreview(templateForm.content)),
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <DialogFooter className="px-1 pb-2">
                 <Button variant="outline" onClick={() => setTemplateDialogOpen(false)}>Annuler</Button>
