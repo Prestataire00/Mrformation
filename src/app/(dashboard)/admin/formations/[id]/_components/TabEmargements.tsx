@@ -1077,20 +1077,31 @@ export function TabEmargements({ formation, onRefresh }: Props) {
                     <>
                       <p className="text-xs font-semibold text-purple-700">Formateurs</p>
                       <div className="grid grid-cols-3 gap-2">
-                        {slotData.trainer_tokens.map(t => (
-                          <div key={t.token} className="text-center p-2 border rounded-lg bg-purple-50/50">
-                            <p className="text-xs font-medium mb-1 truncate">
-                              {t.person.last_name} {t.person.first_name}
-                            </p>
-                            {qrImages[t.token] ? (
-                              <img src={qrImages[t.token]} alt={`QR ${t.person.last_name}`} className="w-32 h-32 mx-auto" />
-                            ) : (
-                              <div className="w-32 h-32 mx-auto bg-gray-100 animate-pulse rounded flex items-center justify-center">
-                                <Loader2 className="h-6 w-6 text-gray-400 animate-spin" />
+                        {slotData.trainer_tokens.map(t => {
+                          if (!t.person) {
+                            console.warn("[QR modal] trainer token sans person:", t);
+                            return (
+                              <div key={t.token} className="text-center p-2 border border-red-200 rounded-lg bg-red-50">
+                                <p className="text-xs text-red-700">Formateur introuvable</p>
+                                <p className="text-[10px] text-red-500 break-all">{t.token.slice(0, 8)}…</p>
                               </div>
-                            )}
-                          </div>
-                        ))}
+                            );
+                          }
+                          return (
+                            <div key={t.token} className="text-center p-2 border rounded-lg bg-purple-50/50">
+                              <p className="text-xs font-medium mb-1 truncate">
+                                {t.person.last_name} {t.person.first_name}
+                              </p>
+                              {qrImages[t.token] ? (
+                                <img src={qrImages[t.token]} alt={`QR ${t.person.last_name}`} className="w-32 h-32 mx-auto" />
+                              ) : (
+                                <div className="w-32 h-32 mx-auto bg-gray-100 animate-pulse rounded flex items-center justify-center">
+                                  <Loader2 className="h-6 w-6 text-gray-400 animate-spin" />
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     </>
                   )}
@@ -1099,20 +1110,31 @@ export function TabEmargements({ formation, onRefresh }: Props) {
                     <>
                       <p className="text-xs font-semibold text-blue-700">Apprenants</p>
                       <div className="grid grid-cols-3 gap-2">
-                        {slotData.learner_tokens.map(t => (
-                          <div key={t.token} className="text-center p-2 border rounded-lg">
-                            <p className="text-xs font-medium mb-1 truncate">
-                              {t.person.last_name} {t.person.first_name}
-                            </p>
-                            {qrImages[t.token] ? (
-                              <img src={qrImages[t.token]} alt={`QR ${t.person.last_name}`} className="w-32 h-32 mx-auto" />
-                            ) : (
-                              <div className="w-32 h-32 mx-auto bg-gray-100 animate-pulse rounded flex items-center justify-center">
-                                <Loader2 className="h-6 w-6 text-gray-400 animate-spin" />
+                        {slotData.learner_tokens.map(t => {
+                          if (!t.person) {
+                            console.warn("[QR modal] learner token sans person:", t);
+                            return (
+                              <div key={t.token} className="text-center p-2 border border-red-200 rounded-lg bg-red-50">
+                                <p className="text-xs text-red-700">Apprenant introuvable</p>
+                                <p className="text-[10px] text-red-500 break-all">{t.token.slice(0, 8)}…</p>
                               </div>
-                            )}
-                          </div>
-                        ))}
+                            );
+                          }
+                          return (
+                            <div key={t.token} className="text-center p-2 border rounded-lg">
+                              <p className="text-xs font-medium mb-1 truncate">
+                                {t.person.last_name} {t.person.first_name}
+                              </p>
+                              {qrImages[t.token] ? (
+                                <img src={qrImages[t.token]} alt={`QR ${t.person.last_name}`} className="w-32 h-32 mx-auto" />
+                              ) : (
+                                <div className="w-32 h-32 mx-auto bg-gray-100 animate-pulse rounded flex items-center justify-center">
+                                  <Loader2 className="h-6 w-6 text-gray-400 animate-spin" />
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     </>
                   )}
