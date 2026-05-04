@@ -35,32 +35,51 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
 
     if (quote) {
+      // Idempotent : si déjà signé (par cette même requête ou un double-clic), on
+      // renvoie success avec already_signed=true plutôt qu'une erreur — le client
+      // affichera le même écran de confirmation.
       if (quote.signed_at || quote.status === "accepted") {
-        return NextResponse.json({ error: "Ce devis a déjà été signé" }, { status: 410 });
+        return NextResponse.json({
+          success: true,
+          already_signed: true,
+          type: "quote",
+          reference: quote.reference,
+          signed_at: quote.signed_at ?? new Date().toISOString(),
+        });
       }
 
-      // Insert quote signature record
-      await supabase.from("quote_signatures").upsert({
+      // INSERT (pas upsert) : on s'appuie sur UNIQUE(quote_id) pour atomiser.
+      // Si 2 requêtes arrivent simultanément, la 2e prend 23505 → traitée comme
+      // déjà signée (le 1er signataire a gagné, sa data reste).
+      const { error: sigInsertErr } = await supabase.from("quote_signatures").insert({
         quote_id: quote.id,
         entity_id: quote.entity_id,
         signer_name: signer_name || "Signataire",
         signature_data,
         ip_address: ipAddress,
         user_agent: userAgent,
-      }, { onConflict: "quote_id" });
+      });
 
-      // Update quote to accepted + store signature data for PDF
-      await supabase.from("crm_quotes").update({
-        status: "accepted",
-        signed_at: new Date().toISOString(),
-        signer_name: signer_name || "Signataire",
-        signer_ip: ipAddress,
-        signature_data,
-        updated_at: new Date().toISOString(),
-      }).eq("id", quote.id);
+      if (sigInsertErr && sigInsertErr.code !== "23505") {
+        throw sigInsertErr;
+      }
+
+      const alreadySigned = sigInsertErr?.code === "23505";
+
+      if (!alreadySigned) {
+        await supabase.from("crm_quotes").update({
+          status: "accepted",
+          signed_at: new Date().toISOString(),
+          signer_name: signer_name || "Signataire",
+          signer_ip: ipAddress,
+          signature_data,
+          updated_at: new Date().toISOString(),
+        }).eq("id", quote.id);
+      }
 
       return NextResponse.json({
         success: true,
+        already_signed: alreadySigned,
         type: "quote",
         reference: quote.reference,
         signed_at: new Date().toISOString(),
@@ -83,10 +102,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Ce lien de signature a expiré" }, { status: 410 });
     }
 
-    if (tokenData.used_at) {
-      return NextResponse.json({ error: "Ce document a déjà été signé" }, { status: 410 });
-    }
-
     if (!tokenData.document_id) {
       return NextResponse.json({ error: "Token non lié à un document" }, { status: 400 });
     }
@@ -94,21 +109,30 @@ export async function POST(request: NextRequest) {
     // Fetch document
     const { data: doc } = await supabase
       .from("formation_convention_documents")
-      .select("id, doc_type, owner_type, owner_id, session_id, is_signed, signer_name, signer_email")
+      .select("id, doc_type, owner_type, owner_id, session_id, is_signed, signed_at, signer_name, signer_email")
       .eq("id", tokenData.document_id)
-      .single();
+      .maybeSingle();
 
     if (!doc) {
       return NextResponse.json({ error: "Document introuvable" }, { status: 404 });
     }
 
-    if (doc.is_signed) {
-      return NextResponse.json({ error: "Ce document est déjà signé" }, { status: 409 });
+    // Idempotent : si déjà signé (used_at OU is_signed), on renvoie success
+    // avec already_signed=true (le client affiche l'écran de confirmation).
+    if (tokenData.used_at || doc.is_signed) {
+      const { data: session } = await supabase
+        .from("sessions").select("title").eq("id", doc.session_id).maybeSingle();
+      return NextResponse.json({
+        success: true,
+        already_signed: true,
+        document_type: doc.doc_type,
+        session_title: session?.title || "",
+        signed_at: doc.signed_at ?? tokenData.used_at ?? new Date().toISOString(),
+      });
     }
 
-    // Reuse ipAddress and userAgent from above
-
-    // Insert document signature
+    // Insert document signature : UNIQUE(document_id, signer_type, signer_id)
+    // garantit l'atomicité contre double-clic + race condition.
     const { error: sigErr } = await supabase
       .from("document_signatures")
       .insert({
@@ -123,37 +147,39 @@ export async function POST(request: NextRequest) {
         user_agent: userAgent,
       });
 
-    if (sigErr) {
-      if (sigErr.code === "23505") {
-        return NextResponse.json({ error: "Document déjà signé par ce signataire" }, { status: 409 });
-      }
+    const alreadySigned = sigErr?.code === "23505";
+    if (sigErr && !alreadySigned) {
       throw sigErr;
     }
 
-    // Mark document as signed
-    await supabase
-      .from("formation_convention_documents")
-      .update({
-        is_signed: true,
-        signed_at: new Date().toISOString(),
-      })
-      .eq("id", doc.id);
+    // Mark document as signed (idempotent : si déjà fait, c'est un no-op)
+    if (!alreadySigned) {
+      await supabase
+        .from("formation_convention_documents")
+        .update({
+          is_signed: true,
+          signed_at: new Date().toISOString(),
+        })
+        .eq("id", doc.id);
+    }
 
-    // Mark token as used
+    // Mark token as used (idempotent)
     await supabase
       .from("signing_tokens")
       .update({ used_at: new Date().toISOString() })
-      .eq("id", tokenData.id);
+      .eq("id", tokenData.id)
+      .is("used_at", null);
 
     // Get session title for response
     const { data: session } = await supabase
       .from("sessions")
       .select("title")
       .eq("id", doc.session_id)
-      .single();
+      .maybeSingle();
 
     return NextResponse.json({
       success: true,
+      already_signed: alreadySigned,
       document_type: doc.doc_type,
       session_title: session?.title || "",
       signed_at: new Date().toISOString(),

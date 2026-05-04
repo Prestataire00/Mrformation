@@ -102,46 +102,31 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
     }
 
-    // Global sequential numbering per (entity_id, fiscal_year, prefix)
+    // Numérotation séquentielle globale par (entity_id, fiscal_year, prefix).
+    // On délègue à une fonction SQL qui prend un advisory lock + read MAX +
+    // INSERT dans la même transaction → atomicité garantie côté Postgres,
+    // pas de race condition possible entre 2 admins concurrents.
     const fiscalYear = new Date().getFullYear();
     const entityId = auth.profile.entity_id;
     const invoicePrefix = is_avoir ? "AV" : (prefix || "FAC");
 
-    const { data: maxRow } = await auth.supabase
-      .from("formation_invoices")
-      .select("global_number")
-      .eq("entity_id", entityId)
-      .eq("fiscal_year", fiscalYear)
-      .eq("prefix", invoicePrefix)
-      .order("global_number", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    const nextGlobalNumber = (maxRow?.global_number ?? 0) + 1;
-
-    const { data, error } = await auth.supabase
-      .from("formation_invoices")
-      .insert({
-        entity_id: entityId,
-        session_id: sessionId,
-        recipient_type,
-        recipient_id,
-        recipient_name,
-        amount: amount ?? 0,
-        prefix: invoicePrefix,
-        number: nextGlobalNumber, // legacy field, kept for backward compat
-        global_number: nextGlobalNumber,
-        fiscal_year: fiscalYear,
-        due_date: due_date || null,
-        notes: notes || null,
-        is_avoir,
-        parent_invoice_id: parent_invoice_id || null,
-        external_reference: external_reference || null,
-        recipient_siret: recipient_siret || null,
-        recipient_address: recipient_address || null,
-      })
-      .select()
-      .single();
+    const { data, error } = await auth.supabase.rpc("create_invoice_with_atomic_number", {
+      p_entity_id: entityId,
+      p_session_id: sessionId,
+      p_recipient_type: recipient_type,
+      p_recipient_id: recipient_id,
+      p_recipient_name: recipient_name,
+      p_amount: amount ?? 0,
+      p_prefix: invoicePrefix,
+      p_fiscal_year: fiscalYear,
+      p_due_date: due_date || null,
+      p_notes: notes || null,
+      p_is_avoir: is_avoir,
+      p_parent_invoice_id: parent_invoice_id || null,
+      p_external_reference: external_reference || null,
+      p_recipient_siret: recipient_siret || null,
+      p_recipient_address: recipient_address || null,
+    });
 
     if (error) {
       return NextResponse.json(
