@@ -209,8 +209,9 @@ export async function POST(request: NextRequest) {
 
   // 4. Generate tokens for each slot x each person
   const allTokens: Record<string, { slot: typeof slots[0]; learner_tokens: unknown[]; trainer_tokens: unknown[] }> = {};
-  const insertErrors: { type: "learner" | "trainer"; code: string | undefined; message: string; details?: string; hint?: string }[] = [];
+  const insertErrors: { type: "learner" | "trainer"; phase: string; code: string | undefined; message: string; details?: string; hint?: string }[] = [];
   const profileEntityId = auth.profile.entity_id;
+  let firstIterationTrace: { existing_data: boolean; existing_error: string | null; insert_data: boolean; insert_error: string | null } | null = null;
 
   for (const slot of slots) {
     const learnerTokens = [];
@@ -224,8 +225,9 @@ export async function POST(request: NextRequest) {
       if (!learner) continue;
 
       // Check if ANY token exists for this (session, slot, learner)
-      // including used ones — prevents duplicate creation
-      const { data: existing } = await supabase
+      // .limit(1) au lieu de .maybeSingle() pour tolérer les doublons éventuels
+      // (anciennes générations qui ont laissé plusieurs tokens non-expirés).
+      const existingResult = await supabase
         .from("signing_tokens")
         .select("*")
         .eq("session_id", session_id)
@@ -235,14 +237,18 @@ export async function POST(request: NextRequest) {
         .eq("token_type", "individual")
         .gt("expires_at", new Date().toISOString())
         .order("created_at", { ascending: true })
-        .maybeSingle();
+        .limit(1);
+      const existing = existingResult.data?.[0];
+      if (existingResult.error) {
+        insertErrors.push({ type: "learner", phase: "existing-select", code: existingResult.error.code, message: existingResult.error.message });
+      }
 
       if (existing) {
         learnerTokens.push({ ...existing, person: learner });
         continue;
       }
 
-      const { data: newToken, error } = await supabase
+      const insertResult = await supabase
         .from("signing_tokens")
         .insert({
           session_id,
@@ -254,25 +260,38 @@ export async function POST(request: NextRequest) {
           signer_type: "learner",
           expires_at: expiresAt,
         })
-        .select()
-        .single();
+        .select();
+      const newToken = insertResult.data?.[0];
+      const error = insertResult.error;
+
+      if (!firstIterationTrace) {
+        firstIterationTrace = {
+          existing_data: !!existing,
+          existing_error: existingResult.error?.message ?? null,
+          insert_data: !!newToken,
+          insert_error: error?.message ?? null,
+        };
+      }
 
       if (error) {
         if (error.code === "23505") {
-          // Race condition: re-fetch the existing token
-          const { data: raceToken } = await supabase
+          const raceResult = await supabase
             .from("signing_tokens").select("*")
             .eq("session_id", session_id).eq("time_slot_id", slot.id)
             .eq("learner_id", learner.id).eq("signer_type", "learner")
             .gt("expires_at", new Date().toISOString())
-            .order("created_at", { ascending: true }).maybeSingle();
+            .order("created_at", { ascending: true }).limit(1);
+          const raceToken = raceResult.data?.[0];
           if (raceToken) learnerTokens.push({ ...raceToken, person: learner });
+          else insertErrors.push({ type: "learner", phase: "race-fallback", code: raceResult.error?.code, message: raceResult.error?.message ?? "race fallback returned 0 rows" });
         } else {
           console.error("[emargement/slots] Learner token insert failed", { code: error.code, message: error.message, slotId: slot.id, learnerId: learner.id });
-          insertErrors.push({ type: "learner", code: error.code, message: error.message, details: (error as { details?: string }).details, hint: (error as { hint?: string }).hint });
+          insertErrors.push({ type: "learner", phase: "insert", code: error.code, message: error.message, details: (error as { details?: string }).details, hint: (error as { hint?: string }).hint });
         }
       } else if (newToken) {
         learnerTokens.push({ ...newToken, person: learner });
+      } else {
+        insertErrors.push({ type: "learner", phase: "insert-no-data", code: undefined, message: "INSERT returned no error AND no data — possible RLS WITH CHECK pass + SELECT denied" });
       }
     }
 
@@ -281,7 +300,7 @@ export async function POST(request: NextRequest) {
       const trainer = Array.isArray(ft.trainer) ? ft.trainer[0] : ft.trainer;
       if (!trainer) continue;
 
-      const { data: existing } = await supabase
+      const existingTrainerResult = await supabase
         .from("signing_tokens")
         .select("*")
         .eq("session_id", session_id)
@@ -291,14 +310,15 @@ export async function POST(request: NextRequest) {
         .eq("token_type", "individual")
         .gt("expires_at", new Date().toISOString())
         .order("created_at", { ascending: true })
-        .maybeSingle();
+        .limit(1);
+      const existing = existingTrainerResult.data?.[0];
 
       if (existing) {
         trainerTokens.push({ ...existing, person: trainer });
         continue;
       }
 
-      const { data: newToken, error } = await supabase
+      const insertTrainerResult = await supabase
         .from("signing_tokens")
         .insert({
           session_id,
@@ -309,24 +329,29 @@ export async function POST(request: NextRequest) {
           signer_type: "trainer",
           expires_at: expiresAt,
         })
-        .select()
-        .single();
+        .select();
+      const newToken = insertTrainerResult.data?.[0];
+      const error = insertTrainerResult.error;
 
       if (error) {
         if (error.code === "23505") {
-          const { data: raceToken } = await supabase
+          const raceResult = await supabase
             .from("signing_tokens").select("*")
             .eq("session_id", session_id).eq("time_slot_id", slot.id)
             .eq("trainer_id", trainer.id).eq("signer_type", "trainer")
             .gt("expires_at", new Date().toISOString())
-            .order("created_at", { ascending: true }).maybeSingle();
+            .order("created_at", { ascending: true }).limit(1);
+          const raceToken = raceResult.data?.[0];
           if (raceToken) trainerTokens.push({ ...raceToken, person: trainer });
+          else insertErrors.push({ type: "trainer", phase: "race-fallback", code: raceResult.error?.code, message: raceResult.error?.message ?? "race fallback returned 0 rows" });
         } else {
           console.error("[emargement/slots] Trainer token insert failed", { code: error.code, message: error.message, slotId: slot.id, trainerId: trainer.id });
-          insertErrors.push({ type: "trainer", code: error.code, message: error.message, details: (error as { details?: string }).details, hint: (error as { hint?: string }).hint });
+          insertErrors.push({ type: "trainer", phase: "insert", code: error.code, message: error.message, details: (error as { details?: string }).details, hint: (error as { hint?: string }).hint });
         }
       } else if (newToken) {
         trainerTokens.push({ ...newToken, person: trainer });
+      } else {
+        insertErrors.push({ type: "trainer", phase: "insert-no-data", code: undefined, message: "INSERT returned no error AND no data" });
       }
     }
 
@@ -354,6 +379,7 @@ export async function POST(request: NextRequest) {
       enrollments_error: enrollErr?.message ?? null,
       profile_entity_id: profileEntityId ?? "MISSING",
       insert_errors: insertErrors.slice(0, 5),
+      first_iteration_trace: firstIterationTrace,
     },
   });
 }
