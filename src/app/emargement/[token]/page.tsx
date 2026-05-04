@@ -127,28 +127,97 @@ export default function EmargementPage() {
     validate();
   }, [token]);
 
+  /**
+   * Soumet la signature avec :
+   * - Validation canvas non-vide
+   * - Validation taille payload (< 500KB)
+   * - Désactivation immédiate du bouton (re-clicks ignorés)
+   * - Timeout 8s avec AbortController
+   * - Retry exponential automatique sur erreurs réseau (max 2x)
+   * - Différenciation des messages d'erreur (réseau vs serveur vs déjà signé)
+   * - Le cas 409 (déjà signé) est traité comme un succès silencieux
+   *   (signature probablement enregistrée par un click précédent)
+   */
   async function handleSign(svgData: string) {
-    if (!selectedPersonId) return;
+    // Garde anti re-click : on ignore si déjà en cours
+    if (signing || signed || !selectedPersonId) return;
+
+    // Validation canvas non-vide (un SVG vide = pas de strokes dessinés)
+    if (!svgData || svgData.length < 100 || !svgData.includes("path")) {
+      setError("Veuillez signer dans la zone prévue avant de valider.");
+      return;
+    }
+
+    // Validation taille (limite ~500KB pour éviter 413 Payload Too Large)
+    if (svgData.length > 500_000) {
+      setError("Signature trop volumineuse. Effacez et réessayez avec un trait plus simple.");
+      return;
+    }
+
     setSigning(true);
     setError(null);
 
+    const MAX_ATTEMPTS = 3;
+    const TIMEOUT_MS = 8000;
+    let lastError: { type: "network" | "timeout" | "server"; message: string } | null = null;
+
     try {
-      const res = await fetch("/api/emargement/sign", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          token,
-          signature_data: svgData,
-          learner_id: data?.token_type === "session" ? selectedPersonId : undefined,
-        }),
-      });
+      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+        try {
+          const res = await fetch("/api/emargement/sign", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              token,
+              signature_data: svgData,
+              learner_id: data?.token_type === "session" ? selectedPersonId : undefined,
+            }),
+            signal: controller.signal,
+          });
+          clearTimeout(timeoutId);
 
-      const result = await res.json();
+          const result = await res.json().catch(() => ({}));
 
-      if (!res.ok) {
-        setError(result.error || "Erreur lors de la signature");
-        setSigning(false);
-        return;
+          // Cas 409 : déjà signé. Probablement signature enregistrée par click précédent
+          // (le user a re-cliqué après timeout). On traite comme succès silencieux.
+          if (res.status === 409) {
+            // Pas de setError → on bascule en signé
+            break;
+          }
+
+          if (!res.ok) {
+            // Erreur serveur 4xx/5xx (hors 409). On retry sur 5xx, on stop sur 4xx
+            lastError = {
+              type: "server",
+              message: result.error || `Erreur ${res.status}`,
+            };
+            if (res.status >= 500 && attempt < MAX_ATTEMPTS) {
+              // Backoff exponential : 500ms, 1500ms
+              await new Promise((r) => setTimeout(r, 500 * attempt * attempt));
+              continue;
+            }
+            setError(lastError.message);
+            return;
+          }
+
+          // Succès — on sort de la boucle
+          lastError = null;
+          break;
+        } catch (err) {
+          clearTimeout(timeoutId);
+          const isAbort = err instanceof Error && err.name === "AbortError";
+          lastError = isAbort
+            ? { type: "timeout", message: "Le serveur met trop de temps à répondre." }
+            : { type: "network", message: "Problème de connexion réseau." };
+          if (attempt < MAX_ATTEMPTS) {
+            await new Promise((r) => setTimeout(r, 500 * attempt * attempt));
+            continue;
+          }
+          setError(`${lastError.message} Vérifiez votre connexion et réessayez.`);
+          return;
+        }
       }
 
       // Find the signer name
@@ -175,10 +244,10 @@ export default function EmargementPage() {
           }
         }
       } catch { /* ignore */ }
-    } catch {
-      setError("Une erreur est survenue");
+    } finally {
+      // Garantit que le bouton se ré-active même si exception inattendue
+      setSigning(false);
     }
-    setSigning(false);
   }
 
   // Time slot display helper

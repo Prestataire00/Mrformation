@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { requireRole } from "@/lib/auth/require-role";
 import { sanitizeDbError } from "@/lib/api-error";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
 function createServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -14,6 +15,11 @@ function createServiceClient() {
 
 // GET: Validate a token (public, no auth required)
 export async function GET(request: NextRequest) {
+  // Rate limit : route publique, anti brute-force sur tokens
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  const { allowed, resetAt } = checkRateLimit(`emargement-validate:${ip}`, { limit: 60, windowSeconds: 60 });
+  if (!allowed) return rateLimitResponse(resetAt);
+
   try {
   const token = request.nextUrl.searchParams.get("token");
   if (!token) {

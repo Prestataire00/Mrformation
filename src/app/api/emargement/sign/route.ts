@@ -22,10 +22,22 @@ export async function POST(request: NextRequest) {
   try {
     const { token, signature_data, learner_id } = await request.json();
 
-    if (!token || !signature_data) {
+    // ── Validation des inputs ──
+    if (!token || typeof token !== "string") {
+      return NextResponse.json({ error: "Token requis" }, { status: 400 });
+    }
+    if (!signature_data || typeof signature_data !== "string") {
+      return NextResponse.json({ error: "Signature requise" }, { status: 400 });
+    }
+    // Format SVG attendu (vérification basique mais bloque les payloads garbage)
+    if (!signature_data.includes("<svg") && !signature_data.startsWith("data:image/")) {
+      return NextResponse.json({ error: "Format de signature invalide" }, { status: 400 });
+    }
+    // Limite de taille (évite les 413 silencieux)
+    if (signature_data.length > 600_000) {
       return NextResponse.json(
-        { error: "Token et signature_data requis" },
-        { status: 400 }
+        { error: "Signature trop volumineuse. Effacez et réessayez avec un trait plus simple." },
+        { status: 413 }
       );
     }
 
@@ -55,13 +67,15 @@ export async function POST(request: NextRequest) {
     let signerId: string;
 
     if (signerType === "trainer" && tokenData.trainer_id) {
-      // Trainer token
+      // Trainer token : signer_id vient du token uniquement (pas du body → anti-tampering)
       signerId = tokenData.trainer_id;
     } else if (tokenData.token_type === "individual") {
+      // Token individuel : signer_id vient du token (anti-tampering)
       signerId = tokenData.learner_id;
     } else {
-      // Session token — learner_id must be provided
-      if (!learner_id) {
+      // Session token — learner_id est passé en body, MAIS on vérifie l'enrollment
+      // ce qui empêche un attaquant de signer pour un autre apprenant non-inscrit
+      if (!learner_id || typeof learner_id !== "string") {
         return NextResponse.json(
           { error: "Veuillez sélectionner votre nom" },
           { status: 400 }
@@ -69,7 +83,6 @@ export async function POST(request: NextRequest) {
       }
       signerId = learner_id;
 
-      // Verify learner is enrolled in this session
       const { data: enrollment } = await supabase
         .from("enrollments")
         .select("id")
@@ -86,54 +99,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Check if already signed (strict slot-aware)
-    console.log("[emargement/sign] Pre-check duplicate", {
-      sessionId: tokenData.session_id,
-      signerId,
-      signerType,
-      timeSlotId: tokenData.time_slot_id,
-      tokenId: tokenData.id,
-      tokenType: tokenData.token_type,
-    });
+    // ── INSERT atomique : on n'utilise plus de pre-check (évite race condition).
+    // Le UNIQUE constraint (session_id, signer_id, signer_type, time_slot_id)
+    // garantit l'unicité. Si déjà signé → erreur 23505 catchée → 409 enrichi.
 
-    let existingQuery = supabase
-      .from("signatures")
-      .select("id, time_slot_id, signed_at")
-      .eq("session_id", tokenData.session_id)
-      .eq("signer_id", signerId)
-      .eq("signer_type", signerType);
-
-    // Strict scoping: match exactly the slot (or null if no slot)
-    if (tokenData.time_slot_id) {
-      existingQuery = existingQuery.eq("time_slot_id", tokenData.time_slot_id);
-    } else {
-      existingQuery = existingQuery.is("time_slot_id", null);
-    }
-
-    const { data: existing, error: existingErr } = await existingQuery.maybeSingle();
-
-    console.log("[emargement/sign] Check result", {
-      found: !!existing,
-      existingId: existing?.id,
-      existingSlot: existing?.time_slot_id,
-      error: existingErr?.message,
-    });
-
-    if (existing) {
-      return NextResponse.json(
-        { error: tokenData.time_slot_id
-            ? "Vous avez déjà signé pour ce créneau"
-            : "Vous avez déjà signé pour cette session"
-        },
-        { status: 409 }
-      );
-    }
-
-    // Capture IP + UA for legal evidence
     const ipAddress = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null;
     const userAgent = request.headers.get("user-agent") || null;
 
-    // Insert signature (with time_slot_id if present)
     const { data: signature, error: sigError } = await supabase
       .from("signatures")
       .insert({
@@ -151,21 +123,33 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (sigError) {
-      console.error("[emargement/sign] Insert failed:", {
-        code: sigError.code,
-        message: sigError.message,
-        details: sigError.details,
-        sessionId: tokenData.session_id,
-        signerId,
-        signerType,
-        timeSlotId: tokenData.time_slot_id,
-      });
+      // Cas 23505 = signature déjà existante (UNIQUE constraint).
+      // Réponse 409 avec already_signed:true → le client traite comme succès silencieux
+      // (la signature précédente est valide, l'utilisateur a probablement re-cliqué).
       if (sigError.code === "23505") {
+        console.info("[emargement/sign] Duplicate ignored", {
+          sessionId: tokenData.session_id,
+          signerId,
+          signerType,
+          timeSlotId: tokenData.time_slot_id,
+        });
         return NextResponse.json(
-          { error: "Vous avez déjà signé pour ce créneau" },
+          {
+            already_signed: true,
+            message: tokenData.time_slot_id
+              ? "Vous avez déjà signé pour ce créneau"
+              : "Vous avez déjà signé pour cette session",
+          },
           { status: 409 }
         );
       }
+      console.error("[emargement/sign] Insert failed:", {
+        code: sigError.code,
+        message: sigError.message,
+        sessionId: tokenData.session_id,
+        signerId,
+        signerType,
+      });
       return NextResponse.json(
         { error: sanitizeDbError(sigError, "emargement/sign insert") },
         { status: 500 }
