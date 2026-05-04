@@ -87,7 +87,11 @@ export async function POST(request: NextRequest) {
   }
 
   const supabase = createServiceClient();
-  const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(); // 48h
+  // TTL 30 jours : couvre la durée max d'une formation (5j) + marge admin
+  // (préparation 1-2 semaines avant). UUID v4 = 2^122 entropie → brute-force
+  // impossible, pas de risque sécurité à étendre. Évite les "lien expiré"
+  // quand l'admin génère les QR la veille de la formation.
+  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(); // 30 jours
 
   // 1. Fetch time slots
   let slotsQuery = supabase
