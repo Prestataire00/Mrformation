@@ -45,6 +45,8 @@ interface SlotTokensResponse {
     trainers_count: number;
     trainers_with_data: number;
     enrollments_error: string | null;
+    profile_entity_id: string;
+    insert_errors: { type: string; code: string | undefined; message: string; details?: string; hint?: string }[];
   };
 }
 
@@ -1067,12 +1069,25 @@ export function TabEmargements({ formation, onRefresh }: Props) {
                   {qrSlotTokens.debug && (
                     <div className="text-xs font-mono bg-white/70 border border-amber-200 rounded p-2 text-amber-900 space-y-0.5">
                       <div>session_id : <span className="font-semibold">{qrSlotTokens.debug.session_id}</span></div>
+                      <div>profile.entity_id : <span className="font-semibold">{qrSlotTokens.debug.profile_entity_id}</span></div>
                       <div>slots trouvés : <span className="font-semibold">{qrSlotTokens.debug.slots_count}</span></div>
                       <div>enrollments trouvés : <span className="font-semibold">{qrSlotTokens.debug.enrollments_count}</span> (statuts : {qrSlotTokens.debug.enrollment_statuses.join(", ") || "aucun"})</div>
                       <div>enrollments avec learner lié : <span className="font-semibold">{qrSlotTokens.debug.enrollments_with_learner}</span></div>
                       <div>formation_trainers trouvés : <span className="font-semibold">{qrSlotTokens.debug.trainers_count}</span> (avec data : {qrSlotTokens.debug.trainers_with_data})</div>
                       {qrSlotTokens.debug.enrollments_error && (
-                        <div className="text-red-700">erreur SQL : {qrSlotTokens.debug.enrollments_error}</div>
+                        <div className="text-red-700">erreur SQL enrollments : {qrSlotTokens.debug.enrollments_error}</div>
+                      )}
+                      {qrSlotTokens.debug.insert_errors.length > 0 && (
+                        <div className="mt-2 pt-2 border-t border-amber-300">
+                          <div className="font-semibold text-red-700 mb-1">Erreurs INSERT signing_tokens ({qrSlotTokens.debug.insert_errors.length}) :</div>
+                          {qrSlotTokens.debug.insert_errors.map((err, i) => (
+                            <div key={i} className="text-red-700 ml-2 mt-1">
+                              <div>· [{err.type}] code={err.code ?? "?"} — {err.message}</div>
+                              {err.details && <div className="ml-3 text-red-600">details : {err.details}</div>}
+                              {err.hint && <div className="ml-3 text-red-600">hint : {err.hint}</div>}
+                            </div>
+                          ))}
+                        </div>
                       )}
                     </div>
                   )}

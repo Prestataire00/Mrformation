@@ -209,6 +209,8 @@ export async function POST(request: NextRequest) {
 
   // 4. Generate tokens for each slot x each person
   const allTokens: Record<string, { slot: typeof slots[0]; learner_tokens: unknown[]; trainer_tokens: unknown[] }> = {};
+  const insertErrors: { type: "learner" | "trainer"; code: string | undefined; message: string; details?: string; hint?: string }[] = [];
+  const profileEntityId = auth.profile.entity_id;
 
   for (const slot of slots) {
     const learnerTokens = [];
@@ -267,6 +269,7 @@ export async function POST(request: NextRequest) {
           if (raceToken) learnerTokens.push({ ...raceToken, person: learner });
         } else {
           console.error("[emargement/slots] Learner token insert failed", { code: error.code, message: error.message, slotId: slot.id, learnerId: learner.id });
+          insertErrors.push({ type: "learner", code: error.code, message: error.message, details: (error as { details?: string }).details, hint: (error as { hint?: string }).hint });
         }
       } else if (newToken) {
         learnerTokens.push({ ...newToken, person: learner });
@@ -320,6 +323,7 @@ export async function POST(request: NextRequest) {
           if (raceToken) trainerTokens.push({ ...raceToken, person: trainer });
         } else {
           console.error("[emargement/slots] Trainer token insert failed", { code: error.code, message: error.message, slotId: slot.id, trainerId: trainer.id });
+          insertErrors.push({ type: "trainer", code: error.code, message: error.message, details: (error as { details?: string }).details, hint: (error as { hint?: string }).hint });
         }
       } else if (newToken) {
         trainerTokens.push({ ...newToken, person: trainer });
@@ -348,6 +352,8 @@ export async function POST(request: NextRequest) {
       trainers_count: formationTrainers.length,
       trainers_with_data: formationTrainers.filter((ft) => ft.trainer).length,
       enrollments_error: enrollErr?.message ?? null,
+      profile_entity_id: profileEntityId ?? "MISSING",
+      insert_errors: insertErrors.slice(0, 5),
     },
   });
 }
