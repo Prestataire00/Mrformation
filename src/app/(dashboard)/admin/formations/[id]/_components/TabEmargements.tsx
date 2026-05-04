@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import {
   QrCode, Send, Printer, CheckSquare, Loader2, Copy, Download,
   FileDown, UserCheck, AlertTriangle, PenLine, Trash2, CheckCircle2,
-  XCircle, Mail, CheckCheck,
+  XCircle, Mail, CheckCheck, CalendarDays,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -721,6 +721,46 @@ export function TabEmargements({ formation, onRefresh }: Props) {
           </Button>
           <Button size="sm" variant="ghost" className="text-xs h-7 gap-1" onClick={handlePrintEmpty}>
             <Printer className="h-3 w-3" /> Imprimer
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-xs h-7 gap-1"
+            onClick={async () => {
+              try {
+                toast({ title: "Génération en cours..." });
+                const res = await fetch("/api/documents/generate-from-template", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    doc_type: "planning_semaine",
+                    context: { session_id: formation.id },
+                  }),
+                });
+                const json = await res.json();
+                if (!res.ok) throw new Error(json.error ?? "Échec génération PDF");
+
+                // base64 → Blob → download
+                const byteChars = atob(json.base64);
+                const byteArray = new Uint8Array(byteChars.length);
+                for (let i = 0; i < byteChars.length; i++) byteArray[i] = byteChars.charCodeAt(i);
+                const blob = new Blob([byteArray], { type: "application/pdf" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `planning-hebdo-${formation.title?.replace(/\s+/g, "-") || "session"}.pdf`;
+                a.click();
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+                toast({ title: "Planning téléchargé" });
+              } catch (err) {
+                const msg = err instanceof Error ? err.message : "Erreur inconnue";
+                toast({ title: "Erreur génération", description: msg, variant: "destructive" });
+              }
+            }}
+            disabled={timeSlots.length === 0}
+            title="Tableau hebdomadaire avec signatures collectées (paysage 1 page)"
+          >
+            <CalendarDays className="h-3 w-3" /> Planning hebdo
           </Button>
         </div>
       </div>

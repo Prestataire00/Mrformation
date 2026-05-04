@@ -1012,60 +1012,119 @@ function planningSemaine(data: TemplateData): string {
   const co = getCompanyInfo(entityName);
   const enrollments = formation.enrollments || [];
   const trainers = formation.formation_trainers || [];
+  const timeSlots = formation.formation_time_slots || [];
+  const signatures = formation.signatures || [];
   const formateursNoms = trainers.filter((ft) => ft.trainer).map((ft) => `${ft.trainer!.last_name?.toUpperCase()} ${ft.trainer!.first_name}`).join(", ") || "[Formateur]";
 
-  const jours = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi"];
-  const colHeaders = jours.flatMap((j) => [`${j} M`, `${j} AM`]);
+  // Helper : extrait la date locale (Europe/Paris) au format YYYY-MM-DD depuis un timestamp ISO
+  // et détermine si c'est matin (avant 13h) ou après-midi.
+  const getDateAndMoment = (iso: string): { date: string; moment: "M" | "AM" } => {
+    const d = new Date(iso);
+    // Utilise toLocaleString avec timezone Europe/Paris pour cohérence
+    const parts = new Intl.DateTimeFormat("fr-FR", {
+      timeZone: "Europe/Paris",
+      year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", hour12: false,
+    }).formatToParts(d);
+    const get = (t: string) => parts.find((p) => p.type === t)?.value || "";
+    const date = `${get("year")}-${get("month")}-${get("day")}`;
+    const hour = parseInt(get("hour"), 10);
+    return { date, moment: hour < 13 ? "M" : "AM" };
+  };
 
-  const headerCells = colHeaders.map((h) => `<th style="border:1px solid #d1d5db;padding:4px 2px;font-size:8px;text-align:center;writing-mode:vertical-lr;min-width:28px;height:70px;">${h}</th>`).join("");
+  // Index : (date, moment) → slot_id (pour matcher les signatures)
+  const slotIndex = new Map<string, string>();
+  // Set ordonné des (date, moment) uniques → colonnes du tableau
+  const colKeys = new Set<string>();
+  for (const slot of timeSlots) {
+    if (!slot.start_time || !slot.id) continue;
+    const { date, moment } = getDateAndMoment(slot.start_time);
+    const key = `${date}|${moment}`;
+    if (!slotIndex.has(key)) slotIndex.set(key, slot.id);
+    colKeys.add(key);
+  }
 
+  // Si pas de slots planifiés, fallback sur 5 jours × 2 demi-journées Lun-Ven
+  // (UX dégradée mais évite une page vide)
+  let columns: Array<{ key: string; date: string; moment: "M" | "AM"; label: string }> = [];
+  if (colKeys.size > 0) {
+    columns = Array.from(colKeys).sort().map((key) => {
+      const [date, moment] = key.split("|") as [string, "M" | "AM"];
+      // Format jour court (ex: Lun 24/04)
+      const d = new Date(date + "T12:00:00Z");
+      const dayShort = d.toLocaleDateString("fr-FR", { weekday: "short", day: "2-digit", month: "2-digit", timeZone: "Europe/Paris" });
+      const label = `${dayShort} ${moment === "M" ? "Matin" : "AM"}`;
+      return { key, date, moment, label };
+    });
+  } else {
+    // Fallback (pas de slots) : Lun-Ven × M/AM
+    const jours = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi"];
+    columns = jours.flatMap((j) => [
+      { key: `${j}|M`, date: j, moment: "M" as const, label: `${j} Matin` },
+      { key: `${j}|AM`, date: j, moment: "AM" as const, label: `${j} AM` },
+    ]);
+  }
+
+  // Limite à 10 colonnes pour rentrer sur 1 page A4 paysage
+  if (columns.length > 10) {
+    columns = columns.slice(0, 10);
+  }
+
+  // Header cells (1 par colonne)
+  const headerCells = columns.map((c) =>
+    `<th style="border:1px solid #d1d5db;padding:3px 2px;font-size:7.5px;text-align:center;min-width:60px;background:#f3f4f6;">${c.label}</th>`
+  ).join("");
+
+  // Cell pour signature : si trouvée, affiche l'image, sinon case vide
+  const renderCell = (slotId: string | undefined, signerId: string, signerType: "learner" | "trainer"): string => {
+    if (!slotId) return `<td style="border:1px solid #d1d5db;height:30px;"></td>`;
+    const sig = findSignature(signatures, slotId, signerId, signerType);
+    if (!sig) return `<td style="border:1px solid #d1d5db;height:30px;"></td>`;
+    const dataUrl = signatureToDataUrl(sig.signature_data);
+    return `<td style="border:1px solid #d1d5db;padding:1px;height:30px;text-align:center;">
+      <img src="${dataUrl}" alt="Signature" style="max-width:55px;max-height:26px;object-fit:contain;" />
+    </td>`;
+  };
+
+  // Lignes apprenants
   const learnerRows = enrollments.filter((e) => e.learner).map((e) => {
-    const name = `${e.learner!.last_name?.toUpperCase()} ${e.learner!.first_name}`;
-    const cells = colHeaders.map(() => `<td style="border:1px solid #d1d5db;padding:2px;min-width:28px;height:30px;"></td>`).join("");
-    return `<tr><td style="border:1px solid #d1d5db;padding:4px 6px;font-size:10px;white-space:nowrap;">${name}</td>${cells}</tr>`;
+    const learner = e.learner!;
+    const name = `${learner.last_name?.toUpperCase()} ${learner.first_name}`;
+    const cells = columns.map((c) => renderCell(slotIndex.get(c.key), learner.id, "learner")).join("");
+    return `<tr><td style="border:1px solid #d1d5db;padding:3px 6px;font-size:9px;white-space:nowrap;background:#fafafa;">${name}</td>${cells}</tr>`;
   }).join("");
 
-  // Add empty rows to reach at least 12
-  const emptyCount = Math.max(0, 12 - enrollments.filter((e) => e.learner).length);
-  const emptyRows = Array.from({ length: emptyCount }, () => {
-    const cells = colHeaders.map(() => `<td style="border:1px solid #d1d5db;padding:2px;min-width:28px;height:30px;"></td>`).join("");
-    return `<tr><td style="border:1px solid #d1d5db;padding:4px 6px;font-size:10px;">&nbsp;</td>${cells}</tr>`;
+  // Lignes formateurs
+  const trainerRows = trainers.filter((ft) => ft.trainer).map((ft) => {
+    const trainer = ft.trainer!;
+    const name = `${trainer.last_name?.toUpperCase()} ${trainer.first_name}`;
+    const cells = columns.map((c) => renderCell(slotIndex.get(c.key), trainer.id, "trainer")).join("");
+    return `<tr><td style="border:1px solid #d1d5db;padding:3px 6px;font-size:9px;white-space:nowrap;background:#eef2ff;font-weight:600;">${name} <span style="color:#6b7280;font-weight:400;">(F)</span></td>${cells}</tr>`;
   }).join("");
 
   const body = `
-    <div style="border:1px solid #d1d5db;border-radius:6px;padding:12px 16px;margin-bottom:16px;font-size:11px;">
-      <p style="margin:2px 0;">Formation: <strong>${formation.title}</strong></p>
-      <p style="margin:2px 0;">Dates: du ${formatDateFr(formation.start_date)} au ${formatDateFr(formation.end_date)}</p>
-      <p style="margin:2px 0;">Formateur(s): ${formateursNoms}</p>
-      <p style="margin:2px 0;">Prestataire: ${co.name} — NDA: ${co.nda}</p>
+    <div style="border:1px solid #d1d5db;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:10px;">
+      <p style="margin:1px 0;">Formation : <strong>${formation.title}</strong></p>
+      <p style="margin:1px 0;">Dates : du ${formatDateFr(formation.start_date)} au ${formatDateFr(formation.end_date)} — Durée : ${formation.planned_hours || "—"}h</p>
+      <p style="margin:1px 0;">Formateur(s) : ${formateursNoms} — Prestataire : ${co.name} (NDA ${co.nda})</p>
     </div>
-    <div style="overflow-x:auto;">
-      <table style="width:100%;border-collapse:collapse;">
-        <thead>
-          <tr style="background:#f3f4f6;">
-            <th style="border:1px solid #d1d5db;padding:4px 6px;text-align:left;font-size:10px;min-width:140px;">Nom</th>
-            ${headerCells}
-          </tr>
-        </thead>
-        <tbody>
-          ${learnerRows}${emptyRows}
-        </tbody>
-      </table>
-    </div>
-    <div style="margin-top:16px;">
-      <table style="width:100%;border-collapse:collapse;">
-        <tr style="background:#f3f4f6;">
-          <th style="border:1px solid #d1d5db;padding:4px 6px;text-align:left;font-size:10px;width:50%;">Signature Formateur</th>
-          <th style="border:1px solid #d1d5db;padding:4px 6px;text-align:left;font-size:10px;width:50%;">Signature Responsable</th>
-        </tr>
+    <table style="width:100%;border-collapse:collapse;table-layout:fixed;">
+      <thead>
         <tr>
-          <td style="border:1px solid #d1d5db;padding:4px;height:60px;"></td>
-          <td style="border:1px solid #d1d5db;padding:4px;height:60px;"></td>
+          <th style="border:1px solid #d1d5db;padding:3px 6px;text-align:left;font-size:9px;width:140px;background:#f3f4f6;">Nom</th>
+          ${headerCells}
         </tr>
-      </table>
-    </div>`;
+      </thead>
+      <tbody>
+        ${trainerRows}${learnerRows}
+      </tbody>
+    </table>
+    <p style="margin-top:8px;font-size:8px;color:#6b7280;font-style:italic;">
+      Légende (F) = Formateur. Signatures électroniques apposées via la plateforme ${co.name}.
+      Document généré le ${docDateLong(data.doc)}.
+    </p>`;
 
-  return wrap(entityName, "Planning de la semaine — Feuille d'émargement", body);
+  return wrap(entityName, "Planning hebdomadaire — Feuille d'émargement", body);
 }
 
 // ──────────────────────────────────────────────

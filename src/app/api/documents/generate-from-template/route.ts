@@ -116,9 +116,19 @@ export async function POST(request: NextRequest) {
     let sessionDataForFallback: Record<string, unknown> | null = null;
 
     if (payload.context.session_id) {
+      // On charge enrollments + formation_trainers + formation_time_slots + signatures
+      // pour les templates qui en ont besoin (ex: planning_semaine, feuille_emargement).
+      // Ces relations sont ignorées par les autres templates (cost ~minimal).
       const { data: session } = await auth.supabase
         .from("sessions")
-        .select("*, training:trainings(*)")
+        .select(`
+          *,
+          training:trainings(*),
+          enrollments(learner:learners(id, first_name, last_name, email)),
+          formation_trainers(trainer:trainers(id, first_name, last_name, email)),
+          formation_time_slots(id, start_time, end_time, title),
+          signatures(id, time_slot_id, signer_id, signer_type, signature_data, signed_at)
+        `)
         .eq("id", payload.context.session_id)
         .single();
       if (session) {
@@ -280,7 +290,9 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const result = await generatePdfFromFragment(html, payload.doc_type);
+      // Format paysage A4 pour les docs type planning (grille calendrier large)
+      const useLandscape = payload.doc_type === "planning_semaine";
+      const result = await generatePdfFromFragment(html, payload.doc_type, useLandscape ? { landscape: true } : undefined);
       pdfBase64 = result.base64;
       sizeBytes = result.sizeBytes;
       pdfNameBase = payload.doc_type;
