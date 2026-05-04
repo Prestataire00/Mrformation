@@ -584,12 +584,14 @@ export function TabEmargements({ formation, onRefresh }: Props) {
         trainers: trainers
           .filter((ft) => ft.trainer)
           .map((ft) => ({
+            id: ft.trainer!.id,
             first_name: ft.trainer!.first_name,
             last_name: ft.trainer!.last_name,
           })),
         learners: enrollments
           .filter((e) => e.learner)
           .map((e) => ({
+            id: e.learner!.id,
             first_name: e.learner!.first_name,
             last_name: e.learner!.last_name,
           })),
@@ -599,6 +601,14 @@ export function TabEmargements({ formation, onRefresh }: Props) {
           start_time: s.start_time,
           end_time: s.end_time,
         })),
+        signatures: signatures
+          .filter((s): s is typeof s & { signer_id: string } => s.signer_id !== null)
+          .map((s) => ({
+            time_slot_id: s.time_slot_id,
+            signer_id: s.signer_id,
+            signer_type: s.signer_type,
+            signature_data: s.signature_data,
+          })),
       });
       toast({ title: "Feuille d'émargement exportée" });
     } catch {

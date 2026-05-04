@@ -10,14 +10,21 @@ export interface EmargementPdfParams {
   location: string | null;
   duration: string;
   entityName: string;
-  trainers: { first_name: string; last_name: string }[];
-  learners: { first_name: string; last_name: string }[];
+  trainers: { id?: string; first_name: string; last_name: string }[];
+  learners: { id?: string; first_name: string; last_name: string }[];
   timeSlots: {
     id: string;
     title: string | null;
     start_time: string;
     end_time: string;
   }[];
+  /** Optionnel : si fourni, les signatures correspondantes sont insérées dans les cellules. */
+  signatures?: Array<{
+    time_slot_id: string | null;
+    signer_id: string;
+    signer_type: string;
+    signature_data: string | null;
+  }>;
 }
 
 // ── Company info ─────────────────────────────────────────────────────────────
@@ -83,6 +90,45 @@ async function loadLogo(logoPath: string): Promise<string | null> {
   }
 }
 
+/** Rasterise une signature SVG (ou data:url) vers PNG via canvas — jsPDF ne supporte pas SVG. */
+async function svgToPng(svgData: string, width = 80, height = 30): Promise<string | null> {
+  return new Promise((resolve) => {
+    try {
+      if (svgData.startsWith("data:image/png")) {
+        resolve(svgData);
+        return;
+      }
+      const svgString = svgData.startsWith("<svg") ? svgData : decodeURIComponent(svgData);
+      const blob = new Blob([svgString], { type: "image/svg+xml" });
+      const url = URL.createObjectURL(blob);
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          URL.revokeObjectURL(url);
+          resolve(null);
+          return;
+        }
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+        URL.revokeObjectURL(url);
+        resolve(canvas.toDataURL("image/png"));
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        resolve(null);
+      };
+      img.src = url;
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
 // ── Colors ───────────────────────────────────────────────────────────────────
 
 const HEADER_BG: [number, number, number] = [0, 172, 178]; // Teal like the screenshot
@@ -112,11 +158,26 @@ export async function generateEmargementPDF(params: EmargementPdfParams): Promis
     trainers,
     learners,
     timeSlots,
+    signatures = [],
   } = params;
 
   const COMPANY = getCompanyInfo(entityName);
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const logoImg = await loadLogo(COMPANY.logo);
+
+  // ── Pré-rasterise toutes les signatures en PNG (jsPDF ne sait pas rendre SVG)
+  // Index : (slot_id, signer_id, signer_type) → PNG dataURL
+  const sigPngBySlotPerson = new Map<string, string>();
+  const sigPngByPerson = new Map<string, string>(); // dernière signature connue pour un signataire (utilisée pour la signature formateur en bas)
+  for (const s of signatures) {
+    if (!s.signature_data) continue;
+    const png = await svgToPng(s.signature_data, 80, 30);
+    if (!png) continue;
+    if (s.time_slot_id) {
+      sigPngBySlotPerson.set(`${s.time_slot_id}|${s.signer_id}|${s.signer_type}`, png);
+    }
+    sigPngByPerson.set(`${s.signer_id}|${s.signer_type}`, png);
+  }
 
   // Split timeSlots into chunks for multiple pages
   const slotChunks: typeof timeSlots[] = [];
@@ -238,7 +299,7 @@ export async function generateEmargementPDF(params: EmargementPdfParams): Promis
         lineColor: [180, 180, 180],
         lineWidth: 0.3,
         textColor: [30, 30, 30],
-        minCellHeight: 14,
+        minCellHeight: 18,
       },
       headStyles: {
         fillColor: HEADER_BG,
@@ -257,6 +318,23 @@ export async function generateEmargementPDF(params: EmargementPdfParams): Promis
             { cellWidth: slotColWidth, halign: "center" },
           ])
         ),
+      },
+      didDrawCell: (data) => {
+        if (data.section !== "body") return;
+        if (data.column.index === 0) return; // colonne nom
+        const slotIdx = data.column.index - 1;
+        const slot = chunk[slotIdx];
+        const learner = learners[data.row.index];
+        if (!slot || !learner?.id) return;
+        const png = sigPngBySlotPerson.get(`${slot.id}|${learner.id}|learner`);
+        if (!png) return;
+        const w = Math.min(data.cell.width - 2, slotColWidth - 2);
+        const h = Math.min(data.cell.height - 2, 14);
+        const x = data.cell.x + (data.cell.width - w) / 2;
+        const yy = data.cell.y + (data.cell.height - h) / 2;
+        try {
+          doc.addImage(png, "PNG", x, yy, w, h);
+        } catch { /* skip */ }
       },
       didDrawPage: () => {
         // Footer on each page
@@ -308,10 +386,18 @@ export async function generateEmargementPDF(params: EmargementPdfParams): Promis
           MARGIN + 5,
           sigY
         );
-        // Signature line
-        doc.setDrawColor(180, 180, 180);
-        doc.line(MARGIN + 55, sigY, MARGIN + 120, sigY);
-        sigY += 10;
+        // Si on a une signature collectée pour ce formateur (n'importe quel slot),
+        // on l'insère au-dessus de la ligne. Sinon ligne vide à signer manuellement.
+        const trainerPng = trainer.id ? sigPngByPerson.get(`${trainer.id}|trainer`) : null;
+        if (trainerPng) {
+          try {
+            doc.addImage(trainerPng, "PNG", MARGIN + 55, sigY - 5, 35, 8);
+          } catch { /* skip */ }
+        } else {
+          doc.setDrawColor(180, 180, 180);
+          doc.line(MARGIN + 55, sigY, MARGIN + 120, sigY);
+        }
+        sigY += 12;
       });
     }
   });
