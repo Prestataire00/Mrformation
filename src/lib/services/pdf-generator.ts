@@ -29,12 +29,12 @@ export interface PdfGenerationOptions {
   format?: "A4" | "Letter" | "Legal";
   /** Orientation. Défaut : portrait. */
   landscape?: boolean;
-  /** Marges (CSS units, ex: '20mm', '1cm'). Défaut : 20mm tous les côtés. */
+  /** Marges en inches (CloudConvert exige un nombre, pas une string). Défaut : 0.79in (~20mm). */
   margin?: {
-    top?: string;
-    right?: string;
-    bottom?: string;
-    left?: string;
+    top?: number;
+    right?: number;
+    bottom?: number;
+    left?: number;
   };
 }
 
@@ -171,10 +171,10 @@ async function convertHtmlToPdfViaCloudConvert(
         engine: "chrome",
         page_orientation: options.landscape ? "landscape" : "portrait",
         page_size: options.format ?? "A4",
-        margin_top: margin.top ?? "20mm",
-        margin_right: margin.right ?? "20mm",
-        margin_bottom: margin.bottom ?? "20mm",
-        margin_left: margin.left ?? "20mm",
+        margin_top: margin.top ?? 0.79,
+        margin_right: margin.right ?? 0.79,
+        margin_bottom: margin.bottom ?? 0.79,
+        margin_left: margin.left ?? 0.79,
       },
       "export-pdf": {
         operation: "export/url",
