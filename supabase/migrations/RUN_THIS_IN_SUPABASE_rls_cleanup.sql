@@ -138,11 +138,13 @@ DROP POLICY IF EXISTS "allow_all" ON elearning_courses;
 DROP POLICY IF EXISTS "elearning_courses_admin_all" ON elearning_courses;
 DROP POLICY IF EXISTS "elearning_courses_other_roles_read" ON elearning_courses;
 
+DROP POLICY IF EXISTS "elearning_courses_admin_all" ON elearning_courses;
 CREATE POLICY "elearning_courses_admin_all" ON elearning_courses
   FOR ALL TO authenticated
   USING (user_role() IN ('admin', 'super_admin') AND entity_id = user_entity_id())
   WITH CHECK (user_role() IN ('admin', 'super_admin') AND entity_id = user_entity_id());
 
+DROP POLICY IF EXISTS "elearning_courses_other_roles_read" ON elearning_courses;
 CREATE POLICY "elearning_courses_other_roles_read" ON elearning_courses
   FOR SELECT TO authenticated
   USING (
@@ -156,6 +158,7 @@ DROP POLICY IF EXISTS "allow_all" ON elearning_chapters;
 DROP POLICY IF EXISTS "elearning_chapters_admin_all" ON elearning_chapters;
 DROP POLICY IF EXISTS "elearning_chapters_read" ON elearning_chapters;
 
+DROP POLICY IF EXISTS "elearning_chapters_admin_all" ON elearning_chapters;
 CREATE POLICY "elearning_chapters_admin_all" ON elearning_chapters
   FOR ALL TO authenticated
   USING (
@@ -167,6 +170,7 @@ CREATE POLICY "elearning_chapters_admin_all" ON elearning_chapters
     AND course_id IN (SELECT id FROM elearning_courses WHERE entity_id = user_entity_id())
   );
 
+DROP POLICY IF EXISTS "elearning_chapters_read" ON elearning_chapters;
 CREATE POLICY "elearning_chapters_read" ON elearning_chapters
   FOR SELECT TO authenticated
   USING (
@@ -180,6 +184,7 @@ DROP POLICY IF EXISTS "allow_all" ON elearning_global_flashcards;
 DROP POLICY IF EXISTS "elearning_global_flashcards_admin_all" ON elearning_global_flashcards;
 DROP POLICY IF EXISTS "elearning_global_flashcards_read" ON elearning_global_flashcards;
 
+DROP POLICY IF EXISTS "elearning_global_flashcards_admin_all" ON elearning_global_flashcards;
 CREATE POLICY "elearning_global_flashcards_admin_all" ON elearning_global_flashcards
   FOR ALL TO authenticated
   USING (
@@ -191,6 +196,7 @@ CREATE POLICY "elearning_global_flashcards_admin_all" ON elearning_global_flashc
     AND course_id IN (SELECT id FROM elearning_courses WHERE entity_id = user_entity_id())
   );
 
+DROP POLICY IF EXISTS "elearning_global_flashcards_read" ON elearning_global_flashcards;
 CREATE POLICY "elearning_global_flashcards_read" ON elearning_global_flashcards
   FOR SELECT TO authenticated
   USING (
@@ -204,6 +210,7 @@ DROP POLICY IF EXISTS "allow_all" ON elearning_slide_specs;
 DROP POLICY IF EXISTS "elearning_slide_specs_admin_all" ON elearning_slide_specs;
 DROP POLICY IF EXISTS "elearning_slide_specs_read" ON elearning_slide_specs;
 
+DROP POLICY IF EXISTS "elearning_slide_specs_admin_all" ON elearning_slide_specs;
 CREATE POLICY "elearning_slide_specs_admin_all" ON elearning_slide_specs
   FOR ALL TO authenticated
   USING (
@@ -215,6 +222,7 @@ CREATE POLICY "elearning_slide_specs_admin_all" ON elearning_slide_specs
     AND course_id IN (SELECT id FROM elearning_courses WHERE entity_id = user_entity_id())
   );
 
+DROP POLICY IF EXISTS "elearning_slide_specs_read" ON elearning_slide_specs;
 CREATE POLICY "elearning_slide_specs_read" ON elearning_slide_specs
   FOR SELECT TO authenticated
   USING (
@@ -228,6 +236,7 @@ DROP POLICY IF EXISTS "allow_all" ON elearning_final_exam_questions;
 DROP POLICY IF EXISTS "elearning_final_exam_questions_admin_all" ON elearning_final_exam_questions;
 DROP POLICY IF EXISTS "elearning_final_exam_questions_read" ON elearning_final_exam_questions;
 
+DROP POLICY IF EXISTS "elearning_final_exam_questions_admin_all" ON elearning_final_exam_questions;
 CREATE POLICY "elearning_final_exam_questions_admin_all" ON elearning_final_exam_questions
   FOR ALL TO authenticated
   USING (
@@ -239,6 +248,7 @@ CREATE POLICY "elearning_final_exam_questions_admin_all" ON elearning_final_exam
     AND course_id IN (SELECT id FROM elearning_courses WHERE entity_id = user_entity_id())
   );
 
+DROP POLICY IF EXISTS "elearning_final_exam_questions_read" ON elearning_final_exam_questions;
 CREATE POLICY "elearning_final_exam_questions_read" ON elearning_final_exam_questions
   FOR SELECT TO authenticated
   USING (
@@ -252,6 +262,7 @@ DROP POLICY IF EXISTS "allow_all" ON elearning_live_sessions;
 DROP POLICY IF EXISTS "elearning_live_sessions_admin_all" ON elearning_live_sessions;
 DROP POLICY IF EXISTS "elearning_live_sessions_read" ON elearning_live_sessions;
 
+DROP POLICY IF EXISTS "elearning_live_sessions_admin_all" ON elearning_live_sessions;
 CREATE POLICY "elearning_live_sessions_admin_all" ON elearning_live_sessions
   FOR ALL TO authenticated
   USING (
@@ -263,6 +274,7 @@ CREATE POLICY "elearning_live_sessions_admin_all" ON elearning_live_sessions
     AND course_id IN (SELECT id FROM elearning_courses WHERE entity_id = user_entity_id())
   );
 
+DROP POLICY IF EXISTS "elearning_live_sessions_read" ON elearning_live_sessions;
 CREATE POLICY "elearning_live_sessions_read" ON elearning_live_sessions
   FOR SELECT TO authenticated
   USING (
@@ -276,6 +288,7 @@ DROP POLICY IF EXISTS "allow_all" ON elearning_quizzes;
 DROP POLICY IF EXISTS "elearning_quizzes_admin_all" ON elearning_quizzes;
 DROP POLICY IF EXISTS "elearning_quizzes_read" ON elearning_quizzes;
 
+DROP POLICY IF EXISTS "elearning_quizzes_admin_all" ON elearning_quizzes;
 CREATE POLICY "elearning_quizzes_admin_all" ON elearning_quizzes
   FOR ALL TO authenticated
   USING (
@@ -295,6 +308,7 @@ CREATE POLICY "elearning_quizzes_admin_all" ON elearning_quizzes
     )
   );
 
+DROP POLICY IF EXISTS "elearning_quizzes_read" ON elearning_quizzes;
 CREATE POLICY "elearning_quizzes_read" ON elearning_quizzes
   FOR SELECT TO authenticated
   USING (
@@ -312,6 +326,7 @@ DROP POLICY IF EXISTS "allow_all" ON elearning_flashcards;
 DROP POLICY IF EXISTS "elearning_flashcards_admin_all" ON elearning_flashcards;
 DROP POLICY IF EXISTS "elearning_flashcards_read" ON elearning_flashcards;
 
+DROP POLICY IF EXISTS "elearning_flashcards_admin_all" ON elearning_flashcards;
 CREATE POLICY "elearning_flashcards_admin_all" ON elearning_flashcards
   FOR ALL TO authenticated
   USING (
@@ -331,6 +346,7 @@ CREATE POLICY "elearning_flashcards_admin_all" ON elearning_flashcards
     )
   );
 
+DROP POLICY IF EXISTS "elearning_flashcards_read" ON elearning_flashcards;
 CREATE POLICY "elearning_flashcards_read" ON elearning_flashcards
   FOR SELECT TO authenticated
   USING (
@@ -348,6 +364,7 @@ DROP POLICY IF EXISTS "allow_all" ON elearning_quiz_questions;
 DROP POLICY IF EXISTS "elearning_quiz_questions_admin_all" ON elearning_quiz_questions;
 DROP POLICY IF EXISTS "elearning_quiz_questions_read" ON elearning_quiz_questions;
 
+DROP POLICY IF EXISTS "elearning_quiz_questions_admin_all" ON elearning_quiz_questions;
 CREATE POLICY "elearning_quiz_questions_admin_all" ON elearning_quiz_questions
   FOR ALL TO authenticated
   USING (
@@ -369,6 +386,7 @@ CREATE POLICY "elearning_quiz_questions_admin_all" ON elearning_quiz_questions
     )
   );
 
+DROP POLICY IF EXISTS "elearning_quiz_questions_read" ON elearning_quiz_questions;
 CREATE POLICY "elearning_quiz_questions_read" ON elearning_quiz_questions
   FOR SELECT TO authenticated
   USING (
@@ -388,6 +406,7 @@ DROP POLICY IF EXISTS "elearning_enrollments_admin_all" ON elearning_enrollments
 DROP POLICY IF EXISTS "elearning_enrollments_learner_own" ON elearning_enrollments;
 DROP POLICY IF EXISTS "elearning_enrollments_trainer_read" ON elearning_enrollments;
 
+DROP POLICY IF EXISTS "elearning_enrollments_admin_all" ON elearning_enrollments;
 CREATE POLICY "elearning_enrollments_admin_all" ON elearning_enrollments
   FOR ALL TO authenticated
   USING (
@@ -399,6 +418,7 @@ CREATE POLICY "elearning_enrollments_admin_all" ON elearning_enrollments
     AND course_id IN (SELECT id FROM elearning_courses WHERE entity_id = user_entity_id())
   );
 
+DROP POLICY IF EXISTS "elearning_enrollments_trainer_read" ON elearning_enrollments;
 CREATE POLICY "elearning_enrollments_trainer_read" ON elearning_enrollments
   FOR SELECT TO authenticated
   USING (
@@ -406,6 +426,7 @@ CREATE POLICY "elearning_enrollments_trainer_read" ON elearning_enrollments
     AND course_id IN (SELECT id FROM elearning_courses WHERE entity_id = user_entity_id())
   );
 
+DROP POLICY IF EXISTS "elearning_enrollments_learner_own" ON elearning_enrollments;
 CREATE POLICY "elearning_enrollments_learner_own" ON elearning_enrollments
   FOR ALL TO authenticated
   USING (
@@ -423,6 +444,7 @@ DROP POLICY IF EXISTS "allow_all" ON elearning_chapter_progress;
 DROP POLICY IF EXISTS "elearning_chapter_progress_admin_all" ON elearning_chapter_progress;
 DROP POLICY IF EXISTS "elearning_chapter_progress_learner_own" ON elearning_chapter_progress;
 
+DROP POLICY IF EXISTS "elearning_chapter_progress_admin_all" ON elearning_chapter_progress;
 CREATE POLICY "elearning_chapter_progress_admin_all" ON elearning_chapter_progress
   FOR ALL TO authenticated
   USING (
@@ -442,6 +464,7 @@ CREATE POLICY "elearning_chapter_progress_admin_all" ON elearning_chapter_progre
     )
   );
 
+DROP POLICY IF EXISTS "elearning_chapter_progress_learner_own" ON elearning_chapter_progress;
 CREATE POLICY "elearning_chapter_progress_learner_own" ON elearning_chapter_progress
   FOR ALL TO authenticated
   USING (
@@ -467,6 +490,7 @@ DROP POLICY IF EXISTS "allow_all" ON elearning_final_exam_progress;
 DROP POLICY IF EXISTS "elearning_final_exam_progress_admin_all" ON elearning_final_exam_progress;
 DROP POLICY IF EXISTS "elearning_final_exam_progress_learner_own" ON elearning_final_exam_progress;
 
+DROP POLICY IF EXISTS "elearning_final_exam_progress_admin_all" ON elearning_final_exam_progress;
 CREATE POLICY "elearning_final_exam_progress_admin_all" ON elearning_final_exam_progress
   FOR ALL TO authenticated
   USING (
@@ -486,6 +510,7 @@ CREATE POLICY "elearning_final_exam_progress_admin_all" ON elearning_final_exam_
     )
   );
 
+DROP POLICY IF EXISTS "elearning_final_exam_progress_learner_own" ON elearning_final_exam_progress;
 CREATE POLICY "elearning_final_exam_progress_learner_own" ON elearning_final_exam_progress
   FOR ALL TO authenticated
   USING (
@@ -511,6 +536,7 @@ DROP POLICY IF EXISTS "allow_all" ON elearning_course_scores;
 DROP POLICY IF EXISTS "elearning_course_scores_admin_all" ON elearning_course_scores;
 DROP POLICY IF EXISTS "elearning_course_scores_self" ON elearning_course_scores;
 
+DROP POLICY IF EXISTS "elearning_course_scores_admin_all" ON elearning_course_scores;
 CREATE POLICY "elearning_course_scores_admin_all" ON elearning_course_scores
   FOR ALL TO authenticated
   USING (
@@ -522,6 +548,7 @@ CREATE POLICY "elearning_course_scores_admin_all" ON elearning_course_scores
     AND course_id IN (SELECT id FROM elearning_courses WHERE entity_id = user_entity_id())
   );
 
+DROP POLICY IF EXISTS "elearning_course_scores_self" ON elearning_course_scores;
 CREATE POLICY "elearning_course_scores_self" ON elearning_course_scores
   FOR ALL TO authenticated
   USING (user_id = auth.uid())
@@ -578,11 +605,13 @@ DROP POLICY IF EXISTS "trainings_trainer_read" ON trainings;
 DROP POLICY IF EXISTS "trainings_client_read" ON trainings;
 DROP POLICY IF EXISTS "trainings_learner_read" ON trainings;
 
+DROP POLICY IF EXISTS "trainings_admin_all" ON trainings;
 CREATE POLICY "trainings_admin_all" ON trainings
   FOR ALL TO authenticated
   USING (user_role() IN ('admin', 'super_admin') AND entity_id = user_entity_id())
   WITH CHECK (user_role() IN ('admin', 'super_admin') AND entity_id = user_entity_id());
 
+DROP POLICY IF EXISTS "trainings_other_roles_read" ON trainings;
 CREATE POLICY "trainings_other_roles_read" ON trainings
   FOR SELECT TO authenticated
   USING (
@@ -596,6 +625,7 @@ DROP POLICY IF EXISTS "allow_all" ON program_versions;
 DROP POLICY IF EXISTS "program_versions_admin_all" ON program_versions;
 DROP POLICY IF EXISTS "program_versions_trainer_read" ON program_versions;
 
+DROP POLICY IF EXISTS "program_versions_admin_all" ON program_versions;
 CREATE POLICY "program_versions_admin_all" ON program_versions
   FOR ALL TO authenticated
   USING (
@@ -607,6 +637,7 @@ CREATE POLICY "program_versions_admin_all" ON program_versions
     AND program_id IN (SELECT id FROM programs WHERE entity_id = user_entity_id())
   );
 
+DROP POLICY IF EXISTS "program_versions_trainer_read" ON program_versions;
 CREATE POLICY "program_versions_trainer_read" ON program_versions
   FOR SELECT TO authenticated
   USING (
@@ -620,6 +651,7 @@ DROP POLICY IF EXISTS "allow_all" ON trainer_competencies;
 DROP POLICY IF EXISTS "trainer_competencies_admin_all" ON trainer_competencies;
 DROP POLICY IF EXISTS "trainer_competencies_self" ON trainer_competencies;
 
+DROP POLICY IF EXISTS "trainer_competencies_admin_all" ON trainer_competencies;
 CREATE POLICY "trainer_competencies_admin_all" ON trainer_competencies
   FOR ALL TO authenticated
   USING (
@@ -631,6 +663,7 @@ CREATE POLICY "trainer_competencies_admin_all" ON trainer_competencies
     AND trainer_id IN (SELECT id FROM trainers WHERE entity_id = user_entity_id())
   );
 
+DROP POLICY IF EXISTS "trainer_competencies_self" ON trainer_competencies;
 CREATE POLICY "trainer_competencies_self" ON trainer_competencies
   FOR ALL TO authenticated
   USING (
@@ -647,6 +680,7 @@ CREATE POLICY "trainer_competencies_self" ON trainer_competencies
 DROP POLICY IF EXISTS "allow_all" ON prospect_comments;
 DROP POLICY IF EXISTS "prospect_comments_admin_all" ON prospect_comments;
 
+DROP POLICY IF EXISTS "prospect_comments_admin_all" ON prospect_comments;
 CREATE POLICY "prospect_comments_admin_all" ON prospect_comments
   FOR ALL TO authenticated
   USING (
@@ -668,6 +702,7 @@ DROP POLICY IF EXISTS "signatures_admin_all" ON signatures;
 DROP POLICY IF EXISTS "signatures_trainer_read" ON signatures;
 DROP POLICY IF EXISTS "signatures_learner_read" ON signatures;
 
+DROP POLICY IF EXISTS "signatures_admin_all" ON signatures;
 CREATE POLICY "signatures_admin_all" ON signatures
   FOR ALL TO authenticated
   USING (
@@ -679,6 +714,7 @@ CREATE POLICY "signatures_admin_all" ON signatures
     AND session_id IN (SELECT id FROM sessions WHERE entity_id = user_entity_id())
   );
 
+DROP POLICY IF EXISTS "signatures_trainer_read" ON signatures;
 CREATE POLICY "signatures_trainer_read" ON signatures
   FOR SELECT TO authenticated
   USING (
@@ -690,6 +726,7 @@ CREATE POLICY "signatures_trainer_read" ON signatures
     )
   );
 
+DROP POLICY IF EXISTS "signatures_learner_read" ON signatures;
 CREATE POLICY "signatures_learner_read" ON signatures
   FOR SELECT TO authenticated
   USING (
@@ -706,6 +743,7 @@ DROP POLICY IF EXISTS "generated_documents_trainer_read" ON generated_documents;
 DROP POLICY IF EXISTS "generated_documents_client_read" ON generated_documents;
 DROP POLICY IF EXISTS "generated_documents_learner_read" ON generated_documents;
 
+DROP POLICY IF EXISTS "generated_documents_admin_all" ON generated_documents;
 CREATE POLICY "generated_documents_admin_all" ON generated_documents
   FOR ALL TO authenticated
   USING (
@@ -725,6 +763,7 @@ CREATE POLICY "generated_documents_admin_all" ON generated_documents
     )
   );
 
+DROP POLICY IF EXISTS "generated_documents_trainer_read" ON generated_documents;
 CREATE POLICY "generated_documents_trainer_read" ON generated_documents
   FOR SELECT TO authenticated
   USING (
@@ -736,6 +775,7 @@ CREATE POLICY "generated_documents_trainer_read" ON generated_documents
     )
   );
 
+DROP POLICY IF EXISTS "generated_documents_client_read" ON generated_documents;
 CREATE POLICY "generated_documents_client_read" ON generated_documents
   FOR SELECT TO authenticated
   USING (
@@ -743,6 +783,7 @@ CREATE POLICY "generated_documents_client_read" ON generated_documents
     AND client_id IN (SELECT client_id FROM learners WHERE profile_id = auth.uid())
   );
 
+DROP POLICY IF EXISTS "generated_documents_learner_read" ON generated_documents;
 CREATE POLICY "generated_documents_learner_read" ON generated_documents
   FOR SELECT TO authenticated
   USING (
@@ -795,11 +836,13 @@ DROP POLICY IF EXISTS "allow_all" ON questionnaires;
 DROP POLICY IF EXISTS "questionnaires_admin_all" ON questionnaires;
 DROP POLICY IF EXISTS "questionnaires_other_roles_read" ON questionnaires;
 
+DROP POLICY IF EXISTS "questionnaires_admin_all" ON questionnaires;
 CREATE POLICY "questionnaires_admin_all" ON questionnaires
   FOR ALL TO authenticated
   USING (user_role() IN ('admin', 'super_admin') AND entity_id = user_entity_id())
   WITH CHECK (user_role() IN ('admin', 'super_admin') AND entity_id = user_entity_id());
 
+DROP POLICY IF EXISTS "questionnaires_other_roles_read" ON questionnaires;
 CREATE POLICY "questionnaires_other_roles_read" ON questionnaires
   FOR SELECT TO authenticated
   USING (
@@ -813,6 +856,7 @@ DROP POLICY IF EXISTS "allow_all" ON questions;
 DROP POLICY IF EXISTS "questions_admin_all" ON questions;
 DROP POLICY IF EXISTS "questions_other_roles_read" ON questions;
 
+DROP POLICY IF EXISTS "questions_admin_all" ON questions;
 CREATE POLICY "questions_admin_all" ON questions
   FOR ALL TO authenticated
   USING (
@@ -824,6 +868,7 @@ CREATE POLICY "questions_admin_all" ON questions
     AND questionnaire_id IN (SELECT id FROM questionnaires WHERE entity_id = user_entity_id())
   );
 
+DROP POLICY IF EXISTS "questions_other_roles_read" ON questions;
 CREATE POLICY "questions_other_roles_read" ON questions
   FOR SELECT TO authenticated
   USING (
@@ -840,6 +885,7 @@ DROP POLICY IF EXISTS "questionnaire_responses_trainer_read" ON questionnaire_re
 DROP POLICY IF EXISTS "questionnaire_responses_learner_read" ON questionnaire_responses;
 DROP POLICY IF EXISTS "questionnaire_responses_learner_insert" ON questionnaire_responses;
 
+DROP POLICY IF EXISTS "questionnaire_responses_admin_all" ON questionnaire_responses;
 CREATE POLICY "questionnaire_responses_admin_all" ON questionnaire_responses
   FOR ALL TO authenticated
   USING (
@@ -851,6 +897,7 @@ CREATE POLICY "questionnaire_responses_admin_all" ON questionnaire_responses
     AND questionnaire_id IN (SELECT id FROM questionnaires WHERE entity_id = user_entity_id())
   );
 
+DROP POLICY IF EXISTS "questionnaire_responses_trainer_read" ON questionnaire_responses;
 CREATE POLICY "questionnaire_responses_trainer_read" ON questionnaire_responses
   FOR SELECT TO authenticated
   USING (
@@ -862,6 +909,7 @@ CREATE POLICY "questionnaire_responses_trainer_read" ON questionnaire_responses
     )
   );
 
+DROP POLICY IF EXISTS "questionnaire_responses_learner_own" ON questionnaire_responses;
 CREATE POLICY "questionnaire_responses_learner_own" ON questionnaire_responses
   FOR ALL TO authenticated
   USING (
@@ -878,6 +926,7 @@ CREATE POLICY "questionnaire_responses_learner_own" ON questionnaire_responses
 DROP POLICY IF EXISTS "allow_all" ON crm_client_tags;
 DROP POLICY IF EXISTS "crm_client_tags_admin_all" ON crm_client_tags;
 
+DROP POLICY IF EXISTS "crm_client_tags_admin_all" ON crm_client_tags;
 CREATE POLICY "crm_client_tags_admin_all" ON crm_client_tags
   FOR ALL TO authenticated
   USING (
@@ -894,6 +943,7 @@ CREATE POLICY "crm_client_tags_admin_all" ON crm_client_tags
 DROP POLICY IF EXISTS "allow_all" ON crm_prospect_tags;
 DROP POLICY IF EXISTS "crm_prospect_tags_admin_all" ON crm_prospect_tags;
 
+DROP POLICY IF EXISTS "crm_prospect_tags_admin_all" ON crm_prospect_tags;
 CREATE POLICY "crm_prospect_tags_admin_all" ON crm_prospect_tags
   FOR ALL TO authenticated
   USING (
@@ -911,6 +961,7 @@ DROP POLICY IF EXISTS "allow_all" ON crm_quote_lines;
 DROP POLICY IF EXISTS "crm_quote_lines_all" ON crm_quote_lines;
 DROP POLICY IF EXISTS "crm_quote_lines_admin_all" ON crm_quote_lines;
 
+DROP POLICY IF EXISTS "crm_quote_lines_admin_all" ON crm_quote_lines;
 CREATE POLICY "crm_quote_lines_admin_all" ON crm_quote_lines
   FOR ALL TO authenticated
   USING (
@@ -928,6 +979,7 @@ DROP POLICY IF EXISTS "allow_all" ON crm_automation_rules;
 DROP POLICY IF EXISTS "crm_automation_rules_admin" ON crm_automation_rules;
 DROP POLICY IF EXISTS "crm_automation_rules_admin_all" ON crm_automation_rules;
 
+DROP POLICY IF EXISTS "crm_automation_rules_admin_all" ON crm_automation_rules;
 CREATE POLICY "crm_automation_rules_admin_all" ON crm_automation_rules
   FOR ALL TO authenticated
   USING (user_role() IN ('admin', 'super_admin') AND entity_id = user_entity_id())
@@ -940,11 +992,13 @@ DROP POLICY IF EXISTS "Users can view locations of their entity" ON locations;
 DROP POLICY IF EXISTS "locations_admin_all" ON locations;
 DROP POLICY IF EXISTS "locations_other_roles_read" ON locations;
 
+DROP POLICY IF EXISTS "locations_admin_all" ON locations;
 CREATE POLICY "locations_admin_all" ON locations
   FOR ALL TO authenticated
   USING (user_role() IN ('admin', 'super_admin') AND entity_id = user_entity_id())
   WITH CHECK (user_role() IN ('admin', 'super_admin') AND entity_id = user_entity_id());
 
+DROP POLICY IF EXISTS "locations_other_roles_read" ON locations;
 CREATE POLICY "locations_other_roles_read" ON locations
   FOR SELECT TO authenticated
   USING (
@@ -961,11 +1015,13 @@ DROP POLICY IF EXISTS "referrals_admin_read" ON referrals;
 DROP POLICY IF EXISTS "referrals_insert" ON referrals;
 DROP POLICY IF EXISTS "referrals_admin_update" ON referrals;
 
+DROP POLICY IF EXISTS "referrals_admin_all" ON referrals;
 CREATE POLICY "referrals_admin_all" ON referrals
   FOR ALL TO authenticated
   USING (user_role() IN ('admin', 'super_admin'))
   WITH CHECK (user_role() IN ('admin', 'super_admin'));
 
+DROP POLICY IF EXISTS "referrals_self_insert" ON referrals;
 CREATE POLICY "referrals_self_insert" ON referrals
   FOR INSERT TO authenticated
   WITH CHECK (referrer_user_id = auth.uid());
