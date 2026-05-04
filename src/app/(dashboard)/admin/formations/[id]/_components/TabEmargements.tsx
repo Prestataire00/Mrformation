@@ -676,8 +676,140 @@ export function TabEmargements({ formation, onRefresh }: Props) {
         </div>
       )}
 
-      {/* Quick actions */}
-      <div className="flex items-center justify-end flex-wrap gap-1.5">
+      {/* ═══ 3 CARDS WORKFLOW ═══ */}
+      {timeSlots.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Card 1 — PRÉPARER */}
+          <div className="border rounded-xl p-4 bg-blue-50/50 border-blue-200">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="p-2 rounded-lg bg-blue-100">
+                <QrCode className="h-4 w-4 text-blue-700" />
+              </div>
+              <h3 className="font-semibold text-gray-900">📤 Préparer</h3>
+            </div>
+            <p className="text-xs text-gray-600 mb-3">Distribuer la signature aux apprenants</p>
+            <a
+              href={`/admin/formations/${formation.id}/emargement-live`}
+              className="block w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-3 py-2 rounded-lg text-center transition-colors mb-2"
+              title="1 QR projeté pour toute la session — apprenants scannent et choisissent leur nom"
+            >
+              📱 Mode présentation
+            </a>
+            <div className="text-[11px] text-gray-500 space-y-1">
+              <button
+                type="button"
+                onClick={handleGenerateAllTokens}
+                disabled={generatingTokens}
+                className="block w-full text-left hover:text-blue-700"
+              >
+                → Générer QR individuels (1 par apprenant)
+              </button>
+              <button
+                type="button"
+                onClick={handleSendToTrainer}
+                disabled={sendingToTrainer || trainers.length === 0}
+                className="block w-full text-left hover:text-blue-700"
+              >
+                → Envoyer les QR par email au formateur
+              </button>
+              <button
+                type="button"
+                onClick={handleExportPdf}
+                disabled={exportingPdf}
+                className="block w-full text-left hover:text-blue-700"
+              >
+                → Télécharger PDF des QR à imprimer
+              </button>
+            </div>
+          </div>
+
+          {/* Card 2 — SUIVRE */}
+          <div className="border rounded-xl p-4 bg-emerald-50/50 border-emerald-200">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="p-2 rounded-lg bg-emerald-100">
+                <UserCheck className="h-4 w-4 text-emerald-700" />
+              </div>
+              <h3 className="font-semibold text-gray-900">✅ Suivre</h3>
+            </div>
+            <p className="text-xs text-gray-600 mb-3">Pendant la formation : vérifier les présences</p>
+            <a
+              href={`/admin/formations/${formation.id}/emargement-live`}
+              className="block w-full bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-3 py-2 rounded-lg text-center transition-colors mb-2"
+              title="Page live avec liste apprenants signés/en attente, mise à jour toutes les 3 sec"
+            >
+              👁 Voir les présences en direct
+            </a>
+            <div className="text-[11px] text-gray-500">
+              Vous pouvez également faire signer manuellement chaque apprenant ci-dessous (mode &laquo; appel &raquo;).
+            </div>
+          </div>
+
+          {/* Card 3 — EXPORTER */}
+          <div className="border rounded-xl p-4 bg-purple-50/50 border-purple-200">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="p-2 rounded-lg bg-purple-100">
+                <Download className="h-4 w-4 text-purple-700" />
+              </div>
+              <h3 className="font-semibold text-gray-900">📄 Exporter</h3>
+            </div>
+            <p className="text-xs text-gray-600 mb-3">Justificatifs Qualiopi après formation</p>
+            <button
+              type="button"
+              onClick={handleExportEmargementPdf}
+              disabled={exportingSheet}
+              className="block w-full bg-purple-600 hover:bg-purple-700 disabled:bg-purple-300 text-white text-sm font-medium px-3 py-2 rounded-lg text-center transition-colors mb-2"
+              title="PDF complet avec toutes les signatures collectées"
+            >
+              {exportingSheet ? "Génération..." : "📥 Feuille d'émargement signée"}
+            </button>
+            <div className="text-[11px] text-gray-500 space-y-1">
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    toast({ title: "Génération en cours..." });
+                    const res = await fetch("/api/documents/generate-from-template", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ doc_type: "planning_semaine", context: { session_id: formation.id } }),
+                    });
+                    const json = await res.json();
+                    if (!res.ok) throw new Error(json.error ?? "Échec génération");
+                    const byteChars = atob(json.base64);
+                    const byteArray = new Uint8Array(byteChars.length);
+                    for (let i = 0; i < byteChars.length; i++) byteArray[i] = byteChars.charCodeAt(i);
+                    const blob = new Blob([byteArray], { type: "application/pdf" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `planning-hebdo-${formation.title?.replace(/\s+/g, "-") || "session"}.pdf`;
+                    a.click();
+                    setTimeout(() => URL.revokeObjectURL(url), 1000);
+                    toast({ title: "Planning téléchargé" });
+                  } catch (err) {
+                    toast({ title: "Erreur", description: err instanceof Error ? err.message : "Erreur", variant: "destructive" });
+                  }
+                }}
+                className="block w-full text-left hover:text-purple-700"
+              >
+                → Planning hebdo signé (paysage)
+              </button>
+              <button
+                type="button"
+                onClick={handlePrintEmpty}
+                className="block w-full text-left hover:text-purple-700"
+              >
+                → Imprimer une feuille vide
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quick actions (legacy — gardés pour compatibilité, accessibles aux power users) */}
+      <details className="text-sm">
+        <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">Actions avancées</summary>
+        <div className="mt-2 flex items-center justify-end flex-wrap gap-1.5">
         <div className="flex items-center gap-1.5">
           <Button
             size="sm"
@@ -763,7 +895,8 @@ export function TabEmargements({ formation, onRefresh }: Props) {
             <CalendarDays className="h-3 w-3" /> Planning hebdo
           </Button>
         </div>
-      </div>
+        </div>
+      </details>
 
       {/* PDF progress */}
       {exportingPdf && pdfProgress.total > 0 && (

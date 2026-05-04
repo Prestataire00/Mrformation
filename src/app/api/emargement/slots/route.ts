@@ -80,10 +80,20 @@ export async function POST(request: NextRequest) {
   const auth = await requireRole(["super_admin", "admin", "trainer"]);
   if (auth.error) return auth.error;
 
-  const { session_id, slot_ids, include_trainers = true } = await request.json();
+  // mode "individual" (default, comportement existant) → 1 token par learner × slot
+  // mode "session" → 1 SEUL token par slot (sans learner_id), apprenant choisit son nom au scan
+  const {
+    session_id,
+    slot_ids,
+    include_trainers = true,
+    mode = "individual",
+  } = await request.json();
 
   if (!session_id) {
     return NextResponse.json({ error: "session_id requis" }, { status: 400 });
+  }
+  if (mode !== "individual" && mode !== "session") {
+    return NextResponse.json({ error: "mode invalide (individual ou session)" }, { status: 400 });
   }
 
   const supabase = createServiceClient();
@@ -111,6 +121,56 @@ export async function POST(request: NextRequest) {
       { status: 404 }
     );
   }
+
+  // ── MODE SESSION : 1 seul token par slot (pas de learner_id) ──
+  if (mode === "session") {
+    const sessionTokens: Array<{ slot: typeof slots[0]; token: string; expires_at: string }> = [];
+
+    for (const slot of slots) {
+      // Cherche un token session non-expiré pour ce slot
+      const { data: existing } = await supabase
+        .from("signing_tokens")
+        .select("token, expires_at")
+        .eq("session_id", session_id)
+        .eq("time_slot_id", slot.id)
+        .eq("token_type", "session")
+        .is("learner_id", null)
+        .is("trainer_id", null)
+        .gt("expires_at", new Date().toISOString())
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (existing) {
+        sessionTokens.push({ slot, token: existing.token, expires_at: existing.expires_at });
+        continue;
+      }
+
+      // Sinon créer un nouveau token session
+      const { data: newTok, error } = await supabase
+        .from("signing_tokens")
+        .insert({
+          session_id,
+          time_slot_id: slot.id,
+          entity_id: auth.profile.entity_id,
+          token_type: "session",
+          signer_type: "learner",
+          expires_at: expiresAt,
+        })
+        .select("token, expires_at")
+        .single();
+
+      if (error || !newTok) {
+        console.error("[emargement/slots] Session token insert failed", { code: error?.code, slotId: slot.id });
+        continue;
+      }
+      sessionTokens.push({ slot, token: newTok.token, expires_at: newTok.expires_at });
+    }
+
+    return NextResponse.json({ mode: "session", session_tokens: sessionTokens });
+  }
+
+  // ── MODE INDIVIDUAL (existant ci-dessous) ──
 
   // 2. Fetch enrolled learners
   const { data: enrollments } = await supabase
