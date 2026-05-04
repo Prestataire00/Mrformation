@@ -173,21 +173,39 @@ export async function POST(request: NextRequest) {
   // ── MODE INDIVIDUAL (existant ci-dessous) ──
 
   // 2. Fetch enrolled learners
-  const { data: enrollments } = await supabase
+  // On accepte tous les statuts SAUF cancelled : un apprenant qui a déjà
+  // attendu/complété la formation peut quand même avoir besoin d'émargement
+  // pour des créneaux passés (ex: admin re-génère QR a posteriori).
+  const { data: enrollments, error: enrollErr } = await supabase
     .from("enrollments")
-    .select("id, learner_id, learner:learners(id, first_name, last_name, email)")
+    .select("id, learner_id, status, learner:learners(id, first_name, last_name, email)")
     .eq("session_id", session_id)
-    .in("status", ["registered", "confirmed"]);
+    .neq("status", "cancelled");
+
+  if (enrollErr) {
+    console.error("[emargement/slots] enrollments query error:", enrollErr);
+  }
 
   // 3. Fetch trainers if requested
   let formationTrainers: { trainer_id: string; trainer: { id: string; first_name: string; last_name: string; email: string | null } | { id: string; first_name: string; last_name: string; email: string | null }[] | null }[] = [];
   if (include_trainers) {
-    const { data: ft } = await supabase
+    const { data: ft, error: ftErr } = await supabase
       .from("formation_trainers")
       .select("trainer_id, trainer:trainers(id, first_name, last_name, email)")
       .eq("session_id", session_id);
+    if (ftErr) {
+      console.error("[emargement/slots] formation_trainers query error:", ftErr);
+    }
     formationTrainers = (ft || []) as typeof formationTrainers;
   }
+
+  console.log("[emargement/slots] POST individual", {
+    session_id,
+    slots_count: slots.length,
+    enrollments_count: enrollments?.length ?? 0,
+    enrollment_statuses: (enrollments ?? []).map((e) => e.status),
+    trainers_count: formationTrainers.length,
+  });
 
   // 4. Generate tokens for each slot x each person
   const allTokens: Record<string, { slot: typeof slots[0]; learner_tokens: unknown[]; trainer_tokens: unknown[] }> = {};

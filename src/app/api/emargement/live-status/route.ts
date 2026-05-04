@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
     .from("enrollments")
     .select("learner:learners(id, first_name, last_name, email)")
     .eq("session_id", sessionId)
-    .in("status", ["registered", "confirmed"]);
+    .neq("status", "cancelled");
 
   const learners: PersonStatus[] = ((enrollments ?? []) as unknown as Array<{ learner: { id: string; first_name: string; last_name: string; email: string | null } | null }>)
     .filter((e) => e.learner)
