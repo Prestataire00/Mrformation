@@ -36,6 +36,16 @@ interface SlotTokensResponse {
     trainer_tokens: { token: string; person: { id: string; first_name: string; last_name: string; email: string | null } }[];
   }[];
   total_tokens: number;
+  debug?: {
+    session_id: string;
+    slots_count: number;
+    enrollments_count: number;
+    enrollment_statuses: string[];
+    enrollments_with_learner: number;
+    trainers_count: number;
+    trainers_with_data: number;
+    enrollments_error: string | null;
+  };
 }
 
 // ──────────────────────────────────────────────
@@ -1052,10 +1062,22 @@ export function TabEmargements({ formation, onRefresh }: Props) {
             <div className="space-y-6">
               {/* Empty state global : aucun apprenant inscrit */}
               {qrSlotTokens.slots.every((s) => (s.learner_tokens?.length ?? 0) === 0 && (s.trainer_tokens?.length ?? 0) === 0) && (
-                <div className="text-center py-8 px-4 bg-amber-50 border border-amber-200 rounded-lg">
+                <div className="text-left py-6 px-4 bg-amber-50 border border-amber-200 rounded-lg space-y-2">
                   <p className="text-sm text-amber-900 font-medium">Aucun apprenant ni formateur inscrit dans cette session.</p>
-                  <p className="text-xs text-amber-700 mt-1">
-                    Vérifiez que les apprenants ont le statut « inscrit » ou « confirmé », et qu&apos;au moins un formateur est associé à la session.
+                  {qrSlotTokens.debug && (
+                    <div className="text-xs font-mono bg-white/70 border border-amber-200 rounded p-2 text-amber-900 space-y-0.5">
+                      <div>session_id : <span className="font-semibold">{qrSlotTokens.debug.session_id}</span></div>
+                      <div>slots trouvés : <span className="font-semibold">{qrSlotTokens.debug.slots_count}</span></div>
+                      <div>enrollments trouvés : <span className="font-semibold">{qrSlotTokens.debug.enrollments_count}</span> (statuts : {qrSlotTokens.debug.enrollment_statuses.join(", ") || "aucun"})</div>
+                      <div>enrollments avec learner lié : <span className="font-semibold">{qrSlotTokens.debug.enrollments_with_learner}</span></div>
+                      <div>formation_trainers trouvés : <span className="font-semibold">{qrSlotTokens.debug.trainers_count}</span> (avec data : {qrSlotTokens.debug.trainers_with_data})</div>
+                      {qrSlotTokens.debug.enrollments_error && (
+                        <div className="text-red-700">erreur SQL : {qrSlotTokens.debug.enrollments_error}</div>
+                      )}
+                    </div>
+                  )}
+                  <p className="text-xs text-amber-700">
+                    Si <code>enrollments_count = 0</code> mais que vous voyez l&apos;apprenant en bas de la page, c&apos;est un problème de session_id ou de RLS service_role. Si <code>enrollments_with_learner</code> est inférieur à <code>enrollments_count</code>, la jointure FK <code>learners</code> est cassée.
                   </p>
                 </div>
               )}

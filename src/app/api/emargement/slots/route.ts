@@ -339,5 +339,15 @@ export async function POST(request: NextRequest) {
       (sum, s) => sum + s.learner_tokens.length + s.trainer_tokens.length,
       0
     ),
+    debug: {
+      session_id,
+      slots_count: slots.length,
+      enrollments_count: enrollments?.length ?? 0,
+      enrollment_statuses: (enrollments ?? []).map((e) => e.status),
+      enrollments_with_learner: (enrollments ?? []).filter((e) => e.learner).length,
+      trainers_count: formationTrainers.length,
+      trainers_with_data: formationTrainers.filter((ft) => ft.trainer).length,
+      enrollments_error: enrollErr?.message ?? null,
+    },
   });
 }
