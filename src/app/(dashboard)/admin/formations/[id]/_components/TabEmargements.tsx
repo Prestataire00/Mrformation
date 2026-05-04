@@ -507,6 +507,51 @@ export function TabEmargements({ formation, onRefresh }: Props) {
 
   // ── Export PDF feuille d'émargement (format professionnel) ──
 
+  // Planning hebdo : génération côté client en jsPDF natif (pas de CloudConvert,
+  // donc pas de quota Payment Required à gérer).
+  const handleDownloadPlanningHebdo = async () => {
+    if (timeSlots.length === 0) return;
+    try {
+      toast({ title: "Génération du planning hebdo..." });
+      const { downloadPlanningHebdoPDF } = await import("@/lib/planning-hebdo-pdf-export");
+      const totalMs = timeSlots.reduce((sum, slot) => sum + (new Date(slot.end_time).getTime() - new Date(slot.start_time).getTime()), 0);
+      const durationHours = Math.round((totalMs / 3_600_000) * 100) / 100;
+
+      await downloadPlanningHebdoPDF({
+        formationTitle: formation.title,
+        startDate: formation.start_date,
+        endDate: formation.end_date,
+        location: formation.location,
+        durationHours,
+        entityName: entity?.name || "MR FORMATION",
+        trainers: trainers
+          .filter((ft) => ft.trainer)
+          .map((ft) => ({ id: ft.trainer!.id, first_name: ft.trainer!.first_name, last_name: ft.trainer!.last_name })),
+        learners: enrollments
+          .filter((e) => e.learner)
+          .map((e) => ({ id: e.learner!.id, first_name: e.learner!.first_name, last_name: e.learner!.last_name })),
+        timeSlots: timeSlots.map((s) => ({ id: s.id, start_time: s.start_time, end_time: s.end_time })),
+        signatures: signatures
+          .filter((s): s is typeof s & { signer_id: string } => s.signer_id !== null)
+          .map((s) => ({
+            time_slot_id: s.time_slot_id,
+            signer_id: s.signer_id,
+            signer_type: s.signer_type,
+            signature_data: s.signature_data,
+            signed_at: s.signed_at,
+          })),
+      });
+      toast({ title: "Planning hebdo téléchargé" });
+    } catch (err) {
+      console.error("[planning-hebdo] error:", err);
+      toast({
+        title: "Erreur",
+        description: err instanceof Error ? err.message : "Génération impossible",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleExportEmargementPdf = async () => {
     setExportingSheet(true);
     try {
@@ -765,31 +810,7 @@ export function TabEmargements({ formation, onRefresh }: Props) {
             <div className="text-[11px] text-gray-500 space-y-1">
               <button
                 type="button"
-                onClick={async () => {
-                  try {
-                    toast({ title: "Génération en cours..." });
-                    const res = await fetch("/api/documents/generate-from-template", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ doc_type: "planning_semaine", context: { session_id: formation.id } }),
-                    });
-                    const json = await res.json();
-                    if (!res.ok) throw new Error(json.error ?? "Échec génération");
-                    const byteChars = atob(json.base64);
-                    const byteArray = new Uint8Array(byteChars.length);
-                    for (let i = 0; i < byteChars.length; i++) byteArray[i] = byteChars.charCodeAt(i);
-                    const blob = new Blob([byteArray], { type: "application/pdf" });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement("a");
-                    a.href = url;
-                    a.download = `planning-hebdo-${formation.title?.replace(/\s+/g, "-") || "session"}.pdf`;
-                    a.click();
-                    setTimeout(() => URL.revokeObjectURL(url), 1000);
-                    toast({ title: "Planning téléchargé" });
-                  } catch (err) {
-                    toast({ title: "Erreur", description: err instanceof Error ? err.message : "Erreur", variant: "destructive" });
-                  }
-                }}
+                onClick={handleDownloadPlanningHebdo}
                 className="block w-full text-left hover:text-purple-700"
               >
                 → Planning hebdo signé (paysage)
@@ -858,37 +879,7 @@ export function TabEmargements({ formation, onRefresh }: Props) {
             size="sm"
             variant="outline"
             className="text-xs h-7 gap-1"
-            onClick={async () => {
-              try {
-                toast({ title: "Génération en cours..." });
-                const res = await fetch("/api/documents/generate-from-template", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    doc_type: "planning_semaine",
-                    context: { session_id: formation.id },
-                  }),
-                });
-                const json = await res.json();
-                if (!res.ok) throw new Error(json.error ?? "Échec génération PDF");
-
-                // base64 → Blob → download
-                const byteChars = atob(json.base64);
-                const byteArray = new Uint8Array(byteChars.length);
-                for (let i = 0; i < byteChars.length; i++) byteArray[i] = byteChars.charCodeAt(i);
-                const blob = new Blob([byteArray], { type: "application/pdf" });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement("a");
-                a.href = url;
-                a.download = `planning-hebdo-${formation.title?.replace(/\s+/g, "-") || "session"}.pdf`;
-                a.click();
-                setTimeout(() => URL.revokeObjectURL(url), 1000);
-                toast({ title: "Planning téléchargé" });
-              } catch (err) {
-                const msg = err instanceof Error ? err.message : "Erreur inconnue";
-                toast({ title: "Erreur génération", description: msg, variant: "destructive" });
-              }
-            }}
+            onClick={handleDownloadPlanningHebdo}
             disabled={timeSlots.length === 0}
             title="Tableau hebdomadaire avec signatures collectées (paysage 1 page)"
           >
