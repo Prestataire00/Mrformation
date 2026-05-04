@@ -1048,11 +1048,32 @@ export function TabEmargements({ formation, onRefresh }: Props) {
       <Dialog open={qrDialog} onOpenChange={setQrDialog}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>QR Codes générés</DialogTitle>
+            <DialogTitle>
+              QR Codes générés
+              {qrSlotTokens && (
+                <span className="text-sm font-normal text-gray-500 ml-2">
+                  — {qrSlotTokens.slots.reduce((sum, s) => sum + (s.learner_tokens?.length ?? 0) + (s.trainer_tokens?.length ?? 0), 0)} QR
+                </span>
+              )}
+            </DialogTitle>
           </DialogHeader>
           {qrSlotTokens && (
             <div className="space-y-6">
-              {qrSlotTokens.slots.map(slotData => (
+              {/* Empty state global : aucun apprenant inscrit */}
+              {qrSlotTokens.slots.every((s) => (s.learner_tokens?.length ?? 0) === 0 && (s.trainer_tokens?.length ?? 0) === 0) && (
+                <div className="text-center py-8 px-4 bg-amber-50 border border-amber-200 rounded-lg">
+                  <p className="text-sm text-amber-900 font-medium">Aucun apprenant ni formateur inscrit dans cette session.</p>
+                  <p className="text-xs text-amber-700 mt-1">
+                    Vérifiez que les apprenants ont le statut « inscrit » ou « confirmé », et qu&apos;au moins un formateur est associé à la session.
+                  </p>
+                </div>
+              )}
+
+              {qrSlotTokens.slots.map(slotData => {
+                const hasLearners = (slotData.learner_tokens?.length ?? 0) > 0;
+                const hasTrainers = (slotData.trainer_tokens?.length ?? 0) > 0;
+                if (!hasLearners && !hasTrainers) return null;
+                return (
                 <div key={slotData.slot.id} className="space-y-3">
                   <div className="flex items-center gap-2">
                     <Badge variant="outline">
@@ -1061,7 +1082,7 @@ export function TabEmargements({ formation, onRefresh }: Props) {
                     </Badge>
                   </div>
 
-                  {slotData.trainer_tokens.length > 0 && (
+                  {hasTrainers && (
                     <>
                       <p className="text-xs font-semibold text-purple-700">Formateurs</p>
                       <div className="grid grid-cols-3 gap-2">
@@ -1073,7 +1094,9 @@ export function TabEmargements({ formation, onRefresh }: Props) {
                             {qrImages[t.token] ? (
                               <img src={qrImages[t.token]} alt={`QR ${t.person.last_name}`} className="w-32 h-32 mx-auto" />
                             ) : (
-                              <div className="w-32 h-32 mx-auto bg-gray-100 animate-pulse rounded" />
+                              <div className="w-32 h-32 mx-auto bg-gray-100 animate-pulse rounded flex items-center justify-center">
+                                <Loader2 className="h-6 w-6 text-gray-400 animate-spin" />
+                              </div>
                             )}
                           </div>
                         ))}
@@ -1081,23 +1104,30 @@ export function TabEmargements({ formation, onRefresh }: Props) {
                     </>
                   )}
 
-                  <p className="text-xs font-semibold text-blue-700">Apprenants</p>
-                  <div className="grid grid-cols-3 gap-2">
-                    {slotData.learner_tokens.map(t => (
-                      <div key={t.token} className="text-center p-2 border rounded-lg">
-                        <p className="text-xs font-medium mb-1 truncate">
-                          {t.person.last_name} {t.person.first_name}
-                        </p>
-                        {qrImages[t.token] ? (
-                          <img src={qrImages[t.token]} alt={`QR ${t.person.last_name}`} className="w-32 h-32 mx-auto" />
-                        ) : (
-                          <div className="w-32 h-32 mx-auto bg-gray-100 animate-pulse rounded" />
-                        )}
+                  {hasLearners && (
+                    <>
+                      <p className="text-xs font-semibold text-blue-700">Apprenants</p>
+                      <div className="grid grid-cols-3 gap-2">
+                        {slotData.learner_tokens.map(t => (
+                          <div key={t.token} className="text-center p-2 border rounded-lg">
+                            <p className="text-xs font-medium mb-1 truncate">
+                              {t.person.last_name} {t.person.first_name}
+                            </p>
+                            {qrImages[t.token] ? (
+                              <img src={qrImages[t.token]} alt={`QR ${t.person.last_name}`} className="w-32 h-32 mx-auto" />
+                            ) : (
+                              <div className="w-32 h-32 mx-auto bg-gray-100 animate-pulse rounded flex items-center justify-center">
+                                <Loader2 className="h-6 w-6 text-gray-400 animate-spin" />
+                              </div>
+                            )}
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    </>
+                  )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
           <DialogFooter>
