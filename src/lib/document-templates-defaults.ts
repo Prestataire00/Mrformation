@@ -122,6 +122,43 @@ function getSignaturePath(entity?: TemplateData["entity"]): string | null {
   return entity?.signature_url ?? null;
 }
 
+/**
+ * Bloc signature + tampon de l'organisme de formation, à apposer en bas
+ * des documents officiels (convention, certificat, attestation, etc.).
+ *
+ * Tampon et signature scannée sont configurés dans /admin/settings/organization.
+ * Si non uploadés → ligne pointillée vide à signer manuellement (rétrocompat).
+ *
+ * @param compact si true, pas de label "Pour l'organisme…" (déjà dans le contexte)
+ */
+function renderOrgSignatureBlock(
+  entityName: string,
+  entity: TemplateData["entity"] | undefined,
+  options: { compact?: boolean; alignRight?: boolean } = {}
+): string {
+  const co = getCompanyInfo(entityName, entity);
+  const stamp = getStampPath(entity);
+  const sig = getSignaturePath(entity);
+  const align = options.alignRight ? "right" : "left";
+
+  // Tampon et signature côte à côte si les deux dispo, sinon ce qui est dispo
+  const visualBlock = stamp || sig ? `
+    <div style="display:flex; gap:12px; align-items:flex-end; justify-content:${options.alignRight ? "flex-end" : "flex-start"}; margin: 8px 0;">
+      ${sig ? `<img src="${sig}" alt="Signature" style="max-width:140px; max-height:60px; object-fit:contain;" />` : ""}
+      ${stamp ? `<img src="${stamp}" alt="Tampon" style="max-width:110px; max-height:90px; object-fit:contain; opacity:0.85;" />` : ""}
+    </div>
+  ` : `<div style="height:48px;"></div><div style="border-bottom: 1px solid #d1d5db; width: 200px; ${options.alignRight ? "margin-left:auto;" : ""}"></div>`;
+
+  if (options.compact) return visualBlock;
+
+  return `<div style="text-align:${align}; margin-top: 16px;">
+    <p style="font-size: 11px; color: #6b7280; margin: 0;">Pour l'organisme de formation,</p>
+    <p style="font-weight: 600; margin: 4px 0;">${co.name},</p>
+    <p style="margin: 0 0 4px 0;">${co.president}</p>
+    ${visualBlock}
+  </div>`;
+}
+
 function getCompanyInfo(entityName: string, entity?: TemplateData["entity"]) {
   // Defaults hardcodés (rétrocompat — utilisés si entity row absente ou champs vides)
   const isC3v = entityName.toLowerCase().includes("c3v");
@@ -372,19 +409,16 @@ function conventionEntreprise(data: TemplateData): string {
       <p style="font-style: italic; font-size: 10px; color: #6b7280; margin-top: 8px;">La signature de cette convention vaut acceptation du livret d'accueil disponible sur notre site internet.</p>
     </div>
 
-    <div style="display: flex; justify-content: space-between; margin-top: 32px;">
-      <div>
-        <p style="font-size: 11px; color: #6b7280; margin: 0;">Pour l'organisme de formation,</p>
-        <p style="font-weight: 600; margin: 4px 0;">${co.name},</p>
-        <p style="margin: 0 0 48px 0;">${co.president}</p>
-        <div style="border-bottom: 1px solid #d1d5db; width: 200px;"></div>
+    <div style="display: flex; justify-content: space-between; margin-top: 32px; gap: 24px;">
+      <div style="flex: 1;">
+        ${renderOrgSignatureBlock(entityName, entity)}
       </div>
-      <div>
+      <div style="flex: 1; text-align: right;">
         <p style="font-size: 11px; color: #6b7280; margin: 0;">Pour le bénéficiaire</p>
         <p style="font-weight: 600; margin: 4px 0;">${companyName},</p>
         <p style="margin: 0 0 8px 0;">${representant}</p>
         ${data.clientSignature ? `
-          <div style="margin: 8px 0;">
+          <div style="margin: 8px 0; display:flex; justify-content:flex-end;">
             <img src="${signatureToDataUrl(data.clientSignature.signature_data)}" alt="Signature" style="max-width:180px;height:60px;object-fit:contain;" />
           </div>
           <p style="font-size: 8px; color: #6b7280; margin: 2px 0;">
@@ -394,7 +428,7 @@ function conventionEntreprise(data: TemplateData): string {
           </p>
         ` : `
           <div style="height: 48px;"></div>
-          <div style="border-bottom: 1px solid #d1d5db; width: 200px;"></div>
+          <div style="border-bottom: 1px solid #d1d5db; width: 200px; margin-left:auto;"></div>
         `}
       </div>
     </div>`;
@@ -985,7 +1019,14 @@ function certificatRealisation(data: TemplateData): string {
 
     <p>La feuille d'émargement attestant cette assiduité est fournie en annexe.</p>
 
-    <p style="margin-top: 24px;">Fait à Marseille, le ${docDate(data.doc)}</p>`;
+    <div style="display: flex; justify-content: space-between; margin-top: 24px; gap: 24px;">
+      <div style="flex: 1;">
+        <p style="margin: 0;">Fait à Marseille, le ${docDate(data.doc)}</p>
+      </div>
+      <div style="flex: 1;">
+        ${renderOrgSignatureBlock(entityName, entity, { alignRight: true })}
+      </div>
+    </div>`;
 
   return wrap(entityName, "", body, entity);
 }
@@ -1060,7 +1101,14 @@ function attestationAssiduite(data: TemplateData): string {
 
     <p>La feuille d'émargement attestant cette assiduité est fournie en annexe.</p>
 
-    <p style="margin-top: 24px;">Fait à Marseille, le ${docDate(data.doc)}</p>`;
+    <div style="display: flex; justify-content: space-between; margin-top: 24px; gap: 24px;">
+      <div style="flex: 1;">
+        <p style="margin: 0;">Fait à Marseille, le ${docDate(data.doc)}</p>
+      </div>
+      <div style="flex: 1;">
+        ${renderOrgSignatureBlock(entityName, entity, { alignRight: true })}
+      </div>
+    </div>`;
 
   return wrap(entityName, "", body, entity);
 }
