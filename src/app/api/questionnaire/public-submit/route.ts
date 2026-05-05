@@ -40,22 +40,35 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ valid: false, used: isUsed, expired: isExpired });
   }
 
-  // Load questionnaire, questions, learner, session
+  // Load questionnaire, questions, learner, session (avec program/training pour expansion balise)
   const [{ data: questionnaire }, { data: questions }, { data: learner }, { data: session }] = await Promise.all([
     supabase.from("questionnaires").select("id, title, description").eq("id", tokenData.questionnaire_id).single(),
-    supabase.from("questions").select("id, text, type, options, is_required, order_index").eq("questionnaire_id", tokenData.questionnaire_id).order("order_index"),
+    supabase.from("questions").select("id, questionnaire_id, text, type, options, is_required, order_index").eq("questionnaire_id", tokenData.questionnaire_id).order("order_index"),
     supabase.from("learners").select("first_name, last_name").eq("id", tokenData.learner_id).single(),
-    supabase.from("sessions").select("title").eq("id", tokenData.session_id).single(),
+    supabase.from("sessions").select("title, program:programs(objectives), training:trainings(objectives)").eq("id", tokenData.session_id).single(),
   ]);
+
+  // Expanse les balises program_objectives → 1 rating par objectif du programme.
+  // Sans cette étape côté serveur, les questionnaires distribués via lien
+  // public/QR avec balise resteraient bloqués au submit (validation requise
+  // sur une question impossible à remplir).
+  let finalQuestions = questions || [];
+  if (finalQuestions.some((q) => q.type === "program_objectives")) {
+    const { expandObjectivesQuestions } = await import("@/lib/expand-objectives-question");
+    finalQuestions = expandObjectivesQuestions(
+      finalQuestions as never,
+      session as never
+    ) as never;
+  }
 
   return NextResponse.json({
     valid: true,
     used: false,
     expired: false,
     questionnaire_title: questionnaire?.title || "Questionnaire",
-    session_title: session?.title || "",
+    session_title: (session as { title?: string } | null)?.title || "",
     learner_name: learner ? `${learner.first_name} ${learner.last_name}` : "",
-    questions: questions || [],
+    questions: finalQuestions,
   });
 }
 
@@ -84,6 +97,26 @@ export async function POST(request: NextRequest) {
     if (tokenData.used_at) return NextResponse.json({ error: "Déjà répondu" }, { status: 410 });
     if (new Date(tokenData.expires_at) < new Date()) return NextResponse.json({ error: "Lien expiré" }, { status: 410 });
 
+    // Reconstruit le snapshot des objectifs côté serveur (autorité). Le client
+    // envoie ses réponses keyed par les virtual IDs (`<parent>::obj_<i>`),
+    // mais on persiste aussi le mapping parent_id → objectifs au moment T.
+    const { data: rawQuestions } = await supabase
+      .from("questions")
+      .select("id, questionnaire_id, text, type, options, is_required, order_index")
+      .eq("questionnaire_id", tokenData.questionnaire_id);
+
+    let responsesPayload: unknown = responses;
+    if ((rawQuestions ?? []).some((q) => q.type === "program_objectives")) {
+      const { data: sessionData } = await supabase
+        .from("sessions")
+        .select("program:programs(objectives), training:trainings(objectives)")
+        .eq("id", tokenData.session_id)
+        .maybeSingle();
+      const { expandObjectivesQuestions, buildResponsesPayload } = await import("@/lib/expand-objectives-question");
+      const expanded = expandObjectivesQuestions(rawQuestions as never, sessionData as never);
+      responsesPayload = buildResponsesPayload(responses as Record<string, string | number>, expanded);
+    }
+
     // Insert response
     const { data: response, error: respErr } = await supabase
       .from("questionnaire_responses")
@@ -91,7 +124,7 @@ export async function POST(request: NextRequest) {
         questionnaire_id: tokenData.questionnaire_id,
         session_id: tokenData.session_id,
         learner_id: tokenData.learner_id,
-        responses,
+        responses: responsesPayload,
         submitted_at: new Date().toISOString(),
       })
       .select("id")

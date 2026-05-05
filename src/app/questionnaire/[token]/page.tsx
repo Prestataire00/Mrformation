@@ -11,10 +11,12 @@ import { Loader2, Star, CheckCircle2, AlertTriangle } from "lucide-react";
 interface Question {
   id: string;
   text: string;
-  type: "rating" | "text" | "multiple_choice" | "yes_no";
+  type: "rating" | "text" | "multiple_choice" | "yes_no" | "program_objectives";
   options: string[] | null;
   is_required: boolean;
   order_index: number;
+  parent_question_id?: string;
+  objective_text?: string;
 }
 
 interface TokenInfo {
@@ -180,6 +182,13 @@ export default function PublicQuestionnairePage() {
                     {label}
                   </button>
                 ))}
+              </div>
+            )}
+
+            {/* Placeholder balise non-expansée (programme sans objectifs) */}
+            {q.type === "program_objectives" && (
+              <div className="ml-9 text-xs text-gray-500 italic bg-gray-50 border border-dashed border-gray-200 rounded p-2">
+                Aucune action requise sur cette section.
               </div>
             )}
           </div>

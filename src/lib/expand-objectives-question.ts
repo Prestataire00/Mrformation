@@ -68,20 +68,27 @@ export function expandObjectivesQuestions(
       continue;
     }
 
-    // Pas de contexte formation → on garde la balise visible (mode preview admin)
+    // Pas de contexte formation → on garde la balise (preview admin)
+    // ⚠️ is_required=false sinon la validation submit bloquerait l'apprenant.
+    // Les pages qui rendent les questions doivent traiter type "program_objectives"
+    // comme une carte info (pas d'input à remplir).
     if (!formation) {
       result.push({
         ...q,
+        is_required: false,
         text: q.text + " (les objectifs du programme s'afficheront ici à la distribution)",
       });
       continue;
     }
 
-    // Aucun objectif → on garde la balise avec message
+    // Aucun objectif sur la formation → on garde la balise pour info, sans
+    // bloquer le submit. L'admin doit corriger le programme s'il veut
+    // récolter ces évaluations.
     if (objectives.length === 0) {
       result.push({
         ...q,
-        text: q.text + " (aucun objectif défini sur le programme/training de cette formation)",
+        is_required: false,
+        text: q.text + " (aucun objectif défini sur le programme de cette formation — section ignorée)",
       });
       continue;
     }

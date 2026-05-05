@@ -300,6 +300,13 @@ export function AdminFillQuestionnaireDialog({
                       ))}
                     </div>
                   )}
+
+                  {/* Placeholder balise non-expansée (programme sans objectifs) */}
+                  {question.type === "program_objectives" && (
+                    <div className="ml-7 text-xs text-gray-500 italic bg-gray-50 border border-dashed border-gray-200 rounded p-2">
+                      Aucune action requise sur cette section.
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

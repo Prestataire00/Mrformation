@@ -467,6 +467,13 @@ export default function LearnerQuestionnaireFillPage() {
                 </div>
               )}
 
+              {/* Placeholder balise non-expansée (programme sans objectifs ou sans contexte session) */}
+              {question.type === "program_objectives" && (
+                <div className="ml-9 text-xs text-gray-500 italic bg-gray-50 border border-dashed border-gray-200 rounded p-2">
+                  Aucune action requise sur cette section.
+                </div>
+              )}
+
               {/* Validation error */}
               {hasError && (
                 <p className="text-xs text-red-600 mt-2 pl-9">
