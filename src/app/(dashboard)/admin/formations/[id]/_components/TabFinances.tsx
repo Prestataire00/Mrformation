@@ -173,6 +173,18 @@ export function TabFinances({ formation, onRefresh }: Props) {
     fetchData();
   }, [fetchData]);
 
+  // Auto-pré-remplit la facture à l'ouverture du dialog (création nouveau).
+  // Évite à l'admin de cliquer "Pré-remplir" — toutes les infos viennent
+  // automatiquement de la formation (titre, dates, prix, apprenants, entreprise).
+  useEffect(() => {
+    if (invoiceDialog && !editingInvoiceId) {
+      // Petit délai pour laisser React appliquer le state initial
+      const timer = setTimeout(() => prefillInvoiceLines(), 50);
+      return () => clearTimeout(timer);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invoiceDialog, editingInvoiceId]);
+
   // Auto-open edit dialog from URL param ?edit_invoice=xxx
   useEffect(() => {
     const editId = searchParams.get("edit_invoice");
@@ -187,57 +199,84 @@ export function TabFinances({ formation, onRefresh }: Props) {
 
   // ── Create invoice ──
 
-  // Pre-fill invoice from session data
-  const prefillInvoiceLines = () => {
+  /**
+   * Auto-remplit la facture depuis les données de la formation.
+   * Adapté selon le type de destinataire choisi par l'admin :
+   *   - Entreprise : 1 ligne globale, qté = N apprenants, PU = total_price/N
+   *   - Apprenant : 1 ligne, qté = 1, PU = total_price (ou /N si rien d'autre)
+   *   - Financeur : 1 ligne globale, qté = N, PU = total_price/N
+   *
+   * Tous les champs auto-remplis SAUF si l'admin a déjà tapé quelque chose
+   * (on respecte la saisie utilisateur — pas d'écrasement).
+   */
+  const prefillInvoiceLines = (overrideRecipientType?: string, overrideRecipientId?: string) => {
     const enrollments = formation.enrollments || [];
     const enrollCount = enrollments.length || 1;
     const totalPrice = formation.total_price || 0;
     const hours = formation.planned_hours;
-    const desc = `Formation : ${formation.title}${hours ? ` — ${hours}h` : ""}`;
-    const unitPrice = enrollCount > 1 ? (totalPrice / enrollCount) : totalPrice;
 
-    // Participant names
+    const recipientType = overrideRecipientType || invoiceForm.recipient_type;
+    const desc = `Formation : ${formation.title}${hours ? ` — ${hours}h` : ""}${formation.start_date && formation.end_date ? ` (${new Date(formation.start_date).toLocaleDateString("fr-FR")} → ${new Date(formation.end_date).toLocaleDateString("fr-FR")})` : ""}`;
+
+    // Calcul ligne selon recipient_type
+    let qty = "1";
+    let unitPrice = totalPrice;
+    if (recipientType === "company" || recipientType === "financier") {
+      qty = String(enrollCount);
+      unitPrice = enrollCount > 0 ? totalPrice / enrollCount : totalPrice;
+    }
+    // Pour learner : 1 ligne, prix unitaire = total_price (cas typique B2C 1 apprenant 1 facture)
+
     const participantNames = enrollments
-      .filter(e => e.learner)
-      .map(e => `${e.learner!.last_name?.toUpperCase()} ${e.learner!.first_name}`)
+      .filter((e) => e.learner)
+      .map((e) => `${e.learner!.last_name?.toUpperCase()} ${e.learner!.first_name}`)
       .join(", ");
 
-    // Auto-fill recipient from first company if type is "company"
-    const firstCompany = (formation.formation_companies || [])[0];
-    const client = firstCompany?.client as unknown as Record<string, string | null> | undefined;
+    const updates: Partial<typeof invoiceForm> = {};
 
-    const updates: Partial<typeof invoiceForm> = {
-      lines: [{ description: desc, quantity: String(enrollCount), unit_price: unitPrice.toFixed(2).replace(".", ",") }],
-    };
-
-    // Auto-fill recipient info
-    if (client) {
-      updates.recipient_name = client.company_name || "";
-      updates.recipient_id = firstCompany.client_id || "";
-      updates.recipient_type = "company";
-      updates.recipient_siret = client.siret || "";
-      const addr = [client.address, client.postal_code, client.city].filter(Boolean).join(" ");
-      updates.recipient_address = addr;
+    // Lignes : remplit toujours (sauf si lignes déjà non-vides avec contenu)
+    const linesAreEmpty = invoiceForm.lines.every((l) => !l.description.trim() && !parseFloat(l.unit_price.replace(",", ".")));
+    if (linesAreEmpty) {
+      updates.lines = [{ description: desc, quantity: qty, unit_price: unitPrice.toFixed(2).replace(".", ",") }];
     }
 
-    // Due date: end_date + 30 days
-    if (formation.end_date) {
+    // Auto-remplit destinataire si pas encore choisi : 1ère entreprise par défaut
+    if (!invoiceForm.recipient_id && !overrideRecipientId) {
+      const firstCompany = (formation.formation_companies || [])[0];
+      const client = firstCompany?.client as unknown as Record<string, string | null> | undefined;
+      if (client && (recipientType === "company" || !overrideRecipientType)) {
+        updates.recipient_type = "company";
+        updates.recipient_name = client.company_name || "";
+        updates.recipient_id = firstCompany.client_id || "";
+        updates.recipient_siret = client.siret || "";
+        updates.recipient_address = [client.address, client.postal_code, client.city].filter(Boolean).join(" ");
+      }
+    }
+
+    // Date d'échéance = end_date + 30 jours (sauf si déjà saisie)
+    if (!invoiceForm.due_date && formation.end_date) {
       const due = new Date(formation.end_date);
       due.setDate(due.getDate() + 30);
       updates.due_date = due.toISOString().split("T")[0];
     }
 
-    // Notes with participant list
-    const notesParts: string[] = [];
-    if (participantNames) notesParts.push(`Participants : ${participantNames}`);
-    if (notesParts.length > 0) updates.notes = notesParts.join("\n");
+    // Notes avec liste des participants (sauf si déjà saisies)
+    if (!invoiceForm.notes && participantNames) {
+      updates.notes = `Participants : ${participantNames}`;
+    }
 
-    setInvoiceForm(f => ({ ...f, ...updates }));
+    setInvoiceForm((f) => ({ ...f, ...updates }));
   };
 
-  // Auto-fill recipient details when selecting from dropdown
+  // Auto-fill recipient details + recalcule les lignes selon le type de destinataire
   const handleRecipientSelect = (name: string) => {
     const updates: Partial<typeof invoiceForm> = { recipient_name: name };
+
+    const enrollments = formation.enrollments || [];
+    const enrollCount = enrollments.length || 1;
+    const totalPrice = formation.total_price || 0;
+    const hours = formation.planned_hours;
+    const desc = `Formation : ${formation.title}${hours ? ` — ${hours}h` : ""}${formation.start_date && formation.end_date ? ` (${new Date(formation.start_date).toLocaleDateString("fr-FR")} → ${new Date(formation.end_date).toLocaleDateString("fr-FR")})` : ""}`;
 
     if (invoiceForm.recipient_type === "company") {
       const fc = (formation.formation_companies || []).find(c => c.client?.company_name === name);
@@ -247,14 +286,32 @@ export function TabFinances({ formation, onRefresh }: Props) {
         updates.recipient_siret = client.siret || "";
         updates.recipient_address = [client.address, client.postal_code, client.city].filter(Boolean).join(" ");
       }
+      // Pour entreprise : 1 ligne globale, qté = N apprenants, PU = total/N
+      if (invoiceForm.lines.every((l) => !l.description.trim() && !parseFloat(l.unit_price.replace(",", ".")))) {
+        updates.lines = [{
+          description: desc,
+          quantity: String(enrollCount),
+          unit_price: (enrollCount > 0 ? totalPrice / enrollCount : totalPrice).toFixed(2).replace(".", ","),
+        }];
+      }
     } else if (invoiceForm.recipient_type === "learner") {
-      const enrollment = (formation.enrollments || []).find(e =>
+      const enrollment = enrollments.find(e =>
         e.learner && `${e.learner.last_name?.toUpperCase()} ${e.learner.first_name}` === name
       );
       if (enrollment?.learner) {
         updates.recipient_id = enrollment.learner.id;
         updates.recipient_siret = "";
-        updates.recipient_address = "";
+        // Adresse perso de l'apprenant si renseignée
+        const learnerAddr = (enrollment.learner as unknown as Record<string, string | null>);
+        updates.recipient_address = [learnerAddr.address, learnerAddr.postal_code, learnerAddr.city].filter(Boolean).join(" ");
+      }
+      // Pour apprenant : 1 ligne, qté = 1, PU = total_price (ou /N s'il y a plusieurs apprenants — facturation au prorata)
+      if (invoiceForm.lines.every((l) => !l.description.trim() && !parseFloat(l.unit_price.replace(",", ".")))) {
+        updates.lines = [{
+          description: desc,
+          quantity: "1",
+          unit_price: (enrollCount > 1 ? totalPrice / enrollCount : totalPrice).toFixed(2).replace(".", ","),
+        }];
       }
     } else if (invoiceForm.recipient_type === "financier") {
       const fin = (formation.formation_financiers || []).find(f => f.name === name);
@@ -263,6 +320,30 @@ export function TabFinances({ formation, onRefresh }: Props) {
         updates.recipient_siret = "";
         updates.recipient_address = "";
       }
+      // Pour financeur : facturation globale (qté = N apprenants)
+      if (invoiceForm.lines.every((l) => !l.description.trim() && !parseFloat(l.unit_price.replace(",", ".")))) {
+        updates.lines = [{
+          description: desc,
+          quantity: String(enrollCount),
+          unit_price: (enrollCount > 0 ? totalPrice / enrollCount : totalPrice).toFixed(2).replace(".", ","),
+        }];
+      }
+    }
+
+    // Date d'échéance auto = end_date + 30 jours (si pas déjà saisie)
+    if (!invoiceForm.due_date && formation.end_date) {
+      const due = new Date(formation.end_date);
+      due.setDate(due.getDate() + 30);
+      updates.due_date = due.toISOString().split("T")[0];
+    }
+
+    // Notes avec participants (si pas déjà saisies)
+    if (!invoiceForm.notes) {
+      const participantNames = enrollments
+        .filter((e) => e.learner)
+        .map((e) => `${e.learner!.last_name?.toUpperCase()} ${e.learner!.first_name}`)
+        .join(", ");
+      if (participantNames) updates.notes = `Participants : ${participantNames}`;
     }
 
     setInvoiceForm(f => ({ ...f, ...updates }));
@@ -952,7 +1033,7 @@ export function TabFinances({ formation, onRefresh }: Props) {
             <div>
               <div className="flex items-center justify-between mb-2">
                 <Label>Produits</Label>
-                <Button size="sm" variant="ghost" className="h-6 text-xs gap-1" onClick={prefillInvoiceLines}>
+                <Button size="sm" variant="ghost" className="h-6 text-xs gap-1" onClick={() => prefillInvoiceLines()}>
                   Pré-remplir
                 </Button>
               </div>
