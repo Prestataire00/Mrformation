@@ -93,12 +93,22 @@ export default function OrganizationSettingsPage() {
 
   const handleUpload = async (file: File, field: "logo_url" | "stamp_url" | "signature_url") => {
     if (!entityId) return;
-    const ext = file.name.split(".").pop();
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: "Fichier trop lourd", description: "Max 5 Mo", variant: "destructive" });
+      return;
+    }
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? "png";
     const path = `${entityId}/${field}-${Date.now()}.${ext}`;
     const { error } = await supabase.storage.from("organization-assets").upload(path, file, { upsert: true });
     if (error) {
-      // Bucket may not exist yet — try without upsert
-      toast({ title: "Erreur upload", description: error.message, variant: "destructive" });
+      const isBucketMissing = error.message?.toLowerCase().includes("bucket") || error.message?.toLowerCase().includes("not found");
+      toast({
+        title: "Erreur upload",
+        description: isBucketMissing
+          ? "Bucket Storage 'organization-assets' introuvable. Demande à l'admin de jouer la migration create_organization_assets_bucket.sql dans Supabase."
+          : error.message,
+        variant: "destructive",
+      });
       return;
     }
     const { data: urlData } = supabase.storage.from("organization-assets").getPublicUrl(path);
