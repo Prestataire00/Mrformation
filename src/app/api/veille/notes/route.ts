@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
   if (auth.error) return auth.error;
 
   try {
-    const { title, content, source, url } = await request.json();
+    const { title, content, source, url, is_ai_generated } = await request.json();
 
     if (!title || !title.trim()) {
       return NextResponse.json({ error: "Le titre est requis." }, { status: 400 });
@@ -43,6 +43,7 @@ export async function POST(request: NextRequest) {
         content: content || null,
         source: source || null,
         url: url || null,
+        is_ai_generated: !!is_ai_generated,
         created_by: auth.user.id,
       })
       .select()

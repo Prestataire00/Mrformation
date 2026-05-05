@@ -14,6 +14,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/use-toast";
+import { cn } from "@/lib/utils";
 
 interface FeedArticle {
   title: string;
@@ -29,6 +30,7 @@ interface VeilleNote {
   content: string | null;
   source: string | null;
   url: string | null;
+  is_ai_generated?: boolean;
   created_at: string;
 }
 
@@ -53,18 +55,15 @@ export default function VeillePage() {
   // Delete confirmation
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
-  // AI Analysis
-  const [aiAnalysis, setAiAnalysis] = useState<string>("");
-  const [aiAnalysisDate, setAiAnalysisDate] = useState<string>("");
+  // AI Analysis : la dernière analyse est dérivée de la 1re note IA dans la
+  // liste (ordonnée par created_at desc). Plus de localStorage : la source
+  // de vérité est la DB, partagée entre admins, persistante.
   const [analyzingAI, setAnalyzingAI] = useState(false);
-
-  // Load cached AI analysis from localStorage
-  useEffect(() => {
-    const cached = localStorage.getItem("veille_ai_analysis");
-    const cachedDate = localStorage.getItem("veille_ai_analysis_date");
-    if (cached) setAiAnalysis(cached);
-    if (cachedDate) setAiAnalysisDate(cachedDate);
-  }, []);
+  const latestAiNote = notes.find((n) => n.is_ai_generated);
+  const aiAnalysis = latestAiNote?.content ?? "";
+  const aiAnalysisDate = latestAiNote
+    ? new Date(latestAiNote.created_at).toLocaleString("fr-FR")
+    : "";
 
   const fetchFeed = useCallback(async () => {
     setLoadingFeed(true);
@@ -145,24 +144,52 @@ export default function VeillePage() {
     setAnalyzingAI(true);
     try {
       const articleTitles = articles.map(a => `${a.title} (${a.source})`);
-      const noteTexts = notes.map(n => `${n.title}${n.content ? ": " + n.content : ""}`);
+      // On exclut les notes IA précédentes du contexte pour éviter de
+      // ré-analyser nos propres analyses (boucle de bruit).
+      const userNoteTexts = notes
+        .filter((n) => !n.is_ai_generated)
+        .map((n) => `${n.title}${n.content ? ": " + n.content : ""}`);
 
       const res = await fetch("/api/ai/analyze-veille", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ notes: noteTexts, articles: articleTitles }),
+        body: JSON.stringify({ notes: userNoteTexts, articles: articleTitles }),
       });
       const data = await res.json();
-      if (res.ok && data.analysis) {
-        setAiAnalysis(data.analysis);
-        const now = new Date().toLocaleString("fr-FR");
-        setAiAnalysisDate(now);
-        localStorage.setItem("veille_ai_analysis", data.analysis);
-        localStorage.setItem("veille_ai_analysis_date", now);
-        toast({ title: "Analyse IA terminée" });
-      } else {
-        toast({ title: "Erreur", description: data.error, variant: "destructive" });
+      if (!res.ok || !data.analysis) {
+        toast({ title: "Erreur IA", description: data.error || "Génération impossible", variant: "destructive" });
+        return;
       }
+
+      // Persiste l'analyse en DB comme une note flaguée IA — elle apparaitra
+      // dans la liste de notes avec un badge "IA" et restera disponible
+      // pour les autres admins de l'entité.
+      const now = new Date();
+      const dateLabel = now.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
+      const timeLabel = now.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+      const saveRes = await fetch("/api/veille/notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: `Analyse IA — ${dateLabel} ${timeLabel}`,
+          content: data.analysis,
+          source: "Claude AI",
+          is_ai_generated: true,
+        }),
+      });
+      if (!saveRes.ok) {
+        const errData = await saveRes.json().catch(() => ({}));
+        toast({
+          title: "Analyse générée mais non sauvegardée",
+          description: errData.error || "Réessayer plus tard",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Refresh la liste de notes (la nouvelle analyse apparait en haut)
+      await fetchNotes();
+      toast({ title: "Analyse IA enregistrée", description: "Visible dans vos notes." });
     } catch {
       toast({ title: "Erreur réseau", variant: "destructive" });
     } finally {
@@ -320,9 +347,22 @@ export default function VeillePage() {
           ) : (
             <div className="space-y-3">
               {notes.map((note) => (
-                <div key={note.id} className="flex items-start justify-between p-4 bg-muted/30 rounded-lg">
+                <div
+                  key={note.id}
+                  className={cn(
+                    "flex items-start justify-between p-4 rounded-lg",
+                    note.is_ai_generated
+                      ? "bg-purple-50/50 border border-purple-200"
+                      : "bg-muted/30"
+                  )}
+                >
                   <div className="space-y-1 flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {note.is_ai_generated && (
+                        <Badge variant="outline" className="text-xs gap-1 border-purple-300 bg-purple-50 text-purple-700">
+                          <Sparkles className="h-3 w-3" /> IA
+                        </Badge>
+                      )}
                       <span className="text-sm font-medium">{note.title}</span>
                       {note.source && (
                         <Badge variant="outline" className="text-xs">{note.source}</Badge>
