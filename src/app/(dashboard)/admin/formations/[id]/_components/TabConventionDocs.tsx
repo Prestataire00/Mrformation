@@ -364,6 +364,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
       company: company || undefined,
       trainer: trainerData || undefined,
       entityName,
+      entity: entity ?? undefined,
       doc: { document_date: doc.document_date || null, confirmed_at: doc.confirmed_at || null },
       clientSignature,
       magicLinkUrl,

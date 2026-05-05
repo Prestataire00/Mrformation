@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
 
     const { data: entity } = await auth.supabase
       .from("entities")
-      .select("name")
+      .select("name, legal_form, siret, nda, ape_code, rcs, capital, address, postal_code, city, region, email, phone, website, president_name, president_title, logo_url, stamp_url, signature_url")
       .eq("id", session.entity_id)
       .single();
     const entityName = entity?.name || "MR FORMATION";
@@ -110,6 +110,7 @@ export async function POST(request: NextRequest) {
       company: companyRaw ? { company_name: companyRaw.company_name } : undefined,
       trainer: trainerRaw ? { first_name: trainerRaw.first_name, last_name: trainerRaw.last_name } : undefined,
       entityName,
+      entity: entity ?? undefined,
     });
 
     htmlContent = templateHtml || `<p>Document ${docLabel}</p>`;

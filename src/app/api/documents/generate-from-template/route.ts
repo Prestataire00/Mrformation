@@ -272,7 +272,11 @@ export async function POST(request: NextRequest) {
         ? (await auth.supabase.from("trainers").select("first_name, last_name").eq("id", payload.context.trainer_id).single()).data
         : null;
       const { data: entity } = session?.entity_id
-        ? await auth.supabase.from("entities").select("name").eq("id", session.entity_id as string).single()
+        ? await auth.supabase
+            .from("entities")
+            .select("name, legal_form, siret, nda, ape_code, rcs, capital, address, postal_code, city, region, email, phone, website, president_name, president_title, logo_url, stamp_url, signature_url")
+            .eq("id", session.entity_id as string)
+            .single()
         : { data: null };
 
       const html = getDefaultTemplate(payload.doc_type, {
@@ -281,6 +285,7 @@ export async function POST(request: NextRequest) {
         company: companyData ?? undefined,
         trainer: trainerData ?? undefined,
         entityName: entity?.name ?? "MR FORMATION",
+        entity: entity ?? undefined,
       });
 
       if (!html) {

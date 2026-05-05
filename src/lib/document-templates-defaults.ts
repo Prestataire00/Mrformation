@@ -10,6 +10,33 @@ interface TemplateData {
   company?: { company_name: string; address?: string | null; siret?: string | null; contacts?: Array<{ first_name: string; last_name: string; is_primary: boolean }> };
   trainer?: { first_name: string; last_name: string };
   entityName: string;
+  /**
+   * Entité (organisme de formation) complète : si fournie, surcharge les
+   * valeurs hardcodées de getCompanyInfo (SIRET, adresse, NDA, logo…).
+   * → permet à l'admin de paramétrer ses propres infos dans
+   *   /admin/settings/organization sans toucher au code.
+   */
+  entity?: {
+    name?: string | null;
+    legal_form?: string | null;
+    siret?: string | null;
+    nda?: string | null;
+    ape_code?: string | null;
+    rcs?: string | null;
+    capital?: string | null;
+    address?: string | null;
+    postal_code?: string | null;
+    city?: string | null;
+    region?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    website?: string | null;
+    president_name?: string | null;
+    president_title?: string | null;
+    logo_url?: string | null;
+    stamp_url?: string | null;
+    signature_url?: string | null;
+  };
   // Heures effectives (calculées depuis signatures)
   effectiveHours?: number;
   attendanceRate?: number;
@@ -79,35 +106,65 @@ function docDateLong(doc?: { document_date?: string | null; confirmed_at?: strin
   return todayFr();
 }
 
-function getLogoPath(entityName: string): string {
+function getLogoPath(entityName: string, entity?: TemplateData["entity"]): string {
+  // Priorité : logo_url uploadé dans /admin/settings/organization
+  if (entity?.logo_url) return entity.logo_url;
+  // Fallback : assets statiques par nom d'entité
   if (entityName.toLowerCase().includes("c3v")) return "/logo-c3v-formation.png";
   return "/logo-mr-formation.png";
 }
 
-function getCompanyInfo(entityName: string) {
-  if (entityName.toLowerCase().includes("c3v")) {
-    return {
-      name: "C3V FORMATION",
-      address: "24/26 Boulevard Gay Lussac 13014 Marseille",
-      email: "contact@c3vformation.fr",
-      tel: "0750461245",
-      website: "http://www.c3vformation.fr",
-      siret: "à compléter",
-      nda: "à compléter",
-      region: "PACA",
-      president: "VICHOT Marc",
-    };
-  }
+function getStampPath(entity?: TemplateData["entity"]): string | null {
+  return entity?.stamp_url ?? null;
+}
+
+function getSignaturePath(entity?: TemplateData["entity"]): string | null {
+  return entity?.signature_url ?? null;
+}
+
+function getCompanyInfo(entityName: string, entity?: TemplateData["entity"]) {
+  // Defaults hardcodés (rétrocompat — utilisés si entity row absente ou champs vides)
+  const isC3v = entityName.toLowerCase().includes("c3v");
+  const defaults = isC3v
+    ? {
+        name: "C3V FORMATION",
+        address: "24/26 Boulevard Gay Lussac 13014 Marseille",
+        email: "contact@c3vformation.fr",
+        tel: "0750461245",
+        website: "http://www.c3vformation.fr",
+        siret: "à compléter",
+        nda: "à compléter",
+        region: "PACA",
+        president: "VICHOT Marc",
+      }
+    : {
+        name: "MR FORMATION",
+        address: "24/26 Boulevard Gay Lussac 13014 Marseille",
+        email: "contact@mrformation.fr",
+        tel: "0750461245",
+        website: "http://www.mrformation.fr",
+        siret: "91311329600036",
+        nda: "93132013113",
+        region: "PACA",
+        president: "VICHOT Marc",
+      };
+
+  // Adresse complète : address + postal_code + city si disponibles
+  const fullAddress = entity?.address
+    ? [entity.address, [entity.postal_code, entity.city].filter(Boolean).join(" ")].filter(Boolean).join(" ")
+    : null;
+
+  // Surcharge avec l'entity row (champ par champ, fallback aux defaults)
   return {
-    name: "MR FORMATION",
-    address: "24/26 Boulevard Gay Lussac 13014 Marseille",
-    email: "contact@mrformation.fr",
-    tel: "0750461245",
-    website: "http://www.mrformation.fr",
-    siret: "91311329600036",
-    nda: "93132013113",
-    region: "PACA",
-    president: "VICHOT Marc",
+    name: entity?.name || defaults.name,
+    address: fullAddress || entity?.address || defaults.address,
+    email: entity?.email || defaults.email,
+    tel: entity?.phone || defaults.tel,
+    website: entity?.website || defaults.website,
+    siret: entity?.siret || defaults.siret,
+    nda: entity?.nda || defaults.nda,
+    region: entity?.region || defaults.region,
+    president: entity?.president_name || defaults.president,
   };
 }
 
@@ -155,9 +212,9 @@ const MODE_LABELS: Record<string, string> = {
 // Wrapper HTML
 // ──────────────────────────────────────────────
 
-function header(entityName: string): string {
-  const co = getCompanyInfo(entityName);
-  const logoSrc = getLogoPath(entityName);
+function header(entityName: string, entity?: TemplateData["entity"]): string {
+  const co = getCompanyInfo(entityName, entity);
+  const logoSrc = getLogoPath(entityName, entity);
   return `<div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px;">
     <div>
       <p style="font-size: 18px; font-weight: 700; margin: 0; color: #111827;">${co.name}</p>
@@ -170,8 +227,8 @@ function header(entityName: string): string {
   </div>`;
 }
 
-function footer(entityName: string): string {
-  const co = getCompanyInfo(entityName);
+function footer(entityName: string, entity?: TemplateData["entity"]): string {
+  const co = getCompanyInfo(entityName, entity);
   return `<div style="border-top: 1px solid #e5e7eb; margin-top: 40px; padding-top: 12px;">
     <p style="font-size: 9px; color: #9ca3af; margin: 0; text-align: center; font-style: italic;">
       ${co.name}, ${co.address} , Numéro SIRET: ${co.siret}, Numéro de déclaration d'activité: ${co.nda}
@@ -182,12 +239,12 @@ function footer(entityName: string): string {
   </div>`;
 }
 
-function wrap(entityName: string, title: string, body: string): string {
+function wrap(entityName: string, title: string, body: string, entity?: TemplateData["entity"]): string {
   return `<div style="font-family: Helvetica, Arial, sans-serif; color: #1e293b; max-width: 794px; margin: 0 auto; padding: 32px 40px; line-height: 1.5; font-size: 12px;">
-  ${header(entityName)}
+  ${header(entityName, entity)}
   <h1 style="font-size: 18px; font-weight: 700; text-align: center; text-transform: uppercase; color: #111827; margin: 0 0 24px 0; letter-spacing: 0.5px;">${title}</h1>
   ${body}
-  ${footer(entityName)}
+  ${footer(entityName, entity)}
 </div>`;
 }
 
@@ -216,8 +273,8 @@ function infoTable(rows: string): string {
 // ──────────────────────────────────────────────
 
 function conventionEntreprise(data: TemplateData): string {
-  const { formation, company, entityName } = data;
-  const co = getCompanyInfo(entityName);
+  const { formation, company, entityName , entity } = data;
+  const co = getCompanyInfo(entityName, entity);
   const companyName = company?.company_name || "[Nom client]";
   const companyAddress = company?.address || "[Adresse client]";
   const companySiret = company?.siret || "[SIRET client]";
@@ -342,7 +399,7 @@ function conventionEntreprise(data: TemplateData): string {
       </div>
     </div>`;
 
-  return wrap(entityName, "Convention de formation professionnelle", body);
+  return wrap(entityName, "Convention de formation professionnelle", body, entity);
 }
 
 // ──────────────────────────────────────────────
@@ -350,8 +407,8 @@ function conventionEntreprise(data: TemplateData): string {
 // ──────────────────────────────────────────────
 
 function feuilleEmargement(data: TemplateData): string {
-  const { formation, learner, company, entityName } = data;
-  const co = getCompanyInfo(entityName);
+  const { formation, learner, company, entityName , entity } = data;
+  const co = getCompanyInfo(entityName, entity);
   const companyName = company?.company_name || "";
   const modalite = MODE_LABELS[formation.mode] || formation.mode;
   const enrollments = formation.enrollments || [];
@@ -428,7 +485,7 @@ function feuilleEmargement(data: TemplateData): string {
       ${slotBlocks.length > 0 ? slotBlocks : `<p style="color: #999; font-style: italic;">Aucun créneau planifié.</p>`}
       ${legend}`;
 
-    return wrap(entityName, "Feuille d'émargement", body);
+    return wrap(entityName, "Feuille d'émargement", body, entity);
   }
 
   // ── Format COLLECTIF (Document 2) — pas de learner passé ──
@@ -510,7 +567,7 @@ function feuilleEmargement(data: TemplateData): string {
     ${slotTables}
     ${legend}`;
 
-  return wrap(entityName, "Feuille d'émargement", body);
+  return wrap(entityName, "Feuille d'émargement", body, entity);
 }
 
 // ──────────────────────────────────────────────
@@ -518,7 +575,7 @@ function feuilleEmargement(data: TemplateData): string {
 // ──────────────────────────────────────────────
 
 function programmeFormation(data: TemplateData): string {
-  const { formation, entityName } = data;
+  const { formation, entityName , entity } = data;
   const program = formation.program;
   const training = formation.training;
   const programContent = (program?.content || {}) as Record<string, string>;
@@ -574,7 +631,7 @@ function programmeFormation(data: TemplateData): string {
       ? `<div style="font-size: 11px; white-space: pre-line;">${programContent.teaching_methods}</div>`
       : `<ul style="margin: 4px 0; padding-left: 20px; font-size: 11px;">
           <li>Alternance d'apports théoriques et d'ateliers pratiques. Mises en situation et analyse de situations.</li>
-          <li>Pour faciliter l'ancrage et conformément à l'ADN ${getCompanyInfo(entityName).name}, nos ateliers utilisent la Ludo pédagogie : jeux, simulations, quizz…</li>
+          <li>Pour faciliter l'ancrage et conformément à l'ADN ${getCompanyInfo(entityName, entity).name}, nos ateliers utilisent la Ludo pédagogie : jeux, simulations, quizz…</li>
           <li>Remise d'un support de synthèse</li>
         </ul>`
     }
@@ -596,7 +653,7 @@ function programmeFormation(data: TemplateData): string {
     <h2 style="font-size: 13px; font-weight: 700; text-transform: uppercase; margin: 20px 0 8px 0; color: #111827;">Accessibilité</h2>
     <p style="font-size: 11px;">Pour le bon déroulement de la formation, nous vous remercions de bien vouloir nous signaler si un besoin d'adaptation lié à une situation de handicap (ou toute autre situation spécifique) est nécessaire. Nous ferons tout notre possible pour que chacun puisse suivre notre formation dans les meilleures conditions possibles.</p>`;
 
-  return wrap(entityName, `Programme de formation : ${formation.title}`, body);
+  return wrap(entityName, `Programme de formation : ${formation.title}`, body, entity);
 }
 
 // ──────────────────────────────────────────────
@@ -604,8 +661,8 @@ function programmeFormation(data: TemplateData): string {
 // ──────────────────────────────────────────────
 
 function cgv(data: TemplateData): string {
-  const { entityName } = data;
-  const co = getCompanyInfo(entityName);
+  const { entityName , entity } = data;
+  const co = getCompanyInfo(entityName, entity);
 
   const body = `
     <p style="font-size: 11px; margin-bottom: 12px;"><strong>Définitions</strong></p>
@@ -670,7 +727,7 @@ function cgv(data: TemplateData): string {
 
     ${article("17", "Loi applicable et juridiction", `<p>Les Contrat et tous les rapports entre ${co.name} et son Client relèvent de la Loi française. Tous litiges qui ne pourraient être réglés à l'amiable dans un délai de soixante (60) jours compté à partir de la date de la première présentation de la lettre recommandée avec accusé de réception, que la partie qui soulève le différend devra avoir adressée à l'autre, seront de la compétence exclusive du tribunal de commerce de Marseille quel que soit le siège du Client, nonobstant pluralité de défendeurs ou appel en garantie.</p>`)}`;
 
-  return wrap(entityName, "Conditions Générales de Vente", body);
+  return wrap(entityName, "Conditions Générales de Vente", body, entity);
 }
 
 // ──────────────────────────────────────────────
@@ -678,8 +735,8 @@ function cgv(data: TemplateData): string {
 // ──────────────────────────────────────────────
 
 function reglementInterieur(data: TemplateData): string {
-  const { entityName } = data;
-  const co = getCompanyInfo(entityName);
+  const { entityName , entity } = data;
+  const co = getCompanyInfo(entityName, entity);
 
   const body = `
     ${article("1", "", `<p>Le présent règlement est établi conformément aux dispositions des articles L.6352-3 et L.6352-4 et R.6352-1 à R.6352-15 du Code du travail. Il s'applique à tous les stagiaires, et ce pour la durée de la formation suivie.</p>`)}
@@ -722,7 +779,7 @@ function reglementInterieur(data: TemplateData): string {
 
     ${article("8", "Publicité du Règlement Intérieur", `<p>Un exemplaire du présent règlement est remis à chaque stagiaire (avant toute inscription définitive).</p>`)}`;
 
-  return wrap(entityName, "Règlement intérieur", body);
+  return wrap(entityName, "Règlement intérieur", body, entity);
 }
 
 // ──────────────────────────────────────────────
@@ -730,8 +787,8 @@ function reglementInterieur(data: TemplateData): string {
 // ──────────────────────────────────────────────
 
 function politiqueRgpd(data: TemplateData): string {
-  const { entityName } = data;
-  const co = getCompanyInfo(entityName);
+  const { entityName , entity } = data;
+  const co = getCompanyInfo(entityName, entity);
 
   const body = `
     <p style="font-size: 11px; margin-bottom: 16px;"><strong>Introduction</strong></p>
@@ -810,7 +867,7 @@ function politiqueRgpd(data: TemplateData): string {
       <p style="font-size: 11px; margin: 0;">Adresse : ${co.address}</p>
     </div>`;
 
-  return wrap(entityName, "Politique RGPD", body);
+  return wrap(entityName, "Politique RGPD", body, entity);
 }
 
 // ──────────────────────────────────────────────
@@ -818,8 +875,8 @@ function politiqueRgpd(data: TemplateData): string {
 // ──────────────────────────────────────────────
 
 function convocation(data: TemplateData): string {
-  const { formation, learner, entityName, magicLinkUrl, qrCodeDataUrl } = data;
-  const co = getCompanyInfo(entityName);
+  const { formation, learner, entityName, magicLinkUrl, qrCodeDataUrl , entity } = data;
+  const co = getCompanyInfo(entityName, entity);
   const fullName = learner ? `${learner.last_name?.toUpperCase()} ${learner.first_name}` : "—";
   const modalite = MODE_LABELS[formation.mode] || "En présentiel";
   const timeSlots = formation.formation_time_slots || [];
@@ -866,7 +923,7 @@ function convocation(data: TemplateData): string {
 
     <p style="margin-top: 24px;">Nous restons à votre disposition.<br/>Bien cordialement,<br/><strong>${co.name}</strong><br/>${co.address}</p>`;
 
-  return wrap(entityName, "", body);
+  return wrap(entityName, "", body, entity);
 }
 
 // ──────────────────────────────────────────────
@@ -874,8 +931,8 @@ function convocation(data: TemplateData): string {
 // ──────────────────────────────────────────────
 
 function certificatRealisation(data: TemplateData): string {
-  const { formation, learner, company, entityName, effectiveHours, attendanceRate } = data;
-  const co = getCompanyInfo(entityName);
+  const { formation, learner, company, entityName, effectiveHours, attendanceRate , entity } = data;
+  const co = getCompanyInfo(entityName, entity);
   const fullName = learner ? `${learner.last_name?.toUpperCase()} ${learner.first_name}` : "—";
   const clientName = company?.company_name || formation.formation_companies?.[0]?.client?.company_name || "—";
   const objectives = formation.program?.objectives || "";
@@ -930,7 +987,7 @@ function certificatRealisation(data: TemplateData): string {
 
     <p style="margin-top: 24px;">Fait à Marseille, le ${docDate(data.doc)}</p>`;
 
-  return wrap(entityName, "", body);
+  return wrap(entityName, "", body, entity);
 }
 
 // ──────────────────────────────────────────────
@@ -938,8 +995,8 @@ function certificatRealisation(data: TemplateData): string {
 // ──────────────────────────────────────────────
 
 function attestationAssiduite(data: TemplateData): string {
-  const { formation, learner, entityName, signedSlots: extSignedSlots, missedSlots: extMissedSlots } = data;
-  const co = getCompanyInfo(entityName);
+  const { formation, learner, entityName, signedSlots: extSignedSlots, missedSlots: extMissedSlots , entity } = data;
+  const co = getCompanyInfo(entityName, entity);
   const fullName = learner ? `${learner.last_name?.toUpperCase()} ${learner.first_name}` : "—";
   const modalite = MODE_LABELS[formation.mode] || "En présentiel";
 
@@ -1005,7 +1062,7 @@ function attestationAssiduite(data: TemplateData): string {
 
     <p style="margin-top: 24px;">Fait à Marseille, le ${docDate(data.doc)}</p>`;
 
-  return wrap(entityName, "", body);
+  return wrap(entityName, "", body, entity);
 }
 
 // ──────────────────────────────────────────────
@@ -1027,8 +1084,8 @@ function attestationAssiduite(data: TemplateData): string {
 // DOCUMENT — PLANNING SEMAINE
 // ──────────────────────────────────────────────
 function planningSemaine(data: TemplateData): string {
-  const { formation, entityName } = data;
-  const co = getCompanyInfo(entityName);
+  const { formation, entityName , entity } = data;
+  const co = getCompanyInfo(entityName, entity);
   const enrollments = formation.enrollments || [];
   const trainers = formation.formation_trainers || [];
   const timeSlots = formation.formation_time_slots || [];
@@ -1143,15 +1200,15 @@ function planningSemaine(data: TemplateData): string {
       Document généré le ${docDateLong(data.doc)}.
     </p>`;
 
-  return wrap(entityName, "Planning hebdomadaire — Feuille d'émargement", body);
+  return wrap(entityName, "Planning hebdomadaire — Feuille d'émargement", body, entity);
 }
 
 // ──────────────────────────────────────────────
 // DOCUMENT — FEUILLE D'ÉMARGEMENT COLLECTIVE MATRICIELLE
 // ──────────────────────────────────────────────
 function feuilleEmargementMatriciel(data: TemplateData): string {
-  const { formation, company, entityName } = data;
-  const co = getCompanyInfo(entityName);
+  const { formation, company, entityName , entity } = data;
+  const co = getCompanyInfo(entityName, entity);
   const modalite = MODE_LABELS[formation.mode] || formation.mode;
   const enrollments = (formation.enrollments || []).filter(e => e.learner);
   const trainers = (formation.formation_trainers || []).filter(ft => ft.trainer);
@@ -1238,7 +1295,7 @@ function feuilleEmargementMatriciel(data: TemplateData): string {
     </table>
     ${legend}`;
 
-  return wrap(entityName, "", body);
+  return wrap(entityName, "", body, entity);
 }
 
 const GENERATORS: Record<string, (data: TemplateData) => string> = {

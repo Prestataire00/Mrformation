@@ -6,6 +6,25 @@ export interface Entity {
   logo_url: string | null;
   theme_color: string;
   created_at: string;
+  // Champs identité visuelle / fiscale (paramétrés via /admin/settings/organization)
+  legal_form?: string | null;
+  siret?: string | null;
+  nda?: string | null;
+  ape_code?: string | null;
+  rcs?: string | null;
+  capital?: string | null;
+  address?: string | null;
+  postal_code?: string | null;
+  city?: string | null;
+  region?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  website?: string | null;
+  president_name?: string | null;
+  president_title?: string | null;
+  signature_text?: string | null;
+  stamp_url?: string | null;
+  signature_url?: string | null;
 }
 
 // ===== USERS / PROFILES =====

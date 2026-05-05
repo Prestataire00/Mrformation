@@ -1139,6 +1139,7 @@ export default function DocumentsPage() {
                                   const demoData = {
                                     formation: { id: "demo", title: "Formation IA Générative", start_date: "2026-04-15", end_date: "2026-04-17", planned_hours: 21, mode: "presentiel", location: "Paris", enrollments: [], formation_trainers: [], formation_time_slots: [], signatures: [] },
                                     entityName: entity?.name || "MR FORMATION",
+                                    entity: entity ?? undefined,
                                   };
                                   const html = getDefaultTemplate(ot.id, demoData as unknown as Parameters<typeof getDefaultTemplate>[1]);
                                   if (html) {
@@ -1174,6 +1175,7 @@ export default function DocumentsPage() {
                                     const demoData = {
                                       formation: { id: "demo", title: "Formation", start_date: "2026-01-01", end_date: "2026-01-03", planned_hours: 21, mode: "presentiel", location: "Marseille", enrollments: [], formation_trainers: [], formation_time_slots: [], signatures: [] },
                                       entityName: entity?.name || "MR FORMATION",
+                                      entity: entity ?? undefined,
                                     };
                                     const html = getDefaultTemplate(ot.id, demoData as unknown as Parameters<typeof getDefaultTemplate>[1]) || "";
                                     const { data: newTpl, error } = await supabase

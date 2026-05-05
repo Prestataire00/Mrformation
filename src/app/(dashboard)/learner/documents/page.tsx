@@ -162,6 +162,7 @@ export default function LearnerDocumentsPage() {
         formation: { title: doc.session_title, start_date: doc.session_start_date, end_date: doc.session_end_date } as any,
         learner: learner ? { first_name: learner.first_name, last_name: learner.last_name, email: learner.email ?? undefined } : undefined,
         entityName,
+        entity: entity ?? undefined,
       });
     }
 

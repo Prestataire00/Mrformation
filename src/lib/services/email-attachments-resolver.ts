@@ -237,10 +237,10 @@ async function renderTemplateHtml(
     return null;
   }
 
-  // Charge le nom d'entité pour l'affichage
+  // Charge l'entité complète (nom + identité visuelle pour les templates PDF)
   const { data: entity } = await supabase
     .from("entities")
-    .select("name")
+    .select("name, legal_form, siret, nda, ape_code, rcs, capital, address, postal_code, city, region, email, phone, website, president_name, president_title, logo_url, stamp_url, signature_url")
     .eq("id", session.entity_id)
     .single();
   const entityName = entity?.name || "MR FORMATION";
@@ -289,5 +289,6 @@ async function renderTemplateHtml(
     company,
     trainer,
     entityName,
+    entity: entity ?? undefined,
   });
 }
