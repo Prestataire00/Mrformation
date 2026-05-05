@@ -19,13 +19,18 @@ import {
   Loader2, Star, Send, AlertTriangle, ShieldAlert,
 } from "lucide-react";
 
+import { expandObjectivesQuestions, buildResponsesPayload, type BaseQuestion } from "@/lib/expand-objectives-question";
+
 interface QuestionData {
   id: string;
+  questionnaire_id?: string;
   text: string;
-  type: "rating" | "text" | "multiple_choice" | "yes_no";
+  type: "rating" | "text" | "multiple_choice" | "yes_no" | "program_objectives";
   options: string[] | null;
   is_required: boolean;
   order_index: number;
+  parent_question_id?: string;
+  objective_text?: string;
 }
 
 interface Props {
@@ -70,11 +75,24 @@ export function AdminFillQuestionnaireDialog({
 
     const { data: qs } = await supabase
       .from("questions")
-      .select("id, text, type, options, is_required, order_index")
+      .select("id, questionnaire_id, text, type, options, is_required, order_index")
       .eq("questionnaire_id", questionnaireId)
       .order("order_index");
 
-    setQuestions((qs || []) as QuestionData[]);
+    // Expanse program_objectives → 1 rating par objectif du programme de la session
+    let expanded: QuestionData[] = (qs || []) as QuestionData[];
+    if (expanded.some((q) => q.type === "program_objectives")) {
+      const { data: sessionData } = await supabase
+        .from("sessions")
+        .select("program:programs(objectives), training:trainings(objectives)")
+        .eq("id", sessionId)
+        .maybeSingle();
+      expanded = expandObjectivesQuestions(
+        expanded as unknown as BaseQuestion[],
+        sessionData as never
+      ) as QuestionData[];
+    }
+    setQuestions(expanded);
 
     // Fetch existing response
     const res = await fetch(
@@ -121,6 +139,12 @@ export function AdminFillQuestionnaireDialog({
 
     setSubmitting(true);
     try {
+      // Snapshot des objectifs (utile si le programme change après)
+      const answersPayload = buildResponsesPayload(
+        responses,
+        questions as unknown as Parameters<typeof buildResponsesPayload>[1]
+      );
+
       const res = await fetch("/api/admin/questionnaires/fill-for-learner", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -128,7 +152,7 @@ export function AdminFillQuestionnaireDialog({
           questionnaire_id: questionnaireId,
           learner_id: learnerId,
           session_id: sessionId,
-          answers: responses,
+          answers: answersPayload,
           fill_mode: fillMode,
           admin_notes: adminNotes || null,
         }),

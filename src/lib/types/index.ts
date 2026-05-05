@@ -537,7 +537,7 @@ export interface ProgramModuleProgress {
 
 // ===== QUESTIONNAIRES =====
 export type QuestionnaireType = "satisfaction" | "evaluation" | "survey";
-export type QuestionType = "rating" | "text" | "multiple_choice" | "yes_no";
+export type QuestionType = "rating" | "text" | "multiple_choice" | "yes_no" | "program_objectives";
 export type QualityIndicatorType =
   | "eval_preformation" | "eval_pendant" | "eval_postformation"
   | "auto_eval_pre" | "auto_eval_post"

@@ -62,7 +62,7 @@ import { exportToPDF } from "@/lib/pdf-export";
 import Link from "next/link";
 
 type QuestionnaireType = "satisfaction" | "evaluation" | "survey";
-type QuestionType = "rating" | "text" | "multiple_choice" | "yes_no";
+type QuestionType = "rating" | "text" | "multiple_choice" | "yes_no" | "program_objectives";
 
 type QuestionnaireWithStats = Questionnaire & {
   questions: Question[];
@@ -87,12 +87,14 @@ const QUESTION_TYPE_LABELS: Record<QuestionType, string> = {
   text: "Texte libre",
   multiple_choice: "Choix multiple",
   yes_no: "Oui / Non",
+  program_objectives: "🎯 Objectifs du programme (auto)",
 };
 
 const QuestionTypeIcon = ({ type }: { type: QuestionType }) => {
   if (type === "rating") return <Star className="h-3.5 w-3.5" />;
   if (type === "text") return <AlignLeft className="h-3.5 w-3.5" />;
   if (type === "multiple_choice") return <CheckSquare className="h-3.5 w-3.5" />;
+  if (type === "program_objectives") return <Star className="h-3.5 w-3.5 text-purple-600" />;
   return <ToggleLeft className="h-3.5 w-3.5" />;
 };
 
@@ -354,49 +356,43 @@ export default function QuestionnairesPage() {
     await fetchQuestionnaires();
   };
 
-  const handleGenerateFromObjectives = async () => {
+  /**
+   * Ajoute UNE question de type "program_objectives" qui agit comme balise.
+   * À la distribution (page apprenant ou admin fill), elle sera remplacée
+   * par N questions de notation 1-5, une par objectif du programme de la
+   * formation à laquelle le questionnaire est attribué.
+   *
+   * Avant : on créait N questions figées issues d'un programme au hasard.
+   * Maintenant : 1 balise dynamique qui s'adapte à chaque formation.
+   */
+  const handleAddObjectivesPlaceholder = async () => {
     if (!selectedQ) return;
+    // Vérifie qu'il n'y a pas déjà une balise pour éviter les doublons
+    if (questions.some(q => q.type === "program_objectives")) {
+      toast({
+        title: "Une balise est déjà présente",
+        description: "Une seule balise « Objectifs du programme » par questionnaire.",
+        variant: "destructive",
+      });
+      return;
+    }
     setGeneratingFromObjectives(true);
     try {
-      // Find programs with objectives
-      const { data: programs } = await supabase
-        .from("programs")
-        .select("id, title, objectives")
-        .eq("entity_id", entityId)
-        .not("objectives", "is", null)
-        .order("title");
-
-      if (!programs || programs.length === 0) {
-        toast({ title: "Aucun programme avec des objectifs", description: "Ajoutez des objectifs à un programme d'abord", variant: "destructive" });
-        return;
-      }
-
-      // Use the first program with objectives (or let user choose if multiple)
-      const program = programs[0];
-      const objectiveLines = (program.objectives || "")
-        .split(/[\n•\-]+/)
-        .map((s: string) => s.trim())
-        .filter(Boolean);
-
-      if (objectiveLines.length === 0) {
-        toast({ title: "Aucun objectif exploitable", variant: "destructive" });
-        return;
-      }
-
       const startOrder = questions.length > 0 ? Math.max(...questions.map(q => q.order_index)) + 1 : 1;
-      const newQuestions = objectiveLines.map((obj: string, i: number) => ({
+      const { error } = await supabase.from("questions").insert({
         questionnaire_id: selectedQ.id,
-        text: `Niveau de maîtrise : ${obj}`,
-        type: "rating",
+        text: "Évaluez votre niveau pour chaque objectif de la formation",
+        type: "program_objectives",
         is_required: true,
         options: null,
-        order_index: startOrder + i,
-      }));
-
-      const { error } = await supabase.from("questions").insert(newQuestions);
+        order_index: startOrder,
+      });
       if (error) throw error;
 
-      toast({ title: `${newQuestions.length} questions générées`, description: `Depuis les objectifs de "${program.title}"` });
+      toast({
+        title: "Balise ajoutée",
+        description: "À la distribution, elle sera remplacée par une note par objectif du programme de la formation.",
+      });
       const { data } = await supabase.from("questions").select("*").eq("questionnaire_id", selectedQ.id).order("order_index");
       setQuestions((data as Question[]) || []);
       await fetchQuestionnaires();
@@ -1025,12 +1021,16 @@ export default function QuestionnairesPage() {
             <Button
               variant="outline"
               className="w-full gap-2 border-dashed text-purple-700 border-purple-300 hover:bg-purple-50"
-              onClick={handleGenerateFromObjectives}
+              onClick={handleAddObjectivesPlaceholder}
               disabled={generatingFromObjectives}
             >
               {generatingFromObjectives ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-              Générer depuis les objectifs du programme
+              Ajouter une balise « Objectifs du programme »
             </Button>
+            <p className="text-[11px] text-gray-500 px-1">
+              Cette balise s&apos;adaptera automatiquement à chaque formation : à la distribution,
+              elle sera remplacée par une note 1-5 par objectif du programme de la formation.
+            </p>
           </div>
 
           <DialogFooter>

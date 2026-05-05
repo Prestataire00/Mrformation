@@ -20,8 +20,10 @@ import {
   AlertTriangle,
 } from "lucide-react";
 
+import { expandObjectivesQuestions, buildResponsesPayload, type BaseQuestion } from "@/lib/expand-objectives-question";
+
 type QuestionnaireType = "satisfaction" | "evaluation" | "survey";
-type QuestionType = "rating" | "text" | "multiple_choice" | "yes_no";
+type QuestionType = "rating" | "text" | "multiple_choice" | "yes_no" | "program_objectives";
 
 interface QuestionData {
   id: string;
@@ -31,6 +33,8 @@ interface QuestionData {
   options: string[] | null;
   is_required: boolean;
   order_index: number;
+  parent_question_id?: string;
+  objective_text?: string;
 }
 
 interface QuestionnaireData {
@@ -124,7 +128,22 @@ export default function LearnerQuestionnaireFillPage() {
       .eq("questionnaire_id", questionnaireId)
       .order("order_index", { ascending: true });
 
-    setQuestions((questionsData as QuestionData[]) || []);
+    // Expanse les balises program_objectives → 1 question rating par objectif
+    // du programme/training de la session. Si pas de session_id en URL, la
+    // balise reste affichée (avec un message indicatif).
+    let expandedQuestions: QuestionData[] = (questionsData as QuestionData[]) || [];
+    if (sessionId && expandedQuestions.some((q) => q.type === "program_objectives")) {
+      const { data: sessionData } = await supabase
+        .from("sessions")
+        .select("program:programs(objectives), training:trainings(objectives)")
+        .eq("id", sessionId)
+        .maybeSingle();
+      expandedQuestions = expandObjectivesQuestions(
+        expandedQuestions as unknown as BaseQuestion[],
+        sessionData as never
+      ) as QuestionData[];
+    }
+    setQuestions(expandedQuestions);
 
     // Check for existing response
     if (sessionId) {
@@ -190,11 +209,15 @@ export default function LearnerQuestionnaireFillPage() {
 
     setSubmitting(true);
 
+    // Enrichit le payload avec un snapshot des objectifs (utile si le programme
+    // est modifié plus tard, on conserve la trace des objectifs au moment T).
+    const responsesPayload = buildResponsesPayload(responses, questions);
+
     const { error } = await supabase.from("questionnaire_responses").insert({
       questionnaire_id: questionnaireId,
       session_id: sessionId,
       learner_id: learnerId,
-      responses,
+      responses: responsesPayload,
     });
 
     setSubmitting(false);
