@@ -955,7 +955,11 @@ function convocation(data: TemplateData): string {
     Vous trouverez dans votre extranet notre <strong>règlement intérieur</strong> dont vous devez avoir pris connaissance <strong>avant</strong> votre entrée en formation, afin d'être informé des règles de fonctionnement dans le cadre de la formation.<br/>
     Pour les formations qui se déroulent dans votre entreprise, le règlement intérieur de votre entreprise s'applique pour la partie <strong>Sécurité</strong> (article 5).</p>
 
-    <p style="margin-top: 24px;">Nous restons à votre disposition.<br/>Bien cordialement,<br/><strong>${co.name}</strong><br/>${co.address}</p>`;
+    <p style="margin-top: 24px;">Nous restons à votre disposition.<br/>Bien cordialement,<br/><strong>${co.name}</strong><br/>${co.address}</p>
+
+    <div style="margin-top: 16px; text-align: right;">
+      ${renderOrgSignatureBlock(entityName, entity, { compact: true, alignRight: true })}
+    </div>`;
 
   return wrap(entityName, "", body, entity);
 }
