@@ -200,32 +200,63 @@ export function TabFinances({ formation, onRefresh }: Props) {
   // ── Create invoice ──
 
   /**
-   * Auto-remplit la facture depuis les données de la formation.
-   * Adapté selon le type de destinataire choisi par l'admin :
-   *   - Entreprise : 1 ligne globale, qté = N apprenants, PU = total_price/N
-   *   - Apprenant : 1 ligne, qté = 1, PU = total_price (ou /N si rien d'autre)
-   *   - Financeur : 1 ligne globale, qté = N, PU = total_price/N
+   * Construit les lignes auto de la facture selon le type de destinataire :
+   *   - Entreprise / Financeur : 1 ligne PAR apprenant avec son nom dans la
+   *     description (chaque participant apparaît explicitement sur la facture).
+   *   - Apprenant : 1 ligne globale (l'apprenant est déjà le destinataire).
    *
+   * Si la formation n'a pas d'apprenants inscrits, fallback sur 1 ligne
+   * globale (cas formation à venir avec prix défini mais sans inscrits).
+   */
+  const buildAutoLines = (recipientType: string): { description: string; quantity: string; unit_price: string }[] => {
+    const enrollments = formation.enrollments || [];
+    const totalPrice = formation.total_price || 0;
+    const hours = formation.planned_hours;
+    const dateRange = formation.start_date && formation.end_date
+      ? ` (${new Date(formation.start_date).toLocaleDateString("fr-FR")} → ${new Date(formation.end_date).toLocaleDateString("fr-FR")})`
+      : "";
+    const titlePart = `Formation : ${formation.title}${hours ? ` — ${hours}h` : ""}${dateRange}`;
+
+    const enrolledLearners = enrollments.filter((e) => e.learner);
+    const enrollCount = enrolledLearners.length || 1;
+    const pricePerLearner = enrollCount > 0 ? totalPrice / enrollCount : totalPrice;
+    const priceStr = pricePerLearner.toFixed(2).replace(".", ",");
+
+    // Pour apprenant destinataire : 1 ligne globale (le nom est déjà sur le destinataire)
+    if (recipientType === "learner") {
+      return [{
+        description: titlePart,
+        quantity: "1",
+        unit_price: (enrollCount > 1 ? pricePerLearner : totalPrice).toFixed(2).replace(".", ","),
+      }];
+    }
+
+    // Entreprise / Financeur : 1 ligne PAR apprenant pour que chaque nom
+    // apparaisse explicitement sur la facture imprimée.
+    if (enrolledLearners.length === 0) {
+      // Pas d'apprenants → fallback ligne globale qté=1
+      return [{
+        description: titlePart,
+        quantity: "1",
+        unit_price: totalPrice.toFixed(2).replace(".", ","),
+      }];
+    }
+
+    return enrolledLearners.map((e) => ({
+      description: `${titlePart} — ${e.learner!.last_name?.toUpperCase()} ${e.learner!.first_name}`,
+      quantity: "1",
+      unit_price: priceStr,
+    }));
+  };
+
+  /**
+   * Auto-remplit la facture depuis les données de la formation.
    * Tous les champs auto-remplis SAUF si l'admin a déjà tapé quelque chose
    * (on respecte la saisie utilisateur — pas d'écrasement).
    */
   const prefillInvoiceLines = (overrideRecipientType?: string, overrideRecipientId?: string) => {
     const enrollments = formation.enrollments || [];
-    const enrollCount = enrollments.length || 1;
-    const totalPrice = formation.total_price || 0;
-    const hours = formation.planned_hours;
-
     const recipientType = overrideRecipientType || invoiceForm.recipient_type;
-    const desc = `Formation : ${formation.title}${hours ? ` — ${hours}h` : ""}${formation.start_date && formation.end_date ? ` (${new Date(formation.start_date).toLocaleDateString("fr-FR")} → ${new Date(formation.end_date).toLocaleDateString("fr-FR")})` : ""}`;
-
-    // Calcul ligne selon recipient_type
-    let qty = "1";
-    let unitPrice = totalPrice;
-    if (recipientType === "company" || recipientType === "financier") {
-      qty = String(enrollCount);
-      unitPrice = enrollCount > 0 ? totalPrice / enrollCount : totalPrice;
-    }
-    // Pour learner : 1 ligne, prix unitaire = total_price (cas typique B2C 1 apprenant 1 facture)
 
     const participantNames = enrollments
       .filter((e) => e.learner)
@@ -237,7 +268,7 @@ export function TabFinances({ formation, onRefresh }: Props) {
     // Lignes : remplit toujours (sauf si lignes déjà non-vides avec contenu)
     const linesAreEmpty = invoiceForm.lines.every((l) => !l.description.trim() && !parseFloat(l.unit_price.replace(",", ".")));
     if (linesAreEmpty) {
-      updates.lines = [{ description: desc, quantity: qty, unit_price: unitPrice.toFixed(2).replace(".", ",") }];
+      updates.lines = buildAutoLines(recipientType);
     }
 
     // Auto-remplit destinataire si pas encore choisi : 1ère entreprise par défaut
@@ -260,7 +291,10 @@ export function TabFinances({ formation, onRefresh }: Props) {
       updates.due_date = due.toISOString().split("T")[0];
     }
 
-    // Notes avec liste des participants (sauf si déjà saisies)
+    // Notes avec liste des participants (sauf si déjà saisies). On garde
+    // la liste en notes en plus des lignes individuelles : c'est utile pour
+    // l'apprenant destinataire (dont la ligne ne montre qu'un nom général)
+    // et c'est une trace résumée pour l'entreprise.
     if (!invoiceForm.notes && participantNames) {
       updates.notes = `Participants : ${participantNames}`;
     }
@@ -268,15 +302,11 @@ export function TabFinances({ formation, onRefresh }: Props) {
     setInvoiceForm((f) => ({ ...f, ...updates }));
   };
 
-  // Auto-fill recipient details + recalcule les lignes selon le type de destinataire
+  // Auto-fill recipient details + (re)génère les lignes (1 par apprenant pour
+  // entreprise/financeur, 1 globale pour apprenant)
   const handleRecipientSelect = (name: string) => {
     const updates: Partial<typeof invoiceForm> = { recipient_name: name };
-
     const enrollments = formation.enrollments || [];
-    const enrollCount = enrollments.length || 1;
-    const totalPrice = formation.total_price || 0;
-    const hours = formation.planned_hours;
-    const desc = `Formation : ${formation.title}${hours ? ` — ${hours}h` : ""}${formation.start_date && formation.end_date ? ` (${new Date(formation.start_date).toLocaleDateString("fr-FR")} → ${new Date(formation.end_date).toLocaleDateString("fr-FR")})` : ""}`;
 
     if (invoiceForm.recipient_type === "company") {
       const fc = (formation.formation_companies || []).find(c => c.client?.company_name === name);
@@ -286,14 +316,6 @@ export function TabFinances({ formation, onRefresh }: Props) {
         updates.recipient_siret = client.siret || "";
         updates.recipient_address = [client.address, client.postal_code, client.city].filter(Boolean).join(" ");
       }
-      // Pour entreprise : 1 ligne globale, qté = N apprenants, PU = total/N
-      if (invoiceForm.lines.every((l) => !l.description.trim() && !parseFloat(l.unit_price.replace(",", ".")))) {
-        updates.lines = [{
-          description: desc,
-          quantity: String(enrollCount),
-          unit_price: (enrollCount > 0 ? totalPrice / enrollCount : totalPrice).toFixed(2).replace(".", ","),
-        }];
-      }
     } else if (invoiceForm.recipient_type === "learner") {
       const enrollment = enrollments.find(e =>
         e.learner && `${e.learner.last_name?.toUpperCase()} ${e.learner.first_name}` === name
@@ -301,17 +323,8 @@ export function TabFinances({ formation, onRefresh }: Props) {
       if (enrollment?.learner) {
         updates.recipient_id = enrollment.learner.id;
         updates.recipient_siret = "";
-        // Adresse perso de l'apprenant si renseignée
         const learnerAddr = (enrollment.learner as unknown as Record<string, string | null>);
         updates.recipient_address = [learnerAddr.address, learnerAddr.postal_code, learnerAddr.city].filter(Boolean).join(" ");
-      }
-      // Pour apprenant : 1 ligne, qté = 1, PU = total_price (ou /N s'il y a plusieurs apprenants — facturation au prorata)
-      if (invoiceForm.lines.every((l) => !l.description.trim() && !parseFloat(l.unit_price.replace(",", ".")))) {
-        updates.lines = [{
-          description: desc,
-          quantity: "1",
-          unit_price: (enrollCount > 1 ? totalPrice / enrollCount : totalPrice).toFixed(2).replace(".", ","),
-        }];
       }
     } else if (invoiceForm.recipient_type === "financier") {
       const fin = (formation.formation_financiers || []).find(f => f.name === name);
@@ -320,14 +333,11 @@ export function TabFinances({ formation, onRefresh }: Props) {
         updates.recipient_siret = "";
         updates.recipient_address = "";
       }
-      // Pour financeur : facturation globale (qté = N apprenants)
-      if (invoiceForm.lines.every((l) => !l.description.trim() && !parseFloat(l.unit_price.replace(",", ".")))) {
-        updates.lines = [{
-          description: desc,
-          quantity: String(enrollCount),
-          unit_price: (enrollCount > 0 ? totalPrice / enrollCount : totalPrice).toFixed(2).replace(".", ","),
-        }];
-      }
+    }
+
+    // (Re)génère les lignes selon le recipient_type — sauf si admin a déjà tapé
+    if (invoiceForm.lines.every((l) => !l.description.trim() && !parseFloat(l.unit_price.replace(",", ".")))) {
+      updates.lines = buildAutoLines(invoiceForm.recipient_type);
     }
 
     // Date d'échéance auto = end_date + 30 jours (si pas déjà saisie)
