@@ -92,6 +92,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       is_avoir = false,
       parent_invoice_id,
       external_reference,
+      funding_type,
       lines,
     } = body;
 
@@ -126,6 +127,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       p_external_reference: external_reference || null,
       p_recipient_siret: recipient_siret || null,
       p_recipient_address: recipient_address || null,
+      p_funding_type: funding_type || null,
     });
 
     if (error) {
@@ -171,7 +173,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
   try {
     const body = await request.json();
-    const { invoice_id, status, paid_at, recipient_name, recipient_type, recipient_siret, recipient_address, due_date, notes, external_reference, amount, lines } = body;
+    const { invoice_id, status, paid_at, recipient_name, recipient_type, recipient_siret, recipient_address, due_date, notes, external_reference, amount, funding_type, lines } = body;
 
     if (!invoice_id) {
       return NextResponse.json(
@@ -197,6 +199,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (recipient_siret !== undefined) updateData.recipient_siret = recipient_siret;
     if (recipient_address !== undefined) updateData.recipient_address = recipient_address;
     if (amount !== undefined) updateData.amount = amount;
+    if (funding_type !== undefined) updateData.funding_type = funding_type || null;
 
     const { data, error } = await auth.supabase
       .from("formation_invoices")

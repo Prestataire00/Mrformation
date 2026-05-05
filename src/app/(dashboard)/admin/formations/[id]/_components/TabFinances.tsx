@@ -117,6 +117,7 @@ export function TabFinances({ formation, onRefresh }: Props) {
     due_date: "",
     notes: "",
     external_reference: "",
+    funding_type: "" as string,
     lines: [{ description: "", quantity: "1", unit_price: "" }] as { description: string; quantity: string; unit_price: string }[],
   });
   const [savingInvoice, setSavingInvoice] = useState(false);
@@ -408,6 +409,7 @@ export function TabFinances({ formation, onRefresh }: Props) {
           is_avoir: isAvoir,
           parent_invoice_id: parentInvoice?.id ?? null,
           external_reference: invoiceForm.external_reference || null,
+          funding_type: isAvoir ? null : invoiceForm.funding_type || null,
           lines: parsedLines,
         }),
       });
@@ -416,7 +418,7 @@ export function TabFinances({ formation, onRefresh }: Props) {
         toast({ title: isAvoir ? "Avoir créé" : "Facture créée", description: data.invoice.reference });
         if (!isAvoir) {
           setInvoiceDialog(false);
-          setInvoiceForm({ recipient_type: "learner", recipient_name: "", recipient_id: "", recipient_siret: "", recipient_address: "", due_date: "", notes: "", external_reference: "", lines: [{ description: "", quantity: "1", unit_price: "" }] });
+          setInvoiceForm({ recipient_type: "learner", recipient_name: "", recipient_id: "", recipient_siret: "", recipient_address: "", due_date: "", notes: "", external_reference: "", funding_type: "", lines: [{ description: "", quantity: "1", unit_price: "" }] });
         }
         fetchData();
       } else {
@@ -449,6 +451,7 @@ export function TabFinances({ formation, onRefresh }: Props) {
       due_date: inv.due_date ? inv.due_date.split("T")[0] : "",
       notes: inv.notes || "",
       external_reference: inv.external_reference || "",
+      funding_type: invRecord.funding_type || "",
       lines: lines && lines.length > 0
         ? lines.map(l => ({ description: l.description, quantity: String(l.quantity), unit_price: String(l.unit_price) }))
         : [{ description: "", quantity: "1", unit_price: "" }],
@@ -481,6 +484,7 @@ export function TabFinances({ formation, onRefresh }: Props) {
           due_date: invoiceForm.due_date || null,
           notes: invoiceForm.notes || null,
           external_reference: invoiceForm.external_reference || null,
+          funding_type: invoiceForm.funding_type || null,
           amount: invoiceTotal,
           lines: parsedLines,
         }),
@@ -489,7 +493,7 @@ export function TabFinances({ formation, onRefresh }: Props) {
         toast({ title: "Facture mise à jour" });
         setInvoiceDialog(false);
         setEditingInvoiceId(null);
-        setInvoiceForm({ recipient_type: "learner", recipient_name: "", recipient_id: "", recipient_siret: "", recipient_address: "", due_date: "", notes: "", external_reference: "", lines: [{ description: "", quantity: "1", unit_price: "" }] });
+        setInvoiceForm({ recipient_type: "learner", recipient_name: "", recipient_id: "", recipient_siret: "", recipient_address: "", due_date: "", notes: "", external_reference: "", funding_type: "", lines: [{ description: "", quantity: "1", unit_price: "" }] });
         fetchData();
       } else {
         const data = await res.json();
@@ -1082,6 +1086,41 @@ export function TabFinances({ formation, onRefresh }: Props) {
                 <Label className="text-xs">Référence externe</Label>
                 <Input value={invoiceForm.external_reference} onChange={(e) => setInvoiceForm((f) => ({ ...f, external_reference: e.target.value }))} placeholder="N° commande client" className="h-8 text-sm" />
               </div>
+            </div>
+            <div>
+              <Label className="text-xs">Source de financement (BPF)</Label>
+              <Select
+                value={invoiceForm.funding_type || "__none__"}
+                onValueChange={(v) => setInvoiceForm((f) => ({ ...f, funding_type: v === "__none__" ? "" : v }))}
+              >
+                <SelectTrigger className="h-8 text-sm">
+                  <SelectValue placeholder="Sélectionner le type de financement…" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">— Non renseigné —</SelectItem>
+                  <SelectItem value="entreprise_privee">Entreprise privée (plan de développement)</SelectItem>
+                  <SelectItem value="plan_developpement">Plan de développement des compétences</SelectItem>
+                  <SelectItem value="cpf">CPF (Compte Personnel de Formation)</SelectItem>
+                  <SelectItem value="apprentissage">Apprentissage</SelectItem>
+                  <SelectItem value="professionnalisation">Contrat de professionnalisation</SelectItem>
+                  <SelectItem value="reconversion_alternance">Reconversion ou promotion par alternance (Pro-A)</SelectItem>
+                  <SelectItem value="conge_transition">Congé de transition professionnelle (CTP)</SelectItem>
+                  <SelectItem value="dispositif_chomeurs">Dispositif demandeurs d&apos;emploi</SelectItem>
+                  <SelectItem value="pole_emploi">France Travail (Pôle Emploi)</SelectItem>
+                  <SelectItem value="conseil_regional">Conseil Régional</SelectItem>
+                  <SelectItem value="etat">État</SelectItem>
+                  <SelectItem value="pouvoir_public_agents">Pouvoirs publics — agents</SelectItem>
+                  <SelectItem value="instances_europeennes">Instances européennes</SelectItem>
+                  <SelectItem value="non_salaries">Travailleurs non-salariés</SelectItem>
+                  <SelectItem value="individuel">Particulier (financement individuel)</SelectItem>
+                  <SelectItem value="organisme_formation">Organisme de formation</SelectItem>
+                  <SelectItem value="autres_publics">Autres publics</SelectItem>
+                  <SelectItem value="autre">Autre</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-[10px] text-gray-500 mt-1">
+                Cette valeur est utilisée pour la déclaration BPF (catégories de financement).
+              </p>
             </div>
             <div>
               <Label className="text-xs">Notes</Label>

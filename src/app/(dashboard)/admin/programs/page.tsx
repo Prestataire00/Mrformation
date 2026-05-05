@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
+import { NsfCodeCombobox } from "@/components/NsfCodeCombobox";
 import {
   Card,
   CardContent,
@@ -674,25 +675,18 @@ export default function ProgramsPage() {
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <Label htmlFor="p_nsf_code">Code NSF</Label>
-                      <Input
-                        id="p_nsf_code"
-                        value={formData.nsf_code}
-                        onChange={(e) => setFormData((prev) => ({ ...prev, nsf_code: e.target.value }))}
-                        placeholder="Ex: 413"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="p_nsf_label">Libellé NSF</Label>
-                      <Input
-                        id="p_nsf_label"
-                        value={formData.nsf_label}
-                        onChange={(e) => setFormData((prev) => ({ ...prev, nsf_label: e.target.value }))}
-                        placeholder="Ex: Développement des capacités comportementales"
-                      />
-                    </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="p_nsf_code">Code NSF</Label>
+                    <NsfCodeCombobox
+                      id="p_nsf_code"
+                      code={formData.nsf_code || null}
+                      onChange={(code, label) => setFormData((prev) => ({
+                        ...prev,
+                        nsf_code: code || "",
+                        nsf_label: label || "",
+                      }))}
+                      placeholder="Sélectionner un code NSF (Nomenclature des Spécialités de Formation)…"
+                    />
                   </div>
 
                   <div className="flex items-center gap-3 py-1">
