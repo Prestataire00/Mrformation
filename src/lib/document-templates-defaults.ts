@@ -520,26 +520,45 @@ function feuilleEmargement(data: TemplateData): string {
 function programmeFormation(data: TemplateData): string {
   const { formation, entityName } = data;
   const program = formation.program;
+  const training = formation.training;
   const programContent = (program?.content || {}) as Record<string, string>;
   const modalite = MODE_LABELS[formation.mode] || formation.mode;
 
+  // Hiérarchie de fallback : program (le plus spécifique) → training → placeholder
+  const targetAudience = programContent.target_audience
+    || (training as unknown as { target_audience?: string })?.target_audience
+    || training?.description
+    || "[Public cible]";
+
+  const prerequisites = programContent.prerequisites
+    || training?.prerequisites
+    || "aucun";
+
+  // Objectifs : program.objectives → training.objectives → formation.description
+  const objectivesText = program?.objectives || training?.objectives || formation.description || "";
+
+  const description = formation.description
+    || training?.description
+    || program?.description
+    || "";
+
   const body = `
-    <p style="font-size: 11px; color: #6b7280; margin-bottom: 16px;">${formation.description || program?.description || ""}</p>
+    <p style="font-size: 11px; color: #6b7280; margin-bottom: 16px;">${description}</p>
 
     <p style="font-size: 10px; color: #6b7280; margin-bottom: 4px;">
-      Date de creation: ${formation.created_at ? formatDateFr(formation.created_at) : "—"} | Durée: ${formation.planned_hours || program?.duration_hours || "—"} heure(s) | ${formation.planned_hours ? (Number(formation.planned_hours) / 7).toFixed(2) : "—"} jour(s) (du ${formatDateFr(formation.start_date)} au ${formatDateFr(formation.end_date)})
+      Date de création : ${formation.created_at ? formatDateFr(formation.created_at) : "—"} | Durée : ${formation.planned_hours || program?.duration_hours || training?.duration_hours || "—"} heure(s) | ${formation.planned_hours ? (Number(formation.planned_hours) / 7).toFixed(2) : "—"} jour(s) (du ${formatDateFr(formation.start_date)} au ${formatDateFr(formation.end_date)})
     </p>
     <p style="font-size: 10px; color: #6b7280; margin-bottom: 16px;">
       Version : ${program?.version || "1"} | Modalité : ${modalite} | Lieu : ${formation.location || "—"}
     </p>
 
     <h2 style="font-size: 13px; font-weight: 700; text-transform: uppercase; margin: 20px 0 8px 0; color: #111827;">A qui s'adresse cette formation ?</h2>
-    <p style="font-size: 11px;"><strong>Profil du stagiaire :</strong> ${programContent.target_audience || "[Public cible]"}</p>
-    <p style="font-size: 11px;"><strong>Prérequis :</strong> ${programContent.prerequisites || "aucun"}</p>
+    <p style="font-size: 11px;"><strong>Profil du stagiaire :</strong> ${targetAudience}</p>
+    <p style="font-size: 11px;"><strong>Prérequis :</strong> ${prerequisites}</p>
 
     <h2 style="font-size: 13px; font-weight: 700; text-transform: uppercase; margin: 20px 0 8px 0; color: #111827;">Objectifs pédagogiques</h2>
-    ${program?.objectives
-      ? `<ul style="margin: 4px 0; padding-left: 20px; font-size: 11px;">${program.objectives.split("\n").filter(Boolean).map((o: string) => `<li>${o.replace(/^[-•]\s*/, "")}</li>`).join("")}</ul>`
+    ${objectivesText
+      ? `<ul style="margin: 4px 0; padding-left: 20px; font-size: 11px;">${objectivesText.split("\n").filter(Boolean).map((o: string) => `<li>${o.replace(/^[-•]\s*/, "")}</li>`).join("")}</ul>`
       : "<p style='font-size: 11px; color: #9ca3af;'>[Objectifs pédagogiques]</p>"
     }
 
