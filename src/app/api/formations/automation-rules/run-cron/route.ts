@@ -265,23 +265,32 @@ export async function POST(request: NextRequest) {
             textBody = `Bonjour ${recipient.first_name} ${recipient.last_name},\n\nVeuillez trouver ci-joint votre document : ${DOCUMENT_TYPE_SUBJECTS[rule.document_type] ?? rule.document_type}.\n\nFormation : ${session.title}\n\nCordialement,\nL'équipe de formation`;
           }
 
-          await enqueueEmail(supabase, {
-            to: recipient.email,
-            subject,
-            body: textBody,
-            entity_id: session.entity_id,
-            session_id: session.id,
-            recipient_type: recipient.type,
-            recipient_id: recipient.id,
-            attachments: buildAttachmentsForRecipient(
-              tpl?.attachment_doc_types,
-              { id: session.id, title: session.title, start_date: session.start_date, end_date: session.end_date, location: session.location },
-              recipient,
-              recipientType,
-              customTemplatesById
-            ),
-          });
-          emailsSent++;
+          // Try/catch par recipient : un échec d'enqueue (DB transient,
+          // contrainte unique violée) ne fait pas crasher tout le batch.
+          // Sinon Netlify retry depuis le début → re-enqueue les emails déjà
+          // partis = doublons côté apprenant.
+          try {
+            await enqueueEmail(supabase, {
+              to: recipient.email,
+              subject,
+              body: textBody,
+              entity_id: session.entity_id,
+              session_id: session.id,
+              recipient_type: recipient.type,
+              recipient_id: recipient.id,
+              attachments: buildAttachmentsForRecipient(
+                tpl?.attachment_doc_types,
+                { id: session.id, title: session.title, start_date: session.start_date, end_date: session.end_date, location: session.location },
+                recipient,
+                recipientType,
+                customTemplatesById
+              ),
+            });
+            emailsSent++;
+          } catch (enqueueErr) {
+            console.error(`[automation] enqueue failed for ${recipient.email}:`, enqueueErr instanceof Error ? enqueueErr.message : enqueueErr);
+            // continue, ne bloque pas les autres recipients
+          }
         }
       }
 
@@ -347,12 +356,26 @@ export async function POST(request: NextRequest) {
         let targetDate: string;
         let dateField: "start_date" | "end_date";
 
+        // Le cron tourne en UTC mais session.start_date/end_date sont des dates
+        // locales (YYYY-MM-DD sans timezone). On calcule la date cible en
+        // Europe/Paris pour éviter le décalage J-1/J+1 selon le fuseau (ex:
+        // cron à 7h UTC = 9h CEST → si on faisait toISOString().split('T')[0]
+        // après minuit Paris, on aurait la date d'avant).
+        const todayInParis = new Intl.DateTimeFormat("fr-CA", {
+          timeZone: "Europe/Paris",
+          year: "numeric", month: "2-digit", day: "2-digit",
+        }).format(new Date()); // ex: "2026-05-05"
+        const [yy, mm, dd] = todayInParis.split("-").map(Number);
+        const baseLocal = new Date(Date.UTC(yy, mm - 1, dd)); // midnight UTC same date
+
         if (rule.trigger_type === "session_start_minus_days") {
-          const d = new Date(); d.setDate(d.getDate() + rule.days_offset);
-          targetDate = d.toISOString().split("T")[0]; dateField = "start_date";
+          baseLocal.setUTCDate(baseLocal.getUTCDate() + rule.days_offset);
+          targetDate = baseLocal.toISOString().split("T")[0];
+          dateField = "start_date";
         } else {
-          const d = new Date(); d.setDate(d.getDate() - rule.days_offset);
-          targetDate = d.toISOString().split("T")[0]; dateField = "end_date";
+          baseLocal.setUTCDate(baseLocal.getUTCDate() - rule.days_offset);
+          targetDate = baseLocal.toISOString().split("T")[0];
+          dateField = "end_date";
         }
 
         const { data: sessions } = await supabase
@@ -426,23 +449,27 @@ export async function POST(request: NextRequest) {
               textBody = `Bonjour ${recipient.first_name} ${recipient.last_name},\n\nVeuillez trouver ci-joint votre document : ${DOCUMENT_TYPE_SUBJECTS[rule.document_type] ?? rule.document_type}.\n\nFormation : ${session.title}\n\nCordialement,\nL'équipe de formation`;
             }
 
-            await enqueueEmail(supabase, {
-              to: recipient.email,
-              subject,
-              body: textBody,
-              entity_id: entityId,
-              session_id: session.id,
-              recipient_type: recipient.type,
-              recipient_id: recipient.id,
-              attachments: buildAttachmentsForRecipient(
-                tpl?.attachment_doc_types,
-                { id: session.id, title: session.title, start_date: session.start_date, end_date: session.end_date, location: session.location },
-                recipient,
-                recipientType,
-                customTemplatesById
-              ),
-            });
-            emailsSent++;
+            try {
+              await enqueueEmail(supabase, {
+                to: recipient.email,
+                subject,
+                body: textBody,
+                entity_id: entityId,
+                session_id: session.id,
+                recipient_type: recipient.type,
+                recipient_id: recipient.id,
+                attachments: buildAttachmentsForRecipient(
+                  tpl?.attachment_doc_types,
+                  { id: session.id, title: session.title, start_date: session.start_date, end_date: session.end_date, location: session.location },
+                  recipient,
+                  recipientType,
+                  customTemplatesById
+                ),
+              });
+              emailsSent++;
+            } catch (enqueueErr) {
+              console.error(`[automation] enqueue failed for ${recipient.email}:`, enqueueErr instanceof Error ? enqueueErr.message : enqueueErr);
+            }
           }
         }
       }
@@ -496,17 +523,20 @@ export async function POST(request: NextRequest) {
             const subject = `Rappel : demande OPCO à déposer — ${sessionTitle}`;
             const textBody = `Bonjour ${admin.first_name},\n\nLa demande de prise en charge OPCO "${opco.name}" pour la formation "${sessionTitle}" n'a pas encore été déposée.\n\nLa formation commence le ${targetDateStr}.\n\nPensez à déposer la demande rapidement.\n\nCordialement,\nL'équipe ${entity.name}`;
 
-            await enqueueEmail(supabase, {
-              to: admin.email,
-              subject,
-              body: textBody,
-              entity_id: entity.id,
-              session_id: (session as Record<string, string>).id,
-              recipient_type: "manager",
-              recipient_id: admin.id,
-            });
-
-            totalSent++;
+            try {
+              await enqueueEmail(supabase, {
+                to: admin.email,
+                subject,
+                body: textBody,
+                entity_id: entity.id,
+                session_id: (session as Record<string, string>).id,
+                recipient_type: "manager",
+                recipient_id: admin.id,
+              });
+              totalSent++;
+            } catch (enqueueErr) {
+              console.error(`[automation OPCO] enqueue failed for ${admin.email}:`, enqueueErr instanceof Error ? enqueueErr.message : enqueueErr);
+            }
           }
         }
       }

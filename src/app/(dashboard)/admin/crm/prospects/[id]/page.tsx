@@ -691,11 +691,13 @@ export default function ProspectDetailPage() {
         });
       }
 
-      // 3. Mark prospect as converted
+      // 3. Mark prospect as converted (defense-in-depth : entity_id en plus
+      // du filtre RLS qui devrait déjà cadrer)
       const { error: updateErr } = await supabase
         .from("crm_prospects")
         .update({ converted_client_id: newClient.id, status: "won" })
-        .eq("id", prospect.id);
+        .eq("id", prospect.id)
+        .eq("entity_id", entityId);
       if (updateErr) throw updateErr;
 
       toast({ title: "Prospect converti en client", description: "Redirection vers la fiche client..." });

@@ -73,12 +73,25 @@ async function sendOne(supabase: SupabaseClient, email: PendingEmail): Promise<S
   }
 
   try {
-    // Résout les pièces jointes (génération PDF via PDFShift, fetch URL, etc.)
+    // Résout les pièces jointes (génération PDF via CloudConvert, fetch URL, etc.).
+    // Si la résolution échoue (CloudConvert quota, timeout, etc.), on envoie
+    // l'email SANS pièces jointes plutôt que de bloquer l'envoi : le learner
+    // reçoit au moins le mail (ex: convocation), même si l'attestation PDF
+    // n'est pas attachée. Mieux que rien — on log pour suivi et un retry du
+    // batch enverra l'email avec PJ une fois CloudConvert remis.
     const attachmentDescriptors = email.attachments ?? [];
-    const resolvedAttachments =
-      attachmentDescriptors.length > 0
-        ? await resolveAttachments(supabase, attachmentDescriptors)
-        : [];
+    let resolvedAttachments: Awaited<ReturnType<typeof resolveAttachments>> = [];
+    if (attachmentDescriptors.length > 0) {
+      try {
+        resolvedAttachments = await resolveAttachments(supabase, attachmentDescriptors);
+      } catch (attachErr) {
+        console.error(
+          `[email ${email.id}] resolveAttachments failed, sending without:`,
+          attachErr instanceof Error ? attachErr.message : attachErr
+        );
+        // resolvedAttachments stays []
+      }
+    }
 
     const result = await resend.emails.send({
       from: getFromAddress(email.entities?.name || ""),
