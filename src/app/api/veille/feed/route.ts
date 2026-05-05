@@ -10,9 +10,14 @@ interface FeedArticle {
   source: string;
 }
 
+// Sources RSS vérifiées (mai 2026). L'ancien flux Ministère du Travail
+// (travail-emploi.gouv.fr/feed) renvoyait du HTML — site refondu sans
+// alternative RSS. Remplacé par France Compétences + CP Formation qui
+// couvrent l'actu OF/Qualiopi/CPF/OPCO.
 const FEEDS = [
   { url: "https://www.centre-inffo.fr/feed", source: "Centre Inffo" },
-  { url: "https://travail-emploi.gouv.fr/feed", source: "Ministère du Travail" },
+  { url: "https://www.francecompetences.fr/feed/", source: "France Compétences" },
+  { url: "https://www.cpformation.com/feed/", source: "CP Formation" },
 ];
 
 function extractTag(xml: string, tag: string): string {
@@ -40,25 +45,46 @@ function parseRss(xml: string, source: string, limit: number): FeedArticle[] {
   return articles;
 }
 
-async function fetchFeed(url: string, source: string): Promise<FeedArticle[]> {
+interface FeedFetchResult {
+  source: string;
+  articles: FeedArticle[];
+  error?: string;
+}
+
+async function fetchFeed(url: string, source: string): Promise<FeedFetchResult> {
+  // Timeout 10s : Netlify cold-start + serveurs gov peuvent être lents
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5000);
+  const timeout = setTimeout(() => controller.abort(), 10000);
 
   try {
     const res = await fetch(url, {
       signal: controller.signal,
       headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; LMSBot/1.0)",
-        Accept: "application/rss+xml, application/xml, text/xml, */*",
+        // UA réel — certains sites filtrent les bots avec UA "Bot" custom
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0 Safari/537.36",
+        Accept: "application/rss+xml, application/atom+xml, application/xml, text/xml, */*",
       },
     });
 
-    if (!res.ok) return [];
+    if (!res.ok) {
+      return { source, articles: [], error: `HTTP ${res.status}` };
+    }
 
+    const contentType = res.headers.get("content-type") || "";
     const xml = await res.text();
-    return parseRss(xml, source, 5);
-  } catch {
-    return [];
+
+    // Détecte le cas où le serveur renvoie du HTML (site refondu, URL morte
+    // qui redirige vers une page 404 stylisée). Sinon on parse du HTML
+    // comme du RSS et on retourne 0 article silencieusement.
+    if (!contentType.includes("xml") && !xml.trimStart().startsWith("<?xml") && !xml.includes("<rss")) {
+      return { source, articles: [], error: `Réponse non-RSS (${contentType.split(";")[0] || "html"})` };
+    }
+
+    const articles = parseRss(xml, source, 5);
+    return { source, articles };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Erreur réseau";
+    return { source, articles: [], error: msg.includes("aborted") ? "Timeout 10s" : msg };
   } finally {
     clearTimeout(timeout);
   }
@@ -74,9 +100,26 @@ export async function GET() {
     );
 
     const articles: FeedArticle[] = [];
-    for (const result of results) {
-      if (result.status === "fulfilled") {
-        articles.push(...result.value);
+    const sourceStatus: Array<{ source: string; ok: boolean; error?: string; count: number }> = [];
+
+    for (let i = 0; i < results.length; i++) {
+      const r = results[i];
+      const feed = FEEDS[i];
+      if (r.status === "fulfilled") {
+        articles.push(...r.value.articles);
+        sourceStatus.push({
+          source: feed.source,
+          ok: !r.value.error,
+          error: r.value.error,
+          count: r.value.articles.length,
+        });
+      } else {
+        sourceStatus.push({
+          source: feed.source,
+          ok: false,
+          error: r.reason instanceof Error ? r.reason.message : "Promise rejected",
+          count: 0,
+        });
       }
     }
 
@@ -86,10 +129,10 @@ export async function GET() {
       return db - da;
     });
 
-    return NextResponse.json({ articles });
+    return NextResponse.json({ articles, sources: sourceStatus });
   } catch (err: unknown) {
     return NextResponse.json(
-      { error: sanitizeError(err, "veille feed GET"), articles: [] },
+      { error: sanitizeError(err, "veille feed GET"), articles: [], sources: [] },
       { status: 500 }
     );
   }

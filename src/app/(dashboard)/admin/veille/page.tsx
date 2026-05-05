@@ -43,6 +43,7 @@ export default function VeillePage() {
   const { toast } = useToast();
 
   const [articles, setArticles] = useState<FeedArticle[]>([]);
+  const [feedStatus, setFeedStatus] = useState<Array<{ source: string; ok: boolean; error?: string; count: number }>>([]);
   const [notes, setNotes] = useState<VeilleNote[]>([]);
   const [loadingFeed, setLoadingFeed] = useState(true);
   const [loadingNotes, setLoadingNotes] = useState(true);
@@ -71,8 +72,10 @@ export default function VeillePage() {
       const res = await fetch("/api/veille/feed");
       const data = await res.json();
       setArticles(data.articles ?? []);
+      setFeedStatus(data.sources ?? []);
     } catch {
       setArticles([]);
+      setFeedStatus([]);
     } finally {
       setLoadingFeed(false);
     }
@@ -256,9 +259,21 @@ export default function VeillePage() {
             <div className="text-center py-8 space-y-4">
               <Rss className="h-10 w-10 text-muted-foreground/30 mx-auto" />
               <p className="text-sm text-muted-foreground">
-                Flux indisponible — consultez les sites directement
+                Aucun article récupéré — les flux RSS sont peut-être indisponibles.
               </p>
-              <div className="flex justify-center gap-3">
+              {feedStatus.length > 0 && (
+                <div className="text-xs text-muted-foreground space-y-1 max-w-md mx-auto">
+                  {feedStatus.map((s) => (
+                    <div key={s.source} className="flex items-center justify-between px-3 py-1.5 bg-muted/40 rounded">
+                      <span className="font-medium">{s.source}</span>
+                      <span className={s.ok ? "text-emerald-600" : "text-red-600"}>
+                        {s.ok ? `${s.count} articles` : (s.error || "indisponible")}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="flex justify-center gap-3 flex-wrap">
                 <a
                   href="https://www.centre-inffo.fr"
                   target="_blank"
@@ -269,13 +284,13 @@ export default function VeillePage() {
                   <ExternalLink className="h-3.5 w-3.5" /> Centre Inffo
                 </a>
                 <a
-                  href="https://travail-emploi.gouv.fr"
+                  href="https://www.francecompetences.fr"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white"
                   style={{ background: "#374151" }}
                 >
-                  <ExternalLink className="h-3.5 w-3.5" /> Ministère du Travail
+                  <ExternalLink className="h-3.5 w-3.5" /> France Compétences
                 </a>
               </div>
             </div>
