@@ -19,20 +19,7 @@ function makeLearner(id: string, last: string, first: string): Learner {
     first_name: first,
     last_name: last,
     email: `${first}@x.fr`,
-    phone: null,
-    birth_date: null,
-    address: null,
-    postal_code: null,
-    city: null,
-    country: null,
-    profession: null,
-    education_level: null,
-    handicap_status: null,
-    handicap_details: null,
-    notes: null,
-    created_at: "2026-01-01T00:00:00Z",
-    updated_at: "2026-01-01T00:00:00Z",
-  } as Learner;
+  } as unknown as Learner;
 }
 
 function makeEnrollment(id: string, learnerId: string, clientId: string | null): Enrollment {
@@ -47,7 +34,7 @@ function makeEnrollment(id: string, learnerId: string, clientId: string | null):
     price_per_learner: null,
     hours_per_learner: null,
     learner: makeLearner(learnerId, `Last${learnerId}`, `First${learnerId}`),
-  } as Enrollment;
+  } as unknown as Enrollment;
 }
 
 function makeFormationCompany(id: string, clientId: string, amount: number | null, createdAt = "2026-01-01T00:00:00Z"): FormationCompany {

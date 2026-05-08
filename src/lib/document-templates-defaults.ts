@@ -1,4 +1,5 @@
 import type { Session } from "@/lib/types";
+import { getLearnersForCompany, getAmountForCompany } from "@/lib/utils/formation-companies";
 
 // ──────────────────────────────────────────────
 // Types
@@ -7,7 +8,7 @@ import type { Session } from "@/lib/types";
 interface TemplateData {
   formation: Session;
   learner?: { id?: string; first_name: string; last_name: string; email?: string };
-  company?: { company_name: string; address?: string | null; siret?: string | null; contacts?: Array<{ first_name: string; last_name: string; is_primary: boolean }> };
+  company?: { id?: string; company_name: string; address?: string | null; siret?: string | null; contacts?: Array<{ first_name: string; last_name: string; is_primary: boolean }> };
   trainer?: { first_name: string; last_name: string };
   entityName: string;
   /**
@@ -319,17 +320,25 @@ function conventionEntreprise(data: TemplateData): string {
     ? `${company.contacts.find((c) => c.is_primary)?.last_name?.toUpperCase() || company.contacts[0].last_name.toUpperCase()} ${company.contacts.find((c) => c.is_primary)?.first_name || company.contacts[0].first_name}`
     : "[Représentant]";
 
-  const enrollments = formation.enrollments || [];
+  // Multi-entreprises : filtrage des apprenants + montant par entreprise.
+  // Si company.id est fourni → filtre + montant spécifique (INTRA = tous via auto-assign virtuel).
+  // Fallback rétrocompat : si company.id absent → comportement legacy (tous les enrollments + total session).
+  const companyId = company?.id;
+  const enrollments = companyId
+    ? getLearnersForCompany(formation, companyId)
+    : (formation.enrollments || []);
   const effectifs = enrollments.length || "[Effectifs]";
   const listeApprenants = enrollments
     .filter((e) => e.learner)
     .map((e) => `${e.learner!.last_name?.toUpperCase()} ${e.learner!.first_name}`)
     .join(", ") || "[Liste apprenants]";
 
-  const totalPrice = formation.total_price || 0;
-  const montantHt = totalPrice.toFixed(2);
-  const tva = (totalPrice * 0.2).toFixed(2);
-  const ttc = (totalPrice * 1.2).toFixed(2);
+  const amount = companyId
+    ? (getAmountForCompany(formation, companyId) ?? formation.total_price ?? 0)
+    : (formation.total_price ?? 0);
+  const montantHt = amount.toFixed(2);
+  const tva = (amount * 0.2).toFixed(2);
+  const ttc = (amount * 1.2).toFixed(2);
 
   const body = `
     <p style="font-size: 10px; text-align: center; color: #6b7280; margin: -16px 0 20px 0;">(Articles L.6353-1 et D.6353-1 du Code du travail)</p>
