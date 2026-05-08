@@ -124,7 +124,8 @@ export async function POST(request: NextRequest) {
         .select(`
           *,
           training:trainings(*),
-          enrollments(learner:learners(id, first_name, last_name, email)),
+          enrollments(id, client_id, learner:learners(id, first_name, last_name, email)),
+          formation_companies(id, client_id, amount, email, reference, created_at),
           formation_trainers(trainer:trainers(id, first_name, last_name, email)),
           formation_time_slots(id, start_time, end_time, title),
           signatures(id, time_slot_id, signer_id, signer_type, signature_data, signed_at)
@@ -265,8 +266,13 @@ export async function POST(request: NextRequest) {
       const learnerData = payload.context.learner_id
         ? (await auth.supabase.from("learners").select("id, first_name, last_name, email").eq("id", payload.context.learner_id).single()).data
         : null;
-      const companyData = payload.context.client_id
+      const companyDataRaw = payload.context.client_id
         ? (await auth.supabase.from("clients").select("company_name, address, siret").eq("id", payload.context.client_id).single()).data
+        : null;
+      // On injecte l'id côté template pour permettre le filtrage multi-entreprises
+      // dans conventionEntreprise (apprenants par client_id + montant par entreprise).
+      const companyData = companyDataRaw && payload.context.client_id
+        ? { id: payload.context.client_id, ...companyDataRaw }
         : null;
       const trainerData = payload.context.trainer_id
         ? (await auth.supabase.from("trainers").select("first_name, last_name").eq("id", payload.context.trainer_id).single()).data
