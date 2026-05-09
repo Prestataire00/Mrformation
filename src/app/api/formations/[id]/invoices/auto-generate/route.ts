@@ -2,13 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/require-role";
 import { sanitizeError } from "@/lib/api-error";
 import { logAudit } from "@/lib/audit-log";
+import {
+  getCompaniesForFormation,
+  validateCompanyExport,
+} from "@/lib/utils/formation-companies";
+import { buildInvoiceLinesForCompany } from "@/lib/utils/invoice-builder";
+import type { Session } from "@/lib/types";
 
 interface RouteContext {
   params: { id: string };
 }
 
 // GET: Preview what would be generated (no side effects)
-export async function GET(request: NextRequest, context: RouteContext) {
+export async function GET(_request: NextRequest, context: RouteContext) {
   const auth = await requireRole(["super_admin", "admin"]);
   if (auth.error) return auth.error;
 
@@ -25,7 +31,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
 }
 
 // POST: Actually generate the invoices
-export async function POST(request: NextRequest, context: RouteContext) {
+export async function POST(_request: NextRequest, context: RouteContext) {
   const auth = await requireRole(["super_admin", "admin"]);
   if (auth.error) return auth.error;
 
@@ -53,42 +59,51 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     const createdInvoices: Array<Record<string, unknown>> = [];
 
-    // Helper: get next global number
-    const getNextNumber = async (prefix: string): Promise<number> => {
-      const { data: maxRow } = await auth.supabase
-        .from("formation_invoices")
-        .select("global_number")
-        .eq("entity_id", entityId)
-        .eq("fiscal_year", fiscalYear)
-        .eq("prefix", prefix)
-        .order("global_number", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      return (maxRow?.global_number ?? 0) + 1;
-    };
-
     for (const item of preview) {
-      const nextNum = await getNextNumber("FAC");
-      const { data: inv, error } = await auth.supabase
+      // Crée la facture via la RPC atomique (anti-race-condition).
+      // La RPC ne couvre pas participants_note ni auto_generated → on UPDATE après.
+      const baseNotes = `Formation : ${session?.title || "—"}${item.detail ? ` — ${item.detail}` : ""}`;
+      const { data: inv, error } = await auth.supabase.rpc("create_invoice_with_atomic_number", {
+        p_entity_id: entityId,
+        p_session_id: sessionId,
+        p_recipient_type: item.recipientType,
+        p_recipient_id: item.recipientId,
+        p_recipient_name: item.recipientName,
+        p_amount: item.amount,
+        p_prefix: "FAC",
+        p_fiscal_year: fiscalYear,
+        p_due_date: dueDateStr,
+        p_notes: baseNotes,
+        p_is_avoir: false,
+        p_parent_invoice_id: null,
+        p_external_reference: null,
+        p_recipient_siret: null,
+        p_recipient_address: null,
+      });
+
+      if (error || !inv) continue;
+
+      // UPDATE participants_note + auto_generated (non couverts par la RPC).
+      const updates: Record<string, unknown> = { auto_generated: true };
+      if (item.participantsNote) updates.participants_note = item.participantsNote;
+      await auth.supabase
         .from("formation_invoices")
-        .insert({
-          entity_id: entityId,
-          session_id: sessionId,
-          recipient_type: item.recipientType,
-          recipient_id: item.recipientId,
-          recipient_name: item.recipientName,
-          amount: item.amount,
-          prefix: "FAC",
-          number: nextNum,
-          global_number: nextNum,
-          fiscal_year: fiscalYear,
-          due_date: dueDateStr,
-          auto_generated: true,
-          notes: `Formation : ${session?.title || "—"}${item.detail ? ` — ${item.detail}` : ""}`,
-        })
-        .select()
-        .single();
-      if (!error && inv) createdInvoices.push(inv);
+        .update(updates)
+        .eq("id", inv.id);
+
+      // INSERT lignes de facture (1 par apprenant en INTER, 1 globale en INTRA).
+      if (item.lines && item.lines.length > 0) {
+        await auth.supabase.from("formation_invoice_lines").insert(
+          item.lines.map((l) => ({
+            invoice_id: inv.id,
+            description: l.description,
+            quantity: l.quantity,
+            unit_price: l.unit_price,
+          }))
+        );
+      }
+
+      createdInvoices.push(inv);
     }
 
     // Mark session as invoiced
@@ -121,7 +136,15 @@ export async function POST(request: NextRequest, context: RouteContext) {
   }
 }
 
-// ── Build invoice preview (shared between GET and POST) ──
+// ──────────────────────────────────────────────
+// Build invoice preview (shared between GET and POST)
+// ──────────────────────────────────────────────
+
+interface PreviewLine {
+  description: string;
+  quantity: number;
+  unit_price: number;
+}
 
 interface PreviewItem {
   recipientType: string;
@@ -129,6 +152,8 @@ interface PreviewItem {
   recipientName: string;
   amount: number;
   detail: string;
+  lines: PreviewLine[];
+  participantsNote: string | null;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -139,13 +164,13 @@ async function buildInvoicePreview(supabase: any, sessionId: string, entityId: s
 }> {
   const warnings: string[] = [];
 
-  // 1. Fetch session
+  // 1. Fetch session avec toutes les relations nécessaires aux helpers PR 13/14
   const { data: session, error: sessionError } = await supabase
     .from("sessions")
     .select(`
       id, title, start_date, end_date, total_price, type, status,
       invoice_generated, entity_id,
-      formation_companies(id, client_id, amount, client:clients(id, company_name)),
+      formation_companies(id, session_id, client_id, amount, email, reference, created_at, client:clients(id, company_name)),
       formation_financiers(id, name, type, amount, amount_granted, status),
       enrollments(id, learner_id, client_id, learner:learners(id, first_name, last_name), client:clients(id, company_name))
     `)
@@ -163,25 +188,24 @@ async function buildInvoicePreview(supabase: any, sessionId: string, entityId: s
     .select("id", { count: "exact", head: true })
     .eq("session_id", sessionId)
     .eq("entity_id", entityId);
-  if (count && count > 0) return { preview: [], warnings: [], error: `${count} facture(s) existent déjà. Supprimez-les ou utilisez la création manuelle.` };
+  if (count && count > 0) {
+    return { preview: [], warnings: [], error: `${count} facture(s) existent déjà. Supprimez-les ou utilisez la création manuelle.` };
+  }
 
-  const companies = session.formation_companies || [];
-  const financiers = session.formation_financiers || [];
+  const formation = session as unknown as Session;
+  const companies = getCompaniesForFormation(formation);
+  const financiers = (session.formation_financiers as Array<{ id: string; name: string; type: string | null; amount: number | null; amount_granted: number | null; status: string | null }>) || [];
   const enrollments = session.enrollments || [];
-  const totalPrice = Number(session.total_price) || 0;
 
-  if (totalPrice <= 0) warnings.push("Le prix total de la formation est à 0€. Les factures seront à 0€.");
   if (enrollments.length === 0) warnings.push("Aucun apprenant inscrit.");
 
   const preview: PreviewItem[] = [];
 
-  // ── FINANCEURS (both INTRA and INTER) ──
+  // ── 1) FINANCEURS (logique inchangée — montant accordé > 0, status ≠ refusée)
   let financeurTotal = 0;
   for (const fin of financiers) {
-    // Use amount_granted if accepted, else amount
     const finAmount = Number(fin.amount_granted) || Number(fin.amount) || 0;
     if (finAmount <= 0) continue;
-    // Skip refused financiers
     if (fin.status === "refusee") continue;
 
     preview.push({
@@ -190,108 +214,69 @@ async function buildInvoicePreview(supabase: any, sessionId: string, entityId: s
       recipientName: fin.name,
       amount: finAmount,
       detail: `Financeur ${fin.type || ""}`.trim(),
+      lines: [],
+      participantsNote: null,
     });
     financeurTotal += finAmount;
   }
 
-  // ── INTRA: 1 facture entreprise ──
-  if (session.type === "intra") {
-    // Find the company: formation_companies first, then enrollment clients
-    let companyId: string | null = null;
-    let companyName: string | null = null;
-
-    // Try formation_companies
-    if (companies.length > 0) {
-      const clientArr = companies[0].client as unknown as Array<{ id: string; company_name: string }> | null;
-      const client = Array.isArray(clientArr) ? clientArr[0] : (companies[0].client as unknown as { id: string; company_name: string } | null);
-      if (client) {
-        companyId = client.id;
-        companyName = client.company_name;
+  // ── 2) ENTREPRISES via helpers PR 13/14 (1 facture par entreprise)
+  if (companies.length > 0) {
+    // Validation amont : toutes les entreprises doivent avoir rattachement + montant OK
+    for (const fc of companies) {
+      const v = validateCompanyExport(formation, fc.client_id);
+      if (!v.ok) {
+        const cname = fc.client?.company_name || fc.client_id;
+        return { preview: [], warnings, error: `Entreprise "${cname}" : ${v.reason}` };
       }
     }
 
-    // Fallback: find company from enrollments
-    if (!companyId) {
-      for (const e of enrollments) {
-        if (e.client_id) {
-          const enrollClient = Array.isArray(e.client) ? e.client[0] : e.client;
-          if (enrollClient) {
-            companyId = (enrollClient as { id: string; company_name: string }).id;
-            companyName = (enrollClient as { id: string; company_name: string }).company_name;
-            warnings.push(`Entreprise "${companyName}" détectée depuis les inscriptions (pas dans les entreprises liées).`);
-            break;
-          }
-        }
-      }
-    }
-
-    if (companyId && companyName) {
-      const companyAmount = Math.max(0, totalPrice - financeurTotal);
-      if (companyAmount > 0) {
-        preview.push({
-          recipientType: "company",
-          recipientId: companyId,
-          recipientName: companyName,
-          amount: companyAmount,
-          detail: financeurTotal > 0 ? `Total ${totalPrice}€ - Financeurs ${financeurTotal}€` : "",
-        });
-      }
-    } else if (enrollments.length > 0) {
-      // No company found — generate per-learner invoices
-      warnings.push("Aucune entreprise trouvée pour cette formation intra. Factures générées par apprenant.");
-      const pricePerLearner = enrollments.length > 0 ? Math.max(0, totalPrice - financeurTotal) / enrollments.length : 0;
-      for (const e of enrollments) {
-        const learner = Array.isArray(e.learner) ? e.learner[0] : e.learner;
-        if (!learner || pricePerLearner <= 0) continue;
-        preview.push({
-          recipientType: "learner",
-          recipientId: learner.id,
-          recipientName: `${(learner as { last_name: string }).last_name?.toUpperCase()} ${(learner as { first_name: string }).first_name}`,
-          amount: Math.round(pricePerLearner * 100) / 100,
-          detail: "Particulier",
-        });
-      }
-    } else {
-      return { preview: [], warnings, error: "Aucune entreprise ni apprenant lié à cette formation. Ajoutez une entreprise dans l'onglet Vue d'ensemble ou inscrivez des apprenants." };
-    }
-  }
-
-  // ── INTER: 1 facture par groupe d'apprenants ──
-  if (session.type !== "intra") {
-    if (enrollments.length === 0) {
-      return { preview: [], warnings, error: "Aucun apprenant inscrit. Ajoutez des apprenants pour générer les factures." };
-    }
-
-    const remainingAmount = Math.max(0, totalPrice - financeurTotal);
-    const pricePerLearner = enrollments.length > 0 ? remainingAmount / enrollments.length : 0;
-
-    // Group by client
-    const groups: Record<string, { id: string; name: string; count: number }> = {};
-    for (const e of enrollments) {
-      const clientId = e.client_id || "individual";
-      if (!groups[clientId]) {
-        let clientName = "Particulier";
-        if (e.client_id) {
-          const enrollClient = Array.isArray(e.client) ? e.client[0] : e.client;
-          if (enrollClient) clientName = (enrollClient as { company_name: string }).company_name;
-        }
-        groups[clientId] = { id: clientId, name: clientName, count: 0 };
-      }
-      groups[clientId].count++;
-    }
-
-    for (const group of Object.values(groups)) {
-      const amount = Math.round(pricePerLearner * group.count * 100) / 100;
-      if (amount <= 0) continue;
-
+    for (const fc of companies) {
+      const result = buildInvoiceLinesForCompany(formation, fc.client_id);
+      const cname = fc.client?.company_name || "Entreprise";
       preview.push({
-        recipientType: group.id === "individual" ? "learner" : "company",
-        recipientId: group.id === "individual" ? (enrollments.find((e: Record<string, unknown>) => !e.client_id)?.learner_id as string || "individual") : group.id,
-        recipientName: group.name,
-        amount,
-        detail: `${group.count} apprenant(s)`,
+        recipientType: "company",
+        recipientId: fc.client_id,
+        recipientName: cname,
+        amount: result.amountHT,
+        detail: financeurTotal > 0 ? `Co-financement (financeurs ${financeurTotal}€)` : "",
+        lines: result.lines,
+        participantsNote: result.participantsNote,
       });
     }
+
+    return { preview, warnings, error: null };
+  }
+
+  // ── 3) FALLBACK : aucune entreprise rattachée → 1 facture par apprenant (legacy)
+  const totalPrice = Number(session.total_price) || 0;
+  const remainingAmount = Math.max(0, totalPrice - financeurTotal);
+  const enrollmentList = enrollments as Array<{ id: string; learner_id: string | null; learner: { id: string; first_name: string; last_name: string } | { id: string; first_name: string; last_name: string }[] | null }>;
+
+  if (enrollmentList.length === 0) {
+    return { preview: [], warnings, error: "Aucune entreprise rattachée et aucun apprenant inscrit." };
+  }
+
+  const pricePerLearner = enrollmentList.length > 0 ? remainingAmount / enrollmentList.length : 0;
+  warnings.push("Aucune entreprise rattachée — factures générées par apprenant (fallback legacy).");
+
+  for (const e of enrollmentList) {
+    const learner = Array.isArray(e.learner) ? e.learner[0] : e.learner;
+    if (!learner || pricePerLearner <= 0) continue;
+    const fullName = `${learner.last_name?.toUpperCase()} ${learner.first_name}`;
+    preview.push({
+      recipientType: "learner",
+      recipientId: learner.id,
+      recipientName: fullName,
+      amount: Math.round(pricePerLearner * 100) / 100,
+      detail: "Particulier",
+      lines: [{
+        description: `Formation : ${session.title}`,
+        quantity: 1,
+        unit_price: Math.round(pricePerLearner * 100) / 100,
+      }],
+      participantsNote: null,
+    });
   }
 
   return { preview, warnings, error: null };
