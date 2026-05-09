@@ -22,6 +22,7 @@ import { EmailPreviewDialog } from "@/components/emails/EmailPreviewDialog";
 import { useEntity } from "@/contexts/EntityContext";
 import { getDefaultTemplate } from "@/lib/document-templates-defaults";
 import { resolveVariables } from "@/lib/utils/resolve-variables";
+import { validateCompanyExport } from "@/lib/utils/formation-companies";
 import { exportHtmlToPDF, exportHtmlToPDFBase64 } from "@/lib/pdf-export";
 import { cn } from "@/lib/utils";
 import { DocMatrixSection } from "@/components/formations/DocMatrixSection";
@@ -315,6 +316,23 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     }
   }, [loadingTemplates, initializeDefaultDocs, enrollments.length]);
 
+  // ===== EXPORT VALIDATION (multi-entreprises) =====
+
+  // Bloque l'export PDF/email d'une convention entreprise si :
+  //  - en INTER, ≥1 apprenant a client_id null (rattachement incomplet)
+  //  - le montant de cette entreprise (formation_companies.amount) est NULL/0
+  // Retourne true si OK, false (avec toast) sinon. Ne s'applique qu'aux docs
+  // owner_type=company / doc_type=convention_entreprise — autres docs passent toujours.
+  const canExportCompanyDoc = (doc: FormationConventionDocument): boolean => {
+    if (doc.owner_type !== "company" || doc.doc_type !== "convention_entreprise") return true;
+    const result = validateCompanyExport(formation, doc.owner_id);
+    if (!result.ok) {
+      toast({ title: "Export bloqué", description: result.reason, variant: "destructive" });
+      return false;
+    }
+    return true;
+  };
+
   // ===== GENERATE DOCUMENT HTML (reusable) =====
 
   const generateDocHtml = async (doc: FormationConventionDocument): Promise<string> => {
@@ -546,6 +564,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     setSaving(`send-${docId}`);
     const doc = docs.find((d) => d.id === docId);
     if (!doc) { setSaving(null); return; }
+    if (!canExportCompanyDoc(doc)) { setSaving(null); return; }
     const docLabel = DOC_LABELS[doc.doc_type] || doc.doc_type;
 
     try {
@@ -656,6 +675,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     for (const doc of targetDocs) {
       const email = getRecipientEmail(doc);
       if (!email) { failed++; continue; }
+      if (!canExportCompanyDoc(doc)) { failed++; continue; }
 
       try {
         const html = await generateDocHtml(doc);
@@ -713,6 +733,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     toast({ title: `Génération de ${targetDocs.length} PDF...` });
 
     for (const doc of targetDocs) {
+      if (!canExportCompanyDoc(doc)) continue;
       const html = await generateDocHtml(doc);
       const label = DOC_LABELS[doc.doc_type] || doc.doc_type;
 
@@ -1229,6 +1250,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
       <button
         onClick={async (e) => {
           e.stopPropagation();
+          if (!canExportCompanyDoc(doc)) return;
           const html = await generateDocHtml(doc);
           const label = doc.custom_label || DOC_LABELS[doc.doc_type] || doc.doc_type;
           await exportHtmlToPDF(label, html, `${doc.doc_type}_${doc.id}`, entityName);
