@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
-import { Building2, MapPin, Phone, User, Image as ImageIcon, Upload, Loader2, Save } from "lucide-react";
+import { Building2, MapPin, Phone, User, Image as ImageIcon, Upload, Loader2, Save, CreditCard, Receipt } from "lucide-react";
 
 interface OrgForm {
   name: string;
@@ -32,6 +32,13 @@ interface OrgForm {
   logo_url: string;
   stamp_url: string;
   signature_url: string;
+  // Coordonnées bancaires (RIB) — pour bloc facture
+  bank_name: string;
+  bank_iban: string;
+  bank_bic: string;
+  bank_beneficiary: string;
+  // Mention pénalités (L.441-6) — pour bloc facture
+  invoice_penalty_text: string;
 }
 
 const emptyForm: OrgForm = {
@@ -40,6 +47,8 @@ const emptyForm: OrgForm = {
   email: "", phone: "", website: "",
   president_name: "", president_title: "Gérant",
   signature_text: "", logo_url: "", stamp_url: "", signature_url: "",
+  bank_name: "", bank_iban: "", bank_bic: "", bank_beneficiary: "",
+  invoice_penalty_text: "",
 };
 
 export default function OrganizationSettingsPage() {
@@ -64,6 +73,9 @@ export default function OrganizationSettingsPage() {
           president_name: d.president_name || "", president_title: d.president_title || "Gérant",
           signature_text: d.signature_text || "",
           logo_url: d.logo_url || "", stamp_url: d.stamp_url || "", signature_url: d.signature_url || "",
+          bank_name: d.bank_name || "", bank_iban: d.bank_iban || "",
+          bank_bic: d.bank_bic || "", bank_beneficiary: d.bank_beneficiary || "",
+          invoice_penalty_text: d.invoice_penalty_text || "",
         });
       }
       setLoading(false);
@@ -82,6 +94,9 @@ export default function OrganizationSettingsPage() {
         president_name: form.president_name || null, president_title: form.president_title || null,
         signature_text: form.signature_text || null,
         logo_url: form.logo_url || null, stamp_url: form.stamp_url || null, signature_url: form.signature_url || null,
+        bank_name: form.bank_name || null, bank_iban: form.bank_iban || null,
+        bank_bic: form.bank_bic || null, bank_beneficiary: form.bank_beneficiary || null,
+        invoice_penalty_text: form.invoice_penalty_text || null,
       }).eq("id", entityId);
       if (error) throw error;
       toast({ title: "Paramètres enregistrés" });
@@ -215,6 +230,50 @@ export default function OrganizationSettingsPage() {
               </div>
             </div>
           ))}
+        </CardContent>
+      </Card>
+
+      {/* Coordonnées bancaires (RIB) */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><CreditCard className="h-5 w-5" />Coordonnées bancaires (RIB)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-xs text-gray-500">
+            Affichées dans le bloc RIB de chaque facture PDF. L&apos;IBAN est requis pour générer une facture.
+          </p>
+          <div className="grid grid-cols-2 gap-4">
+            <div><Label>Nom de la banque</Label><Input value={form.bank_name} onChange={u("bank_name")} placeholder="SOCIÉTÉ GÉNÉRALE" /></div>
+            <div><Label>Bénéficiaire</Label><Input value={form.bank_beneficiary} onChange={u("bank_beneficiary")} placeholder={form.name || "MR FORMATION"} /></div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label>IBAN <span className="text-red-500">*</span></Label>
+              <Input value={form.bank_iban} onChange={u("bank_iban")} placeholder="FR76 3000 3022 7400 0200 3557 196" />
+            </div>
+            <div><Label>BIC / SWIFT</Label><Input value={form.bank_bic} onChange={u("bank_bic")} placeholder="SOGEFRPP" /></div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Mentions facture */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Receipt className="h-5 w-5" />Mentions facture</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label>Mention pénalités de retard (article L.441-6)</Label>
+            <Textarea
+              value={form.invoice_penalty_text}
+              onChange={u("invoice_penalty_text")}
+              rows={5}
+              placeholder="Conformément à l'article L. 441-6 du Code de Commerce, les pénalités de retard..."
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Affichée à côté de la date d&apos;échéance sur chaque facture PDF. Laissez vide pour utiliser le texte par défaut.
+            </p>
+          </div>
         </CardContent>
       </Card>
 
