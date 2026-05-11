@@ -235,7 +235,8 @@ export default function TrainerPage() {
       );
       setEditingProfile(false);
       toast({ title: "Profil mis à jour", description: "Vos informations ont été enregistrées." });
-    } catch {
+    } catch (err) {
+      console.error("[trainer profile update]", err);
       toast({
         title: "Erreur",
         description: "Impossible de mettre à jour le profil.",

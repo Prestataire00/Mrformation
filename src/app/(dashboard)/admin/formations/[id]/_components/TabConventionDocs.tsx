@@ -478,7 +478,10 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
           setPreviewDoc({ open: true, html, title: label, filename: `${doc.doc_type}_${Date.now()}` });
           return;
         }
-      } catch { /* fallthrough */ }
+      } catch (err) {
+        // Intentional fallthrough vers le toast d'erreur — on log pour audit.
+        console.error("[TabConventionDocs handleView fallthrough]", err);
+      }
       toast({ title: "Erreur d'aperçu", description: msg, variant: "destructive" });
     }
   };
@@ -798,7 +801,10 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
             .update({ is_sent: true, sent_at: new Date().toISOString() })
             .eq("id", doc.id);
           sent++;
-        } catch { /* continue */ }
+        } catch (err) {
+          // Continue à itérer même si un envoi échoue, mais log pour audit.
+          console.error("[TabConventionDocs mass-send] envoi échoué:", err);
+        }
       }
     }
     setSaving(null);

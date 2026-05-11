@@ -250,7 +250,11 @@ export async function POST(request: NextRequest) {
           resource_type: "task",
           resource_id: data.id,
         });
-      } catch { /* silent */ }
+      } catch (err) {
+        // Notification non-bloquante (la tâche est créée même si la notif échoue)
+        // mais on log pour pouvoir diagnostiquer un problème silencieux côté audit.
+        console.error("[POST /api/crm/tasks] Notification assignment failed:", err);
+      }
     }
 
     return NextResponse.json({ data, error: null }, { status: 201 });
