@@ -12,6 +12,7 @@ import {
 import { SearchSelect } from "@/components/ui/search-select";
 import { useToast } from "@/components/ui/use-toast";
 import { formatCurrency } from "@/lib/utils";
+import { getLearnersForCompany } from "@/lib/utils/formation-companies";
 import type { Session, Client, FormationCompany } from "@/lib/types";
 
 interface Props {
@@ -223,9 +224,9 @@ export function ResumeCompanies({ formation, onRefresh }: Props) {
         <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Entreprises ({companies.length})</h3>
         <div className="space-y-3">
           {companies.map((fc) => {
-            const companyLearners = (formation.enrollments || []).filter(
-              (e) => e.client_id === fc.client_id
-            );
+            // Utilise le helper PR 13 (INTRA = tous via auto-assign, INTER = filtre strict).
+            // Cohérent avec convention/facture/templates docs.
+            const companyLearners = getLearnersForCompany(formation, fc.client_id);
             return (
               <div key={fc.id} className="p-4 bg-muted/50 rounded-lg">
                 <div className="flex items-center justify-between mb-2">
