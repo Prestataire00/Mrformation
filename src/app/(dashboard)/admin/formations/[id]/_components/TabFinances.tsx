@@ -11,6 +11,13 @@ import { ImportInvoiceDialog } from "./ImportInvoiceDialog";
 import { downloadInvoicePDF, invoicePDFBase64 } from "@/lib/invoice-pdf-export";
 import type { InvoicePdfData } from "@/lib/invoice-pdf-export";
 import { buildInvoiceLinesForCompany } from "@/lib/utils/invoice-builder";
+import { getLearnersForCompany } from "@/lib/utils/formation-companies";
+
+const MODE_LABELS: Record<string, string> = {
+  presentiel: "En présentiel",
+  distanciel: "À distance",
+  hybride: "Hybride",
+};
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -599,43 +606,75 @@ export function TabFinances({ formation, onRefresh }: Props) {
 
   // ── Invoice PDF helpers ──
 
-  const buildInvoicePdfData = (inv: Invoice): InvoicePdfData => ({
-    entityName: entity?.name || "MR FORMATION",
-    entityAddress: (entity as unknown as Record<string, string>)?.address || "24/26 Boulevard Gay Lussac",
-    entityPostalCode: (entity as unknown as Record<string, string>)?.postal_code || "13014",
-    entityCity: (entity as unknown as Record<string, string>)?.city || "Marseille",
-    entitySiret: (entity as unknown as Record<string, string>)?.siret || "91311329600036",
-    entityNda: (entity as unknown as Record<string, string>)?.nda || "93132013113",
-    entityPhone: (entity as unknown as Record<string, string>)?.phone || "0750461245",
-    entityEmail: (entity as unknown as Record<string, string>)?.email || "contact@mrformation.fr",
-    entityTvaExempt: (entity as unknown as Record<string, unknown>)?.tva_exempt !== false,
-    entityTvaRate: Number((entity as unknown as Record<string, unknown>)?.tva_rate) || 20,
-    entityFooterText: (entity as unknown as Record<string, string>)?.invoice_footer_text || "TVA non applicable, article 261-4-4° du CGI.",
-    entityLogo: "",
-    reference: inv.reference,
-    createdAt: inv.created_at,
-    dueDate: inv.due_date,
-    status: inv.status,
-    isAvoir: inv.is_avoir,
-    notes: inv.notes,
-    recipientName: inv.recipient_name,
-    recipientType: inv.recipient_type,
-    recipientSiret: (inv as unknown as Record<string, string>).recipient_siret || undefined,
-    recipientAddress: (inv as unknown as Record<string, string>).recipient_address || undefined,
-    sessionTitle: formation.title,
-    sessionStartDate: formation.start_date,
-    sessionEndDate: formation.end_date,
-    sessionDuration: formation.planned_hours ? Number(formation.planned_hours) : null,
-    amount: inv.amount,
-    learnerCount: (formation.enrollments || []).length || undefined,
-  });
+  const buildInvoicePdfData = (inv: Invoice): InvoicePdfData => {
+    const entityRec = (entity as unknown as Record<string, unknown>) || {};
+    const str = (k: string): string => (typeof entityRec[k] === "string" ? (entityRec[k] as string) : "");
+    const strOrNull = (k: string): string | null => (typeof entityRec[k] === "string" ? (entityRec[k] as string) : null);
+
+    // Apprenants : filtrer par entreprise si destinataire = company, sinon tous
+    const allEnrollments = formation.enrollments || [];
+    const learnerEnrollments = inv.recipient_type === "company"
+      ? getLearnersForCompany(formation, inv.recipient_id)
+      : allEnrollments;
+    const sessionLearners = learnerEnrollments
+      .filter((e) => e.learner)
+      .map((e) => `${e.learner!.last_name?.toUpperCase()} ${e.learner!.first_name}`);
+
+    // Formateurs
+    const sessionTrainers = (formation.formation_trainers || [])
+      .filter((ft) => ft.trainer)
+      .map((ft) => `${ft.trainer!.last_name?.toUpperCase()} ${ft.trainer!.first_name}`);
+
+    return {
+      entityName: entity?.name || "MR FORMATION",
+      entityAddress: str("address") || "24/26 Boulevard Gay Lussac",
+      entityPostalCode: str("postal_code") || "13014",
+      entityCity: str("city") || "Marseille",
+      entitySiret: str("siret") || "91311329600036",
+      entityNda: str("nda") || "93132013113",
+      entityPhone: str("phone") || "0750461245",
+      entityEmail: str("email") || "contact@mrformation.fr",
+      entityWebsite: strOrNull("website"),
+      entityTvaExempt: entityRec.tva_exempt === true,
+      entityTvaRate: Number(entityRec.tva_rate) || 20,
+      entityFooterText: str("invoice_footer_text"),
+      entityLogo: "",
+      entityStampUrl: strOrNull("stamp_url"),
+      entityBankName: strOrNull("bank_name"),
+      entityBankIban: str("bank_iban"),
+      entityBankBic: strOrNull("bank_bic"),
+      entityBankBeneficiary: strOrNull("bank_beneficiary"),
+      entityPenaltyText: strOrNull("invoice_penalty_text"),
+      reference: inv.reference,
+      createdAt: inv.created_at,
+      dueDate: inv.due_date,
+      status: inv.status,
+      isAvoir: inv.is_avoir,
+      notes: inv.notes,
+      recipientName: inv.recipient_name,
+      recipientType: inv.recipient_type,
+      recipientSiret: (inv as unknown as Record<string, string>).recipient_siret || undefined,
+      recipientAddress: (inv as unknown as Record<string, string>).recipient_address || undefined,
+      sessionTitle: formation.title,
+      sessionStartDate: formation.start_date,
+      sessionEndDate: formation.end_date,
+      sessionDuration: formation.planned_hours ? Number(formation.planned_hours) : null,
+      sessionMode: MODE_LABELS[formation.mode] || formation.mode || null,
+      sessionLocation: formation.location || null,
+      sessionTrainers,
+      sessionLearners,
+      amount: inv.amount,
+      learnerCount: allEnrollments.length || undefined,
+    };
+  };
 
   const handleDownloadPdf = async (inv: Invoice) => {
     try {
       await downloadInvoicePDF(buildInvoicePdfData(inv));
       toast({ title: `PDF ${inv.reference} téléchargé` });
-    } catch {
-      toast({ title: "Erreur PDF", variant: "destructive" });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erreur PDF";
+      toast({ title: "Génération PDF impossible", description: message, variant: "destructive" });
     }
   };
 
@@ -678,8 +717,9 @@ export function TabFinances({ formation, onRefresh }: Props) {
 
       toast({ title: `Facture ${inv.reference} envoyée par email` });
       fetchData();
-    } catch {
-      toast({ title: "Erreur d'envoi", variant: "destructive" });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erreur d'envoi";
+      toast({ title: "Envoi impossible", description: message, variant: "destructive" });
     }
   };
 
