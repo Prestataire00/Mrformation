@@ -342,17 +342,16 @@ export default function NewQuotePage() {
         training_title: selectedProgram?.title || null,
       };
 
-      // Get next quote number
+      // Get next quote number via RPC atomique (PR 18) — anti race-condition.
+      // SELECT MAX + INSERT non atomique côté client était cassé : 2 admins
+      // simultanés obtenaient le même numéro → INSERT 2 échouait (23505).
       const fiscalYear = new Date().getFullYear();
-      const { data: maxRow } = await supabase
-        .from("crm_quotes")
-        .select("quote_number")
-        .eq("entity_id", entityId)
-        .eq("fiscal_year", fiscalYear)
-        .order("quote_number", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      const nextNumber = (maxRow?.quote_number ?? 0) + 1;
+      const { data: nextNumberData, error: nextNumberErr } = await supabase
+        .rpc("next_quote_number_atomic", { p_entity_id: entityId, p_fiscal_year: fiscalYear });
+      if (nextNumberErr) {
+        throw new Error(`Numérotation devis impossible : ${nextNumberErr.message}`);
+      }
+      const nextNumber = (nextNumberData as number) || 1;
 
       let quoteId: string;
 
@@ -408,12 +407,34 @@ export default function NewQuotePage() {
         } = await supabase.auth.getUser();
         if (user) payload.created_by = user.id;
 
-        const { data: insertedQuote, error: insertErr } = await supabase
-          .from("crm_quotes")
-          .insert([payload])
-          .select("id")
-          .single();
-        if (insertErr) throw insertErr;
+        // INSERT avec retry si collision UNIQUE (race condition résiduelle entre
+        // la RPC next_quote_number_atomic et l'INSERT). En cas de 23505, on
+        // rappelle la RPC pour obtenir un nouveau numéro et on retry une fois.
+        let insertedQuote: { id: string } | null = null;
+        let attempt = 0;
+        let currentNumber = nextNumber;
+        while (attempt < 2 && !insertedQuote) {
+          payload.quote_number = currentNumber;
+          payload.reference = form.reference.trim() || `DEV-${fiscalYear}-${String(currentNumber).padStart(3, "0")}`;
+          const { data, error: insertErr } = await supabase
+            .from("crm_quotes")
+            .insert([payload])
+            .select("id")
+            .single();
+          if (insertErr) {
+            if (insertErr.code === "23505" && attempt === 0) {
+              // Collision rare — réclamer un nouveau numéro
+              const { data: retryNumber } = await supabase
+                .rpc("next_quote_number_atomic", { p_entity_id: entityId, p_fiscal_year: fiscalYear });
+              currentNumber = (retryNumber as number) || currentNumber + 1;
+              attempt++;
+              continue;
+            }
+            throw insertErr;
+          }
+          insertedQuote = data;
+        }
+        if (!insertedQuote) throw new Error("Création devis impossible après retry");
         quoteId = insertedQuote.id;
       }
 
