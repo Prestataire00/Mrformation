@@ -1,5 +1,6 @@
 import type { Session } from "@/lib/types";
 import { getLearnersForCompany, getAmountForCompany } from "@/lib/utils/formation-companies";
+import { sanitizeSignatureSvg } from "@/lib/utils/sanitize-svg";
 
 // ──────────────────────────────────────────────
 // Types
@@ -207,8 +208,13 @@ function getCompanyInfo(entityName: string, entity?: TemplateData["entity"]) {
 }
 
 function signatureToDataUrl(svgData: string): string {
-  if (svgData.startsWith("data:")) return svgData;
-  return `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svgData)))}`;
+  // SÉCURITÉ : sanitize le SVG avant encodage en data URL pour éviter
+  // l'injection XSS via signature_data (script, foreignObject, event handlers).
+  // PNG/JPG data URLs passent through (sûres par construction).
+  const clean = sanitizeSignatureSvg(svgData);
+  if (!clean) return "";
+  if (clean.startsWith("data:")) return clean;
+  return `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(clean)))}`;
 }
 
 function findSignature(

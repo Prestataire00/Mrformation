@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
 import { Session, Trainer, Learner, Enrollment, Signature } from "@/lib/types";
 import { cn, formatDate, formatDateTime, STATUS_COLORS, SESSION_STATUS_LABELS } from "@/lib/utils";
+import { sanitizeSignatureSvg } from "@/lib/utils/sanitize-svg";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -951,7 +952,7 @@ export default function SignaturesPage() {
                             <td className="px-4 py-3">
                               <div className="h-8 w-24 rounded border border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden">
                                 {sig.signature_data && sig.signature_data.startsWith("<svg") ? (
-                                  <div className="w-20 h-6" dangerouslySetInnerHTML={{ __html: sig.signature_data }} />
+                                  <div className="w-20 h-6" dangerouslySetInnerHTML={{ __html: sanitizeSignatureSvg(sig.signature_data) }} />
                                 ) : (
                                   <svg viewBox="0 0 96 32" className="w-20 h-6">
                                     <path

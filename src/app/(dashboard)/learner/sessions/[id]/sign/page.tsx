@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { SignaturePad } from "@/components/signatures/SignaturePad";
+import { sanitizeSignatureSvg } from "@/lib/utils/sanitize-svg";
 import {
   Card,
   CardContent,
@@ -298,7 +299,7 @@ export default function LearnerSignPage() {
                     <div className="border-2 border-green-400 rounded-lg bg-green-50 p-3">
                       <div
                         className="w-full h-20 flex items-center justify-center"
-                        dangerouslySetInnerHTML={{ __html: sig.signature_data }}
+                        dangerouslySetInnerHTML={{ __html: sanitizeSignatureSvg(sig.signature_data) }}
                       />
                     </div>
                     <div className="flex items-center gap-2 text-sm text-gray-600">
@@ -356,7 +357,7 @@ export default function LearnerSignPage() {
                     <div className="border-2 border-green-400 rounded-lg bg-green-50 p-4">
                       <div
                         className="w-full h-32 flex items-center justify-center"
-                        dangerouslySetInnerHTML={{ __html: sig.signature_data }}
+                        dangerouslySetInnerHTML={{ __html: sanitizeSignatureSvg(sig.signature_data) }}
                       />
                     </div>
                     <div className="flex items-center gap-2 text-sm text-gray-600">
