@@ -10,6 +10,7 @@ import { useEntity } from "@/contexts/EntityContext";
 import { ImportInvoiceDialog } from "./ImportInvoiceDialog";
 import { downloadInvoicePDF, invoicePDFBase64 } from "@/lib/invoice-pdf-export";
 import type { InvoicePdfData } from "@/lib/invoice-pdf-export";
+import { buildInvoiceLinesForCompany } from "@/lib/utils/invoice-builder";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -133,7 +134,10 @@ export function TabFinances({ formation, onRefresh }: Props) {
   const removeInvoiceLine = (idx: number) => setInvoiceForm((f) => ({ ...f, lines: f.lines.filter((_, i) => i !== idx) }));
   const calcLineTotal = (l: { quantity: string; unit_price: string }) => (parseFloat(l.quantity.replace(",", ".")) || 0) * (parseFloat(l.unit_price.replace(",", ".")) || 0);
   const invoiceSubtotal = invoiceForm.lines.reduce((s, l) => s + calcLineTotal(l), 0);
-  const invoiceTotal = invoiceSubtotal; // TVA exonérée par défaut — à ajuster si entity.tva_exempt === false
+  const entityTvaExempt = (entity as unknown as Record<string, unknown>)?.tva_exempt === true;
+  const entityTvaRate = Number((entity as unknown as Record<string, unknown>)?.tva_rate) || 20;
+  const invoiceTvaAmount = entityTvaExempt ? 0 : Math.round(invoiceSubtotal * (entityTvaRate / 100) * 100) / 100;
+  const invoiceTotal = Math.round((invoiceSubtotal + invoiceTvaAmount) * 100) / 100;
 
   // Inline charge form
   const [chargeLabel, setChargeLabel] = useState("");
@@ -209,7 +213,7 @@ export function TabFinances({ formation, onRefresh }: Props) {
    * Si la formation n'a pas d'apprenants inscrits, fallback sur 1 ligne
    * globale (cas formation à venir avec prix défini mais sans inscrits).
    */
-  const buildAutoLines = (recipientType: string): { description: string; quantity: string; unit_price: string }[] => {
+  const buildAutoLines = (recipientType: string, recipientId?: string): { description: string; quantity: string; unit_price: string }[] => {
     const enrollments = formation.enrollments || [];
     const totalPrice = formation.total_price || 0;
     const hours = formation.planned_hours;
@@ -217,6 +221,22 @@ export function TabFinances({ formation, onRefresh }: Props) {
       ? ` (${new Date(formation.start_date).toLocaleDateString("fr-FR")} → ${new Date(formation.end_date).toLocaleDateString("fr-FR")})`
       : "";
     const titlePart = `Formation : ${formation.title}${hours ? ` — ${hours}h` : ""}${dateRange}`;
+
+    // Cas company avec companyId connu : utilise le helper PR 14 (multi-entreprises).
+    // INTRA → 1 ligne globale avec amount de l'entreprise ; INTER → N lignes par apprenant
+    // de cette entreprise, unit_price = amount / N (split équitable).
+    if (recipientType === "company" && recipientId) {
+      try {
+        const built = buildInvoiceLinesForCompany(formation, recipientId);
+        return built.lines.map((l) => ({
+          description: l.description.replace("Formation : " + (formation.title || "Formation"), titlePart),
+          quantity: String(l.quantity),
+          unit_price: l.unit_price.toFixed(2).replace(".", ","),
+        }));
+      } catch {
+        // Fallback : entreprise sans amount défini ou inconnue → comportement legacy
+      }
+    }
 
     const enrolledLearners = enrollments.filter((e) => e.learner);
     const enrollCount = enrolledLearners.length || 1;
@@ -232,10 +252,8 @@ export function TabFinances({ formation, onRefresh }: Props) {
       }];
     }
 
-    // Entreprise / Financeur : 1 ligne PAR apprenant pour que chaque nom
-    // apparaisse explicitement sur la facture imprimée.
+    // Financeur (ou company sans amount) : 1 ligne PAR apprenant
     if (enrolledLearners.length === 0) {
-      // Pas d'apprenants → fallback ligne globale qté=1
       return [{
         description: titlePart,
         quantity: "1",
@@ -266,13 +284,9 @@ export function TabFinances({ formation, onRefresh }: Props) {
 
     const updates: Partial<typeof invoiceForm> = {};
 
-    // Lignes : remplit toujours (sauf si lignes déjà non-vides avec contenu)
-    const linesAreEmpty = invoiceForm.lines.every((l) => !l.description.trim() && !parseFloat(l.unit_price.replace(",", ".")));
-    if (linesAreEmpty) {
-      updates.lines = buildAutoLines(recipientType);
-    }
-
     // Auto-remplit destinataire si pas encore choisi : 1ère entreprise par défaut
+    // (avant les lignes pour pouvoir passer le companyId au helper PR 14)
+    let recipientIdForLines: string | undefined = overrideRecipientId || invoiceForm.recipient_id || undefined;
     if (!invoiceForm.recipient_id && !overrideRecipientId) {
       const firstCompany = (formation.formation_companies || [])[0];
       const client = firstCompany?.client as unknown as Record<string, string | null> | undefined;
@@ -282,7 +296,16 @@ export function TabFinances({ formation, onRefresh }: Props) {
         updates.recipient_id = firstCompany.client_id || "";
         updates.recipient_siret = client.siret || "";
         updates.recipient_address = [client.address, client.postal_code, client.city].filter(Boolean).join(" ");
+        recipientIdForLines = firstCompany.client_id || undefined;
       }
+    }
+
+    // Lignes : remplit toujours (sauf si lignes déjà non-vides avec contenu).
+    // En multi-entreprises, le helper PR 14 utilise companyId pour produire les lignes
+    // (INTRA = 1 ligne globale, INTER = N lignes par apprenant) avec le bon montant.
+    const linesAreEmpty = invoiceForm.lines.every((l) => !l.description.trim() && !parseFloat(l.unit_price.replace(",", ".")));
+    if (linesAreEmpty) {
+      updates.lines = buildAutoLines(updates.recipient_type ?? recipientType, recipientIdForLines);
     }
 
     // Date d'échéance = end_date + 30 jours (sauf si déjà saisie)
@@ -336,9 +359,10 @@ export function TabFinances({ formation, onRefresh }: Props) {
       }
     }
 
-    // (Re)génère les lignes selon le recipient_type — sauf si admin a déjà tapé
+    // (Re)génère les lignes selon le recipient_type — sauf si admin a déjà tapé.
+    // Passe l'id du destinataire (companyId) pour activer le helper PR 14 multi-entreprises.
     if (invoiceForm.lines.every((l) => !l.description.trim() && !parseFloat(l.unit_price.replace(",", ".")))) {
-      updates.lines = buildAutoLines(invoiceForm.recipient_type);
+      updates.lines = buildAutoLines(invoiceForm.recipient_type, updates.recipient_id);
     }
 
     // Date d'échéance auto = end_date + 30 jours (si pas déjà saisie)
@@ -373,9 +397,10 @@ export function TabFinances({ formation, onRefresh }: Props) {
       return;
     }
 
+    // amount stocké en HT (la TVA est calculée au rendu PDF depuis entity.tva_rate).
     const amount = isAvoir && parentInvoice
       ? -Math.abs(parentInvoice.amount)
-      : invoiceTotal;
+      : invoiceSubtotal;
 
     if (!isAvoir && amount <= 0) {
       toast({ title: "Montant invalide", description: "Ajoutez des lignes de produits", variant: "destructive" });
@@ -485,7 +510,8 @@ export function TabFinances({ formation, onRefresh }: Props) {
           notes: invoiceForm.notes || null,
           external_reference: invoiceForm.external_reference || null,
           funding_type: invoiceForm.funding_type || null,
-          amount: invoiceTotal,
+          // amount stocké en HT (la TVA est calculée au rendu PDF depuis entity.tva_rate).
+          amount: invoiceSubtotal,
           lines: parsedLines,
         }),
       });
@@ -1069,9 +1095,23 @@ export function TabFinances({ formation, onRefresh }: Props) {
                 </div>
               </div>
               <div className="flex justify-end mt-2">
-                <div className="w-48 space-y-0.5 text-sm">
-                  <div className="flex justify-between text-gray-500"><span>Total HT</span><span>{invoiceSubtotal.toLocaleString("fr-FR", { minimumFractionDigits: 2 })} €</span></div>
-                  <div className="flex justify-between font-bold text-gray-900 border-t pt-1"><span>Total TTC</span><span>{invoiceTotal.toLocaleString("fr-FR", { minimumFractionDigits: 2 })} €</span></div>
+                <div className="w-56 space-y-0.5 text-sm">
+                  <div className="flex justify-between text-gray-500">
+                    <span>Total HT</span>
+                    <span>{invoiceSubtotal.toLocaleString("fr-FR", { minimumFractionDigits: 2 })} €</span>
+                  </div>
+                  {entityTvaExempt ? (
+                    <div className="text-[10px] text-gray-500 italic text-right">TVA non applicable, art. 261-4-4° du CGI</div>
+                  ) : (
+                    <div className="flex justify-between text-gray-500">
+                      <span>TVA ({entityTvaRate}%)</span>
+                      <span>{invoiceTvaAmount.toLocaleString("fr-FR", { minimumFractionDigits: 2 })} €</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-bold text-gray-900 border-t pt-1">
+                    <span>Total TTC</span>
+                    <span>{invoiceTotal.toLocaleString("fr-FR", { minimumFractionDigits: 2 })} €</span>
+                  </div>
                 </div>
               </div>
             </div>
