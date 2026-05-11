@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
+import { sanitizeSignatureSvg } from "@/lib/utils/sanitize-svg";
 
 function createServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -21,6 +22,14 @@ export async function POST(request: NextRequest) {
 
     if (!token || !signature_data) {
       return NextResponse.json({ error: "token et signature_data requis" }, { status: 400 });
+    }
+
+    // SÉCURITÉ : sanitize le SVG côté écriture (défense en profondeur) pour
+    // éviter de stocker un payload XSS en DB sur quote_signatures /
+    // document_signatures. Le rendu fait aussi sanitize.
+    const sanitized_signature = sanitizeSignatureSvg(signature_data);
+    if (!sanitized_signature) {
+      return NextResponse.json({ error: "Signature invalide après sanitization" }, { status: 400 });
     }
 
     const supabase = createServiceClient();
@@ -55,7 +64,7 @@ export async function POST(request: NextRequest) {
         quote_id: quote.id,
         entity_id: quote.entity_id,
         signer_name: signer_name || "Signataire",
-        signature_data,
+        signature_data: sanitized_signature,
         ip_address: ipAddress,
         user_agent: userAgent,
       });
@@ -72,7 +81,7 @@ export async function POST(request: NextRequest) {
           signed_at: new Date().toISOString(),
           signer_name: signer_name || "Signataire",
           signer_ip: ipAddress,
-          signature_data,
+          signature_data: sanitized_signature,
           updated_at: new Date().toISOString(),
         }).eq("id", quote.id);
       }
@@ -142,7 +151,7 @@ export async function POST(request: NextRequest) {
         signer_id: doc.owner_id,
         signer_name: signer_name || doc.signer_name || "Signataire",
         signer_email: doc.signer_email,
-        signature_data,
+        signature_data: sanitized_signature,
         ip_address: ipAddress,
         user_agent: userAgent,
       });

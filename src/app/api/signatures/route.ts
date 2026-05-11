@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/require-role";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 import { logAudit } from "@/lib/audit-log";
+import { sanitizeSignatureSvg } from "@/lib/utils/sanitize-svg";
 
 export async function GET(request: NextRequest) {
   const auth = await requireRole(["super_admin", "admin", "trainer", "learner"]);
@@ -41,6 +42,14 @@ export async function POST(request: NextRequest) {
         { error: "Les champs session_id et signature_data sont requis." },
         { status: 400 }
       );
+    }
+
+    // SÉCURITÉ : sanitize le SVG côté écriture (défense en profondeur).
+    // Le rendu fait aussi sanitize, mais ne pas stocker de payload XSS en DB
+    // est préférable (audit, exports SQL, lectures futures).
+    const sanitized_signature = sanitizeSignatureSvg(signature_data);
+    if (!sanitized_signature || typeof sanitized_signature !== "string") {
+      return NextResponse.json({ error: "Signature invalide" }, { status: 400 });
     }
 
     const role = auth.profile.role;
@@ -126,7 +135,7 @@ export async function POST(request: NextRequest) {
         session_id,
         signer_id: effectiveSignerId,
         signer_type: signerType,
-        signature_data,
+        signature_data: sanitized_signature,
         signed_at: new Date().toISOString(),
         time_slot_id: time_slot_id || null,
       })

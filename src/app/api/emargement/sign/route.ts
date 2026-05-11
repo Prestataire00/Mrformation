@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
+import { sanitizeSignatureSvg } from "@/lib/utils/sanitize-svg";
 
 function createServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -33,8 +34,15 @@ export async function POST(request: NextRequest) {
     if (!signature_data.includes("<svg") && !signature_data.startsWith("data:image/")) {
       return NextResponse.json({ error: "Format de signature invalide" }, { status: 400 });
     }
+    // SÉCURITÉ : sanitize le SVG côté écriture (défense en profondeur) pour
+    // ne pas stocker de payload XSS en DB, même si le rendu fait aussi sanitize.
+    const sanitized_signature = sanitizeSignatureSvg(signature_data);
+    if (!sanitized_signature) {
+      return NextResponse.json({ error: "Signature invalide après sanitization" }, { status: 400 });
+    }
+
     // Limite de taille (évite les 413 silencieux)
-    if (signature_data.length > 600_000) {
+    if (sanitized_signature.length > 600_000) {
       return NextResponse.json(
         { error: "Signature trop volumineuse. Effacez et réessayez avec un trait plus simple." },
         { status: 413 }
@@ -112,7 +120,7 @@ export async function POST(request: NextRequest) {
         session_id: tokenData.session_id,
         signer_id: signerId,
         signer_type: signerType,
-        signature_data,
+        signature_data: sanitized_signature,
         signed_at: new Date().toISOString(),
         time_slot_id: tokenData.time_slot_id || null,
         ip_address: ipAddress,
