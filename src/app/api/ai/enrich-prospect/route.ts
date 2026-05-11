@@ -3,6 +3,7 @@ import { requireRole } from "@/lib/auth/require-role";
 import { claudeChat, extractJSON } from "@/lib/ai/claude-client";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 import { sanitizeError } from "@/lib/api-error";
+import { wrapUserData, PROMPT_INJECTION_GUARDRAIL } from "@/lib/ai/sanitize-prompt";
 
 export async function POST(request: NextRequest) {
   const auth = await requireRole(["super_admin", "admin"]);
@@ -21,12 +22,12 @@ export async function POST(request: NextRequest) {
     const prompt = `Tu es un assistant commercial expert pour un organisme de formation professionnelle français (MR FORMATION).
 
 Voici les informations sur un prospect :
-- Entreprise : ${company_name}
-- SIRET : ${siret || "non renseigné"}
-- Code NAF : ${naf_code || "non renseigné"} ${naf_label ? `(${naf_label})` : ""}
-- Secteur : ${sector || "non précisé"}
-- Effectif : ${employees || "non renseigné"}
-- Besoin exprimé : ${notes || "aucun besoin précisé"}
+- Entreprise : ${wrapUserData("company_name", company_name)}
+- SIRET : ${wrapUserData("siret", siret || "non renseigné")}
+- Code NAF : ${wrapUserData("naf_code", naf_code || "non renseigné")} ${naf_label ? `(${wrapUserData("naf_label", naf_label)})` : ""}
+- Secteur : ${wrapUserData("sector", sector || "non précisé")}
+- Effectif : ${wrapUserData("employees", String(employees || "non renseigné"))}
+- Besoin exprimé : ${wrapUserData("notes", notes || "aucun besoin précisé")}
 
 Génère une analyse commerciale en JSON strict (pas de texte autour) :
 {
@@ -40,7 +41,7 @@ Génère une analyse commerciale en JSON strict (pas de texte autour) :
     const result = await claudeChat(
       [{ role: "user", content: prompt }],
       {
-        system: "Tu es un expert en formation professionnelle et développement commercial B2B en France. Réponds uniquement en JSON valide.",
+        system: `Tu es un expert en formation professionnelle et développement commercial B2B en France. Réponds uniquement en JSON valide.\n\n${PROMPT_INJECTION_GUARDRAIL}`,
         temperature: 0.7,
         maxTokens: 1000,
       }
