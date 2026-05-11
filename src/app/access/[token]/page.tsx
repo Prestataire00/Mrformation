@@ -1,6 +1,15 @@
 import { createClient } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { AlertCircle, Clock } from "lucide-react";
+import { checkRateLimit } from "@/lib/rate-limit";
+
+// Hardening sécurité PR 17 :
+//  - Rate limit par IP (10 tentatives / 5 min) → contre bruteforce de tokens UUID
+//  - Cap usage : refuse si used_count > MAX_TOKEN_USES (50 par défaut)
+//  - Early return : on ne touche listUsers() que si token valide & non expiré
+//    (déjà le cas — listUsers est dans le bloc !authUserId, donc après checks)
+const MAX_TOKEN_USES = 50;
 
 function createServiceClient() {
   return createClient(
@@ -25,6 +34,26 @@ interface LearnerRow {
 }
 
 export default async function AccessPage({ params }: { params: { token: string } }) {
+  // Rate limit IP (10 tentatives / 5 min) : protège contre bruteforce de tokens.
+  // Important : on doit limiter par IP, PAS par token, car un attaquant teste
+  // plein de tokens différents.
+  const hdrs = headers();
+  const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim()
+    || hdrs.get("x-real-ip")?.trim()
+    || "unknown";
+  const { allowed } = checkRateLimit(`access-token:${ip}`, { limit: 10, windowSeconds: 300 });
+  if (!allowed) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4 bg-gray-50">
+        <div className="max-w-md text-center bg-white rounded-xl p-8 shadow-lg">
+          <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+          <h1 className="text-xl font-bold text-gray-900 mb-2">Trop de tentatives</h1>
+          <p className="text-gray-600">Veuillez réessayer dans quelques minutes.</p>
+        </div>
+      </div>
+    );
+  }
+
   const supabase = createServiceClient();
 
   // 1. Validate token
@@ -53,6 +82,21 @@ export default async function AccessPage({ params }: { params: { token: string }
           <Clock className="h-12 w-12 text-amber-500 mx-auto mb-4" />
           <h1 className="text-xl font-bold text-gray-900 mb-2">Lien expiré</h1>
           <p className="text-gray-600">Contactez votre centre de formation pour en recevoir un nouveau.</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Cap usage : protège contre l'usage abusif d'un token leaké (ex: lien
+  // partagé en interne, screenshot). Au-delà de MAX_TOKEN_USES, le token est
+  // considéré comme grillé — l'admin doit en regénérer un nouveau.
+  if ((tokenRow.used_count || 0) >= MAX_TOKEN_USES) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4 bg-gray-50">
+        <div className="max-w-md text-center bg-white rounded-xl p-8 shadow-lg">
+          <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+          <h1 className="text-xl font-bold text-gray-900 mb-2">Lien invalide</h1>
+          <p className="text-gray-600">Ce lien d&apos;accès a atteint sa limite d&apos;utilisation. Contactez votre centre de formation pour en recevoir un nouveau.</p>
         </div>
       </div>
     );

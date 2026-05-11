@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
 function createServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -16,6 +17,12 @@ const DOC_LABELS: Record<string, string> = {
 
 // GET /api/documents/sign-status?token= — PUBLIC
 export async function GET(request: NextRequest) {
+  // Rate limit IP : route publique sensible (révèle l'existence d'un token).
+  // Sans rate limit → bruteforce possible pour énumérer les tokens valides.
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  const { allowed, resetAt } = checkRateLimit(`documents-sign-status:${ip}`, { limit: 30, windowSeconds: 60 });
+  if (!allowed) return rateLimitResponse(resetAt);
+
   try {
   const token = request.nextUrl.searchParams.get("token");
   if (!token) return NextResponse.json({ error: "Token requis" }, { status: 400 });
