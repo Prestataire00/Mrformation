@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
 function createServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -9,6 +10,12 @@ function createServiceClient() {
 }
 
 export async function POST(request: NextRequest) {
+  // Rate limit IP : route publique, pas de check RLS sur document_id (à fixer
+  // en PR 20). En attendant, le rate limit évite l'inondation des vues.
+  const rateLimitIp = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  const { allowed, resetAt } = checkRateLimit(`track-view:${rateLimitIp}`, { limit: 60, windowSeconds: 60 });
+  if (!allowed) return rateLimitResponse(resetAt);
+
   try {
     const { document_id, document_type, viewer_type, viewer_id, viewer_email, session_id, entity_id } = await request.json();
 
