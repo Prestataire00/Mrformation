@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/require-role";
 import { claudeChat } from "@/lib/ai/claude-client";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
+import { wrapUserData, escapeForPrompt, PROMPT_INJECTION_GUARDRAIL } from "@/lib/ai/sanitize-prompt";
 
 export async function POST(req: NextRequest) {
   const auth = await requireRole(["super_admin", "admin"]);
@@ -31,13 +32,15 @@ export async function POST(req: NextRequest) {
       actualNeed = { title: session?.title, description: session?.description || training?.description, domain: session?.domain || training?.category };
     }
 
+    // Échappe les contenus user-controlled (bio, formation_domains, competencies)
+    // pour empêcher prompt injection via le contenu DB.
     const trainerList = trainers.map(t =>
-      `ID:${t.id} | ${t.first_name} ${t.last_name} | ${t.seniority_level || "N/A"} ${t.experience_years || 0}ans | Domaines:${(t.formation_domains || []).join(",")} | Compét:${(t.competencies || []).map((c: Record<string, string>) => c.competency).join(",")} | Sat:${t.avg_satisfaction || "N/A"}% | Sessions:${t.total_sessions}`
+      `ID:${escapeForPrompt(t.id)} | ${escapeForPrompt(t.first_name)} ${escapeForPrompt(t.last_name)} | ${escapeForPrompt(t.seniority_level || "N/A")} ${t.experience_years || 0}ans | Domaines:${escapeForPrompt((t.formation_domains || []).join(","))} | Compét:${escapeForPrompt((t.competencies || []).map((c: Record<string, string>) => c.competency).join(","))} | Sat:${t.avg_satisfaction || "N/A"}% | Sessions:${t.total_sessions}`
     ).join("\n");
 
     const response = await claudeChat(
-      [{ role: "user", content: `BESOIN:\n${JSON.stringify(actualNeed)}\n\nFORMATEURS:\n${trainerList}\n\nClasse par pertinence. JSON strict:\n{"matches":[{"trainer_id":"uuid","score":0-100,"reasons_match":["..."],"gaps":["..."]}],"top_pick_reasoning":"..."}` }],
-      { system: "Expert staffing formateurs. JSON strict.", maxTokens: 2000, temperature: 0.2 }
+      [{ role: "user", content: `BESOIN:\n${wrapUserData("need", JSON.stringify(actualNeed))}\n\nFORMATEURS:\n${wrapUserData("trainer_list", trainerList)}\n\nClasse par pertinence. JSON strict:\n{"matches":[{"trainer_id":"uuid","score":0-100,"reasons_match":["..."],"gaps":["..."]}],"top_pick_reasoning":"..."}` }],
+      { system: `Expert staffing formateurs. JSON strict.\n\n${PROMPT_INJECTION_GUARDRAIL}`, maxTokens: 2000, temperature: 0.2 }
     );
 
     const result = JSON.parse(response.content.replace(/```json|```/g, "").trim());

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/require-role";
+import { escapeForPrompt, PROMPT_INJECTION_GUARDRAIL } from "@/lib/ai/sanitize-prompt";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 
@@ -66,8 +67,9 @@ Règles :
 Réponds UNIQUEMENT en JSON : [{"id": "...", "suggestion": "salarie|apprenti|demandeur_emploi|particulier|autre", "reason": "explication courte"}]`;
 
       const learners = batch as LearnerToClassify[];
+      // Escape : ces données viennent de la DB et peuvent contenir prompt injection
       userPrompt = `Classifie ces ${learners.length} apprenants :\n\n${learners.map((l, i) =>
-        `${i + 1}. ID: ${l.id} | ${l.last_name} ${l.first_name} | Email: ${l.email || "—"} | Entreprise: ${l.client_name || "Aucune"} | SIRET: ${l.client_siret || "—"}`
+        `${i + 1}. ID: ${escapeForPrompt(l.id)} | ${escapeForPrompt(l.last_name)} ${escapeForPrompt(l.first_name)} | Email: ${escapeForPrompt(l.email || "—")} | Entreprise: ${escapeForPrompt(l.client_name || "Aucune")} | SIRET: ${escapeForPrompt(l.client_siret || "—")}`
       ).join("\n")}`;
     }
 
@@ -92,7 +94,7 @@ Réponds UNIQUEMENT en JSON : [{"id": "...", "suggestion": "...", "reason": "exp
 
       const trainings = batch as TrainingToClassify[];
       userPrompt = `Classifie ces ${trainings.length} formations :\n\n${trainings.map((t, i) =>
-        `${i + 1}. ID: ${t.id} | "${t.title}" | Catégorie: ${t.category || "—"} | Durée: ${t.duration_hours || "—"}h | Description: ${(t.description || "").slice(0, 100)}`
+        `${i + 1}. ID: ${escapeForPrompt(t.id)} | "${escapeForPrompt(t.title)}" | Catégorie: ${escapeForPrompt(t.category || "—")} | Durée: ${t.duration_hours || "—"}h | Description: ${escapeForPrompt((t.description || "").slice(0, 100))}`
       ).join("\n")}`;
     }
 
@@ -117,7 +119,7 @@ Réponds UNIQUEMENT en JSON : [{"id": "...", "suggestion": "CODE", "label": "Lib
 
       const trainings = batch as TrainingToClassify[];
       userPrompt = `Attribue un code NSF à ces ${trainings.length} formations :\n\n${trainings.map((t, i) =>
-        `${i + 1}. ID: ${t.id} | "${t.title}" | Catégorie: ${t.category || "—"} | Description: ${(t.description || "").slice(0, 100)}`
+        `${i + 1}. ID: ${escapeForPrompt(t.id)} | "${escapeForPrompt(t.title)}" | Catégorie: ${escapeForPrompt(t.category || "—")} | Description: ${escapeForPrompt((t.description || "").slice(0, 100))}`
       ).join("\n")}`;
     }
 
@@ -136,7 +138,7 @@ Réponds UNIQUEMENT en JSON : [{"id": "...", "suggestion": "CODE", "label": "Lib
       body: JSON.stringify({
         model: "claude-haiku-4-5-20251001",
         max_tokens: 4096,
-        system: systemPrompt,
+        system: `${systemPrompt}\n\n${PROMPT_INJECTION_GUARDRAIL}`,
         messages: [{ role: "user", content: userPrompt }],
       }),
     });

@@ -3,14 +3,17 @@ import { requireRole } from "@/lib/auth/require-role";
 import { claudeChat } from "@/lib/ai/claude-client";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 import { sanitizeError } from "@/lib/api-error";
+import { wrapUserData, escapeForPrompt, PROMPT_INJECTION_GUARDRAIL } from "@/lib/ai/sanitize-prompt";
 
-const SYSTEM_PROMPT = `Tu es un expert en réglementation de la formation professionnelle en France (Qualiopi, BPF, OPCO, CPF, Code du travail L6353, RGPD). Tu analyses pour un ORGANISME DE FORMATION. Réponds TOUJOURS en JSON strict, SANS markdown, SANS backticks.`;
+const SYSTEM_PROMPT = `Tu es un expert en réglementation de la formation professionnelle en France (Qualiopi, BPF, OPCO, CPF, Code du travail L6353, RGPD). Tu analyses pour un ORGANISME DE FORMATION. Réponds TOUJOURS en JSON strict, SANS markdown, SANS backticks.\n\n${PROMPT_INJECTION_GUARDRAIL}`;
 
 async function analyzeSingle(article: { title: string; description?: string; source?: string }) {
+  // Le contenu RSS de l'article est non-trusted (sites externes peuvent injecter
+  // du markup ou du texte de prompt injection). On l'encapsule dans des balises XML.
   const prompt = `Analyse cet article pour un organisme de formation français :
-TITRE : ${article.title}
-${article.description ? `DESCRIPTION : ${article.description}` : ""}
-${article.source ? `SOURCE : ${article.source}` : ""}
+TITRE : ${wrapUserData("article_title", article.title)}
+${article.description ? `DESCRIPTION : ${wrapUserData("article_description", article.description)}` : ""}
+${article.source ? `SOURCE : ${wrapUserData("article_source", article.source)}` : ""}
 
 JSON strict :
 {"relevance_score":0-100,"category":"reglementation"|"qualiopi"|"bpf"|"financement_opco"|"rgpd"|"secteur"|"autre","priority":"urgent"|"high"|"medium"|"low","summary":"2 phrases max","impact":"1-2 phrases impact concret","actions":[{"title":"action","description":"détail","priority":"high|medium|low"}],"deadline":"YYYY-MM-DD"|null}
@@ -32,7 +35,7 @@ async function synthesize(items: Array<{ title: string; ai_summary?: string; pri
   }
 
   const prompt = `${top.length} éléments prioritaires pour un OF :
-${top.map((i, idx) => `${idx + 1}. [${(i.priority || "medium").toUpperCase()}] ${i.title}${i.ai_summary ? ` — ${i.ai_summary}` : ""}`).join("\n")}
+${top.map((i, idx) => `${idx + 1}. [${escapeForPrompt(i.priority || "medium").toUpperCase()}] ${escapeForPrompt(i.title)}${i.ai_summary ? ` — ${escapeForPrompt(i.ai_summary)}` : ""}`).join("\n")}
 
 JSON strict :
 {"synthesis":"3-5 phrases synthèse hebdo","top_3_actions":[{"title":"action","why":"pourquoi prioritaire"}],"next_deadline":"YYYY-MM-DD"|null}`;
@@ -71,11 +74,11 @@ export async function POST(request: NextRequest) {
       const content: string[] = [];
       if (articles?.length > 0) {
         content.push("## Articles :");
-        for (const a of articles.slice(0, 15)) content.push(`- ${a}`);
+        for (const a of articles.slice(0, 15)) content.push(`- ${wrapUserData("article", a)}`);
       }
       if (notes?.length > 0) {
         content.push("\n## Notes :");
-        for (const n of notes.slice(0, 10)) content.push(`- ${n}`);
+        for (const n of notes.slice(0, 10)) content.push(`- ${wrapUserData("note", n)}`);
       }
       if (content.length === 0) return NextResponse.json({ error: "Aucun contenu" }, { status: 400 });
 
