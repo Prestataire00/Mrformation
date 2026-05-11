@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/require-role";
+import { createClient } from "@/lib/supabase/server";
 import { sanitizeError } from "@/lib/api-error";
 import { logAudit } from "@/lib/audit-log";
 import {
@@ -8,6 +9,8 @@ import {
 } from "@/lib/utils/formation-companies";
 import { buildInvoiceLinesForCompany } from "@/lib/utils/invoice-builder";
 import type { Session } from "@/lib/types";
+
+type SupabaseServerClient = ReturnType<typeof createClient>;
 
 interface RouteContext {
   params: { id: string };
@@ -59,11 +62,15 @@ export async function POST(_request: NextRequest, context: RouteContext) {
 
     const createdInvoices: Array<Record<string, unknown>> = [];
 
+    // Stratégie : abort on first error. Sans transaction SQL globale, le partial-write
+    // est inévitable, mais on évite le pire : marquer invoice_generated=true alors qu'on
+    // a échoué à mi-parcours. Le check `factures existent déjà` dans buildInvoicePreview
+    // bloque alors la prochaine tentative et l'admin supprime les factures partielles.
     for (const item of preview) {
       // Crée la facture via la RPC atomique (anti-race-condition).
       // La RPC ne couvre pas participants_note ni auto_generated → on UPDATE après.
       const baseNotes = `Formation : ${session?.title || "—"}${item.detail ? ` — ${item.detail}` : ""}`;
-      const { data: inv, error } = await auth.supabase.rpc("create_invoice_with_atomic_number", {
+      const { data: inv, error: rpcError } = await auth.supabase.rpc("create_invoice_with_atomic_number", {
         p_entity_id: entityId,
         p_session_id: sessionId,
         p_recipient_type: item.recipientType,
@@ -81,19 +88,30 @@ export async function POST(_request: NextRequest, context: RouteContext) {
         p_recipient_address: null,
       });
 
-      if (error || !inv) continue;
+      if (rpcError || !inv) {
+        return NextResponse.json({
+          error: `Échec création facture "${item.recipientName}": ${rpcError?.message || "résultat vide"}. ${createdInvoices.length} facture(s) déjà créée(s) — supprimez-les avant de retenter.`,
+          partial: { count: createdInvoices.length, invoices: createdInvoices },
+        }, { status: 500 });
+      }
 
       // UPDATE participants_note + auto_generated (non couverts par la RPC).
       const updates: Record<string, unknown> = { auto_generated: true };
       if (item.participantsNote) updates.participants_note = item.participantsNote;
-      await auth.supabase
+      const { error: updateError } = await auth.supabase
         .from("formation_invoices")
         .update(updates)
         .eq("id", inv.id);
+      if (updateError) {
+        return NextResponse.json({
+          error: `Échec mise à jour facture ${inv.reference}: ${updateError.message}. Supprimez les factures partielles avant de retenter.`,
+          partial: { count: createdInvoices.length + 1, invoices: [...createdInvoices, inv] },
+        }, { status: 500 });
+      }
 
       // INSERT lignes de facture (1 par apprenant en INTER, 1 globale en INTRA).
       if (item.lines && item.lines.length > 0) {
-        await auth.supabase.from("formation_invoice_lines").insert(
+        const { error: linesError } = await auth.supabase.from("formation_invoice_lines").insert(
           item.lines.map((l) => ({
             invoice_id: inv.id,
             description: l.description,
@@ -101,12 +119,19 @@ export async function POST(_request: NextRequest, context: RouteContext) {
             unit_price: l.unit_price,
           }))
         );
+        if (linesError) {
+          return NextResponse.json({
+            error: `Échec insertion lignes pour ${inv.reference}: ${linesError.message}. Supprimez les factures partielles avant de retenter.`,
+            partial: { count: createdInvoices.length + 1, invoices: [...createdInvoices, inv] },
+          }, { status: 500 });
+        }
       }
 
       createdInvoices.push(inv);
     }
 
-    // Mark session as invoiced
+    // Mark session as invoiced — UNIQUEMENT si toutes les créations ont réussi
+    // (les retours d'erreur ci-dessus court-circuitent cette ligne).
     await auth.supabase
       .from("sessions")
       .update({ invoice_generated: true })
@@ -156,8 +181,7 @@ interface PreviewItem {
   participantsNote: string | null;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function buildInvoicePreview(supabase: any, sessionId: string, entityId: string): Promise<{
+async function buildInvoicePreview(supabase: SupabaseServerClient, sessionId: string, entityId: string): Promise<{
   preview: PreviewItem[];
   warnings: string[];
   error: string | null;
