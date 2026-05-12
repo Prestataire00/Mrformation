@@ -358,9 +358,10 @@ export default function FormationDetailPage() {
           <TabProgramme formation={formation} onRefresh={fetchFormation} />
         </TabsContent>
 
-        {/* 4. Émargement */}
-        <TabsContent value="emargement" className="mt-6">
+        {/* 4. Émargement + Absences (déplacé depuis "Communication" — retour client Loris) */}
+        <TabsContent value="emargement" className="mt-6 space-y-8">
           <TabEmargements formation={formation} onRefresh={fetchFormation} />
+          <TabAbsences formation={formation} onRefresh={fetchFormation} />
         </TabsContent>
 
         {/* 5. Questionnaires */}
@@ -388,10 +389,9 @@ export default function FormationDetailPage() {
           <TabAutomation formation={formation} onRefresh={fetchFormation} />
         </TabsContent>
 
-        {/* 10. Communication */}
-        <TabsContent value="communication" className="mt-6 space-y-8">
+        {/* 10. Communication (TabAbsences déplacé vers Émargement) */}
+        <TabsContent value="communication" className="mt-6">
           <TabMessagerie formation={formation} onRefresh={fetchFormation} />
-          <TabAbsences formation={formation} onRefresh={fetchFormation} />
         </TabsContent>
       </Tabs>
 
