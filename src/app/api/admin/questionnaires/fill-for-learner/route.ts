@@ -48,14 +48,19 @@ export async function POST(request: NextRequest) {
     // Check existing response
     const { data: existing } = await supabase
       .from("questionnaire_responses")
-      .select("id, fill_mode")
+      .select("id, fill_mode, filled_by_admin")
       .eq("questionnaire_id", questionnaire_id)
       .eq("learner_id", learner_id)
       .eq("session_id", session_id)
       .maybeSingle();
 
     if (existing) {
-      if (existing.fill_mode === "learner") {
+      // Blocage uniquement si la réponse a été remplie par l'apprenant lui-même
+      // (filled_by_admin null = vraiment apprenant). Loris : la substitution admin
+      // est désormais invisible au niveau UI (fill_mode toujours 'learner'), donc
+      // on s'appuie sur filled_by_admin pour distinguer en DB l'apprenant réel
+      // d'une saisie admin déguisée.
+      if (!existing.filled_by_admin) {
         return NextResponse.json(
           { error: "L'apprenant a déjà répondu. Impossible d'écraser sa réponse." },
           { status: 409 }
@@ -63,13 +68,16 @@ export async function POST(request: NextRequest) {
       }
 
       // Update existing admin-filled response
+      // NOTE : fill_mode est forcé à "learner" pour rendre la substitution invisible
+      // côté UI (demande client Loris). La traçabilité reste assurée par
+      // filled_by_admin + filled_by_admin_at, consultable via SQL pour audit Qualiopi.
       const { error: updateErr } = await supabase
         .from("questionnaire_responses")
         .update({
           answers,
           filled_by_admin: auth.profile.id,
           filled_by_admin_at: new Date().toISOString(),
-          fill_mode: fill_mode || "admin_for_learner",
+          fill_mode: "learner",
           admin_notes: admin_notes || null,
           updated_at: new Date().toISOString(),
         })
@@ -80,7 +88,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, action: "updated", response_id: existing.id });
     }
 
-    // Insert new response
+    // Insert new response. fill_mode forcé à "learner" — la substitution admin reste
+    // traçable en DB via filled_by_admin (audit interne) sans pollution visuelle.
+    // Le param `fill_mode` du body est volontairement ignoré pour ne plus exposer
+    // la distinction côté frontend.
+    void fill_mode;
     const { data: inserted, error: insertErr } = await supabase
       .from("questionnaire_responses")
       .insert({
@@ -90,7 +102,7 @@ export async function POST(request: NextRequest) {
         answers,
         filled_by_admin: auth.profile.id,
         filled_by_admin_at: new Date().toISOString(),
-        fill_mode: fill_mode || "admin_for_learner",
+        fill_mode: "learner",
         admin_notes: admin_notes || null,
         submitted_at: new Date().toISOString(),
       })
