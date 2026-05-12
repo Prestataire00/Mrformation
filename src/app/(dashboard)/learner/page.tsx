@@ -350,7 +350,9 @@ export default function LearnerPage() {
         title: "Profil mis à jour",
         description: "Vos informations ont été enregistrées.",
       });
-    } catch {
+    } catch (err) {
+      // Log pour diagnostic (ne casse pas l'UX, un toast est déjà affiché)
+      console.error("[learner profile update]", err);
       toast({
         title: "Erreur",
         description: "Impossible de mettre à jour le profil.",

@@ -143,7 +143,10 @@ export async function PATCH(
           resource_type: "task",
           resource_id: data.id,
         });
-      } catch { /* silent */ }
+      } catch (err) {
+        // Notification non-bloquante : on log pour diagnostiquer un échec silencieux.
+        console.error("[PATCH /api/crm/tasks/[id]] Notification reassignment failed:", err);
+      }
     }
 
     // Log to prospect timeline when task completed
