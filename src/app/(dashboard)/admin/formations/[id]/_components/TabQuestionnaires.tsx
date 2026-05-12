@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   ClipboardList, Target, Clock, TrendingUp, CheckCircle2,
-  AlertCircle, Plus, ChevronRight, Mail, Eye, X, Loader2, BarChart3, Pencil, ShieldAlert, QrCode, Copy,
+  AlertCircle, Plus, ChevronRight, Mail, Eye, X, Loader2, BarChart3, Pencil, QrCode, Copy,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -313,7 +313,15 @@ function ItemDetail({ stage, item, formation, questionnaires, assignments, enrol
                 const learner = (enrollment as Record<string, unknown>).learner as { id: string; first_name: string; last_name: string } | null;
                 if (!learner) return null;
                 const hasResponded = resp.some(r => r.questionnaire_id === current.questionnaire_id && r.learner_id === learner.id);
-                const adminFilled = resp.find(r => r.questionnaire_id === current.questionnaire_id && r.learner_id === learner.id && (r as Record<string, unknown>).fill_mode && (r as Record<string, unknown>).fill_mode !== "learner");
+                // Réponse remplie par admin via la route fill-for-learner : fill_mode='learner'
+                // (invisible côté UI, demande client Loris) mais filled_by_admin reste set en
+                // DB pour audit interne. On utilise filled_by_admin pour permettre la
+                // modification par un admin sans afficher de badge distinctif.
+                const adminFilled = resp.find(r =>
+                  r.questionnaire_id === current.questionnaire_id
+                  && r.learner_id === learner.id
+                  && !!(r as Record<string, unknown>).filled_by_admin
+                );
                 const learnerName = `${learner.last_name?.toUpperCase()} ${learner.first_name}`;
 
                 return (
@@ -325,12 +333,9 @@ function ItemDetail({ stage, item, formation, questionnaires, assignments, enrol
                       ) : (
                         <Badge variant="outline" className="text-[10px] shrink-0">En attente</Badge>
                       )}
-                      {adminFilled && (
-                        <Badge variant="outline" className="text-[10px] bg-orange-50 text-orange-700 border-orange-200 shrink-0">
-                          <ShieldAlert className="h-2.5 w-2.5 mr-0.5" />
-                          Saisie admin
-                        </Badge>
-                      )}
+                      {/* Badge "Saisie admin" retiré (demande Loris) : la substitution
+                          admin est désormais invisible côté UI. Traçabilité conservée
+                          en DB via filled_by_admin pour audit Qualiopi interne. */}
                     </div>
                     {!hasResponded && (
                       <Button size="sm" variant="ghost" className="h-6 text-xs gap-1 shrink-0"

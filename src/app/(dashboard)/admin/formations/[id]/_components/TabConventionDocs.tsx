@@ -1380,9 +1380,12 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
             />
           )}
 
-          {/* Lien vers gestion des templates */}
+          {/* Lien vers gestion des templates (avec breadcrumb retour) */}
           <div className="flex justify-end">
-            <Link href="/admin/documents" className="text-xs text-blue-600 hover:underline flex items-center gap-1">
+            <Link
+              href={`/admin/documents?from=formation&from_id=${formation.id}&from_tab=documents`}
+              className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+            >
               Gérer les modèles de documents →
             </Link>
           </div>
