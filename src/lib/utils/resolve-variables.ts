@@ -1,5 +1,6 @@
 import { formatDate } from "@/lib/utils";
 import type { Session, Client, Learner, Trainer } from "@/lib/types";
+import { getLearnersForCompany, getAmountForCompany } from "@/lib/utils/formation-companies";
 
 export interface ResolveContext {
   session?: Session | null;
@@ -61,14 +62,27 @@ export function resolveVariables(content: string, data: ResolveContext): string 
     return "[Représentant]";
   })();
 
-  // Financial calculations
-  const totalPrice = data.session?.total_price || 0;
+  // Multi-entreprises : si on a un client (entreprise destinataire du doc),
+  // filtrer les apprenants ET le montant par cette entreprise via les helpers PR 13.
+  // INTRA = tous les apprenants (auto-assign virtuel via helper).
+  // INTER = filtre strict par client_id.
+  // Fallback (pas de client) = tous les apprenants (comportement legacy).
+  const companyId = data.client?.id;
+  const allEnrollments = data.session?.enrollments || [];
+  const enrollments = (data.session && companyId)
+    ? getLearnersForCompany(data.session, companyId)
+    : allEnrollments;
+
+  // Financial calculations — utilise amount de l'entreprise si companyId fourni,
+  // sinon total_price de la session (legacy).
+  const totalPrice = (data.session && companyId)
+    ? (getAmountForCompany(data.session, companyId) ?? data.session?.total_price ?? 0)
+    : (data.session?.total_price || 0);
   const montantHt = totalPrice;
   const montantTva = Math.round(totalPrice * 0.2 * 100) / 100;
   const montantTtc = Math.round((totalPrice + montantTva) * 100) / 100;
 
-  // Enrollments count + list
-  const enrollments = data.session?.enrollments || [];
+  // Enrollments count + list (déjà filtrés ci-dessus)
   const effectifs = enrollments.length;
   const listeApprenants = enrollments
     .filter((e) => e.learner)
