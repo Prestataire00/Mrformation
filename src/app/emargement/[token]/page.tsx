@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { SignaturePad } from "@/components/signatures/SignaturePad";
+import { sortSlotsByStart } from "@/lib/utils/sort-time-slots";
 import {
   Card,
   CardContent,
@@ -240,7 +241,8 @@ export default function EmargementPage() {
         if (refreshRes.ok) {
           const refreshData = await refreshRes.json();
           if (refreshData.all_slots) {
-            setRemainingSlots(refreshData.all_slots);
+            // Tri chronologique strict (le serveur peut renvoyer dans l'ordre de création DB).
+            setRemainingSlots(sortSlotsByStart(refreshData.all_slots));
           }
         }
       } catch { /* ignore */ }

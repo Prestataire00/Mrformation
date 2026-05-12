@@ -18,6 +18,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { downloadQRCodesPDF, type QRSlotData } from "@/lib/qr-pdf-export";
 import { downloadEmargementPDF } from "@/lib/emargement-pdf-export";
 import { useEntity } from "@/contexts/EntityContext";
+import { sortSlotsByStart } from "@/lib/utils/sort-time-slots";
 import type { Session, FormationTimeSlot, Signature, Enrollment, FormationTrainer } from "@/lib/types";
 
 // ──────────────────────────────────────────────
@@ -209,7 +210,9 @@ export function TabEmargements({ formation, onRefresh }: Props) {
     setQrImages(images);
   }, []);
 
-  const timeSlots = formation.formation_time_slots || [];
+  // Tri chronologique strict (start_time ASC) : évite l'affichage aprem-avant-matin
+  // qui survient quand un slot d'après-midi est créé en DB avant celui du matin.
+  const timeSlots = sortSlotsByStart(formation.formation_time_slots || []);
   const signatures = formation.signatures || [];
   const enrollments = formation.enrollments || [];
   const trainers = formation.formation_trainers || [];
@@ -1039,7 +1042,17 @@ export function TabEmargements({ formation, onRefresh }: Props) {
       <Dialog open={signDialog.open} onOpenChange={(open) => setSignDialog(prev => ({ ...prev, open }))}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Signer pour {signDialog.signerName}</DialogTitle>
+            <DialogTitle>
+              Signer pour {signDialog.signerName}
+              {(() => {
+                const slot = timeSlots.find(s => s.id === signDialog.slotId);
+                return slot ? (
+                  <span className="block text-sm font-normal text-muted-foreground mt-1">
+                    Créneau : {formatSlotLabel(slot)}
+                  </span>
+                ) : null;
+              })()}
+            </DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground mb-2">
             Dessinez la signature pour valider la présence de {signDialog.signerName}.
