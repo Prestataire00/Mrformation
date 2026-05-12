@@ -461,7 +461,13 @@ function feuilleEmargement(data: TemplateData): string {
   const co = getCompanyInfo(entityName, entity);
   const companyName = company?.company_name || "";
   const modalite = MODE_LABELS[formation.mode] || formation.mode;
-  const enrollments = formation.enrollments || [];
+  // Multi-entreprises : si company.id fourni → ne lister que ses apprenants
+  // (INTRA = tous via auto-assign helper PR 13, INTER = filtre strict).
+  // Fallback rétrocompat : si pas de company.id → comportement legacy (tous).
+  const companyId = company?.id;
+  const enrollments = companyId
+    ? getLearnersForCompany(formation, companyId)
+    : (formation.enrollments || []);
   const trainers = formation.formation_trainers || [];
   const timeSlots = sortSlotsByStart(formation.formation_time_slots || []);
   const signatures = formation.signatures || [];
@@ -625,11 +631,17 @@ function feuilleEmargement(data: TemplateData): string {
 // ──────────────────────────────────────────────
 
 function programmeFormation(data: TemplateData): string {
-  const { formation, entityName , entity } = data;
+  const { formation, company, entityName , entity } = data;
   const program = formation.program;
   const training = formation.training;
   const programContent = (program?.content || {}) as Record<string, string>;
   const modalite = MODE_LABELS[formation.mode] || formation.mode;
+  // Multi-entreprises : nombre de stagiaires = ceux de cette entreprise uniquement.
+  // Fallback rétrocompat : si pas de company.id → comportement legacy (tous).
+  const companyId = company?.id;
+  const enrollments = companyId
+    ? getLearnersForCompany(formation, companyId)
+    : (formation.enrollments || []);
 
   // Hiérarchie de fallback : program (le plus spécifique) → training → placeholder
   const targetAudience = programContent.target_audience
@@ -698,7 +710,7 @@ function programmeFormation(data: TemplateData): string {
     }
 
     <h2 style="font-size: 13px; font-weight: 700; text-transform: uppercase; margin: 20px 0 8px 0; color: #111827;">Qualité — Indicateurs de Résultats</h2>
-    <p style="font-size: 11px;">Nombre de stagiaires : ${(formation.enrollments?.length) || "[Effectifs]"}</p>
+    <p style="font-size: 11px;">Nombre de stagiaires : ${enrollments.length || "[Effectifs]"}</p>
 
     <h2 style="font-size: 13px; font-weight: 700; text-transform: uppercase; margin: 20px 0 8px 0; color: #111827;">Accessibilité</h2>
     <p style="font-size: 11px;">Pour le bon déroulement de la formation, nous vous remercions de bien vouloir nous signaler si un besoin d'adaptation lié à une situation de handicap (ou toute autre situation spécifique) est nécessaire. Nous ferons tout notre possible pour que chacun puisse suivre notre formation dans les meilleures conditions possibles.</p>`;
@@ -1056,7 +1068,7 @@ function certificatRealisation(data: TemplateData): string {
 // ──────────────────────────────────────────────
 
 function attestationAssiduite(data: TemplateData): string {
-  const { formation, learner, entityName, signedSlots: extSignedSlots, missedSlots: extMissedSlots , entity } = data;
+  const { formation, learner, company, entityName, signedSlots: extSignedSlots, missedSlots: extMissedSlots , entity } = data;
   const co = getCompanyInfo(entityName, entity);
   const fullName = learner ? `${learner.last_name?.toUpperCase()} ${learner.first_name}` : "—";
   const modalite = MODE_LABELS[formation.mode] || "En présentiel";
@@ -1064,7 +1076,16 @@ function attestationAssiduite(data: TemplateData): string {
   // Calculate effective hours from signatures
   const signatures = formation.signatures || [];
   const timeSlots = sortSlotsByStart(formation.formation_time_slots || []);
-  const learnerId = learner ? (formation.enrollments || []).find((e) => e.learner?.last_name === learner.last_name && e.learner?.first_name === learner.first_name)?.learner?.id : null;
+  // Multi-entreprises : pour résoudre learnerId via fallback nom/prénom, on
+  // restreint au scope de l'entreprise (évite collision en INTER si deux
+  // entreprises ont un apprenant homonyme). Fallback legacy si pas de company.
+  const companyId = company?.id;
+  const enrollmentsScope = companyId
+    ? getLearnersForCompany(formation, companyId)
+    : (formation.enrollments || []);
+  const learnerId = learner
+    ? (learner.id || enrollmentsScope.find((e) => e.learner?.last_name === learner.last_name && e.learner?.first_name === learner.first_name)?.learner?.id)
+    : null;
 
   let heuresEffectives = 0;
   if (learnerId && timeSlots.length > 0) {
@@ -1152,9 +1173,13 @@ function attestationAssiduite(data: TemplateData): string {
 // DOCUMENT — PLANNING SEMAINE
 // ──────────────────────────────────────────────
 function planningSemaine(data: TemplateData): string {
-  const { formation, entityName , entity } = data;
+  const { formation, company, entityName , entity } = data;
   const co = getCompanyInfo(entityName, entity);
-  const enrollments = formation.enrollments || [];
+  // Multi-entreprises : ne lister que les apprenants de l'entreprise destinataire.
+  const companyId = company?.id;
+  const enrollments = companyId
+    ? getLearnersForCompany(formation, companyId)
+    : (formation.enrollments || []);
   const trainers = formation.formation_trainers || [];
   const timeSlots = sortSlotsByStart(formation.formation_time_slots || []);
   const signatures = formation.signatures || [];
@@ -1278,13 +1303,17 @@ function feuilleEmargementMatriciel(data: TemplateData): string {
   const { formation, company, entityName , entity } = data;
   const co = getCompanyInfo(entityName, entity);
   const modalite = MODE_LABELS[formation.mode] || formation.mode;
-  const enrollments = (formation.enrollments || []).filter(e => e.learner);
+  // Multi-entreprises : via helper PR 13 (INTRA = tous via auto-assign,
+  // INTER = filtre strict client_id). Remplace l'ancien filtre brutal
+  // `as unknown as { id?: string }` qui risquait crash si company partielle.
+  const companyId = company?.id;
+  const allEnrollments = (formation.enrollments || []).filter(e => e.learner);
+  const filtered = companyId
+    ? getLearnersForCompany(formation, companyId).filter(e => e.learner)
+    : allEnrollments;
   const trainers = (formation.formation_trainers || []).filter(ft => ft.trainer);
   const timeSlots = sortSlotsByStart(formation.formation_time_slots || []);
   const formateursNoms = trainers.map(ft => `${ft.trainer!.last_name?.toUpperCase()} ${ft.trainer!.first_name}`).join(", ") || "[Formateur]";
-
-  // Filtrer apprenants par entreprise si fournie
-  const filtered = company ? enrollments.filter(e => e.client_id === (company as unknown as { id?: string }).id) : enrollments;
 
   // Grouper créneaux par jour
   const slots = timeSlots.map(slot => {
