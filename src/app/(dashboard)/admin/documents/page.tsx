@@ -18,6 +18,7 @@ const RichTextEditor = dynamic(
 import { plainTextToHtml, isHtmlContent } from "@/lib/migrate-templates";
 import { exportHtmlToPDF, exportToPDF } from "@/lib/pdf-export";
 import { getDefaultTemplate } from "@/lib/document-templates-defaults";
+import { BackToFormationLink } from "@/components/ui/back-to-formation-link";
 import DOMPurifyLib from "dompurify";
 
 // Safe sanitize — avoid hydration mismatch by always using the same function reference
@@ -998,6 +999,9 @@ export default function DocumentsPage() {
 
   return (
     <div className="p-6 space-y-6">
+      {/* Breadcrumb retour à la formation source (si arrivé depuis TabConventionDocs) */}
+      <BackToFormationLink defaultTab="documents" />
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
