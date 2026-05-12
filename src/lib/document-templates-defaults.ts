@@ -1,6 +1,7 @@
 import type { Session } from "@/lib/types";
 import { getLearnersForCompany, getAmountForCompany } from "@/lib/utils/formation-companies";
 import { sanitizeSignatureSvg } from "@/lib/utils/sanitize-svg";
+import { sortSlotsByStart } from "@/lib/utils/sort-time-slots";
 
 // ──────────────────────────────────────────────
 // Types
@@ -462,7 +463,7 @@ function feuilleEmargement(data: TemplateData): string {
   const modalite = MODE_LABELS[formation.mode] || formation.mode;
   const enrollments = formation.enrollments || [];
   const trainers = formation.formation_trainers || [];
-  const timeSlots = formation.formation_time_slots || [];
+  const timeSlots = sortSlotsByStart(formation.formation_time_slots || []);
   const signatures = formation.signatures || [];
   const formateursNoms = trainers.filter((ft) => ft.trainer).map((ft) => `${ft.trainer!.last_name?.toUpperCase()} ${ft.trainer!.first_name}`).join(", ") || "[Formateur]";
 
@@ -928,7 +929,7 @@ function convocation(data: TemplateData): string {
   const co = getCompanyInfo(entityName, entity);
   const fullName = learner ? `${learner.last_name?.toUpperCase()} ${learner.first_name}` : "—";
   const modalite = MODE_LABELS[formation.mode] || "En présentiel";
-  const timeSlots = formation.formation_time_slots || [];
+  const timeSlots = sortSlotsByStart(formation.formation_time_slots || []);
 
   const slotsHtml = timeSlots.length > 0
     ? `<ul style="margin: 8px 0; padding-left: 20px; font-size: 12px;">${timeSlots.map((slot) => {
@@ -1062,7 +1063,7 @@ function attestationAssiduite(data: TemplateData): string {
 
   // Calculate effective hours from signatures
   const signatures = formation.signatures || [];
-  const timeSlots = formation.formation_time_slots || [];
+  const timeSlots = sortSlotsByStart(formation.formation_time_slots || []);
   const learnerId = learner ? (formation.enrollments || []).find((e) => e.learner?.last_name === learner.last_name && e.learner?.first_name === learner.first_name)?.learner?.id : null;
 
   let heuresEffectives = 0;
@@ -1155,7 +1156,7 @@ function planningSemaine(data: TemplateData): string {
   const co = getCompanyInfo(entityName, entity);
   const enrollments = formation.enrollments || [];
   const trainers = formation.formation_trainers || [];
-  const timeSlots = formation.formation_time_slots || [];
+  const timeSlots = sortSlotsByStart(formation.formation_time_slots || []);
   const signatures = formation.signatures || [];
   const formateursNoms = trainers.filter((ft) => ft.trainer).map((ft) => `${ft.trainer!.last_name?.toUpperCase()} ${ft.trainer!.first_name}`).join(", ") || "[Formateur]";
 
@@ -1279,7 +1280,7 @@ function feuilleEmargementMatriciel(data: TemplateData): string {
   const modalite = MODE_LABELS[formation.mode] || formation.mode;
   const enrollments = (formation.enrollments || []).filter(e => e.learner);
   const trainers = (formation.formation_trainers || []).filter(ft => ft.trainer);
-  const timeSlots = formation.formation_time_slots || [];
+  const timeSlots = sortSlotsByStart(formation.formation_time_slots || []);
   const formateursNoms = trainers.map(ft => `${ft.trainer!.last_name?.toUpperCase()} ${ft.trainer!.first_name}`).join(", ") || "[Formateur]";
 
   // Filtrer apprenants par entreprise si fournie
