@@ -1,4 +1,4 @@
-import type { Session, Enrollment, FormationCompany } from "@/lib/types";
+import type { Session, Enrollment, FormationCompany, FormationConventionDocument } from "@/lib/types";
 
 /**
  * Helpers multi-entreprises pour la convention de formation (PR 13).
@@ -124,4 +124,30 @@ export function computeAmountsReconciliation(formation: Session): Reconciliation
     return { sum, target, delta, status: "shortfall" };
   }
   return { sum, target, delta, status: "overshoot" };
+}
+
+/**
+ * Détermine les apprenants AJOUTÉS à une entreprise APRÈS la confirmation d'une convention figée.
+ * Ces apprenants ne sont pas couverts par la convention figée et nécessitent un avenant (Story 3.5).
+ *
+ * Retourne [] si :
+ * - Le doc n'est pas de type owner_type "company" (n'a pas de notion d'apprenants couverts).
+ * - Le doc n'est pas confirmed/figé (apprenants sont implicitement re-inclus à chaque export).
+ * - confirmed_at n'est pas défini (impossible de comparer dates).
+ *
+ * Sinon, retourne les enrollments de l'entreprise (owner_id) dont enrolled_at > confirmed_at.
+ */
+export function findUncoveredLearners(
+  formation: Session,
+  doc: Pick<FormationConventionDocument, "owner_type" | "owner_id" | "is_confirmed" | "confirmed_at">
+): Enrollment[] {
+  if (doc.owner_type !== "company") return [];
+  if (!doc.is_confirmed || !doc.confirmed_at) return [];
+
+  const confirmedAt = new Date(doc.confirmed_at).getTime();
+  const learners = getLearnersForCompany(formation, doc.owner_id);
+  return learners.filter((e) => {
+    if (!e.enrolled_at) return false;
+    return new Date(e.enrolled_at).getTime() > confirmedAt;
+  });
 }

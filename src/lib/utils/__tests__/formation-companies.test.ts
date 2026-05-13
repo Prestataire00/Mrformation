@@ -7,6 +7,7 @@ import {
   validateCompanyExport,
   getFormationKind,
   computeAmountsReconciliation,
+  findUncoveredLearners,
 } from "@/lib/utils/formation-companies";
 import type { Session, Enrollment, FormationCompany, Learner } from "@/lib/types";
 
@@ -397,5 +398,115 @@ describe("computeAmountsReconciliation", () => {
     } as unknown as Session;
     const result = computeAmountsReconciliation(formation);
     expect(result.status).toBe("ok");
+  });
+});
+
+// ──────────────────────────────────────────────
+// findUncoveredLearners
+// ──────────────────────────────────────────────
+
+describe("findUncoveredLearners", () => {
+  function makeDoc(over: Partial<{
+    owner_type: string;
+    owner_id: string;
+    is_confirmed: boolean;
+    confirmed_at: string | null;
+  }> = {}) {
+    return {
+      owner_type: "company",
+      owner_id: "c1",
+      is_confirmed: true,
+      confirmed_at: "2026-03-01T10:00:00Z",
+      ...over,
+    } as unknown as Parameters<typeof findUncoveredLearners>[1];
+  }
+
+  it("retourne [] si le doc n'est pas de owner_type 'company'", () => {
+    const formation = {
+      id: "s1",
+      formation_companies: [{ client_id: "c1", session_id: "s1", amount: 1000 }],
+      enrollments: [
+        { learner_id: "l1", client_id: "c1", enrolled_at: "2026-04-01T10:00:00Z" } as unknown as Enrollment,
+      ],
+    } as unknown as Session;
+
+    const result = findUncoveredLearners(formation, makeDoc({ owner_type: "learner" }));
+    expect(result).toEqual([]);
+  });
+
+  it("retourne [] si le doc n'est pas confirmed", () => {
+    const formation = {
+      id: "s1",
+      formation_companies: [{ client_id: "c1", session_id: "s1", amount: 1000 }],
+      enrollments: [
+        { learner_id: "l1", client_id: "c1", enrolled_at: "2026-04-01T10:00:00Z" } as unknown as Enrollment,
+      ],
+    } as unknown as Session;
+
+    const result = findUncoveredLearners(formation, makeDoc({ is_confirmed: false }));
+    expect(result).toEqual([]);
+  });
+
+  it("retourne [] si confirmed_at est null", () => {
+    const formation = {
+      id: "s1",
+      formation_companies: [{ client_id: "c1", session_id: "s1", amount: 1000 }],
+      enrollments: [
+        { learner_id: "l1", client_id: "c1", enrolled_at: "2026-04-01T10:00:00Z" } as unknown as Enrollment,
+      ],
+    } as unknown as Session;
+
+    const result = findUncoveredLearners(formation, makeDoc({ confirmed_at: null }));
+    expect(result).toEqual([]);
+  });
+
+  it("retourne les apprenants ajoutés APRÈS confirmed_at (cas multi-entreprises filtré par owner_id)", () => {
+    const formation = {
+      id: "s1",
+      formation_companies: [
+        { client_id: "c1", session_id: "s1", amount: 1000 },
+        { client_id: "c2", session_id: "s1", amount: 500 },
+      ],
+      enrollments: [
+        // Apprenant c1 ajouté avant confirmation → couvert
+        { learner_id: "l1", client_id: "c1", enrolled_at: "2026-02-15T10:00:00Z" } as unknown as Enrollment,
+        // Apprenant c1 ajouté après confirmation → uncovered
+        { learner_id: "l2", client_id: "c1", enrolled_at: "2026-03-15T10:00:00Z" } as unknown as Enrollment,
+        // Apprenant c2 (autre entreprise) ajouté après → ne concerne pas la conv c1
+        { learner_id: "l3", client_id: "c2", enrolled_at: "2026-04-01T10:00:00Z" } as unknown as Enrollment,
+      ],
+    } as unknown as Session;
+
+    const result = findUncoveredLearners(formation, makeDoc({ owner_id: "c1" }));
+    expect(result).toHaveLength(1);
+    expect(result[0].learner_id).toBe("l2");
+  });
+
+  it("retourne [] si tous les apprenants sont antérieurs à confirmed_at", () => {
+    const formation = {
+      id: "s1",
+      formation_companies: [{ client_id: "c1", session_id: "s1", amount: 1000 }],
+      enrollments: [
+        { learner_id: "l1", client_id: "c1", enrolled_at: "2026-01-15T10:00:00Z" } as unknown as Enrollment,
+        { learner_id: "l2", client_id: "c1", enrolled_at: "2026-02-15T10:00:00Z" } as unknown as Enrollment,
+      ],
+    } as unknown as Session;
+
+    const result = findUncoveredLearners(formation, makeDoc());
+    expect(result).toEqual([]);
+  });
+
+  it("ignore les enrollments sans enrolled_at", () => {
+    const formation = {
+      id: "s1",
+      formation_companies: [{ client_id: "c1", session_id: "s1", amount: 1000 }],
+      enrollments: [
+        // enrolled_at vide → ignoré (pas considéré uncovered même si la convention est confirmée)
+        { learner_id: "l1", client_id: "c1", enrolled_at: null } as unknown as Enrollment,
+      ],
+    } as unknown as Session;
+
+    const result = findUncoveredLearners(formation, makeDoc());
+    expect(result).toEqual([]);
   });
 });
