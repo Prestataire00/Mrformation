@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Plus, Trash2, Download, Loader2, UserPlus, Mail } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -14,6 +14,12 @@ import { SearchSelect } from "@/components/ui/search-select";
 import { useToast } from "@/components/ui/use-toast";
 import { getInitials } from "@/lib/utils";
 import type { Session, Learner } from "@/lib/types";
+import {
+  enrollLearner,
+  createLearnerAndEnroll,
+  removeEnrollment,
+} from "@/lib/services/enrollments";
+import { getFormationKind } from "@/lib/utils/formation-companies";
 
 const ENROLLMENT_STATUS_LABELS: Record<string, string> = {
   registered: "Inscrit",
@@ -48,7 +54,6 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
   const [selectedClientId, setSelectedClientId] = useState("");
   const [newLearnerClientId, setNewLearnerClientId] = useState("");
   const companies = formation.formation_companies || [];
-  const showCompanySelect = companies.length >= 1;
 
   // Create learner form
   const [newFirstName, setNewFirstName] = useState("");
@@ -59,40 +64,64 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
 
   const enrollments = formation.enrollments || [];
 
-  const fetchLearners = async () => {
+  // Story 3.3 — source de vérité INTRA/INTER pour la validation
+  // "unset" → 0 entreprise (bloqué), "intra" → 1 entreprise (auto-fill),
+  // "inter" → 2+ entreprises (sélection obligatoire).
+  const formationKind = getFormationKind(formation);
+  const showCompanySelect = formationKind !== "unset";
+
+  const fetchLearners = useCallback(async () => {
     const { data } = await supabase
       .from("learners")
       .select("*")
       .eq("entity_id", formation.entity_id)
       .order("last_name");
     if (data) setAllLearners(data);
-  };
+  }, [supabase, formation.entity_id]);
 
   useEffect(() => {
     fetchLearners();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formation.entity_id]);
+  }, [fetchLearners, formation.enrollments]);
 
   const handleAdd = async () => {
     if (!selectedLearnerId) return;
+
+    // Story 3.3 — validation entreprise obligatoire en INTER
+    if (formationKind === "inter" && !selectedClientId) {
+      toast({
+        title: "Sélectionnez une entreprise",
+        description: "L'entreprise est obligatoire pour les formations multi-entreprises.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (formationKind === "unset") {
+      toast({
+        title: "Aucune entreprise rattachée",
+        description: "Rattachez d'abord une entreprise dans la section « Entreprises » avant d'inscrire des apprenants.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setSaving(true);
     // Link to company: manual selection (INTER multi) or auto (INTRA single)
     const fcs = formation.formation_companies || [];
     const clientId = selectedClientId
       || (fcs.length === 1 ? fcs[0].client_id : null);
 
-    const { error } = await supabase.from("enrollments").insert({
-      session_id: formation.id,
-      learner_id: selectedLearnerId,
-      client_id: clientId,
+    const result = await enrollLearner(supabase, {
+      sessionId: formation.id,
+      learnerId: selectedLearnerId,
+      clientId,
       status: "registered",
     });
     setSaving(false);
-    if (error) {
-      if (error.code === "23505") {
+    if (!result.ok) {
+      if (result.error.code === "23505") {
         toast({ title: "Cet apprenant est déjà inscrit", variant: "destructive" });
       } else {
-        toast({ title: "Erreur", description: error.message, variant: "destructive" });
+        toast({ title: "Erreur", description: result.error.message, variant: "destructive" });
       }
     } else {
       toast({ title: "Apprenant ajouté" });
@@ -105,29 +134,40 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
 
   const handleCreateLearner = async () => {
     if (!newFirstName.trim() || !newLastName.trim()) return;
+
+    // Story 3.3 — validation entreprise obligatoire en INTER
+    if (formationKind === "inter" && !newLearnerClientId) {
+      toast({
+        title: "Sélectionnez une entreprise",
+        description: "L'entreprise est obligatoire pour les formations multi-entreprises.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (formationKind === "unset") {
+      toast({
+        title: "Aucune entreprise rattachée",
+        description: "Rattachez d'abord une entreprise dans la section « Entreprises » avant d'inscrire des apprenants.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setCreatingLearner(true);
     try {
-      const { data, error } = await supabase
-        .from("learners")
-        .insert({
-          first_name: newFirstName.trim(),
-          last_name: newLastName.trim(),
-          email: newEmail.trim() || null,
-          entity_id: formation.entity_id,
-        })
-        .select("id")
-        .single();
-      if (error) throw error;
-
       // Auto-enroll the new learner — link to selected company or auto for single company
       const fcs = formation.formation_companies || [];
       const clientId = newLearnerClientId || (fcs.length === 1 ? fcs[0].client_id : null);
-      await supabase.from("enrollments").insert({
-        session_id: formation.id,
-        learner_id: data.id,
-        client_id: clientId,
-        status: "registered",
+
+      const result = await createLearnerAndEnroll(supabase, {
+        firstName: newFirstName.trim(),
+        lastName: newLastName.trim(),
+        email: newEmail.trim() || null,
+        entityId: formation.entity_id,
+        sessionId: formation.id,
+        clientId,
       });
+      if (!result.ok) throw new Error(result.error.message);
 
       toast({ title: "Apprenant créé et inscrit" });
       setCreateDialogOpen(false);
@@ -151,8 +191,8 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
     if (!deleteId) return;
     setDeleting(true);
     try {
-      const { error } = await supabase.from("enrollments").delete().eq("id", deleteId).eq("session_id", formation.id);
-      if (error) throw error;
+      const result = await removeEnrollment(supabase, deleteId, formation.id);
+      if (!result.ok) throw new Error(result.error.message);
       toast({ title: "Apprenant retiré" });
       setDeleteId(null);
       await onRefresh();
@@ -163,6 +203,18 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
       setDeleting(false);
     }
   };
+
+  // Story 3.3 — UI submit gating
+  const canSubmitAdd =
+    !!selectedLearnerId
+    && formationKind !== "unset"
+    && (formationKind !== "inter" || !!selectedClientId);
+
+  const canSubmitCreate =
+    !!newFirstName.trim()
+    && !!newLastName.trim()
+    && formationKind !== "unset"
+    && (formationKind !== "inter" || !!newLearnerClientId);
 
   const handleExportExcel = () => {
     const headers = ["Nom", "Prénom", "Email", "Téléphone", "Statut"];
@@ -291,6 +343,11 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
             <DialogTitle>Ajouter un Apprenant</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
+            {formationKind === "unset" && (
+              <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                Rattachez d&apos;abord une entreprise dans la section «&nbsp;Entreprises&nbsp;» avant d&apos;inscrire des apprenants.
+              </div>
+            )}
             <div>
               <label className="text-sm font-medium mb-1.5 block">Apprenant</label>
               <SearchSelect
@@ -306,7 +363,10 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
             </div>
             {showCompanySelect && (
               <div>
-                <label className="text-sm font-medium mb-1.5 block">Entreprise de rattachement</label>
+                <label className="text-sm font-medium mb-1.5 block">
+                  Entreprise de rattachement
+                  {formationKind === "inter" && <span className="text-red-600 ml-0.5">*</span>}
+                </label>
                 <SearchSelect
                   options={companies.filter(c => c.client).map(c => ({
                     value: c.client_id,
@@ -321,9 +381,9 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
                   </p>
                 ) : (
                   <p className="text-xs text-muted-foreground mt-1">
-                    {companies.length === 1
+                    {formationKind === "intra"
                       ? `Par défaut : ${companies[0]?.client?.company_name || "entreprise liée"}`
-                      : "Sélectionnez l'entreprise de rattachement (INTER)"}
+                      : "Sélectionnez l'entreprise de rattachement (obligatoire en INTER)"}
                   </p>
                 )}
               </div>
@@ -331,7 +391,7 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Annuler</Button>
-            <Button onClick={handleAdd} disabled={saving || !selectedLearnerId}>
+            <Button onClick={handleAdd} disabled={saving || !canSubmitAdd}>
               {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Ajouter
             </Button>
@@ -346,6 +406,11 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
             <DialogTitle>Créer un apprenant</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
+            {formationKind === "unset" && (
+              <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                Rattachez d&apos;abord une entreprise dans la section «&nbsp;Entreprises&nbsp;» avant d&apos;inscrire des apprenants.
+              </div>
+            )}
             <div>
               <label className="text-sm font-medium mb-1 block">Prénom *</label>
               <Input value={newFirstName} onChange={(e) => setNewFirstName(e.target.value)} placeholder="Prénom" />
@@ -360,7 +425,10 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
             </div>
             {showCompanySelect && (
               <div>
-                <label className="text-sm font-medium mb-1 block">Entreprise de rattachement</label>
+                <label className="text-sm font-medium mb-1 block">
+                  Entreprise de rattachement
+                  {formationKind === "inter" && <span className="text-red-600 ml-0.5">*</span>}
+                </label>
                 <SearchSelect
                   options={companies.filter(c => c.client).map(c => ({
                     value: c.client_id,
@@ -369,9 +437,15 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
                   onSelect={setNewLearnerClientId}
                   placeholder="Choisir l'entreprise..."
                 />
-                {newLearnerClientId && (
+                {newLearnerClientId ? (
                   <p className="text-xs text-green-700 bg-green-50 rounded px-2 py-0.5 mt-1">
                     {companies.find(c => c.client_id === newLearnerClientId)?.client?.company_name}
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {formationKind === "intra"
+                      ? `Par défaut : ${companies[0]?.client?.company_name || "entreprise liée"}`
+                      : "Sélectionnez l'entreprise de rattachement (obligatoire en INTER)"}
                   </p>
                 )}
               </div>
@@ -379,7 +453,7 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>Annuler</Button>
-            <Button onClick={handleCreateLearner} disabled={creatingLearner || !newFirstName.trim() || !newLastName.trim()}>
+            <Button onClick={handleCreateLearner} disabled={creatingLearner || !canSubmitCreate}>
               {creatingLearner && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Créer et inscrire
             </Button>
