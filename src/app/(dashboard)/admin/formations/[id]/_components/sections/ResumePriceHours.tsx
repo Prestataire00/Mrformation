@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Euro, Clock, Save, X, Pencil, CalendarDays, MapPin, Users, Sparkles, Building2 } from "lucide-react";
+import { Euro, Clock, Save, X, Pencil, CalendarDays, MapPin, Users, Sparkles, Building2, RotateCcw } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,6 +12,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { updateSession } from "@/lib/services/sessions";
 import type { Session, SessionMode, FormationType, SessionStatus } from "@/lib/types";
 
 interface Props {
@@ -25,6 +27,21 @@ interface Props {
 function composeAddress(parts: { address?: string | null; postal_code?: string | null; city?: string | null }): string | null {
   const segments = [parts.address, [parts.postal_code, parts.city].filter(Boolean).join(" ")].filter((s) => s && s.trim());
   return segments.length > 0 ? segments.join(", ") : null;
+}
+
+/**
+ * Détermine la provenance du prix d'une session :
+ * - "catalogue" : prix identique au catalogue de la formation (tolérance 0.01)
+ * - "modified"  : prix présent ET différent du catalogue
+ * - "custom"    : prix saisi alors qu'aucun prix catalogue de référence
+ * - null        : aucun prix
+ */
+function getPriceSource(formation: Session): "catalogue" | "modified" | "custom" | null {
+  if (formation.total_price === null || formation.total_price === undefined) return null;
+  const catalogPrice = formation.training?.price_per_person ?? null;
+  if (catalogPrice === null) return "custom";
+  if (Math.abs(formation.total_price - catalogPrice) < 0.01) return "catalogue";
+  return "modified";
 }
 
 export function ResumePriceHours({ formation, onRefresh }: Props) {
@@ -99,7 +116,7 @@ export function ResumePriceHours({ formation, onRefresh }: Props) {
       });
     })();
     return () => { cancelled = true; };
-  }, [formation.id, formation.entity_id, supabase]);
+  }, [formation.id, formation.entity_id, formation.formation_companies, supabase]);
 
   const openEdit = () => {
     setForm({
@@ -119,21 +136,20 @@ export function ResumePriceHours({ formation, onRefresh }: Props) {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const { error } = await supabase
-        .from("sessions")
-        .update({
-          total_price: form.total_price ? parseFloat(form.total_price) : null,
-          planned_hours: form.planned_hours ? parseFloat(form.planned_hours) : null,
-          start_date: form.start_date || formation.start_date,
-          end_date: form.end_date || formation.end_date,
-          location: form.location || null,
-          mode: form.mode,
-          type: form.type,
-          max_participants: form.max_participants ? parseInt(form.max_participants) : null,
-          status: form.status,
-        })
-        .eq("id", formation.id);
-      if (error) throw error;
+      const result = await updateSession(supabase, formation.id, {
+        total_price: form.total_price ? parseFloat(form.total_price) : null,
+        planned_hours: form.planned_hours ? parseFloat(form.planned_hours) : null,
+        start_date: form.start_date || formation.start_date,
+        end_date: form.end_date || formation.end_date,
+        location: form.location || null,
+        mode: form.mode,
+        type: form.type,
+        max_participants: form.max_participants ? parseInt(form.max_participants) : null,
+        status: form.status,
+      });
+      if (!result.ok) {
+        throw new Error(result.error.message);
+      }
       toast({ title: "Formation mise à jour" });
       setEditing(false);
       onRefresh();
@@ -169,6 +185,10 @@ export function ResumePriceHours({ formation, onRefresh }: Props) {
       && formation.planned_hours
       && Math.abs(Number(formation.planned_hours) - autoComputedHours) > 0.1;
 
+    // Provenance du prix (catalogue / modifié / personnalisé) — Story 2.1
+    const priceSource = getPriceSource(formation);
+    const catalogPrice = formation.training?.price_per_person ?? null;
+
     return (
       <div className="space-y-3">
         <div className="grid grid-cols-2 gap-3 text-sm">
@@ -189,7 +209,24 @@ export function ResumePriceHours({ formation, onRefresh }: Props) {
           </div>
           <div>
             <p className="text-xs text-muted-foreground flex items-center gap-1"><Euro className="h-3 w-3" /> Prix total</p>
-            <p className="font-medium">{formatCurrency(formation.total_price)}</p>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <p className="font-medium">{formatCurrency(formation.total_price)}</p>
+              {priceSource === "catalogue" && (
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Catalogue</Badge>
+              )}
+              {priceSource === "modified" && (
+                <Badge
+                  variant="default"
+                  className="text-[10px] px-1.5 py-0"
+                  title={catalogPrice !== null ? `Prix catalogue : ${formatCurrency(catalogPrice)}` : undefined}
+                >
+                  Modifié
+                </Badge>
+              )}
+              {priceSource === "custom" && (
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0">Personnalisé</Badge>
+              )}
+            </div>
           </div>
           <div>
             {/* Prix / entreprise (si plusieurs entreprises ou intra) sinon Prix / apprenant */}
@@ -237,6 +274,23 @@ export function ResumePriceHours({ formation, onRefresh }: Props) {
         <div>
           <Label className="text-xs">Prix total (€)</Label>
           <Input type="number" step="0.01" value={form.total_price} onChange={u("total_price")} placeholder="0.00" className="h-8 text-sm" />
+          {(() => {
+            const catalogPrice = formation.training?.price_per_person;
+            if (typeof catalogPrice !== "number") return null;
+            const currentValue = parseFloat(form.total_price);
+            const isSameAsCatalog = !Number.isNaN(currentValue) && Math.abs(currentValue - catalogPrice) < 0.01;
+            if (isSameAsCatalog) return null;
+            return (
+              <button
+                type="button"
+                onClick={() => setForm((f) => ({ ...f, total_price: catalogPrice.toString() }))}
+                className="mt-1 text-[10px] text-emerald-600 hover:text-emerald-700 flex items-center gap-1"
+              >
+                <RotateCcw className="h-2.5 w-2.5" />
+                Revenir au prix catalogue ({formatCurrency(catalogPrice)})
+              </button>
+            );
+          })()}
         </div>
         <div>
           <Label className="text-xs flex items-center gap-1">
