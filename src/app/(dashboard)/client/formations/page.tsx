@@ -13,6 +13,10 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn, formatDate, STATUS_COLORS, SESSION_STATUS_LABELS } from "@/lib/utils";
+import {
+  filterEnrollmentsByLearnerIds,
+  countClientLearnersOnSession,
+} from "@/lib/utils/client-portal-isolation";
 
 interface FormationSession {
   id: string;
@@ -70,13 +74,18 @@ export default function ClientFormationsPage() {
     const learnerIds = learners.map((l) => l.id);
 
     // Get enrollments for these learners
-    const { data: enrollments } = await supabase
+    const { data: rawEnrollments } = await supabase
       .from("enrollments")
       .select("session_id, learner_id")
       .in("learner_id", learnerIds)
       .neq("status", "cancelled");
 
-    if (!enrollments || enrollments.length === 0) {
+    // Defense in depth — even though .in("learner_id", learnerIds) already filters,
+    // apply the helper to guarantee no leak if the query is modified in the future.
+    // Cf. Story 3.7 / NFR-SEC-2 — isolement portail client.
+    const enrollments = filterEnrollmentsByLearnerIds(rawEnrollments, learnerIds);
+
+    if (enrollments.length === 0) {
       setLoading(false);
       return;
     }
@@ -104,7 +113,8 @@ export default function ClientFormationsPage() {
         ...s,
         status,
         training: Array.isArray(s.training) ? s.training[0] ?? null : s.training,
-        enrolled_learners: enrollments.filter((e) => e.session_id === s.id).length,
+        // INTER : on ne compte QUE les apprenants du client courant sur cette session.
+        enrolled_learners: countClientLearnersOnSession(enrollments, learnerIds, s.id),
       };
     }) as FormationSession[];
 
