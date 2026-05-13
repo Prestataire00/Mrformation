@@ -50,7 +50,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
         *,
         trainings (id, title, duration_hours, objectives, prerequisites),
         trainers (id, first_name, last_name, email, phone),
-        clients (id, company_name, email, phone),
+        formation_companies (id, client_id, amount, client:clients(id, company_name, email, phone)),
         enrollments (
           id,
           status,
