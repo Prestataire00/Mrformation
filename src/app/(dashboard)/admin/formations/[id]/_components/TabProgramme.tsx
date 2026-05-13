@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/use-toast";
 import type { Session, Program } from "@/lib/types";
+import { getFormationKind } from "@/lib/utils/formation-companies";
 
 interface Props {
   formation: Session;
@@ -234,6 +235,12 @@ export function TabProgramme({ formation, onRefresh }: Props) {
 
   return (
     <div className="space-y-6">
+      {getFormationKind(formation) === "inter" && (
+        <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+          <strong>Programme commun</strong> — Le programme pédagogique est commun à toutes les entreprises de la formation.
+        </div>
+      )}
+
       <h2 className="text-xl font-bold">{formation.title}</h2>
 
       {program ? (

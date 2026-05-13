@@ -22,6 +22,7 @@ import {
 import { useToast } from "@/components/ui/use-toast";
 import { useEntity } from "@/contexts/EntityContext";
 import { cn, formatDate, SESSION_STATUS_LABELS, STATUS_COLORS } from "@/lib/utils";
+import { getFormationKind } from "@/lib/utils/formation-companies";
 import type { Session } from "@/lib/types";
 import { TabResume } from "./_components/TabResume";
 import { TabPlanning } from "./_components/TabPlanning";
@@ -214,11 +215,18 @@ export default function FormationDetailPage() {
               <Badge className={cn("border-0", STATUS_COLORS[formation.status] || "bg-gray-100")}>
                 {SESSION_STATUS_LABELS[formation.status] || formation.status}
               </Badge>
-              {formation.type && (
-                <Badge variant="outline" className={formation.type === "intra" ? "border-blue-300 text-blue-700" : "border-purple-300 text-purple-700"}>
-                  {formation.type === "intra" ? "INTRA" : "INTER"}
-                </Badge>
-              )}
+              {(() => {
+                const kind = getFormationKind(formation);
+                if (kind === "unset") return null;
+                return (
+                  <Badge
+                    variant="outline"
+                    className={kind === "intra" ? "border-blue-300 text-blue-700" : "border-purple-300 text-purple-700"}
+                  >
+                    {kind === "intra" ? "INTRA" : "INTER"}
+                  </Badge>
+                );
+              })()}
               <Badge variant="outline">
                 {MODE_LABELS[formation.mode] || formation.mode}
               </Badge>

@@ -21,6 +21,24 @@ export function isIntraFormation(formation: Session): boolean {
   return getCompaniesForFormation(formation).length === 1;
 }
 
+export type FormationKind = "intra" | "inter" | "unset";
+
+/**
+ * Détermine le type d'une formation à partir du nombre d'entreprises rattachées.
+ * - 0 entreprises → "unset" (formation incomplète, pas de badge à afficher).
+ * - 1 entreprise  → "intra" (mono-client).
+ * - 2+ entreprises → "inter" (multi-clients).
+ *
+ * Source de vérité canonique pour le badge INTRA/INTER (cf. Story 3.1).
+ * Le champ legacy `sessions.type` n'est plus utilisé pour cette détection.
+ */
+export function getFormationKind(formation: Session): FormationKind {
+  const count = getCompaniesForFormation(formation).length;
+  if (count === 0) return "unset";
+  if (count === 1) return "intra";
+  return "inter";
+}
+
 export function getLearnersForCompany(formation: Session, companyId: string): Enrollment[] {
   const enrollments = formation.enrollments ?? [];
   if (isIntraFormation(formation)) {
