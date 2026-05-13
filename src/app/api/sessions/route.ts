@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 import { parsePagination, createSessionSchema } from "@/lib/validations";
 import { logAudit } from "@/lib/audit-log";
-import { getSessionIdsByClient } from "@/lib/services/sessions";
+import { getSessionIdsByClient, createSessionWithOptionalCompany } from "@/lib/services/sessions";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
@@ -175,14 +175,13 @@ export async function POST(request: NextRequest) {
 
     const { training_id, program_id, trainer_id, client_id, start_date, end_date, location, status, max_participants, notes } = parsed.data;
 
-    const { data, error } = await supabase
-      .from("sessions")
-      .insert({
+    const result = await createSessionWithOptionalCompany(supabase, {
+      sessionData: {
         entity_id: profile.entity_id,
         training_id: training_id ?? null,
         program_id: program_id ?? null,
         trainer_id: trainer_id ?? null,
-        client_id: client_id ?? null,
+        // PAS de client_id ici — Story 1.1
         start_date: start_date ?? null,
         end_date: end_date ?? null,
         mode: body.mode ?? "presentiel",
@@ -196,16 +195,18 @@ export async function POST(request: NextRequest) {
         price: body.price ?? null,
         internal_notes: body.internal_notes ?? null,
         created_by: user.id,
-      })
-      .select()
-      .single();
+      },
+      clientId: client_id ?? null,
+    });
 
-    if (error) {
+    if (!result.ok) {
       return NextResponse.json(
-        { data: null, error: sanitizeDbError(error, "create session") },
+        { data: null, error: sanitizeDbError(result.error, "create session") },
         { status: 500 }
       );
     }
+
+    const data = result.session;
 
     logAudit({
       supabase,
