@@ -1,8 +1,10 @@
 "use client";
 
 import type { Session } from "@/lib/types";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Users, MapPin, Euro, Link2, GraduationCap } from "lucide-react";
+import { getFormationKind } from "@/lib/utils/formation-companies";
 import { ResumeActions } from "./sections/ResumeActions";
 import { ResumeManager } from "./sections/ResumeManager";
 import { ResumeLocation } from "./sections/ResumeLocation";
@@ -24,6 +26,22 @@ interface TabResumeProps {
 export function TabResume({ formation, onRefresh }: TabResumeProps) {
   return (
     <div className="space-y-6">
+      {(() => {
+        const kind = getFormationKind(formation);
+        if (kind === "unset") return null;
+        return (
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-muted-foreground">Type de formation :</span>
+            <Badge
+              variant="outline"
+              className={kind === "intra" ? "border-blue-300 text-blue-700" : "border-purple-300 text-purple-700"}
+            >
+              {kind === "intra" ? "INTRA" : "INTER"}
+            </Badge>
+          </div>
+        );
+      })()}
+
       {/* Quick actions */}
       <ResumeActions formation={formation} onRefresh={onRefresh} />
 
