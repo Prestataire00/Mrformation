@@ -186,10 +186,15 @@ export async function PUT(request: NextRequest, { params }: RouteContext) {
         amount: typeof price === "number" ? price : null,
       });
       if (!linkResult.ok) {
+        console.error("[sessions/PUT] linkSessionToCompany failed", {
+          sessionId: params.id,
+          clientId: client_id,
+          error: linkResult.error,
+        });
         return NextResponse.json(
           {
             data: null,
-            error: `Session mise à jour mais la liaison entreprise a échoué : ${linkResult.error.message}`,
+            error: "Session mise à jour mais la liaison entreprise a échoué",
           },
           { status: 500 }
         );
