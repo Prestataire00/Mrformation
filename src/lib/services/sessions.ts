@@ -55,3 +55,60 @@ export async function linkSessionToCompany(
   }
   return { ok: true };
 }
+
+export type CreateSessionInput = {
+  sessionData: Record<string, unknown>;
+  clientId: string | null | undefined;
+};
+
+export type SessionRow = {
+  id: string;
+  [key: string]: unknown;
+};
+
+/**
+ * Crée une session et, optionnellement, sa liaison formation_companies (atomicité applicative).
+ * Si la liaison échoue, la session est supprimée (rollback applicatif).
+ * Le champ `client_id` ne doit JAMAIS apparaître dans sessionData (Story 1.1 — colonne legacy).
+ */
+export async function createSessionWithOptionalCompany(
+  supabase: SupabaseClient,
+  input: CreateSessionInput
+): Promise<ServiceResult<{ session: SessionRow }>> {
+  const { data: session, error: insertError } = await supabase
+    .from("sessions")
+    .insert(input.sessionData)
+    .select()
+    .single();
+
+  if (insertError || !session) {
+    return {
+      ok: false,
+      error: {
+        message: insertError?.message ?? "Failed to create session",
+        code: insertError?.code,
+      },
+    };
+  }
+
+  if (input.clientId) {
+    const amount = typeof input.sessionData.price === "number" ? input.sessionData.price : null;
+    const { error: fcError } = await supabase
+      .from("formation_companies")
+      .insert({
+        session_id: session.id,
+        client_id: input.clientId,
+        amount,
+      });
+
+    if (fcError) {
+      await supabase.from("sessions").delete().eq("id", session.id);
+      return {
+        ok: false,
+        error: { message: fcError.message, code: fcError.code },
+      };
+    }
+  }
+
+  return { ok: true, session };
+}
