@@ -208,6 +208,11 @@ export interface Session {
   description: string | null;
   total_price: number | null;
   planned_hours: number | null;
+  // Story 2.3 — computed_hours est alimenté par le trigger SQL ; override_hours
+  // est saisi manuellement par l'admin pour surcharger le calcul automatique.
+  // L'UI affiche override_hours ?? computed_hours ?? planned_hours (fallback legacy).
+  computed_hours?: number | null;
+  override_hours?: number | null;
   visio_link: string | null;
   manager_id: string | null;
   program_id: string | null;
