@@ -194,4 +194,28 @@ describe("createSessionWithOptionalCompany", () => {
     if (!result.ok) expect(result.error.message).toBe("RLS denied");
     expect(insertFormationCompanies).not.toHaveBeenCalled();
   });
+
+  it("log un console.error si le rollback delete échoue", async () => {
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const { supabase } = makeSupabaseForCreate({
+      insertSession: { data: { id: "s1" }, error: null },
+      insertFormationCompanies: { data: null, error: { message: "FK error", code: "23503" } },
+      deleteSession: { data: null, error: { message: "delete failed", code: "PGRST500" } },
+    });
+
+    const result = await createSessionWithOptionalCompany(supabase, {
+      sessionData: { entity_id: "e1", title: "T" },
+      clientId: "c1",
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.message).toBe("FK error"); // l'erreur originale, pas celle du rollback
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      "[sessions] rollback delete failed",
+      expect.objectContaining({ sessionId: "s1" })
+    );
+
+    consoleErrorSpy.mockRestore();
+  });
 });

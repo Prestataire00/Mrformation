@@ -102,7 +102,16 @@ export async function createSessionWithOptionalCompany(
       });
 
     if (fcError) {
-      await supabase.from("sessions").delete().eq("id", session.id);
+      const { error: rollbackError } = await supabase
+        .from("sessions")
+        .delete()
+        .eq("id", session.id);
+      if (rollbackError) {
+        console.error("[sessions] rollback delete failed", {
+          sessionId: session.id,
+          error: rollbackError,
+        });
+      }
       return {
         ok: false,
         error: { message: fcError.message, code: fcError.code },
