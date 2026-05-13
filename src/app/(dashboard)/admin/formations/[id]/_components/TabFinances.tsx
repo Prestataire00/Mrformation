@@ -11,7 +11,7 @@ import { ImportInvoiceDialog } from "./ImportInvoiceDialog";
 import { downloadInvoicePDF, invoicePDFBase64 } from "@/lib/invoice-pdf-export";
 import type { InvoicePdfData } from "@/lib/invoice-pdf-export";
 import { buildInvoiceLinesForCompany } from "@/lib/utils/invoice-builder";
-import { getLearnersForCompany } from "@/lib/utils/formation-companies";
+import { getFormationKind, getLearnersForCompany } from "@/lib/utils/formation-companies";
 
 const MODE_LABELS: Record<string, string> = {
   presentiel: "En présentiel",
@@ -131,6 +131,10 @@ export function TabFinances({ formation, onRefresh }: Props) {
   const [savingInvoice, setSavingInvoice] = useState(false);
   const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
 
+  // Picker entreprise (Story 3.6) : en INTER, on demande explicitement à l'admin
+  // quelle entreprise facturer (plus de fallback arbitraire sur formation_companies[0]).
+  const [companyPickerOpen, setCompanyPickerOpen] = useState(false);
+
   // Invoice line helpers
   const addInvoiceLine = () => setInvoiceForm((f) => ({ ...f, lines: [...f.lines, { description: "", quantity: "1", unit_price: "" }] }));
   const updateInvoiceLine = (idx: number, field: string, value: string) => setInvoiceForm((f) => {
@@ -188,14 +192,26 @@ export function TabFinances({ formation, onRefresh }: Props) {
   // Auto-pré-remplit la facture à l'ouverture du dialog (création nouveau).
   // Évite à l'admin de cliquer "Pré-remplir" — toutes les infos viennent
   // automatiquement de la formation (titre, dates, prix, apprenants, entreprise).
+  //
+  // Story 3.6 : en INTER, on n'auto-fill plus arbitrairement sur formation_companies[0].
+  // À la place, on ouvre un picker pour que l'admin choisisse l'entreprise à facturer.
+  // - INTRA : auto-fill (comportement inchangé, une seule entreprise possible).
+  // - INTER : ouvre le picker, prefill différé après choix utilisateur.
+  // - UNSET (0 entreprise) : aucun auto-fill, aucun modal — l'admin saisit manuellement.
   useEffect(() => {
     if (invoiceDialog && !editingInvoiceId) {
-      // Petit délai pour laisser React appliquer le state initial
-      const timer = setTimeout(() => prefillInvoiceLines(), 50);
-      return () => clearTimeout(timer);
+      const kind = getFormationKind(formation);
+      if (kind === "inter") {
+        setCompanyPickerOpen(true);
+      } else if (kind === "intra") {
+        // Petit délai pour laisser React appliquer le state initial
+        const timer = setTimeout(() => prefillInvoiceLines(), 50);
+        return () => clearTimeout(timer);
+      }
+      // kind === "unset" : ne rien faire, form vide
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [invoiceDialog, editingInvoiceId]);
+  }, [invoiceDialog, editingInvoiceId, formation.id]);
 
   // Auto-open edit dialog from URL param ?edit_invoice=xxx
   useEffect(() => {
@@ -291,19 +307,39 @@ export function TabFinances({ formation, onRefresh }: Props) {
 
     const updates: Partial<typeof invoiceForm> = {};
 
-    // Auto-remplit destinataire si pas encore choisi : 1ère entreprise par défaut
-    // (avant les lignes pour pouvoir passer le companyId au helper PR 14)
+    // Auto-fill recipient depuis override (ex. picker modal en INTER, ou INTRA
+    // qui passe l'unique entreprise) — Story 3.6.
+    // Plus de fallback arbitraire sur formation_companies[0] : si aucun override
+    // et aucun recipient_id déjà saisi, l'admin saisit manuellement.
     let recipientIdForLines: string | undefined = overrideRecipientId || invoiceForm.recipient_id || undefined;
-    if (!invoiceForm.recipient_id && !overrideRecipientId) {
-      const firstCompany = (formation.formation_companies || [])[0];
-      const client = firstCompany?.client as unknown as Record<string, string | null> | undefined;
-      if (client && (recipientType === "company" || !overrideRecipientType)) {
+    if (!invoiceForm.recipient_id && overrideRecipientId) {
+      // Resolve l'entreprise par client_id (jamais par name)
+      const fc = (formation.formation_companies || []).find((c) => c.client_id === overrideRecipientId);
+      const client = fc?.client as unknown as Record<string, string | null> | undefined;
+      if (fc && client && (recipientType === "company" || !overrideRecipientType)) {
         updates.recipient_type = "company";
         updates.recipient_name = client.company_name || "";
-        updates.recipient_id = firstCompany.client_id || "";
+        updates.recipient_id = fc.client_id || "";
         updates.recipient_siret = client.siret || "";
         updates.recipient_address = [client.address, client.postal_code, client.city].filter(Boolean).join(" ");
-        recipientIdForLines = firstCompany.client_id || undefined;
+        recipientIdForLines = fc.client_id || undefined;
+      }
+    } else if (!invoiceForm.recipient_id && !overrideRecipientId && recipientType === "company") {
+      // INTRA : auto-fill avec l'unique entreprise rattachée (comportement legacy attendu).
+      // En INTER, prefillInvoiceLines n'est appelé qu'avec un overrideRecipientId issu du picker,
+      // donc on ne tombe jamais ici avec plusieurs entreprises.
+      const companies = formation.formation_companies || [];
+      if (companies.length === 1) {
+        const only = companies[0];
+        const client = only.client as unknown as Record<string, string | null> | undefined;
+        if (client) {
+          updates.recipient_type = "company";
+          updates.recipient_name = client.company_name || "";
+          updates.recipient_id = only.client_id || "";
+          updates.recipient_siret = client.siret || "";
+          updates.recipient_address = [client.address, client.postal_code, client.city].filter(Boolean).join(" ");
+          recipientIdForLines = only.client_id || undefined;
+        }
       }
     }
 
@@ -340,10 +376,15 @@ export function TabFinances({ formation, onRefresh }: Props) {
     const enrollments = formation.enrollments || [];
 
     if (invoiceForm.recipient_type === "company") {
-      const fc = (formation.formation_companies || []).find(c => c.client?.company_name === name);
+      // Story 3.6 : lookup d'abord par client_id (cas idéal si l'UI passe l'id),
+      // fallback par company_name pour rétro-compat avec le Select actuel
+      // (qui passe le name comme value).
+      const fc = (formation.formation_companies || []).find(
+        (c) => c.client_id === name || c.client?.company_name === name
+      );
       const client = fc?.client as unknown as Record<string, string | null> | undefined;
-      if (client) {
-        updates.recipient_id = fc!.client_id || "";
+      if (fc && client) {
+        updates.recipient_id = fc.client_id || "";
         updates.recipient_siret = client.siret || "";
         updates.recipient_address = [client.address, client.postal_code, client.city].filter(Boolean).join(" ");
       }
@@ -389,6 +430,17 @@ export function TabFinances({ formation, onRefresh }: Props) {
     }
 
     setInvoiceForm(f => ({ ...f, ...updates }));
+  };
+
+  // Story 3.6 : appelé après que l'admin a choisi l'entreprise à facturer
+  // dans le picker (INTER). Ferme le modal puis pré-remplit la facture avec
+  // ce client_id (lookup par id, pas par name).
+  const handleCompanyPicked = (clientId: string) => {
+    setCompanyPickerOpen(false);
+    // Délai pour permettre au modal de se fermer avant le pré-remplissage
+    setTimeout(() => {
+      prefillInvoiceLines("company", clientId);
+    }, 50);
   };
 
   const handleCreateInvoice = async (isAvoir = false, parentInvoice?: Invoice) => {
@@ -1212,6 +1264,49 @@ export function TabFinances({ formation, onRefresh }: Props) {
             <Button onClick={() => editingInvoiceId ? handleUpdateInvoice() : handleCreateInvoice(false)} disabled={savingInvoice}>
               {savingInvoice && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               {editingInvoiceId ? "Enregistrer" : "Créer la facture"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Picker entreprise (Story 3.6) — en INTER, ouverte à la création d'une facture
+          pour demander explicitement quelle entreprise est facturée. */}
+      <Dialog open={companyPickerOpen} onOpenChange={setCompanyPickerOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>À quelle entreprise facturez-vous ?</DialogTitle>
+          </DialogHeader>
+          <div className="text-sm text-muted-foreground mb-3">
+            Cette formation est rattachée à plusieurs entreprises. Choisissez celle à facturer.
+          </div>
+          <div className="space-y-2">
+            {(formation.formation_companies || []).map((fc) => (
+              <Button
+                key={fc.client_id}
+                variant="outline"
+                className="w-full justify-between"
+                onClick={() => handleCompanyPicked(fc.client_id)}
+              >
+                <span className="font-medium">
+                  {fc.client?.company_name || `Client ${fc.client_id.slice(0, 8)}`}
+                </span>
+                {fc.amount != null && (
+                  <span className="text-xs text-muted-foreground">
+                    {formatCurrency(fc.amount)}
+                  </span>
+                )}
+              </Button>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setCompanyPickerOpen(false);
+                setInvoiceDialog(false); // annule la création
+              }}
+            >
+              Annuler
             </Button>
           </DialogFooter>
         </DialogContent>
