@@ -121,3 +121,52 @@ export async function createSessionWithOptionalCompany(
 
   return { ok: true, session };
 }
+
+/**
+ * Résout le prix catalogue d'une formation pour une entité donnée.
+ * Retourne `trainings.price_per_person` si disponible et non null, sinon `null`.
+ * Erreurs Supabase (RLS, ID invalide) silencieuses — le caller gère le fallback.
+ *
+ * Utilisé par POST /api/sessions pour auto-remplir `total_price` lorsque `training_id`
+ * est fourni mais que `price` ne l'est pas (cf. Story 2.1).
+ */
+export async function resolveCatalogPrice(
+  supabase: SupabaseClient,
+  trainingId: string,
+  entityId: string
+): Promise<number | null> {
+  const { data, error } = await supabase
+    .from("trainings")
+    .select("price_per_person")
+    .eq("id", trainingId)
+    .eq("entity_id", entityId)
+    .single();
+
+  if (error || !data) return null;
+
+  const value = (data as { price_per_person: number | null }).price_per_person;
+  return typeof value === "number" ? value : null;
+}
+
+/**
+ * Met à jour une session avec les champs fournis. Helper minimal pour respecter AR20
+ * (toute logique Supabase passe par src/lib/services/).
+ *
+ * Le champ `client_id` ne doit JAMAIS apparaître dans `updates` (Story 1.1 — colonne legacy).
+ * Pour mettre à jour la liaison entreprise, utiliser `linkSessionToCompany`.
+ */
+export async function updateSession(
+  supabase: SupabaseClient,
+  sessionId: string,
+  updates: Record<string, unknown>
+): Promise<ServiceResult<Record<never, never>>> {
+  const { error } = await supabase
+    .from("sessions")
+    .update(updates)
+    .eq("id", sessionId);
+
+  if (error) {
+    return { ok: false, error: { message: error.message, code: error.code } };
+  }
+  return { ok: true };
+}

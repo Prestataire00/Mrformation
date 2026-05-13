@@ -3,6 +3,8 @@ import {
   getSessionIdsByClient,
   linkSessionToCompany,
   createSessionWithOptionalCompany,
+  updateSession,
+  resolveCatalogPrice,
 } from "@/lib/services/sessions";
 
 // Type minimal du client Supabase utilisé par les helpers
@@ -217,5 +219,109 @@ describe("createSessionWithOptionalCompany", () => {
     );
 
     consoleErrorSpy.mockRestore();
+  });
+});
+
+describe("updateSession", () => {
+  it("update une session avec les champs fournis", async () => {
+    const eq = vi.fn().mockResolvedValue({ data: null, error: null });
+    const update = vi.fn().mockReturnValue({ eq });
+    const from = vi.fn().mockReturnValue({ update });
+    const supabase = { from } as never;
+
+    const result = await updateSession(supabase, "s1", { total_price: 1500, notes: "test" });
+
+    expect(result.ok).toBe(true);
+    expect(from).toHaveBeenCalledWith("sessions");
+    expect(update).toHaveBeenCalledWith({ total_price: 1500, notes: "test" });
+    expect(eq).toHaveBeenCalledWith("id", "s1");
+  });
+
+  it("update avec un seul champ fonctionne", async () => {
+    const eq = vi.fn().mockResolvedValue({ data: null, error: null });
+    const update = vi.fn().mockReturnValue({ eq });
+    const from = vi.fn().mockReturnValue({ update });
+    const supabase = { from } as never;
+
+    const result = await updateSession(supabase, "s1", { total_price: 2000 });
+
+    expect(result.ok).toBe(true);
+    expect(update).toHaveBeenCalledWith({ total_price: 2000 });
+  });
+
+  it("propage l'erreur Supabase", async () => {
+    const eq = vi.fn().mockResolvedValue({
+      data: null,
+      error: { message: "RLS denied", code: "42501" },
+    });
+    const update = vi.fn().mockReturnValue({ eq });
+    const from = vi.fn().mockReturnValue({ update });
+    const supabase = { from } as never;
+
+    const result = await updateSession(supabase, "s1", { total_price: 1500 });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toBe("RLS denied");
+      expect(result.error.code).toBe("42501");
+    }
+  });
+});
+
+describe("resolveCatalogPrice", () => {
+  function makeMock(response: { data: unknown; error: unknown }) {
+    const single = vi.fn().mockResolvedValue(response);
+    const eq2 = vi.fn().mockReturnValue({ single });
+    const eq1 = vi.fn().mockReturnValue({ eq: eq2 });
+    const select = vi.fn().mockReturnValue({ eq: eq1 });
+    const from = vi.fn().mockReturnValue({ select });
+    return { supabase: { from } as never, from, select, eq1, eq2, single };
+  }
+
+  it("retourne le prix catalogue depuis trainings.price_per_person", async () => {
+    const { supabase, from, eq1, eq2 } = makeMock({
+      data: { price_per_person: 1500 },
+      error: null,
+    });
+
+    const result = await resolveCatalogPrice(supabase, "t1", "e1");
+
+    expect(result).toBe(1500);
+    expect(from).toHaveBeenCalledWith("trainings");
+    expect(eq1).toHaveBeenCalledWith("id", "t1");
+    expect(eq2).toHaveBeenCalledWith("entity_id", "e1");
+  });
+
+  it("retourne null si le training n'a pas de price_per_person", async () => {
+    const { supabase } = makeMock({
+      data: { price_per_person: null },
+      error: null,
+    });
+
+    const result = await resolveCatalogPrice(supabase, "t1", "e1");
+
+    expect(result).toBeNull();
+  });
+
+  it("retourne null si le training n'existe pas (RLS ou ID invalide)", async () => {
+    const { supabase } = makeMock({
+      data: null,
+      error: null,
+    });
+
+    const result = await resolveCatalogPrice(supabase, "t-inexistant", "e1");
+
+    expect(result).toBeNull();
+  });
+
+  it("retourne null silencieusement si Supabase remonte une erreur", async () => {
+    const { supabase } = makeMock({
+      data: null,
+      error: { message: "RLS denied", code: "42501" },
+    });
+
+    const result = await resolveCatalogPrice(supabase, "t1", "e1");
+
+    expect(result).toBeNull();
   });
 });
