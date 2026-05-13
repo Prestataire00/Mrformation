@@ -2,7 +2,11 @@ import { createClient } from "@/lib/supabase/server";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 import { parsePagination, createSessionSchema } from "@/lib/validations";
 import { logAudit } from "@/lib/audit-log";
-import { getSessionIdsByClient, createSessionWithOptionalCompany } from "@/lib/services/sessions";
+import {
+  getSessionIdsByClient,
+  createSessionWithOptionalCompany,
+  resolveCatalogPrice,
+} from "@/lib/services/sessions";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
@@ -175,6 +179,13 @@ export async function POST(request: NextRequest) {
 
     const { training_id, program_id, trainer_id, client_id, start_date, end_date, location, status, max_participants, notes } = parsed.data;
 
+    // Story 2.1 — Auto-fill du prix depuis le catalogue `trainings.price_per_person`
+    // si training_id fourni et body.price absent. Override explicite respecté (0 inclus).
+    let resolvedPrice: number | null = body.price ?? null;
+    if ((body.price === undefined || body.price === null) && training_id) {
+      resolvedPrice = await resolveCatalogPrice(supabase, training_id, profile.entity_id);
+    }
+
     const result = await createSessionWithOptionalCompany(supabase, {
       sessionData: {
         entity_id: profile.entity_id,
@@ -192,7 +203,7 @@ export async function POST(request: NextRequest) {
         max_participants: max_participants ?? null,
         status: status ?? "upcoming",
         notes: notes ?? null,
-        price: body.price ?? null,
+        price: resolvedPrice,
         internal_notes: body.internal_notes ?? null,
         created_by: user.id,
       },
