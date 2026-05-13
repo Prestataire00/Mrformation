@@ -5,6 +5,7 @@ import {
   getLearnersForCompany,
   getAmountForCompany,
   validateCompanyExport,
+  getFormationKind,
 } from "@/lib/utils/formation-companies";
 import type { Session, Enrollment, FormationCompany, Learner } from "@/lib/types";
 
@@ -263,5 +264,41 @@ describe("validateCompanyExport", () => {
     const formation = makeSession({ formation_companies: [fc], enrollments: [] });
     const result = validateCompanyExport(formation, "client-Z");
     expect(result.ok).toBe(false);
+  });
+});
+
+// ──────────────────────────────────────────────
+// getFormationKind
+// ──────────────────────────────────────────────
+
+describe("getFormationKind", () => {
+  it("retourne 'unset' quand aucune entreprise rattachée", () => {
+    const formation = { id: "s1", formation_companies: [] } as unknown as Session;
+    expect(getFormationKind(formation)).toBe("unset");
+  });
+
+  it("retourne 'unset' quand formation_companies est undefined", () => {
+    const formation = { id: "s1" } as unknown as Session;
+    expect(getFormationKind(formation)).toBe("unset");
+  });
+
+  it("retourne 'intra' quand exactement 1 entreprise rattachée", () => {
+    const formation = {
+      id: "s1",
+      formation_companies: [{ client_id: "c1", session_id: "s1", amount: 1000 }],
+    } as unknown as Session;
+    expect(getFormationKind(formation)).toBe("intra");
+  });
+
+  it("retourne 'inter' quand 2+ entreprises rattachées", () => {
+    const formation = {
+      id: "s1",
+      formation_companies: [
+        { client_id: "c1", session_id: "s1", amount: 1000 },
+        { client_id: "c2", session_id: "s1", amount: 500 },
+        { client_id: "c3", session_id: "s1", amount: 200 },
+      ],
+    } as unknown as Session;
+    expect(getFormationKind(formation)).toBe("inter");
   });
 });
