@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 import { parsePagination, createSessionSchema } from "@/lib/validations";
 import { logAudit } from "@/lib/audit-log";
+import { getSessionIdsByClient } from "@/lib/services/sessions";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
@@ -54,7 +55,7 @@ export async function GET(request: NextRequest) {
         *,
         trainings (id, title, duration_hours),
         trainers (id, first_name, last_name, email),
-        clients (id, company_name),
+        formation_companies (id, client_id, amount, client:clients(id, company_name)),
         enrollments (count)
       `,
         { count: "exact" }
@@ -80,7 +81,21 @@ export async function GET(request: NextRequest) {
     }
 
     if (clientId) {
-      query = query.eq("client_id", clientId);
+      const result = await getSessionIdsByClient(supabase, clientId);
+      if (!result.ok) {
+        return NextResponse.json(
+          { data: null, error: result.error.message },
+          { status: 500 }
+        );
+      }
+      if (result.sessionIds.length === 0) {
+        return NextResponse.json({
+          data: [],
+          error: null,
+          meta: { total: 0, page, per_page: perPage, total_pages: 0 },
+        });
+      }
+      query = query.in("id", result.sessionIds);
     }
 
     if (dateFrom) {
