@@ -178,13 +178,21 @@ export async function POST(request: NextRequest) {
   // pour des créneaux passés (ex: admin re-génère QR a posteriori).
   const { data: enrollments, error: enrollErr } = await supabase
     .from("enrollments")
-    .select("id, learner_id, status, learner:learners(id, first_name, last_name, email)")
+    .select("id, learner_id, client_id, status, learner:learners(id, first_name, last_name, email)")
     .eq("session_id", session_id)
     .neq("status", "cancelled");
 
   if (enrollErr) {
     console.error("[emargement/slots] enrollments query error:", enrollErr);
   }
+
+  // Story 3.4 — Build learner_id → client_id map for tagging individual tokens.
+  // Single pass over enrollments already fetched: no extra Supabase query needed (no N+1).
+  const learnerToClientMap = new Map<string, string | null>(
+    (enrollments || [])
+      .filter((e): e is typeof e & { learner_id: string } => !!e.learner_id)
+      .map((e) => [e.learner_id, (e.client_id as string | null) ?? null])
+  );
 
   // 3. Fetch trainers if requested
   let formationTrainers: { trainer_id: string; trainer: { id: string; first_name: string; last_name: string; email: string | null } | { id: string; first_name: string; last_name: string; email: string | null }[] | null }[] = [];
@@ -281,6 +289,8 @@ export async function POST(request: NextRequest) {
           time_slot_id: slot.id,
           enrollment_id: enrollment.id,
           learner_id: learner.id,
+          // Story 3.4 — Tag token with client_id from enrollment (best-effort, may be null)
+          client_id: learnerToClientMap.get(learner.id) ?? null,
           entity_id: auth.profile.entity_id,
           token_type: "individual",
           signer_type: "learner",
