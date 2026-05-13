@@ -13,6 +13,7 @@ import {
 import { useToast } from "@/components/ui/use-toast";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { updateSession } from "@/lib/services/sessions";
+import { cascadeSessionPriceToPendingInvoices } from "@/lib/services/invoices";
 import type { Session, SessionMode, FormationType, SessionStatus } from "@/lib/types";
 
 interface Props {
@@ -136,8 +137,16 @@ export function ResumePriceHours({ formation, onRefresh }: Props) {
   const handleSave = async () => {
     setSaving(true);
     try {
+      // Story 2.2 — capturer le changement de prix avant update (tolérance 0.01, cohérent avec badge Story 2.1)
+      const oldPrice = formation.total_price ?? null;
+      const newPriceParsed = form.total_price ? parseFloat(form.total_price) : null;
+      const priceChanged =
+        (oldPrice === null && newPriceParsed !== null) ||
+        (oldPrice !== null && newPriceParsed === null) ||
+        (oldPrice !== null && newPriceParsed !== null && Math.abs(oldPrice - newPriceParsed) >= 0.01);
+
       const result = await updateSession(supabase, formation.id, {
-        total_price: form.total_price ? parseFloat(form.total_price) : null,
+        total_price: newPriceParsed,
         planned_hours: form.planned_hours ? parseFloat(form.planned_hours) : null,
         start_date: form.start_date || formation.start_date,
         end_date: form.end_date || formation.end_date,
@@ -151,6 +160,41 @@ export function ResumePriceHours({ formation, onRefresh }: Props) {
         throw new Error(result.error.message);
       }
       toast({ title: "Formation mise à jour" });
+
+      // Story 2.2 — cascade prix vers factures pending (company recipients only)
+      if (priceChanged) {
+        const cascade = await cascadeSessionPriceToPendingInvoices(supabase, formation.id, formation);
+        if (cascade.ok) {
+          if (cascade.impacted > 0) {
+            toast({
+              title: `${cascade.impacted} facture${cascade.impacted > 1 ? "s" : ""} brouillon${cascade.impacted > 1 ? "s" : ""} recalculée${cascade.impacted > 1 ? "s" : ""}`,
+            });
+          }
+          if (cascade.blocked > 0) {
+            toast({
+              title: `${cascade.blocked} facture${cascade.blocked > 1 ? "s" : ""} déjà envoyée${cascade.blocked > 1 ? "s" : ""} non modifiée${cascade.blocked > 1 ? "s" : ""}`,
+              description: "Utiliser un avoir si correction commerciale nécessaire.",
+            });
+          }
+          if (cascade.errors.length > 0) {
+            toast({
+              title: `${cascade.errors.length} facture${cascade.errors.length > 1 ? "s" : ""} non mise${cascade.errors.length > 1 ? "s" : ""} à jour`,
+              description: "Vérifier dans TabFinances.",
+              variant: "destructive",
+            });
+            console.error("[ResumePriceHours] cascade errors:", cascade.errors);
+          }
+        } else {
+          // Cascade fetch failed (e.g. RLS). Don't fail the save — just warn.
+          toast({
+            title: "Mise à jour OK, mais le recalcul des factures a échoué",
+            description: cascade.error.message,
+            variant: "destructive",
+          });
+          console.error("[ResumePriceHours] cascade fetch failed:", cascade.error);
+        }
+      }
+
       setEditing(false);
       onRefresh();
     } catch (err: unknown) {
