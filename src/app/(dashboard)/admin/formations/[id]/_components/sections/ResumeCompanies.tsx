@@ -6,14 +6,16 @@ import { Plus, Trash2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import { SearchSelect } from "@/components/ui/search-select";
 import { useToast } from "@/components/ui/use-toast";
 import { formatCurrency } from "@/lib/utils";
-import { getLearnersForCompany } from "@/lib/utils/formation-companies";
-import type { Session, Client, FormationCompany } from "@/lib/types";
+import { computeAmountsReconciliation, getLearnersForCompany } from "@/lib/utils/formation-companies";
+import { addCompanyToSession, removeCompanyFromSession } from "@/lib/services/formation-companies";
+import type { Session, Client } from "@/lib/types";
 
 interface Props {
   formation: Session;
@@ -135,16 +137,16 @@ export function ResumeCompanies({ formation, onRefresh }: Props) {
   const handleAdd = async () => {
     if (!selectedClientId) return;
     setSaving(true);
-    const { error } = await supabase.from("formation_companies").insert({
-      session_id: formation.id,
-      client_id: selectedClientId,
+    const result = await addCompanyToSession(supabase, {
+      sessionId: formation.id,
+      clientId: selectedClientId,
       amount: amount ? parseFloat(amount) : null,
       email: email || null,
     });
 
-    if (error) {
+    if (!result.ok) {
       setSaving(false);
-      toast({ title: "Erreur", description: error.message, variant: "destructive" });
+      toast({ title: "Erreur", description: result.error.message, variant: "destructive" });
       return;
     }
 
@@ -202,8 +204,8 @@ export function ResumeCompanies({ formation, onRefresh }: Props) {
     if (!deleteId) return;
     setDeleting(true);
     try {
-      const { error } = await supabase.from("formation_companies").delete().eq("id", deleteId).eq("session_id", formation.id);
-      if (error) throw error;
+      const result = await removeCompanyFromSession(supabase, deleteId, formation.id);
+      if (!result.ok) throw new Error(result.error.message);
       toast({ title: "Entreprise retirée" });
       setDeleteId(null);
       await onRefresh();
@@ -261,6 +263,50 @@ export function ResumeCompanies({ formation, onRefresh }: Props) {
             <p className="text-sm text-muted-foreground">Aucune entreprise liée</p>
           )}
         </div>
+        {companies.length > 0 && (() => {
+          const reconciliation = computeAmountsReconciliation(formation);
+          if (reconciliation.status === "no-target") {
+            return (
+              <div className="mt-2 text-xs text-muted-foreground">
+                Prix total session non défini · {formatCurrency(reconciliation.sum)} répartis
+              </div>
+            );
+          }
+          const targetFmt = formatCurrency(reconciliation.target ?? 0);
+          const sumFmt = formatCurrency(reconciliation.sum);
+
+          if (reconciliation.status === "ok") {
+            return (
+              <div className="mt-2 flex items-center gap-2 text-xs">
+                <span className="text-muted-foreground">Total réparti :</span>
+                <span className="font-medium">{sumFmt} / {targetFmt}</span>
+                <Badge variant="outline" className="border-green-300 text-green-700 bg-green-50">OK ✓</Badge>
+              </div>
+            );
+          }
+          if (reconciliation.status === "shortfall") {
+            const delta = Math.abs(reconciliation.delta);
+            return (
+              <div className="mt-2 flex items-center gap-2 text-xs">
+                <span className="text-muted-foreground">Total réparti :</span>
+                <span className="font-medium">{sumFmt} / {targetFmt}</span>
+                <Badge variant="outline" className="border-orange-300 text-orange-700 bg-orange-50">
+                  Reste à attribuer : {formatCurrency(delta)}
+                </Badge>
+              </div>
+            );
+          }
+          // overshoot
+          return (
+            <div className="mt-2 flex items-center gap-2 text-xs">
+              <span className="text-muted-foreground">Total réparti :</span>
+              <span className="font-medium">{sumFmt} / {targetFmt}</span>
+              <Badge variant="outline" className="border-red-300 text-red-700 bg-red-50">
+                Dépassement : +{formatCurrency(reconciliation.delta)}
+              </Badge>
+            </div>
+          );
+        })()}
         <div className="flex gap-2">
           <Button size="sm" onClick={() => setDialogOpen(true)}>
             <Plus className="h-4 w-4 mr-1" /> Ajouter une Entreprise

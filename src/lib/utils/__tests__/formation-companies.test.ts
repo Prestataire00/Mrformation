@@ -6,6 +6,7 @@ import {
   getAmountForCompany,
   validateCompanyExport,
   getFormationKind,
+  computeAmountsReconciliation,
 } from "@/lib/utils/formation-companies";
 import type { Session, Enrollment, FormationCompany, Learner } from "@/lib/types";
 
@@ -300,5 +301,101 @@ describe("getFormationKind", () => {
       ],
     } as unknown as Session;
     expect(getFormationKind(formation)).toBe("inter");
+  });
+});
+
+// ──────────────────────────────────────────────
+// computeAmountsReconciliation
+// ──────────────────────────────────────────────
+
+describe("computeAmountsReconciliation", () => {
+  it("retourne status='no-target' quand total_price est null", () => {
+    const formation = {
+      id: "s1",
+      total_price: null,
+      formation_companies: [{ client_id: "c1", session_id: "s1", amount: 500 }],
+    } as unknown as Session;
+    const result = computeAmountsReconciliation(formation);
+    expect(result.status).toBe("no-target");
+    expect(result.sum).toBe(500);
+    expect(result.target).toBeNull();
+  });
+
+  it("retourne status='ok' quand sum === target (tolérance 0.01)", () => {
+    const formation = {
+      id: "s1",
+      total_price: 1500,
+      formation_companies: [
+        { client_id: "c1", session_id: "s1", amount: 1000 },
+        { client_id: "c2", session_id: "s1", amount: 500 },
+      ],
+    } as unknown as Session;
+    const result = computeAmountsReconciliation(formation);
+    expect(result.status).toBe("ok");
+    expect(result.delta).toBeCloseTo(0, 2);
+  });
+
+  it("retourne status='shortfall' quand sum < target", () => {
+    const formation = {
+      id: "s1",
+      total_price: 1500,
+      formation_companies: [
+        { client_id: "c1", session_id: "s1", amount: 800 },
+      ],
+    } as unknown as Session;
+    const result = computeAmountsReconciliation(formation);
+    expect(result.status).toBe("shortfall");
+    expect(result.delta).toBe(-700);
+  });
+
+  it("retourne status='overshoot' quand sum > target", () => {
+    const formation = {
+      id: "s1",
+      total_price: 1500,
+      formation_companies: [
+        { client_id: "c1", session_id: "s1", amount: 1000 },
+        { client_id: "c2", session_id: "s1", amount: 800 },
+      ],
+    } as unknown as Session;
+    const result = computeAmountsReconciliation(formation);
+    expect(result.status).toBe("overshoot");
+    expect(result.delta).toBe(300);
+  });
+
+  it("traite les amount null comme 0", () => {
+    const formation = {
+      id: "s1",
+      total_price: 1500,
+      formation_companies: [
+        { client_id: "c1", session_id: "s1", amount: null },
+        { client_id: "c2", session_id: "s1", amount: 500 },
+      ],
+    } as unknown as Session;
+    const result = computeAmountsReconciliation(formation);
+    expect(result.sum).toBe(500);
+    expect(result.status).toBe("shortfall");
+  });
+
+  it("retourne sum=0 et status='no-target' quand pas d'entreprises et pas de total_price", () => {
+    const formation = {
+      id: "s1",
+      total_price: null,
+      formation_companies: [],
+    } as unknown as Session;
+    const result = computeAmountsReconciliation(formation);
+    expect(result.sum).toBe(0);
+    expect(result.status).toBe("no-target");
+  });
+
+  it("tolérance float : 1500.001 ~ 1500 → status='ok'", () => {
+    const formation = {
+      id: "s1",
+      total_price: 1500,
+      formation_companies: [
+        { client_id: "c1", session_id: "s1", amount: 1500.001 },
+      ],
+    } as unknown as Session;
+    const result = computeAmountsReconciliation(formation);
+    expect(result.status).toBe("ok");
   });
 });

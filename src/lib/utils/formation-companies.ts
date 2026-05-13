@@ -86,3 +86,42 @@ export function validateCompanyExport(formation: Session, companyId: string): Co
 
   return { ok: true };
 }
+
+export type ReconciliationStatus = "ok" | "shortfall" | "overshoot" | "no-target";
+
+export interface ReconciliationResult {
+  sum: number;          // somme des formation_companies.amount (0 si aucune valeur)
+  target: number | null; // formation.total_price, null si non défini
+  delta: number;         // sum - target ; 0 si target null
+  status: ReconciliationStatus;
+}
+
+/**
+ * Calcule l'état de réconciliation entre la somme des montants par entreprise
+ * (formation_companies.amount) et le prix total de la session (sessions.total_price).
+ *
+ * - "no-target" : total_price non défini → pas de réconciliation possible.
+ * - "ok" : sum === target (tolérance 0.01 pour éviter les false positives float).
+ * - "shortfall" : sum < target → reste à attribuer.
+ * - "overshoot" : sum > target → dépassement.
+ *
+ * Tolérance float : la comparaison utilise |delta| < 0.01.
+ */
+export function computeAmountsReconciliation(formation: Session): ReconciliationResult {
+  const companies = getCompaniesForFormation(formation);
+  const sum = companies.reduce((acc, fc) => acc + (fc.amount ?? 0), 0);
+  const target = formation.total_price ?? null;
+
+  if (target === null) {
+    return { sum, target: null, delta: 0, status: "no-target" };
+  }
+
+  const delta = sum - target;
+  if (Math.abs(delta) < 0.01) {
+    return { sum, target, delta, status: "ok" };
+  }
+  if (delta < 0) {
+    return { sum, target, delta, status: "shortfall" };
+  }
+  return { sum, target, delta, status: "overshoot" };
+}
