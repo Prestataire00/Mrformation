@@ -84,7 +84,7 @@ export async function GET(request: NextRequest) {
       const result = await getSessionIdsByClient(supabase, clientId);
       if (!result.ok) {
         return NextResponse.json(
-          { data: null, error: result.error.message },
+          { data: null, error: sanitizeDbError(result.error, "fetch sessions by client") },
           { status: 500 }
         );
       }
