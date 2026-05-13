@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 import { logAudit } from "@/lib/audit-log";
+import { linkSessionToCompany } from "@/lib/services/sessions";
 import { NextRequest, NextResponse } from "next/server";
 
 interface RouteContext {
@@ -146,7 +147,7 @@ export async function PUT(request: NextRequest, { params }: RouteContext) {
       .update({
         training_id,
         trainer_id: trainer_id ?? null,
-        client_id: client_id ?? null,
+        // PAS de client_id ici — Story 1.1 (liaison via formation_companies)
         start_date,
         end_date: end_date ?? null,
         mode: mode ?? "présentiel",
@@ -172,6 +173,27 @@ export async function PUT(request: NextRequest, { params }: RouteContext) {
         { data: null, error: sanitizeDbError(updateError, "update session") },
         { status: 500 }
       );
+    }
+
+    // Story 1.1 — si client_id fourni dans le body, upsert formation_companies.
+    // Décision conservatrice : si client_id === null, ne rien faire ; Loris détache via ResumeCompanies.
+    // Pas de rollback applicatif sur l'update (l'update session a déjà réussi → si linkResult échoue,
+    // on retourne 500 avec message clair, Loris corrige via ResumeCompanies).
+    if (client_id !== undefined && client_id !== null) {
+      const linkResult = await linkSessionToCompany(supabase, {
+        sessionId: params.id,
+        clientId: client_id,
+        amount: typeof price === "number" ? price : null,
+      });
+      if (!linkResult.ok) {
+        return NextResponse.json(
+          {
+            data: null,
+            error: `Session mise à jour mais la liaison entreprise a échoué : ${linkResult.error.message}`,
+          },
+          { status: 500 }
+        );
+      }
     }
 
     logAudit({
