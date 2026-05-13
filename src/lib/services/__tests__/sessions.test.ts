@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { getSessionIdsByClient } from "@/lib/services/sessions";
+import { getSessionIdsByClient, linkSessionToCompany } from "@/lib/services/sessions";
 
 // Type minimal du client Supabase utilisé par les helpers
 type MockSupabase = {
@@ -41,6 +41,57 @@ describe("getSessionIdsByClient", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error.message).toBe("DB down");
+    }
+  });
+});
+
+describe("linkSessionToCompany", () => {
+  it("upsert une ligne formation_companies avec amount", async () => {
+    const upsert = vi.fn().mockResolvedValue({ data: null, error: null });
+    const from = vi.fn().mockReturnValue({ upsert });
+    const supabase = { from } as never;
+
+    const result = await linkSessionToCompany(supabase, {
+      sessionId: "s1",
+      clientId: "c1",
+      amount: 1000,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(from).toHaveBeenCalledWith("formation_companies");
+    expect(upsert).toHaveBeenCalledWith(
+      { session_id: "s1", client_id: "c1", amount: 1000 },
+      { onConflict: "session_id,client_id" }
+    );
+  });
+
+  it("upsert sans amount si non fourni", async () => {
+    const upsert = vi.fn().mockResolvedValue({ data: null, error: null });
+    const from = vi.fn().mockReturnValue({ upsert });
+    const supabase = { from } as never;
+
+    await linkSessionToCompany(supabase, { sessionId: "s1", clientId: "c1" });
+
+    expect(upsert).toHaveBeenCalledWith(
+      { session_id: "s1", client_id: "c1", amount: null },
+      { onConflict: "session_id,client_id" }
+    );
+  });
+
+  it("propage l'erreur Supabase", async () => {
+    const upsert = vi.fn().mockResolvedValue({
+      data: null,
+      error: { message: "FK violation", code: "23503" },
+    });
+    const from = vi.fn().mockReturnValue({ upsert });
+    const supabase = { from } as never;
+
+    const result = await linkSessionToCompany(supabase, { sessionId: "s1", clientId: "c1" });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toBe("FK violation");
+      expect(result.error.code).toBe("23503");
     }
   });
 });

@@ -24,3 +24,34 @@ export async function getSessionIdsByClient(
   const sessionIds = (data ?? []).map((r: { session_id: string }) => r.session_id);
   return { ok: true, sessionIds };
 }
+
+export type LinkSessionToCompanyInput = {
+  sessionId: string;
+  clientId: string;
+  amount?: number | null;
+};
+
+/**
+ * Lie (ou met à jour) une session à une entreprise via formation_companies.
+ * Upsert sur la clé (session_id, client_id) : idempotent.
+ */
+export async function linkSessionToCompany(
+  supabase: SupabaseClient,
+  input: LinkSessionToCompanyInput
+): Promise<ServiceResult<Record<never, never>>> {
+  const { error } = await supabase
+    .from("formation_companies")
+    .upsert(
+      {
+        session_id: input.sessionId,
+        client_id: input.clientId,
+        amount: input.amount ?? null,
+      },
+      { onConflict: "session_id,client_id" }
+    );
+
+  if (error) {
+    return { ok: false, error: { message: error.message, code: error.code } };
+  }
+  return { ok: true };
+}
