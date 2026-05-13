@@ -121,3 +121,26 @@ export async function createSessionWithOptionalCompany(
 
   return { ok: true, session };
 }
+
+/**
+ * Met à jour une session avec les champs fournis. Helper minimal pour respecter AR20
+ * (toute logique Supabase passe par src/lib/services/).
+ *
+ * Le champ `client_id` ne doit JAMAIS apparaître dans `updates` (Story 1.1 — colonne legacy).
+ * Pour mettre à jour la liaison entreprise, utiliser `linkSessionToCompany`.
+ */
+export async function updateSession(
+  supabase: SupabaseClient,
+  sessionId: string,
+  updates: Record<string, unknown>
+): Promise<ServiceResult<Record<never, never>>> {
+  const { error } = await supabase
+    .from("sessions")
+    .update(updates)
+    .eq("id", sessionId);
+
+  if (error) {
+    return { ok: false, error: { message: error.message, code: error.code } };
+  }
+  return { ok: true };
+}

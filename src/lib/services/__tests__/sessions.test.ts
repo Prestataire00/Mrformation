@@ -3,6 +3,7 @@ import {
   getSessionIdsByClient,
   linkSessionToCompany,
   createSessionWithOptionalCompany,
+  updateSession,
 } from "@/lib/services/sessions";
 
 // Type minimal du client Supabase utilisé par les helpers
@@ -217,5 +218,51 @@ describe("createSessionWithOptionalCompany", () => {
     );
 
     consoleErrorSpy.mockRestore();
+  });
+});
+
+describe("updateSession", () => {
+  it("update une session avec les champs fournis", async () => {
+    const eq = vi.fn().mockResolvedValue({ data: null, error: null });
+    const update = vi.fn().mockReturnValue({ eq });
+    const from = vi.fn().mockReturnValue({ update });
+    const supabase = { from } as never;
+
+    const result = await updateSession(supabase, "s1", { total_price: 1500, notes: "test" });
+
+    expect(result.ok).toBe(true);
+    expect(from).toHaveBeenCalledWith("sessions");
+    expect(update).toHaveBeenCalledWith({ total_price: 1500, notes: "test" });
+    expect(eq).toHaveBeenCalledWith("id", "s1");
+  });
+
+  it("update avec un seul champ fonctionne", async () => {
+    const eq = vi.fn().mockResolvedValue({ data: null, error: null });
+    const update = vi.fn().mockReturnValue({ eq });
+    const from = vi.fn().mockReturnValue({ update });
+    const supabase = { from } as never;
+
+    const result = await updateSession(supabase, "s1", { total_price: 2000 });
+
+    expect(result.ok).toBe(true);
+    expect(update).toHaveBeenCalledWith({ total_price: 2000 });
+  });
+
+  it("propage l'erreur Supabase", async () => {
+    const eq = vi.fn().mockResolvedValue({
+      data: null,
+      error: { message: "RLS denied", code: "42501" },
+    });
+    const update = vi.fn().mockReturnValue({ eq });
+    const from = vi.fn().mockReturnValue({ update });
+    const supabase = { from } as never;
+
+    const result = await updateSession(supabase, "s1", { total_price: 1500 });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toBe("RLS denied");
+      expect(result.error.code).toBe("42501");
+    }
   });
 });
