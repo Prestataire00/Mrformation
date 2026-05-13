@@ -14,6 +14,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { updateSession } from "@/lib/services/sessions";
 import { cascadeSessionPriceToPendingInvoices } from "@/lib/services/invoices";
+import { resolveDisplayedHours } from "@/lib/utils/hours-source";
 import type { Session, SessionMode, FormationType, SessionStatus } from "@/lib/types";
 
 interface Props {
@@ -56,9 +57,13 @@ export function ResumePriceHours({ formation, onRefresh }: Props) {
   const [companyCount, setCompanyCount] = useState<number>(0);
   const [defaultLocationByType, setDefaultLocationByType] = useState<{ intra: string | null; inter: string | null }>({ intra: null, inter: null });
 
+  // Story 2.3 — l'input "heures planifiées" pré-remplit avec la valeur affichée
+  // (override si présent, sinon computed, sinon legacy planned_hours).
+  const initialDisplayedHours = resolveDisplayedHours(formation).value;
+
   const [form, setForm] = useState({
     total_price: formation.total_price?.toString() || "",
-    planned_hours: formation.planned_hours?.toString() || "",
+    planned_hours: initialDisplayedHours !== null ? initialDisplayedHours.toString() : "",
     start_date: formation.start_date ? formation.start_date.split("T")[0] : "",
     end_date: formation.end_date ? formation.end_date.split("T")[0] : "",
     location: formation.location || "",
@@ -120,9 +125,11 @@ export function ResumePriceHours({ formation, onRefresh }: Props) {
   }, [formation.id, formation.entity_id, formation.formation_companies, supabase]);
 
   const openEdit = () => {
+    // Story 2.3 — pré-remplir avec la valeur affichée (override ?? computed ?? legacy)
+    const displayedHours = resolveDisplayedHours(formation).value;
     setForm({
       total_price: formation.total_price?.toString() || "",
-      planned_hours: formation.planned_hours?.toString() || "",
+      planned_hours: displayedHours !== null ? displayedHours.toString() : "",
       start_date: formation.start_date ? formation.start_date.split("T")[0] : "",
       end_date: formation.end_date ? formation.end_date.split("T")[0] : "",
       location: formation.location || "",
@@ -147,7 +154,15 @@ export function ResumePriceHours({ formation, onRefresh }: Props) {
 
       const result = await updateSession(supabase, formation.id, {
         total_price: newPriceParsed,
-        planned_hours: form.planned_hours ? parseFloat(form.planned_hours) : null,
+        // Story 2.3 — pas d'update direct de planned_hours (legacy, géré par trigger).
+        // override_hours = saisi manuel ssi différent de computed_hours (tolérance 0.01).
+        override_hours: (() => {
+          const parsedHours = form.planned_hours ? parseFloat(form.planned_hours) : null;
+          if (parsedHours === null || Number.isNaN(parsedHours)) return null;
+          const computed = formation.computed_hours ?? null;
+          if (computed !== null && Math.abs(parsedHours - computed) < 0.01) return null;
+          return parsedHours;
+        })(),
         start_date: form.start_date || formation.start_date,
         end_date: form.end_date || formation.end_date,
         location: form.location || null,
@@ -233,6 +248,9 @@ export function ResumePriceHours({ formation, onRefresh }: Props) {
     const priceSource = getPriceSource(formation);
     const catalogPrice = formation.training?.price_per_person ?? null;
 
+    // Story 2.3 — résolution de la source des heures (override / computed / legacy)
+    const hoursInfo = resolveDisplayedHours(formation);
+
     return (
       <div className="space-y-3">
         <div className="grid grid-cols-2 gap-3 text-sm">
@@ -242,7 +260,21 @@ export function ResumePriceHours({ formation, onRefresh }: Props) {
           </div>
           <div>
             <p className="text-xs text-muted-foreground flex items-center gap-1"><Clock className="h-3 w-3" /> Durée</p>
-            <p className="font-medium">{formation.planned_hours ? `${formation.planned_hours}h` : "—"}</p>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <p className="font-medium">{hoursInfo.value !== null ? `${hoursInfo.value}h` : "—"}</p>
+              {(hoursInfo.source === "computed" || hoursInfo.source === "legacy") && (
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Calculé depuis créneaux</Badge>
+              )}
+              {hoursInfo.source === "override" && (
+                <Badge
+                  variant="default"
+                  className="text-[10px] px-1.5 py-0"
+                  title={hoursInfo.computedValue !== null ? `Heures calculées depuis créneaux : ${hoursInfo.computedValue}h` : undefined}
+                >
+                  Saisi manuellement
+                </Badge>
+              )}
+            </div>
             {autoComputedHours !== null && (
               <p className={`text-[10px] mt-0.5 flex items-center gap-1 ${durationMismatch ? "text-orange-600" : "text-emerald-600"}`}>
                 <Sparkles className="h-2.5 w-2.5" />
@@ -343,18 +375,26 @@ export function ResumePriceHours({ formation, onRefresh }: Props) {
           </Label>
           <Input type="number" step="0.5" value={form.planned_hours} onChange={u("planned_hours")} placeholder="0" className="h-8 text-sm" />
           <p className="text-[10px] text-gray-400 mt-1">
-            Recalculé auto à chaque modification du planning. Modification manuelle écrasée au prochain changement de créneau.
+            Recalculé auto depuis les créneaux. Saisie manuelle = override (conservée jusqu&apos;à révocation).
           </p>
-          {autoComputedHours !== null && Number(form.planned_hours || "0") !== autoComputedHours && (
-            <button
-              type="button"
-              onClick={() => setForm((f) => ({ ...f, planned_hours: String(autoComputedHours) }))}
-              className="mt-1 text-[10px] text-emerald-600 hover:text-emerald-700 flex items-center gap-1"
-            >
-              <Sparkles className="h-2.5 w-2.5" />
-              Forcer la durée du planning : {autoComputedHours}h
-            </button>
-          )}
+          {(() => {
+            // Story 2.3 — bouton revert : visible si computed_hours existe et form != computed (tolérance 0.01)
+            const computed = formation.computed_hours;
+            if (computed === null || computed === undefined) return null;
+            const currentValue = parseFloat(form.planned_hours);
+            const isSameAsComputed = !Number.isNaN(currentValue) && Math.abs(currentValue - computed) < 0.01;
+            if (isSameAsComputed) return null;
+            return (
+              <button
+                type="button"
+                onClick={() => setForm((f) => ({ ...f, planned_hours: computed.toString() }))}
+                className="mt-1 text-[10px] text-emerald-600 hover:text-emerald-700 flex items-center gap-1"
+              >
+                <RotateCcw className="h-2.5 w-2.5" />
+                Revenir au calculé ({computed}h)
+              </button>
+            );
+          })()}
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3">
