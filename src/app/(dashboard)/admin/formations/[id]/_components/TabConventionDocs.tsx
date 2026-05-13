@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import {
   Loader2, Eye, CheckCircle, Send, Copy, Clock, Download,
   ChevronDown, ChevronUp, Plus, FileDown, PenLine, Undo2, Pencil,
+  AlertTriangle,
 } from "lucide-react";
 import DOMPurify from "dompurify";
 import { Button } from "@/components/ui/button";
@@ -22,7 +23,7 @@ import { EmailPreviewDialog } from "@/components/emails/EmailPreviewDialog";
 import { useEntity } from "@/contexts/EntityContext";
 import { getDefaultTemplate } from "@/lib/document-templates-defaults";
 import { resolveVariables } from "@/lib/utils/resolve-variables";
-import { validateCompanyExport } from "@/lib/utils/formation-companies";
+import { validateCompanyExport, findUncoveredLearners } from "@/lib/utils/formation-companies";
 import { exportHtmlToPDF, exportHtmlToPDFBase64 } from "@/lib/pdf-export";
 import { cn } from "@/lib/utils";
 import { DocMatrixSection } from "@/components/formations/DocMatrixSection";
@@ -949,6 +950,11 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     const label = doc.custom_label || DOC_LABELS[docType] || docType;
     const isSaving = saving === doc.id || saving === `date-${doc.id}` || saving === `sign-${doc.id}`;
 
+    // Story 3.5 — Warn if confirmed company convention has learners added afterwards
+    const uncovered = doc.doc_type === "convention_entreprise"
+      ? findUncoveredLearners(formation, doc)
+      : [];
+
     return (
       <div key={doc.id} className={cn("flex items-center justify-between py-2 border-b last:border-b-0 gap-2 border-l-2 pl-3", DOC_COLORS[docType] || "border-l-slate-300")}>
         <div className="flex items-center gap-2 min-w-0">
@@ -957,6 +963,15 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
           </span>
           <span className="text-xs font-medium truncate">{label}</span>
           {renderStatusBadge(doc)}
+          {uncovered.length > 0 && (
+            <span
+              className="text-[10px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-300 flex items-center gap-1"
+              title={`Apprenants ajoutés après confirmation (non couverts par la convention figée) : ${uncovered.map((e) => `${e.learner?.last_name?.toUpperCase() ?? ""} ${e.learner?.first_name ?? ""}`.trim()).join(", ")}. Émettre un avenant si nécessaire.`}
+            >
+              <AlertTriangle className="h-3 w-3" />
+              {uncovered.length} apprenant{uncovered.length > 1 ? "s" : ""} non couvert{uncovered.length > 1 ? "s" : ""}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           <Button size="sm" variant="ghost" className="h-6 text-xs gap-1" onClick={() => handleView(doc)}>
