@@ -13,12 +13,16 @@ import { Badge } from "@/components/ui/badge";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/components/ui/use-toast";
 import { downloadQRCodesPDF, type QRSlotData } from "@/lib/qr-pdf-export";
 import { downloadEmargementPDF } from "@/lib/emargement-pdf-export";
 import { useEntity } from "@/contexts/EntityContext";
 import { sortSlotsByStart } from "@/lib/utils/sort-time-slots";
+import { getFormationKind, getLearnersForCompany } from "@/lib/utils/formation-companies";
 import type { Session, FormationTimeSlot, Signature, Enrollment, FormationTrainer } from "@/lib/types";
 
 // ──────────────────────────────────────────────
@@ -179,6 +183,12 @@ export function TabEmargements({ formation, onRefresh }: Props) {
   const [pdfProgress, setPdfProgress] = useState({ current: 0, total: 0 });
   const [sendingToTrainer, setSendingToTrainer] = useState(false);
 
+  // Story 3.4 — Filtre par entreprise (uniquement utile en INTER).
+  // null = "Toutes les entreprises" (comportement par défaut, identique au pré-3.4).
+  const [filterClientId, setFilterClientId] = useState<string | null>(null);
+  const formationKind = getFormationKind(formation);
+  const companies = formation.formation_companies || [];
+
   // Sign-on-behalf dialog state
   const [signDialog, setSignDialog] = useState<{
     open: boolean;
@@ -214,7 +224,13 @@ export function TabEmargements({ formation, onRefresh }: Props) {
   // qui survient quand un slot d'après-midi est créé en DB avant celui du matin.
   const timeSlots = sortSlotsByStart(formation.formation_time_slots || []);
   const signatures = formation.signatures || [];
-  const enrollments = formation.enrollments || [];
+  // Story 3.4 — `allEnrollments` = source brute (utilisée pour les stats globales).
+  // `enrollments` = liste affichée (filtrée par entreprise en INTER si filtre actif).
+  // En INTRA ou filtre = null, les deux sont identiques → 100% rétrocompatible.
+  const allEnrollments = formation.enrollments || [];
+  const enrollments = filterClientId
+    ? allEnrollments.filter((e) => e.client_id === filterClientId)
+    : allEnrollments;
   const trainers = formation.formation_trainers || [];
 
   // ── Helpers ──
@@ -621,6 +637,87 @@ export function TabEmargements({ formation, onRefresh }: Props) {
     }
   };
 
+  // Story 3.4 — Export 1 PDF par entreprise (INTER uniquement, filtre "Toutes" actif).
+  // Génère séquentiellement N feuilles d'émargement, 1 par entreprise rattachée,
+  // chacune avec les apprenants filtrés par client_id et le nom de l'entreprise
+  // dans le titre du document.
+  const handleExportEmargementPerCompany = async () => {
+    setExportingSheet(true);
+    try {
+      const totalMs = timeSlots.reduce((sum, slot) => {
+        return sum + (new Date(slot.end_time).getTime() - new Date(slot.start_time).getTime());
+      }, 0);
+      const totalHours = (totalMs / (1000 * 60 * 60)).toFixed(2);
+
+      let generated = 0;
+      for (const fc of companies) {
+        const learnersForCompany = getLearnersForCompany(formation, fc.client_id);
+        if (learnersForCompany.length === 0) continue;
+
+        const companyName = fc.client?.company_name || `Client_${fc.client_id.slice(0, 8)}`;
+
+        await downloadEmargementPDF({
+          formationTitle: `${formation.title} — ${companyName}`,
+          startDate: formation.start_date,
+          endDate: formation.end_date,
+          location: formation.location,
+          duration: `${totalHours} heures`,
+          entityName: entity?.name || "MR FORMATION",
+          trainers: trainers
+            .filter((ft) => ft.trainer)
+            .map((ft) => ({
+              id: ft.trainer!.id,
+              first_name: ft.trainer!.first_name,
+              last_name: ft.trainer!.last_name,
+            })),
+          learners: learnersForCompany
+            .filter((e) => e.learner)
+            .map((e) => ({
+              id: e.learner!.id,
+              first_name: e.learner!.first_name,
+              last_name: e.learner!.last_name,
+            })),
+          timeSlots: timeSlots.map((s) => ({
+            id: s.id,
+            title: s.title,
+            start_time: s.start_time,
+            end_time: s.end_time,
+          })),
+          signatures: signatures
+            .filter((s): s is typeof s & { signer_id: string } => s.signer_id !== null)
+            .map((s) => ({
+              time_slot_id: s.time_slot_id,
+              signer_id: s.signer_id,
+              signer_type: s.signer_type,
+              signature_data: s.signature_data,
+            })),
+        });
+
+        generated++;
+        // Petit délai pour éviter que le navigateur bloque les téléchargements concurrents
+        await new Promise((r) => setTimeout(r, 300));
+      }
+
+      if (generated === 0) {
+        toast({
+          title: "Aucun PDF généré",
+          description: "Aucune entreprise n'a d'apprenant rattaché",
+          variant: "destructive",
+        });
+      } else {
+        toast({ title: `${generated} feuille(s) d'émargement exportée(s)` });
+      }
+    } catch (err) {
+      toast({
+        title: "Erreur",
+        description: err instanceof Error ? err.message : "Impossible de générer les PDFs",
+        variant: "destructive",
+      });
+    } finally {
+      setExportingSheet(false);
+    }
+  };
+
   // ── Print empty attendance sheet ──
 
   const handlePrintEmpty = () => {
@@ -660,7 +757,10 @@ export function TabEmargements({ formation, onRefresh }: Props) {
   };
 
   // ── Compute stats ──
-
+  // Story 3.4 — Les stats globales (hero row) reflètent la liste affichée
+  // (`enrollments`, donc filtrée si filtre INTER actif) pour que le taux de
+  // signature corresponde visuellement aux personnes rendues plus bas.
+  // Les signatures elles-mêmes restent toutes comptées au niveau du slot.
   const totalExpected = timeSlots.length * (enrollments.length + trainers.length);
   const totalSigned = timeSlots.reduce((sum, slot) => sum + getSignaturesForSlot(slot).length, 0);
   const completionPct = totalExpected > 0 ? Math.round((totalSigned / totalExpected) * 100) : 0;
@@ -726,6 +826,37 @@ export function TabEmargements({ formation, onRefresh }: Props) {
 
   return (
     <div className="space-y-6">
+      {/* Story 3.4 — Filtre par entreprise (visible uniquement en INTER) */}
+      {formationKind === "inter" && companies.length > 0 && (
+        <div className="flex items-center gap-2 text-sm border rounded-md px-3 py-2 bg-blue-50">
+          <span className="text-muted-foreground">Filtrer par entreprise :</span>
+          <Select
+            value={filterClientId ?? "all"}
+            onValueChange={(v) => setFilterClientId(v === "all" ? null : v)}
+          >
+            <SelectTrigger className="h-8 w-[240px]">
+              <SelectValue placeholder="Toutes les entreprises" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Toutes les entreprises</SelectItem>
+              {companies.map((c) => (
+                <SelectItem key={c.client_id} value={c.client_id}>
+                  {c.client?.company_name || `Client ${c.client_id.slice(0, 8)}`}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <span className="text-xs text-muted-foreground">
+            {enrollments.length}/{allEnrollments.length} apprenant{allEnrollments.length !== 1 ? "s" : ""}
+          </span>
+          {filterClientId && (
+            <Button variant="ghost" size="sm" onClick={() => setFilterClientId(null)}>
+              × Effacer
+            </Button>
+          )}
+        </div>
+      )}
+
       {/* ═══ HERO ROW ═══ */}
       {timeSlots.length > 0 && (
         <div className="grid grid-cols-3 gap-3">
@@ -833,6 +964,18 @@ export function TabEmargements({ formation, onRefresh }: Props) {
             >
               {exportingSheet ? "Génération..." : "📥 Feuille d'émargement signée"}
             </button>
+            {/* Story 3.4 — Export 1 PDF par entreprise (INTER uniquement, sans filtre actif) */}
+            {formationKind === "inter" && !filterClientId && companies.length > 0 && (
+              <button
+                type="button"
+                onClick={handleExportEmargementPerCompany}
+                disabled={exportingSheet}
+                className="block w-full border border-purple-300 text-purple-700 hover:bg-purple-100 disabled:opacity-50 text-sm font-medium px-3 py-2 rounded-lg text-center transition-colors mb-2"
+                title="Génère 1 feuille d'émargement par entreprise rattachée"
+              >
+                {exportingSheet ? "Génération..." : `📥 1 PDF par entreprise (${companies.length})`}
+              </button>
+            )}
             <div className="text-[11px] text-gray-500 space-y-1">
               <button
                 type="button"
