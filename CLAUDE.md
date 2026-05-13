@@ -73,6 +73,27 @@ Voir .env.example
 
 ---
 
+## 🔐 SKILL : ISOLEMENT PORTAIL CLIENT (NFR-SEC-2)
+
+Sur le portail client (`src/app/(dashboard)/client/*`), un utilisateur de rôle `client` rattaché à
+l'entreprise X ne doit voir QUE les données de ses propres apprenants — pas celles d'autres
+entreprises partageant la même session INTER.
+
+Pattern obligatoire :
+1. Récupérer `clientData` via `clients(profile_id = auth.uid())` OU via la chaîne `learner.profile_id → client_id`.
+2. Toute query sur `enrollments`, `signatures`, etc. doit être filtrée par `learner_id IN myLearners`.
+3. Pour défense en profondeur applicative, utiliser les helpers de `src/lib/utils/client-portal-isolation.ts` :
+   - `getLearnerIdsForClient(learners, clientId)`
+   - `filterEnrollmentsByLearnerIds(enrollments, allowedLearnerIds)`
+   - `countClientLearnersOnSession(enrollments, allowedLearnerIds, sessionId)`
+
+Anti-pattern : afficher directement `formation.enrollments` (qui contient TOUS les apprenants
+d'une session INTER, y compris ceux d'autres clients). Toujours croiser par `learner_id`.
+
+Pour toute nouvelle page du portail client : ces helpers DOIVENT être utilisés. Cf. Story 3.7 / Epic 3 du MVP.
+
+---
+
 # 🔍 SKILL : AUDIT AUTOMATIQUE
 
 ## Quand l'utilisateur demande un audit, une vérification, ou un review d'un module ou d'une page, TOUJOURS appliquer cette procédure complète :

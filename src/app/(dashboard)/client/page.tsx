@@ -236,7 +236,11 @@ export default function ClientPage() {
 
       setClient(clientData);
 
-      // flatten all enrollments across learners
+      // Isolement portail client (Story 3.7 / NFR-SEC-2) :
+      // tous les enrollments ici sont imbriqués sous clients.id = my_client_id via le join Supabase
+      // ci-dessus, donc déjà strictement isolés à ce client. Pas besoin d'un helper de filtrage
+      // applicatif car la structure de la requête garantit l'isolation au niveau DB.
+      // Cf. src/lib/utils/client-portal-isolation.ts pour les pages à filtrage plat (ex. /client/formations).
       const allEnrolls: EnrollmentWithSession[] = [];
       for (const learner of clientData.learners ?? []) {
         for (const enrollment of learner.enrollments ?? []) {

@@ -30,11 +30,16 @@ export function getLearnerIdsForClient(
  * Filtre des enrollments en gardant uniquement ceux dont le `learner_id` appartient au client courant.
  * Défense en profondeur : même si une query Supabase oubliait un `.eq("client_id", ...)`,
  * ce helper bloque la fuite à l'étape suivante.
+ *
+ * Générique : le type d'entrée est préservé (les autres champs comme `session_id`, `status`, etc.
+ * restent typés après filtrage).
  */
-export function filterEnrollmentsByLearnerIds(
-  enrollments: Pick<Enrollment, "learner_id">[] | null | undefined,
+export function filterEnrollmentsByLearnerIds<
+  T extends Pick<Enrollment, "learner_id">
+>(
+  enrollments: T[] | null | undefined,
   allowedLearnerIds: string[]
-): Pick<Enrollment, "learner_id">[] {
+): T[] {
   if (!enrollments || enrollments.length === 0) return [];
   if (allowedLearnerIds.length === 0) return [];
   const allowed = new Set(allowedLearnerIds);
