@@ -111,6 +111,42 @@ export async function createLearnerAndEnroll(
   return { ok: true, learner };
 }
 
+export type EnrollLearnersBulkInput = {
+  sessionId: string;
+  clientId: string;
+  learnerIds: string[];
+  status?: string;
+};
+
+/**
+ * Inscrit en lot plusieurs apprenants existants à une session, tous rattachés
+ * à la même entreprise (`clientId`). Effectue un seul insert.
+ * Si `learnerIds` est vide, retourne `ok` avec `count` 0 sans toucher la base.
+ */
+export async function enrollLearnersBulk(
+  supabase: SupabaseClient,
+  input: EnrollLearnersBulkInput
+): Promise<ServiceResult<{ count: number }>> {
+  if (input.learnerIds.length === 0) {
+    return { ok: true, count: 0 };
+  }
+
+  const status = input.status ?? "registered";
+  const { error } = await supabase.from("enrollments").insert(
+    input.learnerIds.map((learnerId) => ({
+      session_id: input.sessionId,
+      learner_id: learnerId,
+      client_id: input.clientId,
+      status,
+    }))
+  );
+
+  if (error) {
+    return { ok: false, error: { message: error.message, code: error.code } };
+  }
+  return { ok: true, count: input.learnerIds.length };
+}
+
 /**
  * Retire un enrollment d'une session. Filtre par sessionId en défense en profondeur.
  */
