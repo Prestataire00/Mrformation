@@ -452,10 +452,6 @@ export interface FormationElearningAssignment {
   start_date: string | null;
   end_date: string | null;
   notes: string | null;
-  time_elearning_modules: number;
-  time_elearning_evaluations: number;
-  time_other_evaluations: number;
-  time_virtual_classroom: number;
   time_signed_attendance: number;
   is_completed: boolean;
   created_at: string;

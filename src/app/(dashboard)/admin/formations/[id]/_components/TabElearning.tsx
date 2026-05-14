@@ -256,11 +256,10 @@ export function TabElearning({ formation, onRefresh }: Props) {
 
             const assignment = getAssignment(learner.id);
             const signedTime = getSignedAttendanceTime(learner.id);
-            const timeModules = assignment?.time_elearning_modules || 0;
-            const timeEvals = assignment?.time_elearning_evaluations || 0;
-            const timeOther = assignment?.time_other_evaluations || 0;
-            const timeVirtual = assignment?.time_virtual_classroom || 0;
-            const totalTime = timeModules + timeEvals + timeOther + timeVirtual + signedTime;
+            // Story 4.2 — les champs time_* de formation_elearning_assignments n'étaient jamais
+            // populés et ont été supprimés. Le temps total = temps d'émargement signé (calculé
+            // dynamiquement par getSignedAttendanceTime depuis les signatures).
+            const totalTime = signedTime;
             const isExpanded = expanded[learner.id];
 
             return (
@@ -366,15 +365,9 @@ export function TabElearning({ formation, onRefresh }: Props) {
                     )}
 
                     {/* Time breakdown - compact grid */}
+                    {/* Story 4.2 — les lignes Modules / Évaluations / Classe virtuelle ont été
+                        retirées : les champs time_* correspondants n'étaient jamais populés. */}
                     <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-xs max-w-md">
-                      <span className="text-muted-foreground">Modules e-learning</span>
-                      <span className="font-mono">{formatTime(timeModules)}</span>
-                      <span className="text-muted-foreground">Évaluations e-learning</span>
-                      <span className="font-mono">{formatTime(timeEvals)}</span>
-                      <span className="text-muted-foreground">Autres évaluations</span>
-                      <span className="font-mono">{formatTime(timeOther)}</span>
-                      <span className="text-muted-foreground">Classe virtuelle</span>
-                      <span className="font-mono">{formatTime(timeVirtual)}</span>
                       <span className="text-muted-foreground">Émargements signés</span>
                       <span className="font-mono">{formatTime(signedTime)}</span>
                       <span className="font-medium">Total</span>
