@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/components/ui/use-toast";
+import { getQualiopiAudit, upsertQualiopiAudit } from "@/lib/services/qualiopi";
 import type { Session } from "@/lib/types";
 
 interface Props {
@@ -43,21 +44,12 @@ export function TabQualiopi({ formation, onRefresh }: Props) {
   const isSubcontracted = formation.is_subcontracted === true;
   const learnerCount = enrollments.length || 1;
 
-  // Load manual checks from formation notes/metadata
+  // Load manual checks from formation_qualiopi_audits (Story 5.1 — remplace le pattern JSON-in-notes)
   useEffect(() => {
     (async () => {
-      const { data } = await supabase
-        .from("sessions")
-        .select("notes")
-        .eq("id", formation.id)
-        .single();
-      if (data?.notes) {
-        try {
-          const parsed = JSON.parse(data.notes);
-          if (parsed.qualiopi_manual) {
-            setManualChecks(parsed.qualiopi_manual);
-          }
-        } catch { /* notes is not JSON, ignore */ }
+      const result = await getQualiopiAudit(supabase, formation.id);
+      if (result.ok && result.audit) {
+        setManualChecks(result.audit.manual_checks ?? {});
       }
       setLoading(false);
     })();
@@ -247,29 +239,28 @@ export function TabQualiopi({ formation, onRefresh }: Props) {
     supabase.from("sessions").update({ qualiopi_score: score }).eq("id", formation.id);
   }, [score, loading, formation.id, supabase]);
 
-  // Toggle manual check
+  // Toggle manual check — persiste dans formation_qualiopi_audits (Story 5.1)
+  // Note (choix a) : on passe le `score` courant, potentiellement 1 toggle en retard
+  // (recalcul réactif via useMemo après le setState). C'est acceptable car le score
+  // n'est qu'un cache : Block B garde `sessions.qualiopi_score` à jour, et le prochain
+  // toggle resynchronise `formation_qualiopi_audits.score`. Le `manual_checks` JSONB,
+  // lui, reflète toujours exactement le state (on passe `newChecks`).
   const handleManualToggle = async (itemId: string, checked: boolean) => {
     const newChecks = { ...manualChecks, [itemId]: checked };
     setManualChecks(newChecks);
 
-    try {
-      // Read current notes, merge qualiopi_manual
-      const { data: current } = await supabase
-        .from("sessions")
-        .select("notes")
-        .eq("id", formation.id)
-        .single();
+    const result = await upsertQualiopiAudit(supabase, {
+      sessionId: formation.id,
+      entityId: formation.entity_id,
+      score,
+      manualChecks: newChecks,
+      auditedBy: null, // TODO: passer l'id de l'utilisateur courant si disponible dans le composant
+    });
 
-      let notesObj: Record<string, unknown> = {};
-      try { notesObj = JSON.parse(current?.notes || "{}"); } catch { /* ignore */ }
-      notesObj.qualiopi_manual = newChecks;
-
-      await supabase
-        .from("sessions")
-        .update({ notes: JSON.stringify(notesObj) })
-        .eq("id", formation.id);
-    } catch {
-      toast({ title: "Erreur lors de la sauvegarde", variant: "destructive" });
+    if (!result.ok) {
+      // Rollback optimistic update
+      setManualChecks(manualChecks);
+      toast({ title: "Erreur lors de la sauvegarde", description: result.error.message, variant: "destructive" });
     }
   };
 
