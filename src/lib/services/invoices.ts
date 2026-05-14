@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Session } from "@/lib/types";
 import { buildInvoiceLinesForCompany } from "@/lib/utils/invoice-builder";
+import { logEvent } from "@/lib/logger";
 
 export type ServiceResult<T> =
   | ({ ok: true } & T)
@@ -27,6 +28,17 @@ type InvoiceRow = {
 const BLOCKED_STATUSES = new Set(["sent", "paid", "late"]);
 
 /**
+ * Contexte du changement de prix transmis au helper de cascade, à seule fin de
+ * traçabilité (événement `session_price_cascade`). Uniquement des montants et un
+ * ID utilisateur — aucune donnée personnelle.
+ */
+export type PriceCascadeContext = {
+  oldPrice: number | null;
+  newPrice: number | null;
+  userId: string | null;
+};
+
+/**
  * Cascade un changement de prix de session vers toutes les factures "pending" liées,
  * dont le destinataire est une entreprise. Les factures déjà envoyées (sent/paid/late) ne sont
  * jamais modifiées. Les factures pending non-company (learner/financier) sont laissées intactes
@@ -35,12 +47,15 @@ const BLOCKED_STATUSES = new Set(["sent", "paid", "late"]);
  * Idempotent : delete + insert des lignes à chaque appel.
  * Ne modifie PAS la session — uniquement formation_invoices et formation_invoice_lines.
  *
- * Cf. Story 2.2.
+ * Émet l'événement structuré `session_price_cascade` (Netlify Logs) sur les deux
+ * chemins de sortie — échec de fetch et succès — pour diagnostiquer en prod sans
+ * rejouer les étapes utilisateur. Cf. Story 2.2 / Story 5.3.
  */
 export async function cascadeSessionPriceToPendingInvoices(
   supabase: SupabaseClient,
   sessionId: string,
-  formation: Session
+  formation: Session,
+  priceContext: PriceCascadeContext
 ): Promise<ServiceResult<CascadeReport>> {
   const { data, error } = await supabase
     .from("formation_invoices")
@@ -48,6 +63,16 @@ export async function cascadeSessionPriceToPendingInvoices(
     .eq("session_id", sessionId);
 
   if (error) {
+    logEvent("session_price_cascade", {
+      session_id: sessionId,
+      entity_id: formation.entity_id,
+      old_price: priceContext.oldPrice,
+      new_price: priceContext.newPrice,
+      affected_invoices_count: 0,
+      failed_invoices_count: 0,
+      triggered_by_user_id: priceContext.userId,
+      error: "fetch_failed",
+    });
     return { ok: false, error: { message: error.message, code: error.code } };
   }
 
@@ -123,6 +148,16 @@ export async function cascadeSessionPriceToPendingInvoices(
 
     report.impacted += 1;
   }
+
+  logEvent("session_price_cascade", {
+    session_id: sessionId,
+    entity_id: formation.entity_id,
+    old_price: priceContext.oldPrice,
+    new_price: priceContext.newPrice,
+    affected_invoices_count: report.impacted,
+    failed_invoices_count: report.errors.length,
+    triggered_by_user_id: priceContext.userId,
+  });
 
   return {
     ok: true,
