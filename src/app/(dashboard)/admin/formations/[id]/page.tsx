@@ -354,16 +354,49 @@ export default function FormationDetailPage() {
         </TabsContent>
 
         {/* 2. Planning */}
-        <TabsContent value="planning" className="mt-6 space-y-8">
-          <TabPlanning formation={formation} onRefresh={fetchFormation} />
-          <TabParcours formation={formation} onRefresh={fetchFormation} />
+        <TabsContent value="planning" className="mt-6">
+          <Tabs defaultValue="planning-slots" className="w-full">
+            <TabsList className="bg-muted/50 h-auto p-0.5 gap-0.5">
+              <TabsTrigger value="planning-slots" className="text-xs px-3 py-1.5 data-[state=active]:bg-white data-[state=active]:shadow-sm rounded">
+                Planning
+              </TabsTrigger>
+              <TabsTrigger value="planning-parcours" className="text-xs px-3 py-1.5 data-[state=active]:bg-white data-[state=active]:shadow-sm rounded">
+                Parcours pédagogique
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="planning-slots" className="mt-4">
+              <TabPlanning formation={formation} onRefresh={fetchFormation} />
+            </TabsContent>
+            <TabsContent value="planning-parcours" className="mt-4">
+              <TabParcours formation={formation} onRefresh={fetchFormation} />
+            </TabsContent>
+          </Tabs>
         </TabsContent>
 
         {/* 3. Documents */}
-        <TabsContent value="documents" className="mt-6 space-y-8">
-          <TabConventionDocs formation={formation} onRefresh={fetchFormation} />
-          <TabDocsPartages formation={formation} onRefresh={fetchFormation} />
-          <TabProgramme formation={formation} onRefresh={fetchFormation} />
+        <TabsContent value="documents" className="mt-6">
+          <Tabs defaultValue="documents-conventions" className="w-full">
+            <TabsList className="bg-muted/50 h-auto p-0.5 gap-0.5">
+              <TabsTrigger value="documents-conventions" className="text-xs px-3 py-1.5 data-[state=active]:bg-white data-[state=active]:shadow-sm rounded">
+                Conventions
+              </TabsTrigger>
+              <TabsTrigger value="documents-programme" className="text-xs px-3 py-1.5 data-[state=active]:bg-white data-[state=active]:shadow-sm rounded">
+                Programme
+              </TabsTrigger>
+              <TabsTrigger value="documents-partages" className="text-xs px-3 py-1.5 data-[state=active]:bg-white data-[state=active]:shadow-sm rounded">
+                Documents partagés
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="documents-conventions" className="mt-4">
+              <TabConventionDocs formation={formation} onRefresh={fetchFormation} />
+            </TabsContent>
+            <TabsContent value="documents-programme" className="mt-4">
+              <TabProgramme formation={formation} onRefresh={fetchFormation} />
+            </TabsContent>
+            <TabsContent value="documents-partages" className="mt-4">
+              <TabDocsPartages formation={formation} onRefresh={fetchFormation} />
+            </TabsContent>
+          </Tabs>
         </TabsContent>
 
         {/* 4. Émargement + Absences (déplacé depuis "Communication" — retour client Loris) */}
