@@ -13,6 +13,21 @@ function log(level: LogLevel, message: string, data?: unknown) {
   }
 }
 
+/**
+ * Émet un événement métier structuré (JSON sur une ligne) via `console.log`.
+ *
+ * Contrairement à `logger.info` (silencieux en production), `logEvent` émet
+ * TOUJOURS — en dev comme en prod — afin que l'événement remonte dans les
+ * Netlify Logs. À réserver aux événements métier diagnostiquables (cascade de
+ * prix, mutations multi-entreprises, échecs de rollback), pas aux erreurs
+ * techniques : pour ces dernières, utiliser `logger.error` (qui notifie Sentry).
+ *
+ * Ne jamais y mettre de données personnelles — uniquement des IDs et compteurs.
+ */
+export function logEvent(event: string, context: Record<string, unknown>): void {
+  console.log(JSON.stringify({ event, ts: new Date().toISOString(), ...context }));
+}
+
 export const logger = {
   debug: (msg: string, data?: unknown) => log("debug", msg, data),
   info: (msg: string, data?: unknown) => log("info", msg, data),
