@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { logEvent } from "@/lib/logger";
 
 export type ServiceResult<T> =
   | ({ ok: true } & T)
@@ -107,9 +108,10 @@ export async function createSessionWithOptionalCompany(
         .delete()
         .eq("id", session.id);
       if (rollbackError) {
-        console.error("[sessions] rollback delete failed", {
-          sessionId: session.id,
-          error: rollbackError,
+        logEvent("rollback_delete_failed", {
+          table: "sessions",
+          session_id: session.id,
+          error: rollbackError.message,
         });
       }
       return {

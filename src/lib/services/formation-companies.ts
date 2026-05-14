@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { logEvent } from "@/lib/logger";
 
 export type ServiceResult<T> =
   | ({ ok: true } & T)
@@ -34,6 +35,10 @@ export async function addCompanyToSession(
   if (error) {
     return { ok: false, error: { message: error.message, code: error.code } };
   }
+  logEvent("formation_company_added", {
+    session_id: input.sessionId,
+    client_id: input.clientId,
+  });
   return { ok: true };
 }
 
@@ -56,5 +61,9 @@ export async function removeCompanyFromSession(
   if (error) {
     return { ok: false, error: { message: error.message, code: error.code } };
   }
+  logEvent("formation_company_removed", {
+    session_id: sessionId,
+    formation_company_id: companyId,
+  });
   return { ok: true };
 }
