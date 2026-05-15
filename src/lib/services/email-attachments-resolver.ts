@@ -13,7 +13,12 @@ import type { EmailAttachmentDescriptor } from "@/lib/services/email-queue";
 import { getDefaultTemplate } from "@/lib/document-templates-defaults";
 import { generatePdfFromFragment } from "@/lib/services/pdf-generator";
 import { convertDocxToPdfWithVariables } from "@/lib/services/docx-converter";
-import type { Session } from "@/lib/types";
+import {
+  getResolvedVariablesMap,
+  loadEntitySettings,
+  type ResolveContext,
+} from "@/lib/utils/resolve-variables";
+import type { Session, Learner, Client, Trainer } from "@/lib/types";
 
 export interface ResolvedAttachment {
   filename: string;
@@ -148,64 +153,66 @@ async function findDefaultOverride(
 }
 
 /**
- * Construit le set de variables auto-déduites pour le rendu du template Word
- * default override (depuis session, learner, client, trainer du contexte).
+ * Construit le set de variables résolues pour le rendu d'un template Word
+ * override par défaut (`mode='docx_fidelity'`). Charge tout depuis Supabase et
+ * utilise le path unifié `getResolvedVariablesMap()` — même formateur de dates
+ * (date-fns / `dd/MM/yyyy`) que le rendu HTML, mêmes 46 variables (incluant
+ * l'organisme : `{{logo_organisme}}`, `{{siret_organisme}}`, etc.).
+ *
+ * Avant Story B0 : cette fonction utilisait son propre formateur
+ * `toLocaleDateString("fr-FR")` et exposait seulement ~10 variables —
+ * incohérence avec le rendu HTML côté Web.
  */
 async function buildAutoVariables(
   supabase: SupabaseClient,
   desc: Exclude<EmailAttachmentDescriptor, { type: "file_url" } | { type: "uploaded_docx" }>
 ): Promise<Record<string, string>> {
-  const vars: Record<string, string> = {
-    date_today: new Date().toLocaleDateString("fr-FR"),
-  };
+  const context: ResolveContext = {};
 
+  // Session — récupère le full record pour avoir entity_id, training, etc.
   if ("session_id" in desc.payload && desc.payload.session_id) {
     const { data: session } = await supabase
       .from("sessions")
-      .select("title, start_date, end_date, location")
+      .select("*, training:trainings(*), enrollments:enrollments(learner:learners(*), client_id), program:programs(*)")
       .eq("id", desc.payload.session_id)
       .single();
     if (session) {
-      vars.titre_formation = session.title ?? "";
-      vars.date_debut = session.start_date ?? "";
-      vars.date_fin = session.end_date ?? "";
-      vars.lieu = session.location ?? "";
+      context.session = session as unknown as Session;
+      // Entity : on charge via session.entity_id (clé multi-tenant).
+      if (session.entity_id) {
+        context.entity = await loadEntitySettings(supabase, session.entity_id);
+      }
     }
   }
 
   if ("learner_id" in desc.payload && desc.payload.learner_id) {
     const { data: learner } = await supabase
       .from("learners")
-      .select("first_name, last_name, email, phone")
+      .select("*")
       .eq("id", desc.payload.learner_id)
       .single();
-    if (learner) {
-      vars.nom_apprenant = `${learner.first_name ?? ""} ${learner.last_name ?? ""}`.trim();
-      vars.prenom_apprenant = learner.first_name ?? "";
-      vars.email_apprenant = learner.email ?? "";
-      vars.telephone_apprenant = learner.phone ?? "";
-    }
+    if (learner) context.learner = learner as unknown as Learner;
   }
 
   if ("client_id" in desc.payload && desc.payload.client_id) {
     const { data: client } = await supabase
       .from("clients")
-      .select("company_name")
+      .select("*, contacts(*)")
       .eq("id", desc.payload.client_id)
       .single();
-    if (client) vars.nom_client = client.company_name ?? "";
+    if (client) context.client = client as unknown as Client;
   }
 
   if ("trainer_id" in desc.payload && desc.payload.trainer_id) {
     const { data: trainer } = await supabase
       .from("trainers")
-      .select("first_name, last_name")
+      .select("*")
       .eq("id", desc.payload.trainer_id)
       .single();
-    if (trainer) vars.nom_formateur = `${trainer.first_name ?? ""} ${trainer.last_name ?? ""}`.trim();
+    if (trainer) context.trainer = trainer as unknown as Trainer;
   }
 
-  return vars;
+  return getResolvedVariablesMap(context);
 }
 
 /**
