@@ -50,6 +50,10 @@ WORKDIR /app
 # Install deps (puppeteer auto-télécharge Chromium au postinstall)
 COPY package.json package-lock.json* ./
 ENV PUPPETEER_SKIP_DOWNLOAD=false
+# CRITICAL : on force un cache dir partagé entre build (root) et runtime (app).
+# Sans ça, Chromium est téléchargé dans /root/.cache/puppeteer/ mais l'utilisateur
+# `app` (runtime, voir plus bas) cherche dans /home/app/.cache/puppeteer/ → introuvable.
+ENV PUPPETEER_CACHE_DIR=/app/.cache/puppeteer
 RUN npm install --omit=dev
 
 # Code source + build TS
