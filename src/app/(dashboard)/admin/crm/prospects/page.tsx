@@ -63,6 +63,7 @@ interface ProspectForm {
   status: ProspectStatus;
   notes: string;
   amount: string;
+  assigned_to: string;
 }
 
 // ─── Colonnes par défaut ──────────────────────────────────────────────────────
@@ -88,7 +89,7 @@ const SOURCE_OPTIONS = [
   "Autre",
 ];
 
-const EMPTY_FORM: ProspectForm & { assigned_to: string } = {
+const EMPTY_FORM: ProspectForm = {
   company_name: "",
   siret: "",
   naf_code: "",
@@ -130,8 +131,8 @@ function getQuoteAmount(quotes: Array<{amount: number; status: string}> | null):
     .reduce((sum, q) => sum + Number(q.amount), 0);
 }
 
-function getProspectAmount(p: any): number {
-  const fromQuotes = getQuoteAmount(p.quotes);
+function getProspectAmount(p: CrmProspect): number {
+  const fromQuotes = getQuoteAmount(p.quotes ?? null);
   if (fromQuotes > 0) return fromQuotes;
   return Number(p.amount) || 0;
 }
@@ -253,7 +254,8 @@ export default function CrmProspectsPage() {
         .in("role", ["admin", "super_admin", "commercial"])
         .eq("entity_id", entityId);
       if (data) {
-        setTeamMembers(data.map((m: any) => ({ id: m.id, name: m.full_name || "Sans nom" })));
+        const rows = data as Array<{ id: string; full_name: string | null }>;
+        setTeamMembers(rows.map((m) => ({ id: m.id, name: m.full_name || "Sans nom" })));
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -364,7 +366,7 @@ export default function CrmProspectsPage() {
       status:       form.status,
       notes:        form.notes.trim()        || null,
       amount:       form.amount ? parseFloat(form.amount) : null,
-      assigned_to:  (form as any).assigned_to || null,
+      assigned_to:  form.assigned_to || null,
       entity_id:    entityId ?? undefined,
     };
     const { data: inserted, error } = await supabase.from("crm_prospects").insert([payload]).select("id").single();
@@ -401,6 +403,7 @@ export default function CrmProspectsPage() {
       status:       p.status,
       notes:        p.notes        ?? "",
       amount:       p.amount ? String(p.amount) : "",
+      assigned_to:  p.assigned_to  ?? "",
     });
     setEditOpen(true);
   }
@@ -419,6 +422,7 @@ export default function CrmProspectsPage() {
       status:       form.status,
       notes:        form.notes.trim()        || null,
       amount:       form.amount ? parseFloat(form.amount) : null,
+      assigned_to:  form.assigned_to        || null,
       updated_at:   new Date().toISOString(),
     };
     const { error } = await supabase
@@ -1164,7 +1168,7 @@ function ProspectFormFields({ form, setForm, columns, onCompanySelect, teamMembe
             <div>
               <label className="mb-1 block text-xs font-medium text-gray-600">Assigné à</label>
               <Select
-                value={(form as any).assigned_to || "none"}
+                value={form.assigned_to || "none"}
                 onValueChange={(v) => setForm((f) => ({ ...f, assigned_to: v === "none" ? "" : v }))}
               >
                 <SelectTrigger>

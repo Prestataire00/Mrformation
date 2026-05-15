@@ -94,6 +94,10 @@ export default function ProspectListePage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [sourceFilter, setSourceFilter] = useState<string>("all");
+  // Filtre NAF/APE — supporte le matching partiel (ex : "87.10" matche
+  // "87.10A" et "87.10B"). Utile pour cibler tous les EHPADs (87.10A) ou
+  // tous les hôpitaux (86.10) en une recherche.
+  const [nafFilter, setNafFilter] = useState<string>("");
   const [page, setPage] = useState(1);
 
   // Extra filters
@@ -137,7 +141,7 @@ export default function ProspectListePage() {
 
     if (search.trim()) {
       query = query.or(
-        `company_name.ilike.%${search.trim()}%,contact_name.ilike.%${search.trim()}%,email.ilike.%${search.trim()}%`
+        `company_name.ilike.%${search.trim()}%,contact_name.ilike.%${search.trim()}%,email.ilike.%${search.trim()}%,naf_code.ilike.%${search.trim()}%`
       );
     }
 
@@ -149,6 +153,10 @@ export default function ProspectListePage() {
       query = query.eq("source", sourceFilter);
     }
 
+    if (nafFilter.trim()) {
+      query = query.ilike("naf_code", `${nafFilter.trim()}%`);
+    }
+
     const { data, count, error } = await query;
 
     if (!error) {
@@ -156,7 +164,7 @@ export default function ProspectListePage() {
       setTotalCount(count ?? 0);
     }
     setLoading(false);
-  }, [supabase, entityId, page, search, statusFilter, sourceFilter]);
+  }, [supabase, entityId, page, search, statusFilter, sourceFilter, nafFilter]);
 
   useEffect(() => {
     if (entityId) fetchProspects();
@@ -165,7 +173,7 @@ export default function ProspectListePage() {
   // Reset page when filters change
   useEffect(() => {
     setPage(1);
-  }, [search, statusFilter, sourceFilter]);
+  }, [search, statusFilter, sourceFilter, nafFilter]);
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
@@ -266,12 +274,19 @@ export default function ProspectListePage() {
         <div className="relative flex-1 min-w-[220px] max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <Input
-            placeholder="Rechercher entreprise, contact, email..."
+            placeholder="Rechercher entreprise, contact, email, NAF..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9"
           />
         </div>
+        <Input
+          placeholder="NAF/APE (ex: 87.10A, 86.10)"
+          value={nafFilter}
+          onChange={(e) => setNafFilter(e.target.value)}
+          className="w-[180px]"
+          title="Filtre les prospects par code NAF/APE (matching par préfixe). Ex : 87.10 → tous les EHPADs"
+        />
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-[160px]">
             <SelectValue placeholder="Statut" />
@@ -368,6 +383,7 @@ export default function ProspectListePage() {
                     <th className="text-left px-4 py-3 font-medium text-gray-600">Contact</th>
                     <th className="text-left px-4 py-3 font-medium text-gray-600 hidden md:table-cell">Email</th>
                     <th className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell">Tél</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600 hidden xl:table-cell">NAF</th>
                     <th className="text-left px-4 py-3 font-medium text-gray-600 hidden md:table-cell">Score</th>
                     <th className="text-left px-4 py-3 font-medium text-gray-600">Statut</th>
                     <th className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell">Source</th>
@@ -407,6 +423,15 @@ export default function ProspectListePage() {
                         </td>
                         <td className="px-4 py-3 text-gray-600 hidden lg:table-cell">
                           {p.phone || "—"}
+                        </td>
+                        <td className="px-4 py-3 hidden xl:table-cell">
+                          {p.naf_code ? (
+                            <span className="font-mono text-xs text-gray-700 bg-gray-100 rounded px-1.5 py-0.5">
+                              {p.naf_code}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
                         </td>
                         <td className="px-4 py-3 hidden md:table-cell">
                           {(() => {
