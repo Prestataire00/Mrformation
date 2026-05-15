@@ -702,6 +702,10 @@ export interface CrmProspect {
   updated_at: string;
   assignee?: Profile;
   tags?: CrmTag[];
+  // Devis liés au prospect — joint via `crm_quotes(amount, status)` dans la
+  // page kanban pour calculer un "Prospect amount" cumulé excluant les
+  // devis rejected/expired.
+  quotes?: Array<{ amount: number; status: string }>;
 }
 
 export type TaskStatus = "pending" | "in_progress" | "completed" | "cancelled";
