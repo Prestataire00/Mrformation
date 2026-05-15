@@ -177,7 +177,11 @@ def map_task(row, entity_key):
     title = row.get("TITRE", "").strip()
     date_creation = row.get("DATE DE CREATION", "").strip()
     id_objet_lie = row.get("ID OBJET LIE", "").strip()
-    objet_lie_type = row.get("OBJET LIE", "").strip().upper()
+    # `OBJET LIE` contient le nom de l'entreprise (pas le type), donc on ne peut pas
+    # filtrer dessus pour distinguer prospect/client/fournisseur. On utilise toujours
+    # ID OBJET LIE comme prospect_sellsy_id potentiel : si la sous-requête SQL ne
+    # trouve pas de prospect correspondant (ex : la ligne référence un client ou
+    # un prospect supprimé entre-temps côté Sellsy), prospect_id sera NULL (autorisé).
     return {
         "external_ref": task_hash(title, date_creation, id_objet_lie, entity_key),
         "title": title or "(sans titre)",
@@ -187,7 +191,7 @@ def map_task(row, entity_key):
         "created_at": parse_fr_datetime(date_creation),
         "description": row.get("DESCRIPTION", "").strip() or None,
         "creator_raw": row.get("CREATEUR", "").strip(),
-        "prospect_sellsy_id": id_objet_lie if "PROSPECT" in objet_lie_type or objet_lie_type == "" else None,
+        "prospect_sellsy_id": id_objet_lie if id_objet_lie else None,
         "entity_key": entity_key,
     }
 
@@ -453,7 +457,17 @@ def write_tasks(out_dir, tasks, split=False):
                 "description, prospect_id, created_by, created_at)\nVALUES\n"
             )
             sql += ",\n".join(_task_row_sql(t) for t in batch)
-            sql += "\nON CONFLICT (sellsy_external_ref, entity_id) DO NOTHING;\n\n"
+            sql += (
+                "\nON CONFLICT (sellsy_external_ref, entity_id) DO UPDATE SET "
+                "title = EXCLUDED.title, "
+                "status = EXCLUDED.status, "
+                "label = EXCLUDED.label, "
+                "due_date = EXCLUDED.due_date, "
+                "description = EXCLUDED.description, "
+                "prospect_id = EXCLUDED.prospect_id, "
+                "created_by = EXCLUDED.created_by, "
+                "updated_at = NOW();\n\n"
+            )
 
         if is_last:
             sql += (
