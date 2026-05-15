@@ -268,6 +268,90 @@ describe("getResolvedVariablesMap", () => {
   });
 });
 
+describe("Format Loris/Sellsy `[%libellé%]`", () => {
+  it("résout `[%Nom du client%]` via l'alias map", () => {
+    const result = resolveVariables("Bénéficiaire : [%Nom du client%]", {
+      client: makeClient(),
+    });
+    expect(result).toBe("Bénéficiaire : Acme SAS");
+  });
+
+  it("résout `[%Nom de l'organisme%]` (variable Story B-Convention)", () => {
+    const result = resolveVariables("Organisme : [%Nom de l'organisme%]", {
+      entity: { ...FULL_ENTITY, name: "MR Formation" },
+    });
+    expect(result).toBe("Organisme : MR Formation");
+  });
+
+  it("résout `[%Ville de l'organisme%]` depuis entity.city", () => {
+    const result = resolveVariables("À [%Ville de l'organisme%]", {
+      entity: FULL_ENTITY,
+    });
+    expect(result).toBe("À Aix-en-Provence");
+  });
+
+  it("résout `[%Dates de la formation%]` en combo 'Du X au Y'", () => {
+    const result = resolveVariables("Dates : [%Dates de la formation%]", {
+      session: makeSession({
+        start_date: "2026-05-15T09:00:00Z",
+        end_date: "2026-05-16T17:00:00Z",
+      }),
+    });
+    expect(result).toMatch(/Dates : Du \d{2}\/\d{2}\/\d{4} au \d{2}\/\d{2}\/\d{4}/);
+  });
+
+  it("`[%Dates de la formation%]` : 'Le X' si date_debut === date_fin (1 jour)", () => {
+    const result = resolveVariables("[%Dates de la formation%]", {
+      session: makeSession({
+        start_date: "2026-05-15T09:00:00Z",
+        end_date: "2026-05-15T17:00:00Z",
+      }),
+    });
+    expect(result).toMatch(/^Le \d{2}\/\d{2}\/\d{4}$/);
+  });
+
+  it("résout `[%Type d'action de formation%]` selon training.classification", () => {
+    const result1 = resolveVariables("[%Type d'action de formation%]", {
+      session: makeSession({
+        training: { classification: "reglementaire" } as never,
+      }),
+    });
+    expect(result1).toBe("Action de formation réglementaire");
+
+    const result2 = resolveVariables("[%Type d'action de formation%]", {
+      session: makeSession({
+        training: { classification: "certifiant" } as never,
+      }),
+    });
+    expect(result2).toBe("Action de formation certifiante");
+  });
+
+  it("résout `[%Tableau des coûts du client%]` en table HTML", () => {
+    const result = resolveVariables("Coûts : [%Tableau des coûts du client%]", {
+      session: makeSession({ total_price: 1500, title: "Habilitation B1V" }),
+    });
+    expect(result).toContain("<table");
+    expect(result).toContain("Habilitation B1V");
+    expect(result).toContain("1500.00 €"); // HT
+    expect(result).toContain("300.00 €");  // TVA 20%
+    expect(result).toContain("1800.00 €"); // TTC
+  });
+
+  it("garde `[%libellé inconnu%]` visible si pas d'alias (pour audit)", () => {
+    const result = resolveVariables("Test [%Libellé inexistant%]", {});
+    expect(result).toBe("Test [%Libellé inexistant%]");
+    expect(findUnresolvedVariables(result)).toEqual([]); // findUnresolved cherche {{xxx}}, pas [%xxx%]
+  });
+
+  it("résout `[%xxx%]` ET `{{xxx}}` dans le même template", () => {
+    const result = resolveVariables(
+      "Mr {{nom_client}} alias [%Nom du client%]",
+      { client: makeClient() },
+    );
+    expect(result).toBe("Mr Acme SAS alias Acme SAS");
+  });
+});
+
 describe("findUnresolvedVariables", () => {
   it("liste les {{xxx}} restantes après résolution", () => {
     const partial = resolveVariables("{{nom_apprenant}} {{variable_inconnue}}", {
