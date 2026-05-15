@@ -1,195 +1,290 @@
 /**
  * Template HTML système — Convention de formation entreprise.
  *
- * Reproduit la mise en page du modèle Loris (cf
- * `~/Downloads/convention-entreprise-mrformation.pdf`).
+ * Reproduit fidèlement la mise en page du modèle Loris MR FORMATION
+ * (cf `~/Downloads/convention-entreprise-mrformation.pdf`) :
+ * - Header organisme (nom + adresse + logo) sur la 1re page
+ * - Titre rouge bordeaux centré
+ * - 10 articles numérotés "Article Xer/X :" avec texte légal exact
+ * - Article 1 dans une boîte bordurée avec puces rouges
+ * - Bloc signature : tampon organisme à gauche, e-signature client à droite
+ * - Footer SIRET/NDA injecté via Puppeteer `footerTemplate` (cf route API)
  *
  * Format des placeholders : `[%Libellé en français%]` (style Sellsy/Loris).
- * Cf `src/lib/utils/resolve-variables.ts::ALIAS_TO_VARIABLE_KEY` pour la map
- * complète des libellés supportés.
+ * Cf `src/lib/utils/resolve-variables.ts::ALIAS_TO_VARIABLE_KEY` pour la map.
  *
- * Ce template est utilisé par défaut. Loris peut l'overrider en uploadant un
- * `.docx` via `/admin/documents/import` avec `default_for_doc_type =
- * 'convention_entreprise'`.
+ * Loris peut overrider en uploadant un `.docx` via `/admin/documents/import`
+ * avec `default_for_doc_type = 'convention_entreprise'`.
  */
 
 export const CONVENTION_ENTREPRISE_HTML = `<!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="utf-8">
-<title>Convention de formation entreprise</title>
+<title>Convention de formation professionnelle</title>
 <style>
-  @page { size: A4; margin: 20mm 18mm; }
+  @page { size: A4; margin: 18mm 16mm 22mm 16mm; }
   body {
     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-    font-size: 10.5pt;
-    line-height: 1.55;
-    color: #1e293b;
+    font-size: 9pt;
+    line-height: 1.45;
+    color: #1f2937;
     margin: 0;
   }
-  h1 {
-    font-size: 16pt;
+
+  /* Header organisme (page 1 uniquement) */
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 8px;
+  }
+  .header .org-info { flex: 1; padding-right: 12px; }
+  .header .org-name {
+    font-size: 17pt;
     font-weight: 700;
-    text-align: center;
-    margin: 0 0 4px;
+    color: #111827;
+    margin: 0 0 6px;
+    letter-spacing: 0.3px;
   }
-  h1 + p.subtitle {
-    font-size: 9pt;
+  .header .org-address {
+    font-size: 8.5pt;
+    line-height: 1.5;
+    color: #374151;
+  }
+  .header .logo-cell { width: 130px; text-align: right; }
+  .header .logo-cell img { max-width: 130px; max-height: 110px; }
+
+  /* Titre central */
+  h1.title {
+    font-size: 14pt;
+    font-weight: 700;
+    color: #7f1d1d;
     text-align: center;
-    color: #64748b;
+    margin: 26px 0 4px;
+  }
+  p.subtitle {
+    font-size: 10pt;
+    font-weight: 700;
+    color: #7f1d1d;
+    text-align: center;
     margin: 0 0 18px;
-    font-style: italic;
   }
+
+  /* En-têtes d'article */
   h2 {
-    font-size: 12pt;
-    font-weight: 600;
-    margin: 18px 0 8px;
-    border-bottom: 1px solid #cbd5e1;
-    padding-bottom: 4px;
-  }
-  p { margin: 0 0 8px; }
-  .parties { margin-bottom: 12px; }
-  .parties strong { display: inline-block; min-width: 0; }
-  .between {
-    text-align: center;
+    font-size: 10pt;
+    font-weight: 700;
+    color: #7f1d1d;
     margin: 14px 0 6px;
-    font-style: italic;
-    color: #475569;
   }
-  .formation-block {
-    background: #f1f5f9;
-    padding: 12px 16px;
-    border-left: 3px solid #2563EB;
-    margin: 12px 0 16px;
-    font-size: 11.5pt;
-    font-weight: 600;
+
+  p { margin: 0 0 8px; }
+
+  /* Boîte Article 1 avec puces rouges */
+  .article-1-box {
+    border: 1px solid #9ca3af;
+    padding: 10px 16px;
+    margin: 4px 0 10px;
   }
+  .article-1-box ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .article-1-box li {
+    padding: 3px 0 3px 14px;
+    position: relative;
+  }
+  .article-1-box li::before {
+    content: "\\2022";
+    color: #b91c1c;
+    font-weight: 700;
+    position: absolute;
+    left: 0;
+    top: 1px;
+  }
+
+  /* Liste à puces standard (Article 8, 9) */
+  ul.bullets {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 8px 4px;
+  }
+  ul.bullets li {
+    padding: 2px 0 2px 14px;
+    position: relative;
+  }
+  ul.bullets li::before {
+    content: "\\2022";
+    color: #b91c1c;
+    font-weight: 700;
+    position: absolute;
+    left: 0;
+    top: 1px;
+  }
+
+  /* Bloc signature */
   .signature-block {
-    margin-top: 40px;
+    margin-top: 28px;
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 30px;
+    gap: 24px;
+    page-break-inside: avoid;
   }
-  .signature-col {
-    border-top: 1px solid #1e293b;
-    padding-top: 8px;
+  .signature-col { font-size: 9pt; }
+  .signature-col .role { font-weight: 700; margin: 0 0 2px; }
+  .signature-col .signatory { margin: 0 0 6px; }
+  .signature-org-img { margin-top: 6px; min-height: 80px; }
+  .signature-org-img img { max-width: 220px; max-height: 110px; }
+
+  .e-signature-card {
+    margin-top: 6px;
+    border: 1px solid #93c5fd;
+    background: #eff6ff;
+    border-radius: 6px;
+    padding: 18px 12px;
+    text-align: center;
+    color: #1e3a8a;
   }
-  .signature-col h3 {
-    font-size: 11pt;
+  .e-signature-card .e-sig-title {
+    font-weight: 700;
+    font-size: 12pt;
+    letter-spacing: 1px;
+  }
+  .e-signature-card .e-sig-sub {
+    font-size: 10pt;
+    margin-top: 2px;
     font-weight: 600;
-    margin: 0 0 4px;
   }
-  .signature-col p { font-size: 10pt; }
-  .signature-img-wrapper { margin-top: 12px; min-height: 60px; }
-  .signature-img-wrapper img { max-height: 80px; }
-  ul, ol { margin: 0 0 8px 22px; padding: 0; }
-  li { margin-bottom: 2px; }
+  .e-signature-card .e-sig-note {
+    font-size: 8.5pt;
+    color: #475569;
+    margin-top: 10px;
+    font-style: italic;
+  }
+
+  strong { font-weight: 700; }
 </style>
 </head>
 <body>
-  <h1>Convention de formation professionnelle</h1>
-  <p class="subtitle">(Articles L. 6353-1 et L. 6353-2 du code du travail)</p>
 
-  <div class="parties">
-    <p><strong>Entre l'organisme de formation :</strong> [%Nom de l'organisme%]<br>
-    (ci-après nommé l'organisme de formation)<br>
-    Situé : [%Adresse de l'organisme%]</p>
-
-    <p>Déclaration d'activité n° [%NDA de l'organisme%], Numéro SIRET : [%SIRET de l'organisme%]<br>
-    Représenté par : [%Nom du représentant de l'organisme%]</p>
-
-    <p class="between">Et</p>
-
-    <p><strong>le bénéficiaire :</strong> [%Nom du client%]<br>
-    (ci-après nommé le bénéficiaire)<br>
-    Situé : [%Adresse du client%]</p>
-
-    <p>Représenté par : [%Nom du représentant légal du client%]</p>
+  <div class="header">
+    <div class="org-info">
+      <div class="org-name">[%Nom de l'organisme%]</div>
+      <div class="org-address">
+        [%Adresse de l'organisme%]<br>
+        Email: [%Email de l'organisme%]<br>
+        Tel: [%Téléphone de l'organisme%]<br>
+        [%Site web de l'organisme%]
+      </div>
+    </div>
+    <div class="logo-cell">[%Logo de l'organisme%]</div>
   </div>
 
-  <p>Est conclue la convention suivante en application des dispositions du livre IX
-  du Code du travail portant sur l'organisation de la formation professionnelle continue
-  dans le cadre de l'éducation permanente.</p>
+  <h1 class="title">CONVENTION DE FORMATION PROFESSIONNELLE</h1>
+  <p class="subtitle">(Articles L.6353-1 et D.6353-1 du Code du travail)</p>
 
-  <h2>1. Objet, nature et durée de la formation</h2>
-  <p>Le bénéficiaire entend faire participer une partie de son personnel à l'action de
-  formation suivante organisée par l'organisme de formation.</p>
+  <p>Entre les soussignés :</p>
 
-  <div class="formation-block">[%Nom de la formation%]</div>
+  <p>1) <strong>[%Nom de l'organisme%]</strong> enregistré sous le numéro de déclaration d'activité : [%NDA de l'organisme%] auprès de la Direction Régionale de l'Economie, de l'Emploi, du Travail et des Solidarités (DREETS) PACA, Représenté par Monsieur [%Nom du représentant de l'organisme%], en qualité de : Président</p>
 
-  <p><strong>Type d'action de formation</strong> (art. L6313-1 du code du travail) : [%Type d'action de formation%]</p>
-  <p><strong>Diplôme visé par la formation :</strong> [%Type de diplôme décerné%]</p>
-  <p><strong>Durée :</strong> [%Durée de la formation%] heure(s)</p>
-  <p><strong>Lieu de la formation :</strong> [%Lieu de la formation%]</p>
-  <p><strong>Effectifs formés :</strong> [%Nombre d'apprenants du client%]</p>
-  <p><strong>Apprenants de la formation :</strong> [%Apprenants du client%]</p>
-  <p><strong>Dates de formation :</strong> [%Dates de la formation%]</p>
+  <p>&nbsp;et</p>
 
-  <h2>2. Programme de la formation et formateur</h2>
-  <p>La description détaillée du programme de formation et du formateur est fournie en annexe.</p>
+  <p>2) <strong>[%Nom du client%], Adresse : [%Adresse du client%], SIRET : [%SIRET du client%]</strong></p>
 
-  <h2>3. Engagement de participation à l'action de formation</h2>
-  <p>Le bénéficiaire s'engage à assurer la présence d'un (des) stagiaire(s) aux dates et lieux prévus ci-dessus.</p>
-  <p><strong>Liste des stagiaires :</strong> [%Apprenants du client%]</p>
+  <p>Représenté(e) par [%Nom du représentant légal du client%]. Est conclue la convention suivante, en application des dispositions du Livre III de la Sixième partie du Code du travail portant organisation de la formation professionnelle continue.</p>
 
-  <h2>4. Prix de la formation</h2>
-  <p>En contrepartie de cette action de formation, le bénéficiaire s'acquittera des coûts
-  suivants qui couvrent l'intégralité des frais engagés par l'organisme de formation
-  pour cette session :</p>
-  [%Tableau des coûts du client%]
+  <h2>Article 1<sup>er</sup> : Objet de la convention</h2>
+  <p>L'organisme nommé ci-dessus organisera l'action de formation suivante :</p>
+  <div class="article-1-box">
+    <ul>
+      <li><strong>Intitulé du stage</strong> : [%Nom de la formation%]</li>
+      <li><strong>Type d'action de formation</strong> (article L.6313-1 du Code du travail) : [%Type d'action de formation%]</li>
+      <li><strong>Objectifs, modalités et méthodes :</strong> Voir programme en annexe</li>
+      <li><strong>Dates :</strong> [%Dates de la formation%]</li>
+      <li><strong>Durée :</strong> [%Durée de la formation%] heure(s)</li>
+      <li><strong>Lieu :</strong> [%Lieu de la formation%]</li>
+    </ul>
+  </div>
 
-  <h2>5. Modalités de règlement</h2>
-  <p>Le paiement sera dû en totalité à réception d'une facture émise par l'organisme
-  de formation à destination du bénéficiaire.</p>
+  <h2>Article 2 : Effectif formé</h2>
+  <p><strong>Nombre de participants : [%Nombre d'apprenants du client%]</strong></p>
+  <p><strong>NOM Prénom des stagiaires :</strong> [%Apprenants du client%]</p>
 
-  <h2>6. Moyens pédagogiques et techniques mis en œuvre</h2>
-  <p>Voir le programme de formation en annexe détaillant les moyens mis en œuvre pour
-  réaliser techniquement l'action, suivre son exécution et apprécier ses résultats.
-  Une feuille d'émargement signée par le(s) stagiaire(s) et le formateur, par
-  demi-journée de formation, permettra de justifier de la réalisation de la prestation.</p>
+  <h2>Article 3 : Dispositions financières</h2>
+  <p>Le coût de la formation, objet de la présente convention, s'élève à : <strong>[%Montant HT%]€ soit [%Montant TTC%]€ TTC</strong> (TVA 20% = [%Montant TVA%]€), frais de déplacement de l'intervenant(e) inclus.</p>
 
-  <h2>7. Sanction de la formation</h2>
-  <p>En application de l'article L.6353-1 du Code du Travail, une attestation
-  mentionnant les objectifs, la nature et la durée de l'action et les résultats
-  de l'évaluation des acquis de la formation sera remise au(x) stagiaire(s) à
-  l'issue de la formation.</p>
+  <h2>Article 4 : Modalités de règlement</h2>
+  <p>En application de l'article L441-6 du code de commerce, il est convenu entre les signataires de la présente convention, que les sommes dues devront être réglées afin de mois date de facturation. Toute somme, y compris l'acompte, non payée à sa date d'exigibilité pourra produire de plein droit des intérêts de retard équivalents au triple du taux d'intérêt légal de l'année en cours ainsi que le paiement d'une somme forfaitaire de 40 euros due au titre des frais de recouvrement. En contrepartie des sommes reçues, l'organisme de formation s'engage à fournir tout document et pièce de nature à justifier la réalité et la validité des dépenses de formation engagées à ce titre. Dans la mesure où l'organisme de formation édite la présente convention de formation pour l'action commandée, il revient à l'entreprise de vérifier l'imputabilité de celle-ci.</p>
 
-  <h2>8. Non réalisation de la prestation de formation</h2>
-  <p>En application de l'article L6354-1 du Code du travail, il est convenu entre
-  les signataires de la présente convention, que faute de résiliation totale ou
-  partielle de la prestation de formation, l'organisme prestataire doit rembourser
-  au cocontractant les sommes indûment perçues de ce fait.</p>
+  <h2>Article 5 : Dédit ou abandon</h2>
+  <p>Toute formation ou cycle commencé est dû en totalité, sauf accord contraire exprès de [%Nom de l'organisme%]. Toute annulation d'une formation à l'initiative du Client devra être communiquée par écrit dans les conditions qui suivent : Pour les formations Inter et intra entreprises (hors Cycles et Parcours) : La demande devra être communiquée au moins quinze (10) jours calendaires avant le début de la formation. A défaut, un montant forfaitaire restera immédiatement exigible à titre d'indemnité forfaitaire. Pour les Cycles et Parcours : La demande devra être communiquée au moins quinze (15) jours calendaires avant le début de la formation. A défaut, un montant forfaitaire de la formation restera immédiatement exigible à titre d'indemnité forfaitaire.</p>
 
-  <h2>9. Dédommagement, réparation ou dédit</h2>
-  <p>En cas de renoncement par le bénéficiaire avant le début du programme de formation :</p>
-  <ul>
-    <li>Dans un délai supérieur à 1 mois avant le début de la formation : 50 % du coût de la formation est dû.</li>
-    <li>Dans un délai compris entre 1 mois et 2 semaines avant le début de la formation : 70 % du coût de la formation est dû.</li>
-    <li>Dans un délai inférieur à 2 semaines avant le début de la formation : 100 % du coût de la formation est dû.</li>
+  <h2>Article 6 : Matériels mis à disposition de l'organisme de formation :</h2>
+  <p>Dans le cas de formation en intra entreprise dans le respect des contenus du programme de formation, l'entreprise s'engage à mettre à titre gratuit à la disposition de l'organisme de formation pendant l'intégralité de la durée de l'action de formation : une salle équipée de tables et de chaises en nombre suffisant, un mur de projection. Le matériel spécifique à la formation et matériel stagiaire nécessaire sont précisés sur la convocation à la formation. Dans le cas des formations intra entreprise, l'article sur la sécurité et l'hygiène du règlement intérieur du client s'appliquera, notre livret d'accueil reprenant tous les éléments nécessaires est disponible sur notre site internet.</p>
+
+  <h2>Article 7 : Replacement d'un participant</h2>
+  <p>Quel que soit le type de la formation, sur demande écrite avant le début de la formation, le Client a la possibilité de remplacer un participant sans facturation supplémentaire.</p>
+
+  <h2>Article 8 : Règlement par un Opérateur de Compétences</h2>
+  <p>Si le Client souhaite que le règlement soit exécuté par l'Opérateur de Compétences dont il dépend, il lui appartient :</p>
+  <ul class="bullets">
+    <li>de faire une demande de prise en charge avant le début de la formation et de s'assurer de la bonne fin de cette demande ;</li>
+    <li>de l'indiquer explicitement sur son bon de commande ;</li>
+    <li>de s'assurer de la bonne fin du paiement par l'Opérateur de Compétences qu'il aura désigné.</li>
   </ul>
-  <p>Le coût ne pourra faire l'objet d'une demande de remboursement ou de prise en charge par l'OPCA.</p>
+  <p>Si l'Opérateur de Compétences ne prend en charge que partiellement le coût de la formation, le reliquat sera facturé au Client. Si [%Nom de l'organisme%] n'a pas reçu la prise en charge de l'Opérateur de Compétences au 1er jour de la formation, le Client sera facturé de l'intégralité du coût de la formation concernée par ce financement. En cas de non-paiement par l'Opérateur de Compétences, pour quelque motif que ce soit à la faute du client, le client sera redevable de l'intégralité du coût de la formation et sera facturé du montant correspondant cependant en cas de subrogation de paiement [%Nom de l'organisme%] est responsable de la gestion du paiement de ses factures.</p>
 
-  <h2>10. Litiges</h2>
-  <p>Si une contestation ou un différend ne peuvent pas être réglés à l'amiable,
-  le Tribunal de [%Ville de l'organisme%] sera seul compétent pour régler le litige.</p>
+  <h2>Article 9 : Obligations du Client</h2>
+  <p>Le Client s'engage à :</p>
+  <ul class="bullets">
+    <li>payer le prix de la formation ;</li>
+    <li>n'effectuer aucune reproduction de matériel ou documents dont les droits d'auteur appartiennent à [%Nom de l'organisme%]., sans l'accord écrit et préalable de ce dernier ; et</li>
+    <li>ne pas utiliser de matériel d'enregistrement audio ou vidéo lors des formations, sans l'accord écrit et préalable de [%Nom de l'organisme%].</li>
+  </ul>
 
-  <p style="margin-top: 24px;">
-    Document réalisé en 2 exemplaires à [%Ville de l'organisme%], le [%Date d'aujourd'hui%].
-  </p>
+  <h2>Article 10 : Différends éventuels</h2>
+  <p>Si une contestation ou un différend ne peuvent être réglés à l'amiable, le Tribunal de Salon de Provence sera seul compétent pour régler le litige.</p>
+
+  <p style="margin-top: 14px;">Date du terme de la convention : [%Date de fin de la formation%]</p>
+
+  <p>Convention établie en double exemplaires à [%Ville de l'organisme%], le [%Date d'aujourd'hui%]</p>
+
+  <p>La signature de cette convention vaut acceptation du livret d'accueil disponible sur notre site internet.</p>
 
   <div class="signature-block">
     <div class="signature-col">
-      <h3>Pour l'organisme de formation,</h3>
-      <p>[%Nom de l'organisme%],<br>
-      [%Nom du représentant de l'organisme%]</p>
-      <div class="signature-img-wrapper">[%Signature de l'organisme%]</div>
+      <div class="role">Pour l'organisme de formation,</div>
+      <div class="signatory">[%Nom de l'organisme%],<br>[%Nom du représentant de l'organisme%]</div>
+      <div class="signature-org-img">[%Signature de l'organisme%]</div>
     </div>
     <div class="signature-col">
-      <h3>Pour le bénéficiaire</h3>
-      <p>[%Nom du client%],<br>
-      [%Nom du représentant légal du client%]</p>
-      <div class="signature-img-wrapper">[%E-signature du client%]</div>
+      <div class="role">Pour le bénéficiaire</div>
+      <div class="signatory">[%Nom du client%],<br>[%Nom du représentant légal du client%]</div>
+      <div class="e-signature-card">
+        <div class="e-sig-title">E-SIGNATURE</div>
+        <div class="e-sig-sub">VisioFormation</div>
+        <div class="e-sig-note">(Signature Électronique)</div>
+      </div>
     </div>
   </div>
+
 </body>
 </html>`;
+
+/**
+ * Footer template Puppeteer — appliqué à TOUTES les pages.
+ *
+ * Doit être résolu via `resolveDocumentVariables(CONVENTION_FOOTER_TEMPLATE, ctx)`
+ * avant d'être passé à `options.footerTemplate` du PDFEngine.
+ *
+ * Note Puppeteer : pas d'héritage CSS depuis le `<body>`, donc tous les styles
+ * doivent être inline. `<span class="pageNumber"></span>` et `totalPages` sont
+ * remplacés automatiquement par Chrome.
+ */
+export const CONVENTION_FOOTER_TEMPLATE = `<div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 7.5pt; color: #6b7280; font-style: italic; width: 100%; padding: 0 16mm; text-align: center; line-height: 1.4;">
+  <div>[%Nom de l'organisme%], [%Adresse de l'organisme%] , Numéro SIRET: [%SIRET de l'organisme%], Numéro de déclaration d'activité: [%NDA de l'organisme%]</div>
+  <div>(auprès du préfet de région de: PACA)</div>
+  <div style="margin-top: 2px;"><span class="pageNumber"></span></div>
+</div>`;

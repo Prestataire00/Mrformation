@@ -17,7 +17,10 @@
 import { createClient } from "@/lib/supabase/server";
 import { sanitizeError } from "@/lib/api-error";
 import { NextRequest, NextResponse } from "next/server";
-import { CONVENTION_ENTREPRISE_HTML } from "@/lib/templates/convention-entreprise";
+import {
+  CONVENTION_ENTREPRISE_HTML,
+  CONVENTION_FOOTER_TEMPLATE,
+} from "@/lib/templates/convention-entreprise";
 import {
   resolveDocumentVariables,
   loadEntitySettings,
@@ -205,6 +208,7 @@ export async function POST(_request: NextRequest) {
       entity,
     };
     const resolvedHtml = resolveDocumentVariables(CONVENTION_ENTREPRISE_HTML, context);
+    const resolvedFooter = resolveDocumentVariables(CONVENTION_FOOTER_TEMPLATE, context);
 
     const engine = createDefaultEngine();
     const service = new DocumentGenerationService({ engine, supabase });
@@ -220,8 +224,11 @@ export async function POST(_request: NextRequest) {
       },
       options: {
         format: "A4",
-        margins: { top: "20mm", right: "18mm", bottom: "20mm", left: "18mm" },
+        margins: { top: "18mm", right: "16mm", bottom: "22mm", left: "16mm" },
         printBackground: true,
+        displayHeaderFooter: true,
+        headerTemplate: "<span></span>",
+        footerTemplate: resolvedFooter,
       },
     });
 
