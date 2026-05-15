@@ -11,6 +11,12 @@ import {
   SELLSY_TASK_LABELS,
 } from "@/lib/utils/crm-task-label-style";
 import {
+  computeReminderDate,
+  formatReminderLabel,
+  getReminderStatus,
+  REMINDER_PRESETS,
+} from "@/lib/utils/crm-task-reminder";
+import {
   Plus,
   Search,
   Pencil,
@@ -78,6 +84,7 @@ interface TaskFormData {
   priority: TaskPriority;
   status: TaskStatus;
   due_date: string;
+  reminder_at: string;
   assigned_to: string;
   prospect_id: string;
   client_id: string;
@@ -91,19 +98,13 @@ const EMPTY_FORM: TaskFormData = {
   priority: "medium",
   status: "pending",
   due_date: "",
+  reminder_at: "",
   assigned_to: "",
   prospect_id: "",
   client_id: "",
   label: "",
   contact_email: "",
 };
-
-const REMINDER_PRESETS = [
-  { label: "Aujourd'hui", days: 0 },
-  { label: "Demain", days: 1 },
-  { label: "3 jours", days: 3 },
-  { label: "1 semaine", days: 7 },
-];
 
 interface TaskStats {
   dueToday: number;
@@ -253,6 +254,7 @@ export default function TasksPage() {
         priority: formData.priority,
         status: formData.status,
         due_date: formData.due_date || null,
+        reminder_at: formData.reminder_at || null,
         assigned_to: formData.assigned_to || null,
         prospect_id: formData.prospect_id || null,
         client_id: formData.client_id || null,
@@ -289,6 +291,7 @@ export default function TasksPage() {
           priority: formData.priority,
           status: formData.status,
           due_date: formData.due_date || null,
+          reminder_at: formData.reminder_at || null,
           assigned_to: formData.assigned_to || null,
           prospect_id: formData.prospect_id || null,
           client_id: formData.client_id || null,
@@ -384,6 +387,7 @@ export default function TasksPage() {
       priority: task.priority,
       status: task.status,
       due_date: task.due_date ?? "",
+      reminder_at: task.reminder_at ?? "",
       assigned_to: task.assigned_to ?? "",
       prospect_id: task.prospect_id ?? "",
       client_id: task.client_id ?? "",
@@ -582,19 +586,30 @@ export default function TasksPage() {
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs text-muted-foreground mr-1">Rappel :</span>
-              {REMINDER_PRESETS.map((preset) => (
-                <button
-                  key={preset.label}
-                  type="button"
-                  onClick={() => updateField("due_date", (() => { const d = new Date(); d.setDate(d.getDate() + preset.days); return d.toISOString().split("T")[0]; })())}
-                  className={cn(
-                    "rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors",
-                    "border-gray-200 text-gray-500 hover:border-gray-400 hover:text-gray-700"
-                  )}
-                >
-                  {preset.label}
-                </button>
-              ))}
+              {REMINDER_PRESETS.slice(0, 4).map((preset) => {
+                const presetIso = computeReminderDate(preset.days);
+                const isActive = formData.reminder_at === presetIso;
+                return (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    onClick={() => updateField("reminder_at", isActive ? "" : presetIso)}
+                    className={cn(
+                      "rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors",
+                      isActive
+                        ? "border-blue-500 bg-blue-50 text-blue-700"
+                        : "border-gray-200 text-gray-500 hover:border-gray-400 hover:text-gray-700"
+                    )}
+                  >
+                    {preset.label}
+                  </button>
+                );
+              })}
+              {formData.reminder_at && (
+                <span className="text-[11px] text-muted-foreground italic">
+                  → notif {formatReminderLabel(formData.reminder_at)}
+                </span>
+              )}
               <div className="flex-1" />
               <Button size="sm" variant="ghost" className="text-xs h-7" onClick={() => setShowAddForm(false)}>Annuler</Button>
               <Button size="sm" className="text-xs h-7 gap-1" onClick={handleCreate} disabled={saving || !formData.title.trim()}>
@@ -1086,6 +1101,20 @@ function TaskRow({
               {formatDate(task.due_date)}
             </span>
           )}
+          {task.reminder_at && !isCompleted && (() => {
+            const status = getReminderStatus(task.reminder_at);
+            return (
+              <span className={cn(
+                "flex items-center gap-1",
+                status === "past" ? "text-red-500 font-medium" :
+                status === "today" ? "text-amber-600 font-medium" :
+                "text-gray-400"
+              )}>
+                <Bell className="h-3 w-3" />
+                {formatReminderLabel(task.reminder_at)}
+              </span>
+            );
+          })()}
           {profileName ? (
             <span className="flex items-center gap-1">
               <User className="h-3 w-3" />

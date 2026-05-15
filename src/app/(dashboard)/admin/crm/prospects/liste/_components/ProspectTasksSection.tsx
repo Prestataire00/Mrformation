@@ -40,6 +40,12 @@ import {
 import { useToast } from "@/components/ui/use-toast";
 import { cn, formatDate } from "@/lib/utils";
 import { crmTaskLabelStyle, isGenericTaskTitle } from "@/lib/utils/crm-task-label-style";
+import {
+  computeReminderDate,
+  formatReminderLabel,
+  getReminderStatus,
+  REMINDER_PRESETS,
+} from "@/lib/utils/crm-task-reminder";
 import type { TaskStatus, TaskPriority } from "@/lib/types";
 
 interface Task {
@@ -75,41 +81,6 @@ const PRIORITY_CONFIG: Record<TaskPriority, { label: string; color: string; bg: 
   high: { label: "Haute", color: "text-red-700", bg: "bg-red-50" },
 };
 
-const REMINDER_PRESETS = [
-  { label: "Aujourd'hui", days: 0 },
-  { label: "Demain", days: 1 },
-  { label: "3 jours", days: 3 },
-  { label: "1 semaine", days: 7 },
-  { label: "2 semaines", days: 14 },
-  { label: "1 mois", days: 30 },
-];
-
-function computeReminderDate(daysFromNow: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() + daysFromNow);
-  d.setHours(9, 0, 0, 0);
-  return d.toISOString();
-}
-
-function formatReminderLabel(isoStr: string): string {
-  const d = new Date(isoStr);
-  return d.toLocaleDateString("fr-FR", {
-    weekday: "short",
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  }) + " " + d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
-}
-
-function getReminderStatus(isoStr: string): "past" | "today" | "future" {
-  const now = new Date();
-  const d = new Date(isoStr);
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const reminderDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  if (reminderDay < today) return "past";
-  if (reminderDay.getTime() === today.getTime()) return "today";
-  return "future";
-}
 
 interface ProspectTasksSectionProps {
   prospectId: string;
