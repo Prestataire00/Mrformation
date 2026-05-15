@@ -5,6 +5,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Download, ChevronLeft, ChevronRight, Plus, Loader2, Mail } from "lucide-react";
 import { downloadXlsx } from "@/lib/export-xlsx";
+import { deleteLearner, softDeleteLearner } from "@/lib/services/learners";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/use-toast";
 import { useEntity } from "@/contexts/EntityContext";
@@ -101,6 +102,7 @@ export default function ApprenantsListePage() {
       let query = supabase
         .from("learners")
         .select("id, first_name, last_name, email, phone, client_id, clients(company_name)", { count: "exact" })
+        .is("deleted_at", null)
         .order("last_name", { ascending: true });
 
       if (debouncedName.trim()) {
@@ -137,13 +139,42 @@ export default function ApprenantsListePage() {
 
   const handleDelete = async (id: string, name: string) => {
     if (!confirm(`Supprimer ${name} ?`)) return;
-    const { error } = await supabase.from("learners").delete().eq("id", id);
-    if (error) {
-      toast({ title: "Erreur", description: "Impossible de supprimer.", variant: "destructive" });
-    } else {
+    const result = await deleteLearner(supabase, id);
+
+    if (result.ok) {
       toast({ title: "Supprimé", description: `${name} a été supprimé.` });
       fetchLearners();
+      return;
     }
+
+    // Apprenant lié à une session terminée → on propose l'archivage à la place.
+    if (result.error.code === "LEARNER_SESSION_LINKED") {
+      toast({
+        title: "Suppression bloquée",
+        description: result.error.message,
+        variant: "destructive",
+      });
+      if (confirm(`${name} a un historique de formation. Archiver à la place ?`)) {
+        const archiveResult = await softDeleteLearner(supabase, id);
+        if (archiveResult.ok) {
+          toast({ title: "Archivé", description: `${name} a été archivé.` });
+          fetchLearners();
+        } else {
+          toast({
+            title: "Erreur",
+            description: "Impossible d'archiver l'apprenant.",
+            variant: "destructive",
+          });
+        }
+      }
+      return;
+    }
+
+    toast({
+      title: "Erreur",
+      description: "Impossible de supprimer.",
+      variant: "destructive",
+    });
   };
 
   const handleAddLearner = async () => {
