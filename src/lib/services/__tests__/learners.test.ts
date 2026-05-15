@@ -3,6 +3,7 @@ import {
   softDeleteLearner,
   restoreLearner,
   deleteLearner,
+  LEARNER_SESSION_LINKED_MESSAGE,
 } from "@/lib/services/learners";
 
 describe("softDeleteLearner", () => {
@@ -193,6 +194,30 @@ describe("deleteLearner", () => {
       expect(result.error.code).toBe("23503");
       expect(result.error.message).toBe("FK violation");
     }
+  });
+
+  it("race-window : DELETE retourne P0001 (trigger DB) → traduit en LEARNER_SESSION_LINKED", async () => {
+    const spy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const { supabase } = makeMock({
+      linkedCount: 0, // le pré-check passe : pas de session_linked au moment du SELECT
+      deleteError: { message: "Apprenant lié à une session terminée…", code: "P0001" },
+    });
+
+    const result = await deleteLearner(supabase, "l1");
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("LEARNER_SESSION_LINKED");
+      expect(result.error.message).toBe(LEARNER_SESSION_LINKED_MESSAGE);
+    }
+
+    const event = spy.mock.calls
+      .map((c) => JSON.parse(c[0] as string))
+      .find((e) => e.event === "learner_deleted");
+    expect(event).toBeDefined();
+    expect(event.mode).toBe("blocked");
+    expect(event.reason).toBe("session_linked_db_trigger");
+    spy.mockRestore();
   });
 
   it("propage l'erreur Supabase sur le SELECT count (pas d'attaque de la base ensuite)", async () => {

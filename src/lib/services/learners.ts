@@ -104,6 +104,25 @@ export async function deleteLearner(
     .eq("id", learnerId);
 
   if (deleteError) {
+    // Le trigger DB `prevent_hard_delete_session_linked_learner` raise P0001
+    // (cf. add_learners_deleted_at.sql). Si une race a ajouté un enrollment
+    // session-completed entre notre count et le DELETE, on traduit le code
+    // SQLSTATE en code métier pour que l'UI affiche la même proposition
+    // d'archivage que sur le chemin de pré-check.
+    if (deleteError.code === "P0001") {
+      logEvent("learner_deleted", {
+        learner_id: learnerId,
+        mode: "blocked",
+        reason: "session_linked_db_trigger",
+      });
+      return {
+        ok: false,
+        error: {
+          message: LEARNER_SESSION_LINKED_MESSAGE,
+          code: "LEARNER_SESSION_LINKED",
+        },
+      };
+    }
     return {
       ok: false,
       error: { message: deleteError.message, code: deleteError.code },

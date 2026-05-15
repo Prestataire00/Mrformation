@@ -51,16 +51,16 @@ ON CONFLICT DO NOTHING;
 
 -- Une session INTER partagée entre Acme et Beta
 INSERT INTO sessions (id, entity_id, title, start_date, end_date, status) VALUES
-  ('ssss0001-0001-0001-0001-000000000001', '11111111-1111-1111-1111-111111111111',
+  ('dddd0001-0001-0001-0001-000000000001', '11111111-1111-1111-1111-111111111111',
    'Session INTER partagée', NOW(), NOW() + INTERVAL '1 day', 'upcoming')
 ON CONFLICT DO NOTHING;
 
 -- Apprenants inscrits sur la session (Acme + Beta)
 INSERT INTO enrollments (session_id, learner_id, client_id) VALUES
-  ('ssss0001-0001-0001-0001-000000000001', '00000000-0000-0000-0000-00000000a001', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'),
-  ('ssss0001-0001-0001-0001-000000000001', '00000000-0000-0000-0000-00000000a002', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'),
-  ('ssss0001-0001-0001-0001-000000000001', '00000000-0000-0000-0000-00000000b001', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'),
-  ('ssss0001-0001-0001-0001-000000000001', '00000000-0000-0000-0000-00000000b002', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb')
+  ('dddd0001-0001-0001-0001-000000000001', '00000000-0000-0000-0000-00000000a001', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'),
+  ('dddd0001-0001-0001-0001-000000000001', '00000000-0000-0000-0000-00000000a002', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'),
+  ('dddd0001-0001-0001-0001-000000000001', '00000000-0000-0000-0000-00000000b001', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'),
+  ('dddd0001-0001-0001-0001-000000000001', '00000000-0000-0000-0000-00000000b002', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb')
 ON CONFLICT DO NOTHING;
 ```
 
@@ -82,7 +82,7 @@ Insérer un apprenant côté C3V :
 
 ```sql
 INSERT INTO learners (id, entity_id, first_name, last_name, email) VALUES
-  ('00000000-0000-0000-0000-0000000c3v01', '22222222-2222-2222-2222-222222222222', 'Carl', 'C3V', 'carl@c3v.test')
+  ('00000000-0000-0000-0000-0000000c3a01', '22222222-2222-2222-2222-222222222222', 'Carl', 'C3V', 'carl@c3v.test')
 ON CONFLICT DO NOTHING;
 ```
 
@@ -118,7 +118,7 @@ Se connecter en tant que `client-acme@test.local`, récupérer l'`access_token`,
 
 ```bash
 # Lecture directe des enrollments de la session partagée
-curl -s "$SUPABASE_URL/rest/v1/enrollments?select=learner_id,client_id&session_id=eq.ssss0001-0001-0001-0001-000000000001" \
+curl -s "$SUPABASE_URL/rest/v1/enrollments?select=learner_id,client_id&session_id=eq.dddd0001-0001-0001-0001-000000000001" \
   -H "apikey: $SUPABASE_ANON_KEY" \
   -H "Authorization: Bearer $CLIENT_ACME_TOKEN" \
   | jq '[.[] | select(.client_id != "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")]'
@@ -152,19 +152,19 @@ Créer un trainer rattaché à `trainer-mr@test.local`, puis l'assigner à la se
 
 ```sql
 INSERT INTO trainers (id, entity_id, profile_id, first_name, last_name)
-SELECT 'ttttttt0-0000-0000-0000-000000000001',
+SELECT 'eeeeeee0-0000-0000-0000-000000000001',
        '11111111-1111-1111-1111-111111111111',
        p.id, 'Trainer', 'Test'
   FROM profiles p WHERE p.email = 'trainer-mr@test.local'
 ON CONFLICT DO NOTHING;
 
 UPDATE sessions
-   SET trainer_id = 'ttttttt0-0000-0000-0000-000000000001'
- WHERE id = 'ssss0001-0001-0001-0001-000000000001';
+   SET trainer_id = 'eeeeeee0-0000-0000-0000-000000000001'
+ WHERE id = 'dddd0001-0001-0001-0001-000000000001';
 
 -- Créer une 2e session SANS ce trainer
 INSERT INTO sessions (id, entity_id, title, start_date, end_date, status, trainer_id) VALUES
-  ('ssss0002-0002-0002-0002-000000000002', '11111111-1111-1111-1111-111111111111',
+  ('dddd0002-0002-0002-0002-000000000002', '11111111-1111-1111-1111-111111111111',
    'Session AUTRE trainer', NOW(), NOW() + INTERVAL '1 day', 'upcoming', NULL)
 ON CONFLICT DO NOTHING;
 ```
@@ -182,8 +182,8 @@ curl -s "$SUPABASE_URL/rest/v1/sessions?select=id,title,trainer_id" \
 
 ### Résultat attendu
 
-- La session `ssss0001-…` apparaît.
-- La session `ssss0002-…` (sans trainer assigné, ou avec un autre trainer) n'apparaît **pas** dans la liste.
+- La session `dddd0001-…` apparaît.
+- La session `dddd0002-…` (sans trainer assigné, ou avec un autre trainer) n'apparaît **pas** dans la liste.
 
 ### Si le test échoue
 
@@ -199,7 +199,7 @@ Vérifier que le trigger `prevent_hard_delete_session_linked_learner` bloque eff
 ```sql
 -- Marquer la session comme terminée pour activer la règle
 UPDATE sessions SET status = 'completed'
- WHERE id = 'ssss0001-0001-0001-0001-000000000001';
+ WHERE id = 'dddd0001-0001-0001-0001-000000000001';
 
 -- Tentative de hard-delete d'un apprenant lié → doit lever P0001
 DELETE FROM learners WHERE id = '00000000-0000-0000-0000-00000000a001';
@@ -231,10 +231,10 @@ UPDATE learners SET deleted_at = NOW()
 
 ```sql
 -- Cleanup en cascade (ordre inverse des FK)
-DELETE FROM enrollments WHERE session_id IN ('ssss0001-0001-0001-0001-000000000001', 'ssss0002-0002-0002-0002-000000000002');
-DELETE FROM sessions WHERE id IN ('ssss0001-0001-0001-0001-000000000001', 'ssss0002-0002-0002-0002-000000000002');
+DELETE FROM enrollments WHERE session_id IN ('dddd0001-0001-0001-0001-000000000001', 'dddd0002-0002-0002-0002-000000000002');
+DELETE FROM sessions WHERE id IN ('dddd0001-0001-0001-0001-000000000001', 'dddd0002-0002-0002-0002-000000000002');
 DELETE FROM learners WHERE id LIKE '00000000-0000-0000-0000-00000000%';
-DELETE FROM trainers WHERE id = 'ttttttt0-0000-0000-0000-000000000001';
+DELETE FROM trainers WHERE id = 'eeeeeee0-0000-0000-0000-000000000001';
 DELETE FROM clients WHERE id IN ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb');
 DELETE FROM entities WHERE id IN ('11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222');
 -- Supprimer aussi les 4 users de test via Supabase Dashboard > Authentication.
