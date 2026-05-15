@@ -3,6 +3,7 @@ import {
   enrollLearner,
   createLearnerAndEnroll,
   removeEnrollment,
+  enrollLearnersBulk,
 } from "@/lib/services/enrollments";
 
 describe("enrollLearner", () => {
@@ -187,6 +188,81 @@ describe("createLearnerAndEnroll", () => {
       expect.objectContaining({ learnerId: "l1" })
     );
     spy.mockRestore();
+  });
+});
+
+describe("enrollLearnersBulk", () => {
+  it("retourne ok avec count 0 sans toucher la base si learnerIds est vide", async () => {
+    const from = vi.fn();
+    const supabase = { from } as never;
+
+    const result = await enrollLearnersBulk(supabase, {
+      sessionId: "s1",
+      clientId: "c1",
+      learnerIds: [],
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.count).toBe(0);
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it("insert en lot les enrollments avec des lignes correctement formées", async () => {
+    const insert = vi.fn().mockResolvedValue({ data: null, error: null });
+    const from = vi.fn().mockReturnValue({ insert });
+    const supabase = { from } as never;
+
+    const result = await enrollLearnersBulk(supabase, {
+      sessionId: "s1",
+      clientId: "c1",
+      learnerIds: ["l1", "l2"],
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.count).toBe(2);
+    expect(from).toHaveBeenCalledWith("enrollments");
+    expect(insert).toHaveBeenCalledWith([
+      { session_id: "s1", learner_id: "l1", client_id: "c1", status: "registered" },
+      { session_id: "s1", learner_id: "l2", client_id: "c1", status: "registered" },
+    ]);
+  });
+
+  it("accepte un status custom", async () => {
+    const insert = vi.fn().mockResolvedValue({ data: null, error: null });
+    const from = vi.fn().mockReturnValue({ insert });
+    const supabase = { from } as never;
+
+    await enrollLearnersBulk(supabase, {
+      sessionId: "s1",
+      clientId: "c1",
+      learnerIds: ["l1"],
+      status: "confirmed",
+    });
+
+    expect(insert).toHaveBeenCalledWith([
+      expect.objectContaining({ status: "confirmed" }),
+    ]);
+  });
+
+  it("propage l'erreur Supabase", async () => {
+    const insert = vi.fn().mockResolvedValue({
+      data: null,
+      error: { message: "duplicate key", code: "23505" },
+    });
+    const from = vi.fn().mockReturnValue({ insert });
+    const supabase = { from } as never;
+
+    const result = await enrollLearnersBulk(supabase, {
+      sessionId: "s1",
+      clientId: "c1",
+      learnerIds: ["l1"],
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toBe("duplicate key");
+      expect(result.error.code).toBe("23505");
+    }
   });
 });
 

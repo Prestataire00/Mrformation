@@ -15,6 +15,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { formatCurrency } from "@/lib/utils";
 import { computeAmountsReconciliation, getLearnersForCompany } from "@/lib/utils/formation-companies";
 import { addCompanyToSession, removeCompanyFromSession } from "@/lib/services/formation-companies";
+import { enrollLearnersBulk } from "@/lib/services/enrollments";
 import type { Session, Client } from "@/lib/types";
 
 interface Props {
@@ -166,18 +167,21 @@ export function ResumeCompanies({ formation, onRefresh }: Props) {
     );
 
     if (toEnroll.length > 0) {
-      const { error: enrollError } = await supabase.from("enrollments").insert(
-        toEnroll.map((l) => ({
-          session_id: formation.id,
-          learner_id: l.id,
-          client_id: selectedClientId,
-          status: "registered",
-        }))
-      );
+      const enrollResult = await enrollLearnersBulk(supabase, {
+        sessionId: formation.id,
+        clientId: selectedClientId,
+        learnerIds: toEnroll.map((l) => l.id),
+      });
 
-      if (enrollError) {
-        // Non-bloquant : l'entreprise est ajoutée même si l'inscription échoue
-        toast({ title: "Entreprise ajoutée", description: `Attention : ${enrollError.message}`, variant: "destructive" });
+      if (!enrollResult.ok) {
+        // Non-bloquant : l'entreprise est ajoutée même si l'inscription échoue.
+        // L'erreur brute Supabase n'est pas exposée à l'utilisateur (info leak).
+        console.error("[ResumeCompanies] auto-enroll failed", { error: enrollResult.error });
+        toast({
+          title: "Entreprise ajoutée",
+          description: "Attention : l'auto-inscription des apprenants a échoué.",
+          variant: "destructive",
+        });
       } else {
         const names = toEnroll.map((l) => `${l.first_name} ${l.last_name}`).join(", ");
         toast({
