@@ -10,6 +10,7 @@ export interface ResolveContext {
   trainer?: Trainer | null;
   profile?: { first_name: string; last_name: string } | null;
   entity?: {
+    name?: string | null;  // ajouté Story B-Convention : utilisé par `{{nom_organisme}}`
     siret?: string | null;
     nda?: string | null;
     address?: string | null;
@@ -196,14 +197,121 @@ export function resolveVariables(content: string, data: ResolveContext): string 
     "{{logo_organisme}}": data.entity?.logo_url
       ? `<img src="${data.entity.logo_url}" alt="Logo" style="max-height:60px;" />`
       : "",
+
+    // === Variables Story B-Convention (ajoutées pour le template Loris) ===
+    "{{nom_organisme}}": data.entity?.name || "[Nom organisme]",
+    "{{ville_organisme}}": data.entity?.city || "[Ville organisme]",
+    "{{representant_organisme}}": data.entity?.president_name || "[Représentant organisme]",
+    // E-signature client : pour l'instant fallback empty — la story C
+    // (signatures unifiées) branchera vers documents.signature_data quand
+    // le doc convention est signé.
+    "{{e_signature_client}}": "",
+    // Type d'action de formation (Art. L6313-1) : déduit de training.classification.
+    "{{type_action_formation}}": (() => {
+      const c = data.session?.training?.classification;
+      if (c === "reglementaire") return "Action de formation réglementaire";
+      if (c === "certifiant") return "Action de formation certifiante";
+      if (c === "qualifiant") return "Action de formation qualifiante";
+      return "Action de formation";
+    })(),
+    // Type de diplôme : depuis training.certification (TEXT libre).
+    "{{type_diplome}}": data.session?.training?.certification || "Aucun diplôme délivré",
+    // Combo dates : "Du 15 mai 2026 au 16 mai 2026"
+    "{{dates_formation}}": (() => {
+      if (!data.session?.start_date || !data.session?.end_date) return "[Dates formation]";
+      const debut = formatDate(data.session.start_date);
+      const fin = formatDate(data.session.end_date);
+      return debut === fin ? `Le ${debut}` : `Du ${debut} au ${fin}`;
+    })(),
+    // Tableau HTML des coûts pour le client courant (cf §4 de la convention).
+    // Story B-Convention : sortie minimaliste = 1 ligne avec montant HT/TVA/TTC.
+    // Affiner ensuite si Loris veut un détail par apprenant.
+    "{{tableau_couts_client}}": (() => {
+      if (montantHt <= 0) return "[Tableau coûts]";
+      const titre = data.session?.title ?? "Formation";
+      const fmt = (n: number) => `${n.toFixed(2)} €`;
+      return `<table style="width:100%;border-collapse:collapse;margin:8px 0;">
+  <thead>
+    <tr style="background:#f1f5f9;">
+      <th style="border:1px solid #cbd5e1;padding:6px 10px;text-align:left;">Désignation</th>
+      <th style="border:1px solid #cbd5e1;padding:6px 10px;text-align:right;">Montant HT</th>
+      <th style="border:1px solid #cbd5e1;padding:6px 10px;text-align:right;">TVA 20%</th>
+      <th style="border:1px solid #cbd5e1;padding:6px 10px;text-align:right;">Montant TTC</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style="border:1px solid #cbd5e1;padding:6px 10px;">${titre}</td>
+      <td style="border:1px solid #cbd5e1;padding:6px 10px;text-align:right;">${fmt(montantHt)}</td>
+      <td style="border:1px solid #cbd5e1;padding:6px 10px;text-align:right;">${fmt(montantTva)}</td>
+      <td style="border:1px solid #cbd5e1;padding:6px 10px;text-align:right;font-weight:600;">${fmt(montantTtc)}</td>
+    </tr>
+  </tbody>
+</table>`;
+    })(),
   };
 
   let result = content;
   Object.entries(replacements).forEach(([key, val]) => {
     result = result.replaceAll(key, val);
   });
+
+  // Support format Sellsy `[%Libellé en français%]` en plus de `{{nom_technique}}`.
+  // C'est la convention que Loris utilise dans ses templates (cf Story B-Convention).
+  // Le map ALIAS_TO_VARIABLE_KEY (ci-dessous) convertit chaque libellé Sellsy
+  // vers la clé technique correspondante du replacements (déjà résolue).
+  result = result.replace(/\[%([^%\]]+)%\]/g, (_, label) => {
+    const trimmed = String(label).trim();
+    const techKey = ALIAS_TO_VARIABLE_KEY[trimmed];
+    if (techKey) {
+      // techKey = "{{nom_client}}". Comme on l'a déjà résolu ci-dessus, on
+      // récupère sa valeur depuis le map `replacements`.
+      const val = replacements[techKey];
+      if (val !== undefined) return val;
+    }
+    // Inconnu → on garde le placeholder visible pour audit (cf findUnresolvedVariables).
+    return `[%${trimmed}%]`;
+  });
   return result;
 }
+
+/**
+ * Mapping libellés Loris/Sellsy (`[%Nom de l'organisme%]`) → clés techniques
+ * du resolver (`{{nom_organisme}}`).
+ *
+ * Permet à Loris d'utiliser ses anciens templates Sellsy sans avoir à apprendre
+ * une nouvelle nomenclature. Tout `[%libellé%]` non listé ici reste affiché
+ * en clair (visible pour audit + diagnostic dans findUnresolvedVariables).
+ *
+ * Story B-Convention : 21 alias validés depuis le modèle convention Loris.
+ */
+export const ALIAS_TO_VARIABLE_KEY: Record<string, string> = {
+  // Organisme
+  "Nom de l'organisme": "{{nom_organisme}}",
+  "Adresse de l'organisme": "{{adresse_organisme}}",
+  "Ville de l'organisme": "{{ville_organisme}}",
+  "NDA de l'organisme": "{{nda_organisme}}",
+  "SIRET de l'organisme": "{{siret_organisme}}",
+  "Nom du représentant de l'organisme": "{{representant_organisme}}",
+  "Signature de l'organisme": "{{signature_organisme}}",
+  // Client / bénéficiaire
+  "Nom du client": "{{nom_client}}",
+  "Adresse du client": "{{client_adresse}}",
+  "Nom du représentant légal du client": "{{client_representant}}",
+  "E-signature du client": "{{e_signature_client}}",
+  // Formation
+  "Nom de la formation": "{{titre_formation}}",
+  "Type d'action de formation": "{{type_action_formation}}",
+  "Type de diplôme décerné": "{{type_diplome}}",
+  "Durée de la formation": "{{duree_heures}}",
+  "Lieu de la formation": "{{lieu}}",
+  "Nombre d'apprenants du client": "{{formation_effectifs}}",
+  "Apprenants du client": "{{liste_apprenants}}",
+  "Dates de la formation": "{{dates_formation}}",
+  "Tableau des coûts du client": "{{tableau_couts_client}}",
+  // Dates
+  "Date d'aujourd'hui": "{{date_today}}",
+};
 
 /**
  * Returns an array of unresolved {{variables}} still present in the content.
@@ -281,7 +389,7 @@ export async function loadEntitySettings(
   const { data, error } = await supabase
     .from("entities")
     .select(
-      "siret, nda, address, postal_code, city, email, phone, website, president_name, signature_text, stamp_url, signature_url, logo_url",
+      "name, siret, nda, address, postal_code, city, email, phone, website, president_name, signature_text, stamp_url, signature_url, logo_url",
     )
     .eq("id", entityId)
     .maybeSingle();
@@ -338,4 +446,13 @@ export const VARIABLE_KEYS = [
   "{{signature_organisme}}",
   "{{tampon_organisme}}",
   "{{logo_organisme}}",
+  // Story B-Convention
+  "{{nom_organisme}}",
+  "{{ville_organisme}}",
+  "{{representant_organisme}}",
+  "{{e_signature_client}}",
+  "{{type_action_formation}}",
+  "{{type_diplome}}",
+  "{{dates_formation}}",
+  "{{tableau_couts_client}}",
 ] as const;

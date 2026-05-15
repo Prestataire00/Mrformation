@@ -126,6 +126,11 @@ export async function POST(request: NextRequest) {
       .eq("name", name.trim())
       .maybeSingle();
 
+    // Sémantique `default_for_doc_type` : TEXT (cf migration
+    // add_default_for_doc_type.sql). Valeur = nom du doc_type pour lequel
+    // ce template est marqué défaut, ou NULL.
+    const defaultForDocTypeValue = defaultForDocType ? docType : null;
+
     let templateId: string;
     if (existing) {
       // UPDATE
@@ -135,7 +140,7 @@ export async function POST(request: NextRequest) {
           type: docType,
           source_docx_url: sourceDocxUrl,
           mode,
-          default_for_doc_type: defaultForDocType,
+          default_for_doc_type: defaultForDocTypeValue,
           uploaded_at: new Date().toISOString(),
           uploaded_by: user.id,
         })
@@ -165,7 +170,7 @@ export async function POST(request: NextRequest) {
           source_docx_url: sourceDocxUrl,
           mode,
           is_system: false,
-          default_for_doc_type: defaultForDocType,
+          default_for_doc_type: defaultForDocTypeValue,
           uploaded_at: new Date().toISOString(),
           uploaded_by: user.id,
         })
@@ -186,13 +191,16 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // ── Si default_for_doc_type = true, désactiver les autres défauts du même type
+    // ── Si défaut activé, désactiver les autres templates marqués défaut pour
+    // le même doc_type. `default_for_doc_type` est TEXT — on désactive en
+    // settant la colonne à NULL pour tous les templates de cette entité dont
+    // la valeur est l'actuel docType, sauf celui qu'on vient d'enregistrer.
     if (defaultForDocType) {
       await supabase
         .from("document_templates")
-        .update({ default_for_doc_type: false })
+        .update({ default_for_doc_type: null })
         .eq("entity_id", profile.entity_id)
-        .eq("type", docType)
+        .eq("default_for_doc_type", docType)
         .neq("id", templateId);
     }
 
