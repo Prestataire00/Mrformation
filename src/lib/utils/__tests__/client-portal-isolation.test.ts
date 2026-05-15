@@ -90,3 +90,43 @@ describe("countClientLearnersOnSession", () => {
     expect(countClientLearnersOnSession([{ learner_id: "l1", session_id: "s1" }], ["l1"], "")).toBe(0);
   });
 });
+
+/**
+ * Story 5.4 — confirmation que la composition des helpers (getLearnerIdsForClient
+ * + filterEnrollmentsByLearnerIds) protège bien le cas critique multi-entreprises
+ * sur session INTER partagée.
+ *
+ * Les tests SQL-level (RLS Supabase) sont couverts par la procédure manuelle
+ * `docs/rls-test-procedure.md` (Loris/Wissam pré-release).
+ */
+describe("isolation multi-entreprises INTER — Story 5.4 / NFR-SEC-2", () => {
+  it("client Acme ne voit aucun enrollment de Beta même sur une session INTER partagée", () => {
+    // Setup : 4 apprenants (2 Acme, 2 Beta) tous inscrits sur la même session INTER.
+    const learners = [
+      { id: "alice", client_id: "acme" },
+      { id: "andre", client_id: "acme" },
+      { id: "bob", client_id: "beta" },
+      { id: "bea", client_id: "beta" },
+    ];
+    const enrollments = [
+      { learner_id: "alice", session_id: "inter-s1" },
+      { learner_id: "andre", session_id: "inter-s1" },
+      { learner_id: "bob", session_id: "inter-s1" },
+      { learner_id: "bea", session_id: "inter-s1" },
+    ];
+
+    // Acme regarde la session INTER → ne voit QUE ses 2 apprenants.
+    const acmeAllowed = getLearnerIdsForClient(learners, "acme");
+    expect(acmeAllowed).toEqual(["alice", "andre"]);
+
+    const acmeVisible = filterEnrollmentsByLearnerIds(enrollments, acmeAllowed);
+    expect(acmeVisible).toHaveLength(2);
+    expect(acmeVisible.every((e) => ["alice", "andre"].includes(e.learner_id!))).toBe(true);
+
+    // Béta regarde la même session INTER → ne voit QUE ses 2 apprenants.
+    const betaAllowed = getLearnerIdsForClient(learners, "beta");
+    const betaVisible = filterEnrollmentsByLearnerIds(enrollments, betaAllowed);
+    expect(betaVisible).toHaveLength(2);
+    expect(betaVisible.every((e) => ["bob", "bea"].includes(e.learner_id!))).toBe(true);
+  });
+});

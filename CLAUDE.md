@@ -94,6 +94,36 @@ Pour toute nouvelle page du portail client : ces helpers DOIVENT être utilisés
 
 ---
 
+## 🛡️ SKILL : SOFT-DELETE LEARNERS SESSION-LINKED (FR20 / Story 5.4)
+
+Un apprenant ayant participé à une session `status = 'completed'` ne doit
+**jamais** être hard-supprimé : Qualiopi exige une rétention de 10 ans des
+dossiers de formation (émargements, attestations, évaluations).
+
+Pattern obligatoire pour toute suppression d'apprenant :
+1. Utiliser le service `src/lib/services/learners.ts` :
+   - `deleteLearner(supabase, learnerId)` — smart delete. Si l'apprenant a un
+     enrollment sur une session `completed` → renvoie
+     `{ ok: false, error: { code: "LEARNER_SESSION_LINKED", message } }` sans
+     toucher la base. Sinon → hard-delete.
+   - `softDeleteLearner(supabase, learnerId)` — archivage (pose `deleted_at = NOW()`).
+   - `restoreLearner(supabase, learnerId)` — restauration (`deleted_at = NULL`).
+2. Sur l'UI : si `code === "LEARNER_SESSION_LINKED"`, proposer l'archivage via
+   `softDeleteLearner` à la place. Cf. `apprenants/liste/page.tsx`.
+3. Filtrer toute liste d'apprenants par `.is("deleted_at", null)` pour masquer
+   les archivés (sauf vue d'administration explicitement dédiée).
+
+Défense en profondeur DB : le trigger `prevent_hard_delete_session_linked_learner`
+(migration `add_learners_deleted_at.sql`) lève une exception P0001 si un caller
+contourne le service.
+
+Anti-pattern : `supabase.from("learners").delete().eq("id", id)` en inline dans un
+composant. Toujours passer par `deleteLearner`.
+
+Procédure de test RLS pré-release : `docs/rls-test-procedure.md`.
+
+---
+
 # 🔍 SKILL : AUDIT AUTOMATIQUE
 
 ## Quand l'utilisateur demande un audit, une vérification, ou un review d'un module ou d'une page, TOUJOURS appliquer cette procédure complète :
@@ -186,4 +216,5 @@ Générer un rapport structuré :
 7. Jamais de modification de schema.sql sans fichier de migration séparé
 9. Toujours utiliser les composants shadcn/ui (pas de HTML natif pour les UI)
 10. Toujours utiliser src/lib/services/ pour la logique Supabase (pas d'appels inline dans les composants)
+11. Jamais de hard-delete sur `learners` lié à une session `completed` — utiliser `softDeleteLearner` (`deleted_at`)
 
