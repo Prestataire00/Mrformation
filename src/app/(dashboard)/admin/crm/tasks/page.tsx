@@ -6,6 +6,17 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
 import {
+  crmTaskLabelStyle,
+  isGenericTaskTitle,
+  SELLSY_TASK_LABELS,
+} from "@/lib/utils/crm-task-label-style";
+import {
+  computeReminderDate,
+  formatReminderLabel,
+  getReminderStatus,
+  REMINDER_PRESETS,
+} from "@/lib/utils/crm-task-reminder";
+import {
   Plus,
   Search,
   Pencil,
@@ -21,6 +32,9 @@ import {
   ClipboardList,
   List,
   LayoutGrid,
+  Mail,
+  Download,
+  Tag,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -70,9 +84,12 @@ interface TaskFormData {
   priority: TaskPriority;
   status: TaskStatus;
   due_date: string;
+  reminder_at: string;
   assigned_to: string;
   prospect_id: string;
   client_id: string;
+  label: string;
+  contact_email: string;
 }
 
 const EMPTY_FORM: TaskFormData = {
@@ -81,17 +98,13 @@ const EMPTY_FORM: TaskFormData = {
   priority: "medium",
   status: "pending",
   due_date: "",
+  reminder_at: "",
   assigned_to: "",
   prospect_id: "",
   client_id: "",
+  label: "",
+  contact_email: "",
 };
-
-const REMINDER_PRESETS = [
-  { label: "Aujourd'hui", days: 0 },
-  { label: "Demain", days: 1 },
-  { label: "3 jours", days: 3 },
-  { label: "1 semaine", days: 7 },
-];
 
 interface TaskStats {
   dueToday: number;
@@ -173,6 +186,7 @@ export default function TasksPage() {
         .select(`
           *,
           assignee:profiles!crm_tasks_assigned_to_fkey(id, first_name, last_name, email),
+          creator:profiles!crm_tasks_created_by_fkey(id, first_name, last_name),
           prospect:crm_prospects!crm_tasks_prospect_id_fkey(id, company_name),
           client:clients!crm_tasks_client_id_fkey(id, company_name)
         `)
@@ -240,9 +254,12 @@ export default function TasksPage() {
         priority: formData.priority,
         status: formData.status,
         due_date: formData.due_date || null,
+        reminder_at: formData.reminder_at || null,
         assigned_to: formData.assigned_to || null,
         prospect_id: formData.prospect_id || null,
         client_id: formData.client_id || null,
+        label: formData.label || null,
+        contact_email: formData.contact_email.trim() || null,
       };
       if (entityId) payload.entity_id = entityId;
 
@@ -274,9 +291,12 @@ export default function TasksPage() {
           priority: formData.priority,
           status: formData.status,
           due_date: formData.due_date || null,
+          reminder_at: formData.reminder_at || null,
           assigned_to: formData.assigned_to || null,
           prospect_id: formData.prospect_id || null,
           client_id: formData.client_id || null,
+          label: formData.label || null,
+          contact_email: formData.contact_email.trim() || null,
         }),
       });
       const result = await res.json();
@@ -367,9 +387,12 @@ export default function TasksPage() {
       priority: task.priority,
       status: task.status,
       due_date: task.due_date ?? "",
+      reminder_at: task.reminder_at ?? "",
       assigned_to: task.assigned_to ?? "",
       prospect_id: task.prospect_id ?? "",
       client_id: task.client_id ?? "",
+      label: task.label ?? "",
+      contact_email: task.contact_email ?? "",
     });
     setFormErrors({});
     setEditingTaskId(task.id);
@@ -497,10 +520,32 @@ export default function TasksPage() {
         <Card>
           <CardContent className="p-4 space-y-3">
             <div className="flex items-center gap-2">
+              <Select
+                value={formData.label || "_none"}
+                onValueChange={(v) => {
+                  const newLabel = v === "_none" ? "" : v;
+                  // Pré-remplit le titre avec le label si l'utilisateur n'a rien
+                  // tapé : recrée le comportement Sellsy (le type EST le titre)
+                  // tout en autorisant un titre custom si l'utilisateur le veut.
+                  setFormData((prev) => ({
+                    ...prev,
+                    label: newLabel,
+                    title: prev.title.trim() || newLabel,
+                  }));
+                }}
+              >
+                <SelectTrigger className="h-9 w-44 text-xs"><SelectValue placeholder="Type…" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_none">— Type —</SelectItem>
+                  {SELLSY_TASK_LABELS.map((l) => (
+                    <SelectItem key={l} value={l}>{l}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Input
                 value={formData.title}
                 onChange={(e) => updateField("title", e.target.value)}
-                placeholder="Titre de la tâche..."
+                placeholder={formData.label ? `Titre (par défaut : ${formData.label})…` : "Titre de la tâche..."}
                 autoFocus
                 className={cn("flex-1 text-sm", formErrors.title && "border-red-500")}
                 onKeyDown={(e) => {
@@ -530,21 +575,41 @@ export default function TasksPage() {
                 className="h-9 w-36 text-xs"
               />
             </div>
+            <div className="flex items-center gap-2">
+              <Input
+                value={formData.contact_email}
+                onChange={(e) => updateField("contact_email", e.target.value)}
+                placeholder="Email contact (optionnel)…"
+                type="email"
+                className="flex-1 text-sm h-9"
+              />
+            </div>
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs text-muted-foreground mr-1">Rappel :</span>
-              {REMINDER_PRESETS.map((preset) => (
-                <button
-                  key={preset.label}
-                  type="button"
-                  onClick={() => updateField("due_date", (() => { const d = new Date(); d.setDate(d.getDate() + preset.days); return d.toISOString().split("T")[0]; })())}
-                  className={cn(
-                    "rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors",
-                    "border-gray-200 text-gray-500 hover:border-gray-400 hover:text-gray-700"
-                  )}
-                >
-                  {preset.label}
-                </button>
-              ))}
+              {REMINDER_PRESETS.slice(0, 4).map((preset) => {
+                const presetIso = computeReminderDate(preset.days);
+                const isActive = formData.reminder_at === presetIso;
+                return (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    onClick={() => updateField("reminder_at", isActive ? "" : presetIso)}
+                    className={cn(
+                      "rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors",
+                      isActive
+                        ? "border-blue-500 bg-blue-50 text-blue-700"
+                        : "border-gray-200 text-gray-500 hover:border-gray-400 hover:text-gray-700"
+                    )}
+                  >
+                    {preset.label}
+                  </button>
+                );
+              })}
+              {formData.reminder_at && (
+                <span className="text-[11px] text-muted-foreground italic">
+                  → notif {formatReminderLabel(formData.reminder_at)}
+                </span>
+              )}
               <div className="flex-1" />
               <Button size="sm" variant="ghost" className="text-xs h-7" onClick={() => setShowAddForm(false)}>Annuler</Button>
               <Button size="sm" className="text-xs h-7 gap-1" onClick={handleCreate} disabled={saving || !formData.title.trim()}>
@@ -990,15 +1055,45 @@ function TaskRow({
       <span className={cn("h-2 w-2 rounded-full flex-shrink-0", priorityDotColor)} title={TASK_PRIORITY_LABELS[task.priority]} />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <p className={cn("text-sm font-medium text-gray-900 truncate", isCompleted && "line-through text-gray-400")}>
-            {task.title}
-          </p>
-          {task.description && (
-            <p className="text-xs text-gray-400 truncate hidden sm:block">{task.description}</p>
-          )}
+          {(() => {
+            // Cf. TaskKanbanCard : fallback intelligent du titre quand la donnée
+            // Sellsy historique a un title générique (= label). On évite ainsi
+            // 32% des lignes affichant "Relance par téléphone/mail" en doublon
+            // avec le badge label.
+            const titleIsGeneric = isGenericTaskTitle(task.title, task.label);
+            const displayTitle = titleIsGeneric
+              ? (task.description?.trim() || task.prospect?.company_name || task.title)
+              : task.title;
+            const showDescriptionInline = !titleIsGeneric && task.description;
+            return (
+              <>
+                <p className={cn("text-sm font-medium text-gray-900 truncate", isCompleted && "line-through text-gray-400")}>
+                  {displayTitle}
+                </p>
+                {showDescriptionInline && (
+                  <p className="text-xs text-gray-400 truncate hidden sm:block">{task.description}</p>
+                )}
+              </>
+            );
+          })()}
         </div>
 
         <div className="mt-0.5 flex items-center gap-3 flex-wrap text-[11px] text-gray-400">
+          {task.label && (() => {
+            const s = crmTaskLabelStyle(task.label);
+            return (
+              <span className={cn("flex items-center gap-1 rounded px-1.5 py-0.5 font-medium", s.bg, s.text)}>
+                <Tag className="h-2.5 w-2.5" />
+                {task.label}
+              </span>
+            );
+          })()}
+          {task.sellsy_external_ref && (
+            <span className="flex items-center gap-1 rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 font-medium text-amber-700">
+              <Download className="h-2.5 w-2.5" />
+              Sellsy
+            </span>
+          )}
           {task.due_date && (
             <span className={cn("flex items-center gap-1", isOverdue && !isCompleted && "text-red-600 font-medium")}>
               <Calendar className="h-3 w-3" />
@@ -1006,11 +1101,41 @@ function TaskRow({
               {formatDate(task.due_date)}
             </span>
           )}
-          {profileName && (
+          {task.reminder_at && !isCompleted && (() => {
+            const status = getReminderStatus(task.reminder_at);
+            return (
+              <span className={cn(
+                "flex items-center gap-1",
+                status === "past" ? "text-red-500 font-medium" :
+                status === "today" ? "text-amber-600 font-medium" :
+                "text-gray-400"
+              )}>
+                <Bell className="h-3 w-3" />
+                {formatReminderLabel(task.reminder_at)}
+              </span>
+            );
+          })()}
+          {profileName ? (
             <span className="flex items-center gap-1">
               <User className="h-3 w-3" />
-              {profileName}
+              Assigné : {profileName}
             </span>
+          ) : task.creator && (
+            <span className="flex items-center gap-1 italic">
+              <User className="h-3 w-3" />
+              Créé par {task.creator.first_name} {task.creator.last_name}
+            </span>
+          )}
+          {task.contact_email && (
+            <a
+              href={`mailto:${task.contact_email}`}
+              onClick={(e) => e.stopPropagation()}
+              className="flex items-center gap-1 text-blue-600 hover:underline truncate max-w-[220px]"
+              title={task.contact_email}
+            >
+              <Mail className="h-3 w-3" />
+              {task.contact_email}
+            </a>
           )}
           {task.prospect && (
             <span className="flex items-center gap-1">
@@ -1084,6 +1209,13 @@ function TaskKanbanCard({ task, onToggle, completingTask, completionNotes, onCom
   onCancelComplete?: () => void;
 }) {
   const priorityColor = task.priority === "high" ? "bg-red-500" : task.priority === "medium" ? "bg-amber-400" : "bg-gray-300";
+  // Fallback display : si title est générique (= label ou un des 4 types Sellsy
+  // connus) on préfère description ou prospect.company_name → évite les cartes
+  // identiques "Rappel / Rappel / Rappel..." sur les 1773 tâches Sellsy.
+  const titleIsGeneric = isGenericTaskTitle(task.title, task.label);
+  const displayTitle = titleIsGeneric
+    ? (task.description?.trim() || task.prospect?.company_name || task.title)
+    : task.title;
   return (
     <div className="rounded-lg border border-gray-100 bg-white p-3 hover:shadow-sm transition-shadow">
       <div className="flex items-start gap-2">
@@ -1091,11 +1223,13 @@ function TaskKanbanCard({ task, onToggle, completingTask, completionNotes, onCom
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
             <div className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", priorityColor)} />
-            <p className={cn("text-sm font-medium text-gray-900 truncate", task.status === "completed" && "line-through opacity-50")}>{task.title}</p>
+            <p className={cn("text-sm font-medium text-gray-900 truncate", task.status === "completed" && "line-through opacity-50")}>{displayTitle}</p>
           </div>
           <div className="flex items-center gap-2 mt-1.5 text-[10px] text-gray-400">
             {task.due_date && <span>{task.due_date}</span>}
             {task.assignee && <span>{task.assignee.first_name}</span>}
+            {/* Si on a remplacé le titre par la description, on remet le prospect
+                lié ici pour pas le perdre. */}
             {task.prospect && task.prospect_id && (
               <Link href={`/admin/crm/prospects/${task.prospect_id}`} className="truncate text-[#374151] hover:underline font-medium" onClick={(e) => e.stopPropagation()}>
                 {task.prospect.company_name}

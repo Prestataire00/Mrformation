@@ -17,6 +17,16 @@ export const createTaskSchema = z.object({
     .optional()
     .default("pending"),
   priority: z.enum(["low", "medium", "high"]).optional().default("medium"),
+  // Type/Label libre — typiquement l'un des 4 connus Sellsy (Rappel, Relance,
+  // Appel téléphonique, Rendez-vous) mais le champ accepte du texte libre
+  // pour les types custom. Cf util `SELLSY_TASK_LABELS`.
+  label: z.string().max(100).optional().nullable(),
+  contact_email: z
+    .string()
+    .email("Email invalide")
+    .optional()
+    .nullable()
+    .or(z.literal("")),
   due_date: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, "Format de date invalide (YYYY-MM-DD)")

@@ -13,6 +13,9 @@ import {
   Flag,
   CalendarDays,
   Bell,
+  Mail,
+  Download,
+  Tag,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,6 +39,13 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 import { cn, formatDate } from "@/lib/utils";
+import { crmTaskLabelStyle, isGenericTaskTitle } from "@/lib/utils/crm-task-label-style";
+import {
+  computeReminderDate,
+  formatReminderLabel,
+  getReminderStatus,
+  REMINDER_PRESETS,
+} from "@/lib/utils/crm-task-reminder";
 import type { TaskStatus, TaskPriority } from "@/lib/types";
 
 interface Task {
@@ -47,9 +57,16 @@ interface Task {
   due_date: string | null;
   reminder_at: string | null;
   assigned_to: string | null;
+  created_by: string | null;
   created_at: string;
+  // Champs ajoutés par l'import Sellsy
+  label: string | null;
+  contact_email: string | null;
+  sellsy_external_ref: string | null;
   assigned_profile?: { id: string; first_name: string; last_name: string } | null;
+  creator_profile?: { id: string; first_name: string; last_name: string } | null;
 }
+
 
 const STATUS_CONFIG: Record<TaskStatus, { label: string; icon: typeof Circle; color: string }> = {
   pending: { label: "À faire", icon: Circle, color: "text-gray-400" },
@@ -64,41 +81,6 @@ const PRIORITY_CONFIG: Record<TaskPriority, { label: string; color: string; bg: 
   high: { label: "Haute", color: "text-red-700", bg: "bg-red-50" },
 };
 
-const REMINDER_PRESETS = [
-  { label: "Aujourd'hui", days: 0 },
-  { label: "Demain", days: 1 },
-  { label: "3 jours", days: 3 },
-  { label: "1 semaine", days: 7 },
-  { label: "2 semaines", days: 14 },
-  { label: "1 mois", days: 30 },
-];
-
-function computeReminderDate(daysFromNow: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() + daysFromNow);
-  d.setHours(9, 0, 0, 0);
-  return d.toISOString();
-}
-
-function formatReminderLabel(isoStr: string): string {
-  const d = new Date(isoStr);
-  return d.toLocaleDateString("fr-FR", {
-    weekday: "short",
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  }) + " " + d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
-}
-
-function getReminderStatus(isoStr: string): "past" | "today" | "future" {
-  const now = new Date();
-  const d = new Date(isoStr);
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const reminderDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  if (reminderDay < today) return "past";
-  if (reminderDay.getTime() === today.getTime()) return "today";
-  return "future";
-}
 
 interface ProspectTasksSectionProps {
   prospectId: string;
@@ -125,7 +107,11 @@ export default function ProspectTasksSection({ prospectId, prospectName }: Prosp
     setLoading(true);
     const { data, error } = await supabase
       .from("crm_tasks")
-      .select(`*, assigned_profile:profiles!crm_tasks_assigned_to_fkey (id, first_name, last_name)`)
+      .select(`
+        *,
+        assigned_profile:profiles!crm_tasks_assigned_to_fkey (id, first_name, last_name),
+        creator_profile:profiles!crm_tasks_created_by_fkey (id, first_name, last_name)
+      `)
       .eq("prospect_id", prospectId)
       .order("due_date", { ascending: true, nullsFirst: false });
 
@@ -363,32 +349,66 @@ export default function ProspectTasksSection({ prospectId, prospectName }: Prosp
                 </button>
 
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between gap-2">
-                    <p
-                      className={cn(
-                        "text-sm font-medium text-gray-900",
-                        task.status === "completed" && "line-through text-gray-500"
-                      )}
-                    >
-                      {task.title}
-                    </p>
-                    <button
-                      onClick={() => handleDelete(task.id)}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-red-500"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
+                  {(() => {
+                    // Fallback display (cf util isGenericTaskTitle) : si title
+                    // est générique (Sellsy historique), on affiche description
+                    // ou prospect_name à la place.
+                    const titleIsGeneric = isGenericTaskTitle(task.title, task.label);
+                    // Ici on est dans la fiche d'un prospect : pas besoin de
+                    // promouvoir prospect.company_name (déjà dans le header).
+                    // On préfère donc la description si elle existe.
+                    const displayTitle = titleIsGeneric && task.description?.trim()
+                      ? task.description.trim()
+                      : task.title;
+                    const showDescriptionBelow = !titleIsGeneric && task.description;
+                    return (
+                      <>
+                        <div className="flex items-start justify-between gap-2">
+                          <p
+                            className={cn(
+                              "text-sm font-medium text-gray-900",
+                              task.status === "completed" && "line-through text-gray-500"
+                            )}
+                          >
+                            {displayTitle}
+                          </p>
+                          <button
+                            onClick={() => handleDelete(task.id)}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-red-500"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
 
-                  {task.description && (
-                    <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{task.description}</p>
-                  )}
+                        {showDescriptionBelow && (
+                          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{task.description}</p>
+                        )}
+                      </>
+                    );
+                  })()}
 
                   <div className="flex items-center gap-2 mt-2 flex-wrap">
                     <Badge className={cn("text-[10px] border-0 font-medium", priorityCfg.bg, priorityCfg.color)}>
                       <Flag className="h-2.5 w-2.5 mr-0.5" />
                       {priorityCfg.label}
                     </Badge>
+
+                    {task.label && (() => {
+                      const s = crmTaskLabelStyle(task.label);
+                      return (
+                        <Badge className={cn("text-[10px] border-0 font-medium", s.bg, s.text)}>
+                          <Tag className="h-2.5 w-2.5 mr-0.5" />
+                          {task.label}
+                        </Badge>
+                      );
+                    })()}
+
+                    {task.sellsy_external_ref && (
+                      <Badge variant="outline" className="h-5 gap-1 border-amber-200 bg-amber-50 px-1.5 text-[10px] font-medium text-amber-700">
+                        <Download className="h-2.5 w-2.5" />
+                        Sellsy
+                      </Badge>
+                    )}
 
                     {task.due_date && (
                       <span
@@ -419,9 +439,25 @@ export default function ProspectTasksSection({ prospectId, prospectName }: Prosp
                       </span>
                     )}
 
-                    {task.assigned_profile && (
+                    {task.contact_email && (
+                      <a
+                        href={`mailto:${task.contact_email}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="flex items-center gap-1 text-[11px] text-blue-600 hover:underline truncate max-w-[200px]"
+                        title={task.contact_email}
+                      >
+                        <Mail className="h-3 w-3" />
+                        {task.contact_email}
+                      </a>
+                    )}
+
+                    {task.assigned_profile ? (
                       <span className="text-[11px] text-muted-foreground">
-                        {task.assigned_profile.first_name} {task.assigned_profile.last_name}
+                        Assigné : {task.assigned_profile.first_name} {task.assigned_profile.last_name}
+                      </span>
+                    ) : task.creator_profile && (
+                      <span className="text-[11px] text-muted-foreground italic">
+                        Créé par {task.creator_profile.first_name} {task.creator_profile.last_name}
                       </span>
                     )}
                   </div>
