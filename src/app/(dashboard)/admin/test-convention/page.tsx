@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
-import { Loader2, FileText, Sparkles } from "lucide-react";
+import { Loader2, FileText, Sparkles, FlaskConical } from "lucide-react";
 
 /**
  * Page de test temporaire — Story B-Convention.
@@ -88,6 +88,46 @@ export default function TestConventionPage() {
     })();
   }, [supabase, selectedSessionId]);
 
+  async function handleGenerateMock() {
+    setGenerating(true);
+    setLastResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-convention-mock", {
+        method: "POST",
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.error || `HTTP ${res.status}`);
+      }
+
+      setLastResult({
+        engineUsed: json.engineUsed,
+        cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs,
+        fileSizeBytes: json.fileSizeBytes,
+      });
+
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank");
+
+      toast({
+        title: "PDF mock généré",
+        description: `${json.engineUsed} · ${json.latencyMs}ms`,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast({
+        title: "Échec génération mock",
+        description: msg,
+        variant: "destructive",
+      });
+    } finally {
+      setGenerating(false);
+    }
+  }
+
   async function handleGenerate() {
     if (!selectedSessionId || !selectedClientId) {
       toast({
@@ -158,9 +198,40 @@ export default function TestConventionPage() {
         </p>
       </div>
 
+      <Card className="border-blue-200 bg-blue-50/30">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <FlaskConical className="h-4 w-4 text-blue-600" />
+            Mode rapide — Données factices
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Génère un PDF avec des données mockées (Acme Formation SAS, 3
+            apprenants, formation Habilitation Électrique). Permet de valider
+            le rendu visuel du template sans avoir besoin de vraie session
+            en base. Le logo et la signature organisme viennent quand même
+            de ton entité réelle.
+          </p>
+          <Button
+            onClick={handleGenerateMock}
+            disabled={generating}
+            className="w-full gap-2"
+            variant="default"
+          >
+            {generating ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <FlaskConical className="h-4 w-4" />
+            )}
+            Générer un PDF de test (données factices)
+          </Button>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Sélection</CardTitle>
+          <CardTitle className="text-base">Données réelles</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
