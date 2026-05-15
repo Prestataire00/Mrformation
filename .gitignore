@@ -53,3 +53,6 @@ next-env.d.ts
 
 # Sentry
 .sentryclirc
+
+# Generated CRM import SQL (contains client data — never commit)
+scripts/generated-crm-import/
