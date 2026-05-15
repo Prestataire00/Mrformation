@@ -67,6 +67,11 @@ function getCloudConvertClient(): CloudConvert {
 /**
  * Génère un PDF à partir d'un contenu HTML complet (avec balises <html>, <head>, <body>).
  *
+ * @deprecated Depuis Story A2 (refonte Documents) — utiliser
+ *   `DocumentGenerationService.generate()` qui ajoute cache + fallback Puppeteer.
+ *   Cette fonction reste fonctionnelle (utilisée en interne par CloudConvertEngine
+ *   comme fallback) mais le nouveau code applicatif doit passer par le service.
+ *
  * @param html Document HTML complet. Inclure les styles CSS dans <style> ou inline.
  * @param options Format, orientation, marges.
  * @returns PDF (base64 + buffer + taille).
@@ -87,6 +92,10 @@ export async function generatePdfFromHtml(
 /**
  * Helper : génère un PDF à partir d'un fragment HTML (sans <html><body>).
  * Wrappe automatiquement dans un document complet avec styles par défaut.
+ *
+ * @deprecated Depuis Story A2 — préférer `DocumentGenerationService.generate()`
+ *   avec un HTML déjà wrappé. Cette fonction reste utilisable mais ne bénéficie
+ *   pas du cache ni du fallback automatique.
  */
 export async function generatePdfFromFragment(
   bodyHtml: string,
