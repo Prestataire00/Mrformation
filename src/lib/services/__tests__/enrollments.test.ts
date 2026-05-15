@@ -163,8 +163,8 @@ describe("createLearnerAndEnroll", () => {
     expect(eqDelete).toHaveBeenCalledWith("id", "l1");
   });
 
-  it("log un console.error si le rollback delete échoue", async () => {
-    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+  it("émet un événement structuré rollback_delete_failed si le rollback delete échoue", async () => {
+    const spy = vi.spyOn(console, "log").mockImplementation(() => {});
 
     const { supabase } = makeMock({
       createLearner: { data: { id: "l1" }, error: null },
@@ -183,10 +183,14 @@ describe("createLearnerAndEnroll", () => {
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.message).toBe("FK error"); // erreur originale, pas rollback
-    expect(spy).toHaveBeenCalledWith(
-      "[enrollments] rollback delete learner failed",
-      expect.objectContaining({ learnerId: "l1" })
-    );
+
+    const event = spy.mock.calls
+      .map((c) => JSON.parse(c[0] as string))
+      .find((e) => e.event === "rollback_delete_failed");
+    expect(event).toBeDefined();
+    expect(event.table).toBe("learners");
+    expect(event.row_id).toBe("l1");
+    expect(event.error).toBe("delete failed");
     spy.mockRestore();
   });
 });

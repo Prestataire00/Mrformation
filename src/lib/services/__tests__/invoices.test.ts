@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { cascadeSessionPriceToPendingInvoices } from "@/lib/services/invoices";
+import type { PriceCascadeContext } from "@/lib/services/invoices";
 import type { Session } from "@/lib/types";
 
 // Mock formation. The helper passes it to buildInvoiceLinesForCompany.
@@ -68,11 +69,17 @@ function makeMockSupabase(opts: {
   };
 }
 
-const fakeFormation = { id: "s1", title: "Test" } as Session;
+const fakeFormation = { id: "s1", title: "Test", entity_id: "e1" } as Session;
+const fakePriceContext: PriceCascadeContext = { oldPrice: 1000, newPrice: 1200, userId: "u1" };
 
 describe("cascadeSessionPriceToPendingInvoices", () => {
   beforeEach(() => {
     vi.mocked(buildInvoiceLinesForCompany).mockReset();
+    vi.spyOn(console, "log").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("happy path : 2 pending company invoices recalculées", async () => {
@@ -89,7 +96,7 @@ describe("cascadeSessionPriceToPendingInvoices", () => {
       ],
     });
 
-    const result = await cascadeSessionPriceToPendingInvoices(supabase, "s1", fakeFormation);
+    const result = await cascadeSessionPriceToPendingInvoices(supabase, "s1", fakeFormation, fakePriceContext);
 
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -118,7 +125,7 @@ describe("cascadeSessionPriceToPendingInvoices", () => {
       ],
     });
 
-    const result = await cascadeSessionPriceToPendingInvoices(supabase, "s1", fakeFormation);
+    const result = await cascadeSessionPriceToPendingInvoices(supabase, "s1", fakeFormation, fakePriceContext);
 
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -136,7 +143,7 @@ describe("cascadeSessionPriceToPendingInvoices", () => {
       ],
     });
 
-    const result = await cascadeSessionPriceToPendingInvoices(supabase, "s1", fakeFormation);
+    const result = await cascadeSessionPriceToPendingInvoices(supabase, "s1", fakeFormation, fakePriceContext);
 
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -162,7 +169,7 @@ describe("cascadeSessionPriceToPendingInvoices", () => {
       insertErrors: { inv2: { message: "FK violation", code: "23503" } },
     });
 
-    const result = await cascadeSessionPriceToPendingInvoices(supabase, "s1", fakeFormation);
+    const result = await cascadeSessionPriceToPendingInvoices(supabase, "s1", fakeFormation, fakePriceContext);
 
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -179,12 +186,67 @@ describe("cascadeSessionPriceToPendingInvoices", () => {
       fetchError: { message: "RLS denied", code: "42501" },
     });
 
-    const result = await cascadeSessionPriceToPendingInvoices(supabase, "s1", fakeFormation);
+    const result = await cascadeSessionPriceToPendingInvoices(supabase, "s1", fakeFormation, fakePriceContext);
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error.message).toBe("RLS denied");
       expect(result.error.code).toBe("42501");
     }
+  });
+
+  it("émet l'événement session_price_cascade sur le chemin succès avec les bons compteurs", async () => {
+    vi.mocked(buildInvoiceLinesForCompany).mockReturnValue({
+      lines: [{ description: "Formation", quantity: 1, unit_price: 800 }],
+      participantsNote: null,
+      amountHT: 800,
+    });
+
+    const { supabase } = makeMockSupabase({
+      invoices: [
+        { id: "inv1", status: "pending", recipient_type: "company", recipient_id: "c1" },
+        { id: "inv2", status: "pending", recipient_type: "company", recipient_id: "c2" },
+        { id: "inv3", status: "pending", recipient_type: "company", recipient_id: "c3" },
+      ],
+      insertErrors: { inv3: { message: "FK violation", code: "23503" } },
+    });
+
+    const logSpy = vi.mocked(console.log);
+    await cascadeSessionPriceToPendingInvoices(supabase, "s1", fakeFormation, fakePriceContext);
+
+    const event = logSpy.mock.calls
+      .map((c) => JSON.parse(c[0] as string))
+      .find((e) => e.event === "session_price_cascade");
+    expect(event).toBeDefined();
+    expect(event.session_id).toBe("s1");
+    expect(event.entity_id).toBe("e1");
+    expect(event.old_price).toBe(1000);
+    expect(event.new_price).toBe(1200);
+    expect(event.affected_invoices_count).toBe(2);
+    expect(event.failed_invoices_count).toBe(1);
+    expect(event.triggered_by_user_id).toBe("u1");
+    expect(event.error).toBeUndefined();
+    expect(typeof event.ts).toBe("string");
+  });
+
+  it("émet session_price_cascade avec error fetch_failed et compteurs à zéro si le fetch échoue", async () => {
+    const { supabase } = makeMockSupabase({
+      invoices: [],
+      fetchError: { message: "RLS denied", code: "42501" },
+    });
+
+    const logSpy = vi.mocked(console.log);
+    await cascadeSessionPriceToPendingInvoices(supabase, "s1", fakeFormation, fakePriceContext);
+
+    const event = logSpy.mock.calls
+      .map((c) => JSON.parse(c[0] as string))
+      .find((e) => e.event === "session_price_cascade");
+    expect(event).toBeDefined();
+    expect(event.error).toBe("fetch_failed");
+    expect(event.session_id).toBe("s1");
+    expect(event.entity_id).toBe("e1");
+    expect(event.affected_invoices_count).toBe(0);
+    expect(event.failed_invoices_count).toBe(0);
+    expect(event.triggered_by_user_id).toBe("u1");
   });
 });

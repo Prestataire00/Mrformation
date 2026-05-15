@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { logEvent } from "@/lib/logger";
 
 export type ServiceResult<T> =
   | ({ ok: true } & T)
@@ -97,9 +98,10 @@ export async function createLearnerAndEnroll(
       .delete()
       .eq("id", learner.id);
     if (rollbackError) {
-      console.error("[enrollments] rollback delete learner failed", {
-        learnerId: learner.id,
-        error: rollbackError,
+      logEvent("rollback_delete_failed", {
+        table: "learners",
+        row_id: learner.id,
+        error: rollbackError.message,
       });
     }
     return {

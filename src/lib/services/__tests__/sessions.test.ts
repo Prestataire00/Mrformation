@@ -197,8 +197,8 @@ describe("createSessionWithOptionalCompany", () => {
     expect(insertFormationCompanies).not.toHaveBeenCalled();
   });
 
-  it("log un console.error si le rollback delete échoue", async () => {
-    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  it("émet un événement structuré rollback_delete_failed si le rollback delete échoue", async () => {
+    const consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
     const { supabase } = makeSupabaseForCreate({
       insertSession: { data: { id: "s1" }, error: null },
@@ -213,12 +213,16 @@ describe("createSessionWithOptionalCompany", () => {
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.message).toBe("FK error"); // l'erreur originale, pas celle du rollback
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      "[sessions] rollback delete failed",
-      expect.objectContaining({ sessionId: "s1" })
-    );
 
-    consoleErrorSpy.mockRestore();
+    const event = consoleLogSpy.mock.calls
+      .map((c) => JSON.parse(c[0] as string))
+      .find((e) => e.event === "rollback_delete_failed");
+    expect(event).toBeDefined();
+    expect(event.table).toBe("sessions");
+    expect(event.row_id).toBe("s1");
+    expect(event.error).toBe("delete failed");
+
+    consoleLogSpy.mockRestore();
   });
 });
 

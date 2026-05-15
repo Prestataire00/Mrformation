@@ -178,7 +178,13 @@ export function ResumePriceHours({ formation, onRefresh }: Props) {
 
       // Story 2.2 — cascade prix vers factures pending (company recipients only)
       if (priceChanged) {
-        const cascade = await cascadeSessionPriceToPendingInvoices(supabase, formation.id, formation);
+        // Story 5.3 — userId pour la traçabilité de l'événement session_price_cascade
+        const { data: { user } } = await supabase.auth.getUser();
+        const cascade = await cascadeSessionPriceToPendingInvoices(supabase, formation.id, formation, {
+          oldPrice,
+          newPrice: newPriceParsed,
+          userId: user?.id ?? null,
+        });
         if (cascade.ok) {
           if (cascade.impacted > 0) {
             toast({
