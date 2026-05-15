@@ -179,7 +179,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { title, description, status, priority, due_date, reminder_at, assigned_to, prospect_id, client_id } = parsed.data;
+    const { title, description, status, priority, due_date, reminder_at, assigned_to, prospect_id, client_id, label, contact_email } = parsed.data;
 
     // Try service-role first (bypasses RLS), fallback to authenticated client
     let dbClient;
@@ -196,6 +196,8 @@ export async function POST(request: NextRequest) {
         description: description ?? null,
         status,
         priority,
+        label: label ?? null,
+        contact_email: contact_email ? contact_email : null,
         due_date: due_date ?? null,
         reminder_at: reminder_at ?? null,
         assigned_to: profile.role === "trainer" ? user.id : (assigned_to ?? user.id),

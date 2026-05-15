@@ -39,7 +39,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 import { cn, formatDate } from "@/lib/utils";
-import { crmTaskLabelStyle } from "@/lib/utils/crm-task-label-style";
+import { crmTaskLabelStyle, isGenericTaskTitle } from "@/lib/utils/crm-task-label-style";
 import type { TaskStatus, TaskPriority } from "@/lib/types";
 
 interface Task {
@@ -378,26 +378,43 @@ export default function ProspectTasksSection({ prospectId, prospectName }: Prosp
                 </button>
 
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between gap-2">
-                    <p
-                      className={cn(
-                        "text-sm font-medium text-gray-900",
-                        task.status === "completed" && "line-through text-gray-500"
-                      )}
-                    >
-                      {task.title}
-                    </p>
-                    <button
-                      onClick={() => handleDelete(task.id)}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-red-500"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
+                  {(() => {
+                    // Fallback display (cf util isGenericTaskTitle) : si title
+                    // est générique (Sellsy historique), on affiche description
+                    // ou prospect_name à la place.
+                    const titleIsGeneric = isGenericTaskTitle(task.title, task.label);
+                    // Ici on est dans la fiche d'un prospect : pas besoin de
+                    // promouvoir prospect.company_name (déjà dans le header).
+                    // On préfère donc la description si elle existe.
+                    const displayTitle = titleIsGeneric && task.description?.trim()
+                      ? task.description.trim()
+                      : task.title;
+                    const showDescriptionBelow = !titleIsGeneric && task.description;
+                    return (
+                      <>
+                        <div className="flex items-start justify-between gap-2">
+                          <p
+                            className={cn(
+                              "text-sm font-medium text-gray-900",
+                              task.status === "completed" && "line-through text-gray-500"
+                            )}
+                          >
+                            {displayTitle}
+                          </p>
+                          <button
+                            onClick={() => handleDelete(task.id)}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-red-500"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
 
-                  {task.description && (
-                    <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{task.description}</p>
-                  )}
+                        {showDescriptionBelow && (
+                          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{task.description}</p>
+                        )}
+                      </>
+                    );
+                  })()}
 
                   <div className="flex items-center gap-2 mt-2 flex-wrap">
                     <Badge className={cn("text-[10px] border-0 font-medium", priorityCfg.bg, priorityCfg.color)}>
