@@ -390,11 +390,16 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
       qrCodeDataUrl,
     };
 
+    // Bug Story B0 — résolu : `entity` était oublié dans le contexte, ce qui
+    // cassait toutes les variables organisme ({{logo_organisme}},
+    // {{siret_organisme}}, {{signature_organisme}}, etc.). Le `entity` est
+    // pourtant chargé plus haut et utilisé pour `templateData`.
     const resolveCtx = {
       session: formation,
       learner: learner || null,
       client: company || null,
       trainer: trainerData || null,
+      entity: entity ?? null,
     };
 
     let htmlContent: string | null = null;

@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { formatDate } from "@/lib/utils";
 import type { Session, Client, Learner, Trainer } from "@/lib/types";
 import { getLearnersForCompany, getAmountForCompany } from "@/lib/utils/formation-companies";
@@ -211,3 +212,130 @@ export function findUnresolvedVariables(content: string): string[] {
   const matches = content.match(/\{\{[^}]+\}\}/g);
   return matches ? [...new Set(matches)] : [];
 }
+
+/**
+ * Alias canonique pour la résolution de variables documents (cf Story B0 du
+ * refactor Documents — epics-documents.md). Préférer ce nom dans le nouveau
+ * code applicatif ; l'export `resolveVariables` reste pour rétro-compat avec
+ * les 8+ call sites existants.
+ */
+export const resolveDocumentVariables = resolveVariables;
+
+/**
+ * Extrait le `Record<string, string>` des variables résolues pour les
+ * consumers qui ne veulent pas un template HTML pré-substitué (ex :
+ * docxtemplater qui prend directement un objet `{ nom: "valeur" }`).
+ *
+ * Sortie : `{ "nom_apprenant": "Pierre Martin", "date_formation": "15/05/2026", ... }`
+ * (clés SANS les délimiteurs `{{ }}`).
+ *
+ * NB : les valeurs `[Placeholder]` du fallback sont remplacées par "" pour
+ * docxtemplater (cohérent avec la convention "no undefined in PDF").
+ */
+export function getResolvedVariablesMap(data: ResolveContext): Record<string, string> {
+  // Stratégie : on construit un probe template avec un format ligne par ligne
+  // `__START__<key>__SEP__{{key}}__END__`. Après résolution de resolveVariables,
+  // chaque ligne devient `__START__<key>__SEP__<valeur résolue>__END__`. On
+  // parse chaque ligne pour extraire (key, valeur) — évite tout regex sur les
+  // délimiteurs `{{ }}` qui ont disparu après la substitution.
+  const probeTemplate = VARIABLE_KEYS.map((k) => {
+    const stripped = k.replace(/^\{\{|\}\}$/g, "");
+    return `__START__${stripped}__SEP__${k}__END__`;
+  }).join("\n");
+  const resolved = resolveVariables(probeTemplate, data);
+
+  const map: Record<string, string> = {};
+  // Capture multi-ligne : la valeur peut contenir des HTML inline (ex: <img>).
+  const lineRegex = /__START__([a-z_]+)__SEP__([\s\S]*?)__END__/g;
+  let match: RegExpExecArray | null;
+  while ((match = lineRegex.exec(resolved)) !== null) {
+    const key = match[1];
+    const value = match[2];
+    // Convertit les placeholders fallback "[Xxx]" en chaîne vide pour les
+    // consumers docxtemplater (qui afficheraient "[Nom apprenant]" comme du
+    // texte brut dans le PDF — pas joli).
+    map[key] = /^\[.*\]$/.test(value) ? "" : value;
+  }
+  return map;
+}
+
+/**
+ * Liste exhaustive des clés `{{xxx}}` supportées. Source de vérité unique pour
+ * `getResolvedVariablesMap` et pour les pages admin qui montrent le catalogue.
+ */
+/**
+ * Charge les paramètres organisme (entity) depuis Supabase pour les variables
+ * `{{logo_organisme}}`, `{{signature_organisme}}`, `{{siret_organisme}}`, etc.
+ *
+ * Retourne `null` si l'entity n'existe pas ou si la lecture échoue (Loris doit
+ * pouvoir générer des docs même si une variable organisme manque — le fallback
+ * `[Adresse organisme]` du resolver est lisible).
+ *
+ * Utilisé par TabConventionDocs (charge entity au mount) et par
+ * email-attachments-resolver (charge entity avant chaque envoi).
+ */
+export async function loadEntitySettings(
+  supabase: SupabaseClient,
+  entityId: string,
+): Promise<ResolveContext["entity"] | null> {
+  const { data, error } = await supabase
+    .from("entities")
+    .select(
+      "siret, nda, address, postal_code, city, email, phone, website, president_name, signature_text, stamp_url, signature_url, logo_url",
+    )
+    .eq("id", entityId)
+    .maybeSingle();
+  if (error || !data) {
+    return null;
+  }
+  return data as ResolveContext["entity"];
+}
+
+export const VARIABLE_KEYS = [
+  "{{nom_client}}",
+  "{{nom_apprenant}}",
+  "{{prenom_apprenant}}",
+  "{{nom_formateur}}",
+  "{{titre_formation}}",
+  "{{date_formation}}",
+  "{{date_debut}}",
+  "{{date_fin}}",
+  "{{lieu}}",
+  "{{duree_heures}}",
+  "{{date_today}}",
+  "{{numero_facture}}",
+  "{{montant}}",
+  "{{signature_apprenant}}",
+  "{{signature_formateur}}",
+  "{{email_apprenant}}",
+  "{{telephone_apprenant}}",
+  "{{entreprise_contact}}",
+  "{{telephone_client}}",
+  "{{email_client}}",
+  "{{nom_commercial}}",
+  "{{lien_connexion}}",
+  "{{date_limite}}",
+  "{{client_adresse}}",
+  "{{client_siret}}",
+  "{{client_representant}}",
+  "{{montant_ht}}",
+  "{{montant_ttc}}",
+  "{{montant_tva}}",
+  "{{formation_effectifs}}",
+  "{{liste_apprenants}}",
+  "{{formation_modalite}}",
+  "{{formateurs_noms}}",
+  "{{programme_objectifs}}",
+  "{{programme_prerequis}}",
+  "{{programme_public}}",
+  "{{programme_contenu}}",
+  "{{siret_organisme}}",
+  "{{nda_organisme}}",
+  "{{adresse_organisme}}",
+  "{{email_organisme}}",
+  "{{telephone_organisme}}",
+  "{{site_organisme}}",
+  "{{signature_organisme}}",
+  "{{tampon_organisme}}",
+  "{{logo_organisme}}",
+] as const;
