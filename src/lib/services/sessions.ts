@@ -110,7 +110,7 @@ export async function createSessionWithOptionalCompany(
       if (rollbackError) {
         logEvent("rollback_delete_failed", {
           table: "sessions",
-          session_id: session.id,
+          row_id: session.id,
           error: rollbackError.message,
         });
       }

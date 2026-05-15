@@ -100,7 +100,7 @@ export async function createLearnerAndEnroll(
     if (rollbackError) {
       logEvent("rollback_delete_failed", {
         table: "learners",
-        learner_id: learner.id,
+        row_id: learner.id,
         error: rollbackError.message,
       });
     }

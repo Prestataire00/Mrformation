@@ -219,7 +219,7 @@ describe("createSessionWithOptionalCompany", () => {
       .find((e) => e.event === "rollback_delete_failed");
     expect(event).toBeDefined();
     expect(event.table).toBe("sessions");
-    expect(event.session_id).toBe("s1");
+    expect(event.row_id).toBe("s1");
     expect(event.error).toBe("delete failed");
 
     consoleLogSpy.mockRestore();

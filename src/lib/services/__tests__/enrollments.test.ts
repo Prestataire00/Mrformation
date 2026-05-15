@@ -189,7 +189,7 @@ describe("createLearnerAndEnroll", () => {
       .find((e) => e.event === "rollback_delete_failed");
     expect(event).toBeDefined();
     expect(event.table).toBe("learners");
-    expect(event.learner_id).toBe("l1");
+    expect(event.row_id).toBe("l1");
     expect(event.error).toBe("delete failed");
     spy.mockRestore();
   });
