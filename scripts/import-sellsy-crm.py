@@ -182,6 +182,10 @@ def map_task(row, entity_key):
     # ID OBJET LIE comme prospect_sellsy_id potentiel : si la sous-requête SQL ne
     # trouve pas de prospect correspondant (ex : la ligne référence un client ou
     # un prospect supprimé entre-temps côté Sellsy), prospect_id sera NULL (autorisé).
+    raw_email = row.get("EMAIL CLIENT / PROSPECT / FOURNISSEUR", "").strip()
+    # Sellsy exporte "N/C" (Non Communiqué) quand le champ n'est pas rempli — on
+    # le traite comme NULL. Idem si la chaîne n'est pas un email plausible.
+    contact_email = raw_email if raw_email and raw_email.upper() != "N/C" and "@" in raw_email else None
     return {
         "external_ref": task_hash(title, date_creation, id_objet_lie, entity_key),
         "title": title or "(sans titre)",
@@ -192,6 +196,7 @@ def map_task(row, entity_key):
         "description": row.get("DESCRIPTION", "").strip() or None,
         "creator_raw": row.get("CREATEUR", "").strip(),
         "prospect_sellsy_id": id_objet_lie if id_objet_lie else None,
+        "contact_email": contact_email,
         "entity_key": entity_key,
     }
 
@@ -428,7 +433,8 @@ def _task_row_sql(t):
         f"{sql_str(t['description'])}, "
         f"{prospect_sub}, "
         f"{owner_subquery(t['creator_raw'])}, "
-        f"{sql_str(t['created_at']) if t['created_at'] else 'NOW()'})"
+        f"{sql_str(t['created_at']) if t['created_at'] else 'NOW()'}, "
+        f"{sql_str(t['contact_email'])})"
     )
 
 
@@ -454,7 +460,7 @@ def write_tasks(out_dir, tasks, split=False):
             sql += (
                 "INSERT INTO crm_tasks "
                 "(sellsy_external_ref, entity_id, title, status, label, due_date, "
-                "description, prospect_id, created_by, created_at)\nVALUES\n"
+                "description, prospect_id, created_by, created_at, contact_email)\nVALUES\n"
             )
             sql += ",\n".join(_task_row_sql(t) for t in batch)
             sql += (
@@ -466,6 +472,7 @@ def write_tasks(out_dir, tasks, split=False):
                 "description = EXCLUDED.description, "
                 "prospect_id = EXCLUDED.prospect_id, "
                 "created_by = EXCLUDED.created_by, "
+                "contact_email = EXCLUDED.contact_email, "
                 "updated_at = NOW();\n\n"
             )
 
