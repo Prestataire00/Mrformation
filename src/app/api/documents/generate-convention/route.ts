@@ -67,28 +67,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ── Charge le contexte de résolution (session + client + entity) ──────
-    const [
-      { data: session },
-      { data: client },
-      entity,
-    ] = await Promise.all([
-      supabase
-        .from("sessions")
-        .select(
-          "*, training:trainings(*), enrollments:enrollments(*, learner:learners(*), client_id), program:programs(*), formation_trainers:formation_trainers(trainer:trainers(*))",
-        )
-        .eq("id", body.sessionId)
-        .eq("entity_id", profile.entity_id)
-        .single(),
-      supabase
-        .from("clients")
-        .select("*, contacts(*)")
-        .eq("id", body.clientId)
-        .eq("entity_id", profile.entity_id)
-        .single(),
-      loadEntitySettings(supabase, profile.entity_id),
-    ]);
+    // ── Charge la session (strict : entity_id check — gate sécurité) ──────
+    const { data: session } = await supabase
+      .from("sessions")
+      .select(
+        "*, training:trainings(*), enrollments:enrollments(*, learner:learners(*), client_id), program:programs(*), formation_trainers:formation_trainers(trainer:trainers(*))",
+      )
+      .eq("id", body.sessionId)
+      .eq("entity_id", profile.entity_id)
+      .single();
 
     if (!session) {
       return NextResponse.json(
@@ -96,9 +83,42 @@ export async function POST(request: NextRequest) {
         { status: 404 },
       );
     }
+
+    // ── Vérifie que le client est bien rattaché à cette session via
+    // formation_companies. C'est la VRAIE preuve d'accès — pas un check
+    // direct sur client.entity_id qui peut diverger sur des données legacy
+    // (rattachement multi-tenant historique cassé).
+    const { data: link } = await supabase
+      .from("formation_companies")
+      .select("client_id")
+      .eq("session_id", body.sessionId)
+      .eq("client_id", body.clientId)
+      .maybeSingle();
+
+    if (!link) {
+      return NextResponse.json(
+        {
+          error:
+            "Client non rattaché à cette session (vérifier formation_companies)",
+        },
+        { status: 404 },
+      );
+    }
+
+    // ── Charge client + entity en parallèle (sans filtre entity_id sur
+    // client : le lien formation_companies suffit comme preuve d'accès)
+    const [{ data: client }, entity] = await Promise.all([
+      supabase
+        .from("clients")
+        .select("*, contacts(*)")
+        .eq("id", body.clientId)
+        .single(),
+      loadEntitySettings(supabase, profile.entity_id),
+    ]);
+
     if (!client) {
       return NextResponse.json(
-        { error: "Client introuvable ou non autorisé" },
+        { error: "Client introuvable (FK cassée ?)" },
         { status: 404 },
       );
     }
