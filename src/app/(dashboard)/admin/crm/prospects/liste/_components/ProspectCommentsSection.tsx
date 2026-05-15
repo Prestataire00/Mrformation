@@ -2,21 +2,29 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { MessageSquare, Send, Trash2, Loader2 } from "lucide-react";
+import { useEntity } from "@/contexts/EntityContext";
+import { MessageSquare, Send, Trash2, Loader2, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
 import { cn, formatDate, getInitials } from "@/lib/utils";
 
 interface Comment {
   id: string;
-  content: string;
+  text: string;
   created_at: string;
-  author_id: string;
+  comment_date: string | null;
+  // In-app comments
+  author_id: string | null;
   author_first_name: string | null;
   author_last_name: string | null;
+  // Sellsy-imported comments
+  sellsy_id: string | null;
+  author_name: string | null;
+  author_email: string | null;
 }
 
 interface ProspectCommentsSectionProps {
@@ -25,6 +33,7 @@ interface ProspectCommentsSectionProps {
 
 export default function ProspectCommentsSection({ prospectId }: ProspectCommentsSectionProps) {
   const supabase = createClient();
+  const { entityId } = useEntity();
   const { toast } = useToast();
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -33,11 +42,16 @@ export default function ProspectCommentsSection({ prospectId }: ProspectComments
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   const fetchComments = useCallback(async () => {
+    if (!entityId) return;
     setLoading(true);
     const { data, error } = await supabase
-      .from("prospect_comments")
-      .select(`id, content, created_at, author_id, profiles:profiles!prospect_comments_author_id_fkey (first_name, last_name)`)
+      .from("crm_prospect_comments")
+      .select(
+        `id, text, comment_date, created_at, author_id, author_name, author_email, sellsy_id,
+         profiles:author_id (first_name, last_name)`
+      )
       .eq("prospect_id", prospectId)
+      .eq("entity_id", entityId)
       .order("created_at", { ascending: false });
 
     if (!error && data) {
@@ -45,17 +59,28 @@ export default function ProspectCommentsSection({ prospectId }: ProspectComments
         const profile = c.profiles as { first_name?: string; last_name?: string } | null;
         return {
           id: c.id as string,
-          content: c.content as string,
+          text: c.text as string,
           created_at: c.created_at as string,
-          author_id: c.author_id as string,
+          comment_date: (c.comment_date as string | null) ?? null,
+          author_id: (c.author_id as string | null) ?? null,
           author_first_name: profile?.first_name ?? null,
           author_last_name: profile?.last_name ?? null,
+          sellsy_id: (c.sellsy_id as string | null) ?? null,
+          author_name: (c.author_name as string | null) ?? null,
+          author_email: (c.author_email as string | null) ?? null,
         };
       });
       setComments(mapped);
+    } else if (error) {
+      console.error("[ProspectCommentsSection] fetch failed", { error });
+      toast({
+        title: "Erreur",
+        description: "Impossible de charger les commentaires",
+        variant: "destructive",
+      });
     }
     setLoading(false);
-  }, [supabase, prospectId]);
+  }, [supabase, prospectId, entityId, toast]);
 
   useEffect(() => {
     fetchComments();
@@ -65,13 +90,14 @@ export default function ProspectCommentsSection({ prospectId }: ProspectComments
   }, [fetchComments, supabase]);
 
   async function handleSend() {
-    if (!newComment.trim() || !currentUserId) return;
+    if (!newComment.trim() || !currentUserId || !entityId) return;
     setSending(true);
     try {
-      const { error } = await supabase.from("prospect_comments").insert({
+      const { error } = await supabase.from("crm_prospect_comments").insert({
         prospect_id: prospectId,
+        entity_id: entityId,
         author_id: currentUserId,
-        content: newComment.trim(),
+        text: newComment.trim(),
       });
       if (error) throw error;
       setNewComment("");
@@ -89,7 +115,7 @@ export default function ProspectCommentsSection({ prospectId }: ProspectComments
   }
 
   async function handleDelete(commentId: string) {
-    const { error } = await supabase.from("prospect_comments").delete().eq("id", commentId);
+    const { error } = await supabase.from("crm_prospect_comments").delete().eq("id", commentId);
     if (error) {
       toast({ title: "Erreur", description: error.message, variant: "destructive" });
     } else {
@@ -158,8 +184,29 @@ export default function ProspectCommentsSection({ prospectId }: ProspectComments
         <ScrollArea className="max-h-[500px]">
           <div className="space-y-3">
             {comments.map((comment) => {
-              const isOwn = comment.author_id === currentUserId;
-              const timeAgo = getRelativeTime(comment.created_at);
+              const isSellsy = !!comment.sellsy_id;
+              const isOwn = !isSellsy && comment.author_id === currentUserId;
+              const displayDate = comment.comment_date ?? comment.created_at;
+              const timeAgo = getRelativeTime(displayDate);
+
+              // Display name : in-app (profile) > Sellsy author_name > Sellsy author_email > fallback
+              let displayName: string;
+              let initials: string;
+              if (comment.author_first_name || comment.author_last_name) {
+                displayName = `${comment.author_first_name ?? ""} ${comment.author_last_name ?? ""}`.trim();
+                initials = getInitials(comment.author_first_name ?? "", comment.author_last_name ?? "");
+              } else if (comment.author_name) {
+                displayName = comment.author_name;
+                const parts = comment.author_name.split(/\s+/);
+                initials = getInitials(parts[0] ?? "", parts.slice(1).join(" "));
+              } else if (comment.author_email) {
+                displayName = comment.author_email;
+                initials = comment.author_email.slice(0, 2).toUpperCase();
+              } else {
+                displayName = "Auteur inconnu";
+                initials = "??";
+              }
+
               return (
                 <div
                   key={comment.id}
@@ -169,18 +216,26 @@ export default function ProspectCommentsSection({ prospectId }: ProspectComments
                     <Avatar className="h-8 w-8 flex-shrink-0">
                       <AvatarFallback className={cn(
                         "text-xs font-semibold",
-                        isOwn ? "bg-blue-100 text-blue-700" : "bg-violet-100 text-violet-700"
+                        isOwn ? "bg-blue-100 text-blue-700" :
+                        isSellsy ? "bg-amber-100 text-amber-700" :
+                        "bg-violet-100 text-violet-700"
                       )}>
-                        {getInitials(comment.author_first_name ?? "", comment.author_last_name ?? "")}
+                        {initials || "??"}
                       </AvatarFallback>
                     </Avatar>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-sm font-medium text-gray-900">
-                            {comment.author_first_name} {comment.author_last_name}
+                            {displayName}
                           </span>
-                          <span className="text-[11px] text-muted-foreground" title={formatDate(comment.created_at, "dd/MM/yyyy HH:mm")}>
+                          {isSellsy && (
+                            <Badge variant="outline" className="h-5 gap-1 border-amber-200 bg-amber-50 px-1.5 text-[10px] font-medium text-amber-700">
+                              <Download className="h-2.5 w-2.5" />
+                              Sellsy
+                            </Badge>
+                          )}
+                          <span className="text-[11px] text-muted-foreground" title={formatDate(displayDate, "dd/MM/yyyy HH:mm")}>
                             {timeAgo}
                           </span>
                         </div>
@@ -188,13 +243,14 @@ export default function ProspectCommentsSection({ prospectId }: ProspectComments
                           <button
                             onClick={() => handleDelete(comment.id)}
                             className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-red-500"
+                            aria-label="Supprimer ce commentaire"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
                         )}
                       </div>
                       <p className="text-sm text-gray-700 mt-1 whitespace-pre-wrap leading-relaxed">
-                        {comment.content}
+                        {comment.text}
                       </p>
                     </div>
                   </div>

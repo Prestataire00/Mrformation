@@ -724,18 +724,33 @@ export interface CrmTask {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  // Champs ajoutés par l'import Sellsy (cf migrations add_crm_sellsy_import_fields
+  // et add_crm_tasks_contact_email).
+  sellsy_external_ref: string | null;
+  label: string | null;
+  contact_email: string | null;
   assignee?: Profile;
   prospect?: CrmProspect;
   client?: Client;
 }
 
+// Reflète le schema unifié `crm_prospect_comments` (cf migration
+// unify_prospect_comments_tables.sql). Couvre 2 cas :
+//   - Commentaire in-app : `author_id` rempli, `author_name`/`author_email`/`sellsy_id` NULL.
+//   - Commentaire importé Sellsy : `sellsy_id` rempli, `author_name`/`author_email`
+//     en texte, `author_id` NULL.
 export interface ProspectComment {
   id: string;
   prospect_id: string;
-  author_id: string;
-  content: string;
+  entity_id: string;
+  author_id: string | null;
+  author_name: string | null;
+  author_email: string | null;
+  comment_date: string | null;
+  text: string;
+  sellsy_id: string | null;
+  parent_sellsy_id: string | null;
   created_at: string;
-  updated_at: string;
 }
 
 export type QuoteStatus = "draft" | "sent" | "accepted" | "rejected" | "expired";
