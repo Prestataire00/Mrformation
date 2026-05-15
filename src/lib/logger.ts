@@ -13,6 +13,20 @@ function log(level: LogLevel, message: string, data?: unknown) {
   }
 }
 
+/**
+ * Émet un événement métier structuré, TOUJOURS visible (dev + prod) — distinct
+ * du `logger.info/debug/warn` qui est silencieux en prod.
+ *
+ * Format : `console.log(JSON.stringify({ event, ts, ...context }))`.
+ * Grep-able dans Netlify Logs (`event="document_generated"`) pour diagnostic
+ * et alerting.
+ *
+ * Aucun appel Sentry — réservé aux erreurs via `logger.error`.
+ */
+export function logEvent(event: string, context: Record<string, unknown> = {}): void {
+  console.log(JSON.stringify({ event, ts: new Date().toISOString(), ...context }));
+}
+
 export const logger = {
   debug: (msg: string, data?: unknown) => log("debug", msg, data),
   info: (msg: string, data?: unknown) => log("info", msg, data),
