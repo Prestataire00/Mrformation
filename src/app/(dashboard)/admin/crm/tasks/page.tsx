@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
+import { crmTaskLabelStyle } from "@/lib/utils/crm-task-label-style";
 import {
   Plus,
   Search,
@@ -21,6 +22,9 @@ import {
   ClipboardList,
   List,
   LayoutGrid,
+  Mail,
+  Download,
+  Tag,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -173,6 +177,7 @@ export default function TasksPage() {
         .select(`
           *,
           assignee:profiles!crm_tasks_assigned_to_fkey(id, first_name, last_name, email),
+          creator:profiles!crm_tasks_created_by_fkey(id, first_name, last_name),
           prospect:crm_prospects!crm_tasks_prospect_id_fkey(id, company_name),
           client:clients!crm_tasks_client_id_fkey(id, company_name)
         `)
@@ -999,6 +1004,21 @@ function TaskRow({
         </div>
 
         <div className="mt-0.5 flex items-center gap-3 flex-wrap text-[11px] text-gray-400">
+          {task.label && (() => {
+            const s = crmTaskLabelStyle(task.label);
+            return (
+              <span className={cn("flex items-center gap-1 rounded px-1.5 py-0.5 font-medium", s.bg, s.text)}>
+                <Tag className="h-2.5 w-2.5" />
+                {task.label}
+              </span>
+            );
+          })()}
+          {task.sellsy_external_ref && (
+            <span className="flex items-center gap-1 rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 font-medium text-amber-700">
+              <Download className="h-2.5 w-2.5" />
+              Sellsy
+            </span>
+          )}
           {task.due_date && (
             <span className={cn("flex items-center gap-1", isOverdue && !isCompleted && "text-red-600 font-medium")}>
               <Calendar className="h-3 w-3" />
@@ -1006,11 +1026,27 @@ function TaskRow({
               {formatDate(task.due_date)}
             </span>
           )}
-          {profileName && (
+          {profileName ? (
             <span className="flex items-center gap-1">
               <User className="h-3 w-3" />
-              {profileName}
+              Assigné : {profileName}
             </span>
+          ) : task.creator && (
+            <span className="flex items-center gap-1 italic">
+              <User className="h-3 w-3" />
+              Créé par {task.creator.first_name} {task.creator.last_name}
+            </span>
+          )}
+          {task.contact_email && (
+            <a
+              href={`mailto:${task.contact_email}`}
+              onClick={(e) => e.stopPropagation()}
+              className="flex items-center gap-1 text-blue-600 hover:underline truncate max-w-[220px]"
+              title={task.contact_email}
+            >
+              <Mail className="h-3 w-3" />
+              {task.contact_email}
+            </a>
           )}
           {task.prospect && (
             <span className="flex items-center gap-1">

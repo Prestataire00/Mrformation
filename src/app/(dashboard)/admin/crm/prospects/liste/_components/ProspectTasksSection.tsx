@@ -13,6 +13,9 @@ import {
   Flag,
   CalendarDays,
   Bell,
+  Mail,
+  Download,
+  Tag,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,6 +39,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 import { cn, formatDate } from "@/lib/utils";
+import { crmTaskLabelStyle } from "@/lib/utils/crm-task-label-style";
 import type { TaskStatus, TaskPriority } from "@/lib/types";
 
 interface Task {
@@ -47,9 +51,16 @@ interface Task {
   due_date: string | null;
   reminder_at: string | null;
   assigned_to: string | null;
+  created_by: string | null;
   created_at: string;
+  // Champs ajoutés par l'import Sellsy
+  label: string | null;
+  contact_email: string | null;
+  sellsy_external_ref: string | null;
   assigned_profile?: { id: string; first_name: string; last_name: string } | null;
+  creator_profile?: { id: string; first_name: string; last_name: string } | null;
 }
+
 
 const STATUS_CONFIG: Record<TaskStatus, { label: string; icon: typeof Circle; color: string }> = {
   pending: { label: "À faire", icon: Circle, color: "text-gray-400" },
@@ -125,7 +136,11 @@ export default function ProspectTasksSection({ prospectId, prospectName }: Prosp
     setLoading(true);
     const { data, error } = await supabase
       .from("crm_tasks")
-      .select(`*, assigned_profile:profiles!crm_tasks_assigned_to_fkey (id, first_name, last_name)`)
+      .select(`
+        *,
+        assigned_profile:profiles!crm_tasks_assigned_to_fkey (id, first_name, last_name),
+        creator_profile:profiles!crm_tasks_created_by_fkey (id, first_name, last_name)
+      `)
       .eq("prospect_id", prospectId)
       .order("due_date", { ascending: true, nullsFirst: false });
 
@@ -390,6 +405,23 @@ export default function ProspectTasksSection({ prospectId, prospectName }: Prosp
                       {priorityCfg.label}
                     </Badge>
 
+                    {task.label && (() => {
+                      const s = crmTaskLabelStyle(task.label);
+                      return (
+                        <Badge className={cn("text-[10px] border-0 font-medium", s.bg, s.text)}>
+                          <Tag className="h-2.5 w-2.5 mr-0.5" />
+                          {task.label}
+                        </Badge>
+                      );
+                    })()}
+
+                    {task.sellsy_external_ref && (
+                      <Badge variant="outline" className="h-5 gap-1 border-amber-200 bg-amber-50 px-1.5 text-[10px] font-medium text-amber-700">
+                        <Download className="h-2.5 w-2.5" />
+                        Sellsy
+                      </Badge>
+                    )}
+
                     {task.due_date && (
                       <span
                         className={cn(
@@ -419,9 +451,25 @@ export default function ProspectTasksSection({ prospectId, prospectName }: Prosp
                       </span>
                     )}
 
-                    {task.assigned_profile && (
+                    {task.contact_email && (
+                      <a
+                        href={`mailto:${task.contact_email}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="flex items-center gap-1 text-[11px] text-blue-600 hover:underline truncate max-w-[200px]"
+                        title={task.contact_email}
+                      >
+                        <Mail className="h-3 w-3" />
+                        {task.contact_email}
+                      </a>
+                    )}
+
+                    {task.assigned_profile ? (
                       <span className="text-[11px] text-muted-foreground">
-                        {task.assigned_profile.first_name} {task.assigned_profile.last_name}
+                        Assigné : {task.assigned_profile.first_name} {task.assigned_profile.last_name}
+                      </span>
+                    ) : task.creator_profile && (
+                      <span className="text-[11px] text-muted-foreground italic">
+                        Créé par {task.creator_profile.first_name} {task.creator_profile.last_name}
                       </span>
                     )}
                   </div>

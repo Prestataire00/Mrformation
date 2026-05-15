@@ -729,6 +729,7 @@ export interface CrmTask {
   label: string | null;
   contact_email: string | null;
   assignee?: Profile;
+  creator?: Profile;
   prospect?: CrmProspect;
   client?: Client;
 }
