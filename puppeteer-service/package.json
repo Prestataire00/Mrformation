@@ -1,0 +1,26 @@
+{
+  "name": "mr-formation-puppeteer-service",
+  "version": "1.0.0",
+  "description": "PDF generation sidecar for MR/C3V Formation — Puppeteer + Express, deployed on Railway",
+  "private": true,
+  "type": "module",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "dev": "tsx watch src/server.ts"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "express": "^4.21.1",
+    "puppeteer": "^23.6.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^20.17.6",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}
