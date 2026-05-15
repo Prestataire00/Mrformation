@@ -99,18 +99,24 @@ def parse_fr_datetime(s):
 
 
 def owner_subquery(owner_raw):
-    """Génère une sous-requête SQL qui retourne l'id profile correspondant
-    au nom donné, ou NULL si introuvable. Tente d'abord le nom complet,
-    fallback sur le nom seul (last_name uniquement)."""
+    """Génère une sous-requête SQL qui retourne l'id profile correspondant au nom donné.
+
+    Cas 1 — nom complet ("Marc VICHOT", "Loris VICHOT") : match STRICT sur
+    `first_name || ' ' || last_name` (insensible à la casse). PAS de fallback
+    sur `last_name` seul (évite que "Marc VICHOT" remonte le profile de
+    "Loris VICHOT" parce qu'ils partagent un last_name — bug constaté en prod).
+
+    Cas 2 — un seul mot ("Karagueuzian" depuis CREATEUR des tâches) : match
+    sur `last_name` seul. Utile parce que Sellsy n'exporte que le nom de
+    famille pour les tâches.
+    """
     if not owner_raw or owner_raw.strip() == "":
         return "NULL"
     name = re.sub(r"\s*\(.*?\)", "", owner_raw).strip()
-    return (
-        "COALESCE("
-        f"(SELECT id FROM profiles WHERE LOWER(first_name || ' ' || last_name) = LOWER({sql_str(name)}) LIMIT 1),"
-        f"(SELECT id FROM profiles WHERE LOWER(last_name) = LOWER({sql_str(name.split()[-1])}) LIMIT 1)"
-        ")"
-    )
+    parts = name.split()
+    if len(parts) == 1:
+        return f"(SELECT id FROM profiles WHERE LOWER(last_name) = LOWER({sql_str(name)}) LIMIT 1)"
+    return f"(SELECT id FROM profiles WHERE LOWER(first_name || ' ' || last_name) = LOWER({sql_str(name)}) LIMIT 1)"
 
 
 def entity_sub(entity_key):
