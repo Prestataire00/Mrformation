@@ -135,34 +135,8 @@ export const CONVENTION_ENTREPRISE_HTML = `<!DOCTYPE html>
   .signature-col { font-size: 9pt; }
   .signature-col .role { font-weight: 700; margin: 0 0 2px; }
   .signature-col .signatory { margin: 0 0 6px; }
-  .signature-org-img { margin-top: 6px; min-height: 80px; }
-  .signature-org-img img { max-width: 220px; max-height: 110px; }
-
-  .e-signature-card {
-    margin-top: 6px;
-    border: 1px solid #93c5fd;
-    background: #eff6ff;
-    border-radius: 6px;
-    padding: 18px 12px;
-    text-align: center;
-    color: #1e3a8a;
-  }
-  .e-signature-card .e-sig-title {
-    font-weight: 700;
-    font-size: 12pt;
-    letter-spacing: 1px;
-  }
-  .e-signature-card .e-sig-sub {
-    font-size: 10pt;
-    margin-top: 2px;
-    font-weight: 600;
-  }
-  .e-signature-card .e-sig-note {
-    font-size: 8.5pt;
-    color: #475569;
-    margin-top: 10px;
-    font-style: italic;
-  }
+  .signature-cachet { margin-top: 6px; min-height: 110px; }
+  .signature-cachet img { max-width: 240px; max-height: 130px; }
 
   strong { font-weight: 700; }
 </style>
@@ -257,16 +231,11 @@ export const CONVENTION_ENTREPRISE_HTML = `<!DOCTYPE html>
     <div class="signature-col">
       <div class="role">Pour l'organisme de formation,</div>
       <div class="signatory">[%Nom de l'organisme%],<br>[%Nom du représentant de l'organisme%]</div>
-      <div class="signature-org-img">[%Signature de l'organisme%]</div>
+      <div class="signature-cachet">[%Cachet de l'organisme%]</div>
     </div>
     <div class="signature-col">
       <div class="role">Pour le bénéficiaire</div>
       <div class="signatory">[%Nom du client%],<br>[%Nom du représentant légal du client%]</div>
-      <div class="e-signature-card">
-        <div class="e-sig-title">E-SIGNATURE</div>
-        <div class="e-sig-sub">VisioFormation</div>
-        <div class="e-sig-note">(Signature Électronique)</div>
-      </div>
     </div>
   </div>
 
