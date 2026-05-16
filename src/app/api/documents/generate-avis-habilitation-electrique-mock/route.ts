@@ -47,7 +47,7 @@ export async function POST(_request: NextRequest) {
     const mockSession: Session = {
       id: "mock-session-id",
       entity_id: profile.entity_id,
-      title: "Habilitation en électricité – Travaux d'Ordre ELECTRIQUE – INITIAL B1V – B2V – BR - BC",
+      title: "HABILITATION ELECTRIQUE INITIALE B1 B2 B1V B2V BR BC - Recyclage",
       start_date: "2025-01-10T09:00:00Z",
       end_date: "2025-01-12T17:00:00Z",
       location: "Centre de formation MR, 12 rue Saint-Ferréol, 13001 Marseille",
