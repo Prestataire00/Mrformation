@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
-import { Loader2, FileText, Sparkles, FlaskConical, Package, AlertCircle, ClipboardList, ScrollText, Shield, Gavel, BookOpen, UserCog, MailOpen, Award, BadgeCheck, UserCheck, Trophy, BarChart3, GraduationCap, Camera, LogOut } from "lucide-react";
+import { Loader2, FileText, Sparkles, FlaskConical, Package, AlertCircle, ClipboardList, ScrollText, Shield, Gavel, BookOpen, UserCog, MailOpen, Award, BadgeCheck, UserCheck, Trophy, BarChart3, GraduationCap, Camera, LogOut, TrendingUp } from "lucide-react";
 
 /**
  * Page de test temporaire — Story B-Convention.
@@ -133,6 +133,22 @@ export default function TestConventionPage() {
     cacheHit: boolean;
     latencyMs: number;
     fileSizeBytes: number;
+  } | null>(null);
+
+  // ── Réponses satisfaction (per SESSION, OPTIONNEL — pas de batch) ────
+  const [satRepSessionId, setSatRepSessionId] = useState<string>("");
+  const [generatingSatRep, setGeneratingSatRep] = useState(false);
+  const [lastSatRepResult, setLastSatRepResult] = useState<{
+    engineUsed: string;
+    cacheHit: boolean;
+    latencyMs: number;
+    fileSizeBytes: number;
+    qualiopi?: {
+      totalLearners: number;
+      completionRate: number;
+      satisfactionRate: number | null;
+      acquisitionRate: number | null;
+    };
   } | null>(null);
 
   // ── Décharge responsabilité (per session+learner, OPTIONNEL) ─────────
@@ -619,6 +635,63 @@ export default function TestConventionPage() {
       });
     } finally {
       setGeneratingCgv(false);
+    }
+  }
+
+  // ── Réponses satisfaction handlers (per SESSION, OPTIONNEL) ──────────
+  async function handleGenerateSatRepMock() {
+    setGeneratingSatRep(true);
+    setLastSatRepResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-reponses-satisfaction-mock", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastSatRepResult({
+        engineUsed: json.engineUsed, cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs, fileSizeBytes: json.fileSizeBytes,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({ title: "Réponses satisfaction mock générées", description: `${json.engineUsed} · ${json.latencyMs}ms` });
+    } catch (err) {
+      toast({ title: "Échec mock réponses satisfaction", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setGeneratingSatRep(false);
+    }
+  }
+
+  async function handleGenerateSatRep() {
+    if (!satRepSessionId) {
+      toast({ title: "Aucune session", description: "Sélectionne d'abord une session.", variant: "destructive" });
+      return;
+    }
+    setGeneratingSatRep(true);
+    setLastSatRepResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-reponses-satisfaction", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: satRepSessionId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastSatRepResult({
+        engineUsed: json.engineUsed, cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs, fileSizeBytes: json.fileSizeBytes,
+        qualiopi: json.qualiopi,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({
+        title: "Réponses satisfaction générées",
+        description: `${json.qualiopi?.totalLearners ?? "?"} apprenants · ${json.engineUsed} · ${json.latencyMs}ms`,
+      });
+    } catch (err) {
+      toast({ title: "Échec réponses satisfaction", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setGeneratingSatRep(false);
     }
   }
 
@@ -5096,6 +5169,104 @@ export default function TestConventionPage() {
             </div>
             <div><strong>Latence :</strong> {lastDechResult.latencyMs} ms</div>
             <div><strong>Taille PDF :</strong> {(lastDechResult.fileSizeBytes / 1024).toFixed(1)} KB</div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ────────── Réponses satisfaction apprenants (vue SESSION) ────────── */}
+
+      <div className="pt-8">
+        <h2 className="text-xl font-semibold flex items-center gap-2 mb-1">
+          <TrendingUp className="h-5 w-5 text-amber-600" />
+          Réponses satisfaction apprenants (vue session)
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Rapport interne admin/Qualiopi <strong>per session</strong> (pas
+          per-apprenant). Agrège satisfaction (note moy + distribution) +
+          KPIs Qualiopi (taux complétion / satisfaction / acquisition) +
+          résultats évaluations agrégés. <strong>Pas de mode batch</strong> —
+          1 PDF par session.
+        </p>
+      </div>
+
+      <Card className="border-amber-200 bg-amber-50/30">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <FlaskConical className="h-4 w-4 text-amber-700" />
+            Mode rapide — Données factices
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            4 questions satisfaction (rating + yes/no) + KPIs Qualiopi
+            (10/10 présents, 92% satisfaction, 90% acquisition) +
+            3 évaluations agrégées (Quiz entrée 80%, Atelier 100%, Quiz final 78%).
+          </p>
+          <Button
+            onClick={handleGenerateSatRepMock}
+            disabled={generatingSatRep}
+            className="w-full gap-2 bg-amber-600 hover:bg-amber-700"
+          >
+            {generatingSatRep ? <Loader2 className="h-4 w-4 animate-spin" /> : <FlaskConical className="h-4 w-4" />}
+            Générer rapport satisfaction de test
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Rapport satisfaction — Données réelles (1 session)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Lit <code className="text-xs bg-gray-100 px-1 rounded">questionnaire_responses</code>{" "}
+            (type satisfaction + evaluation) + <code className="text-xs bg-gray-100 px-1 rounded">signatures</code> pour calculer les indicateurs.
+          </p>
+          <div>
+            <Label htmlFor="satrep-session-select" className="text-sm">Session</Label>
+            <Select value={satRepSessionId} onValueChange={setSatRepSessionId}
+              disabled={loadingSessions || generatingSatRep}>
+              <SelectTrigger id="satrep-session-select" className="mt-1">
+                <SelectValue placeholder={loadingSessions ? "Chargement…" : "Choisir une session…"} />
+              </SelectTrigger>
+              <SelectContent>
+                {sessions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.title} — {new Date(s.start_date).toLocaleDateString("fr-FR")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button onClick={handleGenerateSatRep}
+            disabled={!satRepSessionId || generatingSatRep}
+            className="w-full gap-2" size="lg">
+            {generatingSatRep ? <><Loader2 className="h-4 w-4 animate-spin" />Génération en cours…</>
+              : <><TrendingUp className="h-4 w-4" />Générer le rapport satisfaction</>}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {lastSatRepResult && (
+        <Card className="border-green-200 bg-green-50/30">
+          <CardHeader><CardTitle className="text-base text-green-900">✅ Dernier rapport satisfaction</CardTitle></CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <div>
+              <strong>Moteur :</strong> {lastSatRepResult.engineUsed}
+              {lastSatRepResult.cacheHit && (
+                <span className="ml-2 text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded">⚡ Cache hit</span>
+              )}
+            </div>
+            <div><strong>Latence :</strong> {lastSatRepResult.latencyMs} ms</div>
+            <div><strong>Taille PDF :</strong> {(lastSatRepResult.fileSizeBytes / 1024).toFixed(1)} KB</div>
+            {lastSatRepResult.qualiopi && (
+              <div className="mt-2 pt-2 border-t border-green-200 text-xs space-y-0.5">
+                <div><strong>Apprenants :</strong> {lastSatRepResult.qualiopi.totalLearners}</div>
+                <div><strong>Taux complétion :</strong> {lastSatRepResult.qualiopi.completionRate.toFixed(1)} %</div>
+                <div><strong>Taux satisfaction :</strong> {lastSatRepResult.qualiopi.satisfactionRate?.toFixed(1) ?? "—"} %</div>
+                <div><strong>Taux acquisition :</strong> {lastSatRepResult.qualiopi.acquisitionRate?.toFixed(1) ?? "—"} %</div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
