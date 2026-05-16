@@ -1040,9 +1040,11 @@ export const ALIAS_TO_VARIABLE_KEY: Record<string, string> = {
   "E-signature du client": "{{e_signature_client}}",
   // Formation
   "Nom de la formation": "{{titre_formation}}",
+  "Nom du programme associé": "{{titre_formation}}",
   "Type d'action de formation": "{{type_action_formation}}",
   "Type de diplôme décerné": "{{type_diplome}}",
   "Durée de la formation": "{{duree_heures}}",
+  "Total des heures des créneaux de la formation": "{{duree_heures}}",
   "Lieu de la formation": "{{lieu}}",
   "Nombre d'apprenants du client": "{{formation_effectifs}}",
   "Apprenants du client": "{{liste_apprenants}}",

@@ -157,6 +157,28 @@ export default function TestConventionPage() {
     totalLatencyMs: number;
   } | null>(null);
 
+  // ── Attestation d'abandon de formation (per session+learner, OPTIONNEL) ─
+  const [abandonSessionId, setAbandonSessionId] = useState<string>("");
+  const [abandonLearnerId, setAbandonLearnerId] = useState<string>("");
+  const [abandonLearners, setAbandonLearners] = useState<LearnerRow[]>([]);
+  const [loadingAbandonLearners, setLoadingAbandonLearners] = useState(false);
+  const [abandonBatchSessionId, setAbandonBatchSessionId] = useState<string>("");
+  const [generatingAbandon, setGeneratingAbandon] = useState(false);
+  const [generatingAbandonBatch, setGeneratingAbandonBatch] = useState(false);
+  const [lastAbandonResult, setLastAbandonResult] = useState<{
+    engineUsed: string;
+    cacheHit: boolean;
+    latencyMs: number;
+    fileSizeBytes: number;
+  } | null>(null);
+  const [lastAbandonBatchResult, setLastAbandonBatchResult] = useState<{
+    totalLearners: number;
+    successCount: number;
+    failureCount: number;
+    errors: { learnerId: string; learnerName: string; error: string }[];
+    totalLatencyMs: number;
+  } | null>(null);
+
   // ── Avis Habilitation Électrique BF-HF (Non électrique, OPTIONNEL) ──
   const [habilBfHfSessionId, setHabilBfHfSessionId] = useState<string>("");
   const [habilBfHfLearnerId, setHabilBfHfLearnerId] = useState<string>("");
@@ -798,6 +820,24 @@ export default function TestConventionPage() {
     })();
   }, [supabase, habilSessionId]);
 
+  // Charge les apprenants pour attestation abandon single
+  useEffect(() => {
+    if (!abandonSessionId) {
+      setAbandonLearners([]);
+      setAbandonLearnerId("");
+      return;
+    }
+    setLoadingAbandonLearners(true);
+    (async () => {
+      const { data } = await supabase
+        .from("enrollments")
+        .select("learner_id, learner:learners(id, first_name, last_name)")
+        .eq("session_id", abandonSessionId);
+      setAbandonLearners((data as unknown as LearnerRow[]) || []);
+      setLoadingAbandonLearners(false);
+    })();
+  }, [supabase, abandonSessionId]);
+
   // Charge les apprenants pour avis habilitation BF-HF single
   useEffect(() => {
     if (!habilBfHfSessionId) {
@@ -1007,6 +1047,102 @@ export default function TestConventionPage() {
       toast({ title: "Échec batch avis habilitation", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
     } finally {
       setGeneratingHabilBatch(false);
+    }
+  }
+
+  // ── Attestation d'abandon handlers (OPTIONNEL) ──────────────────────
+  async function handleGenerateAbandonMock() {
+    setGeneratingAbandon(true);
+    setLastAbandonResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-attestation-abandon-mock", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastAbandonResult({
+        engineUsed: json.engineUsed, cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs, fileSizeBytes: json.fileSizeBytes,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({ title: "Attestation abandon mock générée", description: `${json.engineUsed} · ${json.latencyMs}ms` });
+    } catch (err) {
+      toast({ title: "Échec mock attestation abandon", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setGeneratingAbandon(false);
+    }
+  }
+
+  async function handleGenerateAbandon() {
+    if (!abandonSessionId || !abandonLearnerId) {
+      toast({ title: "Sélection incomplète", description: "Choisis session ET apprenant.", variant: "destructive" });
+      return;
+    }
+    setGeneratingAbandon(true);
+    setLastAbandonResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-attestation-abandon", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: abandonSessionId, learnerId: abandonLearnerId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastAbandonResult({
+        engineUsed: json.engineUsed, cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs, fileSizeBytes: json.fileSizeBytes,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({ title: "Attestation abandon générée", description: `${json.engineUsed} · ${json.latencyMs}ms` });
+    } catch (err) {
+      toast({ title: "Échec attestation abandon", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setGeneratingAbandon(false);
+    }
+  }
+
+  async function handleGenerateAbandonBatch() {
+    if (!abandonBatchSessionId) {
+      toast({ title: "Aucune session", description: "Sélectionne d'abord une session.", variant: "destructive" });
+      return;
+    }
+    setGeneratingAbandonBatch(true);
+    setLastAbandonBatchResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-attestations-abandon-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: abandonBatchSessionId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastAbandonBatchResult({
+        totalLearners: json.totalLearners, successCount: json.successCount,
+        failureCount: json.failureCount, errors: json.errors ?? [],
+        totalLatencyMs: json.totalLatencyMs,
+      });
+      const bytes = Uint8Array.from(atob(json.zipBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/zip" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const sessionLabel = sessions.find((s) => s.id === abandonBatchSessionId)?.title ?? "session";
+      a.href = url;
+      a.download = `attestations-abandon-${sessionLabel.replace(/[^a-zA-Z0-9-]+/g, "-").toLowerCase().slice(0, 50)}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast({
+        title: json.failureCount === 0 ? "ZIP attestations abandon généré" : "ZIP avec erreurs",
+        description: `${json.successCount}/${json.totalLearners} apprenants · ${json.totalLatencyMs}ms`,
+        variant: json.failureCount === 0 ? "default" : "destructive",
+      });
+    } catch (err) {
+      toast({ title: "Échec batch attestations abandon", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setGeneratingAbandonBatch(false);
     }
   }
 
@@ -7385,6 +7521,173 @@ export default function TestConventionPage() {
             </div>
             <div><strong>Latence :</strong> {lastHabilBfHfResult.latencyMs} ms</div>
             <div><strong>Taille PDF :</strong> {(lastHabilBfHfResult.fileSizeBytes / 1024).toFixed(1)} KB</div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ────────── Attestation d'abandon de formation (per session+learner) ────────── */}
+
+      <div className="pt-8">
+        <h2 className="text-xl font-semibold flex items-center gap-2 mb-1">
+          <LogOut className="h-5 w-5 text-rose-700" />
+          Attestation d&apos;abandon de formation
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Constate officiellement qu&apos;un stagiaire a interrompu la formation
+          avant son terme. Utile pour la facturation prorata et le dossier OPCO.
+          Heures effectivement suivies = basées sur les émargements (signedLearnerIds).
+          Date d&apos;abandon + motif (☐) : à remplir à la main après impression.
+        </p>
+      </div>
+
+      <Card className="border-rose-300 bg-rose-50/40">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <FlaskConical className="h-4 w-4 text-rose-800" />
+            Mode rapide — Données factices
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Patrick ATTLAN abandonne POE Managers Proximité (14h, mock affiche 14/14).
+          </p>
+          <Button
+            onClick={handleGenerateAbandonMock}
+            disabled={generatingAbandon || generatingAbandonBatch}
+            className="w-full gap-2 bg-rose-700 hover:bg-rose-800"
+          >
+            {generatingAbandon ? <Loader2 className="h-4 w-4 animate-spin" /> : <FlaskConical className="h-4 w-4" />}
+            Générer attestation abandon de test
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Attestation abandon — Données réelles (1 apprenant)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label htmlFor="abandon-session-select" className="text-sm">Session</Label>
+            <Select value={abandonSessionId} onValueChange={setAbandonSessionId}
+              disabled={loadingSessions || generatingAbandon}>
+              <SelectTrigger id="abandon-session-select" className="mt-1">
+                <SelectValue placeholder={loadingSessions ? "Chargement…" : "Choisir une session…"} />
+              </SelectTrigger>
+              <SelectContent>
+                {sessions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.title} — {new Date(s.start_date).toLocaleDateString("fr-FR")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label htmlFor="abandon-learner-select" className="text-sm">Apprenant inscrit</Label>
+            <Select value={abandonLearnerId} onValueChange={setAbandonLearnerId}
+              disabled={!abandonSessionId || loadingAbandonLearners || generatingAbandon}>
+              <SelectTrigger id="abandon-learner-select" className="mt-1">
+                <SelectValue placeholder={
+                  !abandonSessionId ? "Choisis d'abord une session"
+                    : loadingAbandonLearners ? "Chargement…"
+                      : abandonLearners.length === 0 ? "Aucun apprenant inscrit"
+                        : "Choisir un apprenant…"
+                } />
+              </SelectTrigger>
+              <SelectContent>
+                {abandonLearners.map((l) => l.learner ? (
+                  <SelectItem key={l.learner_id} value={l.learner_id}>
+                    {l.learner.last_name} {l.learner.first_name}
+                  </SelectItem>
+                ) : null)}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button onClick={handleGenerateAbandon}
+            disabled={!abandonSessionId || !abandonLearnerId || generatingAbandon}
+            className="w-full gap-2" size="lg">
+            {generatingAbandon ? <><Loader2 className="h-4 w-4 animate-spin" />Génération en cours…</>
+              : <><LogOut className="h-4 w-4" />Générer attestation abandon</>}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="border-purple-200 bg-purple-50/30">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Package className="h-4 w-4 text-purple-600" />
+            Mode batch — tous les apprenants
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Génère <strong>1 attestation d&apos;abandon par apprenant</strong>. Sortie : 1 ZIP.
+          </p>
+          <div>
+            <Label htmlFor="abandon-batch-session-select" className="text-sm">Session</Label>
+            <Select value={abandonBatchSessionId} onValueChange={setAbandonBatchSessionId}
+              disabled={loadingSessions || generatingAbandonBatch}>
+              <SelectTrigger id="abandon-batch-session-select" className="mt-1">
+                <SelectValue placeholder={loadingSessions ? "Chargement…" : "Choisir une session…"} />
+              </SelectTrigger>
+              <SelectContent>
+                {sessions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.title} — {new Date(s.start_date).toLocaleDateString("fr-FR")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button onClick={handleGenerateAbandonBatch}
+            disabled={!abandonBatchSessionId || generatingAbandonBatch}
+            className="w-full gap-2 bg-purple-600 hover:bg-purple-700" size="lg">
+            {generatingAbandonBatch ? <><Loader2 className="h-4 w-4 animate-spin" />Génération en cours…</>
+              : <><Package className="h-4 w-4" />Générer ZIP — toutes les attestations</>}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {lastAbandonBatchResult && (
+        <Card className={lastAbandonBatchResult.failureCount === 0
+          ? "border-green-200 bg-green-50/30" : "border-amber-200 bg-amber-50/30"}>
+          <CardHeader>
+            <CardTitle className={"text-base " + (lastAbandonBatchResult.failureCount === 0 ? "text-green-900" : "text-amber-900")}>
+              {lastAbandonBatchResult.failureCount === 0 ? "✅" : "⚠️"} Dernier batch attestations abandon
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <div><strong>{lastAbandonBatchResult.successCount}</strong> / {lastAbandonBatchResult.totalLearners} attestations générées</div>
+            <div><strong>Latence totale :</strong> {lastAbandonBatchResult.totalLatencyMs} ms</div>
+            {lastAbandonBatchResult.errors.length > 0 && (
+              <div className="mt-3 space-y-1">
+                <div className="flex items-center gap-1 text-amber-900 font-medium">
+                  <AlertCircle className="h-4 w-4" /> Erreurs ({lastAbandonBatchResult.errors.length})
+                </div>
+                <ul className="text-xs space-y-0.5 ml-5 list-disc">
+                  {lastAbandonBatchResult.errors.map((e) => (
+                    <li key={e.learnerId}><strong>{e.learnerName}</strong> : {e.error}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {lastAbandonResult && (
+        <Card className="border-green-200 bg-green-50/30">
+          <CardHeader><CardTitle className="text-base text-green-900">✅ Dernière attestation abandon</CardTitle></CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <div>
+              <strong>Moteur :</strong> {lastAbandonResult.engineUsed}
+              {lastAbandonResult.cacheHit && (
+                <span className="ml-2 text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded">⚡ Cache hit</span>
+              )}
+            </div>
+            <div><strong>Latence :</strong> {lastAbandonResult.latencyMs} ms</div>
+            <div><strong>Taille PDF :</strong> {(lastAbandonResult.fileSizeBytes / 1024).toFixed(1)} KB</div>
           </CardContent>
         </Card>
       )}
