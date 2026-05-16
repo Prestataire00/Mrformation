@@ -38,6 +38,11 @@ export interface ResolveContext {
    */
   certificateCode?: string;
   /**
+   * Résultat de l'examen AIPR : "success" → "a réussi", "echec" → "a échoué".
+   * Défaut "success" si non défini. Utilisé par `{{resultat_examen_aipr}}`.
+   */
+  aiprExamResult?: "success" | "echec";
+  /**
    * Résultats d'évaluations de l'apprenant pour la session. Pré-chargés
    * côté API depuis questionnaire_responses (avec score calculé). Utilisé
    * par `{{tableau_resultats_evaluations}}` dans le doc résultats-evaluations.
@@ -334,6 +339,12 @@ export function resolveVariables(content: string, data: ResolveContext): string 
 
     // === Story B-AIPR (ville de naissance apprenant) ===
     "{{ville_naissance_apprenant}}": (data.learner as unknown as { birth_city?: string | null })?.birth_city || "[Ville de naissance]",
+    // Résultat examen AIPR : "a réussi" (défaut) ou "a échoué" si
+    // aiprExamResult="echec" dans le contexte. La phrase finale du paragraphe
+    // change selon le résultat (cf templates Loris success/echec).
+    "{{resultat_examen_aipr}}": data.aiprExamResult === "echec"
+      ? "a échoué cet examen."
+      : "a réussi cet examen.",
 
     // === Story B-Réponses Satisfaction Apprenants (vue admin session) ===
     // Tableau satisfaction : 1 ligne par question des questionnaires satisfaction
@@ -1092,6 +1103,7 @@ export const ALIAS_TO_VARIABLE_KEY: Record<string, string> = {
   // === Story B-AIPR (Attestation Intervention Proximité Réseaux) ===
   "Ville de naissance de l'apprenant": "{{ville_naissance_apprenant}}",
   "Adresse de l'entreprise": "{{client_adresse}}",
+  "Résultat examen AIPR": "{{resultat_examen_aipr}}",
   // === Story B-Convention Intervention (formateur sous-traitance) ===
   "Nom du formateur": "{{nom_formateur_complet}}",
   "Adresse du formateur": "{{adresse_formateur}}",
@@ -1286,6 +1298,7 @@ export const VARIABLE_KEYS = [
   "{{tableau_reponses_evaluations}}",
   // Story B-AIPR
   "{{ville_naissance_apprenant}}",
+  "{{resultat_examen_aipr}}",
   // Story B-Convention Intervention
   "{{nom_formateur_complet}}",
   "{{adresse_formateur}}",

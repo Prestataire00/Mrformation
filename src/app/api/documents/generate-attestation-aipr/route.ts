@@ -38,13 +38,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Accès non autorisé" }, { status: 403 });
     }
 
-    const body = (await request.json()) as { sessionId?: string; learnerId?: string };
+    const body = (await request.json()) as {
+      sessionId?: string;
+      learnerId?: string;
+      result?: "success" | "echec";
+    };
     if (!body.sessionId || !body.learnerId) {
       return NextResponse.json(
         { error: "sessionId et learnerId sont obligatoires" },
         { status: 400 },
       );
     }
+    const aiprExamResult: "success" | "echec" = body.result === "echec" ? "echec" : "success";
 
     const { data: session } = await supabase
       .from("sessions")
@@ -79,6 +84,7 @@ export async function POST(request: NextRequest) {
       learner,
       client,
       entity,
+      aiprExamResult,
     };
     const resolvedHtml = resolveDocumentVariables(ATTESTATION_AIPR_HTML, context);
     const resolvedFooter = resolveDocumentVariables(ATTESTATION_AIPR_FOOTER_TEMPLATE, context);
@@ -91,11 +97,12 @@ export async function POST(request: NextRequest) {
       docType: "attestation_aipr",
       html: resolvedHtml,
       cacheInputs: {
-        doc_type: "attestation_aipr",
+        doc_type: aiprExamResult === "echec" ? "attestation_aipr_echec" : "attestation_aipr",
         session_id: body.sessionId,
         learner_id: body.learnerId,
         client_id: enrTyped.client_id ?? null,
         session_updated_at: (session as { updated_at?: string }).updated_at ?? null,
+        custom_variables: { result: aiprExamResult },
       },
       options: {
         format: "A4",

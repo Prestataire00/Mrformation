@@ -50,10 +50,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Accès non autorisé" }, { status: 403 });
     }
 
-    const body = (await request.json()) as { sessionId?: string };
+    const body = (await request.json()) as { sessionId?: string; result?: "success" | "echec" };
     if (!body.sessionId) {
       return NextResponse.json({ error: "sessionId est obligatoire" }, { status: 400 });
     }
+    const aiprExamResult: "success" | "echec" = body.result === "echec" ? "echec" : "success";
 
     const { data: session } = await supabase
       .from("sessions").select("*, training:trainings(*), formation_trainers:formation_trainers(trainer:trainers(*))")
@@ -95,6 +96,7 @@ export async function POST(request: NextRequest) {
       const context: ResolveContext = {
         session: session as unknown as Session,
         learner, client, entity,
+        aiprExamResult,
       };
       const resolvedHtml = resolveDocumentVariables(ATTESTATION_AIPR_HTML, context);
       const resolvedFooter = resolveDocumentVariables(ATTESTATION_AIPR_FOOTER_TEMPLATE, context);
@@ -104,11 +106,12 @@ export async function POST(request: NextRequest) {
         docType: "attestation_aipr",
         html: resolvedHtml,
         cacheInputs: {
-          doc_type: "attestation_aipr",
+          doc_type: aiprExamResult === "echec" ? "attestation_aipr_echec" : "attestation_aipr",
           session_id: body.sessionId,
           learner_id: learner.id,
           client_id: enr.client_id ?? null,
           session_updated_at: (session as { updated_at?: string }).updated_at ?? null,
+          custom_variables: { result: aiprExamResult },
         },
         options: {
           format: "A4",
@@ -131,7 +134,8 @@ export async function POST(request: NextRequest) {
       const learner = valid[idx].learner!;
       const name = `${learner.last_name} ${learner.first_name}`;
       if (outcome.status === "fulfilled") {
-        zip.file(`attestation-aipr-${slugify(name)}.pdf`, outcome.value.result.buffer);
+        const prefix = aiprExamResult === "echec" ? "attestation-aipr-echec" : "attestation-aipr";
+        zip.file(`${prefix}-${slugify(name)}.pdf`, outcome.value.result.buffer);
         successCount += 1;
       } else {
         const msg = outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason);

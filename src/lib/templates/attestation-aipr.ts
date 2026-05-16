@@ -180,7 +180,7 @@ export const ATTESTATION_AIPR_HTML = `<!DOCTYPE html>
     <p>Présenté par : <strong>[%Nom de l'entreprise%]</strong> - <strong>[%Adresse de l'entreprise%]</strong></p>
     <p>à l'examen tenu le <strong>[%Date de début de la formation%]</strong> relatif au domaine de compétences susmentionné,</p>
     <p>sous le n° de ticket d'examen <strong>[%Ville de naissance de l'apprenant%]</strong></p>
-    <p><strong>a réussi cet examen.</strong></p>
+    <p><strong>[%Résultat examen AIPR%]</strong></p>
   </div>
 
   <div class="validity-block">
