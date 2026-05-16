@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
-import { Loader2, FileText, Sparkles, FlaskConical, Package, AlertCircle, ClipboardList, ScrollText, Shield, Gavel, BookOpen, UserCog, MailOpen } from "lucide-react";
+import { Loader2, FileText, Sparkles, FlaskConical, Package, AlertCircle, ClipboardList, ScrollText, Shield, Gavel, BookOpen, UserCog, MailOpen, Award } from "lucide-react";
 
 /**
  * Page de test temporaire — Story B-Convention.
@@ -133,6 +133,28 @@ export default function TestConventionPage() {
     cacheHit: boolean;
     latencyMs: number;
     fileSizeBytes: number;
+  } | null>(null);
+
+  // ── Certificat réalisation (per session+learner) ─────────────────────
+  const [certifSessionId, setCertifSessionId] = useState<string>("");
+  const [certifLearnerId, setCertifLearnerId] = useState<string>("");
+  const [certifLearners, setCertifLearners] = useState<LearnerRow[]>([]);
+  const [loadingCertifLearners, setLoadingCertifLearners] = useState(false);
+  const [certifBatchSessionId, setCertifBatchSessionId] = useState<string>("");
+  const [generatingCertif, setGeneratingCertif] = useState(false);
+  const [generatingCertifBatch, setGeneratingCertifBatch] = useState(false);
+  const [lastCertifResult, setLastCertifResult] = useState<{
+    engineUsed: string;
+    cacheHit: boolean;
+    latencyMs: number;
+    fileSizeBytes: number;
+  } | null>(null);
+  const [lastCertifBatchResult, setLastCertifBatchResult] = useState<{
+    totalLearners: number;
+    successCount: number;
+    failureCount: number;
+    errors: { learnerId: string; learnerName: string; error: string }[];
+    totalLatencyMs: number;
   } | null>(null);
 
   // ── Convocation apprenant (per session+learner) ──────────────────────
@@ -267,6 +289,24 @@ export default function TestConventionPage() {
     })();
   }, [supabase, convocSessionId]);
 
+  // Charge les apprenants de la session pour certificat single
+  useEffect(() => {
+    if (!certifSessionId) {
+      setCertifLearners([]);
+      setCertifLearnerId("");
+      return;
+    }
+    setLoadingCertifLearners(true);
+    (async () => {
+      const { data } = await supabase
+        .from("enrollments")
+        .select("learner_id, learner:learners(id, first_name, last_name)")
+        .eq("session_id", certifSessionId);
+      setCertifLearners((data as unknown as LearnerRow[]) || []);
+      setLoadingCertifLearners(false);
+    })();
+  }, [supabase, certifSessionId]);
+
   // ── CGV handler (entity-only, pas de params) ──────────────────────────
   async function handleGenerateCgv() {
     setGeneratingCgv(true);
@@ -293,6 +333,120 @@ export default function TestConventionPage() {
       });
     } finally {
       setGeneratingCgv(false);
+    }
+  }
+
+  // ── Certificat réalisation handlers ───────────────────────────────────
+  async function handleGenerateCertifMock() {
+    setGeneratingCertif(true);
+    setLastCertifResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-certificat-realisation-mock", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastCertifResult({
+        engineUsed: json.engineUsed,
+        cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs,
+        fileSizeBytes: json.fileSizeBytes,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({ title: "Certificat mock généré", description: `${json.engineUsed} · ${json.latencyMs}ms` });
+    } catch (err) {
+      toast({
+        title: "Échec certificat mock",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingCertif(false);
+    }
+  }
+
+  async function handleGenerateCertif() {
+    if (!certifSessionId || !certifLearnerId) {
+      toast({ title: "Sélection incomplète", description: "Choisis session ET apprenant.", variant: "destructive" });
+      return;
+    }
+    setGeneratingCertif(true);
+    setLastCertifResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-certificat-realisation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: certifSessionId, learnerId: certifLearnerId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastCertifResult({
+        engineUsed: json.engineUsed,
+        cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs,
+        fileSizeBytes: json.fileSizeBytes,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({ title: "Certificat généré", description: `${json.engineUsed} · ${json.latencyMs}ms` });
+    } catch (err) {
+      toast({
+        title: "Échec certificat",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingCertif(false);
+    }
+  }
+
+  async function handleGenerateCertifBatch() {
+    if (!certifBatchSessionId) {
+      toast({ title: "Aucune session", description: "Sélectionne d'abord une session.", variant: "destructive" });
+      return;
+    }
+    setGeneratingCertifBatch(true);
+    setLastCertifBatchResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-certificats-realisation-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: certifBatchSessionId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastCertifBatchResult({
+        totalLearners: json.totalLearners,
+        successCount: json.successCount,
+        failureCount: json.failureCount,
+        errors: json.errors ?? [],
+        totalLatencyMs: json.totalLatencyMs,
+      });
+      const bytes = Uint8Array.from(atob(json.zipBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/zip" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const sessionLabel = sessions.find((s) => s.id === certifBatchSessionId)?.title ?? "session";
+      a.href = url;
+      a.download = `certificats-${sessionLabel.replace(/[^a-zA-Z0-9-]+/g, "-").toLowerCase().slice(0, 50)}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast({
+        title: json.failureCount === 0 ? "ZIP certificats généré" : "ZIP avec erreurs",
+        description: `${json.successCount}/${json.totalLearners} apprenants · ${json.totalLatencyMs}ms`,
+        variant: json.failureCount === 0 ? "default" : "destructive",
+      });
+    } catch (err) {
+      toast({
+        title: "Échec batch certificats",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingCertifBatch(false);
     }
   }
 
@@ -1706,6 +1860,244 @@ export default function TestConventionPage() {
             <div>
               <strong>Taille PDF :</strong> {(lastProgrammeResult.fileSizeBytes / 1024).toFixed(1)} KB
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════ */}
+      {/*    Certificat de réalisation (per session+learner)              */}
+      {/* ════════════════════════════════════════════════════════════════ */}
+
+      <div className="pt-10 border-t-2 border-dashed border-gray-300">
+        <h2 className="text-xl font-semibold flex items-center gap-2 mb-1">
+          <Award className="h-5 w-5 text-yellow-600" />
+          Certificat de réalisation
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Certificat par (session, apprenant). Inclut le logo Ministère du
+          Travail (à uploader dans <code className="text-xs bg-gray-100 px-1 rounded">public/ministere-du-travail.png</code>{" "}
+          si pas déjà fait).
+        </p>
+      </div>
+
+      <Card className="border-yellow-200 bg-yellow-50/30">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <FlaskConical className="h-4 w-4 text-yellow-700" />
+            Mode rapide — Données factices
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Reproduit l&apos;exemple Loris : Patrick ATTLAN, UNICIL - 13006,
+            formation Managers de Proximité, 10/01/2025, ACQUIS.
+          </p>
+          <Button
+            onClick={handleGenerateCertifMock}
+            disabled={generatingCertif || generatingCertifBatch}
+            className="w-full gap-2 bg-yellow-600 hover:bg-yellow-700"
+          >
+            {generatingCertif ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <FlaskConical className="h-4 w-4" />
+            )}
+            Générer un certificat de test
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Certificat — Données réelles (1 apprenant)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label htmlFor="certif-session-select" className="text-sm">Session</Label>
+            <Select
+              value={certifSessionId}
+              onValueChange={setCertifSessionId}
+              disabled={loadingSessions || generatingCertif}
+            >
+              <SelectTrigger id="certif-session-select" className="mt-1">
+                <SelectValue placeholder={loadingSessions ? "Chargement…" : "Choisir une session…"} />
+              </SelectTrigger>
+              <SelectContent>
+                {sessions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.title} — {new Date(s.start_date).toLocaleDateString("fr-FR")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label htmlFor="certif-learner-select" className="text-sm">Apprenant inscrit</Label>
+            <Select
+              value={certifLearnerId}
+              onValueChange={setCertifLearnerId}
+              disabled={!certifSessionId || loadingCertifLearners || generatingCertif}
+            >
+              <SelectTrigger id="certif-learner-select" className="mt-1">
+                <SelectValue
+                  placeholder={
+                    !certifSessionId
+                      ? "Choisis d'abord une session"
+                      : loadingCertifLearners
+                        ? "Chargement…"
+                        : certifLearners.length === 0
+                          ? "Aucun apprenant inscrit"
+                          : "Choisir un apprenant…"
+                  }
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {certifLearners.map((l) =>
+                  l.learner ? (
+                    <SelectItem key={l.learner_id} value={l.learner_id}>
+                      {l.learner.last_name} {l.learner.first_name}
+                    </SelectItem>
+                  ) : null,
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <Button
+            onClick={handleGenerateCertif}
+            disabled={!certifSessionId || !certifLearnerId || generatingCertif}
+            className="w-full gap-2"
+            size="lg"
+          >
+            {generatingCertif ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Génération en cours…
+              </>
+            ) : (
+              <>
+                <Award className="h-4 w-4" />
+                Générer le certificat
+              </>
+            )}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="border-purple-200 bg-purple-50/30">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Package className="h-4 w-4 text-purple-600" />
+            Mode batch — tous les apprenants de la session
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Génère <strong>1 certificat par apprenant</strong> inscrit. Chaque
+            certificat porte le nom de l&apos;entreprise présentatrice (via
+            enrollment.client_id). Sortie : 1 ZIP fail-soft.
+          </p>
+          <div>
+            <Label htmlFor="certif-batch-session-select" className="text-sm">Session</Label>
+            <Select
+              value={certifBatchSessionId}
+              onValueChange={setCertifBatchSessionId}
+              disabled={loadingSessions || generatingCertifBatch}
+            >
+              <SelectTrigger id="certif-batch-session-select" className="mt-1">
+                <SelectValue placeholder={loadingSessions ? "Chargement…" : "Choisir une session…"} />
+              </SelectTrigger>
+              <SelectContent>
+                {sessions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.title} — {new Date(s.start_date).toLocaleDateString("fr-FR")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button
+            onClick={handleGenerateCertifBatch}
+            disabled={!certifBatchSessionId || generatingCertifBatch}
+            className="w-full gap-2 bg-purple-600 hover:bg-purple-700"
+            size="lg"
+          >
+            {generatingCertifBatch ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Génération en cours…
+              </>
+            ) : (
+              <>
+                <Package className="h-4 w-4" />
+                Générer ZIP — tous les certificats
+              </>
+            )}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {lastCertifBatchResult && (
+        <Card
+          className={
+            lastCertifBatchResult.failureCount === 0
+              ? "border-green-200 bg-green-50/30"
+              : "border-amber-200 bg-amber-50/30"
+          }
+        >
+          <CardHeader>
+            <CardTitle
+              className={
+                "text-base " +
+                (lastCertifBatchResult.failureCount === 0 ? "text-green-900" : "text-amber-900")
+              }
+            >
+              {lastCertifBatchResult.failureCount === 0 ? "✅" : "⚠️"} Dernier batch certificats
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <div>
+              <strong>{lastCertifBatchResult.successCount}</strong> /{" "}
+              {lastCertifBatchResult.totalLearners} certificats générés
+            </div>
+            <div>
+              <strong>Latence totale :</strong> {lastCertifBatchResult.totalLatencyMs} ms
+            </div>
+            {lastCertifBatchResult.errors.length > 0 && (
+              <div className="mt-3 space-y-1">
+                <div className="flex items-center gap-1 text-amber-900 font-medium">
+                  <AlertCircle className="h-4 w-4" /> Erreurs ({lastCertifBatchResult.errors.length})
+                </div>
+                <ul className="text-xs space-y-0.5 ml-5 list-disc">
+                  {lastCertifBatchResult.errors.map((e) => (
+                    <li key={e.learnerId}>
+                      <strong>{e.learnerName}</strong> : {e.error}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {lastCertifResult && (
+        <Card className="border-green-200 bg-green-50/30">
+          <CardHeader>
+            <CardTitle className="text-base text-green-900">✅ Dernier certificat</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <div>
+              <strong>Moteur :</strong> {lastCertifResult.engineUsed}
+              {lastCertifResult.cacheHit && (
+                <span className="ml-2 text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded">
+                  ⚡ Cache hit
+                </span>
+              )}
+            </div>
+            <div><strong>Latence :</strong> {lastCertifResult.latencyMs} ms</div>
+            <div><strong>Taille PDF :</strong> {(lastCertifResult.fileSizeBytes / 1024).toFixed(1)} KB</div>
           </CardContent>
         </Card>
       )}
