@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
-import { Loader2, FileText, Sparkles, FlaskConical, Package, AlertCircle, ClipboardList, ScrollText, Shield, Gavel, BookOpen, UserCog, MailOpen, Award, BadgeCheck, UserCheck } from "lucide-react";
+import { Loader2, FileText, Sparkles, FlaskConical, Package, AlertCircle, ClipboardList, ScrollText, Shield, Gavel, BookOpen, UserCog, MailOpen, Award, BadgeCheck, UserCheck, Trophy } from "lucide-react";
 
 /**
  * Page de test temporaire — Story B-Convention.
@@ -133,6 +133,29 @@ export default function TestConventionPage() {
     cacheHit: boolean;
     latencyMs: number;
     fileSizeBytes: number;
+  } | null>(null);
+
+  // ── Certificat diplôme (per session+learner) ─────────────────────────
+  const [diplomeSessionId, setDiplomeSessionId] = useState<string>("");
+  const [diplomeLearnerId, setDiplomeLearnerId] = useState<string>("");
+  const [diplomeLearners, setDiplomeLearners] = useState<LearnerRow[]>([]);
+  const [loadingDiplomeLearners, setLoadingDiplomeLearners] = useState(false);
+  const [diplomeBatchSessionId, setDiplomeBatchSessionId] = useState<string>("");
+  const [generatingDiplome, setGeneratingDiplome] = useState(false);
+  const [generatingDiplomeBatch, setGeneratingDiplomeBatch] = useState(false);
+  const [lastDiplomeResult, setLastDiplomeResult] = useState<{
+    engineUsed: string;
+    cacheHit: boolean;
+    latencyMs: number;
+    fileSizeBytes: number;
+    certificateCode?: string;
+  } | null>(null);
+  const [lastDiplomeBatchResult, setLastDiplomeBatchResult] = useState<{
+    totalLearners: number;
+    successCount: number;
+    failureCount: number;
+    errors: { learnerId: string; learnerName: string; error: string }[];
+    totalLatencyMs: number;
   } | null>(null);
 
   // ── Émargement individuel (per session+learner) ──────────────────────
@@ -391,6 +414,24 @@ export default function TestConventionPage() {
     })();
   }, [supabase, emargIndivSessionId]);
 
+  // Charge les apprenants pour certificat diplôme single
+  useEffect(() => {
+    if (!diplomeSessionId) {
+      setDiplomeLearners([]);
+      setDiplomeLearnerId("");
+      return;
+    }
+    setLoadingDiplomeLearners(true);
+    (async () => {
+      const { data } = await supabase
+        .from("enrollments")
+        .select("learner_id, learner:learners(id, first_name, last_name)")
+        .eq("session_id", diplomeSessionId);
+      setDiplomeLearners((data as unknown as LearnerRow[]) || []);
+      setLoadingDiplomeLearners(false);
+    })();
+  }, [supabase, diplomeSessionId]);
+
   // ── CGV handler (entity-only, pas de params) ──────────────────────────
   async function handleGenerateCgv() {
     setGeneratingCgv(true);
@@ -417,6 +458,124 @@ export default function TestConventionPage() {
       });
     } finally {
       setGeneratingCgv(false);
+    }
+  }
+
+  // ── Certificat diplôme handlers ───────────────────────────────────────
+  async function handleGenerateDiplomeMock() {
+    setGeneratingDiplome(true);
+    setLastDiplomeResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-certificat-diplome-mock", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastDiplomeResult({
+        engineUsed: json.engineUsed,
+        cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs,
+        fileSizeBytes: json.fileSizeBytes,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({ title: "Certificat diplôme mock généré", description: `${json.engineUsed} · ${json.latencyMs}ms` });
+    } catch (err) {
+      toast({
+        title: "Échec certificat diplôme mock",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingDiplome(false);
+    }
+  }
+
+  async function handleGenerateDiplome() {
+    if (!diplomeSessionId || !diplomeLearnerId) {
+      toast({ title: "Sélection incomplète", description: "Choisis session ET apprenant.", variant: "destructive" });
+      return;
+    }
+    setGeneratingDiplome(true);
+    setLastDiplomeResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-certificat-diplome", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: diplomeSessionId, learnerId: diplomeLearnerId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastDiplomeResult({
+        engineUsed: json.engineUsed,
+        cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs,
+        fileSizeBytes: json.fileSizeBytes,
+        certificateCode: json.certificateCode,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({
+        title: "Certificat diplôme généré",
+        description: `CODE: ${json.certificateCode} · ${json.engineUsed} · ${json.latencyMs}ms`,
+      });
+    } catch (err) {
+      toast({
+        title: "Échec certificat diplôme",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingDiplome(false);
+    }
+  }
+
+  async function handleGenerateDiplomeBatch() {
+    if (!diplomeBatchSessionId) {
+      toast({ title: "Aucune session", description: "Sélectionne d'abord une session.", variant: "destructive" });
+      return;
+    }
+    setGeneratingDiplomeBatch(true);
+    setLastDiplomeBatchResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-certificats-diplome-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: diplomeBatchSessionId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastDiplomeBatchResult({
+        totalLearners: json.totalLearners,
+        successCount: json.successCount,
+        failureCount: json.failureCount,
+        errors: json.errors ?? [],
+        totalLatencyMs: json.totalLatencyMs,
+      });
+      const bytes = Uint8Array.from(atob(json.zipBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/zip" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const sessionLabel = sessions.find((s) => s.id === diplomeBatchSessionId)?.title ?? "session";
+      a.href = url;
+      a.download = `certificats-diplome-${sessionLabel.replace(/[^a-zA-Z0-9-]+/g, "-").toLowerCase().slice(0, 50)}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast({
+        title: json.failureCount === 0 ? "ZIP diplômes généré" : "ZIP avec erreurs",
+        description: `${json.successCount}/${json.totalLearners} apprenants · ${json.totalLatencyMs}ms`,
+        variant: json.failureCount === 0 ? "default" : "destructive",
+      });
+    } catch (err) {
+      toast({
+        title: "Échec batch diplômes",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingDiplomeBatch(false);
     }
   }
 
@@ -2182,6 +2341,246 @@ export default function TestConventionPage() {
             <div>
               <strong>Taille PDF :</strong> {(lastProgrammeResult.fileSizeBytes / 1024).toFixed(1)} KB
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════ */}
+      {/*    Certificat diplôme (per session+learner) — fin formation     */}
+      {/* ════════════════════════════════════════════════════════════════ */}
+
+      <div className="pt-10 border-t-2 border-dashed border-gray-300">
+        <h2 className="text-xl font-semibold flex items-center gap-2 mb-1">
+          <Trophy className="h-5 w-5 text-teal-600" />
+          Certificat (diplôme de fin de formation)
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Diplôme stylé per (session, apprenant) à délivrer à la fin de la
+          formation. Inclut un <strong>code d&apos;identification déterministe</strong>{" "}
+          (SHA-256 13 chars) — même certificat → même code.
+        </p>
+      </div>
+
+      <Card className="border-teal-200 bg-teal-50/30">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <FlaskConical className="h-4 w-4 text-teal-700" />
+            Mode rapide — Données factices
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Reproduit l&apos;exemple Loris : Patrick ATTLAN, formation Managers
+            de Proximité, code 6a0859cd356c0.
+          </p>
+          <Button
+            onClick={handleGenerateDiplomeMock}
+            disabled={generatingDiplome || generatingDiplomeBatch}
+            className="w-full gap-2 bg-teal-600 hover:bg-teal-700"
+          >
+            {generatingDiplome ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <FlaskConical className="h-4 w-4" />
+            )}
+            Générer un certificat diplôme de test
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Certificat diplôme — Données réelles (1 apprenant)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label htmlFor="diplome-session-select" className="text-sm">Session</Label>
+            <Select
+              value={diplomeSessionId}
+              onValueChange={setDiplomeSessionId}
+              disabled={loadingSessions || generatingDiplome}
+            >
+              <SelectTrigger id="diplome-session-select" className="mt-1">
+                <SelectValue placeholder={loadingSessions ? "Chargement…" : "Choisir une session…"} />
+              </SelectTrigger>
+              <SelectContent>
+                {sessions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.title} — {new Date(s.start_date).toLocaleDateString("fr-FR")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label htmlFor="diplome-learner-select" className="text-sm">Apprenant inscrit</Label>
+            <Select
+              value={diplomeLearnerId}
+              onValueChange={setDiplomeLearnerId}
+              disabled={!diplomeSessionId || loadingDiplomeLearners || generatingDiplome}
+            >
+              <SelectTrigger id="diplome-learner-select" className="mt-1">
+                <SelectValue
+                  placeholder={
+                    !diplomeSessionId
+                      ? "Choisis d'abord une session"
+                      : loadingDiplomeLearners
+                        ? "Chargement…"
+                        : diplomeLearners.length === 0
+                          ? "Aucun apprenant inscrit"
+                          : "Choisir un apprenant…"
+                  }
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {diplomeLearners.map((l) =>
+                  l.learner ? (
+                    <SelectItem key={l.learner_id} value={l.learner_id}>
+                      {l.learner.last_name} {l.learner.first_name}
+                    </SelectItem>
+                  ) : null,
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <Button
+            onClick={handleGenerateDiplome}
+            disabled={!diplomeSessionId || !diplomeLearnerId || generatingDiplome}
+            className="w-full gap-2"
+            size="lg"
+          >
+            {generatingDiplome ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Génération en cours…
+              </>
+            ) : (
+              <>
+                <Trophy className="h-4 w-4" />
+                Générer le certificat diplôme
+              </>
+            )}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="border-purple-200 bg-purple-50/30">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Package className="h-4 w-4 text-purple-600" />
+            Mode batch — tous les apprenants de la session
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Génère <strong>1 certificat diplôme par apprenant</strong> avec un
+            code d&apos;identification distinct par apprenant. Sortie : 1 ZIP.
+          </p>
+          <div>
+            <Label htmlFor="diplome-batch-session-select" className="text-sm">Session</Label>
+            <Select
+              value={diplomeBatchSessionId}
+              onValueChange={setDiplomeBatchSessionId}
+              disabled={loadingSessions || generatingDiplomeBatch}
+            >
+              <SelectTrigger id="diplome-batch-session-select" className="mt-1">
+                <SelectValue placeholder={loadingSessions ? "Chargement…" : "Choisir une session…"} />
+              </SelectTrigger>
+              <SelectContent>
+                {sessions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.title} — {new Date(s.start_date).toLocaleDateString("fr-FR")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button
+            onClick={handleGenerateDiplomeBatch}
+            disabled={!diplomeBatchSessionId || generatingDiplomeBatch}
+            className="w-full gap-2 bg-purple-600 hover:bg-purple-700"
+            size="lg"
+          >
+            {generatingDiplomeBatch ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Génération en cours…
+              </>
+            ) : (
+              <>
+                <Package className="h-4 w-4" />
+                Générer ZIP — tous les certificats diplômes
+              </>
+            )}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {lastDiplomeBatchResult && (
+        <Card
+          className={
+            lastDiplomeBatchResult.failureCount === 0
+              ? "border-green-200 bg-green-50/30"
+              : "border-amber-200 bg-amber-50/30"
+          }
+        >
+          <CardHeader>
+            <CardTitle
+              className={
+                "text-base " +
+                (lastDiplomeBatchResult.failureCount === 0 ? "text-green-900" : "text-amber-900")
+              }
+            >
+              {lastDiplomeBatchResult.failureCount === 0 ? "✅" : "⚠️"} Dernier batch diplômes
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <div>
+              <strong>{lastDiplomeBatchResult.successCount}</strong> /{" "}
+              {lastDiplomeBatchResult.totalLearners} diplômes générés
+            </div>
+            <div>
+              <strong>Latence totale :</strong> {lastDiplomeBatchResult.totalLatencyMs} ms
+            </div>
+            {lastDiplomeBatchResult.errors.length > 0 && (
+              <div className="mt-3 space-y-1">
+                <div className="flex items-center gap-1 text-amber-900 font-medium">
+                  <AlertCircle className="h-4 w-4" /> Erreurs ({lastDiplomeBatchResult.errors.length})
+                </div>
+                <ul className="text-xs space-y-0.5 ml-5 list-disc">
+                  {lastDiplomeBatchResult.errors.map((e) => (
+                    <li key={e.learnerId}>
+                      <strong>{e.learnerName}</strong> : {e.error}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {lastDiplomeResult && (
+        <Card className="border-green-200 bg-green-50/30">
+          <CardHeader>
+            <CardTitle className="text-base text-green-900">✅ Dernier certificat diplôme</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <div>
+              <strong>Moteur :</strong> {lastDiplomeResult.engineUsed}
+              {lastDiplomeResult.cacheHit && (
+                <span className="ml-2 text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded">
+                  ⚡ Cache hit
+                </span>
+              )}
+            </div>
+            <div><strong>Latence :</strong> {lastDiplomeResult.latencyMs} ms</div>
+            <div><strong>Taille PDF :</strong> {(lastDiplomeResult.fileSizeBytes / 1024).toFixed(1)} KB</div>
+            {lastDiplomeResult.certificateCode && (
+              <div><strong>Code :</strong> <code className="bg-gray-100 px-1 rounded">{lastDiplomeResult.certificateCode}</code></div>
+            )}
           </CardContent>
         </Card>
       )}
