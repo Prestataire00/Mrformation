@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
-import { Loader2, FileText, Sparkles, FlaskConical, Package, AlertCircle, ClipboardList, ScrollText, Shield, Gavel, BookOpen, UserCog } from "lucide-react";
+import { Loader2, FileText, Sparkles, FlaskConical, Package, AlertCircle, ClipboardList, ScrollText, Shield, Gavel, BookOpen, UserCog, MailOpen } from "lucide-react";
 
 /**
  * Page de test temporaire — Story B-Convention.
@@ -39,6 +39,11 @@ interface CompanyRow {
 interface TrainerRow {
   trainer_id: string;
   trainer: { id: string; first_name: string; last_name: string } | null;
+}
+
+interface LearnerRow {
+  learner_id: string;
+  learner: { id: string; first_name: string; last_name: string } | null;
 }
 
 export default function TestConventionPage() {
@@ -128,6 +133,28 @@ export default function TestConventionPage() {
     cacheHit: boolean;
     latencyMs: number;
     fileSizeBytes: number;
+  } | null>(null);
+
+  // ── Convocation apprenant (per session+learner) ──────────────────────
+  const [convocSessionId, setConvocSessionId] = useState<string>("");
+  const [convocLearnerId, setConvocLearnerId] = useState<string>("");
+  const [convocLearners, setConvocLearners] = useState<LearnerRow[]>([]);
+  const [loadingConvocLearners, setLoadingConvocLearners] = useState(false);
+  const [convocBatchSessionId, setConvocBatchSessionId] = useState<string>("");
+  const [generatingConvoc, setGeneratingConvoc] = useState(false);
+  const [generatingConvocBatch, setGeneratingConvocBatch] = useState(false);
+  const [lastConvocResult, setLastConvocResult] = useState<{
+    engineUsed: string;
+    cacheHit: boolean;
+    latencyMs: number;
+    fileSizeBytes: number;
+  } | null>(null);
+  const [lastConvocBatchResult, setLastConvocBatchResult] = useState<{
+    totalLearners: number;
+    successCount: number;
+    failureCount: number;
+    errors: { learnerId: string; learnerName: string; error: string }[];
+    totalLatencyMs: number;
   } | null>(null);
 
   // ── Convention intervention (per session+trainer) ────────────────────
@@ -222,6 +249,24 @@ export default function TestConventionPage() {
     })();
   }, [supabase, interventionSessionId]);
 
+  // Charge les apprenants de la session pour convocation single
+  useEffect(() => {
+    if (!convocSessionId) {
+      setConvocLearners([]);
+      setConvocLearnerId("");
+      return;
+    }
+    setLoadingConvocLearners(true);
+    (async () => {
+      const { data } = await supabase
+        .from("enrollments")
+        .select("learner_id, learner:learners(id, first_name, last_name)")
+        .eq("session_id", convocSessionId);
+      setConvocLearners((data as unknown as LearnerRow[]) || []);
+      setLoadingConvocLearners(false);
+    })();
+  }, [supabase, convocSessionId]);
+
   // ── CGV handler (entity-only, pas de params) ──────────────────────────
   async function handleGenerateCgv() {
     setGeneratingCgv(true);
@@ -248,6 +293,120 @@ export default function TestConventionPage() {
       });
     } finally {
       setGeneratingCgv(false);
+    }
+  }
+
+  // ── Convocation handlers ──────────────────────────────────────────────
+  async function handleGenerateConvocMock() {
+    setGeneratingConvoc(true);
+    setLastConvocResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-convocation-mock", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastConvocResult({
+        engineUsed: json.engineUsed,
+        cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs,
+        fileSizeBytes: json.fileSizeBytes,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({ title: "Convocation mock générée", description: `${json.engineUsed} · ${json.latencyMs}ms` });
+    } catch (err) {
+      toast({
+        title: "Échec convocation mock",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingConvoc(false);
+    }
+  }
+
+  async function handleGenerateConvoc() {
+    if (!convocSessionId || !convocLearnerId) {
+      toast({ title: "Sélection incomplète", description: "Choisis session ET apprenant.", variant: "destructive" });
+      return;
+    }
+    setGeneratingConvoc(true);
+    setLastConvocResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-convocation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: convocSessionId, learnerId: convocLearnerId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastConvocResult({
+        engineUsed: json.engineUsed,
+        cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs,
+        fileSizeBytes: json.fileSizeBytes,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({ title: "Convocation générée", description: `${json.engineUsed} · ${json.latencyMs}ms` });
+    } catch (err) {
+      toast({
+        title: "Échec convocation",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingConvoc(false);
+    }
+  }
+
+  async function handleGenerateConvocBatch() {
+    if (!convocBatchSessionId) {
+      toast({ title: "Aucune session", description: "Sélectionne d'abord une session.", variant: "destructive" });
+      return;
+    }
+    setGeneratingConvocBatch(true);
+    setLastConvocBatchResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-convocations-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: convocBatchSessionId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastConvocBatchResult({
+        totalLearners: json.totalLearners,
+        successCount: json.successCount,
+        failureCount: json.failureCount,
+        errors: json.errors ?? [],
+        totalLatencyMs: json.totalLatencyMs,
+      });
+      const bytes = Uint8Array.from(atob(json.zipBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/zip" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const sessionLabel = sessions.find((s) => s.id === convocBatchSessionId)?.title ?? "session";
+      a.href = url;
+      a.download = `convocations-${sessionLabel.replace(/[^a-zA-Z0-9-]+/g, "-").toLowerCase().slice(0, 50)}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast({
+        title: json.failureCount === 0 ? "ZIP convocations généré" : "ZIP avec erreurs",
+        description: `${json.successCount}/${json.totalLearners} apprenants · ${json.totalLatencyMs}ms`,
+        variant: json.failureCount === 0 ? "default" : "destructive",
+      });
+    } catch (err) {
+      toast({
+        title: "Échec batch convocations",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingConvocBatch(false);
     }
   }
 
@@ -1547,6 +1706,247 @@ export default function TestConventionPage() {
             <div>
               <strong>Taille PDF :</strong> {(lastProgrammeResult.fileSizeBytes / 1024).toFixed(1)} KB
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════ */}
+      {/*    Convocation apprenant (per session+learner)                   */}
+      {/* ════════════════════════════════════════════════════════════════ */}
+
+      <div className="pt-10 border-t-2 border-dashed border-gray-300">
+        <h2 className="text-xl font-semibold flex items-center gap-2 mb-1">
+          <MailOpen className="h-5 w-5 text-teal-600" />
+          Convocation apprenant
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Convocation par (session, apprenant). Inclut un <strong>QR code</strong>{" "}
+          (lib <code className="text-xs bg-gray-100 px-1 rounded">qrcode</code>) pointant
+          vers <code className="text-xs bg-gray-100 px-1 rounded">/learner/sessions/{`{sessionId}`}</code>.
+          Le détail des créneaux vient de <code className="text-xs bg-gray-100 px-1 rounded">formation_time_slots</code>{" "}
+          (fallback matin/aprem si vide).
+        </p>
+      </div>
+
+      <Card className="border-teal-200 bg-teal-50/30">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <FlaskConical className="h-4 w-4 text-teal-600" />
+            Mode rapide — Données factices
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Reproduit l&apos;exemple Loris : Patrick ATTLAN, formation Managers de
+            Proximité, 10/01/2025 avec 2 créneaux matin + aprem, QR code vers
+            l&apos;extranet apprenant.
+          </p>
+          <Button
+            onClick={handleGenerateConvocMock}
+            disabled={generatingConvoc || generatingConvocBatch}
+            className="w-full gap-2 bg-teal-600 hover:bg-teal-700"
+          >
+            {generatingConvoc ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <FlaskConical className="h-4 w-4" />
+            )}
+            Générer une convocation de test
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Convocation — Données réelles (1 apprenant)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label htmlFor="convoc-session-select" className="text-sm">Session</Label>
+            <Select
+              value={convocSessionId}
+              onValueChange={setConvocSessionId}
+              disabled={loadingSessions || generatingConvoc}
+            >
+              <SelectTrigger id="convoc-session-select" className="mt-1">
+                <SelectValue placeholder={loadingSessions ? "Chargement…" : "Choisir une session…"} />
+              </SelectTrigger>
+              <SelectContent>
+                {sessions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.title} — {new Date(s.start_date).toLocaleDateString("fr-FR")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label htmlFor="convoc-learner-select" className="text-sm">Apprenant inscrit</Label>
+            <Select
+              value={convocLearnerId}
+              onValueChange={setConvocLearnerId}
+              disabled={!convocSessionId || loadingConvocLearners || generatingConvoc}
+            >
+              <SelectTrigger id="convoc-learner-select" className="mt-1">
+                <SelectValue
+                  placeholder={
+                    !convocSessionId
+                      ? "Choisis d'abord une session"
+                      : loadingConvocLearners
+                        ? "Chargement…"
+                        : convocLearners.length === 0
+                          ? "Aucun apprenant inscrit"
+                          : "Choisir un apprenant…"
+                  }
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {convocLearners.map((l) =>
+                  l.learner ? (
+                    <SelectItem key={l.learner_id} value={l.learner_id}>
+                      {l.learner.last_name} {l.learner.first_name}
+                    </SelectItem>
+                  ) : null,
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <Button
+            onClick={handleGenerateConvoc}
+            disabled={!convocSessionId || !convocLearnerId || generatingConvoc}
+            className="w-full gap-2"
+            size="lg"
+          >
+            {generatingConvoc ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Génération en cours…
+              </>
+            ) : (
+              <>
+                <MailOpen className="h-4 w-4" />
+                Générer la convocation
+              </>
+            )}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="border-purple-200 bg-purple-50/30">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Package className="h-4 w-4 text-purple-600" />
+            Mode batch — tous les apprenants de la session
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Génère <strong>1 convocation par apprenant</strong> inscrit. Sortie : 1 ZIP.
+            Le QR code pointe vers la <strong>même URL</strong> pour tous (l&apos;extranet
+            auth-protégé distingue par login).
+          </p>
+          <div>
+            <Label htmlFor="convoc-batch-session-select" className="text-sm">Session</Label>
+            <Select
+              value={convocBatchSessionId}
+              onValueChange={setConvocBatchSessionId}
+              disabled={loadingSessions || generatingConvocBatch}
+            >
+              <SelectTrigger id="convoc-batch-session-select" className="mt-1">
+                <SelectValue placeholder={loadingSessions ? "Chargement…" : "Choisir une session…"} />
+              </SelectTrigger>
+              <SelectContent>
+                {sessions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.title} — {new Date(s.start_date).toLocaleDateString("fr-FR")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button
+            onClick={handleGenerateConvocBatch}
+            disabled={!convocBatchSessionId || generatingConvocBatch}
+            className="w-full gap-2 bg-purple-600 hover:bg-purple-700"
+            size="lg"
+          >
+            {generatingConvocBatch ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Génération en cours…
+              </>
+            ) : (
+              <>
+                <Package className="h-4 w-4" />
+                Générer ZIP — toutes les convocations
+              </>
+            )}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {lastConvocBatchResult && (
+        <Card
+          className={
+            lastConvocBatchResult.failureCount === 0
+              ? "border-green-200 bg-green-50/30"
+              : "border-amber-200 bg-amber-50/30"
+          }
+        >
+          <CardHeader>
+            <CardTitle
+              className={
+                "text-base " +
+                (lastConvocBatchResult.failureCount === 0 ? "text-green-900" : "text-amber-900")
+              }
+            >
+              {lastConvocBatchResult.failureCount === 0 ? "✅" : "⚠️"} Dernier batch convocations
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <div>
+              <strong>{lastConvocBatchResult.successCount}</strong> /{" "}
+              {lastConvocBatchResult.totalLearners} convocations générées
+            </div>
+            <div>
+              <strong>Latence totale :</strong> {lastConvocBatchResult.totalLatencyMs} ms
+            </div>
+            {lastConvocBatchResult.errors.length > 0 && (
+              <div className="mt-3 space-y-1">
+                <div className="flex items-center gap-1 text-amber-900 font-medium">
+                  <AlertCircle className="h-4 w-4" /> Erreurs ({lastConvocBatchResult.errors.length})
+                </div>
+                <ul className="text-xs space-y-0.5 ml-5 list-disc">
+                  {lastConvocBatchResult.errors.map((e) => (
+                    <li key={e.learnerId}>
+                      <strong>{e.learnerName}</strong> : {e.error}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {lastConvocResult && (
+        <Card className="border-green-200 bg-green-50/30">
+          <CardHeader>
+            <CardTitle className="text-base text-green-900">✅ Dernière convocation</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <div>
+              <strong>Moteur :</strong> {lastConvocResult.engineUsed}
+              {lastConvocResult.cacheHit && (
+                <span className="ml-2 text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded">
+                  ⚡ Cache hit
+                </span>
+              )}
+            </div>
+            <div><strong>Latence :</strong> {lastConvocResult.latencyMs} ms</div>
+            <div><strong>Taille PDF :</strong> {(lastConvocResult.fileSizeBytes / 1024).toFixed(1)} KB</div>
           </CardContent>
         </Card>
       )}
