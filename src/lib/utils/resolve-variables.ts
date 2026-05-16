@@ -48,6 +48,7 @@ export interface ResolveContext {
     phone?: string | null;
     website?: string | null;
     president_name?: string | null;
+    president_title?: string | null;
     signature_text?: string | null;
     stamp_url?: string | null;
     signature_url?: string | null;
@@ -616,6 +617,7 @@ export function resolveVariables(content: string, data: ResolveContext): string 
     "{{nom_organisme}}": data.entity?.name || "[Nom organisme]",
     "{{ville_organisme}}": data.entity?.city || "[Ville organisme]",
     "{{representant_organisme}}": data.entity?.president_name || "[Représentant organisme]",
+    "{{titre_representant_organisme}}": data.entity?.president_title || "Président",
     // E-signature client : pour l'instant fallback empty — la story C
     // (signatures unifiées) branchera vers documents.signature_data quand
     // le doc convention est signé.
@@ -822,6 +824,7 @@ export const ALIAS_TO_VARIABLE_KEY: Record<string, string> = {
   "Site web de l'organisme": "{{site_organisme}}",
   "Logo de l'organisme": "{{logo_organisme}}",
   "Nom du représentant de l'organisme": "{{representant_organisme}}",
+  "Titre du représentant de l'organisme": "{{titre_representant_organisme}}",
   "Signature de l'organisme": "{{signature_organisme}}",
   "Cachet de l'organisme": "{{tampon_organisme}}",
   // Client / bénéficiaire
@@ -969,7 +972,7 @@ export async function loadEntitySettings(
   const { data, error } = await supabase
     .from("entities")
     .select(
-      "name, siret, nda, address, postal_code, city, email, phone, website, president_name, signature_text, stamp_url, signature_url, logo_url",
+      "name, siret, nda, address, postal_code, city, email, phone, website, president_name, president_title, signature_text, stamp_url, signature_url, logo_url",
     )
     .eq("id", entityId)
     .maybeSingle();
@@ -1030,6 +1033,7 @@ export const VARIABLE_KEYS = [
   "{{nom_organisme}}",
   "{{ville_organisme}}",
   "{{representant_organisme}}",
+  "{{titre_representant_organisme}}",
   "{{e_signature_client}}",
   "{{type_action_formation}}",
   "{{type_diplome}}",

@@ -161,7 +161,7 @@ export const CONVENTION_ENTREPRISE_HTML = `<!DOCTYPE html>
 
   <p>Entre les soussignés :</p>
 
-  <p>1) <strong>[%Nom de l'organisme%]</strong> enregistré sous le numéro de déclaration d'activité : [%NDA de l'organisme%] auprès de la Direction Régionale de l'Economie, de l'Emploi, du Travail et des Solidarités (DREETS) PACA, Représenté par Monsieur [%Nom du représentant de l'organisme%], en qualité de : Président</p>
+  <p>1) <strong>[%Nom de l'organisme%]</strong> enregistré sous le numéro de déclaration d'activité : [%NDA de l'organisme%] auprès de la Direction Régionale de l'Economie, de l'Emploi, du Travail et des Solidarités (DREETS) PACA, Représenté par Monsieur [%Nom du représentant de l'organisme%], en qualité de : [%Titre du représentant de l'organisme%]</p>
 
   <p>&nbsp;et</p>
 
