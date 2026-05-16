@@ -22,6 +22,15 @@ export interface ResolveContext {
    * Utilisé par `{{qr_code_extranet_apprenant}}` dans la convocation.
    */
   extranetQrDataUrl?: string;
+  /**
+   * Map signer_id → signature_data URL (depuis table signatures).
+   * Inclut apprenants ET formateurs. Si présente, les builders
+   * `{{tableau_signature_compact}}` et `{{tableau_signature_individuel}}`
+   * affichent l'image de signature à la place du texte "Présent (A signé...)".
+   * Si signer_id absent du Map → fallback texte "Présent" (mode mock /
+   * compat ancien comportement).
+   */
+  signaturesById?: Map<string, string>;
   entity?: {
     name?: string | null;  // ajouté Story B-Convention : utilisé par `{{nom_organisme}}`
     siret?: string | null;
@@ -318,24 +327,42 @@ export function resolveVariables(content: string, data: ResolveContext): string 
         }
       }
 
-      // Status learner : si signedLearnerIds fourni, vérifier appartenance ; sinon "Présent"
+      // Status learner : signature image si dispo (signaturesById), sinon
+      // texte présent/absent depuis signedLearnerIds.
       const signed = data.signedLearnerIds;
-      const learnerPresent = signed
-        ? signed.has(data.learner.id)
-        : true; // fallback mock = présent
+      const sigMap = data.signaturesById;
+      const learnerSig = sigMap?.get(data.learner.id);
+      const learnerPresent = learnerSig
+        ? true
+        : signed
+          ? signed.has(data.learner.id)
+          : true; // fallback mock = présent
 
       const learnerName = `${data.learner.last_name?.toUpperCase() ?? ""} ${data.learner.first_name ?? ""}`.trim();
       const formateursLine = formateursNoms || "[Formateur]";
 
-      const learnerStatusHtml = learnerPresent
-        ? `<p class="person-status">Présent (A signé en présentiel)</p>`
-        : `<p class="person-status status-absent">Absent</p>`;
+      const renderSigImg = (sig: string) =>
+        `<img src="${sig}" alt="Signature" style="max-height:50px;max-width:160px;display:block;margin-top:4px;" />`;
+
+      const learnerStatusHtml = learnerSig
+        ? `<p class="person-status">Présent</p>${renderSigImg(learnerSig)}`
+        : learnerPresent
+          ? `<p class="person-status">Présent (A signé en présentiel)</p>`
+          : `<p class="person-status status-absent">Absent</p>`;
+
+      // Formateur status : signature si dispo
+      const firstTrainerId = (data.session?.formation_trainers ?? [])
+        .find((ft) => ft.trainer)?.trainer?.id;
+      const firstTrainerSig = firstTrainerId ? sigMap?.get(firstTrainerId) : undefined;
+      const formateurStatusHtml = firstTrainerSig
+        ? `<p class="person-status">Présent</p>${renderSigImg(firstTrainerSig)}`
+        : `<p class="person-status">Présent (A signé en présentiel)</p>`;
 
       const cards = creneaux.map((c) => `
 <div class="creneau-card">
   <p class="creneau-header">Créneau : De ${fmtDate(c.startIso)} - ${fmtTime(c.startIso)} À ${fmtDate(c.endIso)} - ${fmtTime(c.endIso)} (${c.label})</p>
   <p class="person-name">${formateursLine}</p>
-  <p class="person-status">Présent (A signé en présentiel)</p>
+  ${formateurStatusHtml}
   <p class="person-name learner">${learnerName}</p>
   ${learnerStatusHtml}
 </div>`).join("");
@@ -626,7 +653,14 @@ export function resolveVariables(content: string, data: ResolveContext): string 
       if (learnersForTable.length === 0) return "[Aucun apprenant]";
 
       const signed = data.signedLearnerIds;
+      const sigMap = data.signaturesById;
+      const renderSignature = (sigData: string): string =>
+        `<img src="${sigData}" alt="Signature" style="max-height:42px;max-width:120px;display:block;margin-top:2px;" />`;
       const learnerStatus = (learnerId: string): string => {
+        const sig = sigMap?.get(learnerId);
+        if (sig) {
+          return `<span class="person-status">Présent</span>${renderSignature(sig)}`;
+        }
         if (!signed) {
           return `<span class="person-status">Présent (A signé en présentiel)</span>`;
         }
@@ -658,7 +692,14 @@ export function resolveVariables(content: string, data: ResolveContext): string 
       }
 
       const formateursLine = formateursNoms;
-      const formateurStatus = `<span class="person-status">Présent (A signé en présentiel)</span>`;
+      // Formateur status : signature image si dispo (premier formateur),
+      // sinon texte "Présent". Lookup via formation_trainers[0].trainer.id.
+      const firstTrainerId = (data.session?.formation_trainers ?? [])
+        .find((ft) => ft.trainer)?.trainer?.id;
+      const firstTrainerSig = firstTrainerId ? sigMap?.get(firstTrainerId) : undefined;
+      const formateurStatus = firstTrainerSig
+        ? `<span class="person-status">Présent</span>${renderSignature(firstTrainerSig)}`
+        : `<span class="person-status">Présent (A signé en présentiel)</span>`;
 
       const apprenantsCellHtml = learnersForTable
         .map((e) => {

@@ -21,6 +21,7 @@ import {
   DocumentGenerationService,
   createDefaultEngine,
 } from "@/lib/services/document-generation";
+import { loadSignaturesBySessionId } from "@/lib/services/load-signatures";
 import type { Session, Learner } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
@@ -70,18 +71,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const [{ data: enrollment }, { data: signatureRows }] = await Promise.all([
+    const [{ data: enrollment }, sigData] = await Promise.all([
       supabase
         .from("enrollments")
         .select("id, learner:learners(*)")
         .eq("session_id", body.sessionId)
         .eq("learner_id", body.learnerId)
         .maybeSingle(),
-      supabase
-        .from("signatures")
-        .select("signer_id")
-        .eq("session_id", body.sessionId)
-        .eq("signer_type", "learner"),
+      loadSignaturesBySessionId(supabase, body.sessionId),
     ]);
 
     if (!enrollment || !(enrollment as { learner?: unknown }).learner) {
@@ -92,19 +89,14 @@ export async function POST(request: NextRequest) {
     }
     const learner = (enrollment as unknown as { learner: Learner }).learner;
 
-    const signedLearnerIds = new Set<string>(
-      (signatureRows ?? [])
-        .map((s) => (s as { signer_id: string | null }).signer_id)
-        .filter((id): id is string => Boolean(id)),
-    );
-
     const entity = await loadEntitySettings(supabase, profile.entity_id);
 
     const context: ResolveContext = {
       session: session as unknown as Session,
       learner,
       entity,
-      signedLearnerIds,
+      signedLearnerIds: sigData.signedLearnerIds,
+      signaturesById: sigData.signaturesById,
     };
     const resolvedHtml = resolveDocumentVariables(EMARGEMENT_INDIVIDUEL_HTML, context);
     const resolvedFooter = resolveDocumentVariables(EMARGEMENT_INDIVIDUEL_FOOTER_TEMPLATE, context);
@@ -122,8 +114,8 @@ export async function POST(request: NextRequest) {
         learner_id: body.learnerId,
         session_updated_at: (session as { updated_at?: string }).updated_at ?? null,
         custom_variables: {
-          present: signedLearnerIds.has(body.learnerId) ? "1" : "0",
-          signed_count: String(signedLearnerIds.size),
+          present: sigData.signedLearnerIds.has(body.learnerId) ? "1" : "0",
+          signed_count: String(sigData.signedLearnerIds.size),
         },
       },
       options: {
@@ -142,7 +134,7 @@ export async function POST(request: NextRequest) {
       engineUsed: result.engineUsed,
       fileSizeBytes: result.fileSizeBytes,
       latencyMs: result.latencyMs,
-      present: signedLearnerIds.has(body.learnerId),
+      present: sigData.signedLearnerIds.has(body.learnerId),
     });
   } catch (err) {
     return NextResponse.json(

@@ -22,6 +22,7 @@ import {
   DocumentGenerationService,
   createDefaultEngine,
 } from "@/lib/services/document-generation";
+import { loadSignaturesBySessionId } from "@/lib/services/load-signatures";
 import type { Session, Learner } from "@/lib/types";
 
 interface BatchError {
@@ -86,16 +87,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const [{ data: enrollments, error: enrErr }, { data: signatureRows }] = await Promise.all([
+    const [{ data: enrollments, error: enrErr }, sigData] = await Promise.all([
       supabase
         .from("enrollments")
         .select("learner:learners(*)")
         .eq("session_id", body.sessionId),
-      supabase
-        .from("signatures")
-        .select("signer_id")
-        .eq("session_id", body.sessionId)
-        .eq("signer_type", "learner"),
+      loadSignaturesBySessionId(supabase, body.sessionId),
     ]);
 
     if (enrErr) {
@@ -115,12 +112,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const signedLearnerIds = new Set<string>(
-      (signatureRows ?? [])
-        .map((s) => (s as { signer_id: string | null }).signer_id)
-        .filter((id): id is string => Boolean(id)),
-    );
-
     const entity = await loadEntitySettings(supabase, profile.entity_id);
 
     const engine = createDefaultEngine();
@@ -131,7 +122,8 @@ export async function POST(request: NextRequest) {
         session: session as unknown as Session,
         learner,
         entity,
-        signedLearnerIds,
+        signedLearnerIds: sigData.signedLearnerIds,
+        signaturesById: sigData.signaturesById,
       };
       const resolvedHtml = resolveDocumentVariables(EMARGEMENT_INDIVIDUEL_HTML, context);
       const resolvedFooter = resolveDocumentVariables(EMARGEMENT_INDIVIDUEL_FOOTER_TEMPLATE, context);
@@ -146,7 +138,7 @@ export async function POST(request: NextRequest) {
           learner_id: learner.id,
           session_updated_at: (session as { updated_at?: string }).updated_at ?? null,
           custom_variables: {
-            present: signedLearnerIds.has(learner.id) ? "1" : "0",
+            present: sigData.signedLearnerIds.has(learner.id) ? "1" : "0",
           },
         },
         options: {
@@ -199,7 +191,7 @@ export async function POST(request: NextRequest) {
       failureCount: errors.length,
       errors,
       totalLatencyMs: Date.now() - t0,
-      signedCount: signedLearnerIds.size,
+      signedCount: sigData.signedLearnerIds.size,
     });
   } catch (err) {
     return NextResponse.json(
