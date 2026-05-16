@@ -39,7 +39,7 @@
 #   → E2-E3-E4 (parallèles, après B+C+D+F stables) → E1 (last, après 90j stabilité)
 
 generated: 2026-05-17
-last_updated: 2026-05-17 (audit complet sync sprint-status avec état réel du code)
+last_updated: 2026-05-17 (d-2 done → epic-d complete)
 project: lms-platform
 project_key: NOKEY
 tracking_system: file-system
@@ -76,9 +76,9 @@ development_status:
 
   # ── Epic D : Import templates par lot & autonomie Loris (Lot D) ──
   # PR2 sous-PR 2.1 (parallèle B)
-  epic-d: in-progress
+  epic-d: done  # toutes les stories D terminées (d-1 via PR #39 + d-2 via PR #92)
   d-1-page-admin-import-templates: done  # PR #39 mergée 2026-05-15 (avant workflow BMad formel)
-  d-2-documentation-how-to: backlog
+  d-2-documentation-how-to: done  # page /admin/documents/how-to créée 2026-05-17 (5 étapes + troubleshooting)
   epic-d-retrospective: optional
 
   # ── Epic E : Hygiène, observabilité, tests (Lot E) ──
