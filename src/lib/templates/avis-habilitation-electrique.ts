@@ -194,7 +194,7 @@ export const AVIS_HABILITATION_ELECTRIQUE_HTML = `<!DOCTYPE html>
 
   <p>Monsieur <strong>[%Nom de l'apprenant%]</strong></p>
 
-  <p class="checkbox-line">Type d'habilitation : <span class="opt">☐ Initiale</span><span class="opt">☐ Recyclage</span></p>
+  <p class="checkbox-line">Type d'habilitation : <span class="opt"><s style="color:#9ca3af;">Initiale</s></span><span class="opt"><strong>Recyclage</strong></span></p>
 
   <p>Monsieur <strong>[%Nom de l'apprenant%]</strong> a suivi du <strong>[%Date de début de la formation%]</strong> au <strong>[%Date de fin de la formation%]</strong>, pour une durée de <strong>[%Durée de la formation%]</strong>, le stage de formation à la prévention du risque électrique organisé par <strong>[%Nom de l'organisme%]</strong> (lieu <strong>[%Lieu de la formation%]</strong>), et animé par <strong>[%Nom du/des formateur(s)%]</strong> et intitulé : <strong>[%Nom de la formation%]</strong>. Au cours de ce stage, Monsieur <strong>[%Nom de l'apprenant%]</strong> a acquis les connaissances et les savoir-faire nécessaires pour prendre en compte le risque électrique dans le cadre d'opérations d'ordre électrique ou non électrique et se prémunir de tout accident susceptible d'être encouru lors de ces opérations. Au vu de cet avis et compte-tenu des prescriptions contenues dans la <strong>norme NF C 18-510 A1</strong>, l'employeur peut délivrer à Monsieur <strong>[%Nom de l'apprenant%]</strong>, l'habilitation mentionnée dans l'exemple du Titre d'Habilitation ci-dessous.</p>
 
