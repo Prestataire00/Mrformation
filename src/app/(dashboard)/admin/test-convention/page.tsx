@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
-import { Loader2, FileText, Sparkles, FlaskConical, Package, AlertCircle, ClipboardList } from "lucide-react";
+import { Loader2, FileText, Sparkles, FlaskConical, Package, AlertCircle, ClipboardList, ScrollText } from "lucide-react";
 
 /**
  * Page de test temporaire — Story B-Convention.
@@ -88,6 +88,15 @@ export default function TestConventionPage() {
     signedCount?: number;
   } | null>(null);
 
+  // ── CGV (entity-only, pas de session/client) ─────────────────────────
+  const [generatingCgv, setGeneratingCgv] = useState(false);
+  const [lastCgvResult, setLastCgvResult] = useState<{
+    engineUsed: string;
+    cacheHit: boolean;
+    latencyMs: number;
+    fileSizeBytes: number;
+  } | null>(null);
+
   // Charge la liste des sessions de l'entité
   useEffect(() => {
     if (!entityId) return;
@@ -138,6 +147,35 @@ export default function TestConventionPage() {
       setLoadingEmargementCompanies(false);
     })();
   }, [supabase, emargementSessionId]);
+
+  // ── CGV handler (entity-only, pas de params) ──────────────────────────
+  async function handleGenerateCgv() {
+    setGeneratingCgv(true);
+    setLastCgvResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-cgv", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastCgvResult({
+        engineUsed: json.engineUsed,
+        cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs,
+        fileSizeBytes: json.fileSizeBytes,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({ title: "CGV générées", description: `${json.engineUsed} · ${json.latencyMs}ms` });
+    } catch (err) {
+      toast({
+        title: "Échec génération CGV",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingCgv(false);
+    }
+  }
 
   // ── Émargement handlers ───────────────────────────────────────────────
   async function handleGenerateEmargementMock() {
@@ -936,6 +974,74 @@ export default function TestConventionPage() {
                 <strong>Signatures réelles :</strong> {lastEmargementResult.signedCount}
               </div>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════ */}
+      {/*    CGV — Conditions Générales de Vente (entity-only, statique)  */}
+      {/* ════════════════════════════════════════════════════════════════ */}
+
+      <div className="pt-10 border-t-2 border-dashed border-gray-300">
+        <h2 className="text-xl font-semibold flex items-center gap-2 mb-1">
+          <ScrollText className="h-5 w-5 text-emerald-600" />
+          Conditions Générales de Vente
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Document statique (17 articles juridiques). Pas de session/client requis :
+          seul l&apos;organisme (nom, SIRET, NDA, adresse, logo) varie selon l&apos;entité.
+        </p>
+      </div>
+
+      <Card className="border-emerald-200 bg-emerald-50/30">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <ScrollText className="h-4 w-4 text-emerald-600" />
+            Générer CGV pour cet organisme
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Génère le PDF des CGV avec les infos de ton entité courante.
+            Aussi disponible automatiquement dans l&apos;espace client + apprenant
+            (après deploy) — ce bouton est juste pour valider le rendu.
+          </p>
+          <Button
+            onClick={handleGenerateCgv}
+            disabled={generatingCgv}
+            className="w-full gap-2 bg-emerald-600 hover:bg-emerald-700"
+            size="lg"
+          >
+            {generatingCgv ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <ScrollText className="h-4 w-4" />
+            )}
+            Générer les CGV
+          </Button>
+        </CardContent>
+      </Card>
+
+      {lastCgvResult && (
+        <Card className="border-green-200 bg-green-50/30">
+          <CardHeader>
+            <CardTitle className="text-base text-green-900">✅ Dernières CGV</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <div>
+              <strong>Moteur :</strong> {lastCgvResult.engineUsed}
+              {lastCgvResult.cacheHit && (
+                <span className="ml-2 text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded">
+                  ⚡ Cache hit
+                </span>
+              )}
+            </div>
+            <div>
+              <strong>Latence :</strong> {lastCgvResult.latencyMs} ms
+            </div>
+            <div>
+              <strong>Taille PDF :</strong> {(lastCgvResult.fileSizeBytes / 1024).toFixed(1)} KB
+            </div>
           </CardContent>
         </Card>
       )}

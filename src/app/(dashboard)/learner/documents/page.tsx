@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { FileText, Loader2, Eye, CheckCircle, Clock } from "lucide-react";
+import { FileText, Loader2, Eye, CheckCircle, Clock, ScrollText, Download } from "lucide-react";
+import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -52,9 +53,39 @@ export default function LearnerDocumentsPage() {
   const { entity } = useEntity();
   const entityName = entity?.name || "MR FORMATION";
 
+  const { toast } = useToast();
   const [groups, setGroups] = useState<SessionGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [learner, setLearner] = useState<{ id: string; first_name: string; last_name: string; email: string | null } | null>(null);
+  const [downloadingCgv, setDownloadingCgv] = useState(false);
+
+  // Téléchargement CGV — endpoint /api/documents/generate-cgv (entity-only)
+  const downloadCgv = async () => {
+    setDownloadingCgv(true);
+    try {
+      const res = await fetch("/api/documents/generate-cgv", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `CGV-${(entityName || "organisme").replace(/[^a-zA-Z0-9-]+/g, "-").toLowerCase()}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast({
+        title: "Téléchargement impossible",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    } finally {
+      setDownloadingCgv(false);
+    }
+  };
 
   // Preview
   const [previewDoc, setPreviewDoc] = useState<{
@@ -255,6 +286,35 @@ export default function LearnerDocumentsPage() {
           </Card>
         ))
       )}
+
+      {/* CGV — toujours disponible (entity-level, statique) */}
+      <Card className="border-emerald-200 bg-emerald-50/30">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <ScrollText className="h-5 w-5 text-emerald-700" />
+            Conditions Générales de Vente
+          </CardTitle>
+          <p className="text-sm text-muted-foreground mt-1">
+            Document légal de votre organisme de formation, disponible à tout moment.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <Button
+            onClick={downloadCgv}
+            disabled={downloadingCgv}
+            variant="default"
+            className="gap-2 bg-emerald-600 hover:bg-emerald-700"
+            size="sm"
+          >
+            {downloadingCgv ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4" />
+            )}
+            Télécharger les CGV
+          </Button>
+        </CardContent>
+      </Card>
 
       {/* Preview Dialog — lecture seule, pas de téléchargement */}
       {previewDoc && (
