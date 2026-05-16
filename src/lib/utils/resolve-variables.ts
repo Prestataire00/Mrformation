@@ -270,6 +270,28 @@ export function resolveVariables(content: string, data: ResolveContext): string 
     // day_number puis par slot (matin/aprem), rend pour chaque (jour, slot) un
     // tableau "Contenu | Animation". Si modules sans day_number/slot, rendu
     // dégradé en liste plate.
+    // === Story B-Attestation Assiduité ===
+    // Heures effectivement réalisées par l'apprenant courant.
+    // MVP : si data.signedLearnerIds inclut data.learner.id → planned_hours.
+    //       Sinon → 0.
+    // À affiner ultérieurement avec signatures par créneau (formation_time_slots).
+    "{{heures_realisees_apprenant}}": (() => {
+      const planned = data.session?.planned_hours;
+      if (!planned || !data.learner) return "0.00";
+      const signed = data.signedLearnerIds;
+      // Si signedLearnerIds non fourni (mock ou résolution sans check signatures)
+      // → assume présent (cas par défaut le plus courant).
+      if (!signed) return planned.toFixed(2);
+      return signed.has(data.learner.id) ? planned.toFixed(2) : "0.00";
+    })(),
+    "{{taux_realisation}}": (() => {
+      const planned = data.session?.planned_hours;
+      if (!planned || !data.learner) return "0.00";
+      const signed = data.signedLearnerIds;
+      if (!signed) return "100.00";
+      return signed.has(data.learner.id) ? "100.00" : "0.00";
+    })(),
+
     // === Story B-Certificat Réalisation ===
     // URL absolue vers /ministere-du-travail.png (asset public/) — Puppeteer
     // (Railway sidecar) doit pouvoir le fetcher depuis Internet, donc on
@@ -730,6 +752,9 @@ export const ALIAS_TO_VARIABLE_KEY: Record<string, string> = {
   // === Story B-Certificat Réalisation ===
   "URL Logo Ministère du Travail": "{{url_logo_ministere_travail}}",
   "Objectifs pédagogiques du programme": "{{liste_objectifs_pedagogiques}}",
+  // === Story B-Attestation Assiduité ===
+  "Heures de formation réalisées par l'apprenant": "{{heures_realisees_apprenant}}",
+  "Taux de réalisation": "{{taux_realisation}}",
   // === Story B-Convention Intervention (formateur sous-traitance) ===
   "Nom du formateur": "{{nom_formateur_complet}}",
   "Adresse du formateur": "{{adresse_formateur}}",
@@ -904,6 +929,9 @@ export const VARIABLE_KEYS = [
   "{{qr_code_extranet_apprenant}}",
   // Story B-Certificat Réalisation
   "{{url_logo_ministere_travail}}",
+  // Story B-Attestation Assiduité
+  "{{heures_realisees_apprenant}}",
+  "{{taux_realisation}}",
   // Story B-Convention Intervention
   "{{nom_formateur_complet}}",
   "{{adresse_formateur}}",
