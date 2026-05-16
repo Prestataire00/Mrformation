@@ -52,9 +52,9 @@ export default function VariablesPage() {
           </Button>
         </Link>
         <div>
-          <h1 className="text-lg font-bold text-gray-900">Variables de templates</h1>
+          <h1 className="text-lg font-bold text-gray-900">Catalogue des balises de documents</h1>
           <p className="text-sm text-muted-foreground">
-            {TEMPLATE_VARIABLES.length} variables disponibles pour personnaliser vos documents et emails
+            {TEMPLATE_VARIABLES.length} balises <code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded">[%...%]</code> disponibles pour personnaliser vos documents et emails. Cliquez sur une balise pour la copier.
           </p>
         </div>
       </div>
@@ -145,6 +145,9 @@ export default function VariablesPage() {
                     </div>
                     <p className="text-[11px] text-gray-400 mt-1">
                       Exemple : <span className="text-gray-500">{v.example}</span>
+                    </p>
+                    <p className="text-[10px] text-gray-300 mt-0.5 font-mono">
+                      tech : {v.techPlaceholder}
                     </p>
                   </div>
                 ))}
