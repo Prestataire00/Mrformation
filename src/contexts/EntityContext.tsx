@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 import type { Entity } from "@/lib/types";
 
 interface EntityContextValue {
@@ -35,15 +36,30 @@ interface EntityProviderProps {
 
 export function EntityProvider({ children, initialEntity, allEntities }: EntityProviderProps) {
   const router = useRouter();
+  const supabase = createClient();
   const [entity, setEntityState] = useState<Entity | null>(initialEntity);
 
   const setEntity = useCallback(
     (newEntity: Entity) => {
       setEntityState(newEntity);
       setCookie("entity_id", newEntity.id);
-      router.refresh();
+      // Persist profile.entity_id en DB pour que les routes API
+      // (qui lisent depuis profiles, pas le cookie) voient la nouvelle entité.
+      // Sans ça : le switcher Header changeait juste le cookie+UI mais les
+      // PDF générés gardaient l'ancienne entité du profile (bug visible
+      // notamment quand super_admin switche : UI=C3V mais PDF=MR).
+      (async () => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          await supabase
+            .from("profiles")
+            .update({ entity_id: newEntity.id })
+            .eq("id", user.id);
+        }
+        router.refresh();
+      })();
     },
-    [router]
+    [router, supabase]
   );
 
   // Sync cookie on mount if initialEntity exists
