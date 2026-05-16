@@ -292,11 +292,16 @@ export const ALIAS_TO_VARIABLE_KEY: Record<string, string> = {
   "Ville de l'organisme": "{{ville_organisme}}",
   "NDA de l'organisme": "{{nda_organisme}}",
   "SIRET de l'organisme": "{{siret_organisme}}",
+  "Email de l'organisme": "{{email_organisme}}",
+  "Téléphone de l'organisme": "{{telephone_organisme}}",
+  "Site web de l'organisme": "{{site_organisme}}",
+  "Logo de l'organisme": "{{logo_organisme}}",
   "Nom du représentant de l'organisme": "{{representant_organisme}}",
   "Signature de l'organisme": "{{signature_organisme}}",
   // Client / bénéficiaire
   "Nom du client": "{{nom_client}}",
   "Adresse du client": "{{client_adresse}}",
+  "SIRET du client": "{{client_siret}}",
   "Nom du représentant légal du client": "{{client_representant}}",
   "E-signature du client": "{{e_signature_client}}",
   // Formation
@@ -308,7 +313,11 @@ export const ALIAS_TO_VARIABLE_KEY: Record<string, string> = {
   "Nombre d'apprenants du client": "{{formation_effectifs}}",
   "Apprenants du client": "{{liste_apprenants}}",
   "Dates de la formation": "{{dates_formation}}",
+  "Date de fin de la formation": "{{date_fin}}",
   "Tableau des coûts du client": "{{tableau_couts_client}}",
+  "Montant HT": "{{montant_ht}}",
+  "Montant TTC": "{{montant_ttc}}",
+  "Montant TVA": "{{montant_tva}}",
   // Dates
   "Date d'aujourd'hui": "{{date_today}}",
 };
