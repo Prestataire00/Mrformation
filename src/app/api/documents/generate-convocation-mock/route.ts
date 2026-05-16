@@ -131,11 +131,11 @@ export async function POST(_request: NextRequest) {
       // dans session.location pour le mock, pour avoir le bon visuel.
     } as unknown as Session;
 
-    // Loris s'attend à voir "En présentiel - UNICIL, 11 RUE ARMENY 13006 MARSEILLE"
-    // donc on injecte adresse_formation via une astuce : on met l'adresse
-    // détaillée dans une override locale du contexte.
+    // Mock : URL magic-link fake (token bidon) pour montrer le format. En prod,
+    // c'est un vrai token /access/{token} → auto-login + redirect vers la session.
     const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://mrformationcrm.netlify.app").replace(/\/+$/, "");
-    const extranetUrl = `${baseUrl}/learner/sessions/${mockSession.id}`;
+    const mockToken = "mock-token-no-auto-login-DEMO";
+    const extranetUrl = `${baseUrl}/access/${mockToken}`;
     const qrDataUrl = await QRCode.toDataURL(extranetUrl, {
       width: 400,
       margin: 1,
