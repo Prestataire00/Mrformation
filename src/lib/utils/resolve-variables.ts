@@ -264,6 +264,53 @@ export function resolveVariables(content: string, data: ResolveContext): string 
     // day_number puis par slot (matin/aprem), rend pour chaque (jour, slot) un
     // tableau "Contenu | Animation". Si modules sans day_number/slot, rendu
     // dégradé en liste plate.
+    // === Story B-Convention Intervention (contrat sous-traitance formateur) ===
+    "{{nom_formateur_complet}}": (() => {
+      const t = data.trainer;
+      if (!t) return "[Nom formateur]";
+      return `${t.first_name} ${t.last_name}`.trim();
+    })(),
+    "{{adresse_formateur}}": (() => {
+      const t = data.trainer as unknown as {
+        address?: string | null;
+        postal_code?: string | null;
+        city?: string | null;
+      } | null;
+      if (!t) return "[Adresse formateur]";
+      const parts = [t.address, t.postal_code, t.city].filter(Boolean);
+      return parts.length > 0 ? parts.join(" ") : "[Adresse formateur]";
+    })(),
+    "{{siret_formateur}}": (() => {
+      const t = data.trainer as unknown as { siret?: string | null } | null;
+      return t?.siret || "[SIRET formateur]";
+    })(),
+    "{{nda_formateur}}": (() => {
+      const t = data.trainer as unknown as { nda?: string | null } | null;
+      return t?.nda || "[NDA formateur]";
+    })(),
+    "{{lien_extranet_formateur}}": (() => {
+      const t = data.trainer as unknown as { extranet_link?: string | null } | null;
+      return t?.extranet_link || "[Lien extranet]";
+    })(),
+    "{{e_signature_formateur}}": (() => {
+      const t = data.trainer as unknown as { signature_url?: string | null } | null;
+      return t?.signature_url
+        ? `<img src="${t.signature_url}" alt="Signature formateur" style="max-height:100px;" />`
+        : "[Signature formateur]";
+    })(),
+    // Adresse de la formation : alias direct de session.location (Loris la
+    // colle après [%Lieu de la formation%] pour un affichage compact).
+    "{{adresse_formation}}": data.session?.location || "[Adresse formation]",
+    // Coût HT formateur : agreed_cost_ht (depuis formation_trainers du trainer
+    // courant) > fallback calcul hourly_rate × hours_done. La résolution exacte
+    // est faite côté API (avant d'appeler le resolver) en plaçant la valeur
+    // dans data.trainer comme champ ad-hoc `_agreed_cost_ht`.
+    "{{cout_formateur_ht}}": (() => {
+      const t = data.trainer as unknown as { _agreed_cost_ht?: number | null } | null;
+      const cost = t?._agreed_cost_ht;
+      return typeof cost === "number" && cost > 0 ? cost.toFixed(2) : "[Coût formateur]";
+    })(),
+
     "{{contenu_pedagogique}}": (() => {
       type Module = {
         id?: number;
@@ -614,6 +661,15 @@ export const ALIAS_TO_VARIABLE_KEY: Record<string, string> = {
   "Dispositif d'évaluation": "{{dispositif_evaluation}}",
   "Taux de satisfaction": "{{taux_satisfaction}}",
   "Effectif max": "{{effectif_max}}",
+  // === Story B-Convention Intervention (formateur sous-traitance) ===
+  "Nom du formateur": "{{nom_formateur_complet}}",
+  "Adresse du formateur": "{{adresse_formateur}}",
+  "SIRET du formateur": "{{siret_formateur}}",
+  "NDA du formateur": "{{nda_formateur}}",
+  "Lien de l'extranet du formateur": "{{lien_extranet_formateur}}",
+  "E-signature du Formateur": "{{e_signature_formateur}}",
+  "Adresse de la formation": "{{adresse_formation}}",
+  "Coût total du formateur (HT)": "{{cout_formateur_ht}}",
 };
 
 /**
@@ -774,4 +830,13 @@ export const VARIABLE_KEYS = [
   "{{effectif_max}}",
   "{{liste_objectifs_pedagogiques}}",
   "{{contenu_pedagogique}}",
+  // Story B-Convention Intervention
+  "{{nom_formateur_complet}}",
+  "{{adresse_formateur}}",
+  "{{siret_formateur}}",
+  "{{nda_formateur}}",
+  "{{lien_extranet_formateur}}",
+  "{{e_signature_formateur}}",
+  "{{adresse_formation}}",
+  "{{cout_formateur_ht}}",
 ] as const;

@@ -133,6 +133,14 @@ export interface Trainer {
   hourly_rate: number | null;
   availability_notes: string | null;
   created_at: string;
+  // Story B-Convention Intervention (sous-traitance)
+  address: string | null;
+  postal_code: string | null;
+  city: string | null;
+  siret: string | null;
+  nda: string | null;
+  extranet_link: string | null;
+  signature_url: string | null;
   competencies?: TrainerCompetency[];
 }
 
@@ -271,6 +279,8 @@ export interface FormationTrainer {
   hours_done: number | null;
   dates_done: string | null;
   notes: string | null;
+  // Story B-Convention Intervention : coût HT agréé dans le contrat
+  agreed_cost_ht: number | null;
   created_at: string;
   trainer?: Trainer;
 }

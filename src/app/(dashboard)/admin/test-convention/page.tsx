@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
-import { Loader2, FileText, Sparkles, FlaskConical, Package, AlertCircle, ClipboardList, ScrollText, Shield, Gavel, BookOpen } from "lucide-react";
+import { Loader2, FileText, Sparkles, FlaskConical, Package, AlertCircle, ClipboardList, ScrollText, Shield, Gavel, BookOpen, UserCog } from "lucide-react";
 
 /**
  * Page de test temporaire — Story B-Convention.
@@ -34,6 +34,11 @@ interface SessionRow {
 interface CompanyRow {
   client_id: string;
   client: { id: string; company_name: string } | null;
+}
+
+interface TrainerRow {
+  trainer_id: string;
+  trainer: { id: string; first_name: string; last_name: string } | null;
 }
 
 export default function TestConventionPage() {
@@ -125,6 +130,29 @@ export default function TestConventionPage() {
     fileSizeBytes: number;
   } | null>(null);
 
+  // ── Convention intervention (per session+trainer) ────────────────────
+  const [interventionSessionId, setInterventionSessionId] = useState<string>("");
+  const [interventionTrainerId, setInterventionTrainerId] = useState<string>("");
+  const [interventionTrainers, setInterventionTrainers] = useState<TrainerRow[]>([]);
+  const [loadingInterventionTrainers, setLoadingInterventionTrainers] = useState(false);
+  const [interventionBatchSessionId, setInterventionBatchSessionId] = useState<string>("");
+  const [generatingIntervention, setGeneratingIntervention] = useState(false);
+  const [generatingInterventionBatch, setGeneratingInterventionBatch] = useState(false);
+  const [lastInterventionResult, setLastInterventionResult] = useState<{
+    engineUsed: string;
+    cacheHit: boolean;
+    latencyMs: number;
+    fileSizeBytes: number;
+    costHt?: number | null;
+  } | null>(null);
+  const [lastInterventionBatchResult, setLastInterventionBatchResult] = useState<{
+    totalTrainers: number;
+    successCount: number;
+    failureCount: number;
+    errors: { trainerId: string; trainerName: string; error: string }[];
+    totalLatencyMs: number;
+  } | null>(null);
+
   // Charge la liste des sessions de l'entité
   useEffect(() => {
     if (!entityId) return;
@@ -176,6 +204,24 @@ export default function TestConventionPage() {
     })();
   }, [supabase, emargementSessionId]);
 
+  // Charge les formateurs de la session pour convention intervention single
+  useEffect(() => {
+    if (!interventionSessionId) {
+      setInterventionTrainers([]);
+      setInterventionTrainerId("");
+      return;
+    }
+    setLoadingInterventionTrainers(true);
+    (async () => {
+      const { data } = await supabase
+        .from("formation_trainers")
+        .select("trainer_id, trainer:trainers(id, first_name, last_name)")
+        .eq("session_id", interventionSessionId);
+      setInterventionTrainers((data as unknown as TrainerRow[]) || []);
+      setLoadingInterventionTrainers(false);
+    })();
+  }, [supabase, interventionSessionId]);
+
   // ── CGV handler (entity-only, pas de params) ──────────────────────────
   async function handleGenerateCgv() {
     setGeneratingCgv(true);
@@ -202,6 +248,124 @@ export default function TestConventionPage() {
       });
     } finally {
       setGeneratingCgv(false);
+    }
+  }
+
+  // ── Convention intervention handlers ──────────────────────────────────
+  async function handleGenerateInterventionMock() {
+    setGeneratingIntervention(true);
+    setLastInterventionResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-convention-intervention-mock", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastInterventionResult({
+        engineUsed: json.engineUsed,
+        cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs,
+        fileSizeBytes: json.fileSizeBytes,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({ title: "Contrat formateur mock généré", description: `${json.engineUsed} · ${json.latencyMs}ms` });
+    } catch (err) {
+      toast({
+        title: "Échec contrat mock",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingIntervention(false);
+    }
+  }
+
+  async function handleGenerateIntervention() {
+    if (!interventionSessionId || !interventionTrainerId) {
+      toast({ title: "Sélection incomplète", description: "Choisis session ET formateur.", variant: "destructive" });
+      return;
+    }
+    setGeneratingIntervention(true);
+    setLastInterventionResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-convention-intervention", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: interventionSessionId, trainerId: interventionTrainerId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastInterventionResult({
+        engineUsed: json.engineUsed,
+        cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs,
+        fileSizeBytes: json.fileSizeBytes,
+        costHt: json.costHt,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({
+        title: "Contrat formateur généré",
+        description: `${json.costHt ?? "?"} € HT · ${json.engineUsed} · ${json.latencyMs}ms`,
+      });
+    } catch (err) {
+      toast({
+        title: "Échec contrat formateur",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingIntervention(false);
+    }
+  }
+
+  async function handleGenerateInterventionBatch() {
+    if (!interventionBatchSessionId) {
+      toast({ title: "Aucune session", description: "Sélectionne d'abord une session.", variant: "destructive" });
+      return;
+    }
+    setGeneratingInterventionBatch(true);
+    setLastInterventionBatchResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-conventions-intervention-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: interventionBatchSessionId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastInterventionBatchResult({
+        totalTrainers: json.totalTrainers,
+        successCount: json.successCount,
+        failureCount: json.failureCount,
+        errors: json.errors ?? [],
+        totalLatencyMs: json.totalLatencyMs,
+      });
+      const bytes = Uint8Array.from(atob(json.zipBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/zip" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const sessionLabel = sessions.find((s) => s.id === interventionBatchSessionId)?.title ?? "session";
+      a.href = url;
+      a.download = `contrats-formateurs-${sessionLabel.replace(/[^a-zA-Z0-9-]+/g, "-").toLowerCase().slice(0, 50)}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast({
+        title: json.failureCount === 0 ? "ZIP contrats généré" : "ZIP avec erreurs",
+        description: `${json.successCount}/${json.totalTrainers} contrats · ${json.totalLatencyMs}ms`,
+        variant: json.failureCount === 0 ? "default" : "destructive",
+      });
+    } catch (err) {
+      toast({
+        title: "Échec batch contrats",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingInterventionBatch(false);
     }
   }
 
@@ -1383,6 +1547,251 @@ export default function TestConventionPage() {
             <div>
               <strong>Taille PDF :</strong> {(lastProgrammeResult.fileSizeBytes / 1024).toFixed(1)} KB
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════ */}
+      {/*    Convention d'intervention (contrat sous-traitance formateur) */}
+      {/* ════════════════════════════════════════════════════════════════ */}
+
+      <div className="pt-10 border-t-2 border-dashed border-gray-300">
+        <h2 className="text-xl font-semibold flex items-center gap-2 mb-1">
+          <UserCog className="h-5 w-5 text-rose-600" />
+          Convention d&apos;intervention formateur
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Contrat de sous-traitance par (session, formateur). Données issues de{" "}
+          <code className="text-xs bg-gray-100 px-1 rounded">trainers</code> +{" "}
+          <code className="text-xs bg-gray-100 px-1 rounded">formation_trainers.agreed_cost_ht</code>{" "}
+          (nouveaux champs — migration SQL{" "}
+          <code className="text-xs bg-gray-100 px-1 rounded">add_trainer_subcontracting_fields.sql</code>{" "}
+          à jouer en prod).
+        </p>
+      </div>
+
+      <Card className="border-rose-200 bg-rose-50/30">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <FlaskConical className="h-4 w-4 text-rose-600" />
+            Mode rapide — Données factices
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Génère un contrat avec formateur fake (Brigitte MARTINEAU, SIRET +
+            NDA + extranet link + coût 1200€ HT). Permet de valider le rendu
+            visuel <strong>sans avoir besoin de jouer la migration SQL</strong>.
+          </p>
+          <Button
+            onClick={handleGenerateInterventionMock}
+            disabled={generatingIntervention || generatingInterventionBatch}
+            className="w-full gap-2 bg-rose-600 hover:bg-rose-700"
+          >
+            {generatingIntervention ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <FlaskConical className="h-4 w-4" />
+            )}
+            Générer un contrat formateur de test
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Contrat formateur — Données réelles (1 formateur)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label htmlFor="intervention-session-select" className="text-sm">Session</Label>
+            <Select
+              value={interventionSessionId}
+              onValueChange={setInterventionSessionId}
+              disabled={loadingSessions || generatingIntervention}
+            >
+              <SelectTrigger id="intervention-session-select" className="mt-1">
+                <SelectValue placeholder={loadingSessions ? "Chargement…" : "Choisir une session…"} />
+              </SelectTrigger>
+              <SelectContent>
+                {sessions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.title} — {new Date(s.start_date).toLocaleDateString("fr-FR")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label htmlFor="intervention-trainer-select" className="text-sm">Formateur rattaché</Label>
+            <Select
+              value={interventionTrainerId}
+              onValueChange={setInterventionTrainerId}
+              disabled={!interventionSessionId || loadingInterventionTrainers || generatingIntervention}
+            >
+              <SelectTrigger id="intervention-trainer-select" className="mt-1">
+                <SelectValue
+                  placeholder={
+                    !interventionSessionId
+                      ? "Choisis d'abord une session"
+                      : loadingInterventionTrainers
+                        ? "Chargement…"
+                        : interventionTrainers.length === 0
+                          ? "Aucun formateur rattaché"
+                          : "Choisir un formateur…"
+                  }
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {interventionTrainers.map((t) =>
+                  t.trainer ? (
+                    <SelectItem key={t.trainer_id} value={t.trainer_id}>
+                      {t.trainer.last_name} {t.trainer.first_name}
+                    </SelectItem>
+                  ) : null,
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <Button
+            onClick={handleGenerateIntervention}
+            disabled={!interventionSessionId || !interventionTrainerId || generatingIntervention}
+            className="w-full gap-2"
+            size="lg"
+          >
+            {generatingIntervention ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Génération en cours…
+              </>
+            ) : (
+              <>
+                <UserCog className="h-4 w-4" />
+                Générer le contrat formateur
+              </>
+            )}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="border-purple-200 bg-purple-50/30">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Package className="h-4 w-4 text-purple-600" />
+            Mode batch — tous les formateurs de la session
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Génère <strong>1 contrat par formateur</strong> rattaché à la session.
+            Sortie : 1 ZIP. Fail-soft si données manquantes (le PDF est généré
+            avec [Placeholder] visible pour les champs vides).
+          </p>
+          <div>
+            <Label htmlFor="intervention-batch-session-select" className="text-sm">Session</Label>
+            <Select
+              value={interventionBatchSessionId}
+              onValueChange={setInterventionBatchSessionId}
+              disabled={loadingSessions || generatingInterventionBatch}
+            >
+              <SelectTrigger id="intervention-batch-session-select" className="mt-1">
+                <SelectValue placeholder={loadingSessions ? "Chargement…" : "Choisir une session…"} />
+              </SelectTrigger>
+              <SelectContent>
+                {sessions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.title} — {new Date(s.start_date).toLocaleDateString("fr-FR")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button
+            onClick={handleGenerateInterventionBatch}
+            disabled={!interventionBatchSessionId || generatingInterventionBatch}
+            className="w-full gap-2 bg-purple-600 hover:bg-purple-700"
+            size="lg"
+          >
+            {generatingInterventionBatch ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Génération en cours…
+              </>
+            ) : (
+              <>
+                <Package className="h-4 w-4" />
+                Générer ZIP — tous les contrats formateurs
+              </>
+            )}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {lastInterventionBatchResult && (
+        <Card
+          className={
+            lastInterventionBatchResult.failureCount === 0
+              ? "border-green-200 bg-green-50/30"
+              : "border-amber-200 bg-amber-50/30"
+          }
+        >
+          <CardHeader>
+            <CardTitle
+              className={
+                "text-base " +
+                (lastInterventionBatchResult.failureCount === 0 ? "text-green-900" : "text-amber-900")
+              }
+            >
+              {lastInterventionBatchResult.failureCount === 0 ? "✅" : "⚠️"} Dernier batch contrats
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <div>
+              <strong>{lastInterventionBatchResult.successCount}</strong> /{" "}
+              {lastInterventionBatchResult.totalTrainers} contrats générés
+            </div>
+            <div>
+              <strong>Latence totale :</strong> {lastInterventionBatchResult.totalLatencyMs} ms
+            </div>
+            {lastInterventionBatchResult.errors.length > 0 && (
+              <div className="mt-3 space-y-1">
+                <div className="flex items-center gap-1 text-amber-900 font-medium">
+                  <AlertCircle className="h-4 w-4" /> Erreurs ({lastInterventionBatchResult.errors.length})
+                </div>
+                <ul className="text-xs space-y-0.5 ml-5 list-disc">
+                  {lastInterventionBatchResult.errors.map((e) => (
+                    <li key={e.trainerId}>
+                      <strong>{e.trainerName}</strong> : {e.error}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {lastInterventionResult && (
+        <Card className="border-green-200 bg-green-50/30">
+          <CardHeader>
+            <CardTitle className="text-base text-green-900">✅ Dernier contrat formateur</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <div>
+              <strong>Moteur :</strong> {lastInterventionResult.engineUsed}
+              {lastInterventionResult.cacheHit && (
+                <span className="ml-2 text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded">
+                  ⚡ Cache hit
+                </span>
+              )}
+            </div>
+            <div><strong>Latence :</strong> {lastInterventionResult.latencyMs} ms</div>
+            <div><strong>Taille PDF :</strong> {(lastInterventionResult.fileSizeBytes / 1024).toFixed(1)} KB</div>
+            {lastInterventionResult.costHt != null && (
+              <div><strong>Coût HT :</strong> {lastInterventionResult.costHt} €</div>
+            )}
           </CardContent>
         </Card>
       )}
