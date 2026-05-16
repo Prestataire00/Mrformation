@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
-import { Loader2, FileText, Sparkles, FlaskConical, Package, AlertCircle, ClipboardList, ScrollText, Shield, Gavel, BookOpen, UserCog, MailOpen, Award, BadgeCheck, UserCheck, Trophy, BarChart3, GraduationCap, Camera, LogOut, TrendingUp } from "lucide-react";
+import { Loader2, FileText, Sparkles, FlaskConical, Package, AlertCircle, ClipboardList, ScrollText, Shield, Gavel, BookOpen, UserCog, MailOpen, Award, BadgeCheck, UserCheck, Trophy, BarChart3, GraduationCap, Camera, LogOut, TrendingUp, BookMarked } from "lucide-react";
 
 /**
  * Page de test temporaire — Story B-Convention.
@@ -133,6 +133,26 @@ export default function TestConventionPage() {
     cacheHit: boolean;
     latencyMs: number;
     fileSizeBytes: number;
+  } | null>(null);
+
+  // ── Charte formateur (per TRAINER, pas session, OPTIONNEL) ──────────
+  const [charteTrainerId, setCharteTrainerId] = useState<string>("");
+  const [allTrainers, setAllTrainers] = useState<{ id: string; first_name: string; last_name: string }[]>([]);
+  const [loadingAllTrainers, setLoadingAllTrainers] = useState(false);
+  const [generatingCharte, setGeneratingCharte] = useState(false);
+  const [generatingCharteBatch, setGeneratingCharteBatch] = useState(false);
+  const [lastCharteResult, setLastCharteResult] = useState<{
+    engineUsed: string;
+    cacheHit: boolean;
+    latencyMs: number;
+    fileSizeBytes: number;
+  } | null>(null);
+  const [lastCharteBatchResult, setLastCharteBatchResult] = useState<{
+    totalTrainers: number;
+    successCount: number;
+    failureCount: number;
+    errors: { trainerId: string; trainerName: string; error: string }[];
+    totalLatencyMs: number;
   } | null>(null);
 
   // ── Réponses satisfaction (per SESSION, OPTIONNEL — pas de batch) ────
@@ -609,6 +629,21 @@ export default function TestConventionPage() {
     })();
   }, [supabase, dechSessionId]);
 
+  // Charge tous les formateurs de l'entité courante (pour charte formateur)
+  useEffect(() => {
+    if (!entityId) return;
+    setLoadingAllTrainers(true);
+    (async () => {
+      const { data } = await supabase
+        .from("trainers")
+        .select("id, first_name, last_name")
+        .eq("entity_id", entityId)
+        .order("last_name", { ascending: true });
+      setAllTrainers((data as { id: string; first_name: string; last_name: string }[]) || []);
+      setLoadingAllTrainers(false);
+    })();
+  }, [supabase, entityId]);
+
   // ── CGV handler (entity-only, pas de params) ──────────────────────────
   async function handleGenerateCgv() {
     setGeneratingCgv(true);
@@ -635,6 +670,97 @@ export default function TestConventionPage() {
       });
     } finally {
       setGeneratingCgv(false);
+    }
+  }
+
+  // ── Charte formateur handlers (per TRAINER, OPTIONNEL) ──────────────
+  async function handleGenerateCharteMock() {
+    setGeneratingCharte(true);
+    setLastCharteResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-charte-formateur-mock", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastCharteResult({
+        engineUsed: json.engineUsed, cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs, fileSizeBytes: json.fileSizeBytes,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({ title: "Charte mock générée", description: `${json.engineUsed} · ${json.latencyMs}ms` });
+    } catch (err) {
+      toast({ title: "Échec mock charte", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setGeneratingCharte(false);
+    }
+  }
+
+  async function handleGenerateCharte() {
+    if (!charteTrainerId) {
+      toast({ title: "Aucun formateur", description: "Sélectionne d'abord un formateur.", variant: "destructive" });
+      return;
+    }
+    setGeneratingCharte(true);
+    setLastCharteResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-charte-formateur", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trainerId: charteTrainerId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastCharteResult({
+        engineUsed: json.engineUsed, cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs, fileSizeBytes: json.fileSizeBytes,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({ title: "Charte générée", description: `${json.engineUsed} · ${json.latencyMs}ms` });
+    } catch (err) {
+      toast({ title: "Échec charte", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setGeneratingCharte(false);
+    }
+  }
+
+  async function handleGenerateCharteBatch() {
+    setGeneratingCharteBatch(true);
+    setLastCharteBatchResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-chartes-formateur-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastCharteBatchResult({
+        totalTrainers: json.totalTrainers, successCount: json.successCount,
+        failureCount: json.failureCount, errors: json.errors ?? [],
+        totalLatencyMs: json.totalLatencyMs,
+      });
+      const bytes = Uint8Array.from(atob(json.zipBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/zip" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `chartes-formateurs.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast({
+        title: json.failureCount === 0 ? "ZIP chartes généré" : "ZIP avec erreurs",
+        description: `${json.successCount}/${json.totalTrainers} formateurs · ${json.totalLatencyMs}ms`,
+        variant: json.failureCount === 0 ? "default" : "destructive",
+      });
+    } catch (err) {
+      toast({ title: "Échec batch chartes", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setGeneratingCharteBatch(false);
     }
   }
 
@@ -5267,6 +5393,142 @@ export default function TestConventionPage() {
                 <div><strong>Taux acquisition :</strong> {lastSatRepResult.qualiopi.acquisitionRate?.toFixed(1) ?? "—"} %</div>
               </div>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ────────── Charte du formateur (per TRAINER, pas session) ────────── */}
+
+      <div className="pt-8">
+        <h2 className="text-xl font-semibold flex items-center gap-2 mb-1">
+          <BookMarked className="h-5 w-5 text-stone-600" />
+          Charte du formateur
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Code de conduite éthique signé par le formateur (19 engagements
+          déontologiques). <strong>Per formateur, pas per session</strong> —
+          signé une fois lors de l&apos;onboarding. Batch = 1 PDF par formateur
+          de l&apos;entité.
+        </p>
+      </div>
+
+      <Card className="border-stone-200 bg-stone-50/30">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <FlaskConical className="h-4 w-4 text-stone-700" />
+            Mode rapide — Données factices
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Brigitte MARTINEAU + fake signature SVG inline.
+          </p>
+          <Button
+            onClick={handleGenerateCharteMock}
+            disabled={generatingCharte || generatingCharteBatch}
+            className="w-full gap-2 bg-stone-600 hover:bg-stone-700"
+          >
+            {generatingCharte ? <Loader2 className="h-4 w-4 animate-spin" /> : <FlaskConical className="h-4 w-4" />}
+            Générer charte de test
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Charte — Données réelles (1 formateur)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label htmlFor="charte-trainer-select" className="text-sm">Formateur de l&apos;entité</Label>
+            <Select value={charteTrainerId} onValueChange={setCharteTrainerId}
+              disabled={loadingAllTrainers || generatingCharte}>
+              <SelectTrigger id="charte-trainer-select" className="mt-1">
+                <SelectValue placeholder={
+                  loadingAllTrainers ? "Chargement…"
+                    : allTrainers.length === 0 ? "Aucun formateur dans cette entité"
+                      : "Choisir un formateur…"
+                } />
+              </SelectTrigger>
+              <SelectContent>
+                {allTrainers.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.last_name} {t.first_name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button onClick={handleGenerateCharte}
+            disabled={!charteTrainerId || generatingCharte}
+            className="w-full gap-2" size="lg">
+            {generatingCharte ? <><Loader2 className="h-4 w-4 animate-spin" />Génération en cours…</>
+              : <><BookMarked className="h-4 w-4" />Générer charte</>}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="border-purple-200 bg-purple-50/30">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Package className="h-4 w-4 text-purple-600" />
+            Mode batch — tous les formateurs de l&apos;entité
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Génère <strong>1 charte par formateur</strong> de l&apos;entité courante.
+            Sortie : 1 ZIP fail-soft. Utile pour onboarding masse / mise à jour
+            de la charte.
+          </p>
+          <Button onClick={handleGenerateCharteBatch}
+            disabled={generatingCharteBatch}
+            className="w-full gap-2 bg-purple-600 hover:bg-purple-700" size="lg">
+            {generatingCharteBatch ? <><Loader2 className="h-4 w-4 animate-spin" />Génération en cours…</>
+              : <><Package className="h-4 w-4" />Générer ZIP — toutes les chartes</>}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {lastCharteBatchResult && (
+        <Card className={lastCharteBatchResult.failureCount === 0
+          ? "border-green-200 bg-green-50/30" : "border-amber-200 bg-amber-50/30"}>
+          <CardHeader>
+            <CardTitle className={"text-base " + (lastCharteBatchResult.failureCount === 0 ? "text-green-900" : "text-amber-900")}>
+              {lastCharteBatchResult.failureCount === 0 ? "✅" : "⚠️"} Dernier batch chartes
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <div><strong>{lastCharteBatchResult.successCount}</strong> / {lastCharteBatchResult.totalTrainers} chartes générées</div>
+            <div><strong>Latence totale :</strong> {lastCharteBatchResult.totalLatencyMs} ms</div>
+            {lastCharteBatchResult.errors.length > 0 && (
+              <div className="mt-3 space-y-1">
+                <div className="flex items-center gap-1 text-amber-900 font-medium">
+                  <AlertCircle className="h-4 w-4" /> Erreurs ({lastCharteBatchResult.errors.length})
+                </div>
+                <ul className="text-xs space-y-0.5 ml-5 list-disc">
+                  {lastCharteBatchResult.errors.map((e) => (
+                    <li key={e.trainerId}><strong>{e.trainerName}</strong> : {e.error}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {lastCharteResult && (
+        <Card className="border-green-200 bg-green-50/30">
+          <CardHeader><CardTitle className="text-base text-green-900">✅ Dernière charte</CardTitle></CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <div>
+              <strong>Moteur :</strong> {lastCharteResult.engineUsed}
+              {lastCharteResult.cacheHit && (
+                <span className="ml-2 text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded">⚡ Cache hit</span>
+              )}
+            </div>
+            <div><strong>Latence :</strong> {lastCharteResult.latencyMs} ms</div>
+            <div><strong>Taille PDF :</strong> {(lastCharteResult.fileSizeBytes / 1024).toFixed(1)} KB</div>
           </CardContent>
         </Card>
       )}
