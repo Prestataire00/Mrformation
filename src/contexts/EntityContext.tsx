@@ -43,23 +43,28 @@ export function EntityProvider({ children, initialEntity, allEntities }: EntityP
     (newEntity: Entity) => {
       setEntityState(newEntity);
       setCookie("entity_id", newEntity.id);
-      // Persist profile.entity_id en DB pour que les routes API
-      // (qui lisent depuis profiles, pas le cookie) voient la nouvelle entité.
-      // Sans ça : le switcher Header changeait juste le cookie+UI mais les
-      // PDF générés gardaient l'ancienne entité du profile (bug visible
-      // notamment quand super_admin switche : UI=C3V mais PDF=MR).
+      // Persist profile.entity_id en DB via endpoint dédié (service_role).
+      // RLS bloque le UPDATE direct sur entity_id depuis le client (fix
+      // sécurité auto-promotion — cf supabase/fix_rls_security.sql). On
+      // passe donc par /api/auth/switch-entity qui vérifie super_admin et
+      // bypass via service_role.
       (async () => {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          await supabase
-            .from("profiles")
-            .update({ entity_id: newEntity.id })
-            .eq("id", user.id);
+        try {
+          await fetch("/api/auth/switch-entity", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ entityId: newEntity.id }),
+          });
+        } catch {
+          // Silent : si l'endpoint échoue, le cookie a déjà été set et
+          // l'UI affichera la nouvelle entité (mais les API verront
+          // l'ancienne). Symptôme : PDF avec mauvaise entité.
+          // Pour debug : ouvrir DevTools > Network > XHR pour voir l'erreur.
         }
         router.refresh();
       })();
     },
-    [router, supabase]
+    [router]
   );
 
   // Sync cookie on mount if initialEntity exists

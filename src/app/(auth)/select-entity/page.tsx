@@ -45,15 +45,22 @@ export default function SelectEntityPage() {
   async function handleSelect(entity: Entity) {
     setSelecting(entity.id);
 
-    // Update profile entity_id and get role
+    // Update profile entity_id via endpoint server-side (service_role bypass).
+    // Le client ne peut pas UPDATE entity_id directement (RLS column GRANT —
+    // cf supabase/fix_rls_security.sql, sécurité auto-promotion).
     const {
       data: { user },
     } = await supabase.auth.getUser();
     if (user) {
-      await supabase
-        .from("profiles")
-        .update({ entity_id: entity.id })
-        .eq("id", user.id);
+      try {
+        await fetch("/api/auth/switch-entity", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ entityId: entity.id }),
+        });
+      } catch {
+        // Silent — voir DevTools > Network si besoin de debug
+      }
 
       // Set user_role cookie for RBAC middleware
       const { data: profile } = await supabase
