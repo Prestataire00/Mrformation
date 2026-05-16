@@ -157,6 +157,28 @@ export default function TestConventionPage() {
     totalLatencyMs: number;
   } | null>(null);
 
+  // ── Contrat d'engagement stagiaire (per session+learner, OPTIONNEL) ──
+  const [contratEngSessionId, setContratEngSessionId] = useState<string>("");
+  const [contratEngLearnerId, setContratEngLearnerId] = useState<string>("");
+  const [contratEngLearners, setContratEngLearners] = useState<LearnerRow[]>([]);
+  const [loadingContratEngLearners, setLoadingContratEngLearners] = useState(false);
+  const [contratEngBatchSessionId, setContratEngBatchSessionId] = useState<string>("");
+  const [generatingContratEng, setGeneratingContratEng] = useState(false);
+  const [generatingContratEngBatch, setGeneratingContratEngBatch] = useState(false);
+  const [lastContratEngResult, setLastContratEngResult] = useState<{
+    engineUsed: string;
+    cacheHit: boolean;
+    latencyMs: number;
+    fileSizeBytes: number;
+  } | null>(null);
+  const [lastContratEngBatchResult, setLastContratEngBatchResult] = useState<{
+    totalLearners: number;
+    successCount: number;
+    failureCount: number;
+    errors: { learnerId: string; learnerName: string; error: string }[];
+    totalLatencyMs: number;
+  } | null>(null);
+
   // ── Avis Habilitation Électrique H0 B0 INITIAL (OPTIONNEL) ──────────
   const [habilH0B0InitSessionId, setHabilH0B0InitSessionId] = useState<string>("");
   const [habilH0B0InitLearnerId, setHabilH0B0InitLearnerId] = useState<string>("");
@@ -952,6 +974,24 @@ export default function TestConventionPage() {
     })();
   }, [supabase, habilSessionId]);
 
+  // Charge les apprenants pour contrat d'engagement single
+  useEffect(() => {
+    if (!contratEngSessionId) {
+      setContratEngLearners([]);
+      setContratEngLearnerId("");
+      return;
+    }
+    setLoadingContratEngLearners(true);
+    (async () => {
+      const { data } = await supabase
+        .from("enrollments")
+        .select("learner_id, learner:learners(id, first_name, last_name)")
+        .eq("session_id", contratEngSessionId);
+      setContratEngLearners((data as unknown as LearnerRow[]) || []);
+      setLoadingContratEngLearners(false);
+    })();
+  }, [supabase, contratEngSessionId]);
+
   // Charge les apprenants pour avis habilitation H0 B0 INITIAL single
   useEffect(() => {
     if (!habilH0B0InitSessionId) {
@@ -1287,6 +1327,102 @@ export default function TestConventionPage() {
       toast({ title: "Échec batch avis habilitation", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
     } finally {
       setGeneratingHabilBatch(false);
+    }
+  }
+
+  // ── Contrat d'engagement handlers (OPTIONNEL) ───────────────────────
+  async function handleGenerateContratEngMock() {
+    setGeneratingContratEng(true);
+    setLastContratEngResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-contrat-engagement-mock", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastContratEngResult({
+        engineUsed: json.engineUsed, cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs, fileSizeBytes: json.fileSizeBytes,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({ title: "Contrat engagement mock généré", description: `${json.engineUsed} · ${json.latencyMs}ms` });
+    } catch (err) {
+      toast({ title: "Échec mock contrat engagement", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setGeneratingContratEng(false);
+    }
+  }
+
+  async function handleGenerateContratEng() {
+    if (!contratEngSessionId || !contratEngLearnerId) {
+      toast({ title: "Sélection incomplète", description: "Choisis session ET apprenant.", variant: "destructive" });
+      return;
+    }
+    setGeneratingContratEng(true);
+    setLastContratEngResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-contrat-engagement", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: contratEngSessionId, learnerId: contratEngLearnerId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastContratEngResult({
+        engineUsed: json.engineUsed, cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs, fileSizeBytes: json.fileSizeBytes,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({ title: "Contrat engagement généré", description: `${json.engineUsed} · ${json.latencyMs}ms` });
+    } catch (err) {
+      toast({ title: "Échec contrat engagement", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setGeneratingContratEng(false);
+    }
+  }
+
+  async function handleGenerateContratEngBatch() {
+    if (!contratEngBatchSessionId) {
+      toast({ title: "Aucune session", description: "Sélectionne d'abord une session.", variant: "destructive" });
+      return;
+    }
+    setGeneratingContratEngBatch(true);
+    setLastContratEngBatchResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-contrats-engagement-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: contratEngBatchSessionId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastContratEngBatchResult({
+        totalLearners: json.totalLearners, successCount: json.successCount,
+        failureCount: json.failureCount, errors: json.errors ?? [],
+        totalLatencyMs: json.totalLatencyMs,
+      });
+      const bytes = Uint8Array.from(atob(json.zipBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/zip" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const sessionLabel = sessions.find((s) => s.id === contratEngBatchSessionId)?.title ?? "session";
+      a.href = url;
+      a.download = `contrats-engagement-${sessionLabel.replace(/[^a-zA-Z0-9-]+/g, "-").toLowerCase().slice(0, 50)}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast({
+        title: json.failureCount === 0 ? "ZIP contrats engagement généré" : "ZIP avec erreurs",
+        description: `${json.successCount}/${json.totalLearners} apprenants · ${json.totalLatencyMs}ms`,
+        variant: json.failureCount === 0 ? "default" : "destructive",
+      });
+    } catch (err) {
+      toast({ title: "Échec batch contrats engagement", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setGeneratingContratEngBatch(false);
     }
   }
 
@@ -9504,6 +9640,174 @@ export default function TestConventionPage() {
             </div>
             <div><strong>Latence :</strong> {lastHabilH0B0InitResult.latencyMs} ms</div>
             <div><strong>Taille PDF :</strong> {(lastHabilH0B0InitResult.fileSizeBytes / 1024).toFixed(1)} KB</div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ────────── Contrat d'engagement stagiaire (per session+learner) ────────── */}
+
+      <div className="pt-8">
+        <h2 className="text-xl font-semibold flex items-center gap-2 mb-1">
+          <ScrollText className="h-5 w-5 text-blue-700" />
+          Contrat d&apos;engagement stagiaire
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Engagements réciproques stagiaire ↔ organisme de formation. Inclut
+          la formation (intitulé, dates, lieu) + listes d&apos;engagements
+          (9 stagiaire, 6 orga) + sanctions + signatures.
+          &ldquo;Date de naissance&rdquo; laissée en ligne pointillée (pas de
+          champ <code>birth_date</code> côté Learner — à remplir à la main).
+        </p>
+      </div>
+
+      <Card className="border-blue-300 bg-blue-50/40">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <FlaskConical className="h-4 w-4 text-blue-800" />
+            Mode rapide — Données factices
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Patrick ATTLAN + POE Managers Proximité (35h, 15-19/09/2025).
+          </p>
+          <Button
+            onClick={handleGenerateContratEngMock}
+            disabled={generatingContratEng || generatingContratEngBatch}
+            className="w-full gap-2 bg-blue-700 hover:bg-blue-800"
+          >
+            {generatingContratEng ? <Loader2 className="h-4 w-4 animate-spin" /> : <FlaskConical className="h-4 w-4" />}
+            Générer contrat engagement de test
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Contrat engagement — Données réelles (1 apprenant)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label htmlFor="contrat-eng-session-select" className="text-sm">Session</Label>
+            <Select value={contratEngSessionId} onValueChange={setContratEngSessionId}
+              disabled={loadingSessions || generatingContratEng}>
+              <SelectTrigger id="contrat-eng-session-select" className="mt-1">
+                <SelectValue placeholder={loadingSessions ? "Chargement…" : "Choisir une session…"} />
+              </SelectTrigger>
+              <SelectContent>
+                {sessions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.title} — {new Date(s.start_date).toLocaleDateString("fr-FR")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label htmlFor="contrat-eng-learner-select" className="text-sm">Apprenant inscrit</Label>
+            <Select value={contratEngLearnerId} onValueChange={setContratEngLearnerId}
+              disabled={!contratEngSessionId || loadingContratEngLearners || generatingContratEng}>
+              <SelectTrigger id="contrat-eng-learner-select" className="mt-1">
+                <SelectValue placeholder={
+                  !contratEngSessionId ? "Choisis d'abord une session"
+                    : loadingContratEngLearners ? "Chargement…"
+                      : contratEngLearners.length === 0 ? "Aucun apprenant inscrit"
+                        : "Choisir un apprenant…"
+                } />
+              </SelectTrigger>
+              <SelectContent>
+                {contratEngLearners.map((l) => l.learner ? (
+                  <SelectItem key={l.learner_id} value={l.learner_id}>
+                    {l.learner.last_name} {l.learner.first_name}
+                  </SelectItem>
+                ) : null)}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button onClick={handleGenerateContratEng}
+            disabled={!contratEngSessionId || !contratEngLearnerId || generatingContratEng}
+            className="w-full gap-2" size="lg">
+            {generatingContratEng ? <><Loader2 className="h-4 w-4 animate-spin" />Génération en cours…</>
+              : <><ScrollText className="h-4 w-4" />Générer contrat engagement</>}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="border-purple-200 bg-purple-50/30">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Package className="h-4 w-4 text-purple-600" />
+            Mode batch — tous les apprenants
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Génère <strong>1 contrat par apprenant</strong>. Sortie : 1 ZIP.
+          </p>
+          <div>
+            <Label htmlFor="contrat-eng-batch-session-select" className="text-sm">Session</Label>
+            <Select value={contratEngBatchSessionId} onValueChange={setContratEngBatchSessionId}
+              disabled={loadingSessions || generatingContratEngBatch}>
+              <SelectTrigger id="contrat-eng-batch-session-select" className="mt-1">
+                <SelectValue placeholder={loadingSessions ? "Chargement…" : "Choisir une session…"} />
+              </SelectTrigger>
+              <SelectContent>
+                {sessions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.title} — {new Date(s.start_date).toLocaleDateString("fr-FR")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button onClick={handleGenerateContratEngBatch}
+            disabled={!contratEngBatchSessionId || generatingContratEngBatch}
+            className="w-full gap-2 bg-purple-600 hover:bg-purple-700" size="lg">
+            {generatingContratEngBatch ? <><Loader2 className="h-4 w-4 animate-spin" />Génération en cours…</>
+              : <><Package className="h-4 w-4" />Générer ZIP — tous les contrats</>}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {lastContratEngBatchResult && (
+        <Card className={lastContratEngBatchResult.failureCount === 0
+          ? "border-green-200 bg-green-50/30" : "border-amber-200 bg-amber-50/30"}>
+          <CardHeader>
+            <CardTitle className={"text-base " + (lastContratEngBatchResult.failureCount === 0 ? "text-green-900" : "text-amber-900")}>
+              {lastContratEngBatchResult.failureCount === 0 ? "✅" : "⚠️"} Dernier batch contrats engagement
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <div><strong>{lastContratEngBatchResult.successCount}</strong> / {lastContratEngBatchResult.totalLearners} contrats générés</div>
+            <div><strong>Latence totale :</strong> {lastContratEngBatchResult.totalLatencyMs} ms</div>
+            {lastContratEngBatchResult.errors.length > 0 && (
+              <div className="mt-3 space-y-1">
+                <div className="flex items-center gap-1 text-amber-900 font-medium">
+                  <AlertCircle className="h-4 w-4" /> Erreurs ({lastContratEngBatchResult.errors.length})
+                </div>
+                <ul className="text-xs space-y-0.5 ml-5 list-disc">
+                  {lastContratEngBatchResult.errors.map((e) => (
+                    <li key={e.learnerId}><strong>{e.learnerName}</strong> : {e.error}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {lastContratEngResult && (
+        <Card className="border-green-200 bg-green-50/30">
+          <CardHeader><CardTitle className="text-base text-green-900">✅ Dernier contrat engagement</CardTitle></CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <div>
+              <strong>Moteur :</strong> {lastContratEngResult.engineUsed}
+              {lastContratEngResult.cacheHit && (
+                <span className="ml-2 text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded">⚡ Cache hit</span>
+              )}
+            </div>
+            <div><strong>Latence :</strong> {lastContratEngResult.latencyMs} ms</div>
+            <div><strong>Taille PDF :</strong> {(lastContratEngResult.fileSizeBytes / 1024).toFixed(1)} KB</div>
           </CardContent>
         </Card>
       )}
