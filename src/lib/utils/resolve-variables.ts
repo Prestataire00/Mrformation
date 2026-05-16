@@ -37,6 +37,20 @@ export interface ResolveContext {
    * `{{code_certificat}}` dans le template certificat-diplome.
    */
   certificateCode?: string;
+  /**
+   * Résultats d'évaluations de l'apprenant pour la session. Pré-chargés
+   * côté API depuis questionnaire_responses (avec score calculé). Utilisé
+   * par `{{tableau_resultats_evaluations}}` dans le doc résultats-evaluations.
+   * Si vide → message "Aucune évaluation complétée".
+   */
+  evaluationResults?: Array<{
+    title: string;
+    completedAt: string | null;
+    score: number | null;
+    maxScore: number | null;
+    percentage: number | null;
+    status: "acquis" | "non_acquis" | "complete" | "non_complete";
+  }>;
   entity?: {
     name?: string | null;  // ajouté Story B-Convention : utilisé par `{{nom_organisme}}`
     siret?: string | null;
@@ -288,6 +302,51 @@ export function resolveVariables(content: string, data: ResolveContext): string 
     // dégradé en liste plate.
     // === Story B-Certificat (diplôme stylé) ===
     "{{code_certificat}}": data.certificateCode || "[Code certificat]",
+
+    // === Story B-Résultats Évaluations ===
+    "{{tableau_resultats_evaluations}}": (() => {
+      const results = data.evaluationResults;
+      if (!results || results.length === 0) {
+        return `<p style="color:#6b7280;font-style:italic;text-align:center;padding:14px;">Aucune évaluation complétée pour cette formation.</p>`;
+      }
+      const fmtDate = (iso: string | null) => (iso ? formatDate(iso) : "—");
+      const statusLabel = (s: typeof results[number]["status"]) => {
+        switch (s) {
+          case "acquis": return `<span style="color:#15803d;font-weight:700;">ACQUIS</span>`;
+          case "non_acquis": return `<span style="color:#b91c1c;font-weight:700;">NON ACQUIS</span>`;
+          case "complete": return `<span style="color:#374151;">Complété</span>`;
+          case "non_complete": return `<span style="color:#9ca3af;font-style:italic;">Non complété</span>`;
+        }
+      };
+      const rows = results.map((r) => {
+        const scoreCell = r.score !== null && r.maxScore !== null
+          ? `${r.score} / ${r.maxScore}`
+          : "—";
+        const pctCell = r.percentage !== null
+          ? `${r.percentage.toFixed(1)} %`
+          : "—";
+        return `<tr>
+  <td style="border:1px solid #d1d5db;padding:8px 10px;">${r.title}</td>
+  <td style="border:1px solid #d1d5db;padding:8px 10px;text-align:center;">${fmtDate(r.completedAt)}</td>
+  <td style="border:1px solid #d1d5db;padding:8px 10px;text-align:center;font-weight:600;">${scoreCell}</td>
+  <td style="border:1px solid #d1d5db;padding:8px 10px;text-align:center;font-weight:600;">${pctCell}</td>
+  <td style="border:1px solid #d1d5db;padding:8px 10px;text-align:center;">${statusLabel(r.status)}</td>
+</tr>`;
+      }).join("");
+      return `<table style="width:100%;border-collapse:collapse;margin:8px 0;font-size:9.5pt;">
+  <thead>
+    <tr style="background:#f3f4f6;">
+      <th style="border:1px solid #d1d5db;padding:8px 10px;text-align:left;">Évaluation</th>
+      <th style="border:1px solid #d1d5db;padding:8px 10px;">Date</th>
+      <th style="border:1px solid #d1d5db;padding:8px 10px;">Score</th>
+      <th style="border:1px solid #d1d5db;padding:8px 10px;">%</th>
+      <th style="border:1px solid #d1d5db;padding:8px 10px;">Résultat</th>
+    </tr>
+  </thead>
+  <tbody>${rows}
+  </tbody>
+</table>`;
+    })(),
 
     // === Story B-Émargement Individuel ===
     // Liste de cards par créneau pour 1 seul apprenant (data.learner).
@@ -885,6 +944,8 @@ export const ALIAS_TO_VARIABLE_KEY: Record<string, string> = {
   "Tableau de signature de l'apprenant": "{{tableau_signature_individuel}}",
   // === Story B-Certificat diplôme ===
   "Code d'identification du certificat": "{{code_certificat}}",
+  // === Story B-Résultats Évaluations ===
+  "Tableau des résultats des évaluations": "{{tableau_resultats_evaluations}}",
   // === Story B-Convention Intervention (formateur sous-traitance) ===
   "Nom du formateur": "{{nom_formateur_complet}}",
   "Adresse du formateur": "{{adresse_formateur}}",
@@ -1067,6 +1128,8 @@ export const VARIABLE_KEYS = [
   "{{tableau_signature_individuel}}",
   // Story B-Certificat diplôme
   "{{code_certificat}}",
+  // Story B-Résultats Évaluations
+  "{{tableau_resultats_evaluations}}",
   // Story B-Convention Intervention
   "{{nom_formateur_complet}}",
   "{{adresse_formateur}}",
