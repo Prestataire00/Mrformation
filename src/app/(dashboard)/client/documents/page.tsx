@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import { useEntity } from "@/contexts/EntityContext";
-import { FileText, ScrollText, Download, Loader2 } from "lucide-react";
+import { FileText, ScrollText, Download, Loader2, Shield } from "lucide-react";
 
 /**
  * Documents accessibles à l'entreprise cliente.
@@ -19,11 +19,16 @@ export default function ClientDocumentsPage() {
   const { entity } = useEntity();
   const entityName = entity?.name || "MR FORMATION";
   const [downloadingCgv, setDownloadingCgv] = useState(false);
+  const [downloadingRgpd, setDownloadingRgpd] = useState(false);
 
-  const downloadCgv = async () => {
-    setDownloadingCgv(true);
+  const downloadStaticDoc = async (
+    endpoint: string,
+    filenamePrefix: string,
+    setLoading: (b: boolean) => void,
+  ) => {
+    setLoading(true);
     try {
-      const res = await fetch("/api/documents/generate-cgv", { method: "POST" });
+      const res = await fetch(endpoint, { method: "POST" });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
       const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
@@ -31,7 +36,7 @@ export default function ClientDocumentsPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `CGV-${entityName.replace(/[^a-zA-Z0-9-]+/g, "-").toLowerCase()}.pdf`;
+      a.download = `${filenamePrefix}-${entityName.replace(/[^a-zA-Z0-9-]+/g, "-").toLowerCase()}.pdf`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -43,9 +48,14 @@ export default function ClientDocumentsPage() {
         variant: "destructive",
       });
     } finally {
-      setDownloadingCgv(false);
+      setLoading(false);
     }
   };
+
+  const downloadCgv = () =>
+    downloadStaticDoc("/api/documents/generate-cgv", "CGV", setDownloadingCgv);
+  const downloadRgpd = () =>
+    downloadStaticDoc("/api/documents/generate-rgpd", "Politique-RGPD", setDownloadingRgpd);
 
   return (
     <div className="space-y-6 p-6">
@@ -56,34 +66,64 @@ export default function ClientDocumentsPage() {
         </p>
       </div>
 
-      {/* CGV — toujours disponibles */}
-      <Card className="border-emerald-200 bg-emerald-50/30">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <ScrollText className="h-5 w-5 text-emerald-700" />
-            Conditions Générales de Vente
-          </CardTitle>
-          <p className="text-sm text-muted-foreground mt-1">
-            Document légal régissant la relation avec {entityName}. À conserver.
-          </p>
-        </CardHeader>
-        <CardContent>
-          <Button
-            onClick={downloadCgv}
-            disabled={downloadingCgv}
-            variant="default"
-            className="gap-2 bg-emerald-600 hover:bg-emerald-700"
-            size="sm"
-          >
-            {downloadingCgv ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Download className="h-4 w-4" />
-            )}
-            Télécharger les CGV
-          </Button>
-        </CardContent>
-      </Card>
+      {/* Docs statiques entity-level (toujours disponibles) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card className="border-emerald-200 bg-emerald-50/30">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <ScrollText className="h-5 w-5 text-emerald-700" />
+              Conditions Générales de Vente
+            </CardTitle>
+            <p className="text-sm text-muted-foreground mt-1">
+              Document légal régissant la relation avec {entityName}.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <Button
+              onClick={downloadCgv}
+              disabled={downloadingCgv}
+              variant="default"
+              className="gap-2 bg-emerald-600 hover:bg-emerald-700"
+              size="sm"
+            >
+              {downloadingCgv ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4" />
+              )}
+              Télécharger les CGV
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="border-cyan-200 bg-cyan-50/30">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Shield className="h-5 w-5 text-cyan-700" />
+              Politique RGPD
+            </CardTitle>
+            <p className="text-sm text-muted-foreground mt-1">
+              Protection des données personnelles, conformité RGPD.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <Button
+              onClick={downloadRgpd}
+              disabled={downloadingRgpd}
+              variant="default"
+              className="gap-2 bg-cyan-600 hover:bg-cyan-700"
+              size="sm"
+            >
+              {downloadingRgpd ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4" />
+              )}
+              Télécharger la Politique RGPD
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Placeholder pour docs formation (conventions/factures) — à venir */}
       <Card>
