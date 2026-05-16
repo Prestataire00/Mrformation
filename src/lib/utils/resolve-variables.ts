@@ -298,6 +298,7 @@ export const ALIAS_TO_VARIABLE_KEY: Record<string, string> = {
   "Logo de l'organisme": "{{logo_organisme}}",
   "Nom du représentant de l'organisme": "{{representant_organisme}}",
   "Signature de l'organisme": "{{signature_organisme}}",
+  "Cachet de l'organisme": "{{tampon_organisme}}",
   // Client / bénéficiaire
   "Nom du client": "{{nom_client}}",
   "Adresse du client": "{{client_adresse}}",
