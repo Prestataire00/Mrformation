@@ -184,6 +184,173 @@ export function resolveVariables(content: string, data: ResolveContext): string 
       return c.progression || c.content || "[Contenu du programme]";
     })(),
 
+    // === Variables Story B-Programme (template programme-formation.ts) ===
+    "{{description_formation}}": (() => {
+      const p = data.session?.program;
+      return p?.description || data.session?.training?.description || "";
+    })(),
+    "{{date_creation_programme}}": (() => {
+      const p = data.session?.program;
+      const created = p?.created_at || data.session?.training?.created_at;
+      return created ? formatDate(created) : "";
+    })(),
+    "{{duree_jours}}": (() => {
+      const c = (data.session?.program?.content || {}) as Record<string, unknown>;
+      if (typeof c.duration_days === "number") return c.duration_days.toFixed(2);
+      // Fallback : calcul depuis start/end (jours calendaires)
+      if (data.session?.start_date && data.session?.end_date) {
+        const d1 = new Date(data.session.start_date);
+        const d2 = new Date(data.session.end_date);
+        const diff = Math.round((d2.getTime() - d1.getTime()) / 86400000) + 1;
+        return diff > 0 ? diff.toFixed(2) : "1.00";
+      }
+      return "";
+    })(),
+    "{{version_programme}}": (() => {
+      const p = data.session?.program;
+      return p?.version ? String(p.version) : "1";
+    })(),
+    "{{delais_acces}}": (() => {
+      const c = (data.session?.program?.content || {}) as Record<string, unknown>;
+      return typeof c.access_delay_days === "number" ? String(c.access_delay_days) : "";
+    })(),
+    "{{modalite_acces}}": (() => {
+      const c = (data.session?.program?.content || {}) as Record<string, unknown>;
+      return typeof c.access_modality === "string" ? c.access_modality : "";
+    })(),
+    "{{profil_stagiaire}}": (() => {
+      const c = (data.session?.program?.content || {}) as Record<string, unknown>;
+      return typeof c.target_audience === "string" ? c.target_audience : "[Profil du stagiaire]";
+    })(),
+    "{{equipe_pedagogique}}": (() => {
+      const c = (data.session?.program?.content || {}) as Record<string, unknown>;
+      const team = typeof c.team_description === "string" ? c.team_description : "";
+      return team || formateursNoms || "";
+    })(),
+    "{{moyens_pedagogiques}}": (() => {
+      const c = (data.session?.program?.content || {}) as Record<string, unknown>;
+      const items = Array.isArray(c.pedagogical_resources) ? (c.pedagogical_resources as string[]) : [];
+      if (items.length === 0) return `<p>[Moyens pédagogiques à préciser dans le programme]</p>`;
+      return `<ul class="bullets">${items.map((i) => `<li>${i}</li>`).join("")}</ul>`;
+    })(),
+    "{{dispositif_evaluation}}": (() => {
+      const c = (data.session?.program?.content || {}) as Record<string, unknown>;
+      const items = Array.isArray(c.evaluation_methods) ? (c.evaluation_methods as string[]) : [];
+      if (items.length === 0) return `<p>[Dispositif d'évaluation à préciser dans le programme]</p>`;
+      return `<ul class="bullets">${items.map((i) => `<li>${i}</li>`).join("")}</ul>`;
+    })(),
+    "{{taux_satisfaction}}": (() => {
+      const c = (data.session?.program?.content || {}) as Record<string, unknown>;
+      return typeof c.satisfaction_rate === "number" ? c.satisfaction_rate.toFixed(1) : "";
+    })(),
+    "{{effectif_max}}": (() => {
+      const m = data.session?.max_participants ?? data.session?.training?.max_participants;
+      return m ? String(m) : "";
+    })(),
+    // Liste HTML des objectifs pédagogiques — split sur newlines / bullets
+    // des champs `program.objectives` ou `training.objectives` (texte libre).
+    "{{liste_objectifs_pedagogiques}}": (() => {
+      const raw = data.session?.program?.objectives || data.session?.training?.objectives || "";
+      if (!raw) return `<p>[Objectifs pédagogiques à préciser]</p>`;
+      // Split par newline, retire bullets/dashes en début de ligne
+      const items = raw
+        .split(/\n+/)
+        .map((l) => l.trim().replace(/^[•\-*]\s*/, ""))
+        .filter(Boolean);
+      if (items.length === 0) return `<p>${raw}</p>`;
+      return `<ul class="bullets">${items.map((i) => `<li>${i}</li>`).join("")}</ul>`;
+    })(),
+    // Builder principal du programme : groupe `program.content.modules[]` par
+    // day_number puis par slot (matin/aprem), rend pour chaque (jour, slot) un
+    // tableau "Contenu | Animation". Si modules sans day_number/slot, rendu
+    // dégradé en liste plate.
+    "{{contenu_pedagogique}}": (() => {
+      type Module = {
+        id?: number;
+        title?: string;
+        day_number?: number;
+        slot?: "matin" | "aprem" | string;
+        duration_hours?: number;
+        objectives?: string[];
+        topics?: string[];
+        animation_items?: string[];
+      };
+      const c = (data.session?.program?.content || {}) as Record<string, unknown>;
+      const modules = Array.isArray(c.modules) ? (c.modules as Module[]) : [];
+      if (modules.length === 0) {
+        return `<p>[Contenu pédagogique à structurer en modules dans le programme]</p>`;
+      }
+
+      const renderModuleContent = (m: Module): string => {
+        const title = m.title ? `<p class="module-title">${m.title}</p>` : "";
+        const topics = Array.isArray(m.topics) && m.topics.length > 0
+          ? `<ul>${m.topics.map((t) => `<li>${t}</li>`).join("")}</ul>`
+          : "";
+        return title + topics;
+      };
+      const renderModuleAnimation = (m: Module): string => {
+        const items = Array.isArray(m.animation_items) ? m.animation_items : [];
+        if (items.length === 0) return "";
+        return `<ul>${items.map((i) => `<li>${i}</li>`).join("")}</ul>`;
+      };
+
+      // Mode dégradé : aucun module n'a day_number ni slot → liste plate
+      const hasStructure = modules.some((m) => m.day_number !== undefined || m.slot !== undefined);
+      if (!hasStructure) {
+        return `<table class="progression">
+  <thead>
+    <tr><th>Contenu</th><th>Animation</th></tr>
+  </thead>
+  <tbody>
+    ${modules.map((m) => `<tr><td>${renderModuleContent(m)}</td><td>${renderModuleAnimation(m)}</td></tr>`).join("")}
+  </tbody>
+</table>`;
+      }
+
+      // Mode structuré : group by day, then slot
+      const byDay = new Map<number, Map<string, Module[]>>();
+      for (const m of modules) {
+        const day = m.day_number ?? 1;
+        const slot = m.slot ?? "matin";
+        if (!byDay.has(day)) byDay.set(day, new Map());
+        const dayMap = byDay.get(day)!;
+        if (!dayMap.has(slot)) dayMap.set(slot, []);
+        dayMap.get(slot)!.push(m);
+      }
+
+      const slotLabel = (s: string): string =>
+        s === "matin" ? "Matin" : s === "aprem" ? "Après-midi" : s;
+
+      const sections: string[] = [];
+      const sortedDays = [...byDay.keys()].sort((a, b) => a - b);
+      for (const day of sortedDays) {
+        sections.push(`<div class="day-header">Jour ${day}</div>`);
+        const dayMap = byDay.get(day)!;
+        const sortedSlots = [...dayMap.keys()].sort((a, b) =>
+          a === "matin" ? -1 : b === "matin" ? 1 : a.localeCompare(b),
+        );
+        for (const slot of sortedSlots) {
+          const slotModules = dayMap.get(slot)!;
+          const contenuCell = slotModules.map(renderModuleContent).join("");
+          const animationCell = slotModules.map(renderModuleAnimation).join("");
+          sections.push(`<div class="slot-label">${slotLabel(slot)}</div>
+<table class="progression">
+  <thead>
+    <tr><th>Contenu</th><th>Animation</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>${contenuCell || "<em>—</em>"}</td>
+      <td>${animationCell || "<em>—</em>"}</td>
+    </tr>
+  </tbody>
+</table>`);
+        }
+      }
+
+      return sections.join("\n");
+    })(),
+
     // Organisme (depuis entity settings ou fallback hardcodé)
     "{{siret_organisme}}": data.entity?.siret || "[SIRET organisme]",
     "{{nda_organisme}}": data.entity?.nda || "[NDA]",
@@ -430,6 +597,23 @@ export const ALIAS_TO_VARIABLE_KEY: Record<string, string> = {
   "Montant TVA": "{{montant_tva}}",
   // Dates
   "Date d'aujourd'hui": "{{date_today}}",
+  // === Story B-Programme (template programme-formation.ts) ===
+  "Description de la formation": "{{description_formation}}",
+  "Date de création du programme": "{{date_creation_programme}}",
+  "Durée en jours": "{{duree_jours}}",
+  "Version du programme": "{{version_programme}}",
+  "Délais d'accès": "{{delais_acces}}",
+  "Modalité d'accès": "{{modalite_acces}}",
+  "Profil du stagiaire": "{{profil_stagiaire}}",
+  "Prérequis": "{{programme_prerequis}}",
+  "Objectifs": "{{programme_objectifs}}",
+  "Liste objectifs pédagogiques": "{{liste_objectifs_pedagogiques}}",
+  "Contenu pédagogique": "{{contenu_pedagogique}}",
+  "Équipe pédagogique": "{{equipe_pedagogique}}",
+  "Moyens pédagogiques": "{{moyens_pedagogiques}}",
+  "Dispositif d'évaluation": "{{dispositif_evaluation}}",
+  "Taux de satisfaction": "{{taux_satisfaction}}",
+  "Effectif max": "{{effectif_max}}",
 };
 
 /**
@@ -575,4 +759,19 @@ export const VARIABLE_KEYS = [
   "{{dates_formation}}",
   "{{tableau_couts_client}}",
   "{{tableau_signature_compact}}",
+  // Story B-Programme
+  "{{description_formation}}",
+  "{{date_creation_programme}}",
+  "{{duree_jours}}",
+  "{{version_programme}}",
+  "{{delais_acces}}",
+  "{{modalite_acces}}",
+  "{{profil_stagiaire}}",
+  "{{equipe_pedagogique}}",
+  "{{moyens_pedagogiques}}",
+  "{{dispositif_evaluation}}",
+  "{{taux_satisfaction}}",
+  "{{effectif_max}}",
+  "{{liste_objectifs_pedagogiques}}",
+  "{{contenu_pedagogique}}",
 ] as const;

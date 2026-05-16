@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
-import { Loader2, FileText, Sparkles, FlaskConical, Package, AlertCircle, ClipboardList, ScrollText, Shield, Gavel } from "lucide-react";
+import { Loader2, FileText, Sparkles, FlaskConical, Package, AlertCircle, ClipboardList, ScrollText, Shield, Gavel, BookOpen } from "lucide-react";
 
 /**
  * Page de test temporaire — Story B-Convention.
@@ -115,6 +115,16 @@ export default function TestConventionPage() {
     fileSizeBytes: number;
   } | null>(null);
 
+  // ── Programme de formation (session-level) ───────────────────────────
+  const [programmeSessionId, setProgrammeSessionId] = useState<string>("");
+  const [generatingProgramme, setGeneratingProgramme] = useState(false);
+  const [lastProgrammeResult, setLastProgrammeResult] = useState<{
+    engineUsed: string;
+    cacheHit: boolean;
+    latencyMs: number;
+    fileSizeBytes: number;
+  } | null>(null);
+
   // Charge la liste des sessions de l'entité
   useEffect(() => {
     if (!entityId) return;
@@ -192,6 +202,71 @@ export default function TestConventionPage() {
       });
     } finally {
       setGeneratingCgv(false);
+    }
+  }
+
+  // ── Programme handlers ────────────────────────────────────────────────
+  async function handleGenerateProgrammeMock() {
+    setGeneratingProgramme(true);
+    setLastProgrammeResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-programme-mock", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastProgrammeResult({
+        engineUsed: json.engineUsed,
+        cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs,
+        fileSizeBytes: json.fileSizeBytes,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({ title: "Programme mock généré", description: `${json.engineUsed} · ${json.latencyMs}ms` });
+    } catch (err) {
+      toast({
+        title: "Échec programme mock",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingProgramme(false);
+    }
+  }
+
+  async function handleGenerateProgramme() {
+    if (!programmeSessionId) {
+      toast({ title: "Aucune session choisie", description: "Sélectionne d'abord une session.", variant: "destructive" });
+      return;
+    }
+    setGeneratingProgramme(true);
+    setLastProgrammeResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-programme", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: programmeSessionId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastProgrammeResult({
+        engineUsed: json.engineUsed,
+        cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs,
+        fileSizeBytes: json.fileSizeBytes,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({ title: "Programme généré", description: `${json.engineUsed} · ${json.latencyMs}ms` });
+    } catch (err) {
+      toast({
+        title: "Échec génération programme",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingProgramme(false);
     }
   }
 
@@ -1185,6 +1260,128 @@ export default function TestConventionPage() {
             </div>
             <div>
               <strong>Taille PDF :</strong> {(lastRgpdResult.fileSizeBytes / 1024).toFixed(1)} KB
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════ */}
+      {/*    Programme de formation (session-level, dynamique)            */}
+      {/* ════════════════════════════════════════════════════════════════ */}
+
+      <div className="pt-10 border-t-2 border-dashed border-gray-300">
+        <h2 className="text-xl font-semibold flex items-center gap-2 mb-1">
+          <BookOpen className="h-5 w-5 text-indigo-600" />
+          Programme de formation
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Document dynamique au niveau session. Données issues de{" "}
+          <code className="text-xs bg-gray-100 px-1 rounded">program.content</code> (JSONB :
+          modules par jour/créneau, moyens pédagogiques, dispositif d&apos;évaluation, etc.).
+        </p>
+      </div>
+
+      <Card className="border-indigo-200 bg-indigo-50/30">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <FlaskConical className="h-4 w-4 text-indigo-600" />
+            Mode rapide — Données factices (reproduction exacte du PDF Loris)
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Génère le programme de l&apos;exemple Loris (2 jours, 4 créneaux,
+            6 modules avec contenu + animation, satisfaction 99.6%). Permet
+            de valider le rendu du gros builder{" "}
+            <code className="text-xs bg-gray-100 px-1 rounded">{`{{contenu_pedagogique}}`}</code>{" "}
+            qui groupe les modules par jour/slot.
+          </p>
+          <Button
+            onClick={handleGenerateProgrammeMock}
+            disabled={generatingProgramme}
+            className="w-full gap-2 bg-indigo-600 hover:bg-indigo-700"
+          >
+            {generatingProgramme ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <FlaskConical className="h-4 w-4" />
+            )}
+            Générer un programme de test (données factices)
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Programme — Données réelles</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Sélectionne une session. Si elle a un{" "}
+            <code className="text-xs bg-gray-100 px-1 rounded">program_id</code>,
+            le programme est rendu depuis{" "}
+            <code className="text-xs bg-gray-100 px-1 rounded">program.content</code>.
+            Sinon, fallback partiel sur{" "}
+            <code className="text-xs bg-gray-100 px-1 rounded">training.objectives/description</code>{" "}
+            (PDF sera incomplet — il faut un programme).
+          </p>
+          <div>
+            <Label htmlFor="programme-session-select" className="text-sm">Session</Label>
+            <Select
+              value={programmeSessionId}
+              onValueChange={setProgrammeSessionId}
+              disabled={loadingSessions || generatingProgramme}
+            >
+              <SelectTrigger id="programme-session-select" className="mt-1">
+                <SelectValue placeholder={loadingSessions ? "Chargement…" : "Choisir une session…"} />
+              </SelectTrigger>
+              <SelectContent>
+                {sessions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.title} — {new Date(s.start_date).toLocaleDateString("fr-FR")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button
+            onClick={handleGenerateProgramme}
+            disabled={!programmeSessionId || generatingProgramme}
+            className="w-full gap-2"
+            size="lg"
+          >
+            {generatingProgramme ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Génération en cours…
+              </>
+            ) : (
+              <>
+                <BookOpen className="h-4 w-4" />
+                Générer le programme
+              </>
+            )}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {lastProgrammeResult && (
+        <Card className="border-green-200 bg-green-50/30">
+          <CardHeader>
+            <CardTitle className="text-base text-green-900">✅ Dernier programme</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <div>
+              <strong>Moteur :</strong> {lastProgrammeResult.engineUsed}
+              {lastProgrammeResult.cacheHit && (
+                <span className="ml-2 text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded">
+                  ⚡ Cache hit
+                </span>
+              )}
+            </div>
+            <div><strong>Latence :</strong> {lastProgrammeResult.latencyMs} ms</div>
+            <div>
+              <strong>Taille PDF :</strong> {(lastProgrammeResult.fileSizeBytes / 1024).toFixed(1)} KB
             </div>
           </CardContent>
         </Card>
