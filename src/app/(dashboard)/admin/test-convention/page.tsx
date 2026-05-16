@@ -157,6 +157,16 @@ export default function TestConventionPage() {
     totalLatencyMs: number;
   } | null>(null);
 
+  // ── Réponses aux évaluations (per session, OPTIONNEL) ───────────────
+  const [repEvalSessionId, setRepEvalSessionId] = useState<string>("");
+  const [generatingRepEval, setGeneratingRepEval] = useState(false);
+  const [lastRepEvalResult, setLastRepEvalResult] = useState<{
+    engineUsed: string;
+    cacheHit: boolean;
+    latencyMs: number;
+    fileSizeBytes: number;
+  } | null>(null);
+
   // ── Lettre de décharge de responsabilité (per session+learner, OPTIONNEL)
   const [dechargeSessionId, setDechargeSessionId] = useState<string>("");
   const [dechargeLearnerId, setDechargeLearnerId] = useState<string>("");
@@ -1367,6 +1377,59 @@ export default function TestConventionPage() {
       toast({ title: "Échec batch avis habilitation", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
     } finally {
       setGeneratingHabilBatch(false);
+    }
+  }
+
+  // ── Réponses aux évaluations handlers (OPTIONNEL, per-session) ──────
+  async function handleGenerateRepEvalMock() {
+    setGeneratingRepEval(true);
+    setLastRepEvalResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-reponses-evaluations-mock", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastRepEvalResult({
+        engineUsed: json.engineUsed, cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs, fileSizeBytes: json.fileSizeBytes,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({ title: "Réponses évaluations mock généré", description: `${json.engineUsed} · ${json.latencyMs}ms` });
+    } catch (err) {
+      toast({ title: "Échec mock réponses évaluations", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setGeneratingRepEval(false);
+    }
+  }
+
+  async function handleGenerateRepEval() {
+    if (!repEvalSessionId) {
+      toast({ title: "Aucune session", description: "Sélectionne d'abord une session.", variant: "destructive" });
+      return;
+    }
+    setGeneratingRepEval(true);
+    setLastRepEvalResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-reponses-evaluations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: repEvalSessionId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastRepEvalResult({
+        engineUsed: json.engineUsed, cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs, fileSizeBytes: json.fileSizeBytes,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({ title: "Réponses évaluations généré", description: `${json.engineUsed} · ${json.latencyMs}ms` });
+    } catch (err) {
+      toast({ title: "Échec réponses évaluations", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setGeneratingRepEval(false);
     }
   }
 
@@ -10111,6 +10174,89 @@ export default function TestConventionPage() {
             </div>
             <div><strong>Latence :</strong> {lastDechargeResult.latencyMs} ms</div>
             <div><strong>Taille PDF :</strong> {(lastDechargeResult.fileSizeBytes / 1024).toFixed(1)} KB</div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ────────── Réponses aux évaluations (per session) ────────── */}
+
+      <div className="pt-8">
+        <h2 className="text-xl font-semibold flex items-center gap-2 mb-1">
+          <BarChart3 className="h-5 w-5 text-violet-700" />
+          Réponses aux évaluations
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Variante simplifiée du doc &ldquo;Réponses satisfaction&rdquo; (#68) :
+          <strong> 2 tableaux uniquement</strong> (questionnaires de
+          satisfaction + évaluations agrégées de la session). Per-session, pas
+          de batch.
+        </p>
+      </div>
+
+      <Card className="border-violet-300 bg-violet-50/40">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <FlaskConical className="h-4 w-4 text-violet-800" />
+            Mode rapide — Données factices
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Session POE Managers Proximité avec satisfaction + évaluations factices.
+          </p>
+          <Button
+            onClick={handleGenerateRepEvalMock}
+            disabled={generatingRepEval}
+            className="w-full gap-2 bg-violet-700 hover:bg-violet-800"
+          >
+            {generatingRepEval ? <Loader2 className="h-4 w-4 animate-spin" /> : <FlaskConical className="h-4 w-4" />}
+            Générer réponses évaluations de test
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Réponses évaluations — Données réelles (1 session)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label htmlFor="rep-eval-session-select" className="text-sm">Session</Label>
+            <Select value={repEvalSessionId} onValueChange={setRepEvalSessionId}
+              disabled={loadingSessions || generatingRepEval}>
+              <SelectTrigger id="rep-eval-session-select" className="mt-1">
+                <SelectValue placeholder={loadingSessions ? "Chargement…" : "Choisir une session…"} />
+              </SelectTrigger>
+              <SelectContent>
+                {sessions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.title} — {new Date(s.start_date).toLocaleDateString("fr-FR")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button onClick={handleGenerateRepEval}
+            disabled={!repEvalSessionId || generatingRepEval}
+            className="w-full gap-2" size="lg">
+            {generatingRepEval ? <><Loader2 className="h-4 w-4 animate-spin" />Génération en cours…</>
+              : <><BarChart3 className="h-4 w-4" />Générer réponses évaluations</>}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {lastRepEvalResult && (
+        <Card className="border-green-200 bg-green-50/30">
+          <CardHeader><CardTitle className="text-base text-green-900">✅ Dernières réponses évaluations</CardTitle></CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <div>
+              <strong>Moteur :</strong> {lastRepEvalResult.engineUsed}
+              {lastRepEvalResult.cacheHit && (
+                <span className="ml-2 text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded">⚡ Cache hit</span>
+              )}
+            </div>
+            <div><strong>Latence :</strong> {lastRepEvalResult.latencyMs} ms</div>
+            <div><strong>Taille PDF :</strong> {(lastRepEvalResult.fileSizeBytes / 1024).toFixed(1)} KB</div>
           </CardContent>
         </Card>
       )}
