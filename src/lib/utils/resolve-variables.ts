@@ -332,6 +332,9 @@ export function resolveVariables(content: string, data: ResolveContext): string 
     // === Story B-Certificat (diplôme stylé) ===
     "{{code_certificat}}": data.certificateCode || "[Code certificat]",
 
+    // === Story B-AIPR (ville de naissance apprenant) ===
+    "{{ville_naissance_apprenant}}": (data.learner as unknown as { birth_city?: string | null })?.birth_city || "[Ville de naissance]",
+
     // === Story B-Réponses Satisfaction Apprenants (vue admin session) ===
     // Tableau satisfaction : 1 ligne par question des questionnaires satisfaction
     "{{tableau_reponses_satisfaction}}": (() => {
@@ -1086,6 +1089,9 @@ export const ALIAS_TO_VARIABLE_KEY: Record<string, string> = {
   "Tableau des réponses des questionnaires de satisfaction (suivi qualité)": "{{tableau_reponses_satisfaction}}",
   "Tableau du suivi qualité": "{{tableau_suivi_qualite}}",
   "Tableau des réponses des évaluations": "{{tableau_reponses_evaluations}}",
+  // === Story B-AIPR (Attestation Intervention Proximité Réseaux) ===
+  "Ville de naissance de l'apprenant": "{{ville_naissance_apprenant}}",
+  "Adresse de l'entreprise": "{{client_adresse}}",
   // === Story B-Convention Intervention (formateur sous-traitance) ===
   "Nom du formateur": "{{nom_formateur_complet}}",
   "Adresse du formateur": "{{adresse_formateur}}",
@@ -1278,6 +1284,8 @@ export const VARIABLE_KEYS = [
   "{{tableau_reponses_satisfaction}}",
   "{{tableau_suivi_qualite}}",
   "{{tableau_reponses_evaluations}}",
+  // Story B-AIPR
+  "{{ville_naissance_apprenant}}",
   // Story B-Convention Intervention
   "{{nom_formateur_complet}}",
   "{{adresse_formateur}}",

@@ -112,6 +112,16 @@ export interface Learner {
   phone: string | null;
   job_title: string | null;
   learner_type: LearnerType;
+  // Champs étendus (cf add_trainer_learner_fields.sql + add_learner_birth_city.sql)
+  birth_date?: string | null;
+  birth_city?: string | null;
+  gender?: "M" | "F" | "autre" | null;
+  nationality?: string | null;
+  address?: string | null;
+  city?: string | null;
+  postal_code?: string | null;
+  social_security_number?: string | null;
+  education_level?: string | null;
   created_at: string;
   client?: Client;
   enrollments?: Enrollment[];
