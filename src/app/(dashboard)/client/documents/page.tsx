@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import { useEntity } from "@/contexts/EntityContext";
-import { FileText, ScrollText, Download, Loader2, Shield } from "lucide-react";
+import { FileText, ScrollText, Download, Loader2, Shield, Gavel } from "lucide-react";
 
 /**
  * Documents accessibles à l'entreprise cliente.
@@ -20,6 +20,7 @@ export default function ClientDocumentsPage() {
   const entityName = entity?.name || "MR FORMATION";
   const [downloadingCgv, setDownloadingCgv] = useState(false);
   const [downloadingRgpd, setDownloadingRgpd] = useState(false);
+  const [downloadingRi, setDownloadingRi] = useState(false);
 
   const downloadStaticDoc = async (
     endpoint: string,
@@ -56,6 +57,12 @@ export default function ClientDocumentsPage() {
     downloadStaticDoc("/api/documents/generate-cgv", "CGV", setDownloadingCgv);
   const downloadRgpd = () =>
     downloadStaticDoc("/api/documents/generate-rgpd", "Politique-RGPD", setDownloadingRgpd);
+  const downloadRi = () =>
+    downloadStaticDoc(
+      "/api/documents/generate-reglement-interieur",
+      "Reglement-Interieur",
+      setDownloadingRi,
+    );
 
   return (
     <div className="space-y-6 p-6">
@@ -67,7 +74,7 @@ export default function ClientDocumentsPage() {
       </div>
 
       {/* Docs statiques entity-level (toujours disponibles) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <Card className="border-emerald-200 bg-emerald-50/30">
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
@@ -120,6 +127,34 @@ export default function ClientDocumentsPage() {
                 <Download className="h-4 w-4" />
               )}
               Télécharger la Politique RGPD
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="border-orange-200 bg-orange-50/30">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Gavel className="h-5 w-5 text-orange-700" />
+              Règlement Intérieur
+            </CardTitle>
+            <p className="text-sm text-muted-foreground mt-1">
+              Règles applicables aux stagiaires pendant les formations.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <Button
+              onClick={downloadRi}
+              disabled={downloadingRi}
+              variant="default"
+              className="gap-2 bg-orange-700 hover:bg-orange-800"
+              size="sm"
+            >
+              {downloadingRi ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4" />
+              )}
+              Télécharger le Règlement
             </Button>
           </CardContent>
         </Card>

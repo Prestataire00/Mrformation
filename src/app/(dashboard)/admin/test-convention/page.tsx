@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
-import { Loader2, FileText, Sparkles, FlaskConical, Package, AlertCircle, ClipboardList, ScrollText, Shield } from "lucide-react";
+import { Loader2, FileText, Sparkles, FlaskConical, Package, AlertCircle, ClipboardList, ScrollText, Shield, Gavel } from "lucide-react";
 
 /**
  * Page de test temporaire — Story B-Convention.
@@ -106,6 +106,15 @@ export default function TestConventionPage() {
     fileSizeBytes: number;
   } | null>(null);
 
+  // ── Règlement Intérieur (entity-only) ────────────────────────────────
+  const [generatingRi, setGeneratingRi] = useState(false);
+  const [lastRiResult, setLastRiResult] = useState<{
+    engineUsed: string;
+    cacheHit: boolean;
+    latencyMs: number;
+    fileSizeBytes: number;
+  } | null>(null);
+
   // Charge la liste des sessions de l'entité
   useEffect(() => {
     if (!entityId) return;
@@ -183,6 +192,35 @@ export default function TestConventionPage() {
       });
     } finally {
       setGeneratingCgv(false);
+    }
+  }
+
+  // ── Règlement Intérieur handler ───────────────────────────────────────
+  async function handleGenerateRi() {
+    setGeneratingRi(true);
+    setLastRiResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-reglement-interieur", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastRiResult({
+        engineUsed: json.engineUsed,
+        cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs,
+        fileSizeBytes: json.fileSizeBytes,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({ title: "Règlement Intérieur généré", description: `${json.engineUsed} · ${json.latencyMs}ms` });
+    } catch (err) {
+      toast({
+        title: "Échec génération Règlement Intérieur",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingRi(false);
     }
   }
 
@@ -1147,6 +1185,73 @@ export default function TestConventionPage() {
             </div>
             <div>
               <strong>Taille PDF :</strong> {(lastRgpdResult.fileSizeBytes / 1024).toFixed(1)} KB
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════ */}
+      {/*    Règlement Intérieur (entity-only, statique)                  */}
+      {/* ════════════════════════════════════════════════════════════════ */}
+
+      <div className="pt-10 border-t-2 border-dashed border-gray-300">
+        <h2 className="text-xl font-semibold flex items-center gap-2 mb-1">
+          <Gavel className="h-5 w-5 text-orange-700" />
+          Règlement Intérieur
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Document statique (8 articles conformes aux articles L.6352-3/4 et
+          R.6352-1 à 15 du Code du travail). Seul l&apos;organisme varie.
+        </p>
+      </div>
+
+      <Card className="border-orange-200 bg-orange-50/30">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Gavel className="h-4 w-4 text-orange-700" />
+            Générer le Règlement Intérieur
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Génère le PDF du Règlement Intérieur avec les infos de ton entité
+            courante. Aussi disponible dans les espaces client + apprenant.
+          </p>
+          <Button
+            onClick={handleGenerateRi}
+            disabled={generatingRi}
+            className="w-full gap-2 bg-orange-700 hover:bg-orange-800"
+            size="lg"
+          >
+            {generatingRi ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Gavel className="h-4 w-4" />
+            )}
+            Générer le Règlement Intérieur
+          </Button>
+        </CardContent>
+      </Card>
+
+      {lastRiResult && (
+        <Card className="border-green-200 bg-green-50/30">
+          <CardHeader>
+            <CardTitle className="text-base text-green-900">✅ Dernier Règlement Intérieur</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <div>
+              <strong>Moteur :</strong> {lastRiResult.engineUsed}
+              {lastRiResult.cacheHit && (
+                <span className="ml-2 text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded">
+                  ⚡ Cache hit
+                </span>
+              )}
+            </div>
+            <div>
+              <strong>Latence :</strong> {lastRiResult.latencyMs} ms
+            </div>
+            <div>
+              <strong>Taille PDF :</strong> {(lastRiResult.fileSizeBytes / 1024).toFixed(1)} KB
             </div>
           </CardContent>
         </Card>
