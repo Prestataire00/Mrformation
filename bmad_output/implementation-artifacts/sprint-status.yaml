@@ -39,7 +39,7 @@
 #   → E2-E3-E4 (parallèles, après B+C+D+F stables) → E1 (last, après 90j stabilité)
 
 generated: 2026-05-17
-last_updated: 2026-05-17
+last_updated: 2026-05-17 (b-1 story file créée via bmad-create-story)
 project: lms-platform
 project_key: NOKEY
 tracking_system: file-system
@@ -55,9 +55,9 @@ development_status:
 
   # ── Epic B : Schéma documents unifié & migration 11 types (Lot B) ──
   # PR2 sous-PR 2.1 (B0) + 2.2 (B1+B2) + 2.3 (B3-B7)
-  epic-b: backlog
+  epic-b: in-progress
   b-0-resolve-document-variables: backlog
-  b-1-migration-table-documents: backlog
+  b-1-migration-table-documents: ready-for-dev
   b-2-backfill-idempotent: backlog
   b-3-migration-conventions: backlog
   b-4-migration-attestations-certificats: backlog
