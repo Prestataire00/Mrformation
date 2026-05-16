@@ -1,0 +1,148 @@
+# generated: 2026-05-17
+# last_updated: 2026-05-17
+# project: lms-platform
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: /Users/wissam/Desktop/lms-platform/bmad_output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog → in-progress: Automatically when first story is created (via create-story)
+#   - in-progress → done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic A déjà livré en prod (Lot A : Puppeteer Railway + DocumentGenerationService) → status 'done'
+#   confirmé par PRs #45 à #88 mergées sur main avant le démarrage du workflow BMad.
+# - Epics B/C/D/E/F = backlog (à implémenter dans PR2)
+# - Stories peuvent être travaillées en parallèle quand dépendances permettent (cf dependencies.txt)
+# - Ordre recommandé d'exécution (cf sprint plan ci-dessous) :
+#   A done → B0 // B1 (parallèles) → B2 → B3-B4-B6-B7 (parallèles) → B5 // C1 (parallèles)
+#   → C2 → C3 → D1 (parallèle avec C) → D2 → F1-F2-F3 (parallèles, après B+C OK)
+#   → E2-E3-E4 (parallèles, après B+C+D+F stables) → E1 (last, après 90j stabilité)
+
+generated: 2026-05-17
+last_updated: 2026-05-17
+project: lms-platform
+project_key: NOKEY
+tracking_system: file-system
+story_location: /Users/wissam/Desktop/lms-platform/bmad_output/implementation-artifacts
+
+development_status:
+  # ── Epic A : Infrastructure Moteur PDF & Service de génération (Lot A) ──
+  # ✅ DÉJÀ LIVRÉ EN PROD (PRs #45 à #88)
+  epic-a: done
+  a-1-puppeteer-sidecar-railway: done
+  a-2-document-generation-service: done
+  epic-a-retrospective: optional
+
+  # ── Epic B : Schéma documents unifié & migration 11 types (Lot B) ──
+  # PR2 sous-PR 2.1 (B0) + 2.2 (B1+B2) + 2.3 (B3-B7)
+  epic-b: backlog
+  b-0-resolve-document-variables: backlog
+  b-1-migration-table-documents: backlog
+  b-2-backfill-idempotent: backlog
+  b-3-migration-conventions: backlog
+  b-4-migration-attestations-certificats: backlog
+  b-5-migration-emargements: backlog
+  b-6-migration-docs-administratifs: backlog
+  b-7-migration-factures-devis: backlog
+  epic-b-retrospective: optional
+
+  # ── Epic C : Signatures électroniques unifiées (Lot C) ──
+  # PR2 sous-PR 2.4
+  epic-c: backlog
+  c-1-signature-service-unifie: backlog
+  c-2-migration-flux-signature: backlog
+  c-3-audit-trail-qualiopi: backlog
+  epic-c-retrospective: optional
+
+  # ── Epic D : Import templates par lot & autonomie Loris (Lot D) ──
+  # PR2 sous-PR 2.1 (parallèle B)
+  epic-d: backlog
+  d-1-page-admin-import-templates: backlog
+  d-2-documentation-how-to: backlog
+  epic-d-retrospective: optional
+
+  # ── Epic E : Hygiène, observabilité, tests (Lot E) ──
+  # PR2 sous-PR 2.6 (E1 cleanup) + transverse (E2/E3/E4)
+  epic-e: backlog
+  e-1-suppression-jspdf-legacy: backlog
+  e-2-cache-pdf-100: backlog
+  e-3-logs-structures: backlog
+  e-4-tests-e2e-snapshot: backlog
+  epic-e-retrospective: optional
+
+  # ── Epic F : Mass Operations (TabConventionDocs) (Lot F) ──
+  # PR2 sous-PR 2.5 — Ajouté 2026-05-17 (gap traçabilité résolu)
+  epic-f: backlog
+  f-1-mass-download-batch-zip: backlog
+  f-2-mass-send-email-batch: backlog
+  f-3-mass-signature-request-batch: backlog
+  epic-f-retrospective: optional
+
+# ──────────────────────────────────────────────────────────────────────────
+# SPRINT PLAN STRUCTURÉ (PR2 — séquencement résolvant ISSUE #1 forward dep B5→C1)
+# ──────────────────────────────────────────────────────────────────────────
+#
+# Wave 1 (séquentiel, démarre immédiatement après readiness OK) :
+#   - b-0-resolve-document-variables (parallèle avec b-1)
+#   - b-1-migration-table-documents
+#
+# Wave 2 (après wave 1) :
+#   - b-2-backfill-idempotent
+#   - d-1-page-admin-import-templates (parallèle avec b-2, dépend juste b-1)
+#
+# Wave 3 (après b-2 OK) :
+#   - b-3-migration-conventions
+#   - b-4-migration-attestations-certificats (parallèle)
+#   - b-6-migration-docs-administratifs (parallèle)
+#   - b-7-migration-factures-devis (parallèle)
+#
+# Wave 4 (après wave 3) — RÉSOLUTION ISSUE #1 :
+#   - b-5-migration-emargements (parallèle avec c-1)
+#   - c-1-signature-service-unifie (parallèle avec b-5)
+#
+# Wave 5 (après wave 4) :
+#   - c-2-migration-flux-signature (depends c-1)
+#   - d-2-documentation-how-to (depends d-1)
+#
+# Wave 6 (après wave 5) :
+#   - c-3-audit-trail-qualiopi (depends c-2)
+#   - f-1-mass-download-batch-zip (parallèle, depends a-2+b-1)
+#   - f-2-mass-send-email-batch (parallèle, depends a-2+b-1)
+#   - f-3-mass-signature-request-batch (parallèle, depends c-1+b-1)
+#
+# Wave 7 (transverse, après B+C+D+F stables) :
+#   - e-2-cache-pdf-100 (parallèle, depends a-2)
+#   - e-3-logs-structures (parallèle, depends a-2+c-1)
+#   - e-4-tests-e2e-snapshot (parallèle, depends a-2+B all)
+#
+# Wave 8 (LAST, après ≥7-90j stabilité prod sur waves 1-7) :
+#   - e-1-suppression-jspdf-legacy (drop tables legacy + delete code)
+#
+# Effort total : 25.5-33 j-h dev + 3-4 j-h QA
+# Déploiement progressif via feature flags USE_UNIFIED_DOCUMENTS_FOR_{doc_type}
+#
+# ──────────────────────────────────────────────────────────────────────────
+# BLOCKERS À TRAITER AVANT WAVE 2 (sous-PR 2.2 = b-2-backfill-idempotent) :
+#   - ISSUE #3 G1 : Volume historique → query `SELECT COUNT(*) FROM formation_convention_documents`
+#   - ISSUE #3 G2 : Plan de rollback migration data (Winston gate, ~1h doc)
+# ──────────────────────────────────────────────────────────────────────────
