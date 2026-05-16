@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
-import { Loader2, FileText, Sparkles, FlaskConical, Package, AlertCircle, ClipboardList, ScrollText, Shield, Gavel, BookOpen, UserCog, MailOpen, Award } from "lucide-react";
+import { Loader2, FileText, Sparkles, FlaskConical, Package, AlertCircle, ClipboardList, ScrollText, Shield, Gavel, BookOpen, UserCog, MailOpen, Award, BadgeCheck } from "lucide-react";
 
 /**
  * Page de test temporaire — Story B-Convention.
@@ -133,6 +133,30 @@ export default function TestConventionPage() {
     cacheHit: boolean;
     latencyMs: number;
     fileSizeBytes: number;
+  } | null>(null);
+
+  // ── Attestation assiduité (per session+learner) ──────────────────────
+  const [attestSessionId, setAttestSessionId] = useState<string>("");
+  const [attestLearnerId, setAttestLearnerId] = useState<string>("");
+  const [attestLearners, setAttestLearners] = useState<LearnerRow[]>([]);
+  const [loadingAttestLearners, setLoadingAttestLearners] = useState(false);
+  const [attestBatchSessionId, setAttestBatchSessionId] = useState<string>("");
+  const [generatingAttest, setGeneratingAttest] = useState(false);
+  const [generatingAttestBatch, setGeneratingAttestBatch] = useState(false);
+  const [lastAttestResult, setLastAttestResult] = useState<{
+    engineUsed: string;
+    cacheHit: boolean;
+    latencyMs: number;
+    fileSizeBytes: number;
+    present?: boolean;
+  } | null>(null);
+  const [lastAttestBatchResult, setLastAttestBatchResult] = useState<{
+    totalLearners: number;
+    successCount: number;
+    failureCount: number;
+    errors: { learnerId: string; learnerName: string; error: string }[];
+    totalLatencyMs: number;
+    signedCount?: number;
   } | null>(null);
 
   // ── Certificat réalisation (per session+learner) ─────────────────────
@@ -307,6 +331,24 @@ export default function TestConventionPage() {
     })();
   }, [supabase, certifSessionId]);
 
+  // Charge les apprenants pour attestation single
+  useEffect(() => {
+    if (!attestSessionId) {
+      setAttestLearners([]);
+      setAttestLearnerId("");
+      return;
+    }
+    setLoadingAttestLearners(true);
+    (async () => {
+      const { data } = await supabase
+        .from("enrollments")
+        .select("learner_id, learner:learners(id, first_name, last_name)")
+        .eq("session_id", attestSessionId);
+      setAttestLearners((data as unknown as LearnerRow[]) || []);
+      setLoadingAttestLearners(false);
+    })();
+  }, [supabase, attestSessionId]);
+
   // ── CGV handler (entity-only, pas de params) ──────────────────────────
   async function handleGenerateCgv() {
     setGeneratingCgv(true);
@@ -333,6 +375,125 @@ export default function TestConventionPage() {
       });
     } finally {
       setGeneratingCgv(false);
+    }
+  }
+
+  // ── Attestation assiduité handlers ────────────────────────────────────
+  async function handleGenerateAttestMock() {
+    setGeneratingAttest(true);
+    setLastAttestResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-attestation-assiduite-mock", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastAttestResult({
+        engineUsed: json.engineUsed,
+        cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs,
+        fileSizeBytes: json.fileSizeBytes,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({ title: "Attestation mock générée", description: `${json.engineUsed} · ${json.latencyMs}ms` });
+    } catch (err) {
+      toast({
+        title: "Échec attestation mock",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingAttest(false);
+    }
+  }
+
+  async function handleGenerateAttest() {
+    if (!attestSessionId || !attestLearnerId) {
+      toast({ title: "Sélection incomplète", description: "Choisis session ET apprenant.", variant: "destructive" });
+      return;
+    }
+    setGeneratingAttest(true);
+    setLastAttestResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-attestation-assiduite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: attestSessionId, learnerId: attestLearnerId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastAttestResult({
+        engineUsed: json.engineUsed,
+        cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs,
+        fileSizeBytes: json.fileSizeBytes,
+        present: json.present,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({
+        title: "Attestation générée",
+        description: `${json.present ? "Présent" : "Absent"} · ${json.engineUsed} · ${json.latencyMs}ms`,
+      });
+    } catch (err) {
+      toast({
+        title: "Échec attestation",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingAttest(false);
+    }
+  }
+
+  async function handleGenerateAttestBatch() {
+    if (!attestBatchSessionId) {
+      toast({ title: "Aucune session", description: "Sélectionne d'abord une session.", variant: "destructive" });
+      return;
+    }
+    setGeneratingAttestBatch(true);
+    setLastAttestBatchResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-attestations-assiduite-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: attestBatchSessionId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastAttestBatchResult({
+        totalLearners: json.totalLearners,
+        successCount: json.successCount,
+        failureCount: json.failureCount,
+        errors: json.errors ?? [],
+        totalLatencyMs: json.totalLatencyMs,
+        signedCount: json.signedCount,
+      });
+      const bytes = Uint8Array.from(atob(json.zipBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/zip" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const sessionLabel = sessions.find((s) => s.id === attestBatchSessionId)?.title ?? "session";
+      a.href = url;
+      a.download = `attestations-${sessionLabel.replace(/[^a-zA-Z0-9-]+/g, "-").toLowerCase().slice(0, 50)}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast({
+        title: json.failureCount === 0 ? "ZIP attestations généré" : "ZIP avec erreurs",
+        description: `${json.successCount}/${json.totalLearners} apprenants · ${json.signedCount ?? 0} signature(s) · ${json.totalLatencyMs}ms`,
+        variant: json.failureCount === 0 ? "default" : "destructive",
+      });
+    } catch (err) {
+      toast({
+        title: "Échec batch attestations",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingAttestBatch(false);
     }
   }
 
@@ -1860,6 +2021,250 @@ export default function TestConventionPage() {
             <div>
               <strong>Taille PDF :</strong> {(lastProgrammeResult.fileSizeBytes / 1024).toFixed(1)} KB
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════ */}
+      {/*    Attestation d'assiduité (per session+learner)                 */}
+      {/* ════════════════════════════════════════════════════════════════ */}
+
+      <div className="pt-10 border-t-2 border-dashed border-gray-300">
+        <h2 className="text-xl font-semibold flex items-center gap-2 mb-1">
+          <BadgeCheck className="h-5 w-5 text-lime-600" />
+          Attestation d&apos;assiduité
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Attestation par (session, apprenant). Heures réalisées + taux calculés
+          depuis <code className="text-xs bg-gray-100 px-1 rounded">signatures</code> (MVP :
+          présent = 100% du planned_hours, absent = 0%).
+        </p>
+      </div>
+
+      <Card className="border-lime-200 bg-lime-50/30">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <FlaskConical className="h-4 w-4 text-lime-700" />
+            Mode rapide — Données factices
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Reproduit l&apos;exemple Loris : Patrick ATTLAN, formation Managers de
+            Proximité, 14h réalisées sur 14h, taux 100%.
+          </p>
+          <Button
+            onClick={handleGenerateAttestMock}
+            disabled={generatingAttest || generatingAttestBatch}
+            className="w-full gap-2 bg-lime-600 hover:bg-lime-700"
+          >
+            {generatingAttest ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <FlaskConical className="h-4 w-4" />
+            )}
+            Générer une attestation de test
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Attestation — Données réelles (1 apprenant)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label htmlFor="attest-session-select" className="text-sm">Session</Label>
+            <Select
+              value={attestSessionId}
+              onValueChange={setAttestSessionId}
+              disabled={loadingSessions || generatingAttest}
+            >
+              <SelectTrigger id="attest-session-select" className="mt-1">
+                <SelectValue placeholder={loadingSessions ? "Chargement…" : "Choisir une session…"} />
+              </SelectTrigger>
+              <SelectContent>
+                {sessions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.title} — {new Date(s.start_date).toLocaleDateString("fr-FR")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label htmlFor="attest-learner-select" className="text-sm">Apprenant inscrit</Label>
+            <Select
+              value={attestLearnerId}
+              onValueChange={setAttestLearnerId}
+              disabled={!attestSessionId || loadingAttestLearners || generatingAttest}
+            >
+              <SelectTrigger id="attest-learner-select" className="mt-1">
+                <SelectValue
+                  placeholder={
+                    !attestSessionId
+                      ? "Choisis d'abord une session"
+                      : loadingAttestLearners
+                        ? "Chargement…"
+                        : attestLearners.length === 0
+                          ? "Aucun apprenant inscrit"
+                          : "Choisir un apprenant…"
+                  }
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {attestLearners.map((l) =>
+                  l.learner ? (
+                    <SelectItem key={l.learner_id} value={l.learner_id}>
+                      {l.learner.last_name} {l.learner.first_name}
+                    </SelectItem>
+                  ) : null,
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <Button
+            onClick={handleGenerateAttest}
+            disabled={!attestSessionId || !attestLearnerId || generatingAttest}
+            className="w-full gap-2"
+            size="lg"
+          >
+            {generatingAttest ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Génération en cours…
+              </>
+            ) : (
+              <>
+                <BadgeCheck className="h-4 w-4" />
+                Générer l&apos;attestation
+              </>
+            )}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="border-purple-200 bg-purple-50/30">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Package className="h-4 w-4 text-purple-600" />
+            Mode batch — tous les apprenants de la session
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Génère <strong>1 attestation par apprenant</strong> inscrit. Statut
+            présent/absent calculé depuis signatures (partagées). Sortie : 1 ZIP
+            fail-soft.
+          </p>
+          <div>
+            <Label htmlFor="attest-batch-session-select" className="text-sm">Session</Label>
+            <Select
+              value={attestBatchSessionId}
+              onValueChange={setAttestBatchSessionId}
+              disabled={loadingSessions || generatingAttestBatch}
+            >
+              <SelectTrigger id="attest-batch-session-select" className="mt-1">
+                <SelectValue placeholder={loadingSessions ? "Chargement…" : "Choisir une session…"} />
+              </SelectTrigger>
+              <SelectContent>
+                {sessions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.title} — {new Date(s.start_date).toLocaleDateString("fr-FR")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button
+            onClick={handleGenerateAttestBatch}
+            disabled={!attestBatchSessionId || generatingAttestBatch}
+            className="w-full gap-2 bg-purple-600 hover:bg-purple-700"
+            size="lg"
+          >
+            {generatingAttestBatch ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Génération en cours…
+              </>
+            ) : (
+              <>
+                <Package className="h-4 w-4" />
+                Générer ZIP — toutes les attestations
+              </>
+            )}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {lastAttestBatchResult && (
+        <Card
+          className={
+            lastAttestBatchResult.failureCount === 0
+              ? "border-green-200 bg-green-50/30"
+              : "border-amber-200 bg-amber-50/30"
+          }
+        >
+          <CardHeader>
+            <CardTitle
+              className={
+                "text-base " +
+                (lastAttestBatchResult.failureCount === 0 ? "text-green-900" : "text-amber-900")
+              }
+            >
+              {lastAttestBatchResult.failureCount === 0 ? "✅" : "⚠️"} Dernier batch attestations
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <div>
+              <strong>{lastAttestBatchResult.successCount}</strong> /{" "}
+              {lastAttestBatchResult.totalLearners} attestations générées
+            </div>
+            <div>
+              <strong>Signatures trouvées :</strong> {lastAttestBatchResult.signedCount ?? 0}
+            </div>
+            <div>
+              <strong>Latence totale :</strong> {lastAttestBatchResult.totalLatencyMs} ms
+            </div>
+            {lastAttestBatchResult.errors.length > 0 && (
+              <div className="mt-3 space-y-1">
+                <div className="flex items-center gap-1 text-amber-900 font-medium">
+                  <AlertCircle className="h-4 w-4" /> Erreurs ({lastAttestBatchResult.errors.length})
+                </div>
+                <ul className="text-xs space-y-0.5 ml-5 list-disc">
+                  {lastAttestBatchResult.errors.map((e) => (
+                    <li key={e.learnerId}>
+                      <strong>{e.learnerName}</strong> : {e.error}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {lastAttestResult && (
+        <Card className="border-green-200 bg-green-50/30">
+          <CardHeader>
+            <CardTitle className="text-base text-green-900">✅ Dernière attestation</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <div>
+              <strong>Moteur :</strong> {lastAttestResult.engineUsed}
+              {lastAttestResult.cacheHit && (
+                <span className="ml-2 text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded">
+                  ⚡ Cache hit
+                </span>
+              )}
+            </div>
+            <div><strong>Latence :</strong> {lastAttestResult.latencyMs} ms</div>
+            <div><strong>Taille PDF :</strong> {(lastAttestResult.fileSizeBytes / 1024).toFixed(1)} KB</div>
+            {lastAttestResult.present !== undefined && (
+              <div><strong>Statut :</strong> {lastAttestResult.present ? "Présent (100%)" : "Absent (0%)"}</div>
+            )}
           </CardContent>
         </Card>
       )}
