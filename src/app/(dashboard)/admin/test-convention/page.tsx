@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
-import { Loader2, FileText, Sparkles, FlaskConical, Package, AlertCircle, ClipboardList, ScrollText, Shield, Gavel, BookOpen, UserCog, MailOpen, Award, BadgeCheck, UserCheck, Trophy } from "lucide-react";
+import { Loader2, FileText, Sparkles, FlaskConical, Package, AlertCircle, ClipboardList, ScrollText, Shield, Gavel, BookOpen, UserCog, MailOpen, Award, BadgeCheck, UserCheck, Trophy, BarChart3 } from "lucide-react";
 
 /**
  * Page de test temporaire — Story B-Convention.
@@ -133,6 +133,29 @@ export default function TestConventionPage() {
     cacheHit: boolean;
     latencyMs: number;
     fileSizeBytes: number;
+  } | null>(null);
+
+  // ── Résultats évaluations (per session+learner, OPTIONNEL) ───────────
+  const [evalResSessionId, setEvalResSessionId] = useState<string>("");
+  const [evalResLearnerId, setEvalResLearnerId] = useState<string>("");
+  const [evalResLearners, setEvalResLearners] = useState<LearnerRow[]>([]);
+  const [loadingEvalResLearners, setLoadingEvalResLearners] = useState(false);
+  const [evalResBatchSessionId, setEvalResBatchSessionId] = useState<string>("");
+  const [generatingEvalRes, setGeneratingEvalRes] = useState(false);
+  const [generatingEvalResBatch, setGeneratingEvalResBatch] = useState(false);
+  const [lastEvalResResult, setLastEvalResResult] = useState<{
+    engineUsed: string;
+    cacheHit: boolean;
+    latencyMs: number;
+    fileSizeBytes: number;
+    evaluationsCount?: number;
+  } | null>(null);
+  const [lastEvalResBatchResult, setLastEvalResBatchResult] = useState<{
+    totalLearners: number;
+    successCount: number;
+    failureCount: number;
+    errors: { learnerId: string; learnerName: string; error: string }[];
+    totalLatencyMs: number;
   } | null>(null);
 
   // ── Certificat diplôme (per session+learner) ─────────────────────────
@@ -432,6 +455,24 @@ export default function TestConventionPage() {
     })();
   }, [supabase, diplomeSessionId]);
 
+  // Charge les apprenants pour résultats évaluations single
+  useEffect(() => {
+    if (!evalResSessionId) {
+      setEvalResLearners([]);
+      setEvalResLearnerId("");
+      return;
+    }
+    setLoadingEvalResLearners(true);
+    (async () => {
+      const { data } = await supabase
+        .from("enrollments")
+        .select("learner_id, learner:learners(id, first_name, last_name)")
+        .eq("session_id", evalResSessionId);
+      setEvalResLearners((data as unknown as LearnerRow[]) || []);
+      setLoadingEvalResLearners(false);
+    })();
+  }, [supabase, evalResSessionId]);
+
   // ── CGV handler (entity-only, pas de params) ──────────────────────────
   async function handleGenerateCgv() {
     setGeneratingCgv(true);
@@ -458,6 +499,106 @@ export default function TestConventionPage() {
       });
     } finally {
       setGeneratingCgv(false);
+    }
+  }
+
+  // ── Résultats évaluations handlers (OPTIONNEL) ────────────────────────
+  async function handleGenerateEvalResMock() {
+    setGeneratingEvalRes(true);
+    setLastEvalResResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-resultats-evaluations-mock", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastEvalResResult({
+        engineUsed: json.engineUsed, cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs, fileSizeBytes: json.fileSizeBytes,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({ title: "Résultats mock générés", description: `${json.engineUsed} · ${json.latencyMs}ms` });
+    } catch (err) {
+      toast({ title: "Échec mock résultats", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setGeneratingEvalRes(false);
+    }
+  }
+
+  async function handleGenerateEvalRes() {
+    if (!evalResSessionId || !evalResLearnerId) {
+      toast({ title: "Sélection incomplète", description: "Choisis session ET apprenant.", variant: "destructive" });
+      return;
+    }
+    setGeneratingEvalRes(true);
+    setLastEvalResResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-resultats-evaluations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: evalResSessionId, learnerId: evalResLearnerId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastEvalResResult({
+        engineUsed: json.engineUsed, cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs, fileSizeBytes: json.fileSizeBytes,
+        evaluationsCount: json.evaluationsCount,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({
+        title: "Résultats générés",
+        description: `${json.evaluationsCount ?? 0} éval(s) · ${json.engineUsed} · ${json.latencyMs}ms`,
+      });
+    } catch (err) {
+      toast({ title: "Échec résultats", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setGeneratingEvalRes(false);
+    }
+  }
+
+  async function handleGenerateEvalResBatch() {
+    if (!evalResBatchSessionId) {
+      toast({ title: "Aucune session", description: "Sélectionne d'abord une session.", variant: "destructive" });
+      return;
+    }
+    setGeneratingEvalResBatch(true);
+    setLastEvalResBatchResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-resultats-evaluations-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: evalResBatchSessionId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastEvalResBatchResult({
+        totalLearners: json.totalLearners, successCount: json.successCount,
+        failureCount: json.failureCount, errors: json.errors ?? [],
+        totalLatencyMs: json.totalLatencyMs,
+      });
+      const bytes = Uint8Array.from(atob(json.zipBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/zip" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const sessionLabel = sessions.find((s) => s.id === evalResBatchSessionId)?.title ?? "session";
+      a.href = url;
+      a.download = `resultats-evaluations-${sessionLabel.replace(/[^a-zA-Z0-9-]+/g, "-").toLowerCase().slice(0, 50)}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast({
+        title: json.failureCount === 0 ? "ZIP résultats généré" : "ZIP avec erreurs",
+        description: `${json.successCount}/${json.totalLearners} apprenants · ${json.totalLatencyMs}ms`,
+        variant: json.failureCount === 0 ? "default" : "destructive",
+      });
+    } catch (err) {
+      toast({ title: "Échec batch résultats", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setGeneratingEvalResBatch(false);
     }
   }
 
@@ -3859,6 +4000,192 @@ export default function TestConventionPage() {
             <div>
               <strong>Taille PDF :</strong> {(lastRiResult.fileSizeBytes / 1024).toFixed(1)} KB
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════ */}
+      {/*    📂 DOCUMENTS OPTIONNELS — à la demande, pas par défaut        */}
+      {/* ════════════════════════════════════════════════════════════════ */}
+
+      <div className="pt-16 mt-8 border-t-4 border-double border-gray-400">
+        <div className="bg-gradient-to-r from-gray-100 to-gray-200 rounded-lg p-4 mb-2">
+          <h2 className="text-2xl font-bold text-gray-900">📂 Documents optionnels</h2>
+          <p className="text-sm text-gray-700 mt-1">
+            Documents générables à la demande (pas systématiquement utilisés).
+            Préfigurent la section "Documents optionnels" du futur refactor de{" "}
+            <code className="text-xs bg-white px-1 rounded">TabConventionDocs</code>.
+          </p>
+        </div>
+      </div>
+
+      {/* ────────── Résultats des évaluations ────────── */}
+
+      <div className="pt-4">
+        <h2 className="text-xl font-semibold flex items-center gap-2 mb-1">
+          <BarChart3 className="h-5 w-5 text-violet-600" />
+          Résultats des évaluations
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Tableau des évaluations complétées par un apprenant. Score calculé
+          depuis <code className="text-xs bg-gray-100 px-1 rounded">questionnaire_responses</code> +{" "}
+          <code className="text-xs bg-gray-100 px-1 rounded">questions.options.correct_answer</code>.
+          Passing score = 70%.
+        </p>
+      </div>
+
+      <Card className="border-violet-200 bg-violet-50/30">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <FlaskConical className="h-4 w-4 text-violet-700" />
+            Mode rapide — Données factices
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Patrick ATTLAN + 3 évaluations fake (Quiz entrée 80% acquis,
+            Atelier 80% acquis, Quiz final 55% non acquis).
+          </p>
+          <Button
+            onClick={handleGenerateEvalResMock}
+            disabled={generatingEvalRes || generatingEvalResBatch}
+            className="w-full gap-2 bg-violet-600 hover:bg-violet-700"
+          >
+            {generatingEvalRes ? <Loader2 className="h-4 w-4 animate-spin" /> : <FlaskConical className="h-4 w-4" />}
+            Générer un PDF résultats de test
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Résultats — Données réelles (1 apprenant)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label htmlFor="evalres-session-select" className="text-sm">Session</Label>
+            <Select value={evalResSessionId} onValueChange={setEvalResSessionId}
+              disabled={loadingSessions || generatingEvalRes}>
+              <SelectTrigger id="evalres-session-select" className="mt-1">
+                <SelectValue placeholder={loadingSessions ? "Chargement…" : "Choisir une session…"} />
+              </SelectTrigger>
+              <SelectContent>
+                {sessions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.title} — {new Date(s.start_date).toLocaleDateString("fr-FR")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label htmlFor="evalres-learner-select" className="text-sm">Apprenant inscrit</Label>
+            <Select value={evalResLearnerId} onValueChange={setEvalResLearnerId}
+              disabled={!evalResSessionId || loadingEvalResLearners || generatingEvalRes}>
+              <SelectTrigger id="evalres-learner-select" className="mt-1">
+                <SelectValue placeholder={
+                  !evalResSessionId ? "Choisis d'abord une session"
+                    : loadingEvalResLearners ? "Chargement…"
+                      : evalResLearners.length === 0 ? "Aucun apprenant inscrit"
+                        : "Choisir un apprenant…"
+                } />
+              </SelectTrigger>
+              <SelectContent>
+                {evalResLearners.map((l) => l.learner ? (
+                  <SelectItem key={l.learner_id} value={l.learner_id}>
+                    {l.learner.last_name} {l.learner.first_name}
+                  </SelectItem>
+                ) : null)}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button onClick={handleGenerateEvalRes}
+            disabled={!evalResSessionId || !evalResLearnerId || generatingEvalRes}
+            className="w-full gap-2" size="lg">
+            {generatingEvalRes ? <><Loader2 className="h-4 w-4 animate-spin" />Génération en cours…</>
+              : <><BarChart3 className="h-4 w-4" />Générer le PDF résultats</>}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="border-purple-200 bg-purple-50/30">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Package className="h-4 w-4 text-purple-600" />
+            Mode batch — tous les apprenants
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Génère <strong>1 PDF résultats par apprenant</strong> inscrit. Sortie : 1 ZIP.
+          </p>
+          <div>
+            <Label htmlFor="evalres-batch-session-select" className="text-sm">Session</Label>
+            <Select value={evalResBatchSessionId} onValueChange={setEvalResBatchSessionId}
+              disabled={loadingSessions || generatingEvalResBatch}>
+              <SelectTrigger id="evalres-batch-session-select" className="mt-1">
+                <SelectValue placeholder={loadingSessions ? "Chargement…" : "Choisir une session…"} />
+              </SelectTrigger>
+              <SelectContent>
+                {sessions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.title} — {new Date(s.start_date).toLocaleDateString("fr-FR")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button onClick={handleGenerateEvalResBatch}
+            disabled={!evalResBatchSessionId || generatingEvalResBatch}
+            className="w-full gap-2 bg-purple-600 hover:bg-purple-700" size="lg">
+            {generatingEvalResBatch ? <><Loader2 className="h-4 w-4 animate-spin" />Génération en cours…</>
+              : <><Package className="h-4 w-4" />Générer ZIP — tous les résultats</>}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {lastEvalResBatchResult && (
+        <Card className={lastEvalResBatchResult.failureCount === 0
+          ? "border-green-200 bg-green-50/30" : "border-amber-200 bg-amber-50/30"}>
+          <CardHeader>
+            <CardTitle className={"text-base " + (lastEvalResBatchResult.failureCount === 0 ? "text-green-900" : "text-amber-900")}>
+              {lastEvalResBatchResult.failureCount === 0 ? "✅" : "⚠️"} Dernier batch résultats
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <div><strong>{lastEvalResBatchResult.successCount}</strong> / {lastEvalResBatchResult.totalLearners} PDF générés</div>
+            <div><strong>Latence totale :</strong> {lastEvalResBatchResult.totalLatencyMs} ms</div>
+            {lastEvalResBatchResult.errors.length > 0 && (
+              <div className="mt-3 space-y-1">
+                <div className="flex items-center gap-1 text-amber-900 font-medium">
+                  <AlertCircle className="h-4 w-4" /> Erreurs ({lastEvalResBatchResult.errors.length})
+                </div>
+                <ul className="text-xs space-y-0.5 ml-5 list-disc">
+                  {lastEvalResBatchResult.errors.map((e) => (
+                    <li key={e.learnerId}><strong>{e.learnerName}</strong> : {e.error}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {lastEvalResResult && (
+        <Card className="border-green-200 bg-green-50/30">
+          <CardHeader><CardTitle className="text-base text-green-900">✅ Dernier PDF résultats</CardTitle></CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <div>
+              <strong>Moteur :</strong> {lastEvalResResult.engineUsed}
+              {lastEvalResResult.cacheHit && (
+                <span className="ml-2 text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded">⚡ Cache hit</span>
+              )}
+            </div>
+            <div><strong>Latence :</strong> {lastEvalResResult.latencyMs} ms</div>
+            <div><strong>Taille PDF :</strong> {(lastEvalResResult.fileSizeBytes / 1024).toFixed(1)} KB</div>
+            {lastEvalResResult.evaluationsCount !== undefined && (
+              <div><strong>Évaluations :</strong> {lastEvalResResult.evaluationsCount}</div>
+            )}
           </CardContent>
         </Card>
       )}
