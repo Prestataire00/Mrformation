@@ -1079,6 +1079,7 @@ export const ALIAS_TO_VARIABLE_KEY: Record<string, string> = {
   "Effectif max": "{{effectif_max}}",
   // === Story B-Convocation Apprenant ===
   "Nom de l'apprenant": "{{nom_apprenant}}",
+  "Email de l'apprenant": "{{email_apprenant}}",
   "Vos dates en détail": "{{dates_detail}}",
   "QR Code de l'extranet de l'apprenant": "{{qr_code_extranet_apprenant}}",
   // === Story B-Certificat Réalisation ===
