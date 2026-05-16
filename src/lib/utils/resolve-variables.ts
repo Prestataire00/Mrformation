@@ -31,6 +31,12 @@ export interface ResolveContext {
    * compat ancien comportement).
    */
   signaturesById?: Map<string, string>;
+  /**
+   * Code d'identification unique du certificat (diplôme). Calculé via
+   * `generateCertificateCode(learnerId, sessionId)` côté API. Utilisé par
+   * `{{code_certificat}}` dans le template certificat-diplome.
+   */
+  certificateCode?: string;
   entity?: {
     name?: string | null;  // ajouté Story B-Convention : utilisé par `{{nom_organisme}}`
     siret?: string | null;
@@ -279,6 +285,9 @@ export function resolveVariables(content: string, data: ResolveContext): string 
     // day_number puis par slot (matin/aprem), rend pour chaque (jour, slot) un
     // tableau "Contenu | Animation". Si modules sans day_number/slot, rendu
     // dégradé en liste plate.
+    // === Story B-Certificat (diplôme stylé) ===
+    "{{code_certificat}}": data.certificateCode || "[Code certificat]",
+
     // === Story B-Émargement Individuel ===
     // Liste de cards par créneau pour 1 seul apprenant (data.learner).
     // Source = formation_time_slots (fallback : matin/aprem par jour).
@@ -871,6 +880,8 @@ export const ALIAS_TO_VARIABLE_KEY: Record<string, string> = {
   "Taux de réalisation": "{{taux_realisation}}",
   // === Story B-Émargement Individuel ===
   "Tableau de signature de l'apprenant": "{{tableau_signature_individuel}}",
+  // === Story B-Certificat diplôme ===
+  "Code d'identification du certificat": "{{code_certificat}}",
   // === Story B-Convention Intervention (formateur sous-traitance) ===
   "Nom du formateur": "{{nom_formateur_complet}}",
   "Adresse du formateur": "{{adresse_formateur}}",
@@ -1050,6 +1061,8 @@ export const VARIABLE_KEYS = [
   "{{taux_realisation}}",
   // Story B-Émargement Individuel
   "{{tableau_signature_individuel}}",
+  // Story B-Certificat diplôme
+  "{{code_certificat}}",
   // Story B-Convention Intervention
   "{{nom_formateur_complet}}",
   "{{adresse_formateur}}",
