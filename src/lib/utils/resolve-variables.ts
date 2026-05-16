@@ -270,6 +270,15 @@ export function resolveVariables(content: string, data: ResolveContext): string 
     // day_number puis par slot (matin/aprem), rend pour chaque (jour, slot) un
     // tableau "Contenu | Animation". Si modules sans day_number/slot, rendu
     // dégradé en liste plate.
+    // === Story B-Certificat Réalisation ===
+    // URL absolue vers /ministere-du-travail.png (asset public/) — Puppeteer
+    // (Railway sidecar) doit pouvoir le fetcher depuis Internet, donc on
+    // utilise NEXT_PUBLIC_APP_URL.
+    "{{url_logo_ministere_travail}}": (() => {
+      const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://mrformationcrm.netlify.app").replace(/\/+$/, "");
+      return `${baseUrl}/ministere-du-travail.png`;
+    })(),
+
     // === Story B-Convocation Apprenant ===
     // Liste détaillée des créneaux (matin/aprem) : "• De DD/MM/YYYY - HH:MM
     // À DD/MM/YYYY - HH:MM" par créneau. Source = formation_time_slots.
@@ -718,6 +727,9 @@ export const ALIAS_TO_VARIABLE_KEY: Record<string, string> = {
   "Nom de l'apprenant": "{{nom_apprenant}}",
   "Vos dates en détail": "{{dates_detail}}",
   "QR Code de l'extranet de l'apprenant": "{{qr_code_extranet_apprenant}}",
+  // === Story B-Certificat Réalisation ===
+  "URL Logo Ministère du Travail": "{{url_logo_ministere_travail}}",
+  "Objectifs pédagogiques du programme": "{{liste_objectifs_pedagogiques}}",
   // === Story B-Convention Intervention (formateur sous-traitance) ===
   "Nom du formateur": "{{nom_formateur_complet}}",
   "Adresse du formateur": "{{adresse_formateur}}",
@@ -890,6 +902,8 @@ export const VARIABLE_KEYS = [
   // Story B-Convocation Apprenant
   "{{dates_detail}}",
   "{{qr_code_extranet_apprenant}}",
+  // Story B-Certificat Réalisation
+  "{{url_logo_ministere_travail}}",
   // Story B-Convention Intervention
   "{{nom_formateur_complet}}",
   "{{adresse_formateur}}",
