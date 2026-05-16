@@ -51,6 +51,35 @@ export interface ResolveContext {
     percentage: number | null;
     status: "acquis" | "non_acquis" | "complete" | "non_complete";
   }>;
+  /**
+   * Agrégats session (vue admin) pour le doc "Réponses satisfaction apprenants".
+   * Pré-chargés côté API via `loadSessionAggregates`.
+   */
+  sessionAggregates?: {
+    satisfaction: Array<{
+      questionText: string;
+      questionType: string;
+      averageRating: number | null;
+      distribution: { value: string; count: number }[];
+      responseCount: number;
+    }>;
+    qualiopi: {
+      totalLearners: number;
+      signedLearnersCount: number;
+      completionRate: number;
+      satisfactionRate: number | null;
+      satisfactionResponses: number;
+      acquisitionRate: number | null;
+      evaluationCount: number;
+    };
+    evaluations: Array<{
+      title: string;
+      responseCount: number;
+      totalEnrolled: number;
+      averageScorePct: number | null;
+      acquisRate: number | null;
+    }>;
+  };
   entity?: {
     name?: string | null;  // ajouté Story B-Convention : utilisé par `{{nom_organisme}}`
     siret?: string | null;
@@ -302,6 +331,88 @@ export function resolveVariables(content: string, data: ResolveContext): string 
     // dégradé en liste plate.
     // === Story B-Certificat (diplôme stylé) ===
     "{{code_certificat}}": data.certificateCode || "[Code certificat]",
+
+    // === Story B-Réponses Satisfaction Apprenants (vue admin session) ===
+    // Tableau satisfaction : 1 ligne par question des questionnaires satisfaction
+    "{{tableau_reponses_satisfaction}}": (() => {
+      const agg = data.sessionAggregates?.satisfaction;
+      if (!agg || agg.length === 0) {
+        return `<p style="color:#6b7280;font-style:italic;text-align:center;padding:14px;">Aucune réponse de satisfaction enregistrée.</p>`;
+      }
+      const rows = agg.map((q) => {
+        const ratingCell = q.averageRating !== null
+          ? `<strong>${q.averageRating.toFixed(2)} / 5</strong>`
+          : "<em style='color:#9ca3af;'>—</em>";
+        const distCell = q.distribution.length > 0
+          ? q.distribution.map((d) => `${d.value} (${d.count})`).join(", ")
+          : "<em style='color:#9ca3af;'>—</em>";
+        return `<tr>
+  <td style="border:1px solid #d1d5db;padding:8px 10px;">${q.questionText}</td>
+  <td style="border:1px solid #d1d5db;padding:8px 10px;text-align:center;">${ratingCell}</td>
+  <td style="border:1px solid #d1d5db;padding:8px 10px;">${distCell}</td>
+  <td style="border:1px solid #d1d5db;padding:8px 10px;text-align:center;">${q.responseCount}</td>
+</tr>`;
+      }).join("");
+      return `<table style="width:100%;border-collapse:collapse;margin:8px 0;font-size:9pt;">
+  <thead>
+    <tr style="background:#f3f4f6;">
+      <th style="border:1px solid #d1d5db;padding:8px 10px;text-align:left;">Question</th>
+      <th style="border:1px solid #d1d5db;padding:8px 10px;">Note moy.</th>
+      <th style="border:1px solid #d1d5db;padding:8px 10px;text-align:left;">Distribution réponses</th>
+      <th style="border:1px solid #d1d5db;padding:8px 10px;">N</th>
+    </tr>
+  </thead>
+  <tbody>${rows}</tbody>
+</table>`;
+    })(),
+
+    // Tableau suivi qualité : KPIs Qualiopi
+    "{{tableau_suivi_qualite}}": (() => {
+      const q = data.sessionAggregates?.qualiopi;
+      if (!q) return `<p style="color:#6b7280;font-style:italic;text-align:center;padding:14px;">Pas de données qualité disponibles.</p>`;
+      const fmtPct = (n: number | null) => n !== null ? `${n.toFixed(1)} %` : "—";
+      return `<table style="width:100%;border-collapse:collapse;margin:8px 0;font-size:9.5pt;">
+  <thead>
+    <tr style="background:#f3f4f6;">
+      <th style="border:1px solid #d1d5db;padding:8px 10px;text-align:left;">Indicateur Qualiopi</th>
+      <th style="border:1px solid #d1d5db;padding:8px 10px;text-align:center;">Valeur</th>
+      <th style="border:1px solid #d1d5db;padding:8px 10px;text-align:center;">Base</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td style="border:1px solid #d1d5db;padding:8px 10px;">Nombre d'apprenants inscrits</td><td style="border:1px solid #d1d5db;padding:8px 10px;text-align:center;font-weight:700;">${q.totalLearners}</td><td style="border:1px solid #d1d5db;padding:8px 10px;text-align:center;">—</td></tr>
+    <tr><td style="border:1px solid #d1d5db;padding:8px 10px;">Taux de complétion (apprenants présents)</td><td style="border:1px solid #d1d5db;padding:8px 10px;text-align:center;font-weight:700;">${fmtPct(q.completionRate)}</td><td style="border:1px solid #d1d5db;padding:8px 10px;text-align:center;">${q.signedLearnersCount} / ${q.totalLearners}</td></tr>
+    <tr><td style="border:1px solid #d1d5db;padding:8px 10px;">Taux de satisfaction global</td><td style="border:1px solid #d1d5db;padding:8px 10px;text-align:center;font-weight:700;color:${q.satisfactionRate !== null && q.satisfactionRate >= 80 ? "#15803d" : "#1f2937"};">${fmtPct(q.satisfactionRate)}</td><td style="border:1px solid #d1d5db;padding:8px 10px;text-align:center;">${q.satisfactionResponses} réponse(s)</td></tr>
+    <tr><td style="border:1px solid #d1d5db;padding:8px 10px;">Taux d'acquisition (évaluations)</td><td style="border:1px solid #d1d5db;padding:8px 10px;text-align:center;font-weight:700;color:${q.acquisitionRate !== null && q.acquisitionRate >= 70 ? "#15803d" : "#1f2937"};">${fmtPct(q.acquisitionRate)}</td><td style="border:1px solid #d1d5db;padding:8px 10px;text-align:center;">${q.evaluationCount} éval(s)</td></tr>
+  </tbody>
+</table>`;
+    })(),
+
+    // Tableau réponses évaluations agrégé (1 ligne par évaluation)
+    "{{tableau_reponses_evaluations}}": (() => {
+      const evals = data.sessionAggregates?.evaluations;
+      if (!evals || evals.length === 0) {
+        return `<p style="color:#6b7280;font-style:italic;text-align:center;padding:14px;">Aucune évaluation enregistrée pour cette session.</p>`;
+      }
+      const fmtPct = (n: number | null) => n !== null ? `${n.toFixed(1)} %` : "—";
+      const rows = evals.map((e) => `<tr>
+  <td style="border:1px solid #d1d5db;padding:8px 10px;">${e.title}</td>
+  <td style="border:1px solid #d1d5db;padding:8px 10px;text-align:center;">${e.responseCount} / ${e.totalEnrolled}</td>
+  <td style="border:1px solid #d1d5db;padding:8px 10px;text-align:center;font-weight:600;">${fmtPct(e.averageScorePct)}</td>
+  <td style="border:1px solid #d1d5db;padding:8px 10px;text-align:center;font-weight:700;color:${e.acquisRate !== null && e.acquisRate >= 70 ? "#15803d" : "#1f2937"};">${fmtPct(e.acquisRate)}</td>
+</tr>`).join("");
+      return `<table style="width:100%;border-collapse:collapse;margin:8px 0;font-size:9.5pt;">
+  <thead>
+    <tr style="background:#f3f4f6;">
+      <th style="border:1px solid #d1d5db;padding:8px 10px;text-align:left;">Évaluation</th>
+      <th style="border:1px solid #d1d5db;padding:8px 10px;">Réponses</th>
+      <th style="border:1px solid #d1d5db;padding:8px 10px;">Score moyen</th>
+      <th style="border:1px solid #d1d5db;padding:8px 10px;">Taux ACQUIS</th>
+    </tr>
+  </thead>
+  <tbody>${rows}</tbody>
+</table>`;
+    })(),
 
     // === Story B-Autorisation Image (e-signature apprenant) ===
     // E-signature de l'apprenant : MVP = ligne vide pour signature manuelle.
@@ -971,6 +1082,10 @@ export const ALIAS_TO_VARIABLE_KEY: Record<string, string> = {
   "Signature de l'intervenant": "{{signature_intervenant}}",
   // === Story B-Autorisation Image ===
   "E-signature de l'apprenant": "{{e_signature_apprenant}}",
+  // === Story B-Réponses Satisfaction Apprenants (vue session) ===
+  "Tableau des réponses des questionnaires de satisfaction (suivi qualité)": "{{tableau_reponses_satisfaction}}",
+  "Tableau du suivi qualité": "{{tableau_suivi_qualite}}",
+  "Tableau des réponses des évaluations": "{{tableau_reponses_evaluations}}",
   // === Story B-Convention Intervention (formateur sous-traitance) ===
   "Nom du formateur": "{{nom_formateur_complet}}",
   "Adresse du formateur": "{{adresse_formateur}}",
@@ -1159,6 +1274,10 @@ export const VARIABLE_KEYS = [
   "{{signature_intervenant}}",
   // Story B-Autorisation Image
   "{{e_signature_apprenant}}",
+  // Story B-Réponses Satisfaction Apprenants (vue session)
+  "{{tableau_reponses_satisfaction}}",
+  "{{tableau_suivi_qualite}}",
+  "{{tableau_reponses_evaluations}}",
   // Story B-Convention Intervention
   "{{nom_formateur_complet}}",
   "{{adresse_formateur}}",
