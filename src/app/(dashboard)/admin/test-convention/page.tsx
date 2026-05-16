@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
-import { Loader2, FileText, Sparkles, FlaskConical, Package, AlertCircle, ClipboardList, ScrollText } from "lucide-react";
+import { Loader2, FileText, Sparkles, FlaskConical, Package, AlertCircle, ClipboardList, ScrollText, Shield } from "lucide-react";
 
 /**
  * Page de test temporaire — Story B-Convention.
@@ -91,6 +91,15 @@ export default function TestConventionPage() {
   // ── CGV (entity-only, pas de session/client) ─────────────────────────
   const [generatingCgv, setGeneratingCgv] = useState(false);
   const [lastCgvResult, setLastCgvResult] = useState<{
+    engineUsed: string;
+    cacheHit: boolean;
+    latencyMs: number;
+    fileSizeBytes: number;
+  } | null>(null);
+
+  // ── RGPD (entity-only, pas de session/client) ────────────────────────
+  const [generatingRgpd, setGeneratingRgpd] = useState(false);
+  const [lastRgpdResult, setLastRgpdResult] = useState<{
     engineUsed: string;
     cacheHit: boolean;
     latencyMs: number;
@@ -174,6 +183,35 @@ export default function TestConventionPage() {
       });
     } finally {
       setGeneratingCgv(false);
+    }
+  }
+
+  // ── RGPD handler (entity-only, pas de params) ─────────────────────────
+  async function handleGenerateRgpd() {
+    setGeneratingRgpd(true);
+    setLastRgpdResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-rgpd", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastRgpdResult({
+        engineUsed: json.engineUsed,
+        cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs,
+        fileSizeBytes: json.fileSizeBytes,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({ title: "Politique RGPD générée", description: `${json.engineUsed} · ${json.latencyMs}ms` });
+    } catch (err) {
+      toast({
+        title: "Échec génération RGPD",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingRgpd(false);
     }
   }
 
@@ -1041,6 +1079,74 @@ export default function TestConventionPage() {
             </div>
             <div>
               <strong>Taille PDF :</strong> {(lastCgvResult.fileSizeBytes / 1024).toFixed(1)} KB
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════ */}
+      {/*    RGPD — Politique de protection des données (entity-only)     */}
+      {/* ════════════════════════════════════════════════════════════════ */}
+
+      <div className="pt-10 border-t-2 border-dashed border-gray-300">
+        <h2 className="text-xl font-semibold flex items-center gap-2 mb-1">
+          <Shield className="h-5 w-5 text-cyan-600" />
+          Politique RGPD
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Document statique (6 sections + intro + contact DPO). Seul l&apos;organisme
+          (nom, email, adresse) varie selon l&apos;entité.
+        </p>
+      </div>
+
+      <Card className="border-cyan-200 bg-cyan-50/30">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Shield className="h-4 w-4 text-cyan-600" />
+            Générer la Politique RGPD pour cet organisme
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Génère le PDF de la Politique RGPD avec les infos de ton entité
+            courante (DPO = email + adresse organisme). Aussi disponible dans
+            l&apos;espace client + apprenant à côté des CGV.
+          </p>
+          <Button
+            onClick={handleGenerateRgpd}
+            disabled={generatingRgpd}
+            className="w-full gap-2 bg-cyan-600 hover:bg-cyan-700"
+            size="lg"
+          >
+            {generatingRgpd ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Shield className="h-4 w-4" />
+            )}
+            Générer la Politique RGPD
+          </Button>
+        </CardContent>
+      </Card>
+
+      {lastRgpdResult && (
+        <Card className="border-green-200 bg-green-50/30">
+          <CardHeader>
+            <CardTitle className="text-base text-green-900">✅ Dernière Politique RGPD</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <div>
+              <strong>Moteur :</strong> {lastRgpdResult.engineUsed}
+              {lastRgpdResult.cacheHit && (
+                <span className="ml-2 text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded">
+                  ⚡ Cache hit
+                </span>
+              )}
+            </div>
+            <div>
+              <strong>Latence :</strong> {lastRgpdResult.latencyMs} ms
+            </div>
+            <div>
+              <strong>Taille PDF :</strong> {(lastRgpdResult.fileSizeBytes / 1024).toFixed(1)} KB
             </div>
           </CardContent>
         </Card>
