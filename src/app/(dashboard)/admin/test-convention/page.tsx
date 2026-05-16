@@ -157,6 +157,29 @@ export default function TestConventionPage() {
     totalLatencyMs: number;
   } | null>(null);
 
+  // ── Bilan de fin de POE (per session+learner, OPTIONNEL) ────────────
+  const [bilanPoeSessionId, setBilanPoeSessionId] = useState<string>("");
+  const [bilanPoeLearnerId, setBilanPoeLearnerId] = useState<string>("");
+  const [bilanPoeLearners, setBilanPoeLearners] = useState<LearnerRow[]>([]);
+  const [loadingBilanPoeLearners, setLoadingBilanPoeLearners] = useState(false);
+  const [bilanPoeBatchSessionId, setBilanPoeBatchSessionId] = useState<string>("");
+  const [generatingBilanPoe, setGeneratingBilanPoe] = useState(false);
+  const [generatingBilanPoeBatch, setGeneratingBilanPoeBatch] = useState(false);
+  const [lastBilanPoeResult, setLastBilanPoeResult] = useState<{
+    engineUsed: string;
+    cacheHit: boolean;
+    latencyMs: number;
+    fileSizeBytes: number;
+  } | null>(null);
+  const [lastBilanPoeBatchResult, setLastBilanPoeBatchResult] = useState<{
+    totalLearners: number;
+    successCount: number;
+    failureCount: number;
+    errors: { learnerId: string; learnerName: string; error: string }[];
+    totalLatencyMs: number;
+    signedCount?: number;
+  } | null>(null);
+
   // ── Attestation AIPR (per session+learner, OPTIONNEL) ───────────────
   const [aiprSessionId, setAiprSessionId] = useState<string>("");
   const [aiprLearnerId, setAiprLearnerId] = useState<string>("");
@@ -709,6 +732,24 @@ export default function TestConventionPage() {
     })();
   }, [supabase, habilSessionId]);
 
+  // Charge les apprenants pour bilan POE single
+  useEffect(() => {
+    if (!bilanPoeSessionId) {
+      setBilanPoeLearners([]);
+      setBilanPoeLearnerId("");
+      return;
+    }
+    setLoadingBilanPoeLearners(true);
+    (async () => {
+      const { data } = await supabase
+        .from("enrollments")
+        .select("learner_id, learner:learners(id, first_name, last_name)")
+        .eq("session_id", bilanPoeSessionId);
+      setBilanPoeLearners((data as unknown as LearnerRow[]) || []);
+      setLoadingBilanPoeLearners(false);
+    })();
+  }, [supabase, bilanPoeSessionId]);
+
   // Charge tous les formateurs de l'entité courante (pour charte formateur)
   useEffect(() => {
     if (!entityId) return;
@@ -846,6 +887,102 @@ export default function TestConventionPage() {
       toast({ title: "Échec batch avis habilitation", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
     } finally {
       setGeneratingHabilBatch(false);
+    }
+  }
+
+  // ── Bilan POE handlers (per session+learner, OPTIONNEL) ─────────────
+  async function handleGenerateBilanPoeMock() {
+    setGeneratingBilanPoe(true);
+    setLastBilanPoeResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-bilan-poe-mock", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastBilanPoeResult({
+        engineUsed: json.engineUsed, cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs, fileSizeBytes: json.fileSizeBytes,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({ title: "Bilan POE mock généré", description: `${json.engineUsed} · ${json.latencyMs}ms` });
+    } catch (err) {
+      toast({ title: "Échec mock bilan POE", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setGeneratingBilanPoe(false);
+    }
+  }
+
+  async function handleGenerateBilanPoe() {
+    if (!bilanPoeSessionId || !bilanPoeLearnerId) {
+      toast({ title: "Sélection incomplète", description: "Choisis session ET apprenant.", variant: "destructive" });
+      return;
+    }
+    setGeneratingBilanPoe(true);
+    setLastBilanPoeResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-bilan-poe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: bilanPoeSessionId, learnerId: bilanPoeLearnerId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastBilanPoeResult({
+        engineUsed: json.engineUsed, cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs, fileSizeBytes: json.fileSizeBytes,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({ title: "Bilan POE généré", description: `${json.engineUsed} · ${json.latencyMs}ms` });
+    } catch (err) {
+      toast({ title: "Échec bilan POE", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setGeneratingBilanPoe(false);
+    }
+  }
+
+  async function handleGenerateBilanPoeBatch() {
+    if (!bilanPoeBatchSessionId) {
+      toast({ title: "Aucune session", description: "Sélectionne d'abord une session.", variant: "destructive" });
+      return;
+    }
+    setGeneratingBilanPoeBatch(true);
+    setLastBilanPoeBatchResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-bilans-poe-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: bilanPoeBatchSessionId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastBilanPoeBatchResult({
+        totalLearners: json.totalLearners, successCount: json.successCount,
+        failureCount: json.failureCount, errors: json.errors ?? [],
+        totalLatencyMs: json.totalLatencyMs, signedCount: json.signedCount,
+      });
+      const bytes = Uint8Array.from(atob(json.zipBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/zip" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const sessionLabel = sessions.find((s) => s.id === bilanPoeBatchSessionId)?.title ?? "session";
+      a.href = url;
+      a.download = `bilans-poe-${sessionLabel.replace(/[^a-zA-Z0-9-]+/g, "-").toLowerCase().slice(0, 50)}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast({
+        title: json.failureCount === 0 ? "ZIP bilans POE généré" : "ZIP avec erreurs",
+        description: `${json.successCount}/${json.totalLearners} apprenants · ${json.totalLatencyMs}ms`,
+        variant: json.failureCount === 0 ? "default" : "destructive",
+      });
+    } catch (err) {
+      toast({ title: "Échec batch bilans POE", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setGeneratingBilanPoeBatch(false);
     }
   }
 
@@ -6169,6 +6306,176 @@ export default function TestConventionPage() {
             </div>
             <div><strong>Latence :</strong> {lastHabilResult.latencyMs} ms</div>
             <div><strong>Taille PDF :</strong> {(lastHabilResult.fileSizeBytes / 1024).toFixed(1)} KB</div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ────────── Bilan de fin de POE (per session+learner) ────────── */}
+
+      <div className="pt-8">
+        <h2 className="text-xl font-semibold flex items-center gap-2 mb-1">
+          <BookMarked className="h-5 w-5 text-teal-700" />
+          Bilan de fin de POE
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Doc POE (Préparation Opérationnelle à l&apos;Emploi) — similaire à
+          l&apos;attestation d&apos;assiduité avec mention des objectifs
+          pédagogiques. Réutilise les heures réalisées et le taux de réalisation
+          basés sur les émargements.
+        </p>
+      </div>
+
+      <Card className="border-teal-300 bg-teal-50/40">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <FlaskConical className="h-4 w-4 text-teal-800" />
+            Mode rapide — Données factices
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Patrick ATTLAN + POE Managers de Proximité (35h, 5 objectifs).
+          </p>
+          <Button
+            onClick={handleGenerateBilanPoeMock}
+            disabled={generatingBilanPoe || generatingBilanPoeBatch}
+            className="w-full gap-2 bg-teal-700 hover:bg-teal-800"
+          >
+            {generatingBilanPoe ? <Loader2 className="h-4 w-4 animate-spin" /> : <FlaskConical className="h-4 w-4" />}
+            Générer bilan POE de test
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Bilan POE — Données réelles (1 apprenant)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label htmlFor="bilan-poe-session-select" className="text-sm">Session</Label>
+            <Select value={bilanPoeSessionId} onValueChange={setBilanPoeSessionId}
+              disabled={loadingSessions || generatingBilanPoe}>
+              <SelectTrigger id="bilan-poe-session-select" className="mt-1">
+                <SelectValue placeholder={loadingSessions ? "Chargement…" : "Choisir une session…"} />
+              </SelectTrigger>
+              <SelectContent>
+                {sessions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.title} — {new Date(s.start_date).toLocaleDateString("fr-FR")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label htmlFor="bilan-poe-learner-select" className="text-sm">Apprenant inscrit</Label>
+            <Select value={bilanPoeLearnerId} onValueChange={setBilanPoeLearnerId}
+              disabled={!bilanPoeSessionId || loadingBilanPoeLearners || generatingBilanPoe}>
+              <SelectTrigger id="bilan-poe-learner-select" className="mt-1">
+                <SelectValue placeholder={
+                  !bilanPoeSessionId ? "Choisis d'abord une session"
+                    : loadingBilanPoeLearners ? "Chargement…"
+                      : bilanPoeLearners.length === 0 ? "Aucun apprenant inscrit"
+                        : "Choisir un apprenant…"
+                } />
+              </SelectTrigger>
+              <SelectContent>
+                {bilanPoeLearners.map((l) => l.learner ? (
+                  <SelectItem key={l.learner_id} value={l.learner_id}>
+                    {l.learner.last_name} {l.learner.first_name}
+                  </SelectItem>
+                ) : null)}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button onClick={handleGenerateBilanPoe}
+            disabled={!bilanPoeSessionId || !bilanPoeLearnerId || generatingBilanPoe}
+            className="w-full gap-2" size="lg">
+            {generatingBilanPoe ? <><Loader2 className="h-4 w-4 animate-spin" />Génération en cours…</>
+              : <><BookMarked className="h-4 w-4" />Générer bilan POE</>}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="border-purple-200 bg-purple-50/30">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Package className="h-4 w-4 text-purple-600" />
+            Mode batch — tous les apprenants
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Génère <strong>1 bilan POE par apprenant</strong>. Sortie : 1 ZIP.
+          </p>
+          <div>
+            <Label htmlFor="bilan-poe-batch-session-select" className="text-sm">Session</Label>
+            <Select value={bilanPoeBatchSessionId} onValueChange={setBilanPoeBatchSessionId}
+              disabled={loadingSessions || generatingBilanPoeBatch}>
+              <SelectTrigger id="bilan-poe-batch-session-select" className="mt-1">
+                <SelectValue placeholder={loadingSessions ? "Chargement…" : "Choisir une session…"} />
+              </SelectTrigger>
+              <SelectContent>
+                {sessions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.title} — {new Date(s.start_date).toLocaleDateString("fr-FR")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button onClick={handleGenerateBilanPoeBatch}
+            disabled={!bilanPoeBatchSessionId || generatingBilanPoeBatch}
+            className="w-full gap-2 bg-purple-600 hover:bg-purple-700" size="lg">
+            {generatingBilanPoeBatch ? <><Loader2 className="h-4 w-4 animate-spin" />Génération en cours…</>
+              : <><Package className="h-4 w-4" />Générer ZIP — tous les bilans</>}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {lastBilanPoeBatchResult && (
+        <Card className={lastBilanPoeBatchResult.failureCount === 0
+          ? "border-green-200 bg-green-50/30" : "border-amber-200 bg-amber-50/30"}>
+          <CardHeader>
+            <CardTitle className={"text-base " + (lastBilanPoeBatchResult.failureCount === 0 ? "text-green-900" : "text-amber-900")}>
+              {lastBilanPoeBatchResult.failureCount === 0 ? "✅" : "⚠️"} Dernier batch bilans POE
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <div><strong>{lastBilanPoeBatchResult.successCount}</strong> / {lastBilanPoeBatchResult.totalLearners} bilans générés</div>
+            {typeof lastBilanPoeBatchResult.signedCount === "number" && (
+              <div><strong>Apprenants ayant émargé :</strong> {lastBilanPoeBatchResult.signedCount}</div>
+            )}
+            <div><strong>Latence totale :</strong> {lastBilanPoeBatchResult.totalLatencyMs} ms</div>
+            {lastBilanPoeBatchResult.errors.length > 0 && (
+              <div className="mt-3 space-y-1">
+                <div className="flex items-center gap-1 text-amber-900 font-medium">
+                  <AlertCircle className="h-4 w-4" /> Erreurs ({lastBilanPoeBatchResult.errors.length})
+                </div>
+                <ul className="text-xs space-y-0.5 ml-5 list-disc">
+                  {lastBilanPoeBatchResult.errors.map((e) => (
+                    <li key={e.learnerId}><strong>{e.learnerName}</strong> : {e.error}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {lastBilanPoeResult && (
+        <Card className="border-green-200 bg-green-50/30">
+          <CardHeader><CardTitle className="text-base text-green-900">✅ Dernier bilan POE</CardTitle></CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <div>
+              <strong>Moteur :</strong> {lastBilanPoeResult.engineUsed}
+              {lastBilanPoeResult.cacheHit && (
+                <span className="ml-2 text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded">⚡ Cache hit</span>
+              )}
+            </div>
+            <div><strong>Latence :</strong> {lastBilanPoeResult.latencyMs} ms</div>
+            <div><strong>Taille PDF :</strong> {(lastBilanPoeResult.fileSizeBytes / 1024).toFixed(1)} KB</div>
           </CardContent>
         </Card>
       )}
