@@ -188,7 +188,7 @@ export const CONVENTION_INTERVENTION_HTML = `<!DOCTYPE html>
     <div class="signature-col">
       <div class="role">Pour l'organisme de formation,</div>
       <div class="signatory">[%Nom de l'organisme%],<br>[%Nom du représentant de l'organisme%]</div>
-      <div class="signature-img">[%Signature de l'organisme%]</div>
+      <div class="signature-img">[%Cachet de l'organisme%]</div>
     </div>
     <div class="signature-col">
       <div class="role">Pour le sous-traitant</div>
