@@ -5689,21 +5689,53 @@ export default function TestConventionPage() {
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <FlaskConical className="h-4 w-4 text-yellow-800" />
-            Mode rapide — Données factices
+            Mode rapide — Données factices (2 variantes)
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-sm text-muted-foreground">
             Patrick ATTLAN + UNICIL + ticket MARSEILLE + examen 10/01/2025.
+            Le PDF V2 échec change juste 1 phrase ("a échoué" au lieu de "a réussi") — même template partagé.
           </p>
-          <Button
-            onClick={handleGenerateAiprMock}
-            disabled={generatingAipr || generatingAiprBatch}
-            className="w-full gap-2 bg-yellow-700 hover:bg-yellow-800"
-          >
-            {generatingAipr ? <Loader2 className="h-4 w-4 animate-spin" /> : <FlaskConical className="h-4 w-4" />}
-            Générer AIPR de test
-          </Button>
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              onClick={handleGenerateAiprMock}
+              disabled={generatingAipr || generatingAiprBatch}
+              className="gap-2 bg-yellow-700 hover:bg-yellow-800"
+            >
+              {generatingAipr ? <Loader2 className="h-4 w-4 animate-spin" /> : <FlaskConical className="h-4 w-4" />}
+              Mock — RÉUSSITE
+            </Button>
+            <Button
+              onClick={async () => {
+                setGeneratingAipr(true);
+                setLastAiprResult(null);
+                try {
+                  const res = await fetch("/api/documents/generate-attestation-aipr-echec-mock", { method: "POST" });
+                  const json = await res.json();
+                  if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+                  setLastAiprResult({
+                    engineUsed: json.engineUsed, cacheHit: json.cacheHit,
+                    latencyMs: json.latencyMs, fileSizeBytes: json.fileSizeBytes,
+                  });
+                  const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+                  const blob = new Blob([bytes], { type: "application/pdf" });
+                  window.open(URL.createObjectURL(blob), "_blank");
+                  toast({ title: "AIPR échec mock générée", description: `${json.engineUsed} · ${json.latencyMs}ms` });
+                } catch (err) {
+                  toast({ title: "Échec mock AIPR échec", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+                } finally {
+                  setGeneratingAipr(false);
+                }
+              }}
+              disabled={generatingAipr || generatingAiprBatch}
+              variant="outline"
+              className="gap-2 border-red-300 text-red-700 hover:bg-red-50"
+            >
+              {generatingAipr ? <Loader2 className="h-4 w-4 animate-spin" /> : <FlaskConical className="h-4 w-4" />}
+              Mock — ÉCHEC
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
