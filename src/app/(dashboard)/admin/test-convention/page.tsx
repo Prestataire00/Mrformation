@@ -157,6 +157,28 @@ export default function TestConventionPage() {
     totalLatencyMs: number;
   } | null>(null);
 
+  // ── Lettre de décharge de responsabilité (per session+learner, OPTIONNEL)
+  const [dechargeSessionId, setDechargeSessionId] = useState<string>("");
+  const [dechargeLearnerId, setDechargeLearnerId] = useState<string>("");
+  const [dechargeLearners, setDechargeLearners] = useState<LearnerRow[]>([]);
+  const [loadingDechargeLearners, setLoadingDechargeLearners] = useState(false);
+  const [dechargeBatchSessionId, setDechargeBatchSessionId] = useState<string>("");
+  const [generatingDecharge, setGeneratingDecharge] = useState(false);
+  const [generatingDechargeBatch, setGeneratingDechargeBatch] = useState(false);
+  const [lastDechargeResult, setLastDechargeResult] = useState<{
+    engineUsed: string;
+    cacheHit: boolean;
+    latencyMs: number;
+    fileSizeBytes: number;
+  } | null>(null);
+  const [lastDechargeBatchResult, setLastDechargeBatchResult] = useState<{
+    totalLearners: number;
+    successCount: number;
+    failureCount: number;
+    errors: { learnerId: string; learnerName: string; error: string }[];
+    totalLatencyMs: number;
+  } | null>(null);
+
   // ── Contrat d'engagement stagiaire (per session+learner, OPTIONNEL) ──
   const [contratEngSessionId, setContratEngSessionId] = useState<string>("");
   const [contratEngLearnerId, setContratEngLearnerId] = useState<string>("");
@@ -974,6 +996,24 @@ export default function TestConventionPage() {
     })();
   }, [supabase, habilSessionId]);
 
+  // Charge les apprenants pour lettre de décharge single
+  useEffect(() => {
+    if (!dechargeSessionId) {
+      setDechargeLearners([]);
+      setDechargeLearnerId("");
+      return;
+    }
+    setLoadingDechargeLearners(true);
+    (async () => {
+      const { data } = await supabase
+        .from("enrollments")
+        .select("learner_id, learner:learners(id, first_name, last_name)")
+        .eq("session_id", dechargeSessionId);
+      setDechargeLearners((data as unknown as LearnerRow[]) || []);
+      setLoadingDechargeLearners(false);
+    })();
+  }, [supabase, dechargeSessionId]);
+
   // Charge les apprenants pour contrat d'engagement single
   useEffect(() => {
     if (!contratEngSessionId) {
@@ -1327,6 +1367,102 @@ export default function TestConventionPage() {
       toast({ title: "Échec batch avis habilitation", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
     } finally {
       setGeneratingHabilBatch(false);
+    }
+  }
+
+  // ── Lettre de décharge handlers (OPTIONNEL) ─────────────────────────
+  async function handleGenerateDechargeMock() {
+    setGeneratingDecharge(true);
+    setLastDechargeResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-lettre-decharge-mock", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastDechargeResult({
+        engineUsed: json.engineUsed, cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs, fileSizeBytes: json.fileSizeBytes,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({ title: "Lettre décharge mock générée", description: `${json.engineUsed} · ${json.latencyMs}ms` });
+    } catch (err) {
+      toast({ title: "Échec mock lettre décharge", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setGeneratingDecharge(false);
+    }
+  }
+
+  async function handleGenerateDecharge() {
+    if (!dechargeSessionId || !dechargeLearnerId) {
+      toast({ title: "Sélection incomplète", description: "Choisis session ET apprenant.", variant: "destructive" });
+      return;
+    }
+    setGeneratingDecharge(true);
+    setLastDechargeResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-lettre-decharge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: dechargeSessionId, learnerId: dechargeLearnerId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastDechargeResult({
+        engineUsed: json.engineUsed, cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs, fileSizeBytes: json.fileSizeBytes,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({ title: "Lettre décharge générée", description: `${json.engineUsed} · ${json.latencyMs}ms` });
+    } catch (err) {
+      toast({ title: "Échec lettre décharge", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setGeneratingDecharge(false);
+    }
+  }
+
+  async function handleGenerateDechargeBatch() {
+    if (!dechargeBatchSessionId) {
+      toast({ title: "Aucune session", description: "Sélectionne d'abord une session.", variant: "destructive" });
+      return;
+    }
+    setGeneratingDechargeBatch(true);
+    setLastDechargeBatchResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-lettres-decharge-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: dechargeBatchSessionId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastDechargeBatchResult({
+        totalLearners: json.totalLearners, successCount: json.successCount,
+        failureCount: json.failureCount, errors: json.errors ?? [],
+        totalLatencyMs: json.totalLatencyMs,
+      });
+      const bytes = Uint8Array.from(atob(json.zipBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/zip" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const sessionLabel = sessions.find((s) => s.id === dechargeBatchSessionId)?.title ?? "session";
+      a.href = url;
+      a.download = `lettres-decharge-${sessionLabel.replace(/[^a-zA-Z0-9-]+/g, "-").toLowerCase().slice(0, 50)}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast({
+        title: json.failureCount === 0 ? "ZIP lettres décharge généré" : "ZIP avec erreurs",
+        description: `${json.successCount}/${json.totalLearners} apprenants · ${json.totalLatencyMs}ms`,
+        variant: json.failureCount === 0 ? "default" : "destructive",
+      });
+    } catch (err) {
+      toast({ title: "Échec batch lettres décharge", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setGeneratingDechargeBatch(false);
     }
   }
 
@@ -9808,6 +9944,173 @@ export default function TestConventionPage() {
             </div>
             <div><strong>Latence :</strong> {lastContratEngResult.latencyMs} ms</div>
             <div><strong>Taille PDF :</strong> {(lastContratEngResult.fileSizeBytes / 1024).toFixed(1)} KB</div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ────────── Lettre de décharge de responsabilité (per session+learner) ────────── */}
+
+      <div className="pt-8">
+        <h2 className="text-xl font-semibold flex items-center gap-2 mb-1">
+          <LogOut className="h-5 w-5 text-pink-700" />
+          Lettre de décharge de responsabilité
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Formalise un départ anticipé du stagiaire en cours de formation,
+          déchargeant l&apos;organisme de toute responsabilité à partir de
+          l&apos;heure annoncée. Champs heure / motif / lieu / date / signature
+          à compléter à la main après impression.
+        </p>
+      </div>
+
+      <Card className="border-pink-300 bg-pink-50/40">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <FlaskConical className="h-4 w-4 text-pink-800" />
+            Mode rapide — Données factices
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Patrick ATTLAN + POE Managers Proximité.
+          </p>
+          <Button
+            onClick={handleGenerateDechargeMock}
+            disabled={generatingDecharge || generatingDechargeBatch}
+            className="w-full gap-2 bg-pink-700 hover:bg-pink-800"
+          >
+            {generatingDecharge ? <Loader2 className="h-4 w-4 animate-spin" /> : <FlaskConical className="h-4 w-4" />}
+            Générer lettre décharge de test
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Lettre décharge — Données réelles (1 apprenant)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label htmlFor="decharge-session-select" className="text-sm">Session</Label>
+            <Select value={dechargeSessionId} onValueChange={setDechargeSessionId}
+              disabled={loadingSessions || generatingDecharge}>
+              <SelectTrigger id="decharge-session-select" className="mt-1">
+                <SelectValue placeholder={loadingSessions ? "Chargement…" : "Choisir une session…"} />
+              </SelectTrigger>
+              <SelectContent>
+                {sessions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.title} — {new Date(s.start_date).toLocaleDateString("fr-FR")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label htmlFor="decharge-learner-select" className="text-sm">Apprenant inscrit</Label>
+            <Select value={dechargeLearnerId} onValueChange={setDechargeLearnerId}
+              disabled={!dechargeSessionId || loadingDechargeLearners || generatingDecharge}>
+              <SelectTrigger id="decharge-learner-select" className="mt-1">
+                <SelectValue placeholder={
+                  !dechargeSessionId ? "Choisis d'abord une session"
+                    : loadingDechargeLearners ? "Chargement…"
+                      : dechargeLearners.length === 0 ? "Aucun apprenant inscrit"
+                        : "Choisir un apprenant…"
+                } />
+              </SelectTrigger>
+              <SelectContent>
+                {dechargeLearners.map((l) => l.learner ? (
+                  <SelectItem key={l.learner_id} value={l.learner_id}>
+                    {l.learner.last_name} {l.learner.first_name}
+                  </SelectItem>
+                ) : null)}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button onClick={handleGenerateDecharge}
+            disabled={!dechargeSessionId || !dechargeLearnerId || generatingDecharge}
+            className="w-full gap-2" size="lg">
+            {generatingDecharge ? <><Loader2 className="h-4 w-4 animate-spin" />Génération en cours…</>
+              : <><LogOut className="h-4 w-4" />Générer lettre décharge</>}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="border-purple-200 bg-purple-50/30">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Package className="h-4 w-4 text-purple-600" />
+            Mode batch — tous les apprenants
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Génère <strong>1 lettre décharge par apprenant</strong>. Sortie : 1 ZIP.
+          </p>
+          <div>
+            <Label htmlFor="decharge-batch-session-select" className="text-sm">Session</Label>
+            <Select value={dechargeBatchSessionId} onValueChange={setDechargeBatchSessionId}
+              disabled={loadingSessions || generatingDechargeBatch}>
+              <SelectTrigger id="decharge-batch-session-select" className="mt-1">
+                <SelectValue placeholder={loadingSessions ? "Chargement…" : "Choisir une session…"} />
+              </SelectTrigger>
+              <SelectContent>
+                {sessions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.title} — {new Date(s.start_date).toLocaleDateString("fr-FR")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button onClick={handleGenerateDechargeBatch}
+            disabled={!dechargeBatchSessionId || generatingDechargeBatch}
+            className="w-full gap-2 bg-purple-600 hover:bg-purple-700" size="lg">
+            {generatingDechargeBatch ? <><Loader2 className="h-4 w-4 animate-spin" />Génération en cours…</>
+              : <><Package className="h-4 w-4" />Générer ZIP — toutes les lettres</>}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {lastDechargeBatchResult && (
+        <Card className={lastDechargeBatchResult.failureCount === 0
+          ? "border-green-200 bg-green-50/30" : "border-amber-200 bg-amber-50/30"}>
+          <CardHeader>
+            <CardTitle className={"text-base " + (lastDechargeBatchResult.failureCount === 0 ? "text-green-900" : "text-amber-900")}>
+              {lastDechargeBatchResult.failureCount === 0 ? "✅" : "⚠️"} Dernier batch lettres décharge
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <div><strong>{lastDechargeBatchResult.successCount}</strong> / {lastDechargeBatchResult.totalLearners} lettres générées</div>
+            <div><strong>Latence totale :</strong> {lastDechargeBatchResult.totalLatencyMs} ms</div>
+            {lastDechargeBatchResult.errors.length > 0 && (
+              <div className="mt-3 space-y-1">
+                <div className="flex items-center gap-1 text-amber-900 font-medium">
+                  <AlertCircle className="h-4 w-4" /> Erreurs ({lastDechargeBatchResult.errors.length})
+                </div>
+                <ul className="text-xs space-y-0.5 ml-5 list-disc">
+                  {lastDechargeBatchResult.errors.map((e) => (
+                    <li key={e.learnerId}><strong>{e.learnerName}</strong> : {e.error}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {lastDechargeResult && (
+        <Card className="border-green-200 bg-green-50/30">
+          <CardHeader><CardTitle className="text-base text-green-900">✅ Dernière lettre décharge</CardTitle></CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <div>
+              <strong>Moteur :</strong> {lastDechargeResult.engineUsed}
+              {lastDechargeResult.cacheHit && (
+                <span className="ml-2 text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded">⚡ Cache hit</span>
+              )}
+            </div>
+            <div><strong>Latence :</strong> {lastDechargeResult.latencyMs} ms</div>
+            <div><strong>Taille PDF :</strong> {(lastDechargeResult.fileSizeBytes / 1024).toFixed(1)} KB</div>
           </CardContent>
         </Card>
       )}
