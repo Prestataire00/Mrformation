@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
-import { Loader2, FileText, Sparkles, FlaskConical, Package, AlertCircle, ClipboardList, ScrollText, Shield, Gavel, BookOpen, UserCog, MailOpen, Award, BadgeCheck, UserCheck, Trophy, BarChart3, GraduationCap, Camera, LogOut, TrendingUp, BookMarked } from "lucide-react";
+import { Loader2, FileText, Sparkles, FlaskConical, Package, AlertCircle, ClipboardList, ScrollText, Shield, Gavel, BookOpen, UserCog, MailOpen, Award, BadgeCheck, UserCheck, Trophy, BarChart3, GraduationCap, Camera, LogOut, TrendingUp, BookMarked, HardHat } from "lucide-react";
 
 /**
  * Page de test temporaire — Story B-Convention.
@@ -133,6 +133,28 @@ export default function TestConventionPage() {
     cacheHit: boolean;
     latencyMs: number;
     fileSizeBytes: number;
+  } | null>(null);
+
+  // ── Attestation AIPR (per session+learner, OPTIONNEL) ───────────────
+  const [aiprSessionId, setAiprSessionId] = useState<string>("");
+  const [aiprLearnerId, setAiprLearnerId] = useState<string>("");
+  const [aiprLearners, setAiprLearners] = useState<LearnerRow[]>([]);
+  const [loadingAiprLearners, setLoadingAiprLearners] = useState(false);
+  const [aiprBatchSessionId, setAiprBatchSessionId] = useState<string>("");
+  const [generatingAipr, setGeneratingAipr] = useState(false);
+  const [generatingAiprBatch, setGeneratingAiprBatch] = useState(false);
+  const [lastAiprResult, setLastAiprResult] = useState<{
+    engineUsed: string;
+    cacheHit: boolean;
+    latencyMs: number;
+    fileSizeBytes: number;
+  } | null>(null);
+  const [lastAiprBatchResult, setLastAiprBatchResult] = useState<{
+    totalLearners: number;
+    successCount: number;
+    failureCount: number;
+    errors: { learnerId: string; learnerName: string; error: string }[];
+    totalLatencyMs: number;
   } | null>(null);
 
   // ── Charte formateur (per TRAINER, pas session, OPTIONNEL) ──────────
@@ -629,6 +651,24 @@ export default function TestConventionPage() {
     })();
   }, [supabase, dechSessionId]);
 
+  // Charge les apprenants pour attestation AIPR single
+  useEffect(() => {
+    if (!aiprSessionId) {
+      setAiprLearners([]);
+      setAiprLearnerId("");
+      return;
+    }
+    setLoadingAiprLearners(true);
+    (async () => {
+      const { data } = await supabase
+        .from("enrollments")
+        .select("learner_id, learner:learners(id, first_name, last_name)")
+        .eq("session_id", aiprSessionId);
+      setAiprLearners((data as unknown as LearnerRow[]) || []);
+      setLoadingAiprLearners(false);
+    })();
+  }, [supabase, aiprSessionId]);
+
   // Charge tous les formateurs de l'entité courante (pour charte formateur)
   useEffect(() => {
     if (!entityId) return;
@@ -670,6 +710,102 @@ export default function TestConventionPage() {
       });
     } finally {
       setGeneratingCgv(false);
+    }
+  }
+
+  // ── Attestation AIPR handlers (per session+learner, OPTIONNEL) ──────
+  async function handleGenerateAiprMock() {
+    setGeneratingAipr(true);
+    setLastAiprResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-attestation-aipr-mock", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastAiprResult({
+        engineUsed: json.engineUsed, cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs, fileSizeBytes: json.fileSizeBytes,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({ title: "AIPR mock générée", description: `${json.engineUsed} · ${json.latencyMs}ms` });
+    } catch (err) {
+      toast({ title: "Échec mock AIPR", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setGeneratingAipr(false);
+    }
+  }
+
+  async function handleGenerateAipr() {
+    if (!aiprSessionId || !aiprLearnerId) {
+      toast({ title: "Sélection incomplète", description: "Choisis session ET apprenant.", variant: "destructive" });
+      return;
+    }
+    setGeneratingAipr(true);
+    setLastAiprResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-attestation-aipr", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: aiprSessionId, learnerId: aiprLearnerId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastAiprResult({
+        engineUsed: json.engineUsed, cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs, fileSizeBytes: json.fileSizeBytes,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({ title: "AIPR générée", description: `${json.engineUsed} · ${json.latencyMs}ms` });
+    } catch (err) {
+      toast({ title: "Échec AIPR", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setGeneratingAipr(false);
+    }
+  }
+
+  async function handleGenerateAiprBatch() {
+    if (!aiprBatchSessionId) {
+      toast({ title: "Aucune session", description: "Sélectionne d'abord une session.", variant: "destructive" });
+      return;
+    }
+    setGeneratingAiprBatch(true);
+    setLastAiprBatchResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-attestations-aipr-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: aiprBatchSessionId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastAiprBatchResult({
+        totalLearners: json.totalLearners, successCount: json.successCount,
+        failureCount: json.failureCount, errors: json.errors ?? [],
+        totalLatencyMs: json.totalLatencyMs,
+      });
+      const bytes = Uint8Array.from(atob(json.zipBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/zip" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const sessionLabel = sessions.find((s) => s.id === aiprBatchSessionId)?.title ?? "session";
+      a.href = url;
+      a.download = `attestations-aipr-${sessionLabel.replace(/[^a-zA-Z0-9-]+/g, "-").toLowerCase().slice(0, 50)}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast({
+        title: json.failureCount === 0 ? "ZIP AIPR généré" : "ZIP avec erreurs",
+        description: `${json.successCount}/${json.totalLearners} apprenants · ${json.totalLatencyMs}ms`,
+        variant: json.failureCount === 0 ? "default" : "destructive",
+      });
+    } catch (err) {
+      toast({ title: "Échec batch AIPR", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setGeneratingAiprBatch(false);
     }
   }
 
@@ -5529,6 +5665,174 @@ export default function TestConventionPage() {
             </div>
             <div><strong>Latence :</strong> {lastCharteResult.latencyMs} ms</div>
             <div><strong>Taille PDF :</strong> {(lastCharteResult.fileSizeBytes / 1024).toFixed(1)} KB</div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ────────── Attestation AIPR (Autorisation Intervention Proximité Réseaux) ────────── */}
+
+      <div className="pt-8">
+        <h2 className="text-xl font-semibold flex items-center gap-2 mb-1">
+          <HardHat className="h-5 w-5 text-yellow-700" />
+          Attestation AIPR (intervention proximité réseaux)
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Doc spécifique BTP — conforme article R. 554-31 du code de l&apos;environnement.
+          Validité 5 ans. 3 domaines (Concepteur / Encadrant / Opérateur) à
+          cocher manuellement à l&apos;impression. <strong>Nécessite la migration{" "}
+          <code className="text-xs bg-gray-100 px-1 rounded">add_learner_birth_city.sql</code>{" "}
+          en prod</strong> (sinon le n° ticket d&apos;examen apparaîtra en placeholder).
+        </p>
+      </div>
+
+      <Card className="border-yellow-300 bg-yellow-50/40">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <FlaskConical className="h-4 w-4 text-yellow-800" />
+            Mode rapide — Données factices
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Patrick ATTLAN + UNICIL + ticket MARSEILLE + examen 10/01/2025.
+          </p>
+          <Button
+            onClick={handleGenerateAiprMock}
+            disabled={generatingAipr || generatingAiprBatch}
+            className="w-full gap-2 bg-yellow-700 hover:bg-yellow-800"
+          >
+            {generatingAipr ? <Loader2 className="h-4 w-4 animate-spin" /> : <FlaskConical className="h-4 w-4" />}
+            Générer AIPR de test
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">AIPR — Données réelles (1 apprenant)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label htmlFor="aipr-session-select" className="text-sm">Session</Label>
+            <Select value={aiprSessionId} onValueChange={setAiprSessionId}
+              disabled={loadingSessions || generatingAipr}>
+              <SelectTrigger id="aipr-session-select" className="mt-1">
+                <SelectValue placeholder={loadingSessions ? "Chargement…" : "Choisir une session…"} />
+              </SelectTrigger>
+              <SelectContent>
+                {sessions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.title} — {new Date(s.start_date).toLocaleDateString("fr-FR")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label htmlFor="aipr-learner-select" className="text-sm">Apprenant inscrit</Label>
+            <Select value={aiprLearnerId} onValueChange={setAiprLearnerId}
+              disabled={!aiprSessionId || loadingAiprLearners || generatingAipr}>
+              <SelectTrigger id="aipr-learner-select" className="mt-1">
+                <SelectValue placeholder={
+                  !aiprSessionId ? "Choisis d'abord une session"
+                    : loadingAiprLearners ? "Chargement…"
+                      : aiprLearners.length === 0 ? "Aucun apprenant inscrit"
+                        : "Choisir un apprenant…"
+                } />
+              </SelectTrigger>
+              <SelectContent>
+                {aiprLearners.map((l) => l.learner ? (
+                  <SelectItem key={l.learner_id} value={l.learner_id}>
+                    {l.learner.last_name} {l.learner.first_name}
+                  </SelectItem>
+                ) : null)}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button onClick={handleGenerateAipr}
+            disabled={!aiprSessionId || !aiprLearnerId || generatingAipr}
+            className="w-full gap-2" size="lg">
+            {generatingAipr ? <><Loader2 className="h-4 w-4 animate-spin" />Génération en cours…</>
+              : <><HardHat className="h-4 w-4" />Générer AIPR</>}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="border-purple-200 bg-purple-50/30">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Package className="h-4 w-4 text-purple-600" />
+            Mode batch — tous les apprenants
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Génère <strong>1 AIPR par apprenant</strong> inscrit. Sortie : 1 ZIP.
+          </p>
+          <div>
+            <Label htmlFor="aipr-batch-session-select" className="text-sm">Session</Label>
+            <Select value={aiprBatchSessionId} onValueChange={setAiprBatchSessionId}
+              disabled={loadingSessions || generatingAiprBatch}>
+              <SelectTrigger id="aipr-batch-session-select" className="mt-1">
+                <SelectValue placeholder={loadingSessions ? "Chargement…" : "Choisir une session…"} />
+              </SelectTrigger>
+              <SelectContent>
+                {sessions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.title} — {new Date(s.start_date).toLocaleDateString("fr-FR")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button onClick={handleGenerateAiprBatch}
+            disabled={!aiprBatchSessionId || generatingAiprBatch}
+            className="w-full gap-2 bg-purple-600 hover:bg-purple-700" size="lg">
+            {generatingAiprBatch ? <><Loader2 className="h-4 w-4 animate-spin" />Génération en cours…</>
+              : <><Package className="h-4 w-4" />Générer ZIP — toutes les AIPR</>}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {lastAiprBatchResult && (
+        <Card className={lastAiprBatchResult.failureCount === 0
+          ? "border-green-200 bg-green-50/30" : "border-amber-200 bg-amber-50/30"}>
+          <CardHeader>
+            <CardTitle className={"text-base " + (lastAiprBatchResult.failureCount === 0 ? "text-green-900" : "text-amber-900")}>
+              {lastAiprBatchResult.failureCount === 0 ? "✅" : "⚠️"} Dernier batch AIPR
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <div><strong>{lastAiprBatchResult.successCount}</strong> / {lastAiprBatchResult.totalLearners} AIPR générées</div>
+            <div><strong>Latence totale :</strong> {lastAiprBatchResult.totalLatencyMs} ms</div>
+            {lastAiprBatchResult.errors.length > 0 && (
+              <div className="mt-3 space-y-1">
+                <div className="flex items-center gap-1 text-amber-900 font-medium">
+                  <AlertCircle className="h-4 w-4" /> Erreurs ({lastAiprBatchResult.errors.length})
+                </div>
+                <ul className="text-xs space-y-0.5 ml-5 list-disc">
+                  {lastAiprBatchResult.errors.map((e) => (
+                    <li key={e.learnerId}><strong>{e.learnerName}</strong> : {e.error}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {lastAiprResult && (
+        <Card className="border-green-200 bg-green-50/30">
+          <CardHeader><CardTitle className="text-base text-green-900">✅ Dernière AIPR</CardTitle></CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <div>
+              <strong>Moteur :</strong> {lastAiprResult.engineUsed}
+              {lastAiprResult.cacheHit && (
+                <span className="ml-2 text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded">⚡ Cache hit</span>
+              )}
+            </div>
+            <div><strong>Latence :</strong> {lastAiprResult.latencyMs} ms</div>
+            <div><strong>Taille PDF :</strong> {(lastAiprResult.fileSizeBytes / 1024).toFixed(1)} KB</div>
           </CardContent>
         </Card>
       )}
