@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
-import { Loader2, FileText, Sparkles, FlaskConical, Package, AlertCircle, ClipboardList, ScrollText, Shield, Gavel, BookOpen, UserCog, MailOpen, Award, BadgeCheck } from "lucide-react";
+import { Loader2, FileText, Sparkles, FlaskConical, Package, AlertCircle, ClipboardList, ScrollText, Shield, Gavel, BookOpen, UserCog, MailOpen, Award, BadgeCheck, UserCheck } from "lucide-react";
 
 /**
  * Page de test temporaire — Story B-Convention.
@@ -133,6 +133,30 @@ export default function TestConventionPage() {
     cacheHit: boolean;
     latencyMs: number;
     fileSizeBytes: number;
+  } | null>(null);
+
+  // ── Émargement individuel (per session+learner) ──────────────────────
+  const [emargIndivSessionId, setEmargIndivSessionId] = useState<string>("");
+  const [emargIndivLearnerId, setEmargIndivLearnerId] = useState<string>("");
+  const [emargIndivLearners, setEmargIndivLearners] = useState<LearnerRow[]>([]);
+  const [loadingEmargIndivLearners, setLoadingEmargIndivLearners] = useState(false);
+  const [emargIndivBatchSessionId, setEmargIndivBatchSessionId] = useState<string>("");
+  const [generatingEmargIndiv, setGeneratingEmargIndiv] = useState(false);
+  const [generatingEmargIndivBatch, setGeneratingEmargIndivBatch] = useState(false);
+  const [lastEmargIndivResult, setLastEmargIndivResult] = useState<{
+    engineUsed: string;
+    cacheHit: boolean;
+    latencyMs: number;
+    fileSizeBytes: number;
+    present?: boolean;
+  } | null>(null);
+  const [lastEmargIndivBatchResult, setLastEmargIndivBatchResult] = useState<{
+    totalLearners: number;
+    successCount: number;
+    failureCount: number;
+    errors: { learnerId: string; learnerName: string; error: string }[];
+    totalLatencyMs: number;
+    signedCount?: number;
   } | null>(null);
 
   // ── Attestation assiduité (per session+learner) ──────────────────────
@@ -349,6 +373,24 @@ export default function TestConventionPage() {
     })();
   }, [supabase, attestSessionId]);
 
+  // Charge les apprenants pour émargement individuel single
+  useEffect(() => {
+    if (!emargIndivSessionId) {
+      setEmargIndivLearners([]);
+      setEmargIndivLearnerId("");
+      return;
+    }
+    setLoadingEmargIndivLearners(true);
+    (async () => {
+      const { data } = await supabase
+        .from("enrollments")
+        .select("learner_id, learner:learners(id, first_name, last_name)")
+        .eq("session_id", emargIndivSessionId);
+      setEmargIndivLearners((data as unknown as LearnerRow[]) || []);
+      setLoadingEmargIndivLearners(false);
+    })();
+  }, [supabase, emargIndivSessionId]);
+
   // ── CGV handler (entity-only, pas de params) ──────────────────────────
   async function handleGenerateCgv() {
     setGeneratingCgv(true);
@@ -375,6 +417,125 @@ export default function TestConventionPage() {
       });
     } finally {
       setGeneratingCgv(false);
+    }
+  }
+
+  // ── Émargement individuel handlers ────────────────────────────────────
+  async function handleGenerateEmargIndivMock() {
+    setGeneratingEmargIndiv(true);
+    setLastEmargIndivResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-emargement-individuel-mock", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastEmargIndivResult({
+        engineUsed: json.engineUsed,
+        cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs,
+        fileSizeBytes: json.fileSizeBytes,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({ title: "Émargement individuel mock généré", description: `${json.engineUsed} · ${json.latencyMs}ms` });
+    } catch (err) {
+      toast({
+        title: "Échec mock émargement individuel",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingEmargIndiv(false);
+    }
+  }
+
+  async function handleGenerateEmargIndiv() {
+    if (!emargIndivSessionId || !emargIndivLearnerId) {
+      toast({ title: "Sélection incomplète", description: "Choisis session ET apprenant.", variant: "destructive" });
+      return;
+    }
+    setGeneratingEmargIndiv(true);
+    setLastEmargIndivResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-emargement-individuel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: emargIndivSessionId, learnerId: emargIndivLearnerId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastEmargIndivResult({
+        engineUsed: json.engineUsed,
+        cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs,
+        fileSizeBytes: json.fileSizeBytes,
+        present: json.present,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({
+        title: "Émargement individuel généré",
+        description: `${json.present ? "Présent" : "Absent"} · ${json.engineUsed} · ${json.latencyMs}ms`,
+      });
+    } catch (err) {
+      toast({
+        title: "Échec émargement individuel",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingEmargIndiv(false);
+    }
+  }
+
+  async function handleGenerateEmargIndivBatch() {
+    if (!emargIndivBatchSessionId) {
+      toast({ title: "Aucune session", description: "Sélectionne d'abord une session.", variant: "destructive" });
+      return;
+    }
+    setGeneratingEmargIndivBatch(true);
+    setLastEmargIndivBatchResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-emargements-individuels-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: emargIndivBatchSessionId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastEmargIndivBatchResult({
+        totalLearners: json.totalLearners,
+        successCount: json.successCount,
+        failureCount: json.failureCount,
+        errors: json.errors ?? [],
+        totalLatencyMs: json.totalLatencyMs,
+        signedCount: json.signedCount,
+      });
+      const bytes = Uint8Array.from(atob(json.zipBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/zip" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const sessionLabel = sessions.find((s) => s.id === emargIndivBatchSessionId)?.title ?? "session";
+      a.href = url;
+      a.download = `emargements-indiv-${sessionLabel.replace(/[^a-zA-Z0-9-]+/g, "-").toLowerCase().slice(0, 50)}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast({
+        title: json.failureCount === 0 ? "ZIP émargements indiv générés" : "ZIP avec erreurs",
+        description: `${json.successCount}/${json.totalLearners} apprenants · ${json.signedCount ?? 0} signature(s) · ${json.totalLatencyMs}ms`,
+        variant: json.failureCount === 0 ? "default" : "destructive",
+      });
+    } catch (err) {
+      toast({
+        title: "Échec batch émargements indiv",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingEmargIndivBatch(false);
     }
   }
 
@@ -2021,6 +2182,249 @@ export default function TestConventionPage() {
             <div>
               <strong>Taille PDF :</strong> {(lastProgrammeResult.fileSizeBytes / 1024).toFixed(1)} KB
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════ */}
+      {/*    Émargement individuel (per session+learner)                   */}
+      {/* ════════════════════════════════════════════════════════════════ */}
+
+      <div className="pt-10 border-t-2 border-dashed border-gray-300">
+        <h2 className="text-xl font-semibold flex items-center gap-2 mb-1">
+          <UserCheck className="h-5 w-5 text-sky-600" />
+          Émargement individuel (par apprenant)
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Variante per (session, apprenant) — cards bleu pâle par créneau avec
+          l&apos;apprenant en bold. Vs émargement collectif (tableau par
+          entreprise).
+        </p>
+      </div>
+
+      <Card className="border-sky-200 bg-sky-50/30">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <FlaskConical className="h-4 w-4 text-sky-700" />
+            Mode rapide — Données factices
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Reproduit l&apos;exemple Loris : Patrick ATTLAN, 2 créneaux
+            matin/aprem du 10/01/2025, formateur Brigitte MARTINEAU, tous présents.
+          </p>
+          <Button
+            onClick={handleGenerateEmargIndivMock}
+            disabled={generatingEmargIndiv || generatingEmargIndivBatch}
+            className="w-full gap-2 bg-sky-600 hover:bg-sky-700"
+          >
+            {generatingEmargIndiv ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <FlaskConical className="h-4 w-4" />
+            )}
+            Générer un émargement individuel de test
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Émargement individuel — Données réelles (1 apprenant)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label htmlFor="emarg-indiv-session-select" className="text-sm">Session</Label>
+            <Select
+              value={emargIndivSessionId}
+              onValueChange={setEmargIndivSessionId}
+              disabled={loadingSessions || generatingEmargIndiv}
+            >
+              <SelectTrigger id="emarg-indiv-session-select" className="mt-1">
+                <SelectValue placeholder={loadingSessions ? "Chargement…" : "Choisir une session…"} />
+              </SelectTrigger>
+              <SelectContent>
+                {sessions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.title} — {new Date(s.start_date).toLocaleDateString("fr-FR")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label htmlFor="emarg-indiv-learner-select" className="text-sm">Apprenant inscrit</Label>
+            <Select
+              value={emargIndivLearnerId}
+              onValueChange={setEmargIndivLearnerId}
+              disabled={!emargIndivSessionId || loadingEmargIndivLearners || generatingEmargIndiv}
+            >
+              <SelectTrigger id="emarg-indiv-learner-select" className="mt-1">
+                <SelectValue
+                  placeholder={
+                    !emargIndivSessionId
+                      ? "Choisis d'abord une session"
+                      : loadingEmargIndivLearners
+                        ? "Chargement…"
+                        : emargIndivLearners.length === 0
+                          ? "Aucun apprenant inscrit"
+                          : "Choisir un apprenant…"
+                  }
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {emargIndivLearners.map((l) =>
+                  l.learner ? (
+                    <SelectItem key={l.learner_id} value={l.learner_id}>
+                      {l.learner.last_name} {l.learner.first_name}
+                    </SelectItem>
+                  ) : null,
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <Button
+            onClick={handleGenerateEmargIndiv}
+            disabled={!emargIndivSessionId || !emargIndivLearnerId || generatingEmargIndiv}
+            className="w-full gap-2"
+            size="lg"
+          >
+            {generatingEmargIndiv ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Génération en cours…
+              </>
+            ) : (
+              <>
+                <UserCheck className="h-4 w-4" />
+                Générer l&apos;émargement individuel
+              </>
+            )}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="border-purple-200 bg-purple-50/30">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Package className="h-4 w-4 text-purple-600" />
+            Mode batch — tous les apprenants de la session
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Génère <strong>1 émargement individuel par apprenant</strong>.
+            Sortie : 1 ZIP fail-soft.
+          </p>
+          <div>
+            <Label htmlFor="emarg-indiv-batch-session-select" className="text-sm">Session</Label>
+            <Select
+              value={emargIndivBatchSessionId}
+              onValueChange={setEmargIndivBatchSessionId}
+              disabled={loadingSessions || generatingEmargIndivBatch}
+            >
+              <SelectTrigger id="emarg-indiv-batch-session-select" className="mt-1">
+                <SelectValue placeholder={loadingSessions ? "Chargement…" : "Choisir une session…"} />
+              </SelectTrigger>
+              <SelectContent>
+                {sessions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.title} — {new Date(s.start_date).toLocaleDateString("fr-FR")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button
+            onClick={handleGenerateEmargIndivBatch}
+            disabled={!emargIndivBatchSessionId || generatingEmargIndivBatch}
+            className="w-full gap-2 bg-purple-600 hover:bg-purple-700"
+            size="lg"
+          >
+            {generatingEmargIndivBatch ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Génération en cours…
+              </>
+            ) : (
+              <>
+                <Package className="h-4 w-4" />
+                Générer ZIP — tous les émargements individuels
+              </>
+            )}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {lastEmargIndivBatchResult && (
+        <Card
+          className={
+            lastEmargIndivBatchResult.failureCount === 0
+              ? "border-green-200 bg-green-50/30"
+              : "border-amber-200 bg-amber-50/30"
+          }
+        >
+          <CardHeader>
+            <CardTitle
+              className={
+                "text-base " +
+                (lastEmargIndivBatchResult.failureCount === 0 ? "text-green-900" : "text-amber-900")
+              }
+            >
+              {lastEmargIndivBatchResult.failureCount === 0 ? "✅" : "⚠️"} Dernier batch émargements indiv
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <div>
+              <strong>{lastEmargIndivBatchResult.successCount}</strong> /{" "}
+              {lastEmargIndivBatchResult.totalLearners} émargements générés
+            </div>
+            <div>
+              <strong>Signatures trouvées :</strong> {lastEmargIndivBatchResult.signedCount ?? 0}
+            </div>
+            <div>
+              <strong>Latence totale :</strong> {lastEmargIndivBatchResult.totalLatencyMs} ms
+            </div>
+            {lastEmargIndivBatchResult.errors.length > 0 && (
+              <div className="mt-3 space-y-1">
+                <div className="flex items-center gap-1 text-amber-900 font-medium">
+                  <AlertCircle className="h-4 w-4" /> Erreurs ({lastEmargIndivBatchResult.errors.length})
+                </div>
+                <ul className="text-xs space-y-0.5 ml-5 list-disc">
+                  {lastEmargIndivBatchResult.errors.map((e) => (
+                    <li key={e.learnerId}>
+                      <strong>{e.learnerName}</strong> : {e.error}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {lastEmargIndivResult && (
+        <Card className="border-green-200 bg-green-50/30">
+          <CardHeader>
+            <CardTitle className="text-base text-green-900">✅ Dernier émargement individuel</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <div>
+              <strong>Moteur :</strong> {lastEmargIndivResult.engineUsed}
+              {lastEmargIndivResult.cacheHit && (
+                <span className="ml-2 text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded">
+                  ⚡ Cache hit
+                </span>
+              )}
+            </div>
+            <div><strong>Latence :</strong> {lastEmargIndivResult.latencyMs} ms</div>
+            <div><strong>Taille PDF :</strong> {(lastEmargIndivResult.fileSizeBytes / 1024).toFixed(1)} KB</div>
+            {lastEmargIndivResult.present !== undefined && (
+              <div><strong>Statut :</strong> {lastEmargIndivResult.present ? "Présent" : "Absent"}</div>
+            )}
           </CardContent>
         </Card>
       )}

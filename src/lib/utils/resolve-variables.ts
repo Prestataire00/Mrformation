@@ -270,6 +270,79 @@ export function resolveVariables(content: string, data: ResolveContext): string 
     // day_number puis par slot (matin/aprem), rend pour chaque (jour, slot) un
     // tableau "Contenu | Animation". Si modules sans day_number/slot, rendu
     // dégradé en liste plate.
+    // === Story B-Émargement Individuel ===
+    // Liste de cards par créneau pour 1 seul apprenant (data.learner).
+    // Source = formation_time_slots (fallback : matin/aprem par jour).
+    // Le formateur affiché : data.trainer ou formateursNoms (premier seulement
+    // pour MVP, on liste TOUS séparément si plusieurs formateurs).
+    "{{tableau_signature_individuel}}": (() => {
+      const sess = data.session;
+      if (!sess?.start_date || !sess?.end_date) return "[Tableau signature]";
+      if (!data.learner) return "[Apprenant manquant]";
+
+      const fmtDate = (iso: string) => formatDate(iso);
+      const fmtTime = (iso: string) => {
+        try {
+          const d = new Date(iso);
+          return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
+        } catch {
+          return "--:--";
+        }
+      };
+
+      // Construit la liste des créneaux : depuis formation_time_slots si
+      // disponibles, sinon fallback matin/aprem par jour.
+      type Creneau = { startIso: string; endIso: string; label: string };
+      const slotsRaw = (sess as unknown as { formation_time_slots?: { start_time: string; end_time: string; title?: string | null }[] })?.formation_time_slots;
+      const creneaux: Creneau[] = [];
+      if (slotsRaw && slotsRaw.length > 0) {
+        for (const s of slotsRaw) {
+          // Détecte matin/aprem à partir de l'heure de début
+          const h = new Date(s.start_time).getUTCHours();
+          const label = s.title || (h < 13 ? "MATIN" : "APRES MIDI");
+          creneaux.push({ startIso: s.start_time, endIso: s.end_time, label });
+        }
+      } else {
+        // Fallback : 2 créneaux par jour
+        const start = new Date(sess.start_date);
+        const end = new Date(sess.end_date);
+        const cursor = new Date(start);
+        cursor.setHours(0, 0, 0, 0);
+        const endDay = new Date(end);
+        endDay.setHours(0, 0, 0, 0);
+        while (cursor.getTime() <= endDay.getTime()) {
+          const dateStr = cursor.toISOString().slice(0, 10);
+          creneaux.push({ startIso: `${dateStr}T09:00:00Z`, endIso: `${dateStr}T12:00:00Z`, label: "MATIN" });
+          creneaux.push({ startIso: `${dateStr}T13:00:00Z`, endIso: `${dateStr}T17:00:00Z`, label: "APRES MIDI" });
+          cursor.setDate(cursor.getDate() + 1);
+        }
+      }
+
+      // Status learner : si signedLearnerIds fourni, vérifier appartenance ; sinon "Présent"
+      const signed = data.signedLearnerIds;
+      const learnerPresent = signed
+        ? signed.has(data.learner.id)
+        : true; // fallback mock = présent
+
+      const learnerName = `${data.learner.last_name?.toUpperCase() ?? ""} ${data.learner.first_name ?? ""}`.trim();
+      const formateursLine = formateursNoms || "[Formateur]";
+
+      const learnerStatusHtml = learnerPresent
+        ? `<p class="person-status">Présent (A signé en présentiel)</p>`
+        : `<p class="person-status status-absent">Absent</p>`;
+
+      const cards = creneaux.map((c) => `
+<div class="creneau-card">
+  <p class="creneau-header">Créneau : De ${fmtDate(c.startIso)} - ${fmtTime(c.startIso)} À ${fmtDate(c.endIso)} - ${fmtTime(c.endIso)} (${c.label})</p>
+  <p class="person-name">${formateursLine}</p>
+  <p class="person-status">Présent (A signé en présentiel)</p>
+  <p class="person-name learner">${learnerName}</p>
+  ${learnerStatusHtml}
+</div>`).join("");
+
+      return cards;
+    })(),
+
     // === Story B-Attestation Assiduité ===
     // Heures effectivement réalisées par l'apprenant courant.
     // MVP : si data.signedLearnerIds inclut data.learner.id → planned_hours.
@@ -755,6 +828,8 @@ export const ALIAS_TO_VARIABLE_KEY: Record<string, string> = {
   // === Story B-Attestation Assiduité ===
   "Heures de formation réalisées par l'apprenant": "{{heures_realisees_apprenant}}",
   "Taux de réalisation": "{{taux_realisation}}",
+  // === Story B-Émargement Individuel ===
+  "Tableau de signature de l'apprenant": "{{tableau_signature_individuel}}",
   // === Story B-Convention Intervention (formateur sous-traitance) ===
   "Nom du formateur": "{{nom_formateur_complet}}",
   "Adresse du formateur": "{{adresse_formateur}}",
@@ -932,6 +1007,8 @@ export const VARIABLE_KEYS = [
   // Story B-Attestation Assiduité
   "{{heures_realisees_apprenant}}",
   "{{taux_realisation}}",
+  // Story B-Émargement Individuel
+  "{{tableau_signature_individuel}}",
   // Story B-Convention Intervention
   "{{nom_formateur_complet}}",
   "{{adresse_formateur}}",
