@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
-import { Loader2, FileText, Sparkles, FlaskConical } from "lucide-react";
+import { Loader2, FileText, Sparkles, FlaskConical, Package, AlertCircle } from "lucide-react";
 
 /**
  * Page de test temporaire — Story B-Convention.
@@ -45,14 +45,23 @@ export default function TestConventionPage() {
   const [companies, setCompanies] = useState<CompanyRow[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
   const [selectedClientId, setSelectedClientId] = useState<string>("");
+  const [selectedBatchSessionId, setSelectedBatchSessionId] = useState<string>("");
   const [loadingSessions, setLoadingSessions] = useState(true);
   const [loadingCompanies, setLoadingCompanies] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [generatingBatch, setGeneratingBatch] = useState(false);
   const [lastResult, setLastResult] = useState<{
     engineUsed: string;
     cacheHit: boolean;
     latencyMs: number;
     fileSizeBytes: number;
+  } | null>(null);
+  const [lastBatchResult, setLastBatchResult] = useState<{
+    totalCompanies: number;
+    successCount: number;
+    failureCount: number;
+    errors: { clientId: string; companyName: string; error: string }[];
+    totalLatencyMs: number;
   } | null>(null);
 
   // Charge la liste des sessions de l'entité
@@ -125,6 +134,67 @@ export default function TestConventionPage() {
       });
     } finally {
       setGenerating(false);
+    }
+  }
+
+  async function handleGenerateBatch() {
+    if (!selectedBatchSessionId) {
+      toast({
+        title: "Aucune session choisie",
+        description: "Sélectionne d'abord une session.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setGeneratingBatch(true);
+    setLastBatchResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-conventions-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: selectedBatchSessionId }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.error || `HTTP ${res.status}`);
+      }
+
+      setLastBatchResult({
+        totalCompanies: json.totalCompanies,
+        successCount: json.successCount,
+        failureCount: json.failureCount,
+        errors: json.errors ?? [],
+        totalLatencyMs: json.totalLatencyMs,
+      });
+
+      // Téléchargement auto du ZIP
+      const bytes = Uint8Array.from(atob(json.zipBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/zip" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const sessionLabel = sessions.find((s) => s.id === selectedBatchSessionId)?.title ?? "session";
+      a.href = url;
+      a.download = `conventions-${sessionLabel.replace(/[^a-zA-Z0-9-]+/g, "-").toLowerCase().slice(0, 50)}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      toast({
+        title: json.failureCount === 0 ? "ZIP généré" : "ZIP généré avec erreurs",
+        description: `${json.successCount}/${json.totalCompanies} conventions · ${json.totalLatencyMs}ms`,
+        variant: json.failureCount === 0 ? "default" : "destructive",
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast({
+        title: "Échec génération batch",
+        description: msg,
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingBatch(false);
     }
   }
 
@@ -310,6 +380,121 @@ export default function TestConventionPage() {
           </Button>
         </CardContent>
       </Card>
+
+      <Card className="border-purple-200 bg-purple-50/30">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Package className="h-4 w-4 text-purple-600" />
+            Mode batch — toutes les entreprises de la session
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Génère <strong>une convention par entreprise</strong> rattachée à la session via{" "}
+            <code className="text-xs bg-gray-100 px-1 rounded">formation_companies</code>,
+            avec les bons apprenants et le bon montant pour chacune (cf PR #13
+            multi-entreprises). Résultat : <strong>1 ZIP</strong> contenant tous les
+            PDF. <strong>Fail-soft</strong> : si une entreprise échoue, le ZIP
+            contient quand même les autres + un fichier{" "}
+            <code className="text-xs bg-gray-100 px-1 rounded">_erreurs.txt</code>.
+          </p>
+
+          <div>
+            <Label htmlFor="batch-session-select" className="text-sm">
+              Session
+            </Label>
+            <Select
+              value={selectedBatchSessionId}
+              onValueChange={setSelectedBatchSessionId}
+              disabled={loadingSessions || generatingBatch}
+            >
+              <SelectTrigger id="batch-session-select" className="mt-1">
+                <SelectValue
+                  placeholder={loadingSessions ? "Chargement…" : "Choisir une session…"}
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {sessions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.title} — {new Date(s.start_date).toLocaleDateString("fr-FR")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <Button
+            onClick={handleGenerateBatch}
+            disabled={!selectedBatchSessionId || generatingBatch}
+            className="w-full gap-2 bg-purple-600 hover:bg-purple-700"
+            size="lg"
+          >
+            {generatingBatch ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Génération en cours… (peut durer 10-30s selon le nombre d&apos;entreprises)
+              </>
+            ) : (
+              <>
+                <Package className="h-4 w-4" />
+                Générer ZIP — toutes les conventions
+              </>
+            )}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {lastBatchResult && (
+        <Card
+          className={
+            lastBatchResult.failureCount === 0
+              ? "border-green-200 bg-green-50/30"
+              : "border-amber-200 bg-amber-50/30"
+          }
+        >
+          <CardHeader>
+            <CardTitle
+              className={
+                "text-base " +
+                (lastBatchResult.failureCount === 0
+                  ? "text-green-900"
+                  : "text-amber-900")
+              }
+            >
+              {lastBatchResult.failureCount === 0 ? "✅" : "⚠️"} Dernier batch
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <div>
+              <strong>{lastBatchResult.successCount}</strong> /{" "}
+              {lastBatchResult.totalCompanies} conventions générées
+            </div>
+            <div>
+              <strong>Latence totale :</strong> {lastBatchResult.totalLatencyMs} ms
+            </div>
+            {lastBatchResult.errors.length > 0 && (
+              <div className="mt-3 space-y-1">
+                <div className="flex items-center gap-1 text-amber-900 font-medium">
+                  <AlertCircle className="h-4 w-4" /> Erreurs (
+                  {lastBatchResult.errors.length})
+                </div>
+                <ul className="text-xs space-y-0.5 ml-5 list-disc">
+                  {lastBatchResult.errors.map((e) => (
+                    <li key={e.clientId}>
+                      <strong>{e.companyName}</strong> : {e.error}
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Le ZIP téléchargé contient un fichier{" "}
+                  <code className="text-xs bg-gray-100 px-1 rounded">_erreurs.txt</code>{" "}
+                  avec le détail.
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {lastResult && (
         <Card className="border-green-200 bg-green-50/30">
