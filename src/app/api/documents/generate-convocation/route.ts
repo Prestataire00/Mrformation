@@ -27,6 +27,7 @@ import {
   DocumentGenerationService,
   createDefaultEngine,
 } from "@/lib/services/document-generation";
+import { getOrCreateConvocationMagicLink } from "@/lib/services/convocation-magic-link";
 import type { Session, Learner } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
@@ -94,9 +95,16 @@ export async function POST(request: NextRequest) {
 
     const entity = await loadEntitySettings(supabase, profile.entity_id);
 
-    const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://mrformationcrm.netlify.app").replace(/\/+$/, "");
-    const extranetUrl = `${baseUrl}/learner/sessions/${body.sessionId}`;
-    const qrDataUrl = await QRCode.toDataURL(extranetUrl, {
+    // Magic link par apprenant : auto-login + redirect vers sa session
+    // (token valide 30 jours, réutilisé si déjà existant non-expiré)
+    const magicLink = await getOrCreateConvocationMagicLink({
+      supabase,
+      learnerId: body.learnerId,
+      sessionId: body.sessionId,
+      entityId: profile.entity_id,
+      createdByUserId: user.id,
+    });
+    const qrDataUrl = await QRCode.toDataURL(magicLink.url, {
       width: 400,
       margin: 1,
       errorCorrectionLevel: "M",
@@ -123,6 +131,8 @@ export async function POST(request: NextRequest) {
         session_id: body.sessionId,
         learner_id: body.learnerId,
         session_updated_at: (session as { updated_at?: string }).updated_at ?? null,
+        // Cache invalidé si le token change (rotation 30j, ou recréation)
+        custom_variables: { magic_token: magicLink.token },
       },
       options: {
         format: "A4",
@@ -140,6 +150,9 @@ export async function POST(request: NextRequest) {
       engineUsed: result.engineUsed,
       fileSizeBytes: result.fileSizeBytes,
       latencyMs: result.latencyMs,
+      magicLinkUrl: magicLink.url,
+      magicLinkExpiresAt: magicLink.expiresAt,
+      magicLinkReused: magicLink.reused,
     });
   } catch (err) {
     return NextResponse.json(

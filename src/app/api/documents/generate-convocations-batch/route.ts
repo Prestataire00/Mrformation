@@ -30,6 +30,7 @@ import {
   DocumentGenerationService,
   createDefaultEngine,
 } from "@/lib/services/document-generation";
+import { getOrCreateConvocationMagicLink } from "@/lib/services/convocation-magic-link";
 import type { Session, Learner } from "@/lib/types";
 
 interface BatchError {
@@ -119,19 +120,24 @@ export async function POST(request: NextRequest) {
 
     const entity = await loadEntitySettings(supabase, profile.entity_id);
 
-    // QR code unique (même URL pour tous les apprenants)
-    const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://mrformationcrm.netlify.app").replace(/\/+$/, "");
-    const extranetUrl = `${baseUrl}/learner/sessions/${body.sessionId}`;
-    const qrDataUrl = await QRCode.toDataURL(extranetUrl, {
-      width: 400,
-      margin: 1,
-      errorCorrectionLevel: "M",
-    });
-
     const engine = createDefaultEngine();
     const service = new DocumentGenerationService({ engine, supabase });
 
+    // Magic link PAR apprenant (chaque QR unique → auto-login vers sa session)
     const tasks = learners.map(async (learner) => {
+      const magicLink = await getOrCreateConvocationMagicLink({
+        supabase,
+        learnerId: learner.id,
+        sessionId: body.sessionId!,
+        entityId: profile.entity_id,
+        createdByUserId: user.id,
+      });
+      const qrDataUrl = await QRCode.toDataURL(magicLink.url, {
+        width: 400,
+        margin: 1,
+        errorCorrectionLevel: "M",
+      });
+
       const context: ResolveContext = {
         session: session as unknown as Session,
         learner,
@@ -150,6 +156,7 @@ export async function POST(request: NextRequest) {
           session_id: body.sessionId,
           learner_id: learner.id,
           session_updated_at: (session as { updated_at?: string }).updated_at ?? null,
+          custom_variables: { magic_token: magicLink.token },
         },
         options: {
           format: "A4",
