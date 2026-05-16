@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { formatDate } from "@/lib/utils";
+import { addDays, getISOWeek, startOfISOWeek, endOfISOWeek, format } from "date-fns";
 import type { Session, Client, Learner, Trainer } from "@/lib/types";
 import { getLearnersForCompany, getAmountForCompany } from "@/lib/utils/formation-companies";
 
@@ -9,6 +10,12 @@ export interface ResolveContext {
   learner?: Learner | null;
   trainer?: Trainer | null;
   profile?: { first_name: string; last_name: string } | null;
+  /**
+   * IDs d'apprenants ayant signé pour la session (table `signatures`).
+   * Utilisé par `{{tableau_signature_compact}}` pour afficher Présent/Absent.
+   * Si `undefined` → fallback "tous Présent" (mode mock).
+   */
+  signedLearnerIds?: Set<string>;
   entity?: {
     name?: string | null;  // ajouté Story B-Convention : utilisé par `{{nom_organisme}}`
     siret?: string | null;
@@ -226,6 +233,103 @@ export function resolveVariables(content: string, data: ResolveContext): string 
     // Tableau HTML des coûts pour le client courant (cf §4 de la convention).
     // Story B-Convention : sortie minimaliste = 1 ligne avec montant HT/TVA/TTC.
     // Affiner ensuite si Loris veut un détail par apprenant.
+    // Tableau de signature compact (feuille d'émargement collectif par
+    // entreprise). Génère 1 ligne par créneau (matin/aprem) pour chaque jour
+    // de la session, groupé par semaine ISO. Filtre les apprenants par
+    // companyId via les enrollments déjà filtrés ci-dessus.
+    //
+    // Statut Présent/Absent : si `signedLearnerIds` est fourni (mode réel,
+    // venant de la table `signatures`), on affiche Présent uniquement pour
+    // les learners dont l'ID est dans le Set. Sinon (mode mock) : tous Présent.
+    "{{tableau_signature_compact}}": (() => {
+      const sess = data.session;
+      if (!sess?.start_date || !sess?.end_date) return "[Tableau signature]";
+
+      const start = new Date(sess.start_date);
+      const end = new Date(sess.end_date);
+      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+        return "[Tableau signature]";
+      }
+
+      const learnersForTable = enrollments.filter((e) => e.learner);
+      if (learnersForTable.length === 0) return "[Aucun apprenant]";
+
+      const signed = data.signedLearnerIds;
+      const learnerStatus = (learnerId: string): string => {
+        if (!signed) {
+          return `<span class="person-status">Présent (A signé en présentiel)</span>`;
+        }
+        return signed.has(learnerId)
+          ? `<span class="person-status">Présent (A signé en présentiel)</span>`
+          : `<span class="person-status status-absent">Absent</span>`;
+      };
+
+      // Construit la liste des créneaux : pour chaque jour entre start et end,
+      // un MATIN (09:00-12:00) et un APRES MIDI (13:00-17:00). Cf format Loris.
+      type Creneau = { date: Date; label: string; horaire: string };
+      const creneaux: Creneau[] = [];
+      let cursor = new Date(start);
+      cursor.setHours(0, 0, 0, 0);
+      const endDay = new Date(end);
+      endDay.setHours(0, 0, 0, 0);
+      while (cursor.getTime() <= endDay.getTime()) {
+        creneaux.push({ date: new Date(cursor), label: "MATIN", horaire: "09:00 - 12:00" });
+        creneaux.push({ date: new Date(cursor), label: "APRES MIDI", horaire: "13:00 - 17:00" });
+        cursor = addDays(cursor, 1);
+      }
+
+      // Groupe par semaine ISO
+      const byWeek = new Map<number, Creneau[]>();
+      for (const c of creneaux) {
+        const wk = getISOWeek(c.date);
+        if (!byWeek.has(wk)) byWeek.set(wk, []);
+        byWeek.get(wk)!.push(c);
+      }
+
+      const formateursLine = formateursNoms;
+      const formateurStatus = `<span class="person-status">Présent (A signé en présentiel)</span>`;
+
+      const apprenantsCellHtml = learnersForTable
+        .map((e) => {
+          const l = e.learner!;
+          const name = `${l.last_name?.toUpperCase() ?? ""} ${l.first_name ?? ""}`.trim();
+          return `<span class="person-name">${name}</span>${learnerStatus(l.id)}`;
+        })
+        .join("");
+
+      const sections: string[] = [];
+      for (const [weekNum, weekCreneaux] of byWeek) {
+        const monday = startOfISOWeek(weekCreneaux[0].date);
+        const sunday = endOfISOWeek(weekCreneaux[0].date);
+        const weekLabel = `Semaine ${String(weekNum).padStart(2, "0")} (${format(monday, "dd/MM/yyyy")} au ${format(sunday, "dd/MM/yyyy")})`;
+
+        const rows = weekCreneaux
+          .map((c) => `
+            <tr>
+              <td class="col-date">${format(c.date, "dd/MM/yyyy")}<br>${c.horaire}</td>
+              <td class="col-creneau">${c.label}</td>
+              <td class="col-formateur"><span class="person-name">${formateursLine}</span>${formateurStatus}</td>
+              <td class="col-apprenants">${apprenantsCellHtml}</td>
+            </tr>`)
+          .join("");
+
+        sections.push(`<div class="week-header">${weekLabel}</div>
+<table class="signature-table">
+  <thead>
+    <tr>
+      <th class="col-date">Date / Horaire</th>
+      <th class="col-creneau">Créneau</th>
+      <th class="col-formateur">Formateur(s)</th>
+      <th class="col-apprenants">Apprenant(s)</th>
+    </tr>
+  </thead>
+  <tbody>${rows}
+  </tbody>
+</table>`);
+      }
+
+      return sections.join("\n");
+    })(),
     "{{tableau_couts_client}}": (() => {
       if (montantHt <= 0) return "[Tableau coûts]";
       const titre = data.session?.title ?? "Formation";
@@ -301,6 +405,7 @@ export const ALIAS_TO_VARIABLE_KEY: Record<string, string> = {
   "Cachet de l'organisme": "{{tampon_organisme}}",
   // Client / bénéficiaire
   "Nom du client": "{{nom_client}}",
+  "Nom de l'entreprise": "{{nom_client}}",
   "Adresse du client": "{{client_adresse}}",
   "SIRET du client": "{{client_siret}}",
   "Nom du représentant légal du client": "{{client_representant}}",
@@ -314,8 +419,12 @@ export const ALIAS_TO_VARIABLE_KEY: Record<string, string> = {
   "Nombre d'apprenants du client": "{{formation_effectifs}}",
   "Apprenants du client": "{{liste_apprenants}}",
   "Dates de la formation": "{{dates_formation}}",
+  "Date de début de la formation": "{{date_debut}}",
   "Date de fin de la formation": "{{date_fin}}",
+  "Modalité de la formation": "{{formation_modalite}}",
+  "Formateurs de la formation": "{{formateurs_noms}}",
   "Tableau des coûts du client": "{{tableau_couts_client}}",
+  "Tableau de signature entreprise compact": "{{tableau_signature_compact}}",
   "Montant HT": "{{montant_ht}}",
   "Montant TTC": "{{montant_ttc}}",
   "Montant TVA": "{{montant_tva}}",
@@ -465,4 +574,5 @@ export const VARIABLE_KEYS = [
   "{{type_diplome}}",
   "{{dates_formation}}",
   "{{tableau_couts_client}}",
+  "{{tableau_signature_compact}}",
 ] as const;
