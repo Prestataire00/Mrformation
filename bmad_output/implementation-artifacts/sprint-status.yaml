@@ -39,7 +39,7 @@
 #   → E2-E3-E4 (parallèles, après B+C+D+F stables) → E1 (last, après 90j stabilité)
 
 generated: 2026-05-17
-last_updated: 2026-05-17 (b-1 story file créée via bmad-create-story)
+last_updated: 2026-05-17 (audit complet sync sprint-status avec état réel du code)
 project: lms-platform
 project_key: NOKEY
 tracking_system: file-system
@@ -56,38 +56,38 @@ development_status:
   # ── Epic B : Schéma documents unifié & migration 11 types (Lot B) ──
   # PR2 sous-PR 2.1 (B0) + 2.2 (B1+B2) + 2.3 (B3-B7)
   epic-b: in-progress
-  b-0-resolve-document-variables: backlog
-  b-1-migration-table-documents: ready-for-dev
-  b-2-backfill-idempotent: backlog
-  b-3-migration-conventions: backlog
-  b-4-migration-attestations-certificats: backlog
-  b-5-migration-emargements: backlog
-  b-6-migration-docs-administratifs: backlog
-  b-7-migration-factures-devis: backlog
+  b-0-resolve-document-variables: done  # fonction unique resolveDocumentVariables existe + utilisée par 90+ endpoints
+  b-1-migration-table-documents: done  # PR #39 mergée 2026-05-15
+  b-2-backfill-idempotent: backlog  # ⚠️ BLOCAGE : aucun fichier SQL backfill trouvé, débloque b-3 à b-7 "vrai done"
+  b-3-migration-conventions: in-progress  # endpoint generate-convention existe + DGS mais écrit dans tables legacy (manque b-2)
+  b-4-migration-attestations-certificats: in-progress  # 9 variantes attestations OK via DGS, mais legacy table
+  b-5-migration-emargements: in-progress  # endpoints + sign existent mais legacy table
+  b-6-migration-docs-administratifs: in-progress  # programme/convocation/CGV/règlement via DGS, legacy table
+  b-7-migration-factures-devis: in-progress  # invoices+quotes via DGS, signatures dans quote_signatures legacy
   epic-b-retrospective: optional
 
   # ── Epic C : Signatures électroniques unifiées (Lot C) ──
   # PR2 sous-PR 2.4
-  epic-c: backlog
-  c-1-signature-service-unifie: backlog
-  c-2-migration-flux-signature: backlog
-  c-3-audit-trail-qualiopi: backlog
+  epic-c: in-progress
+  c-1-signature-service-unifie: done  # endpoint /api/documents/sign POST (150+ lignes, rate limit, SVG sanitize, signing_tokens)
+  c-2-migration-flux-signature: in-progress  # quotes migré dans c-1, MAIS InlineSignaturePad + /api/emargement/sign legacy encore live
+  c-3-audit-trail-qualiopi: done  # colonnes signed_at, signature_ip, signature_user_agent, signature_method dans documents + capture dans /api/documents/sign
   epic-c-retrospective: optional
 
   # ── Epic D : Import templates par lot & autonomie Loris (Lot D) ──
   # PR2 sous-PR 2.1 (parallèle B)
-  epic-d: backlog
-  d-1-page-admin-import-templates: backlog
+  epic-d: in-progress
+  d-1-page-admin-import-templates: done  # PR #39 mergée 2026-05-15 (avant workflow BMad formel)
   d-2-documentation-how-to: backlog
   epic-d-retrospective: optional
 
   # ── Epic E : Hygiène, observabilité, tests (Lot E) ──
   # PR2 sous-PR 2.6 (E1 cleanup) + transverse (E2/E3/E4)
-  epic-e: backlog
-  e-1-suppression-jspdf-legacy: backlog
-  e-2-cache-pdf-100: backlog
-  e-3-logs-structures: backlog
-  e-4-tests-e2e-snapshot: backlog
+  epic-e: in-progress
+  e-1-suppression-jspdf-legacy: backlog  # 56 imports jsPDF restants — cleanup pas démarré
+  e-2-cache-pdf-100: done  # pdf-cache.ts + DocumentGenerationService.getCachedPdf() opérationnel
+  e-3-logs-structures: in-progress  # logger.ts existe + document_generated loggé, mais document_signed/sent/failed partiel
+  e-4-tests-e2e-snapshot: backlog  # tests unit OK, mais pas de snapshot E2E PDF
   epic-e-retrospective: optional
 
   # ── Epic F : Mass Operations (TabConventionDocs) (Lot F) ──
