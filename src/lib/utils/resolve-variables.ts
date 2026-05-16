@@ -303,6 +303,11 @@ export function resolveVariables(content: string, data: ResolveContext): string 
     // === Story B-Certificat (diplôme stylé) ===
     "{{code_certificat}}": data.certificateCode || "[Code certificat]",
 
+    // === Story B-Autorisation Image (e-signature apprenant) ===
+    // E-signature de l'apprenant : MVP = ligne vide pour signature manuelle.
+    // Sera remplacé par image signée quand Lot C (Signatures unifiées) sera fait.
+    "{{e_signature_apprenant}}": `<div style="border-bottom: 1px solid #9ca3af; min-height: 60px; margin-top: 8px;"></div>`,
+
     // === Story B-Attestation Compétences (signature intervenant) ===
     // Signature du premier formateur de la session (image si trainer.signature_url,
     // sinon zone vide pour signature manuelle).
@@ -964,6 +969,8 @@ export const ALIAS_TO_VARIABLE_KEY: Record<string, string> = {
   // === Story B-Attestation Compétences ===
   "Nom du/des formateur(s)": "{{formateurs_noms}}",
   "Signature de l'intervenant": "{{signature_intervenant}}",
+  // === Story B-Autorisation Image ===
+  "E-signature de l'apprenant": "{{e_signature_apprenant}}",
   // === Story B-Convention Intervention (formateur sous-traitance) ===
   "Nom du formateur": "{{nom_formateur_complet}}",
   "Adresse du formateur": "{{adresse_formateur}}",
@@ -1150,6 +1157,8 @@ export const VARIABLE_KEYS = [
   "{{tableau_resultats_evaluations}}",
   // Story B-Attestation Compétences
   "{{signature_intervenant}}",
+  // Story B-Autorisation Image
+  "{{e_signature_apprenant}}",
   // Story B-Convention Intervention
   "{{nom_formateur_complet}}",
   "{{adresse_formateur}}",

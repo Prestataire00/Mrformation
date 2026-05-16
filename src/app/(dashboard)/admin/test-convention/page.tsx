@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
-import { Loader2, FileText, Sparkles, FlaskConical, Package, AlertCircle, ClipboardList, ScrollText, Shield, Gavel, BookOpen, UserCog, MailOpen, Award, BadgeCheck, UserCheck, Trophy, BarChart3, GraduationCap } from "lucide-react";
+import { Loader2, FileText, Sparkles, FlaskConical, Package, AlertCircle, ClipboardList, ScrollText, Shield, Gavel, BookOpen, UserCog, MailOpen, Award, BadgeCheck, UserCheck, Trophy, BarChart3, GraduationCap, Camera } from "lucide-react";
 
 /**
  * Page de test temporaire — Story B-Convention.
@@ -133,6 +133,28 @@ export default function TestConventionPage() {
     cacheHit: boolean;
     latencyMs: number;
     fileSizeBytes: number;
+  } | null>(null);
+
+  // ── Autorisation image (per session+learner, OPTIONNEL) ─────────────
+  const [autoImgSessionId, setAutoImgSessionId] = useState<string>("");
+  const [autoImgLearnerId, setAutoImgLearnerId] = useState<string>("");
+  const [autoImgLearners, setAutoImgLearners] = useState<LearnerRow[]>([]);
+  const [loadingAutoImgLearners, setLoadingAutoImgLearners] = useState(false);
+  const [autoImgBatchSessionId, setAutoImgBatchSessionId] = useState<string>("");
+  const [generatingAutoImg, setGeneratingAutoImg] = useState(false);
+  const [generatingAutoImgBatch, setGeneratingAutoImgBatch] = useState(false);
+  const [lastAutoImgResult, setLastAutoImgResult] = useState<{
+    engineUsed: string;
+    cacheHit: boolean;
+    latencyMs: number;
+    fileSizeBytes: number;
+  } | null>(null);
+  const [lastAutoImgBatchResult, setLastAutoImgBatchResult] = useState<{
+    totalLearners: number;
+    successCount: number;
+    failureCount: number;
+    errors: { learnerId: string; learnerName: string; error: string }[];
+    totalLatencyMs: number;
   } | null>(null);
 
   // ── Attestation compétences (per session+learner, OPTIONNEL) ─────────
@@ -513,6 +535,24 @@ export default function TestConventionPage() {
     })();
   }, [supabase, attCompSessionId]);
 
+  // Charge les apprenants pour autorisation image single
+  useEffect(() => {
+    if (!autoImgSessionId) {
+      setAutoImgLearners([]);
+      setAutoImgLearnerId("");
+      return;
+    }
+    setLoadingAutoImgLearners(true);
+    (async () => {
+      const { data } = await supabase
+        .from("enrollments")
+        .select("learner_id, learner:learners(id, first_name, last_name)")
+        .eq("session_id", autoImgSessionId);
+      setAutoImgLearners((data as unknown as LearnerRow[]) || []);
+      setLoadingAutoImgLearners(false);
+    })();
+  }, [supabase, autoImgSessionId]);
+
   // ── CGV handler (entity-only, pas de params) ──────────────────────────
   async function handleGenerateCgv() {
     setGeneratingCgv(true);
@@ -539,6 +579,102 @@ export default function TestConventionPage() {
       });
     } finally {
       setGeneratingCgv(false);
+    }
+  }
+
+  // ── Autorisation image handlers (OPTIONNEL) ──────────────────────────
+  async function handleGenerateAutoImgMock() {
+    setGeneratingAutoImg(true);
+    setLastAutoImgResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-autorisation-image-mock", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastAutoImgResult({
+        engineUsed: json.engineUsed, cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs, fileSizeBytes: json.fileSizeBytes,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({ title: "Autorisation image mock générée", description: `${json.engineUsed} · ${json.latencyMs}ms` });
+    } catch (err) {
+      toast({ title: "Échec mock autorisation image", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setGeneratingAutoImg(false);
+    }
+  }
+
+  async function handleGenerateAutoImg() {
+    if (!autoImgSessionId || !autoImgLearnerId) {
+      toast({ title: "Sélection incomplète", description: "Choisis session ET apprenant.", variant: "destructive" });
+      return;
+    }
+    setGeneratingAutoImg(true);
+    setLastAutoImgResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-autorisation-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: autoImgSessionId, learnerId: autoImgLearnerId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastAutoImgResult({
+        engineUsed: json.engineUsed, cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs, fileSizeBytes: json.fileSizeBytes,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({ title: "Autorisation image générée", description: `${json.engineUsed} · ${json.latencyMs}ms` });
+    } catch (err) {
+      toast({ title: "Échec autorisation image", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setGeneratingAutoImg(false);
+    }
+  }
+
+  async function handleGenerateAutoImgBatch() {
+    if (!autoImgBatchSessionId) {
+      toast({ title: "Aucune session", description: "Sélectionne d'abord une session.", variant: "destructive" });
+      return;
+    }
+    setGeneratingAutoImgBatch(true);
+    setLastAutoImgBatchResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-autorisations-image-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: autoImgBatchSessionId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastAutoImgBatchResult({
+        totalLearners: json.totalLearners, successCount: json.successCount,
+        failureCount: json.failureCount, errors: json.errors ?? [],
+        totalLatencyMs: json.totalLatencyMs,
+      });
+      const bytes = Uint8Array.from(atob(json.zipBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/zip" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const sessionLabel = sessions.find((s) => s.id === autoImgBatchSessionId)?.title ?? "session";
+      a.href = url;
+      a.download = `autorisations-image-${sessionLabel.replace(/[^a-zA-Z0-9-]+/g, "-").toLowerCase().slice(0, 50)}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast({
+        title: json.failureCount === 0 ? "ZIP autorisations image généré" : "ZIP avec erreurs",
+        description: `${json.successCount}/${json.totalLearners} apprenants · ${json.totalLatencyMs}ms`,
+        variant: json.failureCount === 0 ? "default" : "destructive",
+      });
+    } catch (err) {
+      toast({ title: "Échec batch autorisations image", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setGeneratingAutoImgBatch(false);
     }
   }
 
@@ -4491,6 +4627,173 @@ export default function TestConventionPage() {
             </div>
             <div><strong>Latence :</strong> {lastAttCompResult.latencyMs} ms</div>
             <div><strong>Taille PDF :</strong> {(lastAttCompResult.fileSizeBytes / 1024).toFixed(1)} KB</div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ────────── Autorisation de droit à l'image (OPTIONNEL) ────────── */}
+
+      <div className="pt-8">
+        <h2 className="text-xl font-semibold flex items-center gap-2 mb-1">
+          <Camera className="h-5 w-5 text-pink-600" />
+          Autorisation de droit à l&apos;image
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Autorisation signée par l&apos;apprenant pour exploitation des
+          photos/vidéos prises pendant la formation. Signature apprenant =
+          ligne vide pour signature manuelle (sera remplie par image quand
+          Lot C 'Signatures unifiées' sera implémenté).
+        </p>
+      </div>
+
+      <Card className="border-pink-200 bg-pink-50/30">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <FlaskConical className="h-4 w-4 text-pink-700" />
+            Mode rapide — Données factices
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Patrick ATTLAN + formation Managers Proximité + 10/01/2025 à UNICIL.
+          </p>
+          <Button
+            onClick={handleGenerateAutoImgMock}
+            disabled={generatingAutoImg || generatingAutoImgBatch}
+            className="w-full gap-2 bg-pink-600 hover:bg-pink-700"
+          >
+            {generatingAutoImg ? <Loader2 className="h-4 w-4 animate-spin" /> : <FlaskConical className="h-4 w-4" />}
+            Générer autorisation image de test
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Autorisation image — Données réelles (1 apprenant)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label htmlFor="autoimg-session-select" className="text-sm">Session</Label>
+            <Select value={autoImgSessionId} onValueChange={setAutoImgSessionId}
+              disabled={loadingSessions || generatingAutoImg}>
+              <SelectTrigger id="autoimg-session-select" className="mt-1">
+                <SelectValue placeholder={loadingSessions ? "Chargement…" : "Choisir une session…"} />
+              </SelectTrigger>
+              <SelectContent>
+                {sessions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.title} — {new Date(s.start_date).toLocaleDateString("fr-FR")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label htmlFor="autoimg-learner-select" className="text-sm">Apprenant inscrit</Label>
+            <Select value={autoImgLearnerId} onValueChange={setAutoImgLearnerId}
+              disabled={!autoImgSessionId || loadingAutoImgLearners || generatingAutoImg}>
+              <SelectTrigger id="autoimg-learner-select" className="mt-1">
+                <SelectValue placeholder={
+                  !autoImgSessionId ? "Choisis d'abord une session"
+                    : loadingAutoImgLearners ? "Chargement…"
+                      : autoImgLearners.length === 0 ? "Aucun apprenant inscrit"
+                        : "Choisir un apprenant…"
+                } />
+              </SelectTrigger>
+              <SelectContent>
+                {autoImgLearners.map((l) => l.learner ? (
+                  <SelectItem key={l.learner_id} value={l.learner_id}>
+                    {l.learner.last_name} {l.learner.first_name}
+                  </SelectItem>
+                ) : null)}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button onClick={handleGenerateAutoImg}
+            disabled={!autoImgSessionId || !autoImgLearnerId || generatingAutoImg}
+            className="w-full gap-2" size="lg">
+            {generatingAutoImg ? <><Loader2 className="h-4 w-4 animate-spin" />Génération en cours…</>
+              : <><Camera className="h-4 w-4" />Générer autorisation image</>}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="border-purple-200 bg-purple-50/30">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Package className="h-4 w-4 text-purple-600" />
+            Mode batch — tous les apprenants
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Génère <strong>1 autorisation par apprenant</strong> inscrit. Sortie : 1 ZIP.
+          </p>
+          <div>
+            <Label htmlFor="autoimg-batch-session-select" className="text-sm">Session</Label>
+            <Select value={autoImgBatchSessionId} onValueChange={setAutoImgBatchSessionId}
+              disabled={loadingSessions || generatingAutoImgBatch}>
+              <SelectTrigger id="autoimg-batch-session-select" className="mt-1">
+                <SelectValue placeholder={loadingSessions ? "Chargement…" : "Choisir une session…"} />
+              </SelectTrigger>
+              <SelectContent>
+                {sessions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.title} — {new Date(s.start_date).toLocaleDateString("fr-FR")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button onClick={handleGenerateAutoImgBatch}
+            disabled={!autoImgBatchSessionId || generatingAutoImgBatch}
+            className="w-full gap-2 bg-purple-600 hover:bg-purple-700" size="lg">
+            {generatingAutoImgBatch ? <><Loader2 className="h-4 w-4 animate-spin" />Génération en cours…</>
+              : <><Package className="h-4 w-4" />Générer ZIP — toutes les autorisations</>}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {lastAutoImgBatchResult && (
+        <Card className={lastAutoImgBatchResult.failureCount === 0
+          ? "border-green-200 bg-green-50/30" : "border-amber-200 bg-amber-50/30"}>
+          <CardHeader>
+            <CardTitle className={"text-base " + (lastAutoImgBatchResult.failureCount === 0 ? "text-green-900" : "text-amber-900")}>
+              {lastAutoImgBatchResult.failureCount === 0 ? "✅" : "⚠️"} Dernier batch autorisations image
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <div><strong>{lastAutoImgBatchResult.successCount}</strong> / {lastAutoImgBatchResult.totalLearners} autorisations générées</div>
+            <div><strong>Latence totale :</strong> {lastAutoImgBatchResult.totalLatencyMs} ms</div>
+            {lastAutoImgBatchResult.errors.length > 0 && (
+              <div className="mt-3 space-y-1">
+                <div className="flex items-center gap-1 text-amber-900 font-medium">
+                  <AlertCircle className="h-4 w-4" /> Erreurs ({lastAutoImgBatchResult.errors.length})
+                </div>
+                <ul className="text-xs space-y-0.5 ml-5 list-disc">
+                  {lastAutoImgBatchResult.errors.map((e) => (
+                    <li key={e.learnerId}><strong>{e.learnerName}</strong> : {e.error}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {lastAutoImgResult && (
+        <Card className="border-green-200 bg-green-50/30">
+          <CardHeader><CardTitle className="text-base text-green-900">✅ Dernière autorisation image</CardTitle></CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <div>
+              <strong>Moteur :</strong> {lastAutoImgResult.engineUsed}
+              {lastAutoImgResult.cacheHit && (
+                <span className="ml-2 text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded">⚡ Cache hit</span>
+              )}
+            </div>
+            <div><strong>Latence :</strong> {lastAutoImgResult.latencyMs} ms</div>
+            <div><strong>Taille PDF :</strong> {(lastAutoImgResult.fileSizeBytes / 1024).toFixed(1)} KB</div>
           </CardContent>
         </Card>
       )}
