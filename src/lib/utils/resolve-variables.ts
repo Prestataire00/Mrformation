@@ -16,6 +16,12 @@ export interface ResolveContext {
    * Si `undefined` → fallback "tous Présent" (mode mock).
    */
   signedLearnerIds?: Set<string>;
+  /**
+   * Data URL (data:image/png;base64,...) du QR code de l'extranet apprenant,
+   * pré-calculé côté API (qrcode lib est async, le resolver est sync).
+   * Utilisé par `{{qr_code_extranet_apprenant}}` dans la convocation.
+   */
+  extranetQrDataUrl?: string;
   entity?: {
     name?: string | null;  // ajouté Story B-Convention : utilisé par `{{nom_organisme}}`
     siret?: string | null;
@@ -264,6 +270,53 @@ export function resolveVariables(content: string, data: ResolveContext): string 
     // day_number puis par slot (matin/aprem), rend pour chaque (jour, slot) un
     // tableau "Contenu | Animation". Si modules sans day_number/slot, rendu
     // dégradé en liste plate.
+    // === Story B-Convocation Apprenant ===
+    // Liste détaillée des créneaux (matin/aprem) : "• De DD/MM/YYYY - HH:MM
+    // À DD/MM/YYYY - HH:MM" par créneau. Source = formation_time_slots.
+    // Fallback (pas de slots) : matin 09:00-12:00 + aprem 13:00-17:00 par
+    // jour de la session.
+    "{{dates_detail}}": (() => {
+      const fmtDate = (iso: string) => formatDate(iso);
+      const fmtTime = (iso: string) => {
+        try {
+          const d = new Date(iso);
+          return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
+        } catch {
+          return "--:--";
+        }
+      };
+      const slots = (data.session as unknown as { formation_time_slots?: { start_time: string; end_time: string }[] })?.formation_time_slots;
+      if (slots && slots.length > 0) {
+        const items = slots
+          .map((s) => `<li>De ${fmtDate(s.start_time)} - ${fmtTime(s.start_time)} À ${fmtDate(s.end_time)} - ${fmtTime(s.end_time)}</li>`)
+          .join("");
+        return `<ul class="dates-list">${items}</ul>`;
+      }
+      // Fallback : 2 créneaux par jour entre start et end
+      if (!data.session?.start_date || !data.session?.end_date) {
+        return `<p>[Détail des créneaux à préciser dans formation_time_slots]</p>`;
+      }
+      const start = new Date(data.session.start_date);
+      const end = new Date(data.session.end_date);
+      const items: string[] = [];
+      const cursor = new Date(start);
+      cursor.setHours(0, 0, 0, 0);
+      const endDay = new Date(end);
+      endDay.setHours(0, 0, 0, 0);
+      while (cursor.getTime() <= endDay.getTime()) {
+        const dateStr = formatDate(cursor.toISOString());
+        items.push(`<li>De ${dateStr} - 09:00 À ${dateStr} - 12:00</li>`);
+        items.push(`<li>De ${dateStr} - 13:00 À ${dateStr} - 17:00</li>`);
+        cursor.setDate(cursor.getDate() + 1);
+      }
+      return `<ul class="dates-list">${items.join("")}</ul>`;
+    })(),
+    // QR Code extranet apprenant : pré-calculé côté API (lib qrcode est async).
+    // Si extranetQrDataUrl est fourni → <img>. Sinon → placeholder.
+    "{{qr_code_extranet_apprenant}}": data.extranetQrDataUrl
+      ? `<img src="${data.extranetQrDataUrl}" alt="QR Code Extranet" width="200" height="200" />`
+      : "[QR Code]",
+
     // === Story B-Convention Intervention (contrat sous-traitance formateur) ===
     "{{nom_formateur_complet}}": (() => {
       const t = data.trainer;
@@ -661,6 +714,10 @@ export const ALIAS_TO_VARIABLE_KEY: Record<string, string> = {
   "Dispositif d'évaluation": "{{dispositif_evaluation}}",
   "Taux de satisfaction": "{{taux_satisfaction}}",
   "Effectif max": "{{effectif_max}}",
+  // === Story B-Convocation Apprenant ===
+  "Nom de l'apprenant": "{{nom_apprenant}}",
+  "Vos dates en détail": "{{dates_detail}}",
+  "QR Code de l'extranet de l'apprenant": "{{qr_code_extranet_apprenant}}",
   // === Story B-Convention Intervention (formateur sous-traitance) ===
   "Nom du formateur": "{{nom_formateur_complet}}",
   "Adresse du formateur": "{{adresse_formateur}}",
@@ -830,6 +887,9 @@ export const VARIABLE_KEYS = [
   "{{effectif_max}}",
   "{{liste_objectifs_pedagogiques}}",
   "{{contenu_pedagogique}}",
+  // Story B-Convocation Apprenant
+  "{{dates_detail}}",
+  "{{qr_code_extranet_apprenant}}",
   // Story B-Convention Intervention
   "{{nom_formateur_complet}}",
   "{{adresse_formateur}}",
