@@ -303,6 +303,21 @@ export function resolveVariables(content: string, data: ResolveContext): string 
     // === Story B-Certificat (diplôme stylé) ===
     "{{code_certificat}}": data.certificateCode || "[Code certificat]",
 
+    // === Story B-Attestation Compétences (signature intervenant) ===
+    // Signature du premier formateur de la session (image si trainer.signature_url,
+    // sinon zone vide pour signature manuelle).
+    "{{signature_intervenant}}": (() => {
+      const firstTrainer = (data.session?.formation_trainers ?? [])
+        .find((ft) => ft.trainer)?.trainer as
+        | { signature_url?: string | null }
+        | undefined;
+      if (firstTrainer?.signature_url) {
+        return `<img src="${firstTrainer.signature_url}" alt="Signature intervenant" style="max-height:80px;max-width:220px;" />`;
+      }
+      // Zone vide pour signature manuelle
+      return `<div style="border-bottom: 1px solid #9ca3af; min-height: 60px; margin-top: 8px;"></div>`;
+    })(),
+
     // === Story B-Résultats Évaluations ===
     "{{tableau_resultats_evaluations}}": (() => {
       const results = data.evaluationResults;
@@ -946,6 +961,9 @@ export const ALIAS_TO_VARIABLE_KEY: Record<string, string> = {
   "Code d'identification du certificat": "{{code_certificat}}",
   // === Story B-Résultats Évaluations ===
   "Tableau des résultats des évaluations": "{{tableau_resultats_evaluations}}",
+  // === Story B-Attestation Compétences ===
+  "Nom du/des formateur(s)": "{{formateurs_noms}}",
+  "Signature de l'intervenant": "{{signature_intervenant}}",
   // === Story B-Convention Intervention (formateur sous-traitance) ===
   "Nom du formateur": "{{nom_formateur_complet}}",
   "Adresse du formateur": "{{adresse_formateur}}",
@@ -1130,6 +1148,8 @@ export const VARIABLE_KEYS = [
   "{{code_certificat}}",
   // Story B-Résultats Évaluations
   "{{tableau_resultats_evaluations}}",
+  // Story B-Attestation Compétences
+  "{{signature_intervenant}}",
   // Story B-Convention Intervention
   "{{nom_formateur_complet}}",
   "{{adresse_formateur}}",
