@@ -1,25 +1,22 @@
 /**
  * Template HTML système — Avis après formation Habilitation Électrique
- * **variante B0-BF-BS** (B0 H0 BF HF BS BE Manoeuvre).
+ * **variante H0 B0 (Initial Non électrique uniquement)**.
  *
- * Document **optionnel** per (session, apprenant). 5ème variante de la
+ * Document **optionnel** per (session, apprenant). 9ème variante de la
  * famille habilitation électrique. Norme **NF C 18-510 A2**.
  *
- * Symboles tableau Titre :
- *   - Exécutant Non élec  : BO-H0 / BF-HF (stackés dans la même cellule)
- *   - Chargé de chantier  : BO-H0
- *   - Exécutant élec      : BS
- *   - Chargé d'opérations spécifiques : BE MANOEUVRE
- *   - Autres lignes       : vides
+ * Identique à la variante H0 B0 Recyclage (#83) — même tableau minimaliste
+ * BO-H0V Non élec uniquement — sauf la mention "Type d'habilitation" :
+ * **"Initiale  ~~Recyclage~~"** (Recyclage barré).
  *
  * Durée de validité : 3 ans.
  */
 
-export const AVIS_HABILITATION_ELECTRIQUE_B0_BF_BS_HTML = `<!DOCTYPE html>
+export const AVIS_HABILITATION_ELECTRIQUE_H0_B0_INITIAL_HTML = `<!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="utf-8">
-<title>Avis Habilitation Électrique — B0 BF BS</title>
+<title>Avis Habilitation Électrique — H0 B0 Initial</title>
 <style>
   @page { size: A4; margin: 18mm 16mm 22mm 16mm; }
   body {
@@ -207,7 +204,7 @@ export const AVIS_HABILITATION_ELECTRIQUE_B0_BF_BS_HTML = `<!DOCTYPE html>
     <div class="signature-cachet">[%Cachet de l'organisme%]</div>
   </div>
 
-  <!-- ════════ PAGE 2 : TITRE D'HABILITATION ÉLECTRIQUE (B0 BF BS) ════════ -->
+  <!-- ════════ PAGE 2 : TITRE D'HABILITATION ÉLECTRIQUE (H0 B0) ════════ -->
 
   <div class="page-break"></div>
 
@@ -231,14 +228,14 @@ export const AVIS_HABILITATION_ELECTRIQUE_B0_BF_BS_HTML = `<!DOCTYPE html>
       <td class="empty-cell" style="text-align:center;font-size:8.5pt;font-style:italic;">Indications complémentaires</td>
     </tr>
     <tr><td colspan="5" class="section-header">Travaux d'ordre NON électrique</td></tr>
-    <tr><td class="label-col">Exécutant</td><td class="symbole-col">BO-H0<br>BF-HF</td><td class="empty-cell"></td><td class="empty-cell"></td><td class="empty-cell"></td></tr>
-    <tr><td class="label-col">Chargé de chantier</td><td class="symbole-col">BO-H0</td><td class="empty-cell"></td><td class="empty-cell"></td><td class="empty-cell"></td></tr>
+    <tr><td class="label-col">Exécutant</td><td class="symbole-col">BO-H0V</td><td class="empty-cell"></td><td class="empty-cell"></td><td class="empty-cell"></td></tr>
+    <tr><td class="label-col">Chargé de chantier</td><td class="symbole-col">BO-H0V</td><td class="empty-cell"></td><td class="empty-cell"></td><td class="empty-cell"></td></tr>
     <tr><td colspan="5" class="section-header">Opérations d'ordre électrique</td></tr>
-    <tr><td class="label-col">Exécutant</td><td class="symbole-col">BS</td><td class="empty-cell"></td><td class="empty-cell"></td><td class="empty-cell"></td></tr>
+    <tr><td class="label-col">Exécutant</td><td class="symbole-col empty-cell"></td><td class="empty-cell"></td><td class="empty-cell"></td><td class="empty-cell"></td></tr>
     <tr><td class="label-col">Chargé de travaux</td><td class="symbole-col empty-cell"></td><td class="empty-cell"></td><td class="empty-cell"></td><td class="empty-cell"></td></tr>
     <tr><td class="label-col">Chargé d'intervention BT</td><td class="symbole-col empty-cell"></td><td class="empty-cell"></td><td class="empty-cell"></td><td class="empty-cell"></td></tr>
     <tr><td class="label-col">Chargé de consignation</td><td class="symbole-col empty-cell"></td><td class="empty-cell"></td><td class="empty-cell"></td><td class="empty-cell"></td></tr>
-    <tr><td class="label-col">Chargé d'opérations spécifiques</td><td class="symbole-col">BE MANOEUVRE</td><td class="empty-cell"></td><td class="empty-cell"></td><td class="empty-cell"></td></tr>
+    <tr><td class="label-col">Chargé d'opérations spécifiques</td><td class="symbole-col empty-cell"></td><td class="empty-cell"></td><td class="empty-cell"></td><td class="empty-cell"></td></tr>
     <tr><td class="label-col">Chargé d'opérations spécifiques HT</td><td class="symbole-col empty-cell"></td><td class="empty-cell"></td><td class="empty-cell"></td><td class="empty-cell"></td></tr>
     <tr><td class="label-col">Habilité spécial</td><td class="symbole-col empty-cell"></td><td class="empty-cell"></td><td class="empty-cell"></td><td class="empty-cell"></td></tr>
   </table>
@@ -264,7 +261,7 @@ export const AVIS_HABILITATION_ELECTRIQUE_B0_BF_BS_HTML = `<!DOCTYPE html>
 </body>
 </html>`;
 
-export const AVIS_HABILITATION_ELECTRIQUE_B0_BF_BS_FOOTER_TEMPLATE = `<div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 7.5pt; color: #6b7280; font-style: italic; width: 100%; padding: 0 16mm; text-align: center; line-height: 1.4;">
+export const AVIS_HABILITATION_ELECTRIQUE_H0_B0_INITIAL_FOOTER_TEMPLATE = `<div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 7.5pt; color: #6b7280; font-style: italic; width: 100%; padding: 0 16mm; text-align: center; line-height: 1.4;">
   <div>[%Nom de l'organisme%], [%Adresse de l'organisme%] , Numéro SIRET: [%SIRET de l'organisme%], Numéro de déclaration d'activité: [%NDA de l'organisme%]</div>
   <div>(auprès du préfet de région de: PACA)</div>
   <div style="margin-top: 2px;"><span class="pageNumber"></span></div>

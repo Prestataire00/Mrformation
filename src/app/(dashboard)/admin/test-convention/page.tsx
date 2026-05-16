@@ -157,6 +157,28 @@ export default function TestConventionPage() {
     totalLatencyMs: number;
   } | null>(null);
 
+  // ── Avis Habilitation Électrique H0 B0 INITIAL (OPTIONNEL) ──────────
+  const [habilH0B0InitSessionId, setHabilH0B0InitSessionId] = useState<string>("");
+  const [habilH0B0InitLearnerId, setHabilH0B0InitLearnerId] = useState<string>("");
+  const [habilH0B0InitLearners, setHabilH0B0InitLearners] = useState<LearnerRow[]>([]);
+  const [loadingHabilH0B0InitLearners, setLoadingHabilH0B0InitLearners] = useState(false);
+  const [habilH0B0InitBatchSessionId, setHabilH0B0InitBatchSessionId] = useState<string>("");
+  const [generatingHabilH0B0Init, setGeneratingHabilH0B0Init] = useState(false);
+  const [generatingHabilH0B0InitBatch, setGeneratingHabilH0B0InitBatch] = useState(false);
+  const [lastHabilH0B0InitResult, setLastHabilH0B0InitResult] = useState<{
+    engineUsed: string;
+    cacheHit: boolean;
+    latencyMs: number;
+    fileSizeBytes: number;
+  } | null>(null);
+  const [lastHabilH0B0InitBatchResult, setLastHabilH0B0InitBatchResult] = useState<{
+    totalLearners: number;
+    successCount: number;
+    failureCount: number;
+    errors: { learnerId: string; learnerName: string; error: string }[];
+    totalLatencyMs: number;
+  } | null>(null);
+
   // ── Avis Habilitation Électrique H0 B0 (Recyclage Non élec, OPTIONNEL)
   const [habilH0B0SessionId, setHabilH0B0SessionId] = useState<string>("");
   const [habilH0B0LearnerId, setHabilH0B0LearnerId] = useState<string>("");
@@ -930,6 +952,24 @@ export default function TestConventionPage() {
     })();
   }, [supabase, habilSessionId]);
 
+  // Charge les apprenants pour avis habilitation H0 B0 INITIAL single
+  useEffect(() => {
+    if (!habilH0B0InitSessionId) {
+      setHabilH0B0InitLearners([]);
+      setHabilH0B0InitLearnerId("");
+      return;
+    }
+    setLoadingHabilH0B0InitLearners(true);
+    (async () => {
+      const { data } = await supabase
+        .from("enrollments")
+        .select("learner_id, learner:learners(id, first_name, last_name)")
+        .eq("session_id", habilH0B0InitSessionId);
+      setHabilH0B0InitLearners((data as unknown as LearnerRow[]) || []);
+      setLoadingHabilH0B0InitLearners(false);
+    })();
+  }, [supabase, habilH0B0InitSessionId]);
+
   // Charge les apprenants pour avis habilitation H0 B0 single
   useEffect(() => {
     if (!habilH0B0SessionId) {
@@ -1247,6 +1287,102 @@ export default function TestConventionPage() {
       toast({ title: "Échec batch avis habilitation", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
     } finally {
       setGeneratingHabilBatch(false);
+    }
+  }
+
+  // ── Avis Habilitation Électrique H0 B0 INITIAL handlers (OPTIONNEL) ─
+  async function handleGenerateHabilH0B0InitMock() {
+    setGeneratingHabilH0B0Init(true);
+    setLastHabilH0B0InitResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-avis-habilitation-electrique-h0-b0-initial-mock", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastHabilH0B0InitResult({
+        engineUsed: json.engineUsed, cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs, fileSizeBytes: json.fileSizeBytes,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({ title: "Avis habilitation H0 B0 Initial mock généré", description: `${json.engineUsed} · ${json.latencyMs}ms` });
+    } catch (err) {
+      toast({ title: "Échec mock avis habilitation H0 B0 Initial", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setGeneratingHabilH0B0Init(false);
+    }
+  }
+
+  async function handleGenerateHabilH0B0Init() {
+    if (!habilH0B0InitSessionId || !habilH0B0InitLearnerId) {
+      toast({ title: "Sélection incomplète", description: "Choisis session ET apprenant.", variant: "destructive" });
+      return;
+    }
+    setGeneratingHabilH0B0Init(true);
+    setLastHabilH0B0InitResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-avis-habilitation-electrique-h0-b0-initial", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: habilH0B0InitSessionId, learnerId: habilH0B0InitLearnerId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastHabilH0B0InitResult({
+        engineUsed: json.engineUsed, cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs, fileSizeBytes: json.fileSizeBytes,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({ title: "Avis habilitation H0 B0 Initial généré", description: `${json.engineUsed} · ${json.latencyMs}ms` });
+    } catch (err) {
+      toast({ title: "Échec avis habilitation H0 B0 Initial", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setGeneratingHabilH0B0Init(false);
+    }
+  }
+
+  async function handleGenerateHabilH0B0InitBatch() {
+    if (!habilH0B0InitBatchSessionId) {
+      toast({ title: "Aucune session", description: "Sélectionne d'abord une session.", variant: "destructive" });
+      return;
+    }
+    setGeneratingHabilH0B0InitBatch(true);
+    setLastHabilH0B0InitBatchResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-avis-habilitation-electrique-h0-b0-initial-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: habilH0B0InitBatchSessionId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastHabilH0B0InitBatchResult({
+        totalLearners: json.totalLearners, successCount: json.successCount,
+        failureCount: json.failureCount, errors: json.errors ?? [],
+        totalLatencyMs: json.totalLatencyMs,
+      });
+      const bytes = Uint8Array.from(atob(json.zipBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/zip" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const sessionLabel = sessions.find((s) => s.id === habilH0B0InitBatchSessionId)?.title ?? "session";
+      a.href = url;
+      a.download = `avis-habilitation-h0-b0-initial-${sessionLabel.replace(/[^a-zA-Z0-9-]+/g, "-").toLowerCase().slice(0, 50)}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast({
+        title: json.failureCount === 0 ? "ZIP avis habilitation H0 B0 Initial généré" : "ZIP avec erreurs",
+        description: `${json.successCount}/${json.totalLearners} apprenants · ${json.totalLatencyMs}ms`,
+        variant: json.failureCount === 0 ? "default" : "destructive",
+      });
+    } catch (err) {
+      toast({ title: "Échec batch avis habilitation H0 B0 Initial", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setGeneratingHabilH0B0InitBatch(false);
     }
   }
 
@@ -9201,6 +9337,173 @@ export default function TestConventionPage() {
             </div>
             <div><strong>Latence :</strong> {lastHabilH0B0Result.latencyMs} ms</div>
             <div><strong>Taille PDF :</strong> {(lastHabilH0B0Result.fileSizeBytes / 1024).toFixed(1)} KB</div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ────────── Avis Habilitation Électrique H0 B0 INITIAL ────────── */}
+
+      <div className="pt-8">
+        <h2 className="text-xl font-semibold flex items-center gap-2 mb-1">
+          <Zap className="h-5 w-5 text-stone-700" />
+          Avis Habilitation Électrique — H0 B0 (Initial)
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          9ème variante — identique à H0 B0 Recyclage (#83) côté tableau
+          (BO-H0V Non élec uniquement), mais avec la mention{" "}
+          <strong>&ldquo;Initiale&rdquo; active</strong> et{" "}
+          <s>&ldquo;Recyclage&rdquo;</s> barré en page 1.
+        </p>
+      </div>
+
+      <Card className="border-stone-300 bg-stone-50/40">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <FlaskConical className="h-4 w-4 text-stone-800" />
+            Mode rapide — Données factices
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Patrick ATTLAN + HABILITATION ÉLECTRIQUE H0B0 - INITIAL.
+          </p>
+          <Button
+            onClick={handleGenerateHabilH0B0InitMock}
+            disabled={generatingHabilH0B0Init || generatingHabilH0B0InitBatch}
+            className="w-full gap-2 bg-stone-700 hover:bg-stone-800"
+          >
+            {generatingHabilH0B0Init ? <Loader2 className="h-4 w-4 animate-spin" /> : <FlaskConical className="h-4 w-4" />}
+            Générer avis habilitation H0 B0 Initial de test
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Avis habilitation H0 B0 Initial — Données réelles (1 apprenant)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label htmlFor="habil-h0b0init-session-select" className="text-sm">Session</Label>
+            <Select value={habilH0B0InitSessionId} onValueChange={setHabilH0B0InitSessionId}
+              disabled={loadingSessions || generatingHabilH0B0Init}>
+              <SelectTrigger id="habil-h0b0init-session-select" className="mt-1">
+                <SelectValue placeholder={loadingSessions ? "Chargement…" : "Choisir une session…"} />
+              </SelectTrigger>
+              <SelectContent>
+                {sessions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.title} — {new Date(s.start_date).toLocaleDateString("fr-FR")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label htmlFor="habil-h0b0init-learner-select" className="text-sm">Apprenant inscrit</Label>
+            <Select value={habilH0B0InitLearnerId} onValueChange={setHabilH0B0InitLearnerId}
+              disabled={!habilH0B0InitSessionId || loadingHabilH0B0InitLearners || generatingHabilH0B0Init}>
+              <SelectTrigger id="habil-h0b0init-learner-select" className="mt-1">
+                <SelectValue placeholder={
+                  !habilH0B0InitSessionId ? "Choisis d'abord une session"
+                    : loadingHabilH0B0InitLearners ? "Chargement…"
+                      : habilH0B0InitLearners.length === 0 ? "Aucun apprenant inscrit"
+                        : "Choisir un apprenant…"
+                } />
+              </SelectTrigger>
+              <SelectContent>
+                {habilH0B0InitLearners.map((l) => l.learner ? (
+                  <SelectItem key={l.learner_id} value={l.learner_id}>
+                    {l.learner.last_name} {l.learner.first_name}
+                  </SelectItem>
+                ) : null)}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button onClick={handleGenerateHabilH0B0Init}
+            disabled={!habilH0B0InitSessionId || !habilH0B0InitLearnerId || generatingHabilH0B0Init}
+            className="w-full gap-2" size="lg">
+            {generatingHabilH0B0Init ? <><Loader2 className="h-4 w-4 animate-spin" />Génération en cours…</>
+              : <><Zap className="h-4 w-4" />Générer avis habilitation H0 B0 Initial</>}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="border-purple-200 bg-purple-50/30">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Package className="h-4 w-4 text-purple-600" />
+            Mode batch — tous les apprenants
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Génère <strong>1 avis H0 B0 Initial par apprenant</strong>. Sortie : 1 ZIP.
+          </p>
+          <div>
+            <Label htmlFor="habil-h0b0init-batch-session-select" className="text-sm">Session</Label>
+            <Select value={habilH0B0InitBatchSessionId} onValueChange={setHabilH0B0InitBatchSessionId}
+              disabled={loadingSessions || generatingHabilH0B0InitBatch}>
+              <SelectTrigger id="habil-h0b0init-batch-session-select" className="mt-1">
+                <SelectValue placeholder={loadingSessions ? "Chargement…" : "Choisir une session…"} />
+              </SelectTrigger>
+              <SelectContent>
+                {sessions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.title} — {new Date(s.start_date).toLocaleDateString("fr-FR")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button onClick={handleGenerateHabilH0B0InitBatch}
+            disabled={!habilH0B0InitBatchSessionId || generatingHabilH0B0InitBatch}
+            className="w-full gap-2 bg-purple-600 hover:bg-purple-700" size="lg">
+            {generatingHabilH0B0InitBatch ? <><Loader2 className="h-4 w-4 animate-spin" />Génération en cours…</>
+              : <><Package className="h-4 w-4" />Générer ZIP — tous les avis H0 B0 Initial</>}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {lastHabilH0B0InitBatchResult && (
+        <Card className={lastHabilH0B0InitBatchResult.failureCount === 0
+          ? "border-green-200 bg-green-50/30" : "border-amber-200 bg-amber-50/30"}>
+          <CardHeader>
+            <CardTitle className={"text-base " + (lastHabilH0B0InitBatchResult.failureCount === 0 ? "text-green-900" : "text-amber-900")}>
+              {lastHabilH0B0InitBatchResult.failureCount === 0 ? "✅" : "⚠️"} Dernier batch avis habilitation H0 B0 Initial
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <div><strong>{lastHabilH0B0InitBatchResult.successCount}</strong> / {lastHabilH0B0InitBatchResult.totalLearners} avis générés</div>
+            <div><strong>Latence totale :</strong> {lastHabilH0B0InitBatchResult.totalLatencyMs} ms</div>
+            {lastHabilH0B0InitBatchResult.errors.length > 0 && (
+              <div className="mt-3 space-y-1">
+                <div className="flex items-center gap-1 text-amber-900 font-medium">
+                  <AlertCircle className="h-4 w-4" /> Erreurs ({lastHabilH0B0InitBatchResult.errors.length})
+                </div>
+                <ul className="text-xs space-y-0.5 ml-5 list-disc">
+                  {lastHabilH0B0InitBatchResult.errors.map((e) => (
+                    <li key={e.learnerId}><strong>{e.learnerName}</strong> : {e.error}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {lastHabilH0B0InitResult && (
+        <Card className="border-green-200 bg-green-50/30">
+          <CardHeader><CardTitle className="text-base text-green-900">✅ Dernier avis habilitation H0 B0 Initial</CardTitle></CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <div>
+              <strong>Moteur :</strong> {lastHabilH0B0InitResult.engineUsed}
+              {lastHabilH0B0InitResult.cacheHit && (
+                <span className="ml-2 text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded">⚡ Cache hit</span>
+              )}
+            </div>
+            <div><strong>Latence :</strong> {lastHabilH0B0InitResult.latencyMs} ms</div>
+            <div><strong>Taille PDF :</strong> {(lastHabilH0B0InitResult.fileSizeBytes / 1024).toFixed(1)} KB</div>
           </CardContent>
         </Card>
       )}
