@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
-import { Loader2, FileText, Sparkles, FlaskConical, Package, AlertCircle } from "lucide-react";
+import { Loader2, FileText, Sparkles, FlaskConical, Package, AlertCircle, ClipboardList } from "lucide-react";
 
 /**
  * Page de test temporaire — Story B-Convention.
@@ -64,6 +64,30 @@ export default function TestConventionPage() {
     totalLatencyMs: number;
   } | null>(null);
 
+  // ── Émargement collectif (état séparé) ────────────────────────────────
+  const [emargementSessionId, setEmargementSessionId] = useState<string>("");
+  const [emargementClientId, setEmargementClientId] = useState<string>("");
+  const [emargementCompanies, setEmargementCompanies] = useState<CompanyRow[]>([]);
+  const [loadingEmargementCompanies, setLoadingEmargementCompanies] = useState(false);
+  const [emargementBatchSessionId, setEmargementBatchSessionId] = useState<string>("");
+  const [generatingEmargement, setGeneratingEmargement] = useState(false);
+  const [generatingEmargementBatch, setGeneratingEmargementBatch] = useState(false);
+  const [lastEmargementResult, setLastEmargementResult] = useState<{
+    engineUsed: string;
+    cacheHit: boolean;
+    latencyMs: number;
+    fileSizeBytes: number;
+    signedCount?: number;
+  } | null>(null);
+  const [lastEmargementBatchResult, setLastEmargementBatchResult] = useState<{
+    totalCompanies: number;
+    successCount: number;
+    failureCount: number;
+    errors: { clientId: string; companyName: string; error: string }[];
+    totalLatencyMs: number;
+    signedCount?: number;
+  } | null>(null);
+
   // Charge la liste des sessions de l'entité
   useEffect(() => {
     if (!entityId) return;
@@ -96,6 +120,143 @@ export default function TestConventionPage() {
       setLoadingCompanies(false);
     })();
   }, [supabase, selectedSessionId]);
+
+  // Charge les entreprises de la session émargement single
+  useEffect(() => {
+    if (!emargementSessionId) {
+      setEmargementCompanies([]);
+      setEmargementClientId("");
+      return;
+    }
+    setLoadingEmargementCompanies(true);
+    (async () => {
+      const { data } = await supabase
+        .from("formation_companies")
+        .select("client_id, client:clients(id, company_name)")
+        .eq("session_id", emargementSessionId);
+      setEmargementCompanies((data as unknown as CompanyRow[]) || []);
+      setLoadingEmargementCompanies(false);
+    })();
+  }, [supabase, emargementSessionId]);
+
+  // ── Émargement handlers ───────────────────────────────────────────────
+  async function handleGenerateEmargementMock() {
+    setGeneratingEmargement(true);
+    setLastEmargementResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-emargement-mock", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastEmargementResult({
+        engineUsed: json.engineUsed,
+        cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs,
+        fileSizeBytes: json.fileSizeBytes,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({ title: "Émargement mock généré", description: `${json.engineUsed} · ${json.latencyMs}ms` });
+    } catch (err) {
+      toast({
+        title: "Échec émargement mock",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingEmargement(false);
+    }
+  }
+
+  async function handleGenerateEmargement() {
+    if (!emargementSessionId || !emargementClientId) {
+      toast({ title: "Sélection incomplète", description: "Choisis session ET entreprise.", variant: "destructive" });
+      return;
+    }
+    setGeneratingEmargement(true);
+    setLastEmargementResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-emargement", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: emargementSessionId, clientId: emargementClientId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastEmargementResult({
+        engineUsed: json.engineUsed,
+        cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs,
+        fileSizeBytes: json.fileSizeBytes,
+        signedCount: json.signedCount,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({
+        title: "Émargement généré",
+        description: `${json.signedCount ?? 0} signature(s) · ${json.engineUsed} · ${json.latencyMs}ms`,
+      });
+    } catch (err) {
+      toast({
+        title: "Échec émargement",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingEmargement(false);
+    }
+  }
+
+  async function handleGenerateEmargementBatch() {
+    if (!emargementBatchSessionId) {
+      toast({ title: "Aucune session choisie", description: "Sélectionne d'abord une session.", variant: "destructive" });
+      return;
+    }
+    setGeneratingEmargementBatch(true);
+    setLastEmargementBatchResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-emargements-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: emargementBatchSessionId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastEmargementBatchResult({
+        totalCompanies: json.totalCompanies,
+        successCount: json.successCount,
+        failureCount: json.failureCount,
+        errors: json.errors ?? [],
+        totalLatencyMs: json.totalLatencyMs,
+        signedCount: json.signedCount,
+      });
+      const bytes = Uint8Array.from(atob(json.zipBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/zip" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const sessionLabel = sessions.find((s) => s.id === emargementBatchSessionId)?.title ?? "session";
+      a.href = url;
+      a.download = `emargements-${sessionLabel.replace(/[^a-zA-Z0-9-]+/g, "-").toLowerCase().slice(0, 50)}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast({
+        title: json.failureCount === 0 ? "ZIP émargements généré" : "ZIP avec erreurs",
+        description: `${json.successCount}/${json.totalCompanies} feuilles · ${json.signedCount ?? 0} signature(s) · ${json.totalLatencyMs}ms`,
+        variant: json.failureCount === 0 ? "default" : "destructive",
+      });
+    } catch (err) {
+      toast({
+        title: "Échec batch émargements",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingEmargementBatch(false);
+    }
+  }
 
   async function handleGenerateMock() {
     setGenerating(true);
@@ -520,6 +681,261 @@ export default function TestConventionPage() {
               Le PDF s&apos;est ouvert dans un nouvel onglet. Compare visuellement avec ton{" "}
               <code className="text-xs bg-gray-100 px-1 rounded">convention-entreprise-mrformation.pdf</code> de référence.
             </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════ */}
+      {/*    ÉMARGEMENT COLLECTIF — 3 modes (mock / single / batch)        */}
+      {/* ════════════════════════════════════════════════════════════════ */}
+
+      <div className="pt-10 border-t-2 border-dashed border-gray-300">
+        <h2 className="text-xl font-semibold flex items-center gap-2 mb-1">
+          <ClipboardList className="h-5 w-5 text-orange-600" />
+          Émargement collectif
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Feuille d&apos;émargement par entreprise. Statut Présent/Absent calculé
+          depuis la table <code className="text-xs bg-gray-100 px-1 rounded">signatures</code> en mode réel.
+        </p>
+      </div>
+
+      <Card className="border-orange-200 bg-orange-50/30">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <FlaskConical className="h-4 w-4 text-orange-600" />
+            Mode rapide — Données factices
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Génère un PDF avec session mockée (10/01/2025, 1 jour, 2 créneaux
+            matin/aprem) + 3 apprenants tous Présent. Permet de valider le rendu
+            visuel sans dépendre des signatures réelles.
+          </p>
+          <Button
+            onClick={handleGenerateEmargementMock}
+            disabled={generatingEmargement || generatingEmargementBatch}
+            className="w-full gap-2 bg-orange-600 hover:bg-orange-700"
+          >
+            {generatingEmargement ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <FlaskConical className="h-4 w-4" />
+            )}
+            Générer une feuille d&apos;émargement de test
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Émargement — Données réelles (1 entreprise)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label htmlFor="emargement-session-select" className="text-sm">Session</Label>
+            <Select
+              value={emargementSessionId}
+              onValueChange={setEmargementSessionId}
+              disabled={loadingSessions || generatingEmargement}
+            >
+              <SelectTrigger id="emargement-session-select" className="mt-1">
+                <SelectValue placeholder={loadingSessions ? "Chargement…" : "Choisir une session…"} />
+              </SelectTrigger>
+              <SelectContent>
+                {sessions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.title} — {new Date(s.start_date).toLocaleDateString("fr-FR")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label htmlFor="emargement-company-select" className="text-sm">Entreprise rattachée</Label>
+            <Select
+              value={emargementClientId}
+              onValueChange={setEmargementClientId}
+              disabled={!emargementSessionId || loadingEmargementCompanies || generatingEmargement}
+            >
+              <SelectTrigger id="emargement-company-select" className="mt-1">
+                <SelectValue
+                  placeholder={
+                    !emargementSessionId
+                      ? "Choisis d'abord une session"
+                      : loadingEmargementCompanies
+                        ? "Chargement…"
+                        : emargementCompanies.length === 0
+                          ? "Aucune entreprise rattachée"
+                          : "Choisir une entreprise…"
+                  }
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {emargementCompanies.map((c) =>
+                  c.client ? (
+                    <SelectItem key={c.client_id} value={c.client_id}>
+                      {c.client.company_name}
+                    </SelectItem>
+                  ) : null,
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <Button
+            onClick={handleGenerateEmargement}
+            disabled={!emargementSessionId || !emargementClientId || generatingEmargement}
+            className="w-full gap-2"
+            size="lg"
+          >
+            {generatingEmargement ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Génération en cours…
+              </>
+            ) : (
+              <>
+                <ClipboardList className="h-4 w-4" />
+                Générer la feuille d&apos;émargement
+              </>
+            )}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="border-purple-200 bg-purple-50/30">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Package className="h-4 w-4 text-purple-600" />
+            Mode batch émargement — toutes les entreprises de la session
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Génère <strong>une feuille d&apos;émargement par entreprise</strong> rattachée
+            à la session. Statuts Présent/Absent calculés depuis la table{" "}
+            <code className="text-xs bg-gray-100 px-1 rounded">signatures</code>{" "}
+            (partagée pour toutes les entreprises de la session). Sortie : 1 ZIP.
+          </p>
+
+          <div>
+            <Label htmlFor="emargement-batch-session-select" className="text-sm">Session</Label>
+            <Select
+              value={emargementBatchSessionId}
+              onValueChange={setEmargementBatchSessionId}
+              disabled={loadingSessions || generatingEmargementBatch}
+            >
+              <SelectTrigger id="emargement-batch-session-select" className="mt-1">
+                <SelectValue placeholder={loadingSessions ? "Chargement…" : "Choisir une session…"} />
+              </SelectTrigger>
+              <SelectContent>
+                {sessions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.title} — {new Date(s.start_date).toLocaleDateString("fr-FR")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <Button
+            onClick={handleGenerateEmargementBatch}
+            disabled={!emargementBatchSessionId || generatingEmargementBatch}
+            className="w-full gap-2 bg-purple-600 hover:bg-purple-700"
+            size="lg"
+          >
+            {generatingEmargementBatch ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Génération en cours… (peut durer 10-30s)
+              </>
+            ) : (
+              <>
+                <Package className="h-4 w-4" />
+                Générer ZIP — toutes les feuilles d&apos;émargement
+              </>
+            )}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {lastEmargementBatchResult && (
+        <Card
+          className={
+            lastEmargementBatchResult.failureCount === 0
+              ? "border-green-200 bg-green-50/30"
+              : "border-amber-200 bg-amber-50/30"
+          }
+        >
+          <CardHeader>
+            <CardTitle
+              className={
+                "text-base " +
+                (lastEmargementBatchResult.failureCount === 0 ? "text-green-900" : "text-amber-900")
+              }
+            >
+              {lastEmargementBatchResult.failureCount === 0 ? "✅" : "⚠️"} Dernier batch émargement
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <div>
+              <strong>{lastEmargementBatchResult.successCount}</strong> /{" "}
+              {lastEmargementBatchResult.totalCompanies} feuilles générées
+            </div>
+            <div>
+              <strong>Signatures réelles trouvées :</strong>{" "}
+              {lastEmargementBatchResult.signedCount ?? 0}
+            </div>
+            <div>
+              <strong>Latence totale :</strong> {lastEmargementBatchResult.totalLatencyMs} ms
+            </div>
+            {lastEmargementBatchResult.errors.length > 0 && (
+              <div className="mt-3 space-y-1">
+                <div className="flex items-center gap-1 text-amber-900 font-medium">
+                  <AlertCircle className="h-4 w-4" /> Erreurs (
+                  {lastEmargementBatchResult.errors.length})
+                </div>
+                <ul className="text-xs space-y-0.5 ml-5 list-disc">
+                  {lastEmargementBatchResult.errors.map((e) => (
+                    <li key={e.clientId}>
+                      <strong>{e.companyName}</strong> : {e.error}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {lastEmargementResult && (
+        <Card className="border-green-200 bg-green-50/30">
+          <CardHeader>
+            <CardTitle className="text-base text-green-900">✅ Dernier émargement</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <div>
+              <strong>Moteur :</strong> {lastEmargementResult.engineUsed}
+              {lastEmargementResult.cacheHit && (
+                <span className="ml-2 text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded">
+                  ⚡ Cache hit
+                </span>
+              )}
+            </div>
+            <div>
+              <strong>Latence :</strong> {lastEmargementResult.latencyMs} ms
+            </div>
+            <div>
+              <strong>Taille PDF :</strong> {(lastEmargementResult.fileSizeBytes / 1024).toFixed(1)} KB
+            </div>
+            {lastEmargementResult.signedCount !== undefined && (
+              <div>
+                <strong>Signatures réelles :</strong> {lastEmargementResult.signedCount}
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
