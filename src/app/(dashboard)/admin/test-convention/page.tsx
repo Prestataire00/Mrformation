@@ -157,6 +157,28 @@ export default function TestConventionPage() {
     totalLatencyMs: number;
   } | null>(null);
 
+  // ── Certificat Travail en Hauteur (per session+learner, OPTIONNEL) ───
+  const [hauteurSessionId, setHauteurSessionId] = useState<string>("");
+  const [hauteurLearnerId, setHauteurLearnerId] = useState<string>("");
+  const [hauteurLearners, setHauteurLearners] = useState<LearnerRow[]>([]);
+  const [loadingHauteurLearners, setLoadingHauteurLearners] = useState(false);
+  const [hauteurBatchSessionId, setHauteurBatchSessionId] = useState<string>("");
+  const [generatingHauteur, setGeneratingHauteur] = useState(false);
+  const [generatingHauteurBatch, setGeneratingHauteurBatch] = useState(false);
+  const [lastHauteurResult, setLastHauteurResult] = useState<{
+    engineUsed: string;
+    cacheHit: boolean;
+    latencyMs: number;
+    fileSizeBytes: number;
+  } | null>(null);
+  const [lastHauteurBatchResult, setLastHauteurBatchResult] = useState<{
+    totalLearners: number;
+    successCount: number;
+    failureCount: number;
+    errors: { learnerId: string; learnerName: string; error: string }[];
+    totalLatencyMs: number;
+  } | null>(null);
+
   // ── Avis Habilitation Électrique BT (variante INITIAL BT, OPTIONNEL) ─
   const [habilBtSessionId, setHabilBtSessionId] = useState<string>("");
   const [habilBtLearnerId, setHabilBtLearnerId] = useState<string>("");
@@ -754,6 +776,24 @@ export default function TestConventionPage() {
     })();
   }, [supabase, habilSessionId]);
 
+  // Charge les apprenants pour certificat travail en hauteur single
+  useEffect(() => {
+    if (!hauteurSessionId) {
+      setHauteurLearners([]);
+      setHauteurLearnerId("");
+      return;
+    }
+    setLoadingHauteurLearners(true);
+    (async () => {
+      const { data } = await supabase
+        .from("enrollments")
+        .select("learner_id, learner:learners(id, first_name, last_name)")
+        .eq("session_id", hauteurSessionId);
+      setHauteurLearners((data as unknown as LearnerRow[]) || []);
+      setLoadingHauteurLearners(false);
+    })();
+  }, [supabase, hauteurSessionId]);
+
   // Charge les apprenants pour avis habilitation électrique BT single
   useEffect(() => {
     if (!habilBtSessionId) {
@@ -927,6 +967,102 @@ export default function TestConventionPage() {
       toast({ title: "Échec batch avis habilitation", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
     } finally {
       setGeneratingHabilBatch(false);
+    }
+  }
+
+  // ── Certificat Travail en Hauteur handlers (OPTIONNEL) ──────────────
+  async function handleGenerateHauteurMock() {
+    setGeneratingHauteur(true);
+    setLastHauteurResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-certificat-travail-hauteur-mock", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastHauteurResult({
+        engineUsed: json.engineUsed, cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs, fileSizeBytes: json.fileSizeBytes,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({ title: "Certificat travail hauteur mock généré", description: `${json.engineUsed} · ${json.latencyMs}ms` });
+    } catch (err) {
+      toast({ title: "Échec mock certificat hauteur", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setGeneratingHauteur(false);
+    }
+  }
+
+  async function handleGenerateHauteur() {
+    if (!hauteurSessionId || !hauteurLearnerId) {
+      toast({ title: "Sélection incomplète", description: "Choisis session ET apprenant.", variant: "destructive" });
+      return;
+    }
+    setGeneratingHauteur(true);
+    setLastHauteurResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-certificat-travail-hauteur", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: hauteurSessionId, learnerId: hauteurLearnerId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastHauteurResult({
+        engineUsed: json.engineUsed, cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs, fileSizeBytes: json.fileSizeBytes,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({ title: "Certificat travail hauteur généré", description: `${json.engineUsed} · ${json.latencyMs}ms` });
+    } catch (err) {
+      toast({ title: "Échec certificat hauteur", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setGeneratingHauteur(false);
+    }
+  }
+
+  async function handleGenerateHauteurBatch() {
+    if (!hauteurBatchSessionId) {
+      toast({ title: "Aucune session", description: "Sélectionne d'abord une session.", variant: "destructive" });
+      return;
+    }
+    setGeneratingHauteurBatch(true);
+    setLastHauteurBatchResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-certificats-travail-hauteur-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: hauteurBatchSessionId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastHauteurBatchResult({
+        totalLearners: json.totalLearners, successCount: json.successCount,
+        failureCount: json.failureCount, errors: json.errors ?? [],
+        totalLatencyMs: json.totalLatencyMs,
+      });
+      const bytes = Uint8Array.from(atob(json.zipBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/zip" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const sessionLabel = sessions.find((s) => s.id === hauteurBatchSessionId)?.title ?? "session";
+      a.href = url;
+      a.download = `certificats-travail-hauteur-${sessionLabel.replace(/[^a-zA-Z0-9-]+/g, "-").toLowerCase().slice(0, 50)}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast({
+        title: json.failureCount === 0 ? "ZIP certificats travail hauteur généré" : "ZIP avec erreurs",
+        description: `${json.successCount}/${json.totalLearners} apprenants · ${json.totalLatencyMs}ms`,
+        variant: json.failureCount === 0 ? "default" : "destructive",
+      });
+    } catch (err) {
+      toast({ title: "Échec batch certificats hauteur", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setGeneratingHauteurBatch(false);
     }
   }
 
@@ -6779,6 +6915,173 @@ export default function TestConventionPage() {
             </div>
             <div><strong>Latence :</strong> {lastHabilBtResult.latencyMs} ms</div>
             <div><strong>Taille PDF :</strong> {(lastHabilBtResult.fileSizeBytes / 1024).toFixed(1)} KB</div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ────────── Certificat Travail en Hauteur (per session+learner) ────────── */}
+
+      <div className="pt-8">
+        <h2 className="text-xl font-semibold flex items-center gap-2 mb-1">
+          <HardHat className="h-5 w-5 text-sky-700" />
+          Certificat Travail en Hauteur
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Attestation de fin de formation pour <strong>Travail en hauteur et
+          port du harnais</strong>. Titre + objectifs pédagogiques hardcodés
+          (spécifiques à cette formation). Reste dynamique : organisme,
+          apprenant, dates, durée, lieu, entreprise présentatrice.
+        </p>
+      </div>
+
+      <Card className="border-sky-300 bg-sky-50/40">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <FlaskConical className="h-4 w-4 text-sky-800" />
+            Mode rapide — Données factices
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Patrick ATTLAN + UNICIL + Travail en hauteur (4h, 29/04/2026).
+          </p>
+          <Button
+            onClick={handleGenerateHauteurMock}
+            disabled={generatingHauteur || generatingHauteurBatch}
+            className="w-full gap-2 bg-sky-700 hover:bg-sky-800"
+          >
+            {generatingHauteur ? <Loader2 className="h-4 w-4 animate-spin" /> : <FlaskConical className="h-4 w-4" />}
+            Générer certificat hauteur de test
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Certificat hauteur — Données réelles (1 apprenant)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label htmlFor="hauteur-session-select" className="text-sm">Session</Label>
+            <Select value={hauteurSessionId} onValueChange={setHauteurSessionId}
+              disabled={loadingSessions || generatingHauteur}>
+              <SelectTrigger id="hauteur-session-select" className="mt-1">
+                <SelectValue placeholder={loadingSessions ? "Chargement…" : "Choisir une session…"} />
+              </SelectTrigger>
+              <SelectContent>
+                {sessions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.title} — {new Date(s.start_date).toLocaleDateString("fr-FR")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label htmlFor="hauteur-learner-select" className="text-sm">Apprenant inscrit</Label>
+            <Select value={hauteurLearnerId} onValueChange={setHauteurLearnerId}
+              disabled={!hauteurSessionId || loadingHauteurLearners || generatingHauteur}>
+              <SelectTrigger id="hauteur-learner-select" className="mt-1">
+                <SelectValue placeholder={
+                  !hauteurSessionId ? "Choisis d'abord une session"
+                    : loadingHauteurLearners ? "Chargement…"
+                      : hauteurLearners.length === 0 ? "Aucun apprenant inscrit"
+                        : "Choisir un apprenant…"
+                } />
+              </SelectTrigger>
+              <SelectContent>
+                {hauteurLearners.map((l) => l.learner ? (
+                  <SelectItem key={l.learner_id} value={l.learner_id}>
+                    {l.learner.last_name} {l.learner.first_name}
+                  </SelectItem>
+                ) : null)}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button onClick={handleGenerateHauteur}
+            disabled={!hauteurSessionId || !hauteurLearnerId || generatingHauteur}
+            className="w-full gap-2" size="lg">
+            {generatingHauteur ? <><Loader2 className="h-4 w-4 animate-spin" />Génération en cours…</>
+              : <><HardHat className="h-4 w-4" />Générer certificat hauteur</>}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="border-purple-200 bg-purple-50/30">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Package className="h-4 w-4 text-purple-600" />
+            Mode batch — tous les apprenants
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Génère <strong>1 certificat par apprenant</strong>. Sortie : 1 ZIP.
+          </p>
+          <div>
+            <Label htmlFor="hauteur-batch-session-select" className="text-sm">Session</Label>
+            <Select value={hauteurBatchSessionId} onValueChange={setHauteurBatchSessionId}
+              disabled={loadingSessions || generatingHauteurBatch}>
+              <SelectTrigger id="hauteur-batch-session-select" className="mt-1">
+                <SelectValue placeholder={loadingSessions ? "Chargement…" : "Choisir une session…"} />
+              </SelectTrigger>
+              <SelectContent>
+                {sessions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.title} — {new Date(s.start_date).toLocaleDateString("fr-FR")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button onClick={handleGenerateHauteurBatch}
+            disabled={!hauteurBatchSessionId || generatingHauteurBatch}
+            className="w-full gap-2 bg-purple-600 hover:bg-purple-700" size="lg">
+            {generatingHauteurBatch ? <><Loader2 className="h-4 w-4 animate-spin" />Génération en cours…</>
+              : <><Package className="h-4 w-4" />Générer ZIP — tous les certificats</>}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {lastHauteurBatchResult && (
+        <Card className={lastHauteurBatchResult.failureCount === 0
+          ? "border-green-200 bg-green-50/30" : "border-amber-200 bg-amber-50/30"}>
+          <CardHeader>
+            <CardTitle className={"text-base " + (lastHauteurBatchResult.failureCount === 0 ? "text-green-900" : "text-amber-900")}>
+              {lastHauteurBatchResult.failureCount === 0 ? "✅" : "⚠️"} Dernier batch certificats hauteur
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <div><strong>{lastHauteurBatchResult.successCount}</strong> / {lastHauteurBatchResult.totalLearners} certificats générés</div>
+            <div><strong>Latence totale :</strong> {lastHauteurBatchResult.totalLatencyMs} ms</div>
+            {lastHauteurBatchResult.errors.length > 0 && (
+              <div className="mt-3 space-y-1">
+                <div className="flex items-center gap-1 text-amber-900 font-medium">
+                  <AlertCircle className="h-4 w-4" /> Erreurs ({lastHauteurBatchResult.errors.length})
+                </div>
+                <ul className="text-xs space-y-0.5 ml-5 list-disc">
+                  {lastHauteurBatchResult.errors.map((e) => (
+                    <li key={e.learnerId}><strong>{e.learnerName}</strong> : {e.error}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {lastHauteurResult && (
+        <Card className="border-green-200 bg-green-50/30">
+          <CardHeader><CardTitle className="text-base text-green-900">✅ Dernier certificat hauteur</CardTitle></CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <div>
+              <strong>Moteur :</strong> {lastHauteurResult.engineUsed}
+              {lastHauteurResult.cacheHit && (
+                <span className="ml-2 text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded">⚡ Cache hit</span>
+              )}
+            </div>
+            <div><strong>Latence :</strong> {lastHauteurResult.latencyMs} ms</div>
+            <div><strong>Taille PDF :</strong> {(lastHauteurResult.fileSizeBytes / 1024).toFixed(1)} KB</div>
           </CardContent>
         </Card>
       )}
