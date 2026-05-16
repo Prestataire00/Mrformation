@@ -157,6 +157,28 @@ export default function TestConventionPage() {
     totalLatencyMs: number;
   } | null>(null);
 
+  // ── Avis Habilitation Électrique B0-BF-BS (norme A2, OPTIONNEL) ─────
+  const [habilB0BfBsSessionId, setHabilB0BfBsSessionId] = useState<string>("");
+  const [habilB0BfBsLearnerId, setHabilB0BfBsLearnerId] = useState<string>("");
+  const [habilB0BfBsLearners, setHabilB0BfBsLearners] = useState<LearnerRow[]>([]);
+  const [loadingHabilB0BfBsLearners, setLoadingHabilB0BfBsLearners] = useState(false);
+  const [habilB0BfBsBatchSessionId, setHabilB0BfBsBatchSessionId] = useState<string>("");
+  const [generatingHabilB0BfBs, setGeneratingHabilB0BfBs] = useState(false);
+  const [generatingHabilB0BfBsBatch, setGeneratingHabilB0BfBsBatch] = useState(false);
+  const [lastHabilB0BfBsResult, setLastHabilB0BfBsResult] = useState<{
+    engineUsed: string;
+    cacheHit: boolean;
+    latencyMs: number;
+    fileSizeBytes: number;
+  } | null>(null);
+  const [lastHabilB0BfBsBatchResult, setLastHabilB0BfBsBatchResult] = useState<{
+    totalLearners: number;
+    successCount: number;
+    failureCount: number;
+    errors: { learnerId: string; learnerName: string; error: string }[];
+    totalLatencyMs: number;
+  } | null>(null);
+
   // ── Avis Habilitation Électrique B1V-B2V-BR (sans BC, OPTIONNEL) ────
   const [habilB1vSessionId, setHabilB1vSessionId] = useState<string>("");
   const [habilB1vLearnerId, setHabilB1vLearnerId] = useState<string>("");
@@ -842,6 +864,24 @@ export default function TestConventionPage() {
     })();
   }, [supabase, habilSessionId]);
 
+  // Charge les apprenants pour avis habilitation B0-BF-BS single
+  useEffect(() => {
+    if (!habilB0BfBsSessionId) {
+      setHabilB0BfBsLearners([]);
+      setHabilB0BfBsLearnerId("");
+      return;
+    }
+    setLoadingHabilB0BfBsLearners(true);
+    (async () => {
+      const { data } = await supabase
+        .from("enrollments")
+        .select("learner_id, learner:learners(id, first_name, last_name)")
+        .eq("session_id", habilB0BfBsSessionId);
+      setHabilB0BfBsLearners((data as unknown as LearnerRow[]) || []);
+      setLoadingHabilB0BfBsLearners(false);
+    })();
+  }, [supabase, habilB0BfBsSessionId]);
+
   // Charge les apprenants pour avis habilitation B1V-B2V-BR single
   useEffect(() => {
     if (!habilB1vSessionId) {
@@ -1087,6 +1127,102 @@ export default function TestConventionPage() {
       toast({ title: "Échec batch avis habilitation", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
     } finally {
       setGeneratingHabilBatch(false);
+    }
+  }
+
+  // ── Avis Habilitation Électrique B0-BF-BS handlers (OPTIONNEL) ──────
+  async function handleGenerateHabilB0BfBsMock() {
+    setGeneratingHabilB0BfBs(true);
+    setLastHabilB0BfBsResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-avis-habilitation-electrique-b0-bf-bs-mock", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastHabilB0BfBsResult({
+        engineUsed: json.engineUsed, cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs, fileSizeBytes: json.fileSizeBytes,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({ title: "Avis habilitation B0-BF-BS mock généré", description: `${json.engineUsed} · ${json.latencyMs}ms` });
+    } catch (err) {
+      toast({ title: "Échec mock avis habilitation B0-BF-BS", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setGeneratingHabilB0BfBs(false);
+    }
+  }
+
+  async function handleGenerateHabilB0BfBs() {
+    if (!habilB0BfBsSessionId || !habilB0BfBsLearnerId) {
+      toast({ title: "Sélection incomplète", description: "Choisis session ET apprenant.", variant: "destructive" });
+      return;
+    }
+    setGeneratingHabilB0BfBs(true);
+    setLastHabilB0BfBsResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-avis-habilitation-electrique-b0-bf-bs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: habilB0BfBsSessionId, learnerId: habilB0BfBsLearnerId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastHabilB0BfBsResult({
+        engineUsed: json.engineUsed, cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs, fileSizeBytes: json.fileSizeBytes,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({ title: "Avis habilitation B0-BF-BS généré", description: `${json.engineUsed} · ${json.latencyMs}ms` });
+    } catch (err) {
+      toast({ title: "Échec avis habilitation B0-BF-BS", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setGeneratingHabilB0BfBs(false);
+    }
+  }
+
+  async function handleGenerateHabilB0BfBsBatch() {
+    if (!habilB0BfBsBatchSessionId) {
+      toast({ title: "Aucune session", description: "Sélectionne d'abord une session.", variant: "destructive" });
+      return;
+    }
+    setGeneratingHabilB0BfBsBatch(true);
+    setLastHabilB0BfBsBatchResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-avis-habilitation-electrique-b0-bf-bs-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: habilB0BfBsBatchSessionId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastHabilB0BfBsBatchResult({
+        totalLearners: json.totalLearners, successCount: json.successCount,
+        failureCount: json.failureCount, errors: json.errors ?? [],
+        totalLatencyMs: json.totalLatencyMs,
+      });
+      const bytes = Uint8Array.from(atob(json.zipBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/zip" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const sessionLabel = sessions.find((s) => s.id === habilB0BfBsBatchSessionId)?.title ?? "session";
+      a.href = url;
+      a.download = `avis-habilitation-b0-bf-bs-${sessionLabel.replace(/[^a-zA-Z0-9-]+/g, "-").toLowerCase().slice(0, 50)}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast({
+        title: json.failureCount === 0 ? "ZIP avis habilitation B0-BF-BS généré" : "ZIP avec erreurs",
+        description: `${json.successCount}/${json.totalLearners} apprenants · ${json.totalLatencyMs}ms`,
+        variant: json.failureCount === 0 ? "default" : "destructive",
+      });
+    } catch (err) {
+      toast({ title: "Échec batch avis habilitation B0-BF-BS", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setGeneratingHabilB0BfBsBatch(false);
     }
   }
 
@@ -7990,6 +8126,173 @@ export default function TestConventionPage() {
             </div>
             <div><strong>Latence :</strong> {lastHabilB1vResult.latencyMs} ms</div>
             <div><strong>Taille PDF :</strong> {(lastHabilB1vResult.fileSizeBytes / 1024).toFixed(1)} KB</div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ────────── Avis Habilitation Électrique B0-BF-BS (norme A2) ────────── */}
+
+      <div className="pt-8">
+        <h2 className="text-xl font-semibold flex items-center gap-2 mb-1">
+          <Zap className="h-5 w-5 text-lime-700" />
+          Avis Habilitation Électrique — B0 H0 BF HF BS BE Manoeuvre
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          5ème variante — norme A2. Symboles : Exécutant Non élec
+          <strong> BO-H0 / BF-HF</strong> (stackés), Chargé de chantier
+          <strong> BO-H0</strong>, Exécutant élec <strong>BS</strong>,
+          Chargé d&apos;opérations spécifiques <strong>BE MANOEUVRE</strong>.
+        </p>
+      </div>
+
+      <Card className="border-lime-300 bg-lime-50/40">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <FlaskConical className="h-4 w-4 text-lime-800" />
+            Mode rapide — Données factices
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Patrick ATTLAN + Habilitation électrique INITIAL B0 H0 BF HF BS BE MANŒUVRE.
+          </p>
+          <Button
+            onClick={handleGenerateHabilB0BfBsMock}
+            disabled={generatingHabilB0BfBs || generatingHabilB0BfBsBatch}
+            className="w-full gap-2 bg-lime-700 hover:bg-lime-800"
+          >
+            {generatingHabilB0BfBs ? <Loader2 className="h-4 w-4 animate-spin" /> : <FlaskConical className="h-4 w-4" />}
+            Générer avis habilitation B0-BF-BS de test
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Avis habilitation B0-BF-BS — Données réelles (1 apprenant)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label htmlFor="habil-b0bfbs-session-select" className="text-sm">Session</Label>
+            <Select value={habilB0BfBsSessionId} onValueChange={setHabilB0BfBsSessionId}
+              disabled={loadingSessions || generatingHabilB0BfBs}>
+              <SelectTrigger id="habil-b0bfbs-session-select" className="mt-1">
+                <SelectValue placeholder={loadingSessions ? "Chargement…" : "Choisir une session…"} />
+              </SelectTrigger>
+              <SelectContent>
+                {sessions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.title} — {new Date(s.start_date).toLocaleDateString("fr-FR")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label htmlFor="habil-b0bfbs-learner-select" className="text-sm">Apprenant inscrit</Label>
+            <Select value={habilB0BfBsLearnerId} onValueChange={setHabilB0BfBsLearnerId}
+              disabled={!habilB0BfBsSessionId || loadingHabilB0BfBsLearners || generatingHabilB0BfBs}>
+              <SelectTrigger id="habil-b0bfbs-learner-select" className="mt-1">
+                <SelectValue placeholder={
+                  !habilB0BfBsSessionId ? "Choisis d'abord une session"
+                    : loadingHabilB0BfBsLearners ? "Chargement…"
+                      : habilB0BfBsLearners.length === 0 ? "Aucun apprenant inscrit"
+                        : "Choisir un apprenant…"
+                } />
+              </SelectTrigger>
+              <SelectContent>
+                {habilB0BfBsLearners.map((l) => l.learner ? (
+                  <SelectItem key={l.learner_id} value={l.learner_id}>
+                    {l.learner.last_name} {l.learner.first_name}
+                  </SelectItem>
+                ) : null)}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button onClick={handleGenerateHabilB0BfBs}
+            disabled={!habilB0BfBsSessionId || !habilB0BfBsLearnerId || generatingHabilB0BfBs}
+            className="w-full gap-2" size="lg">
+            {generatingHabilB0BfBs ? <><Loader2 className="h-4 w-4 animate-spin" />Génération en cours…</>
+              : <><Zap className="h-4 w-4" />Générer avis habilitation B0-BF-BS</>}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="border-purple-200 bg-purple-50/30">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Package className="h-4 w-4 text-purple-600" />
+            Mode batch — tous les apprenants
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Génère <strong>1 avis B0-BF-BS par apprenant</strong>. Sortie : 1 ZIP.
+          </p>
+          <div>
+            <Label htmlFor="habil-b0bfbs-batch-session-select" className="text-sm">Session</Label>
+            <Select value={habilB0BfBsBatchSessionId} onValueChange={setHabilB0BfBsBatchSessionId}
+              disabled={loadingSessions || generatingHabilB0BfBsBatch}>
+              <SelectTrigger id="habil-b0bfbs-batch-session-select" className="mt-1">
+                <SelectValue placeholder={loadingSessions ? "Chargement…" : "Choisir une session…"} />
+              </SelectTrigger>
+              <SelectContent>
+                {sessions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.title} — {new Date(s.start_date).toLocaleDateString("fr-FR")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button onClick={handleGenerateHabilB0BfBsBatch}
+            disabled={!habilB0BfBsBatchSessionId || generatingHabilB0BfBsBatch}
+            className="w-full gap-2 bg-purple-600 hover:bg-purple-700" size="lg">
+            {generatingHabilB0BfBsBatch ? <><Loader2 className="h-4 w-4 animate-spin" />Génération en cours…</>
+              : <><Package className="h-4 w-4" />Générer ZIP — tous les avis B0-BF-BS</>}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {lastHabilB0BfBsBatchResult && (
+        <Card className={lastHabilB0BfBsBatchResult.failureCount === 0
+          ? "border-green-200 bg-green-50/30" : "border-amber-200 bg-amber-50/30"}>
+          <CardHeader>
+            <CardTitle className={"text-base " + (lastHabilB0BfBsBatchResult.failureCount === 0 ? "text-green-900" : "text-amber-900")}>
+              {lastHabilB0BfBsBatchResult.failureCount === 0 ? "✅" : "⚠️"} Dernier batch avis habilitation B0-BF-BS
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <div><strong>{lastHabilB0BfBsBatchResult.successCount}</strong> / {lastHabilB0BfBsBatchResult.totalLearners} avis générés</div>
+            <div><strong>Latence totale :</strong> {lastHabilB0BfBsBatchResult.totalLatencyMs} ms</div>
+            {lastHabilB0BfBsBatchResult.errors.length > 0 && (
+              <div className="mt-3 space-y-1">
+                <div className="flex items-center gap-1 text-amber-900 font-medium">
+                  <AlertCircle className="h-4 w-4" /> Erreurs ({lastHabilB0BfBsBatchResult.errors.length})
+                </div>
+                <ul className="text-xs space-y-0.5 ml-5 list-disc">
+                  {lastHabilB0BfBsBatchResult.errors.map((e) => (
+                    <li key={e.learnerId}><strong>{e.learnerName}</strong> : {e.error}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {lastHabilB0BfBsResult && (
+        <Card className="border-green-200 bg-green-50/30">
+          <CardHeader><CardTitle className="text-base text-green-900">✅ Dernier avis habilitation B0-BF-BS</CardTitle></CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <div>
+              <strong>Moteur :</strong> {lastHabilB0BfBsResult.engineUsed}
+              {lastHabilB0BfBsResult.cacheHit && (
+                <span className="ml-2 text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded">⚡ Cache hit</span>
+              )}
+            </div>
+            <div><strong>Latence :</strong> {lastHabilB0BfBsResult.latencyMs} ms</div>
+            <div><strong>Taille PDF :</strong> {(lastHabilB0BfBsResult.fileSizeBytes / 1024).toFixed(1)} KB</div>
           </CardContent>
         </Card>
       )}
