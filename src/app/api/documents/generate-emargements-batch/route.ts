@@ -32,6 +32,7 @@ import {
   DocumentGenerationService,
   createDefaultEngine,
 } from "@/lib/services/document-generation";
+import { loadSignaturesBySessionId } from "@/lib/services/load-signatures";
 import type { Session, Client } from "@/lib/types";
 
 interface BatchError {
@@ -118,20 +119,10 @@ export async function POST(request: NextRequest) {
     }
 
     // ── Signatures + entity en parallèle (chargés 1 fois pour le batch) ──
-    const [entity, { data: signatureRows }] = await Promise.all([
+    const [entity, sigData] = await Promise.all([
       loadEntitySettings(supabase, profile.entity_id),
-      supabase
-        .from("signatures")
-        .select("signer_id, signer_type")
-        .eq("session_id", body.sessionId)
-        .eq("signer_type", "learner"),
+      loadSignaturesBySessionId(supabase, body.sessionId),
     ]);
-
-    const signedLearnerIds = new Set<string>(
-      (signatureRows ?? [])
-        .map((s) => (s as { signer_id: string | null }).signer_id)
-        .filter((id): id is string => Boolean(id)),
-    );
 
     const engine = createDefaultEngine();
     const service = new DocumentGenerationService({ engine, supabase });
@@ -145,7 +136,8 @@ export async function POST(request: NextRequest) {
         session: session as unknown as Session,
         client,
         entity,
-        signedLearnerIds,
+        signedLearnerIds: sigData.signedLearnerIds,
+        signaturesById: sigData.signaturesById,
       };
       const resolvedHtml = resolveDocumentVariables(EMARGEMENT_COLLECTIF_HTML, context);
       const resolvedFooter = resolveDocumentVariables(EMARGEMENT_FOOTER_TEMPLATE, context);
@@ -160,7 +152,7 @@ export async function POST(request: NextRequest) {
           client_id: client.id,
           session_updated_at: (session as { updated_at?: string }).updated_at ?? null,
           client_updated_at: (client as { updated_at?: string }).updated_at ?? null,
-          custom_variables: { signed_count: String(signedLearnerIds.size) },
+          custom_variables: { signed_count: String(sigData.signedLearnerIds.size) },
         },
         options: {
           format: "A4",
@@ -217,7 +209,7 @@ export async function POST(request: NextRequest) {
       failureCount: errors.length,
       errors,
       totalLatencyMs: Date.now() - t0,
-      signedCount: signedLearnerIds.size,
+      signedCount: sigData.signedLearnerIds.size,
     });
   } catch (err) {
     return NextResponse.json(

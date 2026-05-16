@@ -27,6 +27,7 @@ import {
   DocumentGenerationService,
   createDefaultEngine,
 } from "@/lib/services/document-generation";
+import { loadSignaturesBySessionId } from "@/lib/services/load-signatures";
 import type { Session, Client } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
@@ -94,14 +95,10 @@ export async function POST(request: NextRequest) {
     }
 
     // ── Charge client + entity + signatures en parallèle ─────────────────
-    const [{ data: client }, entity, { data: signatureRows }] = await Promise.all([
+    const [{ data: client }, entity, sigData] = await Promise.all([
       supabase.from("clients").select("*, contacts(*)").eq("id", body.clientId).single(),
       loadEntitySettings(supabase, profile.entity_id),
-      supabase
-        .from("signatures")
-        .select("signer_id, signer_type")
-        .eq("session_id", body.sessionId)
-        .eq("signer_type", "learner"),
+      loadSignaturesBySessionId(supabase, body.sessionId),
     ]);
 
     if (!client) {
@@ -111,17 +108,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const signedLearnerIds = new Set<string>(
-      (signatureRows ?? [])
-        .map((s) => (s as { signer_id: string | null }).signer_id)
-        .filter((id): id is string => Boolean(id)),
-    );
-
     const context: ResolveContext = {
       session: session as unknown as Session,
       client: client as unknown as Client,
       entity,
-      signedLearnerIds,
+      signedLearnerIds: sigData.signedLearnerIds,
+      signaturesById: sigData.signaturesById,
     };
     const resolvedHtml = resolveDocumentVariables(EMARGEMENT_COLLECTIF_HTML, context);
     const resolvedFooter = resolveDocumentVariables(EMARGEMENT_FOOTER_TEMPLATE, context);
@@ -140,7 +132,7 @@ export async function POST(request: NextRequest) {
         session_updated_at: (session as { updated_at?: string }).updated_at ?? null,
         client_updated_at: (client as { updated_at?: string }).updated_at ?? null,
         // Cache invalidé si signatures bougent
-        custom_variables: { signed_count: String(signedLearnerIds.size) },
+        custom_variables: { signed_count: String(sigData.signedLearnerIds.size) },
       },
       options: {
         format: "A4",
@@ -158,7 +150,7 @@ export async function POST(request: NextRequest) {
       engineUsed: result.engineUsed,
       fileSizeBytes: result.fileSizeBytes,
       latencyMs: result.latencyMs,
-      signedCount: signedLearnerIds.size,
+      signedCount: sigData.signedLearnerIds.size,
     });
   } catch (err) {
     return NextResponse.json(

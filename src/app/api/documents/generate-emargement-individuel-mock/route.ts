@@ -137,11 +137,20 @@ export async function POST(_request: NextRequest) {
       ],
     } as unknown as Session;
 
+    // Fake signatures SVG inline (apprenant + formateur) pour montrer les
+    // images dans le mock vs juste texte "Présent (A signé en présentiel)".
+    const fakeSigSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 40" width="120" height="40"><path d="M5 30 Q 20 5, 35 25 T 65 20 Q 80 30, 95 15 T 115 22" stroke="#1e3a8a" stroke-width="2" fill="none" stroke-linecap="round"/></svg>`;
+    const fakeSigDataUrl = `data:image/svg+xml;base64,${Buffer.from(fakeSigSvg).toString("base64")}`;
+    const signaturesById = new Map<string, string>([
+      [mockLearner.id, fakeSigDataUrl],
+      ["mock-trainer-1", fakeSigDataUrl],
+    ]);
+
     const context: ResolveContext = {
       session: mockSession,
       learner: mockLearner,
       entity,
-      // signedLearnerIds undefined → fallback Présent
+      signaturesById,
     };
     const resolvedHtml = resolveDocumentVariables(EMARGEMENT_INDIVIDUEL_HTML, context);
     const resolvedFooter = resolveDocumentVariables(EMARGEMENT_INDIVIDUEL_FOOTER_TEMPLATE, context);
