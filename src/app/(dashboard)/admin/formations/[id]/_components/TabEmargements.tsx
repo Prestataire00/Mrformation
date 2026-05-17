@@ -5,7 +5,7 @@ import QRCode from "qrcode";
 import { createClient } from "@/lib/supabase/client";
 import {
   QrCode, Send, Printer, CheckSquare, Loader2, Copy, Download,
-  FileDown, UserCheck, AlertTriangle, PenLine, Trash2, CheckCircle2,
+  FileDown, UserCheck, AlertTriangle, PenLine, CheckCircle2,
   XCircle, Mail, CheckCheck, CalendarDays,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,7 @@ import { useEntity } from "@/contexts/EntityContext";
 import { sortSlotsByStart } from "@/lib/utils/sort-time-slots";
 import { getFormationKind, getLearnersForCompany } from "@/lib/utils/formation-companies";
 import type { Session, FormationTimeSlot, Signature, Enrollment, FormationTrainer } from "@/lib/types";
+import { SignaturePad } from "@/components/signatures/SignaturePad";
 
 // ──────────────────────────────────────────────
 // Types
@@ -56,117 +57,9 @@ interface SlotTokensResponse {
   };
 }
 
-// ──────────────────────────────────────────────
-// Signature Pad (inline, lightweight)
-// ──────────────────────────────────────────────
-
-function InlineSignaturePad({ onSign, disabled }: { onSign: (svg: string) => void; disabled?: boolean }) {
-  const [drawing, setDrawing] = useState(false);
-  const [strokes, setStrokes] = useState<{ x: number; y: number }[][]>([]);
-  const [currentStroke, setCurrentStroke] = useState<{ x: number; y: number }[]>([]);
-  const canvasRef = useState<HTMLDivElement | null>(null);
-
-  const getPos = (e: React.MouseEvent | React.TouchEvent, el: HTMLDivElement) => {
-    const rect = el.getBoundingClientRect();
-    if ("touches" in e) {
-      return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
-    }
-    return { x: (e as React.MouseEvent).clientX - rect.left, y: (e as React.MouseEvent).clientY - rect.top };
-  };
-
-  const handleStart = (e: React.MouseEvent | React.TouchEvent) => {
-    if (disabled) return;
-    const el = (e.target as HTMLElement).closest("[data-sigpad]") as HTMLDivElement;
-    if (!el) return;
-    setDrawing(true);
-    setCurrentStroke([getPos(e, el)]);
-  };
-
-  const handleMove = (e: React.MouseEvent | React.TouchEvent) => {
-    if (!drawing || disabled) return;
-    const el = (e.target as HTMLElement).closest("[data-sigpad]") as HTMLDivElement;
-    if (!el) return;
-    setCurrentStroke(prev => [...prev, getPos(e, el)]);
-  };
-
-  const handleEnd = () => {
-    if (!drawing) return;
-    setDrawing(false);
-    if (currentStroke.length > 2) {
-      setStrokes(prev => [...prev, currentStroke]);
-    }
-    setCurrentStroke([]);
-  };
-
-  const hasDrawing = strokes.length > 0;
-  const allStrokes = currentStroke.length > 0 ? [...strokes, currentStroke] : strokes;
-
-  const strokeToPath = (pts: { x: number; y: number }[]) =>
-    pts.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" ");
-
-  const handleValidate = () => {
-    const paths = strokes
-      .map(pts => strokeToPath(pts))
-      .filter(Boolean)
-      .map(d => `<path d="${d}" stroke="#1d4ed8" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`)
-      .join("");
-    onSign(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 100">${paths}</svg>`);
-  };
-
-  return (
-    <div className="space-y-2">
-      <div
-        data-sigpad
-        className="relative w-full h-24 border-2 border-dashed border-gray-300 bg-gray-50 rounded-lg select-none overflow-hidden cursor-crosshair touch-none"
-        onMouseDown={handleStart}
-        onMouseMove={handleMove}
-        onMouseUp={handleEnd}
-        onMouseLeave={handleEnd}
-        onTouchStart={handleStart}
-        onTouchMove={handleMove}
-        onTouchEnd={handleEnd}
-      >
-        <svg className="absolute inset-0 w-full h-full pointer-events-none">
-          {allStrokes.map((stroke, i) => (
-            <path
-              key={i}
-              d={strokeToPath(stroke)}
-              stroke="#1d4ed8"
-              strokeWidth="2"
-              fill="none"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          ))}
-        </svg>
-        {!hasDrawing && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <p className="text-xs text-gray-400">Dessiner la signature ici</p>
-          </div>
-        )}
-      </div>
-      <div className="flex gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => { setStrokes([]); setCurrentStroke([]); }}
-          disabled={!hasDrawing || disabled}
-          className="flex-1 text-xs"
-        >
-          <Trash2 className="h-3 w-3 mr-1" /> Effacer
-        </Button>
-        <Button
-          size="sm"
-          onClick={handleValidate}
-          disabled={!hasDrawing || disabled}
-          className="flex-1 text-xs"
-        >
-          <CheckCircle2 className="h-3 w-3 mr-1" /> Valider
-        </Button>
-      </div>
-    </div>
-  );
-}
+// InlineSignaturePad inline supprimé (story e-1.1) : remplacé par
+// `SignaturePad` partagé (src/components/signatures/SignaturePad.tsx).
+// Cohérence UI signature + maintenance unifiée.
 
 // ──────────────────────────────────────────────
 // Main Component
@@ -1200,7 +1093,13 @@ export function TabEmargements({ formation, onRefresh }: Props) {
           <p className="text-sm text-muted-foreground mb-2">
             Dessinez la signature pour valider la présence de {signDialog.signerName}.
           </p>
-          <InlineSignaturePad onSign={handleAdminSign} disabled={signing} />
+          <SignaturePad
+            label={`Signature pour ${signDialog.signerName}`}
+            isSigned={false}
+            onSign={handleAdminSign}
+            onClear={() => { /* no-op : le dialog se ferme après onSign */ }}
+            disabled={signing}
+          />
           {signing && (
             <div className="flex items-center gap-2 text-sm text-blue-600">
               <Loader2 className="h-4 w-4 animate-spin" /> Enregistrement...

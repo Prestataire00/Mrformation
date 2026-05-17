@@ -39,7 +39,7 @@
 #   → E2-E3-E4 (parallèles, après B+C+D+F stables) → E1 (last, après 90j stabilité)
 
 generated: 2026-05-17
-last_updated: 2026-05-17 (e-3 logs structurés done : document_sent + document_signed + document_failed + 2 summaries instrumentés)
+last_updated: 2026-05-17 (e-1.1 done : InlineSignaturePad → SignaturePad partagé, ~110 lignes dupliquées supprimées)
 project: lms-platform
 project_key: NOKEY
 tracking_system: file-system
@@ -85,7 +85,7 @@ development_status:
   # PR2 sous-PR 2.6 (E1 cleanup) + transverse (E2/E3/E4)
   epic-e: in-progress
   e-1-suppression-jspdf-legacy: backlog  # 56 imports jsPDF restants — cleanup pas démarré
-  e-1-1-cleanup-inline-signature-pad: backlog  # remplacer InlineSignaturePad (TabEmargements:63) par SignaturePad partagé (issu de c-2 résolution)
+  e-1-1-cleanup-inline-signature-pad: done  # InlineSignaturePad supprimé (~110 lignes) → SignaturePad partagé (PR #99)
   e-2-cache-pdf-100: done  # pdf-cache.ts + DocumentGenerationService.getCachedPdf() opérationnel
   e-3-logs-structures: done  # document_sent / document_signed / document_signature_requested / document_failed + 2 batch summaries instrumentés (PR #98) — couvre F1/F2.x/F3/C1
   e-4-tests-e2e-snapshot: backlog  # tests unit OK, mais pas de snapshot E2E PDF
