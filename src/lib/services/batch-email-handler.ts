@@ -136,15 +136,17 @@ export async function executeBatchEmailSend(
         console.error("[batch-email-handler] email_history insert failed:", logErr);
       }
 
-      // Update is_sent sur le doc correspondant (best-effort)
+      // Update is_sent sur le doc correspondant (best-effort, table unifiée `documents`)
       try {
         await serviceSupabase
-          .from("formation_convention_documents")
-          .update({ is_sent: true, sent_at: new Date().toISOString() })
-          .eq("session_id", options.sessionId)
+          .from("documents")
+          .update({ status: "sent", sent_at: new Date().toISOString() })
+          .eq("source_table", "sessions")
+          .eq("source_id", options.sessionId)
           .eq("doc_type", options.docType)
           .eq("owner_type", options.ownerType)
-          .eq("owner_id", task.ownerId);
+          .eq("owner_id", task.ownerId)
+          .neq("status", "signed"); // ne pas downgrader
       } catch (updateErr) {
         console.error("[batch-email-handler] is_sent update failed:", updateErr);
       }

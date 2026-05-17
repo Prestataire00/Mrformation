@@ -33,15 +33,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "document_id, signer_email et session_id requis" }, { status: 400 });
     }
 
-    // Fetch document
-    const { data: doc } = await auth.supabase
-      .from("formation_convention_documents")
-      .select("id, doc_type, owner_type, owner_id, is_signed, session_id")
+    // Fetch document (nouvelle table unifiée `documents`)
+    const { data: docRow } = await auth.supabase
+      .from("documents")
+      .select("id, doc_type, owner_type, owner_id, status, source_id")
       .eq("id", document_id)
       .single();
 
-    if (!doc) return NextResponse.json({ error: "Document introuvable" }, { status: 404 });
-    if (doc.is_signed) return NextResponse.json({ error: "Ce document est déjà signé" }, { status: 400 });
+    if (!docRow) return NextResponse.json({ error: "Document introuvable" }, { status: 404 });
+    if (docRow.status === "signed") return NextResponse.json({ error: "Ce document est déjà signé" }, { status: 400 });
+
+    const doc = {
+      id: docRow.id,
+      doc_type: docRow.doc_type,
+      owner_type: docRow.owner_type as "learner" | "company" | "trainer",
+      owner_id: docRow.owner_id,
+      session_id: docRow.source_id,
+    };
 
     // Fetch session + entity
     const { data: session } = await auth.supabase
@@ -78,16 +86,23 @@ export async function POST(request: NextRequest) {
 
     if (tokenErr) throw tokenErr;
 
-    // Update document with signature tracking
+    // Update document with signature tracking (signature_token + metadata)
+    const { data: existingDoc } = await auth.supabase
+      .from("documents").select("metadata").eq("id", document_id).single();
+    const newMetadata = {
+      ...((existingDoc?.metadata as Record<string, unknown> | null) ?? {}),
+      signer_name: signer_name || null,
+      signer_email,
+      signature_requested_at: new Date().toISOString(),
+    };
     await auth.supabase
-      .from("formation_convention_documents")
+      .from("documents")
       .update({
         signature_token: token.token,
-        signature_requested_at: new Date().toISOString(),
-        signer_name: signer_name || null,
-        signer_email,
-        is_sent: true,
+        signature_token_expires_at: expiresAt.toISOString(),
+        status: "sent",
         sent_at: new Date().toISOString(),
+        metadata: newMetadata,
       })
       .eq("id", document_id);
 

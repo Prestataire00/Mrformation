@@ -109,14 +109,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Charge les docs candidats : requires_signature + non-signés
-    const { data: docs, error: docsErr } = await supabase
-      .from("formation_convention_documents")
-      .select("id, doc_type, owner_type, owner_id, is_signed, requires_signature")
-      .eq("session_id", body.sessionId)
+    // Charge les docs candidats : requires_signature + non-signés (table `documents`)
+    const { data: docsRaw, error: docsErr } = await supabase
+      .from("documents")
+      .select("id, doc_type, owner_type, owner_id, status, metadata")
+      .eq("source_table", "sessions")
+      .eq("source_id", body.sessionId)
       .eq("doc_type", body.docType)
-      .eq("requires_signature", true)
-      .eq("is_signed", false);
+      .neq("status", "signed");
 
     if (docsErr) {
       return NextResponse.json(
@@ -124,7 +124,17 @@ export async function POST(request: NextRequest) {
         { status: 500 },
       );
     }
-    const candidateDocs = (docs ?? []) as DocRow[];
+    // Filtre `requires_signature=true` côté app (vit dans metadata jsonb)
+    const candidateDocs = (docsRaw ?? [])
+      .filter((d) => (d.metadata as { requires_signature?: boolean } | null)?.requires_signature === true)
+      .map((d) => ({
+        id: d.id as string,
+        doc_type: d.doc_type as string,
+        owner_type: d.owner_type as "learner" | "company" | "trainer",
+        owner_id: d.owner_id as string,
+        is_signed: d.status === "signed",
+        requires_signature: true,
+      })) as DocRow[];
     if (candidateDocs.length === 0) {
       return NextResponse.json(
         { error: "Aucun document à signer pour ce doc_type" },
@@ -211,16 +221,23 @@ export async function POST(request: NextRequest) {
         throw new Error(`Création token : ${tokenErr?.message ?? "inconnu"}`);
       }
 
-      // 2. Update doc avec tracking signature
+      // 2. Update doc avec tracking signature (signature_token + metadata)
       try {
+        const { data: existing } = await supabase
+          .from("documents").select("metadata").eq("id", doc.id).single();
+        const newMetadata = {
+          ...((existing?.metadata as Record<string, unknown> | null) ?? {}),
+          signer_email: signerEmail,
+          signature_requested_at: new Date().toISOString(),
+        };
         await supabase
-          .from("formation_convention_documents")
+          .from("documents")
           .update({
             signature_token: tokenRow.token,
-            signature_requested_at: new Date().toISOString(),
-            signer_email: signerEmail,
-            is_sent: true,
+            signature_token_expires_at: expiresAt.toISOString(),
+            status: "sent",
             sent_at: new Date().toISOString(),
+            metadata: newMetadata,
           })
           .eq("id", doc.id);
       } catch (updateErr) {

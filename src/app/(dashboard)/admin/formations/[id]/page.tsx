@@ -23,6 +23,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { useEntity } from "@/contexts/EntityContext";
 import { cn, formatDate, SESSION_STATUS_LABELS, STATUS_COLORS } from "@/lib/utils";
 import { getFormationKind } from "@/lib/utils/formation-companies";
+import { getDocsForSession } from "@/lib/services/documents-store";
 import type { Session } from "@/lib/types";
 import { TabResume } from "./_components/TabResume";
 import { TabPlanning } from "./_components/TabPlanning";
@@ -71,32 +72,37 @@ export default function FormationDetailPage() {
   const fetchFormation = useCallback(async () => {
     if (!entityId) return;
     try {
-      const { data, error } = await supabase
-        .from("sessions")
-        .select(`
-          *,
-          training:trainings(*),
-          program:programs(*),
-          manager:profiles!manager_id(id, first_name, last_name, email),
-          formation_trainers(id, role, trainer_id, hourly_rate, daily_rate, hours_done, created_at, trainer:trainers(*)),
-          enrollments(id, status, completion_rate, enrolled_at, learner:learners(*), client:clients(id, company_name)),
-          formation_companies(id, client_id, amount, email, reference, created_at, client:clients(*)),
-          formation_financiers(*),
-          formation_comments(id, content, created_at, updated_at, author_id, author:profiles(id, first_name, last_name)),
-          formation_time_slots(*),
-          formation_absences(*, learner:learners(id, first_name, last_name)),
-          formation_documents(*),
-          signatures(id, signer_id, signer_type, signature_data, signed_at, time_slot_id),
-          formation_evaluation_assignments(*, questionnaire:questionnaires(id, title, type, quality_indicator_type)),
-          formation_satisfaction_assignments(*, questionnaire:questionnaires(id, title, type, quality_indicator_type)),
-          formation_convention_documents(*, template:document_templates(id, name, type)),
-          formation_elearning_assignments(*, course:elearning_courses(id, title, status, estimated_duration_minutes))
-        `)
-        .eq("id", formationId)
-        .eq("entity_id", entityId)
-        .single();
+      // 2 queries en parallèle : la grosse query session + les docs unifiés
+      // (post b-3 à b-7 : `documents` remplace `formation_convention_documents`).
+      const [sessionResult, conventionDocs] = await Promise.all([
+        supabase
+          .from("sessions")
+          .select(`
+            *,
+            training:trainings(*),
+            program:programs(*),
+            manager:profiles!manager_id(id, first_name, last_name, email),
+            formation_trainers(id, role, trainer_id, hourly_rate, daily_rate, hours_done, created_at, trainer:trainers(*)),
+            enrollments(id, status, completion_rate, enrolled_at, learner:learners(*), client:clients(id, company_name)),
+            formation_companies(id, client_id, amount, email, reference, created_at, client:clients(*)),
+            formation_financiers(*),
+            formation_comments(id, content, created_at, updated_at, author_id, author:profiles(id, first_name, last_name)),
+            formation_time_slots(*),
+            formation_absences(*, learner:learners(id, first_name, last_name)),
+            formation_documents(*),
+            signatures(id, signer_id, signer_type, signature_data, signed_at, time_slot_id),
+            formation_evaluation_assignments(*, questionnaire:questionnaires(id, title, type, quality_indicator_type)),
+            formation_satisfaction_assignments(*, questionnaire:questionnaires(id, title, type, quality_indicator_type)),
+            formation_elearning_assignments(*, course:elearning_courses(id, title, status, estimated_duration_minutes))
+          `)
+          .eq("id", formationId)
+          .eq("entity_id", entityId)
+          .single(),
+        getDocsForSession(supabase, formationId),
+      ]);
 
-      if (error) throw error;
+      if (sessionResult.error) throw sessionResult.error;
+      const data = sessionResult.data;
 
       if (data?.formation_time_slots) {
         data.formation_time_slots.sort(
@@ -104,7 +110,13 @@ export default function FormationDetailPage() {
         );
       }
 
-      setFormation(data as unknown as Session);
+      // Inject les docs unifiés dans la prop attendue par TabConventionDocs/TabQualiopi
+      const formationWithDocs = {
+        ...data,
+        formation_convention_documents: conventionDocs,
+      };
+
+      setFormation(formationWithDocs as unknown as Session);
     } catch (err) {
       console.error("Erreur chargement formation:", err);
       toast({ title: "Erreur", description: "Impossible de charger la formation", variant: "destructive" });
