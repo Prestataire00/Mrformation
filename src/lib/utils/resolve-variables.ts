@@ -949,13 +949,23 @@ export function resolveVariables(content: string, data: ResolveContext): string 
     // Story B-Convention : sortie minimaliste = 1 ligne avec montant HT/TVA/TTC.
     // Affiner ensuite si Loris veut un détail par apprenant.
     // Tableau de signature compact (feuille d'émargement collectif par
-    // entreprise). Génère 1 ligne par créneau (matin/aprem) pour chaque jour
-    // de la session, groupé par semaine ISO. Filtre les apprenants par
-    // companyId via les enrollments déjà filtrés ci-dessus.
+    // entreprise). Génère 1 ligne par créneau réel (formation_time_slots)
+    // pour chaque jour de la session, groupé par semaine ISO. Filtre les
+    // apprenants par companyId via les enrollments déjà filtrés ci-dessus.
     //
-    // Statut Présent/Absent : si `signedLearnerIds` est fourni (mode réel,
-    // venant de la table `signatures`), on affiche Présent uniquement pour
-    // les learners dont l'ID est dans le Set. Sinon (mode mock) : tous Présent.
+    // Statut Présent/Absent par CRÉNEAU (h-11 fix) :
+    //   - Lookup dans signaturesBySlotPerson("slotId|signerId|signerType")
+    //   - Si une signature existe pour ce slot précis → "Présent" + image
+    //   - Sinon → "Non signé" (cellule date-aware via renderUnsignedCell)
+    //
+    // AVANT le fix : on construisait apprenantsCellHtml UNE FOIS hors boucle
+    // avec sigMap global (signaturesById = vue agrégée par personne) →
+    // tous les créneaux affichaient la même signature dès qu'1 créneau était
+    // signé. Bug Qualiopi majeur.
+    //
+    // Si formation_time_slots vide (cas legacy : session sans créneaux
+    // détaillés) → fallback sur MATIN/APRES MIDI simulés avec sigMap global
+    // (comportement legacy conservé, peut-être imprécis mais évite l'écran vide).
     "{{tableau_signature_compact}}": (() => {
       const sess = data.session;
       if (!sess?.start_date || !sess?.end_date) return "[Tableau signature]";
@@ -969,8 +979,8 @@ export function resolveVariables(content: string, data: ResolveContext): string 
       const learnersForTable = enrollments.filter((e) => e.learner);
       if (learnersForTable.length === 0) return "[Aucun apprenant]";
 
-      const signed = data.signedLearnerIds;
       const sigMap = data.signaturesById;
+      const slotSigMap = data.signaturesBySlotPerson;
       // Convertit le SVG brut en data URL pour l'inliner dans src=""
       // (cf h-1 : sans ça les " du SVG cassent l'attribut HTML).
       const renderSignature = (sigData: string): string => {
@@ -980,20 +990,106 @@ export function resolveVariables(content: string, data: ResolveContext): string 
         return `<img src="${dataUrl}" alt="Signature" style="max-height:42px;max-width:120px;display:block;margin-top:2px;" />`;
       };
       const sessionEndDate = data.session?.end_date;
+      const formateursLine = formateursNoms;
+      const firstTrainerId = (data.session?.formation_trainers ?? [])
+        .find((ft) => ft.trainer)?.trainer?.id;
+
+      // Mode slot-aware : utilise les vrais formation_time_slots
+      type RealSlot = { id: string; start_time: string; end_time: string; title?: string | null };
+      const realSlots = (sess.formation_time_slots as RealSlot[] | undefined) ?? [];
+
+      if (realSlots.length > 0) {
+        const sortedSlots = [...realSlots].sort(
+          (a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
+        );
+
+        // Lookup par (slotId, learnerId, "learner")
+        const learnerStatusForSlot = (slotId: string, learnerId: string): string => {
+          const sig = slotSigMap?.get(`${slotId}|${learnerId}|learner`);
+          if (sig) {
+            return `<span class="person-status">Présent</span>${renderSignature(sig)}`;
+          }
+          return renderUnsignedCell(sessionEndDate);
+        };
+        const trainerStatusForSlot = (slotId: string): string => {
+          if (!firstTrainerId) return renderUnsignedCell(sessionEndDate);
+          const sig = slotSigMap?.get(`${slotId}|${firstTrainerId}|trainer`);
+          if (sig) {
+            return `<span class="person-status">Présent</span>${renderSignature(sig)}`;
+          }
+          return renderUnsignedCell(sessionEndDate);
+        };
+
+        // Groupe par semaine ISO
+        const byWeek = new Map<number, RealSlot[]>();
+        for (const s of sortedSlots) {
+          const wk = getISOWeek(new Date(s.start_time));
+          if (!byWeek.has(wk)) byWeek.set(wk, []);
+          byWeek.get(wk)!.push(s);
+        }
+
+        const sections: string[] = [];
+        for (const [weekNum, weekSlots] of byWeek) {
+          const monday = startOfISOWeek(new Date(weekSlots[0].start_time));
+          const sunday = endOfISOWeek(new Date(weekSlots[0].start_time));
+          const weekLabel = `Semaine ${String(weekNum).padStart(2, "0")} (${format(monday, "dd/MM/yyyy")} au ${format(sunday, "dd/MM/yyyy")})`;
+
+          const rows = weekSlots
+            .map((slot) => {
+              const slotStart = new Date(slot.start_time);
+              const slotEnd = new Date(slot.end_time);
+              const horaire = `${format(slotStart, "HH:mm")} - ${format(slotEnd, "HH:mm")}`;
+              // Label MATIN/APRES MIDI déduit de l'heure de début
+              const label = slotStart.getHours() < 13 ? "MATIN" : "APRES MIDI";
+              const apprenantsCell = learnersForTable
+                .map((e) => {
+                  const l = e.learner!;
+                  const name = `${l.last_name?.toUpperCase() ?? ""} ${l.first_name ?? ""}`.trim();
+                  return `<span class="person-name">${name}</span>${learnerStatusForSlot(slot.id, l.id)}`;
+                })
+                .join("");
+              return `
+            <tr>
+              <td class="col-date">${format(slotStart, "dd/MM/yyyy")}<br>${horaire}</td>
+              <td class="col-creneau">${slot.title || label}</td>
+              <td class="col-formateur"><span class="person-name">${formateursLine}</span>${trainerStatusForSlot(slot.id)}</td>
+              <td class="col-apprenants">${apprenantsCell}</td>
+            </tr>`;
+            })
+            .join("");
+
+          sections.push(`<div class="week-header">${weekLabel}</div>
+<table class="signature-table">
+  <thead>
+    <tr>
+      <th class="col-date">Date / Horaire</th>
+      <th class="col-creneau">Créneau</th>
+      <th class="col-formateur">Formateur(s)</th>
+      <th class="col-apprenants">Apprenant(s)</th>
+    </tr>
+  </thead>
+  <tbody>${rows}
+  </tbody>
+</table>`);
+        }
+        return sections.join("\n");
+      }
+
+      // Fallback legacy : si pas de formation_time_slots, on simule MATIN/APRES MIDI
+      // par jour avec lookup global sigMap (peut afficher "Présent" sur tous les
+      // créneaux dès qu'1 signature existe — imprécis mais évite écran vide).
+      const signed = data.signedLearnerIds;
       const learnerStatus = (learnerId: string): string => {
         const sig = sigMap?.get(learnerId);
         if (sig) {
           return `<span class="person-status">Présent</span>${renderSignature(sig)}`;
         }
         if (signed?.has(learnerId)) {
-          // Signé électroniquement mais pas d'image rendable (rare, ex: legacy)
           return `<span class="person-status">Signé</span>`;
         }
         return renderUnsignedCell(sessionEndDate);
       };
 
-      // Construit la liste des créneaux : pour chaque jour entre start et end,
-      // un MATIN (09:00-12:00) et un APRES MIDI (13:00-17:00). Cf format Loris.
       type Creneau = { date: Date; label: string; horaire: string };
       const creneaux: Creneau[] = [];
       let cursor = new Date(start);
@@ -1006,7 +1102,6 @@ export function resolveVariables(content: string, data: ResolveContext): string 
         cursor = addDays(cursor, 1);
       }
 
-      // Groupe par semaine ISO
       const byWeek = new Map<number, Creneau[]>();
       for (const c of creneaux) {
         const wk = getISOWeek(c.date);
@@ -1014,11 +1109,6 @@ export function resolveVariables(content: string, data: ResolveContext): string 
         byWeek.get(wk)!.push(c);
       }
 
-      const formateursLine = formateursNoms;
-      // Formateur status : signature image si dispo (premier formateur),
-      // sinon texte "Présent". Lookup via formation_trainers[0].trainer.id.
-      const firstTrainerId = (data.session?.formation_trainers ?? [])
-        .find((ft) => ft.trainer)?.trainer?.id;
       const firstTrainerSig = firstTrainerId ? sigMap?.get(firstTrainerId) : undefined;
       const formateurStatus = firstTrainerSig
         ? `<span class="person-status">Présent</span>${renderSignature(firstTrainerSig)}`
