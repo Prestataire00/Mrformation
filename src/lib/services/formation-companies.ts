@@ -18,8 +18,15 @@ export type AddCompanyInput = {
  * échoue (RLS ou autre), on n'interrompt pas le flow appelant — le total
  * sera resyncé au prochain add/remove.
  *
+ * Important : l'UPDATE touche aussi `sessions.updated_at` (automatique via
+ * trigger ou via le fait qu'on UPDATE une row). Cela INVALIDE le cache PDF
+ * pour cette session (le cache_key inclut `session_updated_at`), donc le
+ * prochain "Voir" sur une convention/attestation/etc. régénère un PDF
+ * frais avec les données à jour.
+ *
  * Appelé automatiquement après chaque addCompanyToSession et
- * removeCompanyFromSession pour garder le bloc "Infos formation" cohérent.
+ * removeCompanyFromSession pour garder le bloc "Infos formation" cohérent
+ * ET garantir que les PDFs reflètent l'état actuel des entreprises.
  */
 export async function syncSessionTotalPrice(
   supabase: SupabaseClient,
@@ -38,9 +45,14 @@ export async function syncSessionTotalPrice(
       (sum, c) => sum + (typeof c.amount === "number" ? c.amount : 0),
       0,
     );
+    // UPDATE force aussi le touch updated_at (Postgres met à jour seulement
+    // si la row change ; on ajoute updated_at explicite pour garantir cache invalidation).
     const { error: updateErr } = await supabase
       .from("sessions")
-      .update({ total_price: total > 0 ? total : null })
+      .update({
+        total_price: total > 0 ? total : null,
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", sessionId);
     if (updateErr) {
       console.error("[syncSessionTotalPrice] update failed:", updateErr);
