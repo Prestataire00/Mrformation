@@ -12,6 +12,11 @@
 
 export const BATCH_SEND_ENDPOINTS_BY_DOC_TYPE: Partial<Record<string, string>> = {
   convocation: "send-convocations-batch-email",
+  certificat_realisation: "send-certificats-realisation-batch-email",
+  attestation_assiduite: "send-attestations-assiduite-batch-email",
+  feuille_emargement: "send-emargements-individuels-batch-email",
+  convention_entreprise: "send-conventions-batch-email",
+  convention_intervention: "send-conventions-intervention-batch-email",
 };
 
 export interface BatchSendResult {

@@ -39,7 +39,7 @@
 #   → E2-E3-E4 (parallèles, après B+C+D+F stables) → E1 (last, après 90j stabilité)
 
 generated: 2026-05-17
-last_updated: 2026-05-17 (f-2 done MVP convocation, F2.x backlog tracé)
+last_updated: 2026-05-17 (F2 extensions all done : 6 doc_types couverts + helper extrait)
 project: lms-platform
 project_key: NOKEY
 tracking_system: file-system
@@ -96,11 +96,11 @@ development_status:
   epic-f: in-progress
   f-1-mass-download-batch-zip: done  # helper batch-doc-download.ts + refactor TabConventionDocs.handleDownloadAllPDF (PR #93)
   f-2-mass-send-email-batch: done  # MVP convocation : endpoint send-convocations-batch-email + helper batch-doc-send.ts + refactor handleMassSendWithPDF
-  f-2-1-send-certificats-realisation-batch-email: backlog  # extension F2 (~30-45 min vu squelette en place)
-  f-2-2-send-attestations-assiduite-batch-email: backlog
-  f-2-3-send-conventions-batch-email: backlog  # company → contact email
-  f-2-4-send-emargements-individuels-batch-email: backlog
-  f-2-5-send-conventions-intervention-batch-email: backlog  # trainer
+  f-2-1-send-certificats-realisation-batch-email: done  # extension F2 (PR #96, helper executeBatchEmailSend extrait)
+  f-2-2-send-attestations-assiduite-batch-email: done  # extension F2 (PR #96)
+  f-2-3-send-conventions-batch-email: done  # extension F2 company → primary contact email (PR #96)
+  f-2-4-send-emargements-individuels-batch-email: done  # extension F2 (PR #96)
+  f-2-5-send-conventions-intervention-batch-email: done  # extension F2 trainer (PR #96)
   f-3-mass-signature-request-batch: backlog
   epic-f-retrospective: optional
 

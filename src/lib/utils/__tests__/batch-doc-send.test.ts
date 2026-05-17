@@ -12,14 +12,20 @@ describe("hasBatchSendEndpoint", () => {
     }
   });
 
-  it("retourne false pour un doc_type non listé", () => {
-    expect(hasBatchSendEndpoint("certificat_realisation")).toBe(false);
+  it("retourne false pour un doc_type non listé (statiques 1-par-session)", () => {
     expect(hasBatchSendEndpoint("cgv")).toBe(false);
+    expect(hasBatchSendEndpoint("planning_semaine")).toBe(false);
+    expect(hasBatchSendEndpoint("programme_formation")).toBe(false);
     expect(hasBatchSendEndpoint("doc_inexistant")).toBe(false);
   });
 
-  it("supporte au minimum convocation (cas d'usage F2 MVP)", () => {
+  it("supporte tous les doc_types couverts par F2 (MVP + extensions F2.1-F2.5)", () => {
     expect(hasBatchSendEndpoint("convocation")).toBe(true);
+    expect(hasBatchSendEndpoint("certificat_realisation")).toBe(true);
+    expect(hasBatchSendEndpoint("attestation_assiduite")).toBe(true);
+    expect(hasBatchSendEndpoint("feuille_emargement")).toBe(true);
+    expect(hasBatchSendEndpoint("convention_entreprise")).toBe(true);
+    expect(hasBatchSendEndpoint("convention_intervention")).toBe(true);
   });
 });
 
