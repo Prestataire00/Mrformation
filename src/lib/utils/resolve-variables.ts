@@ -1019,8 +1019,16 @@ export function resolveVariables(content: string, data: ResolveContext): string 
         if (!columnsMap.has(key)) columnsMap.set(key, { key, date: dateKey, moment, label, slotIds: [] });
         columnsMap.get(key)!.slotIds.push(slot.id);
       }
+      // Sort : par date croissante, puis Matin (M) AVANT Après-midi (AM).
+      // Sans cette priorité, le localeCompare placerait "AM" avant "M"
+      // alphabétiquement, inversant l'ordre attendu.
       const columns = Array.from(columnsMap.values())
-        .sort((a, b) => a.key.localeCompare(b.key))
+        .sort((a, b) => {
+          const dateCompare = a.date.localeCompare(b.date);
+          if (dateCompare !== 0) return dateCompare;
+          if (a.moment === b.moment) return 0;
+          return a.moment === "M" ? -1 : 1;
+        })
         .slice(0, 10);
 
       // Collect persons : trainers from formation_trainers + learners from enrollments
