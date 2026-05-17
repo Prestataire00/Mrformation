@@ -283,6 +283,8 @@ export function resolveVariables(content: string, data: ResolveContext): string 
       return p.objectives || "[Objectifs]";
     })(),
     "{{programme_prerequis}}": (() => {
+      // h-8 : fallback session → program.content → training
+      if (data.session?.prerequisites) return data.session.prerequisites;
       const c = (data.session?.program?.content || {}) as Record<string, string>;
       return c.prerequisites || data.session?.training?.prerequisites || "Aucun prérequis particulier";
     })(),
@@ -321,31 +323,56 @@ export function resolveVariables(content: string, data: ResolveContext): string 
       const p = data.session?.program;
       return p?.version ? String(p.version) : "1";
     })(),
+    // Story h-8 (Epic H) : fallback chain session → program → training
+    // pour les champs pédagogiques. Permet à l'admin de surcharger au
+    // niveau session sans avoir à créer/modifier le programme parent.
     "{{delais_acces}}": (() => {
-      const c = (data.session?.program?.content || {}) as Record<string, unknown>;
+      const s = data.session;
+      if (s?.access_delay_days != null) return String(s.access_delay_days);
+      const c = (s?.program?.content || {}) as Record<string, unknown>;
       return typeof c.access_delay_days === "number" ? String(c.access_delay_days) : "";
     })(),
     "{{modalite_acces}}": (() => {
-      const c = (data.session?.program?.content || {}) as Record<string, unknown>;
+      const s = data.session;
+      if (s?.access_modality) return s.access_modality;
+      const c = (s?.program?.content || {}) as Record<string, unknown>;
       return typeof c.access_modality === "string" ? c.access_modality : "";
     })(),
     "{{profil_stagiaire}}": (() => {
-      const c = (data.session?.program?.content || {}) as Record<string, unknown>;
+      const s = data.session;
+      if (s?.target_audience) return s.target_audience;
+      const c = (s?.program?.content || {}) as Record<string, unknown>;
       return typeof c.target_audience === "string" ? c.target_audience : "[Profil du stagiaire]";
     })(),
     "{{equipe_pedagogique}}": (() => {
-      const c = (data.session?.program?.content || {}) as Record<string, unknown>;
+      const s = data.session;
+      if (s?.team_description) return s.team_description;
+      const c = (s?.program?.content || {}) as Record<string, unknown>;
       const team = typeof c.team_description === "string" ? c.team_description : "";
       return team || formateursNoms || "";
     })(),
     "{{moyens_pedagogiques}}": (() => {
-      const c = (data.session?.program?.content || {}) as Record<string, unknown>;
+      const s = data.session;
+      // Session a un champ TEXT libre, program a un tableau JSONB — adapter au format
+      if (s?.pedagogical_resources) {
+        // Si plusieurs lignes, on les rend en bullets ; sinon en paragraphe
+        const items = s.pedagogical_resources.split(/\n+/).map((l) => l.trim().replace(/^[•\-*]\s*/, "")).filter(Boolean);
+        if (items.length > 1) return `<ul class="bullets">${items.map((i) => `<li>${i}</li>`).join("")}</ul>`;
+        return `<p>${s.pedagogical_resources}</p>`;
+      }
+      const c = (s?.program?.content || {}) as Record<string, unknown>;
       const items = Array.isArray(c.pedagogical_resources) ? (c.pedagogical_resources as string[]) : [];
       if (items.length === 0) return `<p>[Moyens pédagogiques à préciser dans le programme]</p>`;
       return `<ul class="bullets">${items.map((i) => `<li>${i}</li>`).join("")}</ul>`;
     })(),
     "{{dispositif_evaluation}}": (() => {
-      const c = (data.session?.program?.content || {}) as Record<string, unknown>;
+      const s = data.session;
+      if (s?.evaluation_methods) {
+        const items = s.evaluation_methods.split(/\n+/).map((l) => l.trim().replace(/^[•\-*]\s*/, "")).filter(Boolean);
+        if (items.length > 1) return `<ul class="bullets">${items.map((i) => `<li>${i}</li>`).join("")}</ul>`;
+        return `<p>${s.evaluation_methods}</p>`;
+      }
+      const c = (s?.program?.content || {}) as Record<string, unknown>;
       const items = Array.isArray(c.evaluation_methods) ? (c.evaluation_methods as string[]) : [];
       if (items.length === 0) return `<p>[Dispositif d'évaluation à préciser dans le programme]</p>`;
       return `<ul class="bullets">${items.map((i) => `<li>${i}</li>`).join("")}</ul>`;
@@ -358,10 +385,14 @@ export function resolveVariables(content: string, data: ResolveContext): string 
       const m = data.session?.max_participants ?? data.session?.training?.max_participants;
       return m ? String(m) : "";
     })(),
-    // Liste HTML des objectifs pédagogiques — split sur newlines / bullets
-    // des champs `program.objectives` ou `training.objectives` (texte libre).
+    // Liste HTML des objectifs pédagogiques — fallback chain :
+    // session.pedagogical_objectives → program.objectives → training.objectives
+    // Split sur newlines / bullets (texte libre).
     "{{liste_objectifs_pedagogiques}}": (() => {
-      const raw = data.session?.program?.objectives || data.session?.training?.objectives || "";
+      const raw = data.session?.pedagogical_objectives
+        || data.session?.program?.objectives
+        || data.session?.training?.objectives
+        || "";
       if (!raw) return `<p>[Objectifs pédagogiques à préciser]</p>`;
       // Split par newline, retire bullets/dashes en début de ligne
       const items = raw
@@ -769,6 +800,11 @@ export function resolveVariables(content: string, data: ResolveContext): string 
     })(),
 
     "{{contenu_pedagogique}}": (() => {
+      // h-8 : fallback prioritaire sur session.pedagogical_content (TEXT libre)
+      // si l'admin a saisi le contenu directement sur la session.
+      if (data.session?.pedagogical_content) {
+        return `<p>${data.session.pedagogical_content.replace(/\n/g, "<br>")}</p>`;
+      }
       type Module = {
         id?: number;
         title?: string;

@@ -106,6 +106,14 @@ interface SessionFormData {
   trainer_id: string;
   is_public: boolean;
   notes: string;
+  // Story h-8 (Epic H) : champs pédagogiques surcharge au niveau session
+  pedagogical_objectives: string;
+  pedagogical_content: string;
+  target_audience: string;
+  prerequisites: string;
+  team_description: string;
+  pedagogical_resources: string;
+  evaluation_methods: string;
 }
 
 const emptyForm: SessionFormData = {
@@ -122,6 +130,13 @@ const emptyForm: SessionFormData = {
   trainer_id: "",
   is_public: false,
   notes: "",
+  pedagogical_objectives: "",
+  pedagogical_content: "",
+  target_audience: "",
+  prerequisites: "",
+  team_description: "",
+  pedagogical_resources: "",
+  evaluation_methods: "",
 };
 
 const toInputDatetime = (iso: string) => {
@@ -243,20 +258,28 @@ export default function SessionsPage() {
 
   const openEditDialog = (session: SessionFull) => {
     setEditingSession(session);
+    const s = session as unknown as Record<string, unknown>;
     setFormData({
       title: session.title,
       training_id: session.training_id || "",
       start_date: toInputDatetime(session.start_date),
       end_date: toInputDatetime(session.end_date),
       location: session.location || "",
-      meeting_url: (session as unknown as Record<string, unknown>).meeting_url as string || "",
+      meeting_url: s.meeting_url as string || "",
       mode: session.mode,
       type: (session.type as "inter" | "intra") || "inter",
       status: session.status,
       max_participants: session.max_participants?.toString() || "",
       trainer_id: session.trainer_id || "",
-      is_public: !!(session as unknown as Record<string, unknown>).is_public,
+      is_public: !!s.is_public,
       notes: session.notes || "",
+      pedagogical_objectives: (s.pedagogical_objectives as string) || "",
+      pedagogical_content: (s.pedagogical_content as string) || "",
+      target_audience: (s.target_audience as string) || "",
+      prerequisites: (s.prerequisites as string) || "",
+      team_description: (s.team_description as string) || "",
+      pedagogical_resources: (s.pedagogical_resources as string) || "",
+      evaluation_methods: (s.evaluation_methods as string) || "",
     });
     setDialogOpen(true);
   };
@@ -291,6 +314,14 @@ export default function SessionsPage() {
       trainer_id: formData.trainer_id || null,
       is_public: formData.is_public,
       notes: formData.notes.trim() || null,
+      // Story h-8 : champs pédagogiques (null si vide pour fallback resolver)
+      pedagogical_objectives: formData.pedagogical_objectives.trim() || null,
+      pedagogical_content: formData.pedagogical_content.trim() || null,
+      target_audience: formData.target_audience.trim() || null,
+      prerequisites: formData.prerequisites.trim() || null,
+      team_description: formData.team_description.trim() || null,
+      pedagogical_resources: formData.pedagogical_resources.trim() || null,
+      evaluation_methods: formData.evaluation_methods.trim() || null,
     };
 
     if (editingSession) {
@@ -950,6 +981,88 @@ export default function SessionsPage() {
                 rows={3}
                 placeholder="Informations complémentaires, rappels..."
               />
+            </div>
+
+            {/* h-8 (Epic H) : Bloc programme pédagogique au niveau session */}
+            <div className="border-t pt-4 mt-4 space-y-3">
+              <div>
+                <h3 className="font-semibold text-sm">Programme pédagogique</h3>
+                <p className="text-xs text-gray-500">
+                  Ces champs surchargent ceux du programme/training rattaché. Laisser vide pour utiliser le fallback automatique.
+                </p>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="s_objectives">Objectifs pédagogiques</Label>
+                  <Textarea
+                    id="s_objectives"
+                    value={formData.pedagogical_objectives}
+                    onChange={(e) => setFormData((p) => ({ ...p, pedagogical_objectives: e.target.value }))}
+                    rows={3}
+                    placeholder="Un objectif par ligne, ou bullet list"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="s_target_audience">Profil du stagiaire</Label>
+                  <Textarea
+                    id="s_target_audience"
+                    value={formData.target_audience}
+                    onChange={(e) => setFormData((p) => ({ ...p, target_audience: e.target.value }))}
+                    rows={3}
+                    placeholder="À qui s'adresse cette formation ?"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="s_prerequisites">Prérequis</Label>
+                  <Textarea
+                    id="s_prerequisites"
+                    value={formData.prerequisites}
+                    onChange={(e) => setFormData((p) => ({ ...p, prerequisites: e.target.value }))}
+                    rows={3}
+                    placeholder="Compétences requises avant formation"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="s_team">Équipe pédagogique</Label>
+                  <Textarea
+                    id="s_team"
+                    value={formData.team_description}
+                    onChange={(e) => setFormData((p) => ({ ...p, team_description: e.target.value }))}
+                    rows={3}
+                    placeholder="Description du formateur + équipe"
+                  />
+                </div>
+                <div className="space-y-1.5 md:col-span-2">
+                  <Label htmlFor="s_content">Contenu pédagogique (progression)</Label>
+                  <Textarea
+                    id="s_content"
+                    value={formData.pedagogical_content}
+                    onChange={(e) => setFormData((p) => ({ ...p, pedagogical_content: e.target.value }))}
+                    rows={4}
+                    placeholder="Plan détaillé du contenu / progression sur la durée de la formation"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="s_resources">Moyens pédagogiques</Label>
+                  <Textarea
+                    id="s_resources"
+                    value={formData.pedagogical_resources}
+                    onChange={(e) => setFormData((p) => ({ ...p, pedagogical_resources: e.target.value }))}
+                    rows={3}
+                    placeholder="Un moyen par ligne (support PDF, vidéo, etc.)"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="s_evaluation">Dispositif d&apos;évaluation</Label>
+                  <Textarea
+                    id="s_evaluation"
+                    value={formData.evaluation_methods}
+                    onChange={(e) => setFormData((p) => ({ ...p, evaluation_methods: e.target.value }))}
+                    rows={3}
+                    placeholder="Une méthode par ligne (QCM, examen, mise en situation, etc.)"
+                  />
+                </div>
+              </div>
             </div>
           </div>
           <DialogFooter>
