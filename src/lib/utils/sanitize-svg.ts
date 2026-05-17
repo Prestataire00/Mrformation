@@ -1,4 +1,4 @@
-import DOMPurify from "isomorphic-dompurify";
+import sanitizeHtml from "sanitize-html";
 
 /**
  * Sanitize une signature SVG provenant d'un utilisateur (apprenant, formateur,
@@ -11,15 +11,22 @@ import DOMPurify from "isomorphic-dompurify";
  *    - Au rendu PDF (via signatureToDataUrl → data:image/svg+xml)
  *    - Dans l'UI admin/learner/trainer via `dangerouslySetInnerHTML`
  *
- * Stratégie :
- *  - Whitelist STRICTE de tags (uniquement éléments de tracé)
- *  - Whitelist d'attributs (géométrie + style basique, pas d'event handlers,
- *    pas de href/xlink:href qui peuvent porter `javascript:`)
- *  - DOMPurify gère intrinsèquement les CDATA, DOCTYPE, entités XXE, mutations
+ * Implémentation : `sanitize-html` (pure JS, htmlparser2, zéro dépendance
+ * DOM/jsdom). Remplace l'ancien `isomorphic-dompurify` qui crashait au
+ * load module sur Netlify Functions Node 22.x via la chaîne :
+ *   isomorphic-dompurify → jsdom → html-encoding-sniffer (CJS) →
+ *   require('@exodus/bytes') (ESM only) → ERR_REQUIRE_ESM.
  *
- * Tags refusés (forbidden) : script, foreignObject, iframe, object, embed,
- *   image, use, a, animate, animateTransform, animateMotion, set, link, meta,
- *   style (peut contenir url(javascript:))
+ * Stratégie :
+ *  - Whitelist STRICTE de tags (uniquement éléments de tracé SVG)
+ *  - Whitelist d'attributs par tag (géométrie + style basique)
+ *  - Pas de href/xlink:href (peuvent porter `javascript:`)
+ *  - Pas d'event handlers (on*)
+ *  - Mode XML pour respecter SVG (self-closing, case)
+ *
+ * Tags refusés par défaut (non listés dans allowedTags) :
+ *   script, foreignObject, iframe, object, embed, image, use, a, animate,
+ *   animateTransform, animateMotion, set, link, meta, style.
  */
 
 const ALLOWED_TAGS = [
@@ -36,31 +43,42 @@ const ALLOWED_TAGS = [
   "desc",
 ];
 
-const ALLOWED_ATTR = [
-  // Géométrie
-  "d", "x", "y", "x1", "y1", "x2", "y2",
-  "cx", "cy", "r", "rx", "ry",
-  "points", "width", "height", "viewBox",
-  // Namespace
-  "xmlns",
-  // Style basique (pas d'href / xlink:href)
-  "fill", "stroke", "stroke-width", "stroke-linecap", "stroke-linejoin",
-  "stroke-miterlimit", "stroke-dasharray", "stroke-dashoffset",
-  "transform", "opacity", "fill-opacity", "stroke-opacity",
-  "vector-effect",
-];
-
-const FORBID_TAGS = [
-  "script", "foreignObject", "iframe", "object", "embed",
-  "image", "use", "a", "animate", "animateTransform", "animateMotion",
-  "set", "link", "meta", "style", "handler", "listener",
-];
+// Attributs autorisés par tag. Pattern recommandé par sanitize-html (vs global).
+// Couvre exactement les besoins de react-signature-canvas.toSVG() + nos templates.
+const ALLOWED_ATTRIBUTES: Record<string, string[]> = {
+  svg: ["xmlns", "viewBox", "width", "height", "fill", "stroke"],
+  path: [
+    "d",
+    "stroke",
+    "stroke-width",
+    "stroke-linecap",
+    "stroke-linejoin",
+    "stroke-miterlimit",
+    "stroke-dasharray",
+    "stroke-dashoffset",
+    "fill",
+    "fill-opacity",
+    "stroke-opacity",
+    "opacity",
+    "transform",
+    "vector-effect",
+  ],
+  line: ["x1", "y1", "x2", "y2", "stroke", "stroke-width", "stroke-linecap", "transform", "opacity"],
+  polyline: ["points", "fill", "stroke", "stroke-width", "stroke-linecap", "transform", "opacity"],
+  rect: ["x", "y", "width", "height", "fill", "stroke", "stroke-width", "rx", "ry", "transform", "opacity"],
+  circle: ["cx", "cy", "r", "fill", "stroke", "stroke-width", "transform", "opacity"],
+  ellipse: ["cx", "cy", "rx", "ry", "fill", "stroke", "stroke-width", "transform", "opacity"],
+  polygon: ["points", "fill", "stroke", "stroke-width", "transform", "opacity"],
+  g: ["transform", "fill", "stroke", "opacity"],
+  title: [],
+  desc: [],
+};
 
 /**
  * Sanitize une signature SVG. Retourne :
  *  - "" si l'input n'est pas une string non vide
  *  - L'input tel quel si c'est une data URL PNG/JPG (déjà safe)
- *  - Le SVG nettoyé par DOMPurify sinon
+ *  - Le SVG nettoyé par sanitize-html sinon
  */
 export function sanitizeSignatureSvg(input: string): string {
   if (!input || typeof input !== "string") return "";
@@ -72,22 +90,13 @@ export function sanitizeSignatureSvg(input: string): string {
     return input;
   }
 
-  const cleaned = DOMPurify.sanitize(input, {
-    USE_PROFILES: { svg: true, svgFilters: false },
-    ALLOWED_TAGS,
-    ALLOWED_ATTR,
-    FORBID_TAGS,
-    // Bloque tout attribut commençant par "on" (event handlers)
-    // + href/xlink:href (peuvent porter javascript:)
-    FORBID_ATTR: ["href", "xlink:href"],
-    // Protections supplémentaires
-    ALLOW_DATA_ATTR: false,
-    ALLOW_UNKNOWN_PROTOCOLS: false,
-    KEEP_CONTENT: false,
-    RETURN_DOM: false,
-    RETURN_DOM_FRAGMENT: false,
+  return sanitizeHtml(input, {
+    allowedTags: ALLOWED_TAGS,
+    allowedAttributes: ALLOWED_ATTRIBUTES,
+    // Strip tags non whitelistés ET leur contenu (équivalent KEEP_CONTENT:false de DOMPurify)
+    disallowedTagsMode: "discard",
+    // SVG = XML (self-closing tags, case-sensitive). Sans ça, htmlparser2 traite
+    // l'input comme HTML5 et casse les self-closing balises SVG.
+    parser: { xmlMode: true },
   });
-
-  // DOMPurify peut retourner une string ou TrustedHTML selon la config
-  return typeof cleaned === "string" ? cleaned : String(cleaned);
 }
