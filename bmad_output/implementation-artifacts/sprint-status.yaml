@@ -39,7 +39,7 @@
 #   → E2-E3-E4 (parallèles, après B+C+D+F stables) → E1 (last, après 90j stabilité)
 
 generated: 2026-05-17
-last_updated: 2026-05-17 (f-1 done → Mass Operations démarré)
+last_updated: 2026-05-17 (c-2 résolution analytique + e-1.1 cleanup UI tracé)
 project: lms-platform
 project_key: NOKEY
 tracking_system: file-system
@@ -70,7 +70,7 @@ development_status:
   # PR2 sous-PR 2.4
   epic-c: in-progress
   c-1-signature-service-unifie: done  # endpoint /api/documents/sign POST (150+ lignes, rate limit, SVG sanitize, signing_tokens)
-  c-2-migration-flux-signature: in-progress  # quotes migré dans c-1, MAIS InlineSignaturePad + /api/emargement/sign legacy encore live
+  c-2-migration-flux-signature: done  # résolution analytique 2026-05-17 : 2 flux par design (documents vs émargement). Voir c-2-migration-flux-signature.md
   c-3-audit-trail-qualiopi: done  # colonnes signed_at, signature_ip, signature_user_agent, signature_method dans documents + capture dans /api/documents/sign
   epic-c-retrospective: optional
 
@@ -85,6 +85,7 @@ development_status:
   # PR2 sous-PR 2.6 (E1 cleanup) + transverse (E2/E3/E4)
   epic-e: in-progress
   e-1-suppression-jspdf-legacy: backlog  # 56 imports jsPDF restants — cleanup pas démarré
+  e-1-1-cleanup-inline-signature-pad: backlog  # remplacer InlineSignaturePad (TabEmargements:63) par SignaturePad partagé (issu de c-2 résolution)
   e-2-cache-pdf-100: done  # pdf-cache.ts + DocumentGenerationService.getCachedPdf() opérationnel
   e-3-logs-structures: in-progress  # logger.ts existe + document_generated loggé, mais document_signed/sent/failed partiel
   e-4-tests-e2e-snapshot: backlog  # tests unit OK, mais pas de snapshot E2E PDF
