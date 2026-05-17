@@ -119,12 +119,35 @@ development_status:
   g-2-restaurer-magic-link-pr126: done  # P0 — restauration /access/[token] + /auth/callback (PR #127)
   g-3-fix-calendar-nested-query: done  # P1 — symétrique de g-1 sur /learner/calendar (PR #127)
   g-4-fix-courses-profile-id: done  # P1 — courses cherche par email au lieu de profile_id (PR #127)
-  g-5-cleanup-learner-documents-static-cards: backlog  # P1 — supprime 3 cartes statiques en doublon avec liste unifiée
+  g-5-cleanup-learner-documents-static-cards: done  # P1 — supprime 3 cartes statiques en doublon (PR #128)
+  g-6-rls-infinite-recursion: done  # bonus — fix RLS 42P17 via SECURITY DEFINER (PR #129)
+  g-7-nav-404-dashboard-calendar-slots: done  # bonus — 404 dashboard + bouton manquant + calendar slots (PR #130)
+  g-8-pdf-preview-via-file-url: done  # bonus — preview PDF natif au lieu HTML brut (PR #131)
   epic-g-retrospective: optional
+
+  # ── Epic H : Stabilisation Admin & PDFs Entreprise ──
+  # Hot-fix epic créé 2026-05-17 suite audit BMad super admin (cf epics-admin-pdfs-stabilisation.md)
+  # 10 bugs : 4 P0 (Qualiopi + facturation), 4 P1 (UX PDFs + config), 2 P2 (polish)
+  epic-h: backlog
+  h-1-signatures-emargement-pdf: backlog  # P0 Qualiopi — signatures absentes du PDF feuille émargement
+  h-2-convention-signee-non-rendue: backlog  # P0 Qualiopi — convention signée mais signature pas reprise
+  h-3-rib-facture-invalide: backlog  # P0 Business — RIB configuré ignoré (toast IBAN manquant)
+  h-4-factures-filtre-entreprise: backlog  # P0 Business — factures INTER prennent tous les apprenants
+  h-5-nom-client-non-resolu: backlog  # P1 UX — variable {{nom_client}} non câblée dans certificat
+  h-6-unite-heures-attestation: backlog  # P1 UX — durée sans suffix heures (à reclarifier user)
+  h-7-nom-entreprise-tronque: backlog  # P1 UX — facture affiche nom court au lieu de raison sociale
+  h-8-programme-formation-saisie: backlog  # P1 Métier — bloc objectifs/contenu à ajouter à la session
+  h-9-emargement-page-par-entreprise: backlog  # P2 UX — option présente non fonctionnelle (ou retirer ?)
+  h-10-questionnaires-acces-admin-apprenant: backlog  # P2 UX — admin voit réponses + apprenant voit ses questionnaires
+  epic-h-retrospective: optional
 
   # Mises à jour post-merge :
   # 2026-05-17 (PR #127) : g-1, g-2, g-3, g-4 mergées sur main
-  # 2026-05-17 : g-5 ajoutée suite remontée user (2 systèmes co-existent sur /learner/documents)
+  # 2026-05-17 (PR #128) : g-5 mergée
+  # 2026-05-17 (PR #129) : g-6 RLS fix mergée + SQL exécuté en prod
+  # 2026-05-17 (PR #130) : g-7 nav/calendar mergée
+  # 2026-05-17 (PR #131) : g-8 PDF preview mergée
+  # 2026-05-17 (Epic H) : 10 nouveaux bugs admin/PDFs/facturation tracés en backlog
 
 # ──────────────────────────────────────────────────────────────────────────
 # SPRINT PLAN STRUCTURÉ (PR2 — séquencement résolvant ISSUE #1 forward dep B5→C1)
