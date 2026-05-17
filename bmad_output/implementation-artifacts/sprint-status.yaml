@@ -1,5 +1,5 @@
 # generated: 2026-05-17
-# last_updated: 2026-05-17
+# last_updated: 2026-05-17 (Epic G ajouté : stabilisation portail apprenant + magic link, 4 stories P0/P1)
 # project: lms-platform
 # project_key: NOKEY
 # tracking_system: file-system
@@ -110,6 +110,16 @@ development_status:
   f-2-5-send-conventions-intervention-batch-email: done  # extension F2 trainer (PR #96)
   f-3-mass-signature-request-batch: done  # endpoint signature-request-batch + helper + 2 boutons UI (PR #97)
   epic-f-retrospective: optional
+
+  # ── Epic G : Stabilisation Portail Apprenant & Magic Link ──
+  # Hot-fix epic créé 2026-05-17 suite audit BMad (cf epics-stabilisation.md)
+  # Bugs P0/P1 identifiés en prod : portail apprenant queries défaillantes + magic link cassé
+  epic-g: backlog
+  g-1-fix-my-trainings-nested-query: backlog  # P0 — apprenant ne voit pas ses formations (pattern 2-queries → nested)
+  g-2-restaurer-magic-link-pr126: backlog  # P0 — 3 fichiers supprimés à tort, emails send-welcome → 404
+  g-3-fix-calendar-nested-query: backlog  # P1 — symétrique de g-1 sur /learner/calendar
+  g-4-fix-courses-profile-id: backlog  # P1 — courses cherche par email au lieu de profile_id
+  epic-g-retrospective: optional
 
 # ──────────────────────────────────────────────────────────────────────────
 # SPRINT PLAN STRUCTURÉ (PR2 — séquencement résolvant ISSUE #1 forward dep B5→C1)
