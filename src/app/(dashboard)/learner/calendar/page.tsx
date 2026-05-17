@@ -140,50 +140,66 @@ export default function LearnerCalendarPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setLoading(false); return; }
 
-    const { data: learner } = await supabase
+    // Query nested unique : learners → enrollments → sessions
+    // Évite les ruptures RLS entre 2 queries séparées (cf Epic G story g-3)
+    const { data: learnerData, error: learnerError } = await supabase
       .from("learners")
-      .select("id")
+      .select(`
+        id,
+        enrollments(
+          session_id, status,
+          sessions(
+            id, title, start_date, end_date, location, mode,
+            trainings(title),
+            trainers(first_name, last_name)
+          )
+        )
+      `)
       .eq("profile_id", user.id)
       .maybeSingle();
 
-    if (!learner) { setLoading(false); return; }
-    setLearnerId(learner.id);
-
-    const { data: enrollments } = await supabase
-      .from("enrollments")
-      .select(`
-        session_id,
-        sessions(
-          id, title, start_date, end_date, location, mode,
-          trainings(title),
-          trainers(first_name, last_name)
-        )
-      `)
-      .eq("learner_id", learner.id)
-      .neq("status", "cancelled");
-
-    if (enrollments) {
-      const mapped: CalendarSession[] = enrollments
-        .filter((e: any) => e.sessions)
-        .map((e: any) => {
-          const s = e.sessions;
-          const startHour = s.start_date ? String(new Date(s.start_date).getHours()) : "9";
-          return {
-            id: s.id,
-            title: s.title,
-            training_title: s.trainings?.title || null,
-            start_date: s.start_date,
-            end_date: s.end_date,
-            start_hour: startHour,
-            location: s.location,
-            mode: s.mode,
-            trainer_name: s.trainers
-              ? `${s.trainers.first_name} ${s.trainers.last_name}`
-              : null,
-          };
-        });
-      setSessions(mapped);
+    if (learnerError || !learnerData) {
+      console.error("[calendar] learner fetch error:", learnerError);
+      setLoading(false);
+      return;
     }
+    setLearnerId(learnerData.id);
+
+    const enrollments = ((learnerData.enrollments as unknown as Array<{
+      session_id: string;
+      status: string;
+      sessions: {
+        id: string;
+        title: string;
+        start_date: string;
+        end_date: string;
+        location: string | null;
+        mode: string;
+        trainings: { title: string } | null;
+        trainers: { first_name: string; last_name: string } | null;
+      } | null;
+    }>) ?? []).filter((e) => e.status !== "cancelled");
+
+    const mapped: CalendarSession[] = enrollments
+      .filter((e) => e.sessions)
+      .map((e) => {
+        const s = e.sessions!;
+        const startHour = s.start_date ? String(new Date(s.start_date).getHours()) : "9";
+        return {
+          id: s.id,
+          title: s.title,
+          training_title: s.trainings?.title || null,
+          start_date: s.start_date,
+          end_date: s.end_date,
+          start_hour: startHour,
+          location: s.location,
+          mode: s.mode,
+          trainer_name: s.trainers
+            ? `${s.trainers.first_name} ${s.trainers.last_name}`
+            : null,
+        };
+      });
+    setSessions(mapped);
 
     setLoading(false);
   }, [supabase]);
