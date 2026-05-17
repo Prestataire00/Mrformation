@@ -357,10 +357,13 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // h-2 : Signature du document courant (convention signée par le client,
-        // attestation signée, etc.). Charge documents.signature_data si le doc
-        // a déjà été signé via le lien public. Sinon, undefined → template
-        // affiche un cadre vide à la place de la signature.
+        // h-2 + h-12 : Signature du document courant (convention signée par le
+        // client, attestation signée, etc.). La signature est stockée dans
+        // `document_signatures` (table fille) par la route /api/documents/sign,
+        // PAS dans documents.signature_data (resté null malgré le schéma).
+        // Lookup en 2 étapes : d'abord trouver le document_id via
+        // (source_id, doc_type, owner_id), puis lire signature_data dans
+        // document_signatures.
         let documentSignature: string | undefined;
         if (
           ["convention_entreprise", "convention_intervention", "contrat_sous_traitance"].includes(payload.doc_type ?? "")
@@ -371,15 +374,31 @@ export async function POST(request: NextRequest) {
             if (ownerId) {
               const { data: docRow } = await auth.supabase
                 .from("documents")
-                .select("signature_data")
+                .select("id, signature_data")
                 .eq("source_table", "sessions")
                 .eq("source_id", payload.context.session_id)
                 .eq("doc_type", payload.doc_type)
                 .eq("owner_id", ownerId)
-                .not("signature_data", "is", null)
                 .maybeSingle();
-              if (docRow?.signature_data) {
-                documentSignature = docRow.signature_data as string;
+              if (docRow) {
+                // Tentative 1 : colonne documents.signature_data (cas legacy / direct)
+                if (docRow.signature_data) {
+                  documentSignature = docRow.signature_data as string;
+                } else {
+                  // Tentative 2 : table fille document_signatures (cas standard via
+                  // /api/documents/sign — c'est là que la signature est réellement
+                  // stockée par le flow public de signature)
+                  const { data: sigRow } = await auth.supabase
+                    .from("document_signatures")
+                    .select("signature_data")
+                    .eq("document_id", docRow.id)
+                    .order("signed_at", { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+                  if (sigRow?.signature_data) {
+                    documentSignature = sigRow.signature_data as string;
+                  }
+                }
               }
             }
           } catch (err) {

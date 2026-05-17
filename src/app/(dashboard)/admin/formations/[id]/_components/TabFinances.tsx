@@ -737,9 +737,30 @@ export function TabFinances({ formation, onRefresh }: Props) {
     };
   };
 
+  // h-12 : charge les formation_invoice_lines pour les passer au builder PDF.
+  // Sans ça, le PDF affichait 1 seule ligne avec inv.amount comme prix (souvent
+  // 0€ ou agrégé), perdant le détail des lignes saisies par l'admin.
+  const buildPdfDataWithLines = async (inv: Invoice): Promise<InvoicePdfData> => {
+    const pdfData = buildInvoicePdfData(inv);
+    const { data: lines } = await supabase
+      .from("formation_invoice_lines")
+      .select("description, quantity, unit_price")
+      .eq("invoice_id", inv.id)
+      .order("position", { ascending: true });
+    if (lines && lines.length > 0) {
+      pdfData.lines = lines.map((l) => ({
+        description: l.description as string,
+        quantity: Number(l.quantity) || 1,
+        unit_price: Number(l.unit_price) || 0,
+      }));
+    }
+    return pdfData;
+  };
+
   const handleDownloadPdf = async (inv: Invoice) => {
     try {
-      await downloadInvoicePDF(buildInvoicePdfData(inv));
+      const pdfData = await buildPdfDataWithLines(inv);
+      await downloadInvoicePDF(pdfData);
       toast({ title: `PDF ${inv.reference} téléchargé` });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Erreur PDF";
@@ -761,7 +782,8 @@ export function TabFinances({ formation, onRefresh }: Props) {
 
     try {
       toast({ title: "Génération du PDF et envoi..." });
-      const base64 = await invoicePDFBase64(buildInvoicePdfData(inv));
+      const pdfData = await buildPdfDataWithLines(inv);
+      const base64 = await invoicePDFBase64(pdfData);
       const res = await fetch("/api/emails/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
