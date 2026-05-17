@@ -991,6 +991,75 @@ export function resolveVariables(content: string, data: ResolveContext): string 
 
       return sections.join("\n");
     })(),
+    // Tableau planning hebdomadaire signé (Action 3 de TabEmargements).
+    // Layout : N+1 colonnes (Nom + jours×moments M/AM), max 10 colonnes.
+    // Pour chaque (column, person) : signature image si signée, vide sinon.
+    "{{tableau_planning_hebdo}}": (() => {
+      const sess = data.session;
+      const slots = (sess as { time_slots?: Array<{ id: string; start_time: string; end_time: string }> })?.time_slots ?? [];
+      if (slots.length === 0) return "[Aucun créneau]";
+
+      // Group by (date, moment=M|AM)
+      type Column = { key: string; date: string; moment: "M" | "AM"; label: string; slotIds: string[] };
+      const columnsMap = new Map<string, Column>();
+      for (const slot of slots) {
+        const d = new Date(slot.start_time);
+        const dateKey = d.toISOString().slice(0, 10);
+        const hour = parseInt(d.toLocaleTimeString("fr-FR", { hour: "2-digit", hour12: false, timeZone: "Europe/Paris" }), 10);
+        const moment: "M" | "AM" = hour < 13 ? "M" : "AM";
+        const key = `${dateKey}|${moment}`;
+        const dShort = d.toLocaleDateString("fr-FR", { weekday: "short", day: "2-digit", month: "2-digit", timeZone: "Europe/Paris" });
+        const label = `${dShort}<br>${moment === "M" ? "Matin" : "Après-midi"}`;
+        if (!columnsMap.has(key)) columnsMap.set(key, { key, date: dateKey, moment, label, slotIds: [] });
+        columnsMap.get(key)!.slotIds.push(slot.id);
+      }
+      const columns = Array.from(columnsMap.values())
+        .sort((a, b) => a.key.localeCompare(b.key))
+        .slice(0, 10);
+
+      // Collect persons : trainers from formation_trainers + learners from enrollments
+      const trainers = ((sess as { formation_trainers?: Array<{ trainer: { id: string; first_name: string; last_name: string } | { id: string; first_name: string; last_name: string }[] }> })?.formation_trainers ?? [])
+        .map((ft) => Array.isArray(ft.trainer) ? ft.trainer[0] : ft.trainer)
+        .filter((t): t is { id: string; first_name: string; last_name: string } => Boolean(t));
+      const learners = enrollments
+        .map((e) => e.learner)
+        .filter((l): l is NonNullable<typeof l> => Boolean(l));
+
+      // Find signature for (slot, person, type)
+      const sigMap = data.signaturesById;
+      const findSig = (column: Column, personId: string, personType: "learner" | "trainer"): string | null => {
+        if (!sigMap) return null;
+        for (const slotId of column.slotIds) {
+          const sig = sigMap.get(`${slotId}|${personId}|${personType}`);
+          if (sig) return sig;
+        }
+        return null;
+      };
+
+      const renderSigCell = (column: Column, personId: string, personType: "learner" | "trainer"): string => {
+        const sig = findSig(column, personId, personType);
+        if (!sig) return "";
+        // Signature SVG → embed direct comme data URL (cohérent avec emargement-collectif)
+        const dataUrl = sig.startsWith("data:") ? sig : `data:image/svg+xml;base64,${Buffer.from(sig).toString("base64")}`;
+        return `<img src="${dataUrl}" alt="Signature" style="max-width:60px;max-height:24px;display:block;margin:auto;" />`;
+      };
+
+      const headHtml = `<tr><th class="col-name">Nom</th>${columns.map((c) => `<th>${c.label}</th>`).join("")}</tr>`;
+
+      const trainerRowsHtml = trainers.map((t) => {
+        const label = `${(t.last_name ?? "").toUpperCase()} ${t.first_name ?? ""} <span class="role">(F)</span>`;
+        const cells = columns.map((c) => `<td>${renderSigCell(c, t.id, "trainer")}</td>`).join("");
+        return `<tr class="trainer-row"><td class="col-name">${label}</td>${cells}</tr>`;
+      }).join("");
+
+      const learnerRowsHtml = learners.map((l) => {
+        const label = `${(l.last_name ?? "").toUpperCase()} ${l.first_name ?? ""}`;
+        const cells = columns.map((c) => `<td>${renderSigCell(c, l.id, "learner")}</td>`).join("");
+        return `<tr><td class="col-name">${label}</td>${cells}</tr>`;
+      }).join("");
+
+      return `<table class="planning-table"><thead>${headHtml}</thead><tbody>${trainerRowsHtml}${learnerRowsHtml}</tbody></table>`;
+    })(),
     "{{tableau_couts_client}}": (() => {
       if (montantHt <= 0) return "[Tableau coûts]";
       const titre = data.session?.title ?? "Formation";
@@ -1089,6 +1158,7 @@ export const ALIAS_TO_VARIABLE_KEY: Record<string, string> = {
   "Formateurs de la formation": "{{formateurs_noms}}",
   "Tableau des coûts du client": "{{tableau_couts_client}}",
   "Tableau de signature entreprise compact": "{{tableau_signature_compact}}",
+  "Tableau planning hebdo signé": "{{tableau_planning_hebdo}}",
   "Montant HT": "{{montant_ht}}",
   "Montant TTC": "{{montant_ttc}}",
   "Montant TVA": "{{montant_tva}}",
@@ -1296,6 +1366,7 @@ export const VARIABLE_KEYS = [
   "{{dates_formation}}",
   "{{tableau_couts_client}}",
   "{{tableau_signature_compact}}",
+  "{{tableau_planning_hebdo}}",
   // Story B-Programme
   "{{description_formation}}",
   "{{date_creation_programme}}",
