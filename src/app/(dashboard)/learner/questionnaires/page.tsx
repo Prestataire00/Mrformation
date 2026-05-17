@@ -64,32 +64,36 @@ export default function LearnerQuestionnairesPage() {
       return;
     }
 
-    // Find learner record
-    const { data: learner } = await supabase
+    // Query nested unique : learners → enrollments (pattern aligné sur
+    // /learner/page.tsx — évite ruptures RLS entre 2 queries séparées)
+    const { data: learnerData, error: learnerError } = await supabase
       .from("learners")
-      .select("id")
+      .select(`
+        id,
+        enrollments(session_id, status)
+      `)
       .eq("profile_id", user.id)
-      .single();
+      .maybeSingle();
 
-    if (!learner) {
+    if (learnerError || !learnerData) {
+      console.error("[questionnaires] learner fetch error:", learnerError);
       setLoading(false);
       return;
     }
 
-    // Get sessions the learner is enrolled in
-    const { data: enrollments } = await supabase
-      .from("enrollments")
-      .select("session_id")
-      .eq("learner_id", learner.id)
-      .neq("status", "cancelled");
+    const enrollments = ((learnerData.enrollments as unknown as Array<{
+      session_id: string;
+      status: string;
+    }>) ?? []).filter((e) => e.status !== "cancelled");
 
-    if (!enrollments || enrollments.length === 0) {
+    if (enrollments.length === 0) {
       setQuestionnaires([]);
       setLoading(false);
       return;
     }
 
     const sessionIds = enrollments.map((e) => e.session_id);
+    const learner = { id: learnerData.id as string };
 
     // Get questionnaire-session links for enrolled sessions
     const { data: qSessions } = await supabase
