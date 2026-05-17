@@ -5,13 +5,6 @@
 [build.environment]
   NODE_VERSION = "22"
   NPM_FLAGS = "--legacy-peer-deps"
-  # require(esm) est expérimental sur tout Node 22.x (default seulement à
-  # partir de 23+). Le flag autorise isomorphic-dompurify → jsdom →
-  # html-encoding-sniffer (CJS) à require @exodus/bytes (ESM only) —
-  # sinon ERR_REQUIRE_ESM au load module sur les routes signature.
-  # --max-old-space-size=4096 : nécessaire car NODE_OPTIONS override les
-  # defaults Netlify, et le typecheck Next.js dépasse 2GB heap par défaut.
-  NODE_OPTIONS = "--experimental-require-module --max-old-space-size=4096"
 
 [functions]
   external_node_modules = ["youtube-transcript"]
