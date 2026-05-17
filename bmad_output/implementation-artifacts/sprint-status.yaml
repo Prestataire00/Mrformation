@@ -39,7 +39,7 @@
 #   → E2-E3-E4 (parallèles, après B+C+D+F stables) → E1 (last, après 90j stabilité)
 
 generated: 2026-05-17
-last_updated: 2026-05-17 (e-1.1 done : InlineSignaturePad → SignaturePad partagé, ~110 lignes dupliquées supprimées)
+last_updated: 2026-05-17 (e-4 done : 12 tests snapshot HTML pour les 6 templates critiques F1/F2.x/F3)
 project: lms-platform
 project_key: NOKEY
 tracking_system: file-system
@@ -88,7 +88,7 @@ development_status:
   e-1-1-cleanup-inline-signature-pad: done  # InlineSignaturePad supprimé (~110 lignes) → SignaturePad partagé (PR #99)
   e-2-cache-pdf-100: done  # pdf-cache.ts + DocumentGenerationService.getCachedPdf() opérationnel
   e-3-logs-structures: done  # document_sent / document_signed / document_signature_requested / document_failed + 2 batch summaries instrumentés (PR #98) — couvre F1/F2.x/F3/C1
-  e-4-tests-e2e-snapshot: backlog  # tests unit OK, mais pas de snapshot E2E PDF
+  e-4-tests-e2e-snapshot: done  # 12 tests snapshot HTML (6 templates + 6 régression no-orphan) — couvre F1/F2.x/F3 (PR #100). Décision : HTML résolu plutôt que PDF binaire (moins fragile en CI)
   epic-e-retrospective: optional
 
   # ── Epic F : Mass Operations (TabConventionDocs) (Lot F) ──

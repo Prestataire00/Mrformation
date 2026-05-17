@@ -1,0 +1,1090 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Templates snapshots — couvre F1/F2.x/F3 > attestation-assiduite : HTML + footer avec présence signalée 1`] = `
+{
+  "footer": "<div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 7.5pt; color: #6b7280; font-style: italic; width: 100%; padding: 0 16mm; text-align: center; line-height: 1.4;">
+  <div>[Nom organisme], 1 cours Mirabeau 13100 Aix-en-Provence , Numéro SIRET: 11122233344455, Numéro de déclaration d'activité: 13123456789</div>
+  <div>(auprès du préfet de région de: PACA)</div>
+  <div style="margin-top: 2px;"><span class="pageNumber"></span></div>
+</div>",
+  "html": "<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Attestation d'assiduité</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 22mm 16mm; }
+  body {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-size: 10pt;
+    line-height: 1.55;
+    color: #1f2937;
+    margin: 0;
+  }
+
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 16px;
+  }
+  .header .org-info { flex: 1; padding-right: 12px; }
+  .header .org-name {
+    font-size: 17pt;
+    font-weight: 700;
+    color: #111827;
+    margin: 0 0 6px;
+    letter-spacing: 0.3px;
+  }
+  .header .org-address {
+    font-size: 8.5pt;
+    line-height: 1.5;
+    color: #374151;
+  }
+  .header .logo-cell { width: 130px; text-align: right; }
+  .header .logo-cell img { max-width: 130px; max-height: 110px; }
+
+  h1.title {
+    font-size: 22pt;
+    font-weight: 700;
+    text-align: center;
+    margin: 24px 0 20px;
+    color: #111827;
+  }
+
+  h2.formation-title {
+    font-size: 16pt;
+    font-weight: 700;
+    text-align: center;
+    margin: 18px 0 14px;
+    color: #111827;
+    line-height: 1.25;
+  }
+
+  h2.section {
+    font-size: 15pt;
+    font-weight: 700;
+    color: #111827;
+    margin: 22px 0 10px;
+  }
+
+  p { margin: 0 0 6px; }
+
+  .formation-details p {
+    margin: 0 0 4px;
+  }
+
+  .assiduite-line {
+    margin: 8px 0;
+  }
+  .assiduite-line strong { font-weight: 700; }
+
+  .evaluation-line {
+    margin: 14px 0 4px;
+  }
+  .emargement-line {
+    margin: 0 0 18px;
+  }
+
+  .signature-block {
+    margin-top: 24px;
+  }
+  .signature-block .fait-line { margin: 0 0 8px; }
+  .signature-cachet { margin-top: 4px; min-height: 100px; }
+  .signature-cachet img { max-width: 220px; max-height: 110px; }
+
+  strong { font-weight: 700; }
+</style>
+</head>
+<body>
+
+  <div class="header">
+    <div class="org-info">
+      <div class="org-name">[Nom organisme]</div>
+      <div class="org-address">
+        1 cours Mirabeau 13100 Aix-en-Provence<br>
+        Email: contact@mr-formation.fr<br>
+        Tel: 0488123456<br>
+        https://mr-formation.fr
+      </div>
+    </div>
+    <div class="logo-cell"><img src="https://example.com/logo.png" alt="Logo" style="max-height:60px;" /></div>
+  </div>
+
+  <h1 class="title">Attestation d'assiduité</h1>
+
+  <p>Je, soussigné : <strong>Loris VICHOT</strong>, représentant de l'organisme de formation <strong>[Nom organisme]</strong>,</p>
+  <p>atteste que : <strong>Pierre MARTIN</strong> a suivi la formation :</p>
+
+  <h2 class="formation-title">Habilitation Électrique B1V</h2>
+
+  <div class="formation-details">
+    <p>Lieu de la formation : <strong>Aix-en-Provence</strong></p>
+    <p>Dates de la formation : du <strong>15/06/2026</strong> au <strong>16/06/2026</strong></p>
+    <p>Durée de la formation : <strong>14</strong></p>
+    <p>Type d'action de formation : <strong>Action de formation</strong></p>
+  </div>
+
+  <h2 class="section">Assiduité du stagiaire</h2>
+
+  <p class="assiduite-line">Durée effectivement suivie par le/la stagiaire : <strong>14.00h</strong>,<br>
+  soit un taux de réalisation de <strong>100.00 %</strong>.</p>
+
+  <p class="evaluation-line">Résultat de l'évaluation des acquis jalonnant ou terminant la formation (QUIZZ, TEST, QCM etc....) : <strong>ACQUIS</strong></p>
+  <p class="emargement-line">La feuille d'émargement attestant cette assiduité est fournie en annexe.</p>
+
+  <div class="signature-block">
+    <p class="fait-line">Fait à Aix-en-Provence, le 17/05/2026</p>
+    <div class="signature-cachet"><img src="https://example.com/stamp.png" alt="Tampon" style="max-height:120px;" /></div>
+  </div>
+
+</body>
+</html>",
+}
+`;
+
+exports[`Templates snapshots — couvre F1/F2.x/F3 > certificat-realisation : HTML + footer résolus avec learner + client 1`] = `
+{
+  "footer": "<div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 7.5pt; color: #6b7280; font-style: italic; width: 100%; padding: 0 16mm; text-align: center; line-height: 1.4;">
+  <div>[Nom organisme], 1 cours Mirabeau 13100 Aix-en-Provence , Numéro SIRET: 11122233344455, Numéro de déclaration d'activité: 13123456789</div>
+  <div>(auprès du préfet de région de: PACA)</div>
+  <div style="margin-top: 2px;"><span class="pageNumber"></span></div>
+</div>",
+  "html": "<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Certificat de réalisation de formation</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 22mm 16mm; }
+  body {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-size: 10pt;
+    line-height: 1.55;
+    color: #1f2937;
+    margin: 0;
+  }
+
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 16px;
+  }
+  .header .org-info { flex: 1; padding-right: 12px; }
+  .header .org-name {
+    font-size: 17pt;
+    font-weight: 700;
+    color: #111827;
+    margin: 0 0 6px;
+    letter-spacing: 0.3px;
+  }
+  .header .org-address {
+    font-size: 8.5pt;
+    line-height: 1.5;
+    color: #374151;
+  }
+  .header .logo-cell { width: 130px; text-align: right; }
+  .header .logo-cell img { max-width: 130px; max-height: 110px; }
+
+  h1.title {
+    font-size: 14pt;
+    font-weight: 700;
+    text-align: center;
+    margin: 20px 0 18px;
+    color: #7f1d1d;
+    letter-spacing: 0.5px;
+  }
+
+  p { margin: 0 0 6px; }
+
+  .formation-block {
+    margin: 12px 0;
+  }
+  .formation-block p { margin: 0 0 4px; }
+
+  .nature-block {
+    margin: 14px 0;
+  }
+  .nature-block .nature-title {
+    font-style: italic;
+    margin: 0 0 8px;
+  }
+  .nature-block .checkbox-line {
+    margin: 0;
+    padding: 2px 6px;
+  }
+  .nature-block .checkbox-line.checked {
+    background: #fef3c7;
+    color: #1f2937;
+    font-weight: 500;
+  }
+
+  .conservation {
+    font-style: italic;
+    border-top: 1px solid #d1d5db;
+    border-bottom: 1px solid #d1d5db;
+    padding: 12px 0;
+    margin: 14px 0;
+    color: #374151;
+  }
+
+  h2.section {
+    font-size: 11pt;
+    font-weight: 700;
+    margin: 14px 0 6px;
+    color: #111827;
+  }
+
+  ul.objectifs {
+    list-style: none;
+    padding: 0;
+    margin: 4px 0 12px 4px;
+  }
+  ul.objectifs > li {
+    padding: 2px 0 2px 16px;
+    position: relative;
+  }
+  ul.objectifs > li::before {
+    content: "\\2022";
+    color: #111827;
+    font-weight: 700;
+    position: absolute;
+    left: 2px;
+    top: 2px;
+  }
+
+  .evaluation-line {
+    margin: 12px 0 4px;
+  }
+  .evaluation-line strong { font-weight: 700; }
+  .emargement-line {
+    margin: 0 0 18px;
+  }
+
+  /* Logo Ministère du Travail aligné à droite */
+  .mintravail-block {
+    text-align: right;
+    margin: 8px 0 18px;
+  }
+  .mintravail-block img {
+    max-height: 80px;
+    width: auto;
+  }
+
+  .signature-block {
+    margin-top: 18px;
+  }
+  .signature-block .fait-line { margin: 0 0 8px; }
+  .signature-cachet { margin-top: 4px; min-height: 100px; }
+  .signature-cachet img { max-width: 220px; max-height: 110px; }
+
+  strong { font-weight: 700; }
+</style>
+</head>
+<body>
+
+  <div class="header">
+    <div class="org-info">
+      <div class="org-name">[Nom organisme]</div>
+      <div class="org-address">
+        1 cours Mirabeau 13100 Aix-en-Provence<br>
+        Email: contact@mr-formation.fr<br>
+        Tel: 0488123456<br>
+        https://mr-formation.fr
+      </div>
+    </div>
+    <div class="logo-cell"><img src="https://example.com/logo.png" alt="Logo" style="max-height:60px;" /></div>
+  </div>
+
+  <h1 class="title">CERTIFICAT RÉALISATION DE FORMATION</h1>
+
+  <p>Je, soussigné : <strong>Loris VICHOT</strong>, représentant de l'organisme de formation <strong>[Nom organisme]</strong>,</p>
+  <p>atteste que : <strong>Pierre MARTIN</strong> a suivi la formation :</p>
+
+  <div class="formation-block">
+    <p>Nom de la formation : <strong>Habilitation Électrique B1V</strong></p>
+    <p>Lieu de la formation : <strong>Aix-en-Provence</strong></p>
+    <p>Dates de la formation : du <strong>15/06/2026</strong> au <strong>16/06/2026</strong></p>
+    <p>Durée de la formation : <strong>14</strong></p>
+    <p>Présenté par : <strong>Acme SAS</strong></p>
+  </div>
+
+  <div class="nature-block">
+    <p class="nature-title">Nature de l'action concourant au développement des compétences :</p>
+    <p class="checkbox-line checked">☑ Action de formation</p>
+    <p class="checkbox-line">☐ Bilan de compétences</p>
+    <p class="checkbox-line">☐ Action de VAE</p>
+    <p class="checkbox-line">☐ Action de formation par apprentissage</p>
+  </div>
+
+  <p class="conservation">Sans préjudice des délais imposés par les règles fiscales, comptables ou commerciales, je m'engage à conserver l'ensemble des pièces justificatives qui ont permis d'établir le présent certificat pendant une durée de 3 ans à compter de la fin de l'année du dernier paiement. En cas de cofinancement des fonds européens la durée de conservation est étendue conformément aux obligations conventionnelles spécifiques.</p>
+
+  <h2 class="section">Objectifs de la formation :</h2>
+  <ul class="bullets"><li>Maîtriser les règles de sécurité électrique</li></ul>
+
+  <p class="evaluation-line">Résultat de l'évaluation des acquis jalonnant ou terminant la formation (QUIZZ, TEST, QCM etc....) : <strong>ACQUIS</strong></p>
+  <p class="emargement-line">La feuille d'émargement attestant cette assiduité est fournie en annexe.</p>
+
+  <div class="mintravail-block">
+    <img src="https://mrformationcrm.netlify.app/ministere-du-travail.png" alt="Ministère du Travail" />
+  </div>
+
+  <div class="signature-block">
+    <p class="fait-line">Fait à Aix-en-Provence, le 17/05/2026</p>
+    <div class="signature-cachet"><img src="https://example.com/stamp.png" alt="Tampon" style="max-height:120px;" /></div>
+  </div>
+
+</body>
+</html>",
+}
+`;
+
+exports[`Templates snapshots — couvre F1/F2.x/F3 > convention-entreprise : HTML + footer avec client + contacts 1`] = `
+{
+  "footer": "<div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 7.5pt; color: #6b7280; font-style: italic; width: 100%; padding: 0 16mm; text-align: center; line-height: 1.4;">
+  <div>[Nom organisme], 1 cours Mirabeau 13100 Aix-en-Provence , Numéro SIRET: 11122233344455, Numéro de déclaration d'activité: 13123456789</div>
+  <div>(auprès du préfet de région de: PACA)</div>
+  <div style="margin-top: 2px;"><span class="pageNumber"></span></div>
+</div>",
+  "html": "<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Convention de formation professionnelle</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 22mm 16mm; }
+  body {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-size: 9pt;
+    line-height: 1.45;
+    color: #1f2937;
+    margin: 0;
+  }
+
+  /* Header organisme (page 1 uniquement) */
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 8px;
+  }
+  .header .org-info { flex: 1; padding-right: 12px; }
+  .header .org-name {
+    font-size: 17pt;
+    font-weight: 700;
+    color: #111827;
+    margin: 0 0 6px;
+    letter-spacing: 0.3px;
+  }
+  .header .org-address {
+    font-size: 8.5pt;
+    line-height: 1.5;
+    color: #374151;
+  }
+  .header .logo-cell { width: 130px; text-align: right; }
+  .header .logo-cell img { max-width: 130px; max-height: 110px; }
+
+  /* Titre central */
+  h1.title {
+    font-size: 14pt;
+    font-weight: 700;
+    color: #7f1d1d;
+    text-align: center;
+    margin: 26px 0 4px;
+  }
+  p.subtitle {
+    font-size: 10pt;
+    font-weight: 700;
+    color: #7f1d1d;
+    text-align: center;
+    margin: 0 0 18px;
+  }
+
+  /* En-têtes d'article */
+  h2 {
+    font-size: 10pt;
+    font-weight: 700;
+    color: #7f1d1d;
+    margin: 14px 0 6px;
+  }
+
+  p { margin: 0 0 8px; }
+
+  /* Boîte Article 1 avec puces rouges */
+  .article-1-box {
+    border: 1px solid #9ca3af;
+    padding: 10px 16px;
+    margin: 4px 0 10px;
+  }
+  .article-1-box ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .article-1-box li {
+    padding: 3px 0 3px 14px;
+    position: relative;
+  }
+  .article-1-box li::before {
+    content: "\\2022";
+    color: #b91c1c;
+    font-weight: 700;
+    position: absolute;
+    left: 0;
+    top: 1px;
+  }
+
+  /* Liste à puces standard (Article 8, 9) */
+  ul.bullets {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 8px 4px;
+  }
+  ul.bullets li {
+    padding: 2px 0 2px 14px;
+    position: relative;
+  }
+  ul.bullets li::before {
+    content: "\\2022";
+    color: #b91c1c;
+    font-weight: 700;
+    position: absolute;
+    left: 0;
+    top: 1px;
+  }
+
+  /* Bloc signature */
+  .signature-block {
+    margin-top: 28px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    page-break-inside: avoid;
+  }
+  .signature-col { font-size: 9pt; }
+  .signature-col .role { font-weight: 700; margin: 0 0 2px; }
+  .signature-col .signatory { margin: 0 0 6px; }
+  .signature-cachet { margin-top: 6px; min-height: 110px; }
+  .signature-cachet img { max-width: 240px; max-height: 130px; }
+
+  strong { font-weight: 700; }
+</style>
+</head>
+<body>
+
+  <div class="header">
+    <div class="org-info">
+      <div class="org-name">[Nom organisme]</div>
+      <div class="org-address">
+        1 cours Mirabeau 13100 Aix-en-Provence<br>
+        Email: contact@mr-formation.fr<br>
+        Tel: 0488123456<br>
+        https://mr-formation.fr
+      </div>
+    </div>
+    <div class="logo-cell"><img src="https://example.com/logo.png" alt="Logo" style="max-height:60px;" /></div>
+  </div>
+
+  <h1 class="title">CONVENTION DE FORMATION PROFESSIONNELLE</h1>
+  <p class="subtitle">(Articles L.6353-1 et D.6353-1 du Code du travail)</p>
+
+  <p>Entre les soussignés :</p>
+
+  <p>1) <strong>[Nom organisme]</strong> enregistré sous le numéro de déclaration d'activité : 13123456789 auprès de la Direction Régionale de l'Economie, de l'Emploi, du Travail et des Solidarités (DREETS) PACA, Représenté par Monsieur Loris VICHOT, en qualité de : Président</p>
+
+  <p>&nbsp;et</p>
+
+  <p>2) <strong>Acme SAS, Adresse : 10 rue Paradis 13001 Marseille, SIRET : 12345678901234</strong></p>
+
+  <p>Représenté(e) par DURAND Marie. Est conclue la convention suivante, en application des dispositions du Livre III de la Sixième partie du Code du travail portant organisation de la formation professionnelle continue.</p>
+
+  <h2>Article 1<sup>er</sup> : Objet de la convention</h2>
+  <p>L'organisme nommé ci-dessus organisera l'action de formation suivante :</p>
+  <div class="article-1-box">
+    <ul>
+      <li><strong>Intitulé du stage</strong> : Habilitation Électrique B1V</li>
+      <li><strong>Type d'action de formation</strong> (article L.6313-1 du Code du travail) : Action de formation</li>
+      <li><strong>Objectifs, modalités et méthodes :</strong> Voir programme en annexe</li>
+      <li><strong>Dates :</strong> Du 15/06/2026 au 16/06/2026</li>
+      <li><strong>Durée :</strong> 14 heure(s)</li>
+      <li><strong>Lieu :</strong> Aix-en-Provence</li>
+    </ul>
+  </div>
+
+  <h2>Article 2 : Effectif formé</h2>
+  <p><strong>Nombre de participants : [Effectifs]</strong></p>
+  <p><strong>NOM Prénom des stagiaires :</strong> [Liste apprenants]</p>
+
+  <h2>Article 3 : Dispositions financières</h2>
+  <p>Le coût de la formation, objet de la présente convention, s'élève à : <strong>1500.00€ soit 1800.00€ TTC</strong> (TVA 20% = 300.00€), frais de déplacement de l'intervenant(e) inclus.</p>
+
+  <h2>Article 4 : Modalités de règlement</h2>
+  <p>En application de l'article L441-6 du code de commerce, il est convenu entre les signataires de la présente convention, que les sommes dues devront être réglées afin de mois date de facturation. Toute somme, y compris l'acompte, non payée à sa date d'exigibilité pourra produire de plein droit des intérêts de retard équivalents au triple du taux d'intérêt légal de l'année en cours ainsi que le paiement d'une somme forfaitaire de 40 euros due au titre des frais de recouvrement. En contrepartie des sommes reçues, l'organisme de formation s'engage à fournir tout document et pièce de nature à justifier la réalité et la validité des dépenses de formation engagées à ce titre. Dans la mesure où l'organisme de formation édite la présente convention de formation pour l'action commandée, il revient à l'entreprise de vérifier l'imputabilité de celle-ci.</p>
+
+  <h2>Article 5 : Dédit ou abandon</h2>
+  <p>Toute formation ou cycle commencé est dû en totalité, sauf accord contraire exprès de [Nom organisme]. Toute annulation d'une formation à l'initiative du Client devra être communiquée par écrit dans les conditions qui suivent : Pour les formations Inter et intra entreprises (hors Cycles et Parcours) : La demande devra être communiquée au moins quinze (10) jours calendaires avant le début de la formation. A défaut, un montant forfaitaire restera immédiatement exigible à titre d'indemnité forfaitaire. Pour les Cycles et Parcours : La demande devra être communiquée au moins quinze (15) jours calendaires avant le début de la formation. A défaut, un montant forfaitaire de la formation restera immédiatement exigible à titre d'indemnité forfaitaire.</p>
+
+  <h2>Article 6 : Matériels mis à disposition de l'organisme de formation :</h2>
+  <p>Dans le cas de formation en intra entreprise dans le respect des contenus du programme de formation, l'entreprise s'engage à mettre à titre gratuit à la disposition de l'organisme de formation pendant l'intégralité de la durée de l'action de formation : une salle équipée de tables et de chaises en nombre suffisant, un mur de projection. Le matériel spécifique à la formation et matériel stagiaire nécessaire sont précisés sur la convocation à la formation. Dans le cas des formations intra entreprise, l'article sur la sécurité et l'hygiène du règlement intérieur du client s'appliquera, notre livret d'accueil reprenant tous les éléments nécessaires est disponible sur notre site internet.</p>
+
+  <h2>Article 7 : Replacement d'un participant</h2>
+  <p>Quel que soit le type de la formation, sur demande écrite avant le début de la formation, le Client a la possibilité de remplacer un participant sans facturation supplémentaire.</p>
+
+  <h2>Article 8 : Règlement par un Opérateur de Compétences</h2>
+  <p>Si le Client souhaite que le règlement soit exécuté par l'Opérateur de Compétences dont il dépend, il lui appartient :</p>
+  <ul class="bullets">
+    <li>de faire une demande de prise en charge avant le début de la formation et de s'assurer de la bonne fin de cette demande ;</li>
+    <li>de l'indiquer explicitement sur son bon de commande ;</li>
+    <li>de s'assurer de la bonne fin du paiement par l'Opérateur de Compétences qu'il aura désigné.</li>
+  </ul>
+  <p>Si l'Opérateur de Compétences ne prend en charge que partiellement le coût de la formation, le reliquat sera facturé au Client. Si [Nom organisme] n'a pas reçu la prise en charge de l'Opérateur de Compétences au 1er jour de la formation, le Client sera facturé de l'intégralité du coût de la formation concernée par ce financement. En cas de non-paiement par l'Opérateur de Compétences, pour quelque motif que ce soit à la faute du client, le client sera redevable de l'intégralité du coût de la formation et sera facturé du montant correspondant cependant en cas de subrogation de paiement [Nom organisme] est responsable de la gestion du paiement de ses factures.</p>
+
+  <h2>Article 9 : Obligations du Client</h2>
+  <p>Le Client s'engage à :</p>
+  <ul class="bullets">
+    <li>payer le prix de la formation ;</li>
+    <li>n'effectuer aucune reproduction de matériel ou documents dont les droits d'auteur appartiennent à [Nom organisme]., sans l'accord écrit et préalable de ce dernier ; et</li>
+    <li>ne pas utiliser de matériel d'enregistrement audio ou vidéo lors des formations, sans l'accord écrit et préalable de [Nom organisme].</li>
+  </ul>
+
+  <h2>Article 10 : Différends éventuels</h2>
+  <p>Si une contestation ou un différend ne peuvent être réglés à l'amiable, le Tribunal de Salon de Provence sera seul compétent pour régler le litige.</p>
+
+  <p style="margin-top: 14px;">Date du terme de la convention : 16/06/2026</p>
+
+  <p>Convention établie en double exemplaires à Aix-en-Provence, le 17/05/2026</p>
+
+  <p>La signature de cette convention vaut acceptation du livret d'accueil disponible sur notre site internet.</p>
+
+  <div class="signature-block">
+    <div class="signature-col">
+      <div class="role">Pour l'organisme de formation,</div>
+      <div class="signatory">[Nom organisme],<br>Loris VICHOT</div>
+      <div class="signature-cachet"><img src="https://example.com/stamp.png" alt="Tampon" style="max-height:120px;" /></div>
+    </div>
+    <div class="signature-col">
+      <div class="role">Pour le bénéficiaire</div>
+      <div class="signatory">Acme SAS,<br>DURAND Marie</div>
+    </div>
+  </div>
+
+</body>
+</html>",
+}
+`;
+
+exports[`Templates snapshots — couvre F1/F2.x/F3 > convention-intervention : HTML + footer avec trainer + cost_ht custom var 1`] = `
+{
+  "footer": "<div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 7.5pt; color: #6b7280; font-style: italic; width: 100%; padding: 0 16mm; text-align: center; line-height: 1.4;">
+  <div>[Nom organisme], 1 cours Mirabeau 13100 Aix-en-Provence , Numéro SIRET: 11122233344455, Numéro de déclaration d'activité: 13123456789</div>
+  <div>(auprès du préfet de région de: PACA)</div>
+  <div style="margin-top: 2px;"><span class="pageNumber"></span></div>
+</div>",
+  "html": "<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Contrat de sous-traitance de formation</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 22mm 16mm; }
+  body {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-size: 9.5pt;
+    line-height: 1.5;
+    color: #1f2937;
+    margin: 0;
+  }
+
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 16px;
+  }
+  .header .org-info { flex: 1; padding-right: 12px; }
+  .header .org-name {
+    font-size: 17pt;
+    font-weight: 700;
+    color: #111827;
+    margin: 0 0 6px;
+    letter-spacing: 0.3px;
+  }
+  .header .org-address {
+    font-size: 8.5pt;
+    line-height: 1.5;
+    color: #374151;
+  }
+  .header .logo-cell { width: 130px; text-align: right; }
+  .header .logo-cell img { max-width: 130px; max-height: 110px; }
+
+  h1.title {
+    font-size: 14pt;
+    font-weight: 700;
+    color: #7f1d1d;
+    text-align: center;
+    margin: 24px 0 18px;
+    letter-spacing: 0.5px;
+  }
+
+  h2.article {
+    font-size: 10.5pt;
+    font-weight: 700;
+    color: #7f1d1d;
+    margin: 16px 0 6px;
+  }
+
+  p { margin: 0 0 8px; text-align: justify; }
+
+  ul.bullets {
+    list-style: none;
+    padding: 0;
+    margin: 4px 0 8px 4px;
+  }
+  ul.bullets > li {
+    padding: 2px 0 2px 16px;
+    position: relative;
+  }
+  ul.bullets > li::before {
+    content: "\\2022";
+    color: #b91c1c;
+    font-weight: 700;
+    position: absolute;
+    left: 2px;
+    top: 2px;
+  }
+
+  /* Bloc signature dual */
+  .signature-block {
+    margin-top: 28px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    page-break-inside: avoid;
+  }
+  .signature-col { font-size: 9pt; }
+  .signature-col .role { font-weight: 700; margin: 0 0 2px; }
+  .signature-col .signatory { margin: 0 0 6px; }
+  .signature-img { margin-top: 6px; min-height: 80px; }
+  .signature-img img { max-width: 220px; max-height: 100px; }
+
+  strong { font-weight: 700; }
+</style>
+</head>
+<body>
+
+  <div class="header">
+    <div class="org-info">
+      <div class="org-name">[Nom organisme]</div>
+      <div class="org-address">
+        1 cours Mirabeau 13100 Aix-en-Provence<br>
+        Email: contact@mr-formation.fr<br>
+        Tel: 0488123456<br>
+        https://mr-formation.fr
+      </div>
+    </div>
+    <div class="logo-cell"><img src="https://example.com/logo.png" alt="Logo" style="max-height:60px;" /></div>
+  </div>
+
+  <h1 class="title">CONTRAT DE SOUS-TRAITANCE DE FORMATION</h1>
+
+  <p>Entre l'organisme de formation: <strong>[Nom organisme]</strong> (ci-après nommé le donneur d'ordre)</p>
+  <p>Situé: 1 cours Mirabeau 13100 Aix-en-Provence</p>
+  <p>Déclaration d'activité n° 13123456789, Numéro SIRET: N° 11122233344455<br>
+  Représenté par: Loris VICHOT</p>
+
+  <p>Et le formateur: <strong>Karim AZIZI</strong> (ci-après nommé le sous traitant)</p>
+  <p>Situé: [Adresse formateur]</p>
+  <p>Déclaration d'activité n° [NDA formateur], Numéro SIRET: N° [SIRET formateur]</p>
+
+  <h2 class="article">ARTICLE 1 - OBJET ET NATURE DE LA FORMATION</h2>
+  <p>Le présent contrat est conclu dans le cadre d'une prestation de formation réalisée par le sous-traitant au bénéfice du donneur d'ordre.</p>
+  <p><strong>Intitulé de la formation :</strong> Habilitation Électrique B1V</p>
+  <p><strong>Durée de la formation :</strong> 14</p>
+  <p><strong>Lieu de la formation :</strong> Aix-en-Provence, Aix-en-Provence</p>
+  <p><strong>Dates de la formation :</strong> Du 15/06/2026 au 16/06/2026</p>
+  <p><strong>Programme de formation :</strong> sur votre extranet, considéré accepté en signant ce contrat : [Lien extranet]</p>
+
+  <h2 class="article">ARTICLE 2 - DURÉE DU CONTRAT</h2>
+  <p>Le présent contrat est strictement limité à la prestation de formation visée à l'article 1. Il cesse de plein droit à son terme.</p>
+
+  <h2 class="article">ARTICLE 3 - OBLIGATIONS DU SOUS-TRAITANT</h2>
+  <p>Le sous-traitant s'engage à :</p>
+  <ul class="bullets">
+    <li>Connaître, et appliquer scrupuleusement la charte de sous traitant ;</li>
+    <li>Connaître, et appliquer scrupuleusement la fiche de poste du formateur ;</li>
+    <li>Communiquer au donneur d'ordre une copie de son extrait K-bis ;</li>
+    <li>Communiquer au donneur d'ordre ses besoins en matériel au moins 10 jours avant ;</li>
+    <li>Faire signer l'émargement à chaque session l'apprenant ;</li>
+    <li>Animer la formation dans le respect des objectifs fixés par le donneur d'ordre ;</li>
+    <li>Assurer un test de positionnement en amont de la formation ;</li>
+    <li>Assurer l'évaluation des stagiaires à l'issue de l'action de formation ;</li>
+    <li>Animer personnellement la formation ;</li>
+    <li>Envoyer en fin de formation tous les documents nécessaire au suivi pédagogique de la formation.</li>
+  </ul>
+
+  <h2 class="article">ARTICLE 4 - OBLIGATIONS DU DONNEUR D'ORDRE</h2>
+  <p>Le donneur d'ordre s'engage à :</p>
+  <ul class="bullets">
+    <li>Prendre en charge la gestion administrative et logistique de la formation ;</li>
+    <li>Transmettre sur demande au sous-traitant une copie des feuilles de présence signées par l'apprenant ;</li>
+    <li>Transmettre sur demande au sous-traitant une copie des questionnaires de satisfaction remplis par les stagiaires à l'issue de la formation.</li>
+  </ul>
+
+  <h2 class="article">ARTICLE 5 - MODALITÉS FINANCIÈRE</h2>
+  <p>La rémunération sera versée lorsque la formation sera terminée après l'envoi de tous les documents nécessaires, payée à 15 jours. Soit un total de <strong>1200.00 € HT</strong> pour l'intégralité de la prestation.</p>
+
+  <h2 class="article">ARTICLE 6 – CONDITIONS D'ANNULATION</h2>
+  <p>En cas de renoncement de la prestation imputable à l'intervenant, sans motif justifié (production d'un arrêt maladie) à moins de 8 jours avant le début du 1er jour de l'action, celui-ci s'engage à verser à [Nom organisme] 15 % de la prestation au titre de dédommagement.</p>
+
+  <h2 class="article">ARTICLE 7 – CLAUSES PARTICULIERES</h2>
+  <p>Le prestataire s'engage à respecter la confidentialité de cet accord. Les parties déclarent qu'elles sont indépendantes entre elles et que le présent contrat ne créé entre elles aucun lien de subordination ou association autre que celle relative à son objet. Le prestataire a été sélectionné par [Nom organisme] en raison de sa compétence reconnue sur le sujet. Il demeure maître et responsable du contenu de ses prestations tant écrites qu'orales. Le prestataire déclare avoir souscrit une police d'assurance Responsabilité Civile Professionnelle garantissant [Nom organisme] et les tiers de tout dommage survenant de son fait dans le cadre de l'exécution de ses prestations.</p>
+
+  <h2 class="article">ARTICLE 8 - NON-CONCURRENCE</h2>
+  <p>Le prestataire s'engage à ne pas prospecter ou avoir des contacts commerciaux avec les clients de [Nom organisme] chez lesquels il est intervenu, pour son propre compte ou celui d'un autre organisme, pendant une durée de 2 ans à compter de la date de fin de la dernière formation.</p>
+
+  <h2 class="article">ARTICLE 9 - CONTESTATIONS</h2>
+  <p>Toute contestation relative à l'interprétation et/ou l'exécution du présent contrat sera réglée amiablement par les parties avec l'aide éventuelle de leurs conseils respectifs.</p>
+  <p>Dans le cas où aucun accord n'aurait pu être trouvé dans un délai de deux mois à compter du jour où les parties se seront réunies ou auront tenté de se réunir par convocation dûment notifiée par lettre recommandée avec avis de réception pour régler amiablement leur différend, celui-ci pourra être déféré devant les Tribunaux de Marseille à l'initiative de la partie la plus diligente.</p>
+  <p>Ce contrat est établi en 2 exemplaires, dont l'un est à nous retourner dûment signé et précédé de la mention « Lu et approuvé » - « Bon pour accord ». Il est rappelé au contractant qu'il doit être en règle avec les dispositions de l'article D8222-5 du code du travail aux termes duquel il doit fournir tous les 6 mois à [Nom organisme] les documents attestant du paiement de ses cotisations sociales et fiscales (contrats d'un montant supérieur à 5 000€). Le contractant certifie sur l'honneur, compte tenu d'emplois éventuels dans différents établissements, être en règle vis-à-vis de la réglementation sur la durée journalière et hebdomadaire du travail.</p>
+
+  <h2 class="article">ARTICLE 10 - DISPOSITIONS DIVERSES</h2>
+  <ul class="bullets">
+    <li>Le présent contrat ne crée entre les parties aucun lien de subordination, le sous-traitant demeurant libre et responsable du contenu de la formation ;</li>
+    <li>Le sous-traitant dispose d'une propriété intellectuelle et/ou artistique sur le contenu de sa formation. Le donneur d'ordre s'engage à ne pas reproduire ni diffuser ce contenu sans l'accord du sous-traitant.</li>
+  </ul>
+
+  <div class="signature-block">
+    <div class="signature-col">
+      <div class="role">Pour l'organisme de formation,</div>
+      <div class="signatory">[Nom organisme],<br>Loris VICHOT</div>
+      <div class="signature-img"><img src="https://example.com/stamp.png" alt="Tampon" style="max-height:120px;" /></div>
+    </div>
+    <div class="signature-col">
+      <div class="role">Pour le sous-traitant</div>
+      <div class="signatory">Karim AZIZI</div>
+      <div class="signature-img">[Signature formateur]</div>
+    </div>
+  </div>
+
+</body>
+</html>",
+}
+`;
+
+exports[`Templates snapshots — couvre F1/F2.x/F3 > convocation-apprenant : HTML + footer résolus correctement 1`] = `
+{
+  "footer": "<div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 7.5pt; color: #6b7280; font-style: italic; width: 100%; padding: 0 16mm; text-align: center; line-height: 1.4;">
+  <div>[Nom organisme], 1 cours Mirabeau 13100 Aix-en-Provence , Numéro SIRET: 11122233344455, Numéro de déclaration d'activité: 13123456789</div>
+  <div>(auprès du préfet de région de: PACA)</div>
+  <div style="margin-top: 2px;"><span class="pageNumber"></span></div>
+</div>",
+  "html": "<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Convocation à la formation professionnelle</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 22mm 16mm; }
+  body {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-size: 10pt;
+    line-height: 1.55;
+    color: #1f2937;
+    margin: 0;
+  }
+
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 16px;
+  }
+  .header .org-info { flex: 1; padding-right: 12px; }
+  .header .org-name {
+    font-size: 17pt;
+    font-weight: 700;
+    color: #111827;
+    margin: 0 0 6px;
+    letter-spacing: 0.3px;
+  }
+  .header .org-address {
+    font-size: 8.5pt;
+    line-height: 1.5;
+    color: #374151;
+  }
+  .header .logo-cell { width: 130px; text-align: right; }
+  .header .logo-cell img { max-width: 130px; max-height: 110px; }
+
+  h1.title {
+    font-size: 13pt;
+    font-weight: 700;
+    text-align: center;
+    margin: 20px 0 14px;
+    color: #111827;
+  }
+
+  h2.formation-title {
+    font-size: 11pt;
+    font-weight: 700;
+    margin: 14px 0 8px;
+    color: #111827;
+  }
+
+  p { margin: 0 0 6px; }
+
+  ul.dates-list {
+    list-style: none;
+    padding: 0;
+    margin: 4px 0 14px 4px;
+  }
+  ul.dates-list > li {
+    padding: 2px 0 2px 16px;
+    position: relative;
+  }
+  ul.dates-list > li::before {
+    content: "\\2022";
+    color: #111827;
+    font-weight: 700;
+    position: absolute;
+    left: 2px;
+    top: 2px;
+  }
+
+  .qr-block {
+    text-align: center;
+    margin: 28px 0;
+  }
+  .qr-block img {
+    width: 200px;
+    height: 200px;
+  }
+
+  .important-block {
+    margin-top: 14px;
+  }
+  .important-block h3 {
+    font-size: 11pt;
+    font-weight: 700;
+    margin: 14px 0 6px;
+  }
+
+  .signature-block {
+    margin-top: 24px;
+    font-size: 10pt;
+  }
+  .signature-block .org-line { margin: 0; }
+  .signature-cachet { margin-top: 8px; min-height: 100px; }
+  .signature-cachet img { max-width: 220px; max-height: 110px; }
+
+  strong { font-weight: 700; }
+</style>
+</head>
+<body>
+
+  <div class="header">
+    <div class="org-info">
+      <div class="org-name">[Nom organisme]</div>
+      <div class="org-address">
+        1 cours Mirabeau 13100 Aix-en-Provence<br>
+        Email: contact@mr-formation.fr<br>
+        Tel: 0488123456<br>
+        https://mr-formation.fr
+      </div>
+    </div>
+    <div class="logo-cell"><img src="https://example.com/logo.png" alt="Logo" style="max-height:60px;" /></div>
+  </div>
+
+  <h1 class="title">Convocation à la formation professionnelle</h1>
+
+  <p>Bonjour <strong>Pierre MARTIN</strong>, Vous êtes convoqué pour la formation :</p>
+
+  <h2 class="formation-title">Habilitation Électrique B1V</h2>
+
+  <p>Lieu de la formation : <strong>Aix-en-Provence - Aix-en-Provence</strong></p>
+  <p>Durée de la formation : <strong>14</strong></p>
+  <p>Dates de la formation : <strong>Du 15/06/2026 au 16/06/2026</strong></p>
+
+  <p><strong>Vos dates en détail :</strong></p>
+  <ul class="dates-list"><li>De 15/06/2026 - 09:00 À 15/06/2026 - 17:00</li><li>De 16/06/2026 - 09:00 À 16/06/2026 - 17:00</li></ul>
+
+  <p><strong>Vous trouverez des informations complémentaires concernant la formation sur la page web dédiée aux stagiaires de cette formation :</strong></p>
+
+  <div class="qr-block"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABAQAAAAA3bvkkAAAACklEQVR4nGNgAAAAAgABc3UBGAAAAABJRU5ErkJggg==" alt="QR Code Extranet" width="200" height="200" /></div>
+
+  <p>Vous pourrez vous connecter à cette page en scannant le QR code ci-dessus.</p>
+  <p>En cas d'indisponibilité ou de renoncement, veuillez nous prévenir le plus rapidement possible.</p>
+
+  <div class="important-block">
+    <h3>Important :</h3>
+    <p>Vous trouverez dans votre extranet notre <strong>règlement intérieur</strong> dont vous devez avoir pris connaissance <strong>avant</strong> votre entrée en formation, afin d'être informé des règles de fonctionnement dans le cadre de la formation.</p>
+    <p>Pour les formations qui se déroulent dans votre entreprise, le règlement intérieur de votre entreprise s'applique pour la partie <strong>Sécurité</strong> (article 5).</p>
+    <p>Nous restons à votre disposition.</p>
+  </div>
+
+  <div class="signature-block">
+    <p class="org-line">Bien cordialement,</p>
+    <p class="org-line">[Nom organisme]</p>
+    <p class="org-line">1 cours Mirabeau 13100 Aix-en-Provence</p>
+    <div class="signature-cachet"><img src="https://example.com/stamp.png" alt="Tampon" style="max-height:120px;" /></div>
+  </div>
+
+</body>
+</html>",
+}
+`;
+
+exports[`Templates snapshots — couvre F1/F2.x/F3 > emargement-individuel : HTML + footer avec time_slots + signatures 1`] = `
+{
+  "footer": "<div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 7.5pt; color: #6b7280; font-style: italic; width: 100%; padding: 0 16mm; text-align: center; line-height: 1.4;">
+  <div>[Nom organisme], 1 cours Mirabeau 13100 Aix-en-Provence , Numéro SIRET: 11122233344455, Numéro de déclaration d'activité: 13123456789</div>
+  <div>(auprès du préfet de région de: PACA)</div>
+  <div style="margin-top: 2px;"><span class="pageNumber"></span></div>
+</div>",
+  "html": "<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Feuille d'émargement individuelle</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 22mm 16mm; }
+  body {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-size: 10pt;
+    line-height: 1.5;
+    color: #1f2937;
+    margin: 0;
+  }
+
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 12px;
+  }
+  .header .org-info { flex: 1; padding-right: 12px; }
+  .header .org-name {
+    font-size: 17pt;
+    font-weight: 700;
+    color: #111827;
+    margin: 0 0 6px;
+    letter-spacing: 0.3px;
+  }
+  .header .org-address {
+    font-size: 8.5pt;
+    line-height: 1.5;
+    color: #374151;
+  }
+  .header .logo-cell { width: 130px; text-align: right; }
+  .header .logo-cell img { max-width: 130px; max-height: 110px; }
+
+  h1.title {
+    font-size: 22pt;
+    font-weight: 700;
+    color: #111827;
+    text-align: center;
+    margin: 18px 0 18px;
+  }
+
+  .info-box {
+    border: 1.5px double #6b7280;
+    padding: 8px 14px;
+    margin: 0 0 22px;
+    font-size: 9.5pt;
+    line-height: 1.55;
+  }
+  .info-box .info-line { margin: 0; }
+  .info-box strong { font-weight: 700; }
+
+  h2.section-title {
+    text-align: center;
+    font-size: 16pt;
+    font-weight: 700;
+    color: #111827;
+    margin: 24px 0 16px;
+  }
+
+  /* Card par créneau (bleu pâle) */
+  .creneau-card {
+    background: #e0f2fe;
+    border: 1px solid #bae6fd;
+    border-radius: 4px;
+    padding: 12px 16px;
+    margin: 0 0 14px;
+    page-break-inside: avoid;
+  }
+  .creneau-card .creneau-header {
+    text-decoration: underline;
+    margin: 0 0 8px;
+    font-size: 9.5pt;
+    color: #1f2937;
+  }
+  .creneau-card .person-name {
+    margin: 6px 0 0;
+    font-size: 9.5pt;
+  }
+  .creneau-card .person-name.learner {
+    font-weight: 700;
+  }
+  .creneau-card .person-status {
+    margin: 0 0 4px;
+    font-size: 9pt;
+    color: #4b5563;
+    font-style: italic;
+  }
+  .creneau-card .status-absent {
+    color: #b91c1c;
+  }
+
+  strong { font-weight: 700; }
+</style>
+</head>
+<body>
+
+  <div class="header">
+    <div class="org-info">
+      <div class="org-name">[Nom organisme]</div>
+      <div class="org-address">
+        1 cours Mirabeau 13100 Aix-en-Provence<br>
+        Email: contact@mr-formation.fr<br>
+        Tel: 0488123456<br>
+        https://mr-formation.fr
+      </div>
+    </div>
+    <div class="logo-cell"><img src="https://example.com/logo.png" alt="Logo" style="max-height:60px;" /></div>
+  </div>
+
+  <h1 class="title">Feuille d'émargement</h1>
+
+  <div class="info-box">
+    <p class="info-line">Nom du stagiaire : <strong>Pierre MARTIN</strong></p>
+    <p class="info-line">Nom de la formation : <strong>Habilitation Électrique B1V</strong></p>
+    <p class="info-line">Date de la formation : du <strong>15/06/2026</strong> au <strong>16/06/2026</strong></p>
+    <p class="info-line">Lieu de la formation : <strong>Aix-en-Provence</strong></p>
+    <p class="info-line">Durée : <strong>14 heure(s)</strong> heures</p>
+    <p class="info-line">Prestataire de la formation : <strong>[Nom organisme] N° de déclaration d'activité : 13123456789</strong></p>
+    <p class="info-line">Formateur(s) : [Nom formateur]</p>
+  </div>
+
+  <h2 class="section-title">Tableau de signature</h2>
+
+  
+<div class="creneau-card">
+  <p class="creneau-header">Créneau : De 15/06/2026 - 09:00 À 15/06/2026 - 17:00 (MATIN)</p>
+  <p class="person-name">[Nom formateur]</p>
+  <p class="person-status">Présent (A signé en présentiel)</p>
+  <p class="person-name learner">MARTIN Pierre</p>
+  <p class="person-status">Présent (A signé en présentiel)</p>
+</div>
+<div class="creneau-card">
+  <p class="creneau-header">Créneau : De 16/06/2026 - 09:00 À 16/06/2026 - 17:00 (MATIN)</p>
+  <p class="person-name">[Nom formateur]</p>
+  <p class="person-status">Présent (A signé en présentiel)</p>
+  <p class="person-name learner">MARTIN Pierre</p>
+  <p class="person-status">Présent (A signé en présentiel)</p>
+</div>
+
+</body>
+</html>",
+}
+`;
