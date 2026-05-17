@@ -569,15 +569,11 @@ export function resolveVariables(content: string, data: ResolveContext): string 
       }
 
       // Status learner : signature image si dispo (signaturesById), sinon
-      // texte présent/absent depuis signedLearnerIds.
+      // texte présent/non signé date-aware via renderUnsignedCell.
       const signed = data.signedLearnerIds;
       const sigMap = data.signaturesById;
+      const sessionEndDate = data.session?.end_date;
       const learnerSig = sigMap?.get(data.learner.id);
-      const learnerPresent = learnerSig
-        ? true
-        : signed
-          ? signed.has(data.learner.id)
-          : true; // fallback mock = présent
 
       const learnerName = `${data.learner.last_name?.toUpperCase() ?? ""} ${data.learner.first_name ?? ""}`.trim();
       const formateursLine = formateursNoms || "[Formateur]";
@@ -585,11 +581,22 @@ export function resolveVariables(content: string, data: ResolveContext): string 
       const renderSigImg = (sig: string) =>
         `<img src="${sig}" alt="Signature" style="max-height:50px;max-width:160px;display:block;margin-top:4px;" />`;
 
+      // Note: renderUnsignedCell utilise <span>, mais ce template individuel utilise <p>
+      // pour respecter sa mise en page. On reproduit donc la logique en local avec <p>.
+      const renderUnsignedP = (): string => {
+        if (!sessionEndDate) return "";
+        const isPastSession = new Date(sessionEndDate) < new Date();
+        if (isPastSession) {
+          return `<p class="person-status status-unsigned">Non signé</p>`;
+        }
+        return "";
+      };
+
       const learnerStatusHtml = learnerSig
         ? `<p class="person-status">Présent</p>${renderSigImg(learnerSig)}`
-        : learnerPresent
-          ? `<p class="person-status">Présent (A signé en présentiel)</p>`
-          : `<p class="person-status status-absent">Absent</p>`;
+        : signed?.has(data.learner.id)
+          ? `<p class="person-status">Signé</p>`
+          : renderUnsignedP();
 
       // Formateur status : signature si dispo
       const firstTrainerId = (data.session?.formation_trainers ?? [])
@@ -597,7 +604,7 @@ export function resolveVariables(content: string, data: ResolveContext): string 
       const firstTrainerSig = firstTrainerId ? sigMap?.get(firstTrainerId) : undefined;
       const formateurStatusHtml = firstTrainerSig
         ? `<p class="person-status">Présent</p>${renderSigImg(firstTrainerSig)}`
-        : `<p class="person-status">Présent (A signé en présentiel)</p>`;
+        : renderUnsignedP();
 
       const cards = creneaux.map((c) => `
 <div class="creneau-card">
