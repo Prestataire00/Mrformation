@@ -21,7 +21,7 @@ import {
 import { useToast } from "@/components/ui/use-toast";
 import { EmailPreviewDialog } from "@/components/emails/EmailPreviewDialog";
 import { useEntity } from "@/contexts/EntityContext";
-import { getDefaultTemplate } from "@/lib/document-templates-defaults";
+import { renderSystemTemplate } from "@/lib/templates/registry";
 import { resolveVariables } from "@/lib/utils/resolve-variables";
 import { validateCompanyExport, findUncoveredLearners } from "@/lib/utils/formation-companies";
 import { exportHtmlToPDF, exportHtmlToPDFBase64 } from "@/lib/pdf-export";
@@ -445,7 +445,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
       if (systemTemplate?.content?.trim()) {
         htmlContent = resolveVariables(systemTemplate.content, resolveCtx);
       } else {
-        htmlContent = getDefaultTemplate(doc.doc_type, templateData);
+        htmlContent = renderSystemTemplate(doc.doc_type, templateData);
       }
     }
 

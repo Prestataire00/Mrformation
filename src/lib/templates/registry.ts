@@ -134,3 +134,66 @@ export function getSystemTemplate(docType: string): SystemTemplate | null {
 export function hasSystemTemplate(docType: string): boolean {
   return docType in SYSTEM_TEMPLATES_BY_DOC_TYPE;
 }
+
+/**
+ * Drop-in replacement pour `getDefaultTemplate()` (legacy
+ * `document-templates-defaults.ts`).
+ *
+ * Accepte le même format `TemplateData`-like que l'ancien helper, adapte
+ * vers `ResolveContext`, cherche dans le registry et résout les variables
+ * `[%Var%]` du beau template système. Retourne `null` si aucun template
+ * système n'existe pour ce doc_type (vs ancien helper qui retournait du
+ * HTML basique moche).
+ *
+ * Migration pattern :
+ *   AVANT : const html = getDefaultTemplate(docType, { formation, learner, ... });
+ *   APRÈS : const html = renderSystemTemplate(docType, { formation, learner, ... });
+ *
+ * Les call sites doivent gérer le cas `null` (afficher "Template non
+ * disponible" plutôt que silence).
+ */
+
+import {
+  resolveDocumentVariables,
+  type ResolveContext,
+} from "@/lib/utils/resolve-variables";
+import type { Session, Learner, Client, Trainer } from "@/lib/types";
+
+interface LegacyTemplateData {
+  formation?: Session | null;
+  learner?: Partial<Learner> & { first_name?: string; last_name?: string; email?: string | null };
+  company?: (Partial<Client> & { id?: string; company_name?: string; address?: string | null; siret?: string | null }) | null;
+  trainer?: Partial<Trainer> & { first_name?: string; last_name?: string };
+  entityName?: string;
+  entity?: ResolveContext["entity"];
+  // Champs additionnels utilisés par certains call sites legacy
+  doc?: { document_date?: string | null; confirmed_at?: string | null };
+  clientSignature?: { signature_data: string; signer_name: string; signed_at: string } | null;
+  magicLinkUrl?: string;
+  qrCodeDataUrl?: string;
+}
+
+export function renderSystemTemplate(
+  docType: string,
+  data: LegacyTemplateData,
+): string | null {
+  const template = getSystemTemplate(docType);
+  if (!template) return null;
+
+  // Adapter LegacyTemplateData → ResolveContext (formation→session, company→client)
+  const ctx: ResolveContext = {
+    session: (data.formation ?? undefined) as Session | undefined,
+    learner: data.learner as Learner | undefined,
+    client: data.company as Client | undefined,
+    trainer: data.trainer as Trainer | undefined,
+    entity: data.entity,
+    extranetQrDataUrl: data.qrCodeDataUrl,
+  };
+
+  // Résout HTML + footer + concatène (le footer Puppeteer est géré séparément
+  // par l'endpoint server-side qui appelle DGS ; ici on injecte le footer
+  // inline pour les rendus client/preview).
+  const html = resolveDocumentVariables(template.html, ctx);
+  return html;
+}
+

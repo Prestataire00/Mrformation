@@ -4,9 +4,8 @@ import { requireRole } from "@/lib/auth/require-role";
 import { sanitizeError } from "@/lib/api-error";
 import { convertDocxToPdfWithVariables } from "@/lib/services/docx-converter";
 import { generatePdfFromFragment } from "@/lib/services/pdf-generator";
-import { getDefaultTemplate } from "@/lib/document-templates-defaults";
 import { computeCacheKey, getCachedPdf, setCachedPdf } from "@/lib/services/pdf-cache";
-import { getSystemTemplate } from "@/lib/templates/registry";
+import { getSystemTemplate, renderSystemTemplate } from "@/lib/templates/registry";
 import {
   DocumentGenerationService,
   createDefaultEngine,
@@ -385,49 +384,15 @@ export async function POST(request: NextRequest) {
         pdfNameBase = payload.doc_type;
         if (magicToken) console.log(`[generate-from-template] Magic link convocation : ${magicToken.slice(0, 8)}...`);
       } else {
-        // Fallback : pas de beau template registry → getDefaultTemplate (legacy moche)
-        // pour les doc_types non couverts (custom, etc.)
-        const learnerData = payload.context.learner_id
-          ? (await auth.supabase.from("learners").select("id, first_name, last_name, email").eq("id", payload.context.learner_id).single()).data
-          : null;
-        const companyDataRaw = payload.context.client_id
-          ? (await auth.supabase.from("clients").select("company_name, address, siret").eq("id", payload.context.client_id).single()).data
-          : null;
-        const companyData = companyDataRaw && payload.context.client_id
-          ? { id: payload.context.client_id, ...companyDataRaw }
-          : null;
-        const trainerDataLegacy = payload.context.trainer_id
-          ? (await auth.supabase.from("trainers").select("first_name, last_name").eq("id", payload.context.trainer_id).single()).data
-          : null;
-        const { data: entityLegacy } = session?.entity_id
-          ? await auth.supabase
-              .from("entities")
-              .select("name, legal_form, siret, nda, ape_code, rcs, capital, address, postal_code, city, region, email, phone, website, president_name, president_title, logo_url, stamp_url, signature_url")
-              .eq("id", session.entity_id as string)
-              .single()
-          : { data: null };
-
-        const html = getDefaultTemplate(payload.doc_type, {
-          formation: session as unknown as Session,
-          learner: learnerData ?? undefined,
-          company: companyData ?? undefined,
-          trainer: trainerDataLegacy ?? undefined,
-          entityName: entityLegacy?.name ?? "MR FORMATION",
-          entity: entityLegacy ?? undefined,
-        });
-
-        if (!html) {
-          return NextResponse.json(
-            { error: `Pas de template système disponible pour "${payload.doc_type}"` },
-            { status: 404 }
-          );
-        }
-
-        const useLandscape = payload.doc_type === "planning_semaine";
-        const result = await generatePdfFromFragment(html, payload.doc_type, useLandscape ? { landscape: true } : undefined);
-        pdfBase64 = result.base64;
-        sizeBytes = result.sizeBytes;
-        pdfNameBase = payload.doc_type;
+        // Pas de beau template registry pour ce doc_type → 404 explicite.
+        // (Le fichier legacy document-templates-defaults.ts a été drop avec
+        // ce refactor : plus de double système. Si un nouveau doc_type est
+        // ajouté, créer son beau template dans src/lib/templates/ + l'ajouter
+        // au registry. Cf. /admin/documents/how-to pour la procédure.)
+        return NextResponse.json(
+          { error: `Pas de template système disponible pour "${payload.doc_type}". Créez un template custom via /admin/documents/import ou ajoutez un beau template au registry.` },
+          { status: 404 }
+        );
       }
     } else {
       return NextResponse.json({ error: "Aucun template ni doc_type valide fourni" }, { status: 400 });

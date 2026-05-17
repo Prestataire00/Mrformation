@@ -10,7 +10,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { EmailAttachmentDescriptor } from "@/lib/services/email-queue";
-import { getDefaultTemplate } from "@/lib/document-templates-defaults";
+import { renderSystemTemplate } from "@/lib/templates/registry";
 import { generatePdfFromFragment } from "@/lib/services/pdf-generator";
 import { convertDocxToPdfWithVariables } from "@/lib/services/docx-converter";
 import {
@@ -290,11 +290,11 @@ async function renderTemplateHtml(
     if (data) trainer = data;
   }
 
-  return getDefaultTemplate(desc.type, {
+  return renderSystemTemplate(desc.type, {
     formation: session as unknown as Session,
-    learner,
-    company,
-    trainer,
+    learner: learner ?? undefined,
+    company: company ?? undefined,
+    trainer: trainer ?? undefined,
     entityName,
     entity: entity ?? undefined,
   });

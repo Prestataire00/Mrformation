@@ -5,7 +5,7 @@ import { requireRole } from "@/lib/auth/require-role";
 import { sanitizeError } from "@/lib/api-error";
 import { logAudit } from "@/lib/audit-log";
 import { generatePdfFromFragment } from "@/lib/services/pdf-generator";
-import { getDefaultTemplate } from "@/lib/document-templates-defaults";
+import { renderSystemTemplate } from "@/lib/templates/registry";
 
 const isResendConfigured = !!process.env.RESEND_API_KEY && process.env.RESEND_API_KEY !== "votre-cle-resend";
 const resend = isResendConfigured ? new Resend(process.env.RESEND_API_KEY) : null;
@@ -119,7 +119,7 @@ export async function POST(request: NextRequest) {
     const companyRaw = companies.find((c) => c.client_id === doc.owner_id)?.client as Record<string, string> | undefined;
     const trainerRaw = trainers.find((t) => t.trainer_id === doc.owner_id)?.trainer as Record<string, string> | undefined;
 
-    const templateHtml = getDefaultTemplate(doc.doc_type, {
+    const templateHtml = renderSystemTemplate(doc.doc_type, {
       formation: session as unknown as import("@/lib/types").Session,
       learner: learnerRaw ? { first_name: learnerRaw.first_name, last_name: learnerRaw.last_name } : undefined,
       company: companyRaw ? { company_name: companyRaw.company_name } : undefined,
