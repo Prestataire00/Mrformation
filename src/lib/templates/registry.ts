@@ -56,6 +56,13 @@ export interface SystemTemplate {
   footer: string;
   /** Owner type attendu — pour validation côté caller. */
   ownerType: "learner" | "company" | "trainer" | "session";
+  /**
+   * Si true, la route generate-from-template retourne 422
+   * (INCOMPLETE_DATA) plutôt que de générer un PDF avec des
+   * placeholders `[Xxx]` visibles. Réservé aux docs Qualiopi
+   * (conventions, attestations, feuilles d'émargement).
+   */
+  qualiopiBlocking: boolean;
 }
 
 /**
@@ -68,62 +75,74 @@ export const SYSTEM_TEMPLATES_BY_DOC_TYPE: Record<string, SystemTemplate> = {
     html: CONVOCATION_APPRENANT_HTML,
     footer: CONVOCATION_APPRENANT_FOOTER_TEMPLATE,
     ownerType: "learner",
+    qualiopiBlocking: false,
   },
   certificat_realisation: {
     html: CERTIFICAT_REALISATION_HTML,
     footer: CERTIFICAT_REALISATION_FOOTER_TEMPLATE,
     ownerType: "learner",
+    qualiopiBlocking: true,
   },
   attestation_assiduite: {
     html: ATTESTATION_ASSIDUITE_HTML,
     footer: ATTESTATION_ASSIDUITE_FOOTER_TEMPLATE,
     ownerType: "learner",
+    qualiopiBlocking: true,
   },
   feuille_emargement: {
     html: EMARGEMENT_INDIVIDUEL_HTML,
     footer: EMARGEMENT_INDIVIDUEL_FOOTER_TEMPLATE,
     ownerType: "learner",
+    qualiopiBlocking: true,
   },
   feuille_emargement_collectif: {
     html: EMARGEMENT_COLLECTIF_HTML,
     footer: EMARGEMENT_FOOTER_TEMPLATE,
     ownerType: "company",
+    qualiopiBlocking: true,
   },
   convention_entreprise: {
     html: CONVENTION_ENTREPRISE_HTML,
     footer: CONVENTION_FOOTER_TEMPLATE,
     ownerType: "company",
+    qualiopiBlocking: true,
   },
   convention_intervention: {
     html: CONVENTION_INTERVENTION_HTML,
     footer: CONVENTION_INTERVENTION_FOOTER_TEMPLATE,
     ownerType: "trainer",
+    qualiopiBlocking: true,
   },
   contrat_sous_traitance: {
     // Réutilise le template convention-intervention (même structure légale)
     html: CONVENTION_INTERVENTION_HTML,
     footer: CONVENTION_INTERVENTION_FOOTER_TEMPLATE,
     ownerType: "trainer",
+    qualiopiBlocking: true,
   },
   programme_formation: {
     html: PROGRAMME_FORMATION_HTML,
     footer: PROGRAMME_FORMATION_FOOTER_TEMPLATE,
     ownerType: "session",
+    qualiopiBlocking: false,
   },
   cgv: {
     html: CGV_HTML,
     footer: CGV_FOOTER_TEMPLATE,
     ownerType: "session",
+    qualiopiBlocking: false,
   },
   reglement_interieur: {
     html: REGLEMENT_INTERIEUR_HTML,
     footer: REGLEMENT_INTERIEUR_FOOTER_TEMPLATE,
     ownerType: "session",
+    qualiopiBlocking: false,
   },
   politique_confidentialite: {
     html: POLITIQUE_RGPD_HTML,
     footer: POLITIQUE_RGPD_FOOTER_TEMPLATE,
     ownerType: "session",
+    qualiopiBlocking: false,
   },
 };
 
