@@ -3,13 +3,14 @@ storyId: B2
 storyKey: b-2-backfill-idempotent
 epic: B
 title: Backfill idempotent table documents unifiée depuis legacy
-status: ready-for-prod-execution (SQL + rollback plan livrés, attend run G1 + exécution prod)
+status: done
 priority: high
-effort: 0.5 j-h restant (G1 query prod + run migration + vérif)
+effort: 0.5 j-h (planning + 1 fix DISTINCT ON + exécution prod)
 sourcePRD: prd-documents.md FR-DOC-15
 sourceEpic: epics-documents.md Epic B (Lot B)
 createdAt: 2026-05-15
 revisedAt: 2026-05-17
+completedAt: 2026-05-17
 ---
 
 # Story B2 — Backfill idempotent
@@ -143,13 +144,30 @@ WHERE metadata->>'legacy_table' = 'formation_convention_documents';
 
 ## Definition of Done
 
-- [x] SQL backfill idempotent écrit + livré
+- [x] SQL backfill idempotent écrit + livré (PR #102)
 - [x] G2 rollback plan documenté (3 niveaux)
 - [x] G1 query prête à run en prod
 - [x] Story spec complète
-- [x] PR créée + mergée (planning, pas d'exécution prod)
-- [ ] **Exécution prod par Wissam** : run G1 → reporter résultats → run migration SQL → vérifier rapport post-flight
-- [ ] Sprint-status : b-2 → done APRÈS exécution prod réussie
+- [x] PR créée + mergée (planning, pas d'exécution prod) — PR #102
+- [x] Fix DISTINCT ON pour dédupliquer doublons template_id legacy — PR #103
+- [x] **Exécution prod par Wissam (2026-05-17)** : G1 (2277 rows, 0 orphelins) + SQL backfill OK
+- [x] Sprint-status : b-2 → done
+
+## Résultat exécution prod (2026-05-17)
+
+- **G1 volume historique** : 2277 rows dans `formation_convention_documents`, 0 sessions orphelines
+- **Premier run échec** : `duplicate key value violates unique constraint documents_unique_source_owner`
+  - Root cause : la table legacy autorise plusieurs rows avec template_id différents pour le même (session, doc_type, owner) ; la nouvelle table `documents` n'inclut PAS template_id dans sa UNIQUE.
+  - Fix : DISTINCT ON dans le SELECT pour garder 1 row par groupe, avec priorité signed > sent > generated > draft puis tie-break sur created_at DESC (PR #103)
+- **Second run réussi** :
+  - **181 rows backfillées** (depuis 2277 legacy)
+  - **Delta de 2096 rows** = doublons dédupliqués (attendu, conforme à la sémantique cible "1 doc par (entité, source, doc_type, propriétaire)")
+  - Rapport alignement statuts : delta négatif uniforme par doc_type (legacy compte les dupes, unified n'en a qu'1) — normal et attendu
+  - Aucune erreur, aucune row orpheline
+- **État DB final** :
+  - `documents` : 181 rows backfillées (toutes avec `metadata->>'legacy_table' = 'formation_convention_documents'`)
+  - `formation_convention_documents` : 2277 rows intactes (conservée 90j pour rollback)
+  - Rollback Niveau 1 disponible à tout moment : `DELETE FROM documents WHERE metadata->>'legacy_table' = 'formation_convention_documents'`
 
 ## Notes / Trade-offs
 
