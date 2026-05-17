@@ -74,8 +74,8 @@ const DOC_TYPE_LABEL: Record<string, string> = {
 function buildEditUrl(entityKey: EntityKey, entityId: string | undefined, sessionId: string | undefined): string | null {
   if (entityKey === "trainer" && entityId) return `/admin/trainers/${entityId}`;
   if (entityKey === "client" && entityId) return `/admin/clients/${entityId}`;
-  if (entityKey === "learner" && entityId) return `/admin/learners/${entityId}`;
-  if (entityKey === "entity") return `/admin/settings`;
+  if (entityKey === "learner" && entityId) return `/admin/clients/apprenants/${entityId}`;
+  if (entityKey === "entity") return `/admin/settings/organization`;
   if (entityKey === "session" && sessionId) return `/admin/formations/${sessionId}`;
   return null;
 }
