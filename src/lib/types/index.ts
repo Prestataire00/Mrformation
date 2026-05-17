@@ -239,6 +239,17 @@ export interface Session {
   is_dpc: boolean;
   is_subcontracted: boolean;
   catalog_pre_registration: boolean;
+  // Story h-8 (Epic H) : champs pédagogiques override au niveau session.
+  // Fallback chain dans le resolver : session.X → program.content.X → training.X
+  pedagogical_objectives?: string | null;
+  pedagogical_content?: string | null;
+  target_audience?: string | null;
+  prerequisites?: string | null;
+  team_description?: string | null;
+  pedagogical_resources?: string | null;
+  evaluation_methods?: string | null;
+  access_modality?: string | null;
+  access_delay_days?: number | null;
   updated_at: string;
   created_at: string;
   // Relations
