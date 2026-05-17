@@ -337,7 +337,7 @@ export async function POST(request: NextRequest) {
         let signedLearnerIds: Set<string> | undefined;
         let signaturesById: Map<string, unknown> | undefined;
         if (
-          (payload.doc_type === "attestation_assiduite" || payload.doc_type === "feuille_emargement")
+          ["attestation_assiduite", "feuille_emargement", "feuille_emargement_collectif"].includes(payload.doc_type ?? "")
           && payload.context.session_id
         ) {
           try {
