@@ -262,7 +262,14 @@ export function TabFinances({ formation, onRefresh }: Props) {
     }
 
     const enrolledLearners = enrollments.filter((e) => e.learner);
-    const enrollCount = enrolledLearners.length || 1;
+    // Story h-4 : si company + recipientId, on filtre par client_id de l'enrollment
+    // pour ne PAS inclure les apprenants des autres entreprises de la session INTER.
+    // Cas reproductible : entreprise sans `amount` dans formation_companies →
+    // buildInvoiceLinesForCompany throw → on tombe ici en fallback legacy.
+    const targetLearners = (recipientType === "company" && recipientId)
+      ? enrolledLearners.filter((e) => e.client_id === recipientId)
+      : enrolledLearners;
+    const enrollCount = targetLearners.length || 1;
     const pricePerLearner = enrollCount > 0 ? totalPrice / enrollCount : totalPrice;
     const priceStr = pricePerLearner.toFixed(2).replace(".", ",");
 
@@ -276,7 +283,7 @@ export function TabFinances({ formation, onRefresh }: Props) {
     }
 
     // Financeur (ou company sans amount) : 1 ligne PAR apprenant
-    if (enrolledLearners.length === 0) {
+    if (targetLearners.length === 0) {
       return [{
         description: titlePart,
         quantity: "1",
@@ -284,7 +291,7 @@ export function TabFinances({ formation, onRefresh }: Props) {
       }];
     }
 
-    return enrolledLearners.map((e) => ({
+    return targetLearners.map((e) => ({
       description: `${titlePart} — ${e.learner!.last_name?.toUpperCase()} ${e.learner!.first_name}`,
       quantity: "1",
       unit_price: priceStr,
@@ -300,7 +307,17 @@ export function TabFinances({ formation, onRefresh }: Props) {
     const enrollments = formation.enrollments || [];
     const recipientType = overrideRecipientType || invoiceForm.recipient_type;
 
-    const participantNames = enrollments
+    // Story h-4 : si company, filtrer les apprenants par client_id de l'enrollment
+    // pour les notes "Participants" — sinon on listait TOUS les apprenants de
+    // la session INTER (y compris ceux d'autres entreprises).
+    const filterCompanyId = recipientType === "company"
+      ? (overrideRecipientId || invoiceForm.recipient_id || null)
+      : null;
+    const participantsSource = filterCompanyId
+      ? enrollments.filter((e) => e.client_id === filterCompanyId)
+      : enrollments;
+
+    const participantNames = participantsSource
       .filter((e) => e.learner)
       .map((e) => `${e.learner!.last_name?.toUpperCase()} ${e.learner!.first_name}`)
       .join(", ");
