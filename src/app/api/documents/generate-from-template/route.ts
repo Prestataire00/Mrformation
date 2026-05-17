@@ -340,7 +340,7 @@ export async function POST(request: NextRequest) {
         let signaturesById: Map<string, unknown> | undefined;
         let signaturesBySlotPerson: Map<string, unknown> | undefined;
         if (
-          ["attestation_assiduite", "feuille_emargement", "feuille_emargement_collectif"].includes(payload.doc_type ?? "")
+          ["attestation_assiduite", "feuille_emargement", "feuille_emargement_collectif", "planning_hebdo_signe"].includes(payload.doc_type ?? "")
           && payload.context.session_id
         ) {
           try {
@@ -393,7 +393,7 @@ export async function POST(request: NextRequest) {
         // les batch endpoints F1/F2.x qui passent par DGS.
         const engine = createDefaultEngine();
         const service = new DocumentGenerationService({ engine, supabase: auth.supabase });
-        const useLandscape = payload.doc_type === "planning_semaine";
+        const useLandscape = ["planning_semaine", "planning_hebdo_signe"].includes(payload.doc_type ?? "");
         const dgsResult = await service.generate({
           entityId: auth.profile.entity_id,
           docType: payload.doc_type,
