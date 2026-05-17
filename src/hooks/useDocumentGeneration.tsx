@@ -27,6 +27,10 @@ export type GenerateSuccess = {
   warnings?: { missingByEntity: MissingByEntity };
 };
 
+export type GenerateOptions = {
+  onSuccess?: (result: GenerateSuccess) => void;
+};
+
 type IncompleteState = {
   open: boolean;
   docType?: string;
@@ -34,6 +38,7 @@ type IncompleteState = {
   entityIds: EntityIds;
   sessionId?: string;
   lastRequest?: GenerateRequest;
+  lastOnSuccess?: (result: GenerateSuccess) => void;
 };
 
 /**
@@ -56,7 +61,7 @@ export function useDocumentGeneration() {
   });
 
   const generate = useCallback(
-    async (request: GenerateRequest): Promise<GenerateSuccess | null> => {
+    async (request: GenerateRequest, options: GenerateOptions = {}): Promise<GenerateSuccess | null> => {
       try {
         const res = await fetch("/api/documents/generate-from-template", {
           method: "POST",
@@ -73,6 +78,7 @@ export function useDocumentGeneration() {
             entityIds: json.entityIds ?? {},
             sessionId: request.context.session_id,
             lastRequest: request,
+            lastOnSuccess: options.onSuccess,
           });
           return null;
         }
@@ -89,7 +95,9 @@ export function useDocumentGeneration() {
           });
         }
 
-        return json as GenerateSuccess;
+        const success = json as GenerateSuccess;
+        if (options.onSuccess) options.onSuccess(success);
+        return success;
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Erreur génération PDF";
         toast({ title: "Erreur", description: msg, variant: "destructive" });
@@ -111,7 +119,8 @@ export function useDocumentGeneration() {
         incomplete.lastRequest
           ? () => {
               const req = incomplete.lastRequest!;
-              void generate(req);
+              const cb = incomplete.lastOnSuccess;
+              void generate(req, { onSuccess: cb });
             }
           : undefined
       }

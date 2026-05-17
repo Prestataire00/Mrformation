@@ -462,32 +462,35 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     const ownerClientId = doc.owner_type === "company" ? doc.owner_id : undefined;
     const ownerTrainerId = doc.owner_type === "trainer" ? doc.owner_id : undefined;
 
-    const result = await generateDocument({
-      template_id: doc.template_id || undefined,
-      doc_type: doc.template_id ? undefined : doc.doc_type,
-      context: {
-        session_id: formation.id,
-        learner_id: ownerLearnerId,
-        client_id: ownerClientId,
-        trainer_id: ownerTrainerId,
+    await generateDocument(
+      {
+        template_id: doc.template_id || undefined,
+        doc_type: doc.template_id ? undefined : doc.doc_type,
+        context: {
+          session_id: formation.id,
+          learner_id: ownerLearnerId,
+          client_id: ownerClientId,
+          trainer_id: ownerTrainerId,
+        },
       },
-    });
+      {
+        onSuccess: (result) => {
+          const byteChars = atob(result.base64);
+          const byteArray = new Uint8Array(byteChars.length);
+          for (let i = 0; i < byteChars.length; i++) byteArray[i] = byteChars.charCodeAt(i);
+          const blob = new Blob([byteArray], { type: "application/pdf" });
+          const pdfDataUrl = URL.createObjectURL(blob);
 
-    if (!result) return; // 422 INCOMPLETE_DATA → la modal s'ouvre, ou autre erreur déjà toastée
-
-    const byteChars = atob(result.base64);
-    const byteArray = new Uint8Array(byteChars.length);
-    for (let i = 0; i < byteChars.length; i++) byteArray[i] = byteChars.charCodeAt(i);
-    const blob = new Blob([byteArray], { type: "application/pdf" });
-    const pdfDataUrl = URL.createObjectURL(blob);
-
-    setPreviewDoc({
-      open: true,
-      html: "",
-      pdfDataUrl,
-      title: label,
-      filename: `${doc.doc_type}_${Date.now()}`,
-    });
+          setPreviewDoc({
+            open: true,
+            html: "",
+            pdfDataUrl,
+            title: label,
+            filename: `${doc.doc_type}_${Date.now()}`,
+          });
+        },
+      },
+    );
   };
 
   // ===== HELPERS =====
