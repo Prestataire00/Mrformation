@@ -32,6 +32,12 @@ export interface ResolveContext {
    */
   signaturesById?: Map<string, string>;
   /**
+   * Map "slotId|signerId|signerType" → signature_data, pour lookup slot-aware
+   * (utilisé par {{tableau_planning_hebdo}}). Si undefined, le resolver tombe
+   * back sur des cellules vides.
+   */
+  signaturesBySlotPerson?: Map<string, string>;
+  /**
    * Code d'identification unique du certificat (diplôme). Calculé via
    * `generateCertificateCode(learnerId, sessionId)` côté API. Utilisé par
    * `{{code_certificat}}` dans le template certificat-diplome.
@@ -996,7 +1002,7 @@ export function resolveVariables(content: string, data: ResolveContext): string 
     // Pour chaque (column, person) : signature image si signée, vide sinon.
     "{{tableau_planning_hebdo}}": (() => {
       const sess = data.session;
-      const slots = (sess as { time_slots?: Array<{ id: string; start_time: string; end_time: string }> })?.time_slots ?? [];
+      const slots = (sess as unknown as { formation_time_slots?: Array<{ id: string; start_time: string; end_time: string }> })?.formation_time_slots ?? [];
       if (slots.length === 0) return "[Aucun créneau]";
 
       // Group by (date, moment=M|AM)
@@ -1026,7 +1032,7 @@ export function resolveVariables(content: string, data: ResolveContext): string 
         .filter((l): l is NonNullable<typeof l> => Boolean(l));
 
       // Find signature for (slot, person, type)
-      const sigMap = data.signaturesById;
+      const sigMap = data.signaturesBySlotPerson;
       const findSig = (column: Column, personId: string, personType: "learner" | "trainer"): string | null => {
         if (!sigMap) return null;
         for (const slotId of column.slotIds) {

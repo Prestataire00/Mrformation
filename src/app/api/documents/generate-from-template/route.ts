@@ -338,6 +338,7 @@ export async function POST(request: NextRequest) {
         // Signatures : pour attestation_assiduite + feuille_emargement
         let signedLearnerIds: Set<string> | undefined;
         let signaturesById: Map<string, unknown> | undefined;
+        let signaturesBySlotPerson: Map<string, unknown> | undefined;
         if (
           ["attestation_assiduite", "feuille_emargement", "feuille_emargement_collectif"].includes(payload.doc_type ?? "")
           && payload.context.session_id
@@ -346,6 +347,7 @@ export async function POST(request: NextRequest) {
             const sigData = await loadSignaturesBySessionId(auth.supabase, payload.context.session_id);
             signedLearnerIds = sigData.signedLearnerIds;
             signaturesById = sigData.signaturesById;
+            signaturesBySlotPerson = sigData.signaturesBySlotPerson;
           } catch (err) {
             console.warn("[generate-from-template] signatures load failed:", err);
           }
@@ -360,6 +362,7 @@ export async function POST(request: NextRequest) {
           extranetQrDataUrl,
           signedLearnerIds,
           signaturesById: signaturesById as ResolveContext["signaturesById"],
+          signaturesBySlotPerson: signaturesBySlotPerson as ResolveContext["signaturesBySlotPerson"],
         };
 
         const resolvedHtml = resolveDocumentVariables(systemTemplate.html, ctx);
