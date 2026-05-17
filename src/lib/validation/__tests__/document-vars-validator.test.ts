@@ -117,6 +117,31 @@ describe("validateDocumentVariables", () => {
     expect(result.valid).toBe(true);
   });
 
+  it("skip fallback si entité non actionnable (pas dans context) — feuille collective session-wide", () => {
+    // Cas réel : feuille_emargement_collectif générée sans client_id en context
+    // (Action 1 de TabEmargements, vue globale toutes entreprises). Le template
+    // référence [%Nom du client%] qui résout en [Nom client] (fallback). On ne
+    // peut pas générer de deep link client (pas d'id) → on skip silencieusement.
+    const html = "<p>Entreprise: [%Nom du client%]</p>";
+    // context sans `client` (équivalent au context construit par la route quand
+    // payload.context.client_id est absent)
+    const result = validateDocumentVariables(html, baseContext);
+    expect(result.valid).toBe(true);
+    expect(result.missingByEntity.client).toBeUndefined();
+  });
+
+  it("flag fallback entity (organisme) même sans id — URL fixe /admin/settings/organization", () => {
+    // L'entité organisme n'a pas d'id dans le ResolveContext (cf load-entity.ts)
+    // mais l'URL d'édition est fixe → on doit toujours flagger les manquants
+    // sur entity même quand entity n'est pas dans le context.
+    const html = "<p>SIRET: [%SIRET de l'organisme%]</p>";
+    // Force entity à undefined pour simuler le cas extrême
+    const context: ResolveContext = { ...baseContext, entity: undefined };
+    const result = validateDocumentVariables(html, context);
+    expect(result.valid).toBe(false);
+    expect(result.missingByEntity.entity).toContain("siret");
+  });
+
   it("expose la table FALLBACK_TO_ENTITY_FIELD avec au moins 30 entrées", () => {
     // Sanity check : si quelqu'un casse la table par accident, ce test fail.
     expect(Object.keys(FALLBACK_TO_ENTITY_FIELD).length).toBeGreaterThanOrEqual(30);
