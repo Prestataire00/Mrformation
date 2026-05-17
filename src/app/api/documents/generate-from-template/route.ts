@@ -387,8 +387,25 @@ export async function POST(request: NextRequest) {
           }
         }
 
+        // h-9 (Epic H) : si client_id fourni dans le contexte, filtre les
+        // enrollments de la session pour ne garder QUE ceux de cette entreprise.
+        // Permet de générer 1 feuille d'émargement par entreprise (INTER multi-clients)
+        // sans inclure les apprenants des autres entreprises dans le tableau signatures.
+        // Ne filtre PAS pour les docs qui n'utilisent pas enrollments dans le rendu
+        // (convention_entreprise, certificat individuel, etc. — sans impact car le
+        // resolver ignore le champ enrollments pour ces docs).
+        const sessionForCtx: Record<string, unknown> | null = (() => {
+          if (!session || !payload.context.client_id) return session;
+          const enrollments = session.enrollments as Array<{ client_id?: string | null }> | undefined;
+          if (!Array.isArray(enrollments)) return session;
+          return {
+            ...session,
+            enrollments: enrollments.filter((e) => e.client_id === payload.context.client_id),
+          };
+        })();
+
         const ctx: ResolveContext = {
-          session: session as unknown as Session,
+          session: sessionForCtx as unknown as Session,
           learner: learnerData ?? undefined,
           client: clientData ?? undefined,
           trainer: trainerData ?? undefined,
