@@ -93,22 +93,12 @@ export default function LearnerCoursesPage() {
     } = await supabase.auth.getUser();
     if (!user) return;
 
-    // Find learner by user profile email
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("email")
-      .eq("id", user.id)
-      .single();
-
-    if (!profile?.email) {
-      setLoading(false);
-      return;
-    }
-
+    // Find learner via profile_id (auth.uid) — pas par email, qui peut
+    // diverger entre auth.users et learners (Epic G story g-4)
     const { data: learner } = await supabase
       .from("learners")
       .select("id")
-      .eq("email", profile.email)
+      .eq("profile_id", user.id)
       .maybeSingle();
 
     const currentLearnerId = learner?.id ?? null;

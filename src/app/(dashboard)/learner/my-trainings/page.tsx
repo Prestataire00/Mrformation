@@ -114,46 +114,49 @@ export default function LearnerMyTrainingsPage() {
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    if (!user) return;
-
-    // Get learner
-    const { data: learner } = await supabase
-      .from("learners")
-      .select("id")
-      .eq("profile_id", user.id)
-      .single();
-
-    if (!learner) {
+    if (!user) {
       setLoading(false);
       return;
     }
 
-    // Get program enrollments
-    const { data: progEnrollments } = await supabase
-      .from("program_enrollments")
+    // Query nested unique : learners → enrollments + program_enrollments + elearning_assignments
+    // Pattern identique à /learner/page.tsx — évite les ruptures RLS entre 2 queries séparées
+    // (cf Epic G story g-1 stabilisation portail apprenant)
+    const { data: learnerData, error: learnerError } = await supabase
+      .from("learners")
       .select(
-        "id, program_id, status, completion_rate, enrolled_at, program:programs(id, title, description, content), module_progress:program_module_progress(id, module_id, is_completed)"
+        `
+        id,
+        enrollments(id, session_id, status, enrolled_at,
+          session:sessions(id, title, start_date, end_date, location, mode, status, training_id,
+            training:trainings(id, title, description, duration_hours, certification, category))),
+        program_enrollments(id, program_id, status, completion_rate, enrolled_at,
+          program:programs(id, title, description, content),
+          module_progress:program_module_progress(id, module_id, is_completed)),
+        formation_elearning_assignments(id, course_id, session_id, is_completed, start_date, end_date,
+          elearning_courses(id, title, description, estimated_duration_minutes, elearning_chapters(id)),
+          sessions(title, training_id))
+        `
       )
-      .eq("learner_id", learner.id);
+      .eq("profile_id", user.id)
+      .single();
 
-    setProgramEnrollments((progEnrollments as unknown as ProgramEnrollmentData[]) ?? []);
+    if (learnerError || !learnerData) {
+      console.error("[my-trainings] learner fetch error:", learnerError);
+      setLoading(false);
+      return;
+    }
 
-    // Get all enrollments with session and training info
-    const { data: enrollments } = await supabase
-      .from("enrollments")
-      .select(
-        "id, session_id, status, enrolled_at, session:sessions(id, title, start_date, end_date, location, mode, status, training_id, training:trainings(id, title, description, duration_hours, certification, category))"
-      )
-      .eq("learner_id", learner.id)
-      .neq("status", "cancelled");
+    setProgramEnrollments(
+      (learnerData.program_enrollments as unknown as ProgramEnrollmentData[]) ?? []
+    );
 
-    // Get e-learning assignments
-    const { data: assignments } = await supabase
-      .from("formation_elearning_assignments")
-      .select(
-        "id, course_id, session_id, is_completed, start_date, end_date, elearning_courses(id, title, description, estimated_duration_minutes, elearning_chapters(id)), sessions(title, training_id)"
-      )
-      .eq("learner_id", learner.id);
+    const enrollments = (
+      (learnerData.enrollments as unknown as EnrolledSession[]) ?? []
+    ).filter((e) => e.status !== "cancelled");
+
+    const assignments =
+      (learnerData.formation_elearning_assignments as unknown as ElearningAssignment[]) ?? [];
 
     // Group by training
     const groupMap = new Map<string, TrainingGroup>();
