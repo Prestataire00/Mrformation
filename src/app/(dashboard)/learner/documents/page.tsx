@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { FileText, Loader2, Eye, CheckCircle, Clock } from "lucide-react";
+import { FileText, Loader2, Eye, CheckCircle, Clock, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -33,6 +33,7 @@ interface DocRow {
   is_sent: boolean;
   template_id: string | null;
   custom_label: string | null;
+  file_url: string | null;
   session_id: string;
   session_title: string;
   session_start_date: string | null;
@@ -56,12 +57,11 @@ export default function LearnerDocumentsPage() {
   const [loading, setLoading] = useState(true);
   const [learner, setLearner] = useState<{ id: string; first_name: string; last_name: string; email: string | null } | null>(null);
 
-  // Preview
-  const [previewDoc, setPreviewDoc] = useState<{
-    open: boolean;
-    html: string;
-    title: string;
-  } | null>(null);
+  // Preview : 2 modes selon que le PDF est déjà généré (file_url) ou non
+  type PreviewState =
+    | { open: true; kind: "pdf"; url: string; title: string }
+    | { open: true; kind: "html"; html: string; title: string };
+  const [previewDoc, setPreviewDoc] = useState<PreviewState | null>(null);
 
   const fetchDocuments = useCallback(async () => {
     setLoading(true);
@@ -84,7 +84,7 @@ export default function LearnerDocumentsPage() {
       // Table unifiée `documents` : status != 'draft' = confirmé
       const { data: docsRaw } = await supabase
         .from("documents")
-        .select("id, doc_type, status, template_id, source_id, metadata")
+        .select("id, doc_type, status, template_id, source_id, metadata, file_url")
         .eq("source_table", "sessions")
         .eq("owner_id", learnerData.id)
         .eq("owner_type", "learner")
@@ -98,6 +98,7 @@ export default function LearnerDocumentsPage() {
         is_sent: d.status === "sent" || d.status === "signed",
         template_id: d.template_id as string | null,
         custom_label: (d.metadata as { custom_label?: string } | null)?.custom_label ?? null,
+        file_url: d.file_url as string | null,
         session_id: d.source_id as string,
       }));
 
@@ -152,6 +153,17 @@ export default function LearnerDocumentsPage() {
   }, [fetchDocuments]);
 
   const handleView = async (doc: DocRow) => {
+    const label = doc.custom_label || DOC_LABELS[doc.doc_type] || doc.doc_type;
+
+    // Préfère le PDF déjà généré (file_url Supabase Storage) : mise en page A4
+    // fidèle, signatures intégrées, identique à ce que l'admin télécharge.
+    if (doc.file_url) {
+      setPreviewDoc({ open: true, kind: "pdf", url: doc.file_url, title: label });
+      return;
+    }
+
+    // Fallback : rendu HTML du template (mise en page non fidèle mais visible
+    // tant qu'un PDF n'a pas été régénéré côté admin).
     let htmlContent: string | null = null;
 
     if (doc.template_id) {
@@ -180,9 +192,9 @@ export default function LearnerDocumentsPage() {
 
     if (!htmlContent) return;
 
-    const label = doc.custom_label || DOC_LABELS[doc.doc_type] || doc.doc_type;
     setPreviewDoc({
       open: true,
+      kind: "html",
       html: DOMPurify.sanitize(htmlContent),
       title: label,
     });
@@ -268,18 +280,35 @@ export default function LearnerDocumentsPage() {
         ))
       )}
 
-      {/* Preview Dialog — lecture seule, pas de téléchargement */}
+      {/* Preview Dialog — PDF natif si file_url, sinon fallback HTML */}
       {previewDoc && (
         <Dialog open={previewDoc.open} onOpenChange={(open) => { if (!open) setPreviewDoc(null); }}>
-          <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+          <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
             <DialogHeader>
               <DialogTitle>{previewDoc.title}</DialogTitle>
             </DialogHeader>
-            <div
-              className="prose prose-sm max-w-none"
-              dangerouslySetInnerHTML={{ __html: previewDoc.html }}
-            />
+            {previewDoc.kind === "pdf" ? (
+              <iframe
+                src={previewDoc.url}
+                title={previewDoc.title}
+                className="w-full flex-1 min-h-[70vh] border border-gray-200 rounded"
+              />
+            ) : (
+              <div
+                className="prose prose-sm max-w-none overflow-y-auto"
+                dangerouslySetInnerHTML={{ __html: previewDoc.html }}
+              />
+            )}
             <DialogFooter>
+              {previewDoc.kind === "pdf" && (
+                <a
+                  href={previewDoc.url}
+                  download
+                  className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-[#374151] hover:bg-[#1f2937] rounded-md transition-colors"
+                >
+                  <Download className="h-4 w-4" /> Télécharger
+                </a>
+              )}
               <Button variant="outline" onClick={() => setPreviewDoc(null)}>
                 Fermer
               </Button>
