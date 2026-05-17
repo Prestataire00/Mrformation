@@ -7,16 +7,14 @@
  *
  * Body : `{ sessionId: UUID }`.
  *
- * Note QR : le QR pointe vers la MÊME url pour tous les apprenants
- * (`/learner/sessions/{sessionId}`) — l'extranet auth-protégé fera la
- * distinction par apprenant via le login.
+ * Chaque convocation contient les credentials de connexion (email + mot de
+ * passe temporaire) injectés via `ensureLearnerAccount` (idempotent).
  */
 
 import { createClient } from "@/lib/supabase/server";
 import { sanitizeError } from "@/lib/api-error";
 import { NextRequest, NextResponse } from "next/server";
 import JSZip from "jszip";
-import QRCode from "qrcode";
 import {
   CONVOCATION_APPRENANT_HTML,
   CONVOCATION_APPRENANT_FOOTER_TEMPLATE,
@@ -30,8 +28,18 @@ import {
   DocumentGenerationService,
   createDefaultEngine,
 } from "@/lib/services/document-generation";
-import { getOrCreateConvocationMagicLink } from "@/lib/services/convocation-magic-link";
+import { ensureLearnerAccount } from "@/lib/services/learner-account";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import type { Session, Learner } from "@/lib/types";
+
+function createServiceClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) throw new Error("Missing Supabase service role configuration");
+  return createSupabaseClient(url, key, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+}
 
 interface BatchError {
   learnerId: string;
@@ -123,26 +131,24 @@ export async function POST(request: NextRequest) {
     const engine = createDefaultEngine();
     const service = new DocumentGenerationService({ engine, supabase });
 
-    // Magic link PAR apprenant (chaque QR unique → auto-login vers sa session)
+    // Service client pour les appels auth.admin (ensureLearnerAccount)
+    const serviceClient = createServiceClient();
+
+    // Credentials PAR apprenant (ensureLearnerAccount idempotent : réutilise
+    // les credentials existants pour cohérence entre les convocations).
     const tasks = learners.map(async (learner) => {
-      const magicLink = await getOrCreateConvocationMagicLink({
-        supabase,
-        learnerId: learner.id,
-        sessionId: body.sessionId!,
-        entityId: profile.entity_id,
-        createdByUserId: user.id,
-      });
-      const qrDataUrl = await QRCode.toDataURL(magicLink.url, {
-        width: 400,
-        margin: 1,
-        errorCorrectionLevel: "M",
-      });
+      let learnerCredentials: { email: string; tempPassword: string } | null = null;
+      try {
+        learnerCredentials = await ensureLearnerAccount(serviceClient, learner.id);
+      } catch (err) {
+        console.warn("[generate-convocations-batch] ensureLearnerAccount failed:", err);
+      }
 
       const context: ResolveContext = {
         session: session as unknown as Session,
         learner,
         entity,
-        extranetQrDataUrl: qrDataUrl,
+        learnerCredentials: learnerCredentials ?? undefined,
       };
       const resolvedHtml = resolveDocumentVariables(CONVOCATION_APPRENANT_HTML, context);
       const resolvedFooter = resolveDocumentVariables(CONVOCATION_APPRENANT_FOOTER_TEMPLATE, context);
@@ -156,7 +162,7 @@ export async function POST(request: NextRequest) {
           session_id: body.sessionId,
           learner_id: learner.id,
           session_updated_at: (session as { updated_at?: string }).updated_at ?? null,
-          custom_variables: { magic_token: magicLink.token },
+          custom_variables: null,
         },
         options: {
           format: "A4",

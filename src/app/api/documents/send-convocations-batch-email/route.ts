@@ -13,7 +13,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { sanitizeError } from "@/lib/api-error";
 import { NextRequest, NextResponse } from "next/server";
-import QRCode from "qrcode";
 import {
   CONVOCATION_APPRENANT_HTML,
   CONVOCATION_APPRENANT_FOOTER_TEMPLATE,
@@ -27,12 +26,22 @@ import {
   DocumentGenerationService,
   createDefaultEngine,
 } from "@/lib/services/document-generation";
-import { getOrCreateConvocationMagicLink } from "@/lib/services/convocation-magic-link";
+import { ensureLearnerAccount } from "@/lib/services/learner-account";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import {
   executeBatchEmailSend,
   type RecipientGenerationTask,
 } from "@/lib/services/batch-email-handler";
 import type { Session, Learner } from "@/lib/types";
+
+function createServiceClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) throw new Error("Missing Supabase service role configuration");
+  return createSupabaseClient(url, key, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+}
 
 function slugify(name: string): string {
   return (
@@ -108,6 +117,9 @@ export async function POST(request: NextRequest) {
     const service = new DocumentGenerationService({ engine, supabase });
     const sessionTitle = (session as { title?: string }).title ?? "Formation";
 
+    // Service client pour les appels auth.admin (ensureLearnerAccount)
+    const serviceClient = createServiceClient();
+
     const tasks: RecipientGenerationTask[] = learners.map((learner) => ({
       ownerId: learner.id,
       ownerName: `${learner.last_name} ${learner.first_name}`,
@@ -119,23 +131,19 @@ export async function POST(request: NextRequest) {
       emailTextBody: `Bonjour ${learner.first_name ?? ""},\n\nVeuillez trouver ci-joint votre convocation pour la formation ${sessionTitle}.\n\nCordialement,\nL'équipe formation`,
       attachmentFilename: `convocation-${slugify(`${learner.last_name} ${learner.first_name}`)}.pdf`,
       generatePdf: async () => {
-        const magicLink = await getOrCreateConvocationMagicLink({
-          supabase,
-          learnerId: learner.id,
-          sessionId: body.sessionId!,
-          entityId: profile.entity_id,
-          createdByUserId: user.id,
-        });
-        const qrDataUrl = await QRCode.toDataURL(magicLink.url, {
-          width: 400,
-          margin: 1,
-          errorCorrectionLevel: "M",
-        });
+        // Ensure que l'apprenant a un compte Supabase + mot de passe temporaire
+        // (idempotent : réutilise les credentials existants si déjà setup).
+        let learnerCredentials: { email: string; tempPassword: string } | null = null;
+        try {
+          learnerCredentials = await ensureLearnerAccount(serviceClient, learner.id);
+        } catch (err) {
+          console.warn("[send-convocations-batch-email] ensureLearnerAccount failed:", err);
+        }
         const context: ResolveContext = {
           session: session as unknown as Session,
           learner,
           entity,
-          extranetQrDataUrl: qrDataUrl,
+          learnerCredentials: learnerCredentials ?? undefined,
         };
         const html = resolveDocumentVariables(CONVOCATION_APPRENANT_HTML, context);
         const footer = resolveDocumentVariables(CONVOCATION_APPRENANT_FOOTER_TEMPLATE, context);
@@ -148,7 +156,7 @@ export async function POST(request: NextRequest) {
             session_id: body.sessionId,
             learner_id: learner.id,
             session_updated_at: (session as { updated_at?: string }).updated_at ?? null,
-            custom_variables: { magic_token: magicLink.token },
+            custom_variables: null,
           },
           options: {
             format: "A4",

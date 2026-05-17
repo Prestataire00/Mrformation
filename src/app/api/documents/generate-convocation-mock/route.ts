@@ -3,14 +3,13 @@
  *
  * Génère une convocation apprenant avec DONNÉES FACTICES — reproduit
  * exactement l'exemple Loris (Patrick ATTLAN, formation Managers de
- * Proximité, 10/01/2025, 2 créneaux matin + aprem). QR code pointe vers
- * la home /learner du CRM.
+ * Proximité, 10/01/2025, 2 créneaux matin + aprem). Credentials de
+ * connexion mockés (email + password factice) à des fins de demo.
  */
 
 import { createClient } from "@/lib/supabase/server";
 import { sanitizeError } from "@/lib/api-error";
 import { NextRequest, NextResponse } from "next/server";
-import QRCode from "qrcode";
 import {
   CONVOCATION_APPRENANT_HTML,
   CONVOCATION_APPRENANT_FOOTER_TEMPLATE,
@@ -131,16 +130,13 @@ export async function POST(_request: NextRequest) {
       // dans session.location pour le mock, pour avoir le bon visuel.
     } as unknown as Session;
 
-    // Mock : URL magic-link fake (token bidon) pour montrer le format. En prod,
-    // c'est un vrai token /access/{token} → auto-login + redirect vers la session.
-    const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://mrformationcrm.netlify.app").replace(/\/+$/, "");
-    const mockToken = "mock-token-no-auto-login-DEMO";
-    const extranetUrl = `${baseUrl}/access/${mockToken}`;
-    const qrDataUrl = await QRCode.toDataURL(extranetUrl, {
-      width: 400,
-      margin: 1,
-      errorCorrectionLevel: "M",
-    });
+    // Mock : credentials factices pour montrer le format dans le PDF (le
+    // template affiche {{email_apprenant}} + {{mot_de_passe_apprenant}} à
+    // la place de l'ancien QR code magic link).
+    const mockCredentials = {
+      email: mockLearner.email ?? "patrick.attlan@example.fr",
+      tempPassword: "DemoPass2025",
+    };
 
     // Pour le mock, override session.location pour matcher le PDF Loris exactement
     const sessionForRender = { ...mockSession, location: "UNICIL, 11 RUE ARMENY 13006 MARSEILLE" } as Session;
@@ -148,7 +144,7 @@ export async function POST(_request: NextRequest) {
       session: sessionForRender,
       learner: mockLearner,
       entity,
-      extranetQrDataUrl: qrDataUrl,
+      learnerCredentials: mockCredentials,
     };
     const resolvedHtml = resolveDocumentVariables(CONVOCATION_APPRENANT_HTML, context);
     const resolvedFooter = resolveDocumentVariables(CONVOCATION_APPRENANT_FOOTER_TEMPLATE, context);
