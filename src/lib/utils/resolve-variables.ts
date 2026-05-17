@@ -23,6 +23,14 @@ export interface ResolveContext {
    */
   learnerCredentials?: { email: string; tempPassword: string };
   /**
+   * Signature SVG du document courant (table `documents.signature_data`)
+   * pour insérer la signature du signataire (client, formateur, etc.) dans
+   * le PDF du document signé. Cf h-2 Epic H : Story C n'avait jamais
+   * branché cette variable, donc les conventions signées affichaient un
+   * PDF sans signature.
+   */
+  documentSignature?: string;
+  /**
    * Map signer_id → signature_data URL (depuis table signatures).
    * Inclut apprenants ET formateurs. Si présente, les builders
    * `{{tableau_signature_compact}}` et `{{tableau_signature_individuel}}`
@@ -584,8 +592,15 @@ export function resolveVariables(content: string, data: ResolveContext): string 
       const learnerName = `${data.learner.last_name?.toUpperCase() ?? ""} ${data.learner.first_name ?? ""}`.trim();
       const formateursLine = formateursNoms || "[Formateur]";
 
-      const renderSigImg = (sig: string) =>
-        `<img src="${sig}" alt="Signature" style="max-height:50px;max-width:160px;display:block;margin-top:4px;" />`;
+      // Convertit le SVG brut en data URL pour l'inliner dans src=""
+      // (cf h-1 : sans ça les " du SVG cassent l'attribut HTML et le tag
+      // est rendu en texte brut au lieu de l'image signature).
+      const renderSigImg = (sig: string) => {
+        const dataUrl = sig.startsWith("data:")
+          ? sig
+          : `data:image/svg+xml;base64,${Buffer.from(sig).toString("base64")}`;
+        return `<img src="${dataUrl}" alt="Signature" style="max-height:50px;max-width:160px;display:block;margin-top:4px;" />`;
+      };
 
       // Note: renderUnsignedCell utilise <span>, mais ce template individuel utilise <p>
       // pour respecter sa mise en page. On reproduit donc la logique en local avec <p>.
@@ -866,10 +881,17 @@ export function resolveVariables(content: string, data: ResolveContext): string 
     "{{ville_organisme}}": data.entity?.city || "[Ville organisme]",
     "{{representant_organisme}}": data.entity?.president_name || "[Représentant organisme]",
     "{{titre_representant_organisme}}": data.entity?.president_title || "Président",
-    // E-signature client : pour l'instant fallback empty — la story C
-    // (signatures unifiées) branchera vers documents.signature_data quand
-    // le doc convention est signé.
-    "{{e_signature_client}}": "",
+    // E-signature client : rend la signature SVG du document signé
+    // (table documents.signature_data) en tant qu'image inline. Si pas
+    // de signature (doc non signé), retourne chaîne vide.
+    "{{e_signature_client}}": (() => {
+      const sig = data.documentSignature;
+      if (!sig) return "";
+      const dataUrl = sig.startsWith("data:")
+        ? sig
+        : `data:image/svg+xml;base64,${Buffer.from(sig).toString("base64")}`;
+      return `<img src="${dataUrl}" alt="Signature client" style="max-height:80px;max-width:240px;display:block;margin-top:6px;" />`;
+    })(),
     // Type d'action de formation (Art. L6313-1) : déduit de training.classification.
     "{{type_action_formation}}": (() => {
       const c = data.session?.training?.classification;
@@ -913,8 +935,14 @@ export function resolveVariables(content: string, data: ResolveContext): string 
 
       const signed = data.signedLearnerIds;
       const sigMap = data.signaturesById;
-      const renderSignature = (sigData: string): string =>
-        `<img src="${sigData}" alt="Signature" style="max-height:42px;max-width:120px;display:block;margin-top:2px;" />`;
+      // Convertit le SVG brut en data URL pour l'inliner dans src=""
+      // (cf h-1 : sans ça les " du SVG cassent l'attribut HTML).
+      const renderSignature = (sigData: string): string => {
+        const dataUrl = sigData.startsWith("data:")
+          ? sigData
+          : `data:image/svg+xml;base64,${Buffer.from(sigData).toString("base64")}`;
+        return `<img src="${dataUrl}" alt="Signature" style="max-height:42px;max-width:120px;display:block;margin-top:2px;" />`;
+      };
       const sessionEndDate = data.session?.end_date;
       const learnerStatus = (learnerId: string): string => {
         const sig = sigMap?.get(learnerId);

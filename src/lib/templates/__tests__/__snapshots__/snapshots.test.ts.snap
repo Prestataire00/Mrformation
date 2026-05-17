@@ -566,6 +566,7 @@ exports[`Templates snapshots — couvre F1/F2.x/F3 > convention-entreprise : HTM
     <div class="signature-col">
       <div class="role">Pour le bénéficiaire</div>
       <div class="signatory">Acme SAS,<br>DURAND Marie</div>
+      <div class="signature-cachet"></div>
     </div>
   </div>
 
