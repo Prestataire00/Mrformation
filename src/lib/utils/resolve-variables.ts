@@ -111,6 +111,26 @@ const MODE_LABELS: Record<string, string> = {
 };
 
 /**
+ * Rendu d'une cellule d'émargement non signée, comportement date-aware.
+ *
+ * Spec : docs/superpowers/specs/2026-05-17-emargement-collectif-fix-default-status-design.md
+ * Bug initial : le fallback hardcodé "Présent (A signé en présentiel)" était
+ * affiché pour tous les apprenants même sans signature → trompeur pour Qualiopi.
+ *
+ * Nouvelle logique :
+ * - Session passée (end_date < now)   → "Non signé" rouge italique
+ * - Session à venir / end_date inconnu → cellule vide (prête pour signature manuscrite)
+ */
+export function renderUnsignedCell(sessionEndDate: string | null | undefined): string {
+  if (!sessionEndDate) return "";
+  const isPastSession = new Date(sessionEndDate) < new Date();
+  if (isPastSession) {
+    return `<span class="person-status status-unsigned">Non signé</span>`;
+  }
+  return "";
+}
+
+/**
  * Replaces {{variable}} placeholders in content with actual data.
  * Shared between document generation and email sending.
  */

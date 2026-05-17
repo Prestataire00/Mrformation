@@ -1,9 +1,10 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   resolveVariables,
   resolveDocumentVariables,
   getResolvedVariablesMap,
   findUnresolvedVariables,
+  renderUnsignedCell,
   VARIABLE_KEYS,
   type ResolveContext,
 } from "@/lib/utils/resolve-variables";
@@ -372,5 +373,45 @@ describe("findUnresolvedVariables", () => {
       "{{a}}",
       "{{b}}",
     ]);
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────
+// Tests pour renderUnsignedCell (Story émargement status fix 2026-05-17)
+// Voir docs/superpowers/specs/2026-05-17-emargement-collectif-fix-default-status-design.md
+// ───────────────────────────────────────────────────────────────────────
+
+describe("renderUnsignedCell", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-17T12:00:00Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("session passée → 'Non signé' rouge avec class status-unsigned", () => {
+    const html = renderUnsignedCell("2026-01-15T17:00:00Z");
+    expect(html).toContain("Non signé");
+    expect(html).toContain("status-unsigned");
+  });
+
+  it("session à venir → cellule vide", () => {
+    const html = renderUnsignedCell("2030-06-15T17:00:00Z");
+    expect(html).toBe("");
+  });
+
+  it("session end_date = null → cellule vide (fallback safe)", () => {
+    expect(renderUnsignedCell(null)).toBe("");
+  });
+
+  it("session end_date = undefined → cellule vide (fallback safe)", () => {
+    expect(renderUnsignedCell(undefined)).toBe("");
+  });
+
+  it("session end_date dans le futur immédiat (1 jour) → cellule vide", () => {
+    const html = renderUnsignedCell("2026-05-18T17:00:00Z");
+    expect(html).toBe("");
   });
 });
