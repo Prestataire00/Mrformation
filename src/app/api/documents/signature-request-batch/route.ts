@@ -16,6 +16,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { sanitizeError } from "@/lib/api-error";
 import { logEvent } from "@/lib/logger";
+import { loadClientsWithContacts } from "@/lib/services/load-client";
 import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
 
@@ -95,10 +96,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Vérifie la session (gate entity_id)
+    // Vérifie la session (gate entity_id). Note : on ne joint pas
+    // contacts(*) ici (PGRST201 si 2+ FK en base), on les charge séparément
+    // pour les company_ids qui en ont besoin (via loadClientsWithContacts).
     const { data: session } = await supabase
       .from("sessions")
-      .select("id, title, entity_id, formation_companies:formation_companies(client_id, client:clients(id, company_name, contacts(*))), formation_trainers:formation_trainers(trainer_id, trainer:trainers(*)), enrollments:enrollments(learner_id, learner:learners(*))")
+      .select("id, title, entity_id, formation_companies:formation_companies(client_id, client:clients(id, company_name)), formation_trainers:formation_trainers(trainer_id, trainer:trainers(*)), enrollments:enrollments(learner_id, learner:learners(*))")
       .eq("id", body.sessionId)
       .eq("entity_id", profile.entity_id)
       .single();
@@ -108,6 +111,14 @@ export async function POST(request: NextRequest) {
         { status: 404 },
       );
     }
+
+    // Pré-charge les contacts des clients pour résoudre les emails primary
+    const companyClientIds = (
+      (session as unknown as { formation_companies?: Array<{ client_id?: string | null }> }).formation_companies ?? []
+    )
+      .map((c) => c.client_id)
+      .filter((id): id is string => Boolean(id));
+    const clientsWithContacts = await loadClientsWithContacts(supabase, companyClientIds);
 
     // Charge les docs candidats : requires_signature + non-signés (table `documents`)
     const { data: docsRaw, error: docsErr } = await supabase
@@ -154,7 +165,7 @@ export async function POST(request: NextRequest) {
       : "MR Formation <noreply@mrformation.fr>";
 
     // Indexes pour résoudre owner_name + email selon owner_type
-    type CompanyLink = { client_id: string; client: { id: string; company_name: string | null; contacts: Array<{ email: string | null; is_primary: boolean | null }> } | null };
+    type CompanyLink = { client_id: string; client: { id: string; company_name: string | null } | null };
     type TrainerLink = { trainer_id: string; trainer: { id: string; first_name: string | null; last_name: string | null; email: string | null } | null };
     type EnrollmentLink = { learner_id: string; learner: { id: string; first_name: string | null; last_name: string | null; email: string | null } | null };
     const companies = (session as unknown as { formation_companies: CompanyLink[] }).formation_companies ?? [];
@@ -179,7 +190,9 @@ export async function POST(request: NextRequest) {
         const link = companies.find((c) => c.client_id === doc.owner_id);
         if (link?.client) {
           ownerName = link.client.company_name ?? ownerName;
-          const contacts = link.client.contacts ?? [];
+          // contacts chargés via loadClientsWithContacts (vs join PGRST201)
+          const clientWithContacts = clientsWithContacts.get(doc.owner_id);
+          const contacts = (clientWithContacts?.contacts ?? []) as Array<{ email: string | null; is_primary: boolean | null }>;
           const withEmail = contacts.filter((c) => c.email);
           signerEmail = withEmail.find((c) => c.is_primary)?.email ?? withEmail[0]?.email ?? null;
         }

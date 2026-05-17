@@ -17,6 +17,7 @@ import {
 } from "@/lib/utils/resolve-variables";
 import { getOrCreateConvocationMagicLink } from "@/lib/services/convocation-magic-link";
 import { loadSignaturesBySessionId } from "@/lib/services/load-signatures";
+import { loadClientWithContacts } from "@/lib/services/load-client";
 import QRCode from "qrcode";
 import type { Session, Learner, Client, Trainer } from "@/lib/types";
 
@@ -290,32 +291,19 @@ export async function POST(request: NextRequest) {
           ? (await auth.supabase.from("learners").select("*").eq("id", payload.context.learner_id).single()).data as Learner | null
           : null;
 
-        // Fetch client avec ses contacts. Log explicite si le client_id est
-        // passé mais qu'on ne le récupère pas (RLS, données manquantes, etc.).
+        // Fetch client avec ses contacts via helper (2 queries séparées pour
+        // contourner PGRST201 quand plusieurs FK clients↔contacts existent).
         let clientData: Client | null = null;
         if (payload.context.client_id) {
-          const { data: clientRow, error: clientErr } = await auth.supabase
-            .from("clients")
-            .select("*, contacts(*)")
-            .eq("id", payload.context.client_id)
-            .single();
-          if (clientErr) {
+          clientData = await loadClientWithContacts(auth.supabase, payload.context.client_id);
+          if (!clientData) {
             console.warn(
-              `[generate-from-template] client fetch FAILED for id=${payload.context.client_id}: ${clientErr.message} (code=${clientErr.code})`,
-            );
-          } else if (!clientRow) {
-            console.warn(
-              `[generate-from-template] client NOT FOUND for id=${payload.context.client_id} (RLS?)`,
-            );
-          } else {
-            clientData = clientRow as Client;
-            console.log(
-              `[generate-from-template] client OK : ${(clientRow as { company_name?: string }).company_name} (id=${payload.context.client_id})`,
+              `[generate-from-template] client NOT FOUND for id=${payload.context.client_id}`,
             );
           }
         } else if (payload.doc_type === "convention_entreprise") {
           console.warn(
-            `[generate-from-template] doc_type=convention_entreprise but NO client_id in payload — variables [Nom client] etc. will not resolve`,
+            `[generate-from-template] doc_type=convention_entreprise but NO client_id in payload`,
           );
         }
 
