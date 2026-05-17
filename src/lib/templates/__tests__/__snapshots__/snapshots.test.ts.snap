@@ -121,13 +121,13 @@ exports[`Templates snapshots — couvre F1/F2.x/F3 > attestation-assiduite : HTM
   <div class="formation-details">
     <p>Lieu de la formation : <strong>Aix-en-Provence</strong></p>
     <p>Dates de la formation : du <strong>15/06/2026</strong> au <strong>16/06/2026</strong></p>
-    <p>Durée de la formation : <strong>14</strong></p>
+    <p>Durée de la formation : <strong>14 heures</strong></p>
     <p>Type d'action de formation : <strong>Action de formation</strong></p>
   </div>
 
   <h2 class="section">Assiduité du stagiaire</h2>
 
-  <p class="assiduite-line">Durée effectivement suivie par le/la stagiaire : <strong>14.00h</strong>,<br>
+  <p class="assiduite-line">Durée effectivement suivie par le/la stagiaire : <strong>14.00 heures</strong>,<br>
   soit un taux de réalisation de <strong>100.00 %</strong>.</p>
 
   <p class="evaluation-line">Résultat de l'évaluation des acquis jalonnant ou terminant la formation (QUIZZ, TEST, QCM etc....) : <strong>ACQUIS</strong></p>

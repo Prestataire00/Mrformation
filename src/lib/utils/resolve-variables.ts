@@ -222,7 +222,7 @@ export function resolveVariables(content: string, data: ResolveContext): string 
 
   const replacements: Record<string, string> = {
     // Existing variables
-    "{{nom_client}}": data.client?.company_name || "[Nom client]",
+    "{{nom_client}}": data.client?.company_name || "",
     "{{nom_apprenant}}": data.learner
       ? `${data.learner.first_name} ${data.learner.last_name}`
       : "[Nom apprenant]",

@@ -126,13 +126,13 @@ export const ATTESTATION_ASSIDUITE_HTML = `<!DOCTYPE html>
   <div class="formation-details">
     <p>Lieu de la formation : <strong>[%Lieu de la formation%]</strong></p>
     <p>Dates de la formation : du <strong>[%Date de début de la formation%]</strong> au <strong>[%Date de fin de la formation%]</strong></p>
-    <p>Durée de la formation : <strong>[%Durée de la formation%]</strong></p>
+    <p>Durée de la formation : <strong>[%Durée de la formation%] heures</strong></p>
     <p>Type d'action de formation : <strong>[%Type d'action de formation%]</strong></p>
   </div>
 
   <h2 class="section">Assiduité du stagiaire</h2>
 
-  <p class="assiduite-line">Durée effectivement suivie par le/la stagiaire : <strong>[%Heures de formation réalisées par l'apprenant%]h</strong>,<br>
+  <p class="assiduite-line">Durée effectivement suivie par le/la stagiaire : <strong>[%Heures de formation réalisées par l'apprenant%] heures</strong>,<br>
   soit un taux de réalisation de <strong>[%Taux de réalisation%] %</strong>.</p>
 
   <p class="evaluation-line">Résultat de l'évaluation des acquis jalonnant ou terminant la formation (QUIZZ, TEST, QCM etc....) : <strong>ACQUIS</strong></p>
