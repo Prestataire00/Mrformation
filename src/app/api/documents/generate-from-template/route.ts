@@ -357,6 +357,36 @@ export async function POST(request: NextRequest) {
           }
         }
 
+        // h-2 : Signature du document courant (convention signée par le client,
+        // attestation signée, etc.). Charge documents.signature_data si le doc
+        // a déjà été signé via le lien public. Sinon, undefined → template
+        // affiche un cadre vide à la place de la signature.
+        let documentSignature: string | undefined;
+        if (
+          ["convention_entreprise", "convention_intervention", "contrat_sous_traitance"].includes(payload.doc_type ?? "")
+          && payload.context.session_id
+        ) {
+          try {
+            const ownerId = payload.context.client_id || payload.context.trainer_id || payload.context.learner_id;
+            if (ownerId) {
+              const { data: docRow } = await auth.supabase
+                .from("documents")
+                .select("signature_data")
+                .eq("source_table", "sessions")
+                .eq("source_id", payload.context.session_id)
+                .eq("doc_type", payload.doc_type)
+                .eq("owner_id", ownerId)
+                .not("signature_data", "is", null)
+                .maybeSingle();
+              if (docRow?.signature_data) {
+                documentSignature = docRow.signature_data as string;
+              }
+            }
+          } catch (err) {
+            console.warn("[generate-from-template] documentSignature load failed:", err);
+          }
+        }
+
         const ctx: ResolveContext = {
           session: session as unknown as Session,
           learner: learnerData ?? undefined,
@@ -367,6 +397,7 @@ export async function POST(request: NextRequest) {
           signaturesById: signaturesById as ResolveContext["signaturesById"],
           signaturesBySlotPerson: signaturesBySlotPerson as ResolveContext["signaturesBySlotPerson"],
           learnerCredentials: learnerCredentials ?? undefined,
+          documentSignature,
         };
 
         const resolvedHtml = resolveDocumentVariables(systemTemplate.html, ctx);

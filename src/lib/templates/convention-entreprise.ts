@@ -236,6 +236,7 @@ export const CONVENTION_ENTREPRISE_HTML = `<!DOCTYPE html>
     <div class="signature-col">
       <div class="role">Pour le bénéficiaire</div>
       <div class="signatory">[%Nom du client%],<br>[%Nom du représentant légal du client%]</div>
+      <div class="signature-cachet">[%E-signature du client%]</div>
     </div>
   </div>
 
