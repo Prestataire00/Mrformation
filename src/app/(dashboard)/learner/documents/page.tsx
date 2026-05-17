@@ -2,8 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { FileText, Loader2, Eye, CheckCircle, Clock, ScrollText, Download, Shield, Gavel } from "lucide-react";
-import { useToast } from "@/components/ui/use-toast";
+import { FileText, Loader2, Eye, CheckCircle, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -53,57 +52,9 @@ export default function LearnerDocumentsPage() {
   const { entity } = useEntity();
   const entityName = entity?.name || "MR FORMATION";
 
-  const { toast } = useToast();
   const [groups, setGroups] = useState<SessionGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [learner, setLearner] = useState<{ id: string; first_name: string; last_name: string; email: string | null } | null>(null);
-  const [downloadingCgv, setDownloadingCgv] = useState(false);
-  const [downloadingRgpd, setDownloadingRgpd] = useState(false);
-  const [downloadingRi, setDownloadingRi] = useState(false);
-
-  // Helper générique : appelle un endpoint /api/documents/generate-{kind}
-  // (sans body) et déclenche le download du PDF base64 retourné.
-  const downloadStaticDoc = async (
-    endpoint: string,
-    filenamePrefix: string,
-    setLoading: (b: boolean) => void,
-  ) => {
-    setLoading(true);
-    try {
-      const res = await fetch(endpoint, { method: "POST" });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
-      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
-      const blob = new Blob([bytes], { type: "application/pdf" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${filenamePrefix}-${(entityName || "organisme").replace(/[^a-zA-Z0-9-]+/g, "-").toLowerCase()}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      toast({
-        title: "Téléchargement impossible",
-        description: err instanceof Error ? err.message : String(err),
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const downloadCgv = () =>
-    downloadStaticDoc("/api/documents/generate-cgv", "CGV", setDownloadingCgv);
-  const downloadRgpd = () =>
-    downloadStaticDoc("/api/documents/generate-rgpd", "Politique-RGPD", setDownloadingRgpd);
-  const downloadRi = () =>
-    downloadStaticDoc(
-      "/api/documents/generate-reglement-interieur",
-      "Reglement-Interieur",
-      setDownloadingRi,
-    );
 
   // Preview
   const [previewDoc, setPreviewDoc] = useState<{
@@ -316,93 +267,6 @@ export default function LearnerDocumentsPage() {
           </Card>
         ))
       )}
-
-      {/* Docs statiques entity-level (toujours disponibles) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        <Card className="border-emerald-200 bg-emerald-50/30">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <ScrollText className="h-5 w-5 text-emerald-700" />
-              Conditions Générales de Vente
-            </CardTitle>
-            <p className="text-sm text-muted-foreground mt-1">
-              Document légal de votre organisme de formation.
-            </p>
-          </CardHeader>
-          <CardContent>
-            <Button
-              onClick={downloadCgv}
-              disabled={downloadingCgv}
-              variant="default"
-              className="gap-2 bg-emerald-600 hover:bg-emerald-700"
-              size="sm"
-            >
-              {downloadingCgv ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Download className="h-4 w-4" />
-              )}
-              Télécharger les CGV
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card className="border-cyan-200 bg-cyan-50/30">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Shield className="h-5 w-5 text-cyan-700" />
-              Politique RGPD
-            </CardTitle>
-            <p className="text-sm text-muted-foreground mt-1">
-              Protection de vos données personnelles, conformité RGPD.
-            </p>
-          </CardHeader>
-          <CardContent>
-            <Button
-              onClick={downloadRgpd}
-              disabled={downloadingRgpd}
-              variant="default"
-              className="gap-2 bg-cyan-600 hover:bg-cyan-700"
-              size="sm"
-            >
-              {downloadingRgpd ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Download className="h-4 w-4" />
-              )}
-              Télécharger la Politique RGPD
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card className="border-orange-200 bg-orange-50/30">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Gavel className="h-5 w-5 text-orange-700" />
-              Règlement Intérieur
-            </CardTitle>
-            <p className="text-sm text-muted-foreground mt-1">
-              Règles applicables pendant vos formations (discipline, hygiène, sécurité…).
-            </p>
-          </CardHeader>
-          <CardContent>
-            <Button
-              onClick={downloadRi}
-              disabled={downloadingRi}
-              variant="default"
-              className="gap-2 bg-orange-700 hover:bg-orange-800"
-              size="sm"
-            >
-              {downloadingRi ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Download className="h-4 w-4" />
-              )}
-              Télécharger le Règlement
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
 
       {/* Preview Dialog — lecture seule, pas de téléchargement */}
       {previewDoc && (
