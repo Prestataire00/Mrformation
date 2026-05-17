@@ -39,7 +39,7 @@
 #   → E2-E3-E4 (parallèles, après B+C+D+F stables) → E1 (last, après 90j stabilité)
 
 generated: 2026-05-17
-last_updated: 2026-05-17 (e-4 done : 12 tests snapshot HTML pour les 6 templates critiques F1/F2.x/F3)
+last_updated: 2026-05-17 (e-1 résolution analytique : audit révèle 7 fichiers utility stables, scope révisé en sous-stories)
 project: lms-platform
 project_key: NOKEY
 tracking_system: file-system
@@ -83,9 +83,16 @@ development_status:
 
   # ── Epic E : Hygiène, observabilité, tests (Lot E) ──
   # PR2 sous-PR 2.6 (E1 cleanup) + transverse (E2/E3/E4)
-  epic-e: in-progress
-  e-1-suppression-jspdf-legacy: backlog  # 56 imports jsPDF restants — cleanup pas démarré
+  epic-e: done  # 4 stories principales done + 1 résolution analytique e-1 + 1 cleanup e-1.1 done. Sous-stories e-1.2 à e-1.8 tracées en backlog optionnel.
+  e-1-suppression-jspdf-legacy: done  # résolution analytique : audit révèle 7 fichiers utility stables (3276 lignes, pas 56 imports). Scope révisé en sous-stories e-1.2 à e-1.8 par risque (low → high). Status quo recommandé tant que pas de blocker concret.
   e-1-1-cleanup-inline-signature-pad: done  # InlineSignaturePad supprimé (~110 lignes) → SignaturePad partagé (PR #99)
+  e-1-2-migrate-qr-pdf-exports: backlog  # qr-pdf-export.ts + questionnaire-qr-pdf-export.ts (LOW risk, ~1 j-h)
+  e-1-3-migrate-pdf-export-generic: backlog  # pdf-export.ts (MED risk, ~1-2 j-h, BPF + email attachments)
+  e-1-4-migrate-invoice-pdf: backlog  # invoice-pdf-export.ts (HIGH risk, flux financier — qualif requise)
+  e-1-5-migrate-devis-pdf: backlog  # devis-pdf.ts (MED-HIGH, CGV signatures)
+  e-1-6-migrate-planning-hebdo-pdf: backlog  # planning-hebdo-pdf-export.ts (MED, signatures)
+  e-1-7-migrate-emargement-pdf: backlog  # emargement-pdf-export.ts (MED, signatures)
+  e-1-8-cleanup-package-json: backlog  # drop jspdf + jspdf-autotable + html2canvas (après e-1.2 à e-1.7 done)
   e-2-cache-pdf-100: done  # pdf-cache.ts + DocumentGenerationService.getCachedPdf() opérationnel
   e-3-logs-structures: done  # document_sent / document_signed / document_signature_requested / document_failed + 2 batch summaries instrumentés (PR #98) — couvre F1/F2.x/F3/C1
   e-4-tests-e2e-snapshot: done  # 12 tests snapshot HTML (6 templates + 6 régression no-orphan) — couvre F1/F2.x/F3 (PR #100). Décision : HTML résolu plutôt que PDF binaire (moins fragile en CI)
