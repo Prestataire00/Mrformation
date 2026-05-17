@@ -50,6 +50,7 @@ après le merge de PR #126 et des bugs latents du portail apprenant.
 | BUG-G2 | **P0** | `src/app/api/learners/[id]/send-welcome/route.ts` + `magic-link/route.ts` | Emails "Bienvenue" → 404 `/access/[token]` | PR #126 a supprimé la page cible à tort (user confirme que le magic link fonctionnait) |
 | BUG-G3 | P1 | `src/app/(dashboard)/learner/calendar/page.tsx` | Probable même bug que G1 (pattern 2-queries) | Symétrique de G1 |
 | BUG-G4 | P1 | `src/app/(dashboard)/learner/courses/page.tsx` | Recherche learner par `email` au lieu de `profile_id` (fragile) | Pattern hérité, désynchronisation possible auth.users / learners |
+| BUG-G5 | P1 | `src/app/(dashboard)/learner/documents/page.tsx` | 2 systèmes de documents co-existent (liste unifiée + 3 cartes statiques CGV/RGPD/Règlement en double) | Résidu de l'ancien système non nettoyé après migration Epic B (PR #105) |
 
 ### Pages NON affectées (vérifiées) ✅
 
@@ -163,6 +164,41 @@ identifiants (PDF convocation).
 
 ---
 
+### Story g-5: Cleanup `/learner/documents` — supprimer ancien système (3 cartes statiques)
+
+**As a** apprenant consultant la page `/learner/documents`,
+**I want** voir mes documents dans une seule liste cohérente,
+**So that** je ne sois pas confus par 2 systèmes de téléchargement co-existants pour les mêmes
+documents (CGV, Politique RGPD, Règlement intérieur).
+
+**Acceptance Criteria** :
+
+**Given** la page `/learner/documents` affichait 2 sections distinctes : (1) liste unifiée
+"Mes Documents" via la table `documents` (PR #105 Epic B) et (2) 3 cartes statiques en bas
+("CGV", "Politique RGPD", "Règlement Intérieur") avec téléchargement direct via les endpoints
+`/api/documents/generate-cgv|rgpd|reglement-interieur`,
+**When** la story est livrée,
+**Then** la section (2) avec les 3 cartes est supprimée,
+**And** la liste unifiée (1) reste seule, suffisante (les 4 docs CGV/Politique/Règlement/Programme
+y apparaissent déjà via génération admin → confirmation),
+**And** les states `downloadingCgv/Rgpd/Ri`, la fonction `downloadStaticDoc`, les helpers
+`downloadCgv/Rgpd/Ri`, les imports `ScrollText`, `Download`, `Shield`, `Gavel`, `useToast`,
+`toast` sont retirés (devenus dead code).
+
+**Given** les routes API `/api/documents/generate-cgv`, `generate-rgpd`,
+`generate-reglement-interieur` sont encore utilisées par `client/documents/page.tsx` (seul
+système actuel côté portail client) et `admin/test-convention/page.tsx` (page de test admin),
+**When** la story est livrée,
+**Then** les routes API sont **conservées** (pas de suppression — risque de régression sur 2 autres sites).
+
+**Notes techniques (hors AC)** :
+- Fichier à modifier : [src/app/(dashboard)/learner/documents/page.tsx](src/app/(dashboard)/learner/documents/page.tsx)
+- Suivi potentiel : si à terme `client/documents` migre vers la liste unifiée, on pourra supprimer
+  les 3 routes API + 3 endpoints en cleanup global.
+- Effort estimé : ~0.15 j-h dev.
+
+---
+
 ### Story g-4: Fix `/learner/courses` — chercher par profile_id, pas par email
 
 **As a** apprenant inscrit à des cours e-learning,
@@ -196,7 +232,8 @@ identifiants (PDF convocation).
 | g-2 — Restaurer magic link (3 fichiers PR #126) | **P0** | `access/[token]/` + `auth/callback/` + `convocation-magic-link.ts` | ~0.5 j-h | Stabilisation |
 | g-3 — Fix calendar (pattern nested) | P1 | `learner/calendar/page.tsx` | ~0.25 j-h | Stabilisation |
 | g-4 — Fix courses (profile_id) | P1 | `learner/courses/page.tsx` | ~0.1 j-h | Stabilisation |
-| **Total** | | | **~1.1 j-h dev** | **1 PR** |
+| g-5 — Cleanup 2e système docs (3 cartes statiques) | P1 | `learner/documents/page.tsx` | ~0.15 j-h | Stabilisation (post-merge PR #127) |
+| **Total** | | | **~1.25 j-h dev** | **2 PRs** |
 
 Aucun nouveau test attendu (les tests existants 395+ doivent rester verts). Validation manuelle prod
 requise après merge sur les 4 pages corrigées.
