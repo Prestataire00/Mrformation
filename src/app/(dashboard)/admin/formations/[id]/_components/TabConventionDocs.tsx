@@ -26,6 +26,7 @@ import { resolveVariables } from "@/lib/utils/resolve-variables";
 import { validateCompanyExport, findUncoveredLearners } from "@/lib/utils/formation-companies";
 import { exportHtmlToPDF, exportHtmlToPDFBase64 } from "@/lib/pdf-export";
 import { hasBatchEndpoint, downloadBatchZip } from "@/lib/utils/batch-doc-download";
+import { hasBatchSendEndpoint, sendBatchEmail } from "@/lib/utils/batch-doc-send";
 import { cn } from "@/lib/utils";
 import { DocMatrixSection } from "@/components/formations/DocMatrixSection";
 import type {
@@ -678,6 +679,40 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     const key = `${ownerType}-${docType}`;
     setMassSending(key);
 
+    // ─── PATH SERVER-SIDE (Story F2) ──────────────────────────────────
+    // Si un endpoint batch-send server-side existe pour ce doc_type, on
+    // l'utilise : DGS + Promise.allSettled + Resend en parallèle + update
+    // is_sent côté serveur. Pas de loop client-side avec jsPDF.
+    if (hasBatchSendEndpoint(docType)) {
+      try {
+        const res = await sendBatchEmail({ docType, sessionId: formation.id });
+        if (res.failureCount > 0) {
+          const sample = res.errors.slice(0, 3).map((e) => `${e.learnerName} (${e.error})`).join(", ");
+          toast({
+            title: `${res.successCount}/${res.totalRequested} ${DOC_LABELS_PLURAL[docType] ?? docType} envoyés`,
+            description: `${res.failureCount} échec(s) : ${sample}${res.errors.length > 3 ? "…" : ""}`,
+          });
+        } else {
+          toast({
+            title: `${res.successCount} ${DOC_LABELS_PLURAL[docType] ?? docType} envoyés`,
+            description: `Envoyé en ${(res.latencyMs / 1000).toFixed(1)}s`,
+          });
+        }
+      } catch (err) {
+        toast({
+          title: "Erreur envoi batch",
+          description: err instanceof Error ? err.message : String(err),
+          variant: "destructive",
+        });
+      }
+      setMassSending(null);
+      onRefresh();
+      return;
+    }
+
+    // ─── FALLBACK LEGACY CLIENT-SIDE ──────────────────────────────────
+    // TODO Story F2.x : migrer les doc_types restants vers leurs endpoints
+    // send-X-batch-email server-side.
     const targetDocs = docs.filter((d) => d.doc_type === docType && d.owner_type === ownerType);
     let sent = 0;
     let failed = 0;
