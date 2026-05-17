@@ -36,6 +36,7 @@ import {
   DocumentGenerationService,
   createDefaultEngine,
 } from "@/lib/services/document-generation";
+import { loadClientsWithContacts } from "@/lib/services/load-client";
 import type { Session, Client } from "@/lib/types";
 
 interface BatchError {
@@ -109,9 +110,11 @@ export async function POST(request: NextRequest) {
     }
 
     // ── Liste les entreprises rattachées via formation_companies ─────────
+    // Note : on ne joinpas contacts(*) ici (PGRST201 si 2+ FK), on les charge
+    // séparément via loadClientsWithContacts après.
     const { data: links, error: linksError } = await supabase
       .from("formation_companies")
-      .select("client_id, client:clients(*, contacts(*))")
+      .select("client_id")
       .eq("session_id", body.sessionId);
 
     if (linksError) {
@@ -127,6 +130,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Charge les clients + contacts en 2 queries séparées (contourne PGRST201)
+    const clientIds = (links as Array<{ client_id: string | null }>)
+      .map((l) => l.client_id)
+      .filter((id): id is string => Boolean(id));
+    const clientsMap = await loadClientsWithContacts(supabase, clientIds);
+
     // ── Charge l'entity une seule fois (partagée pour toutes les conventions) ─
     const entity = await loadEntitySettings(supabase, profile.entity_id);
 
@@ -135,7 +144,8 @@ export async function POST(request: NextRequest) {
     const service = new DocumentGenerationService({ engine, supabase });
 
     const tasks = links.map(async (link) => {
-      const client = (link as unknown as { client: Client | null }).client;
+      const clientId = (link as { client_id: string | null }).client_id;
+      const client = clientId ? clientsMap.get(clientId) ?? null : null;
       if (!client) {
         throw new Error("Client introuvable (FK cassée formation_companies → clients)");
       }

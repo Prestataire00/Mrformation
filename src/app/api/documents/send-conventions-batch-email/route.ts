@@ -25,6 +25,7 @@ import {
   executeBatchEmailSend,
   type RecipientGenerationTask,
 } from "@/lib/services/batch-email-handler";
+import { loadClientsWithContacts } from "@/lib/services/load-client";
 import type { Session, Client, Contact } from "@/lib/types";
 
 function slugify(name: string): string {
@@ -67,7 +68,7 @@ export async function POST(request: NextRequest) {
 
     const { data: links, error: linksError } = await supabase
       .from("formation_companies")
-      .select("client_id, client:clients(*, contacts(*))")
+      .select("client_id")
       .eq("session_id", body.sessionId);
     if (linksError) {
       return NextResponse.json({ error: `Lecture formation_companies : ${linksError.message}` }, { status: 500 });
@@ -76,9 +77,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Aucune entreprise rattachée à cette session" }, { status: 404 });
     }
 
-    const clients = links
-      .map((l) => (l as unknown as { client: Client | null }).client)
-      .filter((c): c is Client => Boolean(c));
+    // Charge clients + contacts en 2 queries séparées (contourne PGRST201)
+    const clientIds = (links as Array<{ client_id: string | null }>)
+      .map((l) => l.client_id)
+      .filter((id): id is string => Boolean(id));
+    const clientsMap = await loadClientsWithContacts(supabase, clientIds);
+    const clients = Array.from(clientsMap.values());
 
     const entity = await loadEntitySettings(supabase, profile.entity_id);
     const engine = createDefaultEngine();
