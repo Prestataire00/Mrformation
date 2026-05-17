@@ -5,6 +5,8 @@
 -- À exécuter manuellement dans Supabase Dashboard SQL Editor.
 -- Idempotent : DROP/CREATE + IF NOT EXISTS.
 
+BEGIN;
+
 -- 1. Drop la vieille contrainte UNIQUE (déjà absente en prod, no-op safe)
 ALTER TABLE signatures DROP CONSTRAINT IF EXISTS unique_session_signer;
 
@@ -73,3 +75,5 @@ CREATE POLICY "signing_tokens_admin_all" ON signing_tokens
   );
 
 -- Note : signatures_learner_* policies inchangées (signer_id = auth.uid() reste correct côté learner).
+
+COMMIT;
