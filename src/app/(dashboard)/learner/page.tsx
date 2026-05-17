@@ -857,7 +857,7 @@ export default function LearnerPage() {
               id: e.id,
               title: e.session?.title || "Formation",
               subtitle: e.session ? formatDate(e.session.start_date) : undefined,
-              href: e.session ? `/learner/my-trainings/${e.session.id}` : undefined,
+              href: e.session ? `/learner/sessions/${e.session.id}/sign` : undefined,
               badge: e.session ? { label: SESSION_STATUS_LABELS[e.session.status] || e.session.status, color: STATUS_COLORS[e.session.status] || "bg-gray-100" } : undefined,
             }))}
             emptyMessage="Aucune session à venir"

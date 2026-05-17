@@ -140,8 +140,9 @@ export default function LearnerCalendarPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setLoading(false); return; }
 
-    // Query nested unique : learners → enrollments → sessions
-    // Évite les ruptures RLS entre 2 queries séparées (cf Epic G story g-3)
+    // Query nested unique : learners → enrollments → sessions → formation_time_slots
+    // Évite les ruptures RLS entre 2 queries séparées + récupère les créneaux
+    // détaillés (1 par jour/demi-journée) au lieu d'un seul event par session
     const { data: learnerData, error: learnerError } = await supabase
       .from("learners")
       .select(`
@@ -151,7 +152,8 @@ export default function LearnerCalendarPage() {
           sessions(
             id, title, start_date, end_date, location, mode,
             trainings(title),
-            trainers(first_name, last_name)
+            trainers(first_name, last_name),
+            formation_time_slots(id, start_time, end_time, title, module_title)
           )
         )
       `)
@@ -177,28 +179,57 @@ export default function LearnerCalendarPage() {
         mode: string;
         trainings: { title: string } | null;
         trainers: { first_name: string; last_name: string } | null;
+        formation_time_slots: Array<{
+          id: string;
+          start_time: string;
+          end_time: string;
+          title: string | null;
+          module_title: string | null;
+        }> | null;
       } | null;
     }>) ?? []).filter((e) => e.status !== "cancelled");
 
-    const mapped: CalendarSession[] = enrollments
-      .filter((e) => e.sessions)
-      .map((e) => {
-        const s = e.sessions!;
-        const startHour = s.start_date ? String(new Date(s.start_date).getHours()) : "9";
-        return {
+    // Génère 1 event par formation_time_slot (créneau détaillé).
+    // Fallback : si une session n'a aucun slot, on génère 1 event sur start_date
+    // (rare, mais évite que la session disparaisse complètement du calendrier).
+    const mapped: CalendarSession[] = [];
+    for (const e of enrollments) {
+      if (!e.sessions) continue;
+      const s = e.sessions;
+      const slots = s.formation_time_slots ?? [];
+      const trainerName = s.trainers
+        ? `${s.trainers.first_name} ${s.trainers.last_name}`
+        : null;
+      const trainingTitle = s.trainings?.title || null;
+
+      if (slots.length > 0) {
+        for (const slot of slots) {
+          mapped.push({
+            id: `${s.id}-${slot.id}`,
+            title: slot.module_title || slot.title || s.title,
+            training_title: trainingTitle,
+            start_date: slot.start_time,
+            end_date: slot.end_time,
+            start_hour: String(new Date(slot.start_time).getHours()),
+            location: s.location,
+            mode: s.mode,
+            trainer_name: trainerName,
+          });
+        }
+      } else {
+        mapped.push({
           id: s.id,
           title: s.title,
-          training_title: s.trainings?.title || null,
+          training_title: trainingTitle,
           start_date: s.start_date,
           end_date: s.end_date,
-          start_hour: startHour,
+          start_hour: s.start_date ? String(new Date(s.start_date).getHours()) : "9",
           location: s.location,
           mode: s.mode,
-          trainer_name: s.trainers
-            ? `${s.trainers.first_name} ${s.trainers.last_name}`
-            : null,
-        };
-      });
+          trainer_name: trainerName,
+        });
+      }
+    }
     setSessions(mapped);
 
     setLoading(false);
