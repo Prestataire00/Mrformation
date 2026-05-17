@@ -15,6 +15,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { sanitizeError } from "@/lib/api-error";
+import { logEvent } from "@/lib/logger";
 import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
 
@@ -160,6 +161,7 @@ export async function POST(request: NextRequest) {
     const serviceSupabase = createServiceClient();
 
     const tasks = candidateDocs.map(async (doc) => {
+      const taskStartedAt = Date.now();
       // Résoudre owner_name + signer_email selon owner_type
       let ownerName = doc.owner_id.slice(0, 8);
       let signerEmail: string | null = null;
@@ -272,6 +274,18 @@ export async function POST(request: NextRequest) {
         console.error("[signature-request-batch] email_history insert failed:", logErr);
       }
 
+      logEvent("document_signature_requested", {
+        entity_id: profile.entity_id,
+        doc_type: body.docType,
+        session_id: body.sessionId,
+        doc_id: doc.id,
+        owner_id: doc.owner_id,
+        owner_type: doc.owner_type,
+        recipient_email: signerEmail,
+        expires_at: expiresAt.toISOString(),
+        latency_ms: Date.now() - taskStartedAt,
+      });
+
       return { docId: doc.id, ownerName, token: tokenRow.token };
     });
 
@@ -291,7 +305,27 @@ export async function POST(request: NextRequest) {
           ownerName: doc.owner_id.slice(0, 8),
           error: msg,
         });
+        logEvent("document_failed", {
+          entity_id: profile.entity_id,
+          doc_type: body.docType,
+          session_id: body.sessionId,
+          doc_id: doc.id,
+          owner_id: doc.owner_id,
+          owner_type: doc.owner_type,
+          action: "signature_request",
+          error_message: msg,
+        });
       }
+    });
+
+    logEvent("batch_signature_request_summary", {
+      entity_id: profile.entity_id,
+      doc_type: body.docType,
+      session_id: body.sessionId,
+      total: candidateDocs.length,
+      success: successCount,
+      failure: errors.length,
+      latency_ms: Date.now() - t0,
     });
 
     return NextResponse.json({

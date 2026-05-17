@@ -15,6 +15,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { logEvent } from "@/lib/logger";
 
 const isResendConfigured =
   !!process.env.RESEND_API_KEY && process.env.RESEND_API_KEY !== "votre-cle-resend";
@@ -91,9 +92,11 @@ export async function executeBatchEmailSend(
   const serviceSupabase = createServiceClient();
   const errors: BatchSendError[] = [];
   let successCount = 0;
+  const batchStartedAt = Date.now();
 
   const settled = await Promise.allSettled(
     tasks.map(async (task) => {
+      const taskStartedAt = Date.now();
       if (!task.ownerEmail) {
         throw new Error("Pas d'email");
       }
@@ -146,6 +149,17 @@ export async function executeBatchEmailSend(
         console.error("[batch-email-handler] is_sent update failed:", updateErr);
       }
 
+      logEvent("document_sent", {
+        entity_id: options.entityId,
+        doc_type: options.docType,
+        session_id: options.sessionId,
+        owner_id: task.ownerId,
+        owner_type: options.ownerType,
+        recipient_email: task.ownerEmail,
+        resend_id: sendResult.data?.id ?? null,
+        latency_ms: Date.now() - taskStartedAt,
+      });
+
       return { ownerId: task.ownerId, resendId: sendResult.data?.id };
     }),
   );
@@ -157,7 +171,27 @@ export async function executeBatchEmailSend(
     } else {
       const msg = outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason);
       errors.push({ ownerId: task.ownerId, ownerName: task.ownerName, error: msg });
+      logEvent("document_failed", {
+        entity_id: options.entityId,
+        doc_type: options.docType,
+        session_id: options.sessionId,
+        owner_id: task.ownerId,
+        owner_type: options.ownerType,
+        action: "send_email",
+        error_message: msg,
+      });
     }
+  });
+
+  logEvent("batch_send_summary", {
+    entity_id: options.entityId,
+    doc_type: options.docType,
+    session_id: options.sessionId,
+    owner_type: options.ownerType,
+    total: tasks.length,
+    success: successCount,
+    failure: errors.length,
+    latency_ms: Date.now() - batchStartedAt,
   });
 
   return {

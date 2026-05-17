@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 import { sanitizeSignatureSvg } from "@/lib/utils/sanitize-svg";
+import { logEvent } from "@/lib/logger";
 
 function createServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -12,6 +13,7 @@ function createServiceClient() {
 
 // POST /api/documents/sign — PUBLIC endpoint (no auth required, token validates identity)
 export async function POST(request: NextRequest) {
+  const startedAt = Date.now();
   // Rate limit : route publique sensible (service role + signatures de documents)
   const rateLimitIp = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
   const { allowed, resetAt } = checkRateLimit(`documents-sign:${rateLimitIp}`, { limit: 10, windowSeconds: 60 });
@@ -186,6 +188,18 @@ export async function POST(request: NextRequest) {
       .eq("id", doc.session_id)
       .maybeSingle();
 
+    logEvent("document_signed", {
+      entity_id: tokenData.entity_id,
+      doc_type: doc.doc_type,
+      session_id: doc.session_id,
+      doc_id: doc.id,
+      owner_id: doc.owner_id,
+      owner_type: doc.owner_type,
+      signer_type: doc.owner_type,
+      already_signed: alreadySigned,
+      latency_ms: Date.now() - startedAt,
+    });
+
     return NextResponse.json({
       success: true,
       already_signed: alreadySigned,
@@ -195,6 +209,11 @@ export async function POST(request: NextRequest) {
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Erreur serveur";
+    logEvent("document_failed", {
+      action: "sign",
+      error_message: msg,
+      latency_ms: Date.now() - startedAt,
+    });
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
