@@ -46,13 +46,23 @@ END $$;
 --   signed_at     ← fcd.signed_at
 --   metadata      ← jsonb avec legacy_id + champs additionnels
 --   created_at    ← fcd.created_at (préservé pour traçabilité chrono)
+--
+-- IMPORTANT — DISTINCT ON pour dédoublonnage :
+-- La table legacy `formation_convention_documents` autorise plusieurs rows
+-- pour le même (session, doc_type, owner) si template_id diffère (sa UNIQUE
+-- inclut template_id). La nouvelle table `documents` n'inclut PAS template_id
+-- dans sa UNIQUE → on dédoublonne en gardant la row la plus AVANCÉE en
+-- workflow (signed > sent > confirmed > draft) puis la plus récente.
 INSERT INTO documents (
   entity_id, doc_type, template_id, source_table, source_id,
   owner_type, owner_id, status,
   generated_at, sent_at, signed_at,
   metadata, created_at
 )
-SELECT
+SELECT DISTINCT ON (
+  s.entity_id, fcd.session_id, fcd.doc_type,
+  COALESCE(fcd.owner_type, ''), COALESCE(fcd.owner_id::text, '')
+)
   s.entity_id,
   fcd.doc_type,
   fcd.template_id,
@@ -89,7 +99,21 @@ WHERE NOT EXISTS (
     AND d.doc_type = fcd.doc_type
     AND COALESCE(d.owner_type, '') = COALESCE(fcd.owner_type, '')
     AND COALESCE(d.owner_id::text, '') = COALESCE(fcd.owner_id::text, '')
-);
+)
+ORDER BY
+  -- Clés du DISTINCT ON en premier (obligatoire pour PostgreSQL)
+  s.entity_id, fcd.session_id, fcd.doc_type,
+  COALESCE(fcd.owner_type, ''), COALESCE(fcd.owner_id::text, ''),
+  -- Priorité : on garde la row avec le statut le plus avancé en workflow
+  CASE
+    WHEN fcd.is_signed THEN 4
+    WHEN fcd.is_sent THEN 3
+    WHEN fcd.is_confirmed THEN 2
+    ELSE 1
+  END DESC,
+  -- Tie-break : la plus récente (par created_at puis par id pour déterminisme)
+  fcd.created_at DESC NULLS LAST,
+  fcd.id DESC;
 
 -- ── 2. Post-flight : rapport détaillé ──
 DO $$
