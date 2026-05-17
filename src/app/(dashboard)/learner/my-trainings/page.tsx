@@ -512,7 +512,7 @@ export default function LearnerMyTrainingsPage() {
                               className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                             >
                               <PenLine className="w-3 h-3" />
-                              {session.status === "upcoming" ? "Voir détail" : "Émargement"}
+                              Voir détail
                             </Link>
                           </div>
                         ))}
