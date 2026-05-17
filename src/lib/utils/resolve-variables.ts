@@ -898,17 +898,17 @@ export function resolveVariables(content: string, data: ResolveContext): string 
       const sigMap = data.signaturesById;
       const renderSignature = (sigData: string): string =>
         `<img src="${sigData}" alt="Signature" style="max-height:42px;max-width:120px;display:block;margin-top:2px;" />`;
+      const sessionEndDate = data.session?.end_date;
       const learnerStatus = (learnerId: string): string => {
         const sig = sigMap?.get(learnerId);
         if (sig) {
           return `<span class="person-status">Présent</span>${renderSignature(sig)}`;
         }
-        if (!signed) {
-          return `<span class="person-status">Présent (A signé en présentiel)</span>`;
+        if (signed?.has(learnerId)) {
+          // Signé électroniquement mais pas d'image rendable (rare, ex: legacy)
+          return `<span class="person-status">Signé</span>`;
         }
-        return signed.has(learnerId)
-          ? `<span class="person-status">Présent (A signé en présentiel)</span>`
-          : `<span class="person-status status-absent">Absent</span>`;
+        return renderUnsignedCell(sessionEndDate);
       };
 
       // Construit la liste des créneaux : pour chaque jour entre start et end,
