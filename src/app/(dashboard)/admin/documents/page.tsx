@@ -17,7 +17,7 @@ const RichTextEditor = dynamic(
 );
 import { plainTextToHtml, isHtmlContent } from "@/lib/migrate-templates";
 import { exportHtmlToPDF, exportToPDF } from "@/lib/pdf-export";
-import { getDefaultTemplate } from "@/lib/document-templates-defaults";
+import { renderSystemTemplate } from "@/lib/templates/registry";
 import { BackToFormationLink } from "@/components/ui/back-to-formation-link";
 import DOMPurifyLib from "dompurify";
 
@@ -1145,7 +1145,7 @@ export default function DocumentsPage() {
                                     entityName: entity?.name || "MR FORMATION",
                                     entity: entity ?? undefined,
                                   };
-                                  const html = getDefaultTemplate(ot.id, demoData as unknown as Parameters<typeof getDefaultTemplate>[1]);
+                                  const html = renderSystemTemplate(ot.id, demoData as unknown as Parameters<typeof renderSystemTemplate>[1]);
                                   if (html) {
                                     setPreviewTemplate({ id: ot.id, name: ot.name, type: ot.type, content: html, entity_id: "", created_at: "", updated_at: "", variables: [] } as DocumentTemplate);
                                     setPreviewDialogOpen(true);
@@ -1181,7 +1181,7 @@ export default function DocumentsPage() {
                                       entityName: entity?.name || "MR FORMATION",
                                       entity: entity ?? undefined,
                                     };
-                                    const html = getDefaultTemplate(ot.id, demoData as unknown as Parameters<typeof getDefaultTemplate>[1]) || "";
+                                    const html = renderSystemTemplate(ot.id, demoData as unknown as Parameters<typeof renderSystemTemplate>[1]) || "";
                                     const { data: newTpl, error } = await supabase
                                       .from("document_templates")
                                       .insert({

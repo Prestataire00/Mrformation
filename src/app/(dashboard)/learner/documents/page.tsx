@@ -11,7 +11,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import DOMPurify from "dompurify";
-import { getDefaultTemplate } from "@/lib/document-templates-defaults";
+import { renderSystemTemplate } from "@/lib/templates/registry";
 import { resolveVariables } from "@/lib/utils/resolve-variables";
 import { useEntity } from "@/contexts/EntityContext";
 
@@ -219,8 +219,8 @@ export default function LearnerDocumentsPage() {
         });
       }
     } else {
-      htmlContent = getDefaultTemplate(doc.doc_type, {
-        formation: { title: doc.session_title, start_date: doc.session_start_date, end_date: doc.session_end_date } as any,
+      htmlContent = renderSystemTemplate(doc.doc_type, {
+        formation: { title: doc.session_title, start_date: doc.session_start_date, end_date: doc.session_end_date } as never,
         learner: learner ? { first_name: learner.first_name, last_name: learner.last_name, email: learner.email ?? undefined } : undefined,
         entityName,
         entity: entity ?? undefined,
