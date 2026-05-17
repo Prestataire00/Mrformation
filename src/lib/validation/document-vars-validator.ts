@@ -85,9 +85,30 @@ export function validateDocumentVariables(
   html: string,
   context: ResolveContext,
 ): ValidationResult {
-  // Placeholder — implémentation à la Task 2 (TDD).
-  void html;
-  void context;
-  void resolveDocumentVariables;
-  return { valid: true, missingByEntity: {}, entityIds: {} };
+  const resolved = resolveDocumentVariables(html, context);
+
+  const missingByEntity: MissingByEntity = {};
+  const entityIds: EntityIds = {};
+
+  for (const [fallback, { entityKey, field }] of Object.entries(FALLBACK_TO_ENTITY_FIELD)) {
+    if (!resolved.includes(fallback)) continue;
+
+    if (!missingByEntity[entityKey]) {
+      missingByEntity[entityKey] = [];
+    }
+    if (!missingByEntity[entityKey]!.includes(field)) {
+      missingByEntity[entityKey]!.push(field);
+    }
+
+    const entityRecord = context[entityKey] as { id?: string } | undefined;
+    if (entityRecord?.id) {
+      entityIds[entityKey] = entityRecord.id;
+    }
+  }
+
+  return {
+    valid: Object.keys(missingByEntity).length === 0,
+    missingByEntity,
+    entityIds,
+  };
 }
