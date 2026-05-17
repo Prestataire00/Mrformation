@@ -39,7 +39,7 @@
 #   → E2-E3-E4 (parallèles, après B+C+D+F stables) → E1 (last, après 90j stabilité)
 
 generated: 2026-05-17
-last_updated: 2026-05-17 (b-2 planning artifacts livrés : SQL backfill idempotent + G1 query + G2 rollback plan ; attend exécution prod)
+last_updated: 2026-05-17 (b-2 backfill exécuté en prod : 181 rows backfillées depuis 2277 legacy après dedup DISTINCT ON, status alignés)
 project: lms-platform
 project_key: NOKEY
 tracking_system: file-system
@@ -58,7 +58,7 @@ development_status:
   epic-b: in-progress
   b-0-resolve-document-variables: done  # fonction unique resolveDocumentVariables existe + utilisée par 90+ endpoints
   b-1-migration-table-documents: done  # PR #39 mergée 2026-05-15
-  b-2-backfill-idempotent: ready-for-prod-execution  # SQL backfill_documents_from_legacy.sql + story spec b-2 avec G1 query + G2 rollback plan livrés (PR #102). Attend run G1 prod + exécution SQL par Wissam. Idempotent, peut être rejoué sans risque.
+  b-2-backfill-idempotent: done  # Exécuté en prod 2026-05-17 : 181 rows backfillées depuis 2277 legacy (delta 2096 = doublons template_id dédupliqués via DISTINCT ON fix PR #103). Status alignés. Rollback Niveau 1 dispo si besoin.
   b-3-migration-conventions: in-progress  # endpoint generate-convention existe + DGS mais écrit dans tables legacy (manque b-2)
   b-4-migration-attestations-certificats: in-progress  # 9 variantes attestations OK via DGS, mais legacy table
   b-5-migration-emargements: in-progress  # endpoints + sign existent mais legacy table
