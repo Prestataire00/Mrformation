@@ -1,15 +1,21 @@
 /**
  * Helper magic-link pour les convocations apprenant.
  *
- * Génère ou réutilise un token `learner_access_tokens` avec
- * `purpose='convocation'` pour permettre à l'apprenant de scanner le QR
- * code de sa convocation et se logger automatiquement vers sa session.
+ * Génère ou réutilise un token `learner_access_tokens` avec `purpose='access'`
+ * pour permettre à l'apprenant de scanner le QR code de sa convocation et
+ * se logger automatiquement vers sa session.
  *
  * Stratégie : on réutilise les tokens existants non-expirés pour la même
- * (learner_id, session_id, purpose='convocation') — important pour que le
- * cache PDF fonctionne (même contenu HTML → même hash → cache hit).
+ * (learner_id, session_id, purpose='access') — important pour que le cache
+ * PDF fonctionne (même contenu HTML → même hash → cache hit). Cela aligne
+ * aussi le QR convocation avec le lookup `TabConventionDocs.generateDocHtml`
+ * qui cherche purpose='access' pour rendre le QR côté UI.
  *
- * Token expire après `DEFAULT_VALIDITY_DAYS` jours (cf user pref : 30 jours
+ * Note : `purpose='access'` est la valeur standard (cf check constraint
+ * `learner_access_tokens_purpose_check` qui accepte access/questionnaire/
+ * document/emargement, PAS 'convocation').
+ *
+ * Token expire après `CONVOCATION_VALIDITY_DAYS` jours (30j par défaut,
  * pour couvrir les convocations imprimées à l'avance).
  */
 
@@ -17,7 +23,7 @@ import { randomBytes } from "crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const CONVOCATION_VALIDITY_DAYS = 30;
-const CONVOCATION_PURPOSE = "convocation";
+const CONVOCATION_PURPOSE = "access"; // cf check constraint learner_access_tokens.purpose
 
 interface MagicLinkInput {
   supabase: SupabaseClient;
