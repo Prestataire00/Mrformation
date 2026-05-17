@@ -6,7 +6,20 @@ import { convertDocxToPdfWithVariables } from "@/lib/services/docx-converter";
 import { generatePdfFromFragment } from "@/lib/services/pdf-generator";
 import { getDefaultTemplate } from "@/lib/document-templates-defaults";
 import { computeCacheKey, getCachedPdf, setCachedPdf } from "@/lib/services/pdf-cache";
-import type { Session } from "@/lib/types";
+import { getSystemTemplate } from "@/lib/templates/registry";
+import {
+  DocumentGenerationService,
+  createDefaultEngine,
+} from "@/lib/services/document-generation";
+import {
+  resolveDocumentVariables,
+  loadEntitySettings,
+  type ResolveContext,
+} from "@/lib/utils/resolve-variables";
+import { getOrCreateConvocationMagicLink } from "@/lib/services/convocation-magic-link";
+import { loadSignaturesBySessionId } from "@/lib/services/load-signatures";
+import QRCode from "qrcode";
+import type { Session, Learner, Client, Trainer } from "@/lib/types";
 
 /**
  * POST /api/documents/generate-from-template
@@ -261,52 +274,161 @@ export async function POST(request: NextRequest) {
         sizeBytes = result.sizeBytes;
       }
     } else if (isSystemFallback && payload.doc_type) {
-      // Réutilise les données déjà fetchées plus haut + fetch les manquantes
+      // ─── Bascule sur le BEAU template système si dispo (registry) ───
+      // Avant : on appelait getDefaultTemplate() qui retournait des templates
+      // basiques sans style (le bouton "Voir" produisait des PDFs moches).
+      // Après : on cherche d'abord dans registry.ts (templates Loris avec
+      // header, logo, footer SIRET/NDA). Fallback sur getDefaultTemplate
+      // si pas de beau template pour ce doc_type.
+      const systemTemplate = getSystemTemplate(payload.doc_type);
       const session = sessionDataForFallback;
-      const learnerData = payload.context.learner_id
-        ? (await auth.supabase.from("learners").select("id, first_name, last_name, email").eq("id", payload.context.learner_id).single()).data
-        : null;
-      const companyDataRaw = payload.context.client_id
-        ? (await auth.supabase.from("clients").select("company_name, address, siret").eq("id", payload.context.client_id).single()).data
-        : null;
-      // On injecte l'id côté template pour permettre le filtrage multi-entreprises
-      // dans conventionEntreprise (apprenants par client_id + montant par entreprise).
-      const companyData = companyDataRaw && payload.context.client_id
-        ? { id: payload.context.client_id, ...companyDataRaw }
-        : null;
-      const trainerData = payload.context.trainer_id
-        ? (await auth.supabase.from("trainers").select("first_name, last_name").eq("id", payload.context.trainer_id).single()).data
-        : null;
-      const { data: entity } = session?.entity_id
-        ? await auth.supabase
-            .from("entities")
-            .select("name, legal_form, siret, nda, ape_code, rcs, capital, address, postal_code, city, region, email, phone, website, president_name, president_title, logo_url, stamp_url, signature_url")
-            .eq("id", session.entity_id as string)
-            .single()
-        : { data: null };
 
-      const html = getDefaultTemplate(payload.doc_type, {
-        formation: session as unknown as Session,
-        learner: learnerData ?? undefined,
-        company: companyData ?? undefined,
-        trainer: trainerData ?? undefined,
-        entityName: entity?.name ?? "MR FORMATION",
-        entity: entity ?? undefined,
-      });
+      if (systemTemplate) {
+        // Charge le context enrichi pour resolveDocumentVariables (resolver
+        // unifié [%Var%]) : entity full + learner/client/trainer + signatures
+        // si applicable + magic link convocation si applicable.
+        const learnerData = payload.context.learner_id
+          ? (await auth.supabase.from("learners").select("*").eq("id", payload.context.learner_id).single()).data as Learner | null
+          : null;
+        const clientData = payload.context.client_id
+          ? (await auth.supabase.from("clients").select("*, contacts(*)").eq("id", payload.context.client_id).single()).data as Client | null
+          : null;
+        const trainerData = payload.context.trainer_id
+          ? (await auth.supabase.from("trainers").select("*").eq("id", payload.context.trainer_id).single()).data as Trainer | null
+          : null;
+        const entity = await loadEntitySettings(auth.supabase, auth.profile.entity_id);
 
-      if (!html) {
-        return NextResponse.json(
-          { error: `Pas de template système disponible pour "${payload.doc_type}"` },
-          { status: 404 }
-        );
+        // Magic link convocation : créé si doc_type=convocation + learner_id
+        let extranetQrDataUrl: string | undefined;
+        let magicToken: string | null = null;
+        if (payload.doc_type === "convocation" && learnerData?.id && payload.context.session_id) {
+          try {
+            const magicLink = await getOrCreateConvocationMagicLink({
+              supabase: auth.supabase,
+              learnerId: learnerData.id,
+              sessionId: payload.context.session_id,
+              entityId: auth.profile.entity_id,
+              createdByUserId: auth.user.id,
+            });
+            extranetQrDataUrl = await QRCode.toDataURL(magicLink.url, {
+              width: 400, margin: 1, errorCorrectionLevel: "M",
+            });
+            magicToken = magicLink.token;
+          } catch (err) {
+            console.warn("[generate-from-template] magic link creation failed:", err);
+          }
+        }
+
+        // Signatures : pour attestation_assiduite + feuille_emargement
+        let signedLearnerIds: Set<string> | undefined;
+        let signaturesById: Map<string, unknown> | undefined;
+        if (
+          (payload.doc_type === "attestation_assiduite" || payload.doc_type === "feuille_emargement")
+          && payload.context.session_id
+        ) {
+          try {
+            const sigData = await loadSignaturesBySessionId(auth.supabase, payload.context.session_id);
+            signedLearnerIds = sigData.signedLearnerIds;
+            signaturesById = sigData.signaturesById;
+          } catch (err) {
+            console.warn("[generate-from-template] signatures load failed:", err);
+          }
+        }
+
+        const ctx: ResolveContext = {
+          session: session as unknown as Session,
+          learner: learnerData ?? undefined,
+          client: clientData ?? undefined,
+          trainer: trainerData ?? undefined,
+          entity,
+          extranetQrDataUrl,
+          signedLearnerIds,
+          signaturesById: signaturesById as ResolveContext["signaturesById"],
+        };
+
+        const resolvedHtml = resolveDocumentVariables(systemTemplate.html, ctx);
+        const resolvedFooter = resolveDocumentVariables(systemTemplate.footer, ctx);
+
+        // Utilise DocumentGenerationService (Puppeteer + footer template) plutôt
+        // que generatePdfFromFragment (CloudConvert sans footer). Cohérent avec
+        // les batch endpoints F1/F2.x qui passent par DGS.
+        const engine = createDefaultEngine();
+        const service = new DocumentGenerationService({ engine, supabase: auth.supabase });
+        const useLandscape = payload.doc_type === "planning_semaine";
+        const dgsResult = await service.generate({
+          entityId: auth.profile.entity_id,
+          docType: payload.doc_type,
+          html: resolvedHtml,
+          cacheInputs: {
+            doc_type: payload.doc_type,
+            session_id: payload.context.session_id ?? null,
+            learner_id: payload.context.learner_id ?? null,
+            client_id: payload.context.client_id ?? null,
+            trainer_id: payload.context.trainer_id ?? null,
+            session_updated_at: sessionUpdatedAt,
+            custom_variables: magicToken ? { magic_token: magicToken } : null,
+          },
+          options: {
+            format: "A4",
+            landscape: useLandscape,
+            margins: useLandscape
+              ? { top: "12mm", right: "10mm", bottom: "14mm", left: "10mm" }
+              : { top: "18mm", right: "16mm", bottom: "22mm", left: "16mm" },
+            printBackground: true,
+            displayHeaderFooter: true,
+            headerTemplate: "<span></span>",
+            footerTemplate: resolvedFooter,
+          },
+        });
+        pdfBase64 = dgsResult.buffer.toString("base64");
+        sizeBytes = dgsResult.fileSizeBytes;
+        pdfNameBase = payload.doc_type;
+        if (magicToken) console.log(`[generate-from-template] Magic link convocation : ${magicToken.slice(0, 8)}...`);
+      } else {
+        // Fallback : pas de beau template registry → getDefaultTemplate (legacy moche)
+        // pour les doc_types non couverts (custom, etc.)
+        const learnerData = payload.context.learner_id
+          ? (await auth.supabase.from("learners").select("id, first_name, last_name, email").eq("id", payload.context.learner_id).single()).data
+          : null;
+        const companyDataRaw = payload.context.client_id
+          ? (await auth.supabase.from("clients").select("company_name, address, siret").eq("id", payload.context.client_id).single()).data
+          : null;
+        const companyData = companyDataRaw && payload.context.client_id
+          ? { id: payload.context.client_id, ...companyDataRaw }
+          : null;
+        const trainerDataLegacy = payload.context.trainer_id
+          ? (await auth.supabase.from("trainers").select("first_name, last_name").eq("id", payload.context.trainer_id).single()).data
+          : null;
+        const { data: entityLegacy } = session?.entity_id
+          ? await auth.supabase
+              .from("entities")
+              .select("name, legal_form, siret, nda, ape_code, rcs, capital, address, postal_code, city, region, email, phone, website, president_name, president_title, logo_url, stamp_url, signature_url")
+              .eq("id", session.entity_id as string)
+              .single()
+          : { data: null };
+
+        const html = getDefaultTemplate(payload.doc_type, {
+          formation: session as unknown as Session,
+          learner: learnerData ?? undefined,
+          company: companyData ?? undefined,
+          trainer: trainerDataLegacy ?? undefined,
+          entityName: entityLegacy?.name ?? "MR FORMATION",
+          entity: entityLegacy ?? undefined,
+        });
+
+        if (!html) {
+          return NextResponse.json(
+            { error: `Pas de template système disponible pour "${payload.doc_type}"` },
+            { status: 404 }
+          );
+        }
+
+        const useLandscape = payload.doc_type === "planning_semaine";
+        const result = await generatePdfFromFragment(html, payload.doc_type, useLandscape ? { landscape: true } : undefined);
+        pdfBase64 = result.base64;
+        sizeBytes = result.sizeBytes;
+        pdfNameBase = payload.doc_type;
       }
-
-      // Format paysage A4 pour les docs type planning (grille calendrier large)
-      const useLandscape = payload.doc_type === "planning_semaine";
-      const result = await generatePdfFromFragment(html, payload.doc_type, useLandscape ? { landscape: true } : undefined);
-      pdfBase64 = result.base64;
-      sizeBytes = result.sizeBytes;
-      pdfNameBase = payload.doc_type;
     } else {
       return NextResponse.json({ error: "Aucun template ni doc_type valide fourni" }, { status: 400 });
     }
