@@ -93,6 +93,17 @@ export function validateDocumentVariables(
   for (const [fallback, { entityKey, field }] of Object.entries(FALLBACK_TO_ENTITY_FIELD)) {
     if (!resolved.includes(fallback)) continue;
 
+    // Vérifier qu'on peut générer un deep link actionnable pour cette entité.
+    // - "entity" (organisme) : URL fixe /admin/settings/organization, pas besoin d'id
+    // - autres entités : besoin d'un id pour construire /admin/<entity>/<id>
+    // Si on ne peut pas générer de lien, l'utilisateur ne peut RIEN faire avec
+    // ce message d'erreur → on skip silencieusement (ex: feuille collective
+    // session-wide qui référence [Nom client] alors qu'aucun client n'est
+    // rattaché au context — c'est un problème de design template, pas user).
+    const entityRecord = context[entityKey] as { id?: string } | undefined;
+    const hasActionableLink = entityKey === "entity" || Boolean(entityRecord?.id);
+    if (!hasActionableLink) continue;
+
     if (!missingByEntity[entityKey]) {
       missingByEntity[entityKey] = [];
     }
@@ -100,7 +111,6 @@ export function validateDocumentVariables(
       missingByEntity[entityKey]!.push(field);
     }
 
-    const entityRecord = context[entityKey] as { id?: string } | undefined;
     if (entityRecord?.id) {
       entityIds[entityKey] = entityRecord.id;
     }
