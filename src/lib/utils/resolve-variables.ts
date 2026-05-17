@@ -941,7 +941,7 @@ export function resolveVariables(content: string, data: ResolveContext): string 
       const firstTrainerSig = firstTrainerId ? sigMap?.get(firstTrainerId) : undefined;
       const formateurStatus = firstTrainerSig
         ? `<span class="person-status">Présent</span>${renderSignature(firstTrainerSig)}`
-        : `<span class="person-status">Présent (A signé en présentiel)</span>`;
+        : renderUnsignedCell(sessionEndDate);
 
       const apprenantsCellHtml = learnersForTable
         .map((e) => {
