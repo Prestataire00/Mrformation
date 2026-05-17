@@ -122,23 +122,30 @@ export function resolveVariables(content: string, data: ResolveContext): string 
       ? `${data.session.trainer.first_name} ${data.session.trainer.last_name}`
       : "[Nom formateur]";
 
-  // Build client address from components
+  // Build client address from components (format français : "rue, CP ville")
   const clientAddress = (() => {
     const c = data.client;
     if (!c) return "[Adresse client]";
-    const parts = [c.address, c.postal_code, c.city].filter(Boolean);
-    return parts.length > 0 ? parts.join(" ") : "[Adresse client]";
+    const street = c.address;
+    const cityLine = [c.postal_code, c.city].filter(Boolean).join(" ");
+    const parts = [street, cityLine].filter(Boolean);
+    return parts.length > 0 ? parts.join(", ") : "[Adresse client]";
   })();
 
-  // Client representative: first contact or fallback
+  // Client representative: contact primary > 1er contact > fallback "Représentant légal" (vs placeholder visible)
   const clientRepresentant = (() => {
     const c = data.client;
-    if (!c) return "[Représentant]";
+    if (!c) return "Représentant légal";
     if (c.contacts && c.contacts.length > 0) {
       const primary = c.contacts.find((ct) => ct.is_primary) || c.contacts[0];
-      return `${primary.last_name.toUpperCase()} ${primary.first_name}`;
+      const last = primary.last_name?.toUpperCase() ?? "";
+      const first = primary.first_name ?? "";
+      const full = `${last} ${first}`.trim();
+      if (full) return full;
     }
-    return "[Représentant]";
+    // Pas de contact rattaché → "Représentant légal" plutôt que "[Représentant]"
+    // qui ressemble à une variable non résolue dans le PDF rendu.
+    return "Représentant légal";
   })();
 
   // Multi-entreprises : si on a un client (entreprise destinataire du doc),
