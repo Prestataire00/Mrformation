@@ -699,7 +699,17 @@ export default function QuestionnairesPage() {
                       <span className="text-gray-700">{q.questions.length}</span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className="text-gray-700">{q.responses_count}</span>
+                      {/* h-10 : bouton stats cliquable au lieu du nombre simple — accès direct
+                          aux réponses individuelles + agrégées sans passer par le dropdown */}
+                      <button
+                        onClick={() => openStats(q)}
+                        disabled={q.responses_count === 0}
+                        className="inline-flex items-center gap-1.5 px-2 py-1 rounded text-sm font-medium text-blue-700 hover:bg-blue-50 disabled:text-gray-400 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-colors"
+                        title={q.responses_count > 0 ? "Voir les réponses" : "Aucune réponse"}
+                      >
+                        <BarChart2 className="h-3.5 w-3.5" />
+                        {q.responses_count}
+                      </button>
                     </td>
                     <td className="px-4 py-3 text-xs text-gray-500">
                       {formatDate(q.created_at)}
