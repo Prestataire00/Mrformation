@@ -177,7 +177,7 @@ export default async function AccessPage({ params }: { params: { token: string }
   const { data: magicLink } = await supabase.auth.admin.generateLink({
     type: "magiclink",
     email: learner.email,
-    options: { redirectTo: `${APP_URL}/api/auth/callback?next=/learner` },
+    options: { redirectTo: `${APP_URL}/auth/callback?next=/learner` },
   });
 
   if (magicLink?.properties?.action_link) {
@@ -186,7 +186,7 @@ export default async function AccessPage({ params }: { params: { token: string }
     if (actionLink.includes("localhost")) {
       actionLink = actionLink.replace(
         /redirect_to=http%3A%2F%2Flocalhost[^&]*/,
-        `redirect_to=${encodeURIComponent(`${APP_URL}/api/auth/callback?next=/learner`)}`
+        `redirect_to=${encodeURIComponent(`${APP_URL}/auth/callback?next=/learner`)}`
       );
     }
     redirect(actionLink);
