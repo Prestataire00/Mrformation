@@ -507,15 +507,13 @@ export default function LearnerMyTrainingsPage() {
                                 </div>
                               </div>
                             </div>
-                            {(session.status === "in_progress" || session.status === "completed") && (
-                              <Link
-                                href={`/learner/sessions/${session.id}/sign`}
-                                className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                              >
-                                <PenLine className="w-3 h-3" />
-                                Émargement
-                              </Link>
-                            )}
+                            <Link
+                              href={`/learner/sessions/${session.id}/sign`}
+                              className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            >
+                              <PenLine className="w-3 h-3" />
+                              Voir détail
+                            </Link>
                           </div>
                         ))}
                     </div>
