@@ -19,12 +19,13 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/components/ui/use-toast";
 import { downloadQRCodesPDF, type QRSlotData } from "@/lib/qr-pdf-export";
-import { downloadEmargementPDF } from "@/lib/emargement-pdf-export";
 import { useEntity } from "@/contexts/EntityContext";
 import { sortSlotsByStart } from "@/lib/utils/sort-time-slots";
 import { getFormationKind, getLearnersForCompany } from "@/lib/utils/formation-companies";
 import type { Session, FormationTimeSlot, Signature, Enrollment, FormationTrainer } from "@/lib/types";
 import { SignaturePad } from "@/components/signatures/SignaturePad";
+import { useDocumentGeneration } from "@/hooks/useDocumentGeneration";
+import { downloadBase64Pdf } from "@/lib/utils/download-blob";
 
 // ──────────────────────────────────────────────
 // Types
@@ -69,10 +70,10 @@ export function TabEmargements({ formation, onRefresh }: Props) {
   const { toast } = useToast();
   const { entity } = useEntity();
   const supabase = createClient();
+  const { generate: generateDocument, incompleteDialog } = useDocumentGeneration();
 
   const [generatingTokens, setGeneratingTokens] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
-  const [exportingSheet, setExportingSheet] = useState(false);
   const [pdfProgress, setPdfProgress] = useState({ current: 0, total: 0 });
   const [sendingToTrainer, setSendingToTrainer] = useState(false);
 
@@ -432,102 +433,34 @@ export function TabEmargements({ formation, onRefresh }: Props) {
 
   // ── Export PDF feuille d'émargement (format professionnel) ──
 
-  // Planning hebdo : génération côté client en jsPDF natif (pas de CloudConvert,
-  // donc pas de quota Payment Required à gérer).
   const handleDownloadPlanningHebdo = async () => {
-    if (timeSlots.length === 0) return;
-    try {
-      toast({ title: "Génération du planning hebdo..." });
-      const { downloadPlanningHebdoPDF } = await import("@/lib/planning-hebdo-pdf-export");
-      const totalMs = timeSlots.reduce((sum, slot) => sum + (new Date(slot.end_time).getTime() - new Date(slot.start_time).getTime()), 0);
-      const durationHours = Math.round((totalMs / 3_600_000) * 100) / 100;
-
-      await downloadPlanningHebdoPDF({
-        formationTitle: formation.title,
-        startDate: formation.start_date,
-        endDate: formation.end_date,
-        location: formation.location,
-        durationHours,
-        entityName: entity?.name || "MR FORMATION",
-        trainers: trainers
-          .filter((ft) => ft.trainer)
-          .map((ft) => ({ id: ft.trainer!.id, first_name: ft.trainer!.first_name, last_name: ft.trainer!.last_name })),
-        learners: enrollments
-          .filter((e) => e.learner)
-          .map((e) => ({ id: e.learner!.id, first_name: e.learner!.first_name, last_name: e.learner!.last_name })),
-        timeSlots: timeSlots.map((s) => ({ id: s.id, start_time: s.start_time, end_time: s.end_time })),
-        signatures: signatures
-          .filter((s): s is typeof s & { signer_id: string } => s.signer_id !== null)
-          .map((s) => ({
-            time_slot_id: s.time_slot_id,
-            signer_id: s.signer_id,
-            signer_type: s.signer_type,
-            signature_data: s.signature_data,
-            signed_at: s.signed_at,
-          })),
-      });
-      toast({ title: "Planning hebdo téléchargé" });
-    } catch (err) {
-      console.error("[planning-hebdo] error:", err);
-      toast({
-        title: "Erreur",
-        description: err instanceof Error ? err.message : "Génération impossible",
-        variant: "destructive",
-      });
-    }
+    await generateDocument(
+      {
+        doc_type: "planning_hebdo_signe",
+        context: { session_id: formation.id },
+      },
+      {
+        onSuccess: (result) => {
+          downloadBase64Pdf(result.base64, result.filename);
+          toast({ title: "Planning hebdo généré" });
+        },
+      },
+    );
   };
 
   const handleExportEmargementPdf = async () => {
-    setExportingSheet(true);
-    try {
-      // Calculate duration
-      const totalMs = timeSlots.reduce((sum, slot) => {
-        return sum + (new Date(slot.end_time).getTime() - new Date(slot.start_time).getTime());
-      }, 0);
-      const totalHours = (totalMs / (1000 * 60 * 60)).toFixed(2);
-
-      await downloadEmargementPDF({
-        formationTitle: formation.title,
-        startDate: formation.start_date,
-        endDate: formation.end_date,
-        location: formation.location,
-        duration: `${totalHours} heures`,
-        entityName: entity?.name || "MR FORMATION",
-        trainers: trainers
-          .filter((ft) => ft.trainer)
-          .map((ft) => ({
-            id: ft.trainer!.id,
-            first_name: ft.trainer!.first_name,
-            last_name: ft.trainer!.last_name,
-          })),
-        learners: enrollments
-          .filter((e) => e.learner)
-          .map((e) => ({
-            id: e.learner!.id,
-            first_name: e.learner!.first_name,
-            last_name: e.learner!.last_name,
-          })),
-        timeSlots: timeSlots.map((s) => ({
-          id: s.id,
-          title: s.title,
-          start_time: s.start_time,
-          end_time: s.end_time,
-        })),
-        signatures: signatures
-          .filter((s): s is typeof s & { signer_id: string } => s.signer_id !== null)
-          .map((s) => ({
-            time_slot_id: s.time_slot_id,
-            signer_id: s.signer_id,
-            signer_type: s.signer_type,
-            signature_data: s.signature_data,
-          })),
-      });
-      toast({ title: "Feuille d'émargement exportée" });
-    } catch {
-      toast({ title: "Erreur", description: "Impossible de générer le PDF", variant: "destructive" });
-    } finally {
-      setExportingSheet(false);
-    }
+    await generateDocument(
+      {
+        doc_type: "feuille_emargement_collectif",
+        context: { session_id: formation.id },
+      },
+      {
+        onSuccess: (result) => {
+          downloadBase64Pdf(result.base64, result.filename);
+          toast({ title: "Feuille d'émargement générée" });
+        },
+      },
+    );
   };
 
   // Story 3.4 — Export 1 PDF par entreprise (INTER uniquement, filtre "Toutes" actif).
@@ -535,118 +468,43 @@ export function TabEmargements({ formation, onRefresh }: Props) {
   // chacune avec les apprenants filtrés par client_id et le nom de l'entreprise
   // dans le titre du document.
   const handleExportEmargementPerCompany = async () => {
-    setExportingSheet(true);
-    try {
-      const totalMs = timeSlots.reduce((sum, slot) => {
-        return sum + (new Date(slot.end_time).getTime() - new Date(slot.start_time).getTime());
-      }, 0);
-      const totalHours = (totalMs / (1000 * 60 * 60)).toFixed(2);
+    let succeeded = 0;
+    for (const fc of companies) {
+      const learnersForCompany = getLearnersForCompany(formation, fc.client_id);
+      if (learnersForCompany.length === 0) continue;
 
-      let generated = 0;
-      for (const fc of companies) {
-        const learnersForCompany = getLearnersForCompany(formation, fc.client_id);
-        if (learnersForCompany.length === 0) continue;
-
-        const companyName = fc.client?.company_name || `Client_${fc.client_id.slice(0, 8)}`;
-
-        await downloadEmargementPDF({
-          formationTitle: `${formation.title} — ${companyName}`,
-          startDate: formation.start_date,
-          endDate: formation.end_date,
-          location: formation.location,
-          duration: `${totalHours} heures`,
-          entityName: entity?.name || "MR FORMATION",
-          trainers: trainers
-            .filter((ft) => ft.trainer)
-            .map((ft) => ({
-              id: ft.trainer!.id,
-              first_name: ft.trainer!.first_name,
-              last_name: ft.trainer!.last_name,
-            })),
-          learners: learnersForCompany
-            .filter((e) => e.learner)
-            .map((e) => ({
-              id: e.learner!.id,
-              first_name: e.learner!.first_name,
-              last_name: e.learner!.last_name,
-            })),
-          timeSlots: timeSlots.map((s) => ({
-            id: s.id,
-            title: s.title,
-            start_time: s.start_time,
-            end_time: s.end_time,
-          })),
-          signatures: signatures
-            .filter((s): s is typeof s & { signer_id: string } => s.signer_id !== null)
-            .map((s) => ({
-              time_slot_id: s.time_slot_id,
-              signer_id: s.signer_id,
-              signer_type: s.signer_type,
-              signature_data: s.signature_data,
-            })),
-        });
-
-        generated++;
-        // Petit délai pour éviter que le navigateur bloque les téléchargements concurrents
-        await new Promise((r) => setTimeout(r, 300));
-      }
-
-      if (generated === 0) {
-        toast({
-          title: "Aucun PDF généré",
-          description: "Aucune entreprise n'a d'apprenant rattaché",
-          variant: "destructive",
-        });
-      } else {
-        toast({ title: `${generated} feuille(s) d'émargement exportée(s)` });
-      }
-    } catch (err) {
-      toast({
-        title: "Erreur",
-        description: err instanceof Error ? err.message : "Impossible de générer les PDFs",
-        variant: "destructive",
-      });
-    } finally {
-      setExportingSheet(false);
+      await generateDocument(
+        {
+          doc_type: "feuille_emargement_collectif",
+          context: { session_id: formation.id, client_id: fc.client_id },
+        },
+        {
+          onSuccess: (result) => {
+            const safeName = (fc.client?.company_name ?? fc.client_id).replace(/[^a-zA-Z0-9-_]+/g, "-");
+            downloadBase64Pdf(result.base64, `emargement-${safeName}.pdf`);
+            succeeded++;
+          },
+        },
+      );
     }
+    toast({ title: `${succeeded}/${companies.length} PDF générés` });
   };
 
   // ── Print empty attendance sheet ──
 
-  const handlePrintEmpty = () => {
-    const rows = timeSlots
-      .map((slot, i) => {
-        const start = new Date(slot.start_time);
-        const end = new Date(slot.end_time);
-        const learnerRows = enrollments
-          .map(e => {
-            const l = e.learner;
-            if (!l) return "";
-            return `<tr><td style="padding:8px;border:1px solid #ddd;">${l.first_name} ${l.last_name}</td><td style="padding:8px;border:1px solid #ddd;width:200px;"></td></tr>`;
-          })
-          .join("");
-        const trainerRows = trainers
-          .map(t => {
-            const tr = t.trainer;
-            if (!tr) return "";
-            return `<tr><td style="padding:8px;border:1px solid #ddd;">${tr.first_name} ${tr.last_name} (Formateur)</td><td style="padding:8px;border:1px solid #ddd;width:200px;"></td></tr>`;
-          })
-          .join("");
-        return `
-          <h3>Créneau ${i + 1} — ${start.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" })} ${start.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })} - ${end.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })}</h3>
-          <table style="width:100%;border-collapse:collapse;margin-bottom:24px;">
-            <thead><tr><th style="padding:8px;border:1px solid #ddd;text-align:left;">Nom</th><th style="padding:8px;border:1px solid #ddd;text-align:left;">Signature</th></tr></thead>
-            <tbody>${trainerRows}${learnerRows}</tbody>
-          </table>`;
-      })
-      .join("");
-    const html = `<html><head><title>Feuille d'émargement — ${formation.title}</title></head><body style="font-family:sans-serif;padding:24px;"><h1>Feuille d'émargement</h1><h2>${formation.title}</h2>${rows}</body></html>`;
-    const w = window.open("", "_blank");
-    if (w) {
-      w.document.write(html);
-      w.document.close();
-      w.print();
-    }
+  const handlePrintEmpty = async () => {
+    await generateDocument(
+      {
+        doc_type: "feuille_emargement_vierge",
+        context: { session_id: formation.id },
+      },
+      {
+        onSuccess: (result) => {
+          downloadBase64Pdf(result.base64, result.filename);
+          toast({ title: "Feuille vierge générée" });
+        },
+      },
+    );
   };
 
   // ── Compute stats ──
@@ -851,22 +709,20 @@ export function TabEmargements({ formation, onRefresh }: Props) {
             <button
               type="button"
               onClick={handleExportEmargementPdf}
-              disabled={exportingSheet}
               className="block w-full bg-purple-600 hover:bg-purple-700 disabled:bg-purple-300 text-white text-sm font-medium px-3 py-2 rounded-lg text-center transition-colors mb-2"
               title="PDF complet avec toutes les signatures collectées"
             >
-              {exportingSheet ? "Génération..." : "📥 Feuille d'émargement signée"}
+              📥 Feuille d&apos;émargement signée
             </button>
             {/* Story 3.4 — Export 1 PDF par entreprise (INTER uniquement, sans filtre actif) */}
             {formationKind === "inter" && !filterClientId && companies.length > 0 && (
               <button
                 type="button"
                 onClick={handleExportEmargementPerCompany}
-                disabled={exportingSheet}
                 className="block w-full border border-purple-300 text-purple-700 hover:bg-purple-100 disabled:opacity-50 text-sm font-medium px-3 py-2 rounded-lg text-center transition-colors mb-2"
                 title="Génère 1 feuille d'émargement par entreprise rattachée"
               >
-                {exportingSheet ? "Génération..." : `📥 1 PDF par entreprise (${companies.length})`}
+                📥 1 PDF par entreprise ({companies.length})
               </button>
             )}
             <div className="text-[11px] text-gray-500 space-y-1">
@@ -919,9 +775,9 @@ export function TabEmargements({ formation, onRefresh }: Props) {
             variant="outline"
             className="text-xs h-7 gap-1"
             onClick={handleExportEmargementPdf}
-            disabled={exportingSheet || timeSlots.length === 0}
+            disabled={timeSlots.length === 0}
           >
-            {exportingSheet ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
+            <Download className="h-3 w-3" />
             Feuille PDF
           </Button>
           <Button
@@ -1264,6 +1120,8 @@ export function TabEmargements({ formation, onRefresh }: Props) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {incompleteDialog}
     </div>
   );
 }

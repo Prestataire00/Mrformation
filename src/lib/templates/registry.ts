@@ -50,6 +50,14 @@ import {
   POLITIQUE_RGPD_HTML,
   POLITIQUE_RGPD_FOOTER_TEMPLATE,
 } from "./politique-rgpd";
+import {
+  FEUILLE_EMARGEMENT_VIERGE_HTML,
+  FEUILLE_EMARGEMENT_VIERGE_FOOTER_TEMPLATE,
+} from "./feuille-emargement-vierge";
+import {
+  PLANNING_HEBDO_SIGNE_HTML,
+  PLANNING_HEBDO_SIGNE_FOOTER_TEMPLATE,
+} from "./planning-hebdo-signe";
 
 export interface SystemTemplate {
   html: string;
@@ -141,6 +149,18 @@ export const SYSTEM_TEMPLATES_BY_DOC_TYPE: Record<string, SystemTemplate> = {
   politique_confidentialite: {
     html: POLITIQUE_RGPD_HTML,
     footer: POLITIQUE_RGPD_FOOTER_TEMPLATE,
+    ownerType: "session",
+    qualiopiBlocking: false,
+  },
+  feuille_emargement_vierge: {
+    html: FEUILLE_EMARGEMENT_VIERGE_HTML,
+    footer: FEUILLE_EMARGEMENT_VIERGE_FOOTER_TEMPLATE,
+    ownerType: "session",
+    qualiopiBlocking: false,
+  },
+  planning_hebdo_signe: {
+    html: PLANNING_HEBDO_SIGNE_HTML,
+    footer: PLANNING_HEBDO_SIGNE_FOOTER_TEMPLATE,
     ownerType: "session",
     qualiopiBlocking: false,
   },

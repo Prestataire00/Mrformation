@@ -5,6 +5,10 @@
 [build.environment]
   NODE_VERSION = "22"
   NPM_FLAGS = "--legacy-peer-deps"
+  # require(esm) est expérimental sur Node 22.x < 22.12. Active le flag pour
+  # autoriser isomorphic-dompurify → jsdom → html-encoding-sniffer (CJS) à
+  # require @exodus/bytes (ESM only) — sinon ERR_REQUIRE_ESM au load module.
+  NODE_OPTIONS = "--experimental-require-module"
 
 [functions]
   external_node_modules = ["youtube-transcript"]
