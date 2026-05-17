@@ -27,6 +27,10 @@ import { validateCompanyExport, findUncoveredLearners } from "@/lib/utils/format
 import { exportHtmlToPDF, exportHtmlToPDFBase64 } from "@/lib/pdf-export";
 import { hasBatchEndpoint, downloadBatchZip } from "@/lib/utils/batch-doc-download";
 import { hasBatchSendEndpoint, sendBatchEmail } from "@/lib/utils/batch-doc-send";
+import {
+  hasBatchSignatureRequestEndpoint,
+  requestBatchSignatures,
+} from "@/lib/utils/batch-doc-signature-request";
 import { cn } from "@/lib/utils";
 import { DocMatrixSection } from "@/components/formations/DocMatrixSection";
 import type {
@@ -151,6 +155,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
   const [initializing, setInitializing] = useState(false);
   const [massSending, setMassSending] = useState<string | null>(null);
   const [massDownloading, setMassDownloading] = useState<string | null>(null);
+  const [massRequestingSig, setMassRequestingSig] = useState<string | null>(null);
 
   // Custom doc template selections
   const [customSelections, setCustomSelections] = useState<Record<string, string>>({});
@@ -831,6 +836,39 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
 
     toast({ title: `${targetDocs.length} PDF téléchargés` });
     setMassDownloading(null);
+  };
+
+  // ===== MASS SIGNATURE REQUEST (Story F3) =====
+
+  const handleMassSignatureRequest = async (docType: string) => {
+    if (!hasBatchSignatureRequestEndpoint(docType)) {
+      toast({ title: `Signature batch non supportée pour ${docType}`, variant: "destructive" });
+      return;
+    }
+    setMassRequestingSig(docType);
+    try {
+      const res = await requestBatchSignatures({ docType, sessionId: formation.id });
+      if (res.failureCount > 0) {
+        const sample = res.errors.slice(0, 3).map((e) => `${e.ownerName} (${e.error})`).join(", ");
+        toast({
+          title: `${res.successCount}/${res.totalRequested} demandes de signature envoyées`,
+          description: `${res.failureCount} échec(s) : ${sample}${res.errors.length > 3 ? "…" : ""}`,
+        });
+      } else {
+        toast({
+          title: `${res.successCount} demandes de signature envoyées`,
+          description: `Envoyé en ${(res.latencyMs / 1000).toFixed(1)}s — liens valides 30 jours`,
+        });
+      }
+    } catch (err) {
+      toast({
+        title: "Erreur envoi demandes signature",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    }
+    setMassRequestingSig(null);
+    onRefresh();
   };
 
   // Mass confirm all docs of a type
@@ -1682,6 +1720,14 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
                   {massSending?.startsWith("company") ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
                   Envoyer tout
                 </Button>
+                <Button size="sm" variant="outline" className="h-6 text-xs gap-1 border-orange-300 text-orange-700 hover:bg-orange-50"
+                  onClick={() => handleMassSignatureRequest("convention_entreprise")}
+                  disabled={massRequestingSig !== null}
+                  title="Crée un magic link pour chaque entreprise + envoie un email avec le lien (valide 30 jours)"
+                >
+                  {massRequestingSig === "convention_entreprise" ? <Loader2 className="h-3 w-3 animate-spin" /> : <PenLine className="h-3 w-3" />}
+                  Demander signature à tous
+                </Button>
               </div>
             )}
           </div>
@@ -1710,6 +1756,14 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
                 >
                   {massSending?.startsWith("trainer") ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
                   Envoyer tout
+                </Button>
+                <Button size="sm" variant="outline" className="h-6 text-xs gap-1 border-orange-300 text-orange-700 hover:bg-orange-50"
+                  onClick={() => handleMassSignatureRequest("convention_intervention")}
+                  disabled={massRequestingSig !== null}
+                  title="Crée un magic link pour chaque formateur + envoie un email avec le lien (valide 30 jours)"
+                >
+                  {massRequestingSig === "convention_intervention" ? <Loader2 className="h-3 w-3 animate-spin" /> : <PenLine className="h-3 w-3" />}
+                  Demander signature à tous
                 </Button>
               </div>
             )}

@@ -39,7 +39,7 @@
 #   → E2-E3-E4 (parallèles, après B+C+D+F stables) → E1 (last, après 90j stabilité)
 
 generated: 2026-05-17
-last_updated: 2026-05-17 (F2 extensions all done : 6 doc_types couverts + helper extrait)
+last_updated: 2026-05-17 (F3 done + Epic F complet : 3 stories principales + 5 extensions F2.x = 8 stories Epic F)
 project: lms-platform
 project_key: NOKEY
 tracking_system: file-system
@@ -93,7 +93,7 @@ development_status:
 
   # ── Epic F : Mass Operations (TabConventionDocs) (Lot F) ──
   # PR2 sous-PR 2.5 — Ajouté 2026-05-17 (gap traçabilité résolu)
-  epic-f: in-progress
+  epic-f: done  # 3 stories principales + 5 extensions F2.x toutes done. Toute la matrix TabConventionDocs est server-side parallèle (download + send + signature)
   f-1-mass-download-batch-zip: done  # helper batch-doc-download.ts + refactor TabConventionDocs.handleDownloadAllPDF (PR #93)
   f-2-mass-send-email-batch: done  # MVP convocation : endpoint send-convocations-batch-email + helper batch-doc-send.ts + refactor handleMassSendWithPDF
   f-2-1-send-certificats-realisation-batch-email: done  # extension F2 (PR #96, helper executeBatchEmailSend extrait)
@@ -101,7 +101,7 @@ development_status:
   f-2-3-send-conventions-batch-email: done  # extension F2 company → primary contact email (PR #96)
   f-2-4-send-emargements-individuels-batch-email: done  # extension F2 (PR #96)
   f-2-5-send-conventions-intervention-batch-email: done  # extension F2 trainer (PR #96)
-  f-3-mass-signature-request-batch: backlog
+  f-3-mass-signature-request-batch: done  # endpoint signature-request-batch + helper + 2 boutons UI (PR #97)
   epic-f-retrospective: optional
 
 # ──────────────────────────────────────────────────────────────────────────
