@@ -1035,6 +1035,10 @@ exports[`Templates snapshots — couvre F1/F2.x/F3 > emargement-individuel : HTM
   .creneau-card .status-absent {
     color: #b91c1c;
   }
+  .creneau-card .status-unsigned {
+    color: #ef4444;
+    font-style: italic;
+  }
 
   strong { font-weight: 700; }
 </style>
@@ -1072,16 +1076,16 @@ exports[`Templates snapshots — couvre F1/F2.x/F3 > emargement-individuel : HTM
 <div class="creneau-card">
   <p class="creneau-header">Créneau : De 15/06/2026 - 09:00 À 15/06/2026 - 17:00 (MATIN)</p>
   <p class="person-name">[Nom formateur]</p>
-  <p class="person-status">Présent (A signé en présentiel)</p>
+  
   <p class="person-name learner">MARTIN Pierre</p>
-  <p class="person-status">Présent (A signé en présentiel)</p>
+  <p class="person-status">Signé</p>
 </div>
 <div class="creneau-card">
   <p class="creneau-header">Créneau : De 16/06/2026 - 09:00 À 16/06/2026 - 17:00 (MATIN)</p>
   <p class="person-name">[Nom formateur]</p>
-  <p class="person-status">Présent (A signé en présentiel)</p>
+  
   <p class="person-name learner">MARTIN Pierre</p>
-  <p class="person-status">Présent (A signé en présentiel)</p>
+  <p class="person-status">Signé</p>
 </div>
 
 </body>
