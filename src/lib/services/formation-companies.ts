@@ -87,12 +87,26 @@ export async function addCompanyToSession(
  * empêcher la suppression cross-session, mais la double-check est cheap.
  *
  * Synchronise automatiquement `sessions.total_price` avec la somme des amounts restants.
+ *
+ * Cleanup des docs orphelins : supprime aussi les rows `documents` de cette
+ * entreprise pour la session (sinon TabConventionDocs continue d'afficher des
+ * conventions/factures orphelines avec client_id pointant vers un client supprimé,
+ * → les PDFs affichent `[Nom client]` etc. non résolus).
  */
 export async function removeCompanyFromSession(
   supabase: SupabaseClient,
   companyId: string,
   sessionId: string
 ): Promise<ServiceResult<Record<never, never>>> {
+  // 1. Récupérer le client_id avant suppression (pour cleanup docs)
+  const { data: company } = await supabase
+    .from("formation_companies")
+    .select("client_id")
+    .eq("id", companyId)
+    .eq("session_id", sessionId)
+    .maybeSingle();
+
+  // 2. Supprimer la liaison entreprise ↔ session
   const { error } = await supabase
     .from("formation_companies")
     .delete()
@@ -103,7 +117,22 @@ export async function removeCompanyFromSession(
     return { ok: false, error: { message: error.message, code: error.code } };
   }
 
-  // Sync total_price (best-effort)
+  // 3. Cleanup des docs orphelins de cette entreprise (best-effort)
+  if (company?.client_id) {
+    try {
+      await supabase
+        .from("documents")
+        .delete()
+        .eq("source_table", "sessions")
+        .eq("source_id", sessionId)
+        .eq("owner_type", "company")
+        .eq("owner_id", company.client_id);
+    } catch (cleanupErr) {
+      console.error("[removeCompanyFromSession] docs cleanup failed:", cleanupErr);
+    }
+  }
+
+  // 4. Sync total_price (best-effort)
   await syncSessionTotalPrice(supabase, sessionId);
 
   return { ok: true };
