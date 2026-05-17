@@ -1222,15 +1222,15 @@ function planningSemaine(data: TemplateData): string {
       // Format jour court (ex: Lun 24/04)
       const d = new Date(date + "T12:00:00Z");
       const dayShort = d.toLocaleDateString("fr-FR", { weekday: "short", day: "2-digit", month: "2-digit", timeZone: "Europe/Paris" });
-      const label = `${dayShort} ${moment === "M" ? "Matin" : "AM"}`;
+      const label = `${dayShort} ${moment === "M" ? "Matin" : "Après-midi"}`;
       return { key, date, moment, label };
     });
   } else {
-    // Fallback (pas de slots) : Lun-Ven × M/AM
+    // Fallback (pas de slots) : Lun-Ven × Matin/Après-midi
     const jours = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi"];
     columns = jours.flatMap((j) => [
       { key: `${j}|M`, date: j, moment: "M" as const, label: `${j} Matin` },
-      { key: `${j}|AM`, date: j, moment: "AM" as const, label: `${j} AM` },
+      { key: `${j}|AM`, date: j, moment: "AM" as const, label: `${j} Après-midi` },
     ]);
   }
 

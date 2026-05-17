@@ -44,7 +44,11 @@ function formatDateFr(iso: string): string {
 
 function getSlotMoment(iso: string): "M" | "AM" {
   const hour = new Date(iso).toLocaleTimeString("fr-FR", { hour: "2-digit", hour12: false, timeZone: "Europe/Paris" });
-  return parseInt(hour, 10) < 13 ? "M" : "AM";
+  return parseInt(hour, 10) < 13 ? "M" : "AM"; // "M" = matin, "AM" = après-midi (interne)
+}
+
+function getMomentLabel(moment: "M" | "AM"): string {
+  return moment === "M" ? "Matin" : "Après-midi";
 }
 
 function getDayDate(iso: string): string {
@@ -119,7 +123,7 @@ export async function generatePlanningHebdoPDF(params: PlanningHebdoParams): Pro
     const date = getDayDate(slot.start_time);
     const moment = getSlotMoment(slot.start_time);
     const key = `${date}|${moment}`;
-    const label = `${getDayShort(date)} ${moment === "M" ? "M" : "AM"}`;
+    const label = `${getDayShort(date)} ${getMomentLabel(moment)}`;
     if (!columnsMap.has(key)) columnsMap.set(key, { key, date, moment, label, slotIds: [] });
     columnsMap.get(key)!.slotIds.push(slot.id);
   }
