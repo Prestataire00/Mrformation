@@ -25,6 +25,7 @@ import { getDefaultTemplate } from "@/lib/document-templates-defaults";
 import { resolveVariables } from "@/lib/utils/resolve-variables";
 import { validateCompanyExport, findUncoveredLearners } from "@/lib/utils/formation-companies";
 import { exportHtmlToPDF, exportHtmlToPDFBase64 } from "@/lib/pdf-export";
+import { hasBatchEndpoint, downloadBatchZip } from "@/lib/utils/batch-doc-download";
 import { cn } from "@/lib/utils";
 import { DocMatrixSection } from "@/components/formations/DocMatrixSection";
 import type {
@@ -738,6 +739,42 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     const key = `${ownerType}-${docType}`;
     setMassDownloading(key);
 
+    // ─── PATH SERVER-SIDE (Story F1) ──────────────────────────────────
+    // Si un endpoint batch server-side existe pour ce doc_type, on l'utilise :
+    // Puppeteer + cache + Promise.allSettled + JSZip + fail-soft. Le ZIP
+    // arrive d'un coup et est téléchargé via Blob — pas de saturation navigateur.
+    if (hasBatchEndpoint(docType)) {
+      try {
+        const res = await downloadBatchZip({
+          docType,
+          sessionId: formation.id,
+          sessionTitle: formation.title ?? formation.id,
+        });
+        if (res.failureCount > 0) {
+          toast({
+            title: `${res.successCount}/${res.totalRequested} PDF téléchargés`,
+            description: `${res.failureCount} échec(s) — voir _erreurs.txt dans le ZIP`,
+          });
+        } else {
+          toast({
+            title: `${res.successCount} PDF téléchargés`,
+            description: `Généré en ${(res.latencyMs / 1000).toFixed(1)}s`,
+          });
+        }
+      } catch (err) {
+        toast({
+          title: "Erreur génération ZIP",
+          description: err instanceof Error ? err.message : String(err),
+          variant: "destructive",
+        });
+      }
+      setMassDownloading(null);
+      return;
+    }
+
+    // ─── FALLBACK LEGACY CLIENT-SIDE ──────────────────────────────────
+    // TODO Story F1.x : migrer ces doc_types (cgv, planning_semaine, etc.)
+    // vers leurs propres endpoints batch server-side.
     const targetDocs = docs.filter((d) => d.doc_type === docType && d.owner_type === ownerType);
     toast({ title: `Génération de ${targetDocs.length} PDF...` });
 
