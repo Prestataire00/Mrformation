@@ -41,6 +41,7 @@ import {
 } from "@/lib/services/documents-store";
 import { cn } from "@/lib/utils";
 import { DocMatrixSection } from "@/components/formations/DocMatrixSection";
+import { useDocumentGeneration } from "@/hooks/useDocumentGeneration";
 import type {
   Session, ConventionDocType, ConventionOwnerType,
   FormationConventionDocument, DocumentTemplate,
@@ -154,6 +155,7 @@ const REQUIRES_SIGNATURE_TYPES: ConventionDocType[] = [
 export function TabConventionDocs({ formation, onRefresh }: Props) {
   const { toast } = useToast();
   const supabase = createClient();
+  const { generate: generateDocument, incompleteDialog } = useDocumentGeneration();
 
   const [saving, setSaving] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(true);
@@ -456,61 +458,39 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
 
   const handleView = async (doc: FormationConventionDocument) => {
     const label = doc.custom_label || DOC_LABELS[doc.doc_type] || doc.doc_type;
+    const ownerLearnerId = doc.owner_type === "learner" ? doc.owner_id : undefined;
+    const ownerClientId = doc.owner_type === "company" ? doc.owner_id : undefined;
+    const ownerTrainerId = doc.owner_type === "trainer" ? doc.owner_id : undefined;
 
-    // Si le doc est lié à un template DB, vérifier son mode
-    // Appel unifié à la route serveur (gère 3 cas : template explicite, override
-    // default pour ce doc_type, ou fallback HTML système hardcodé).
-    try {
-      const ownerLearnerId = doc.owner_type === "learner" ? doc.owner_id : undefined;
-      const ownerClientId = doc.owner_type === "company" ? doc.owner_id : undefined;
-      const ownerTrainerId = doc.owner_type === "trainer" ? doc.owner_id : undefined;
-      const res = await fetch("/api/documents/generate-from-template", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          template_id: doc.template_id || undefined,
-          doc_type: doc.template_id ? undefined : doc.doc_type,
-          context: {
-            session_id: formation.id,
-            learner_id: ownerLearnerId,
-            client_id: ownerClientId,
-            trainer_id: ownerTrainerId,
-          },
-        }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Échec génération PDF");
+    await generateDocument(
+      {
+        template_id: doc.template_id || undefined,
+        doc_type: doc.template_id ? undefined : doc.doc_type,
+        context: {
+          session_id: formation.id,
+          learner_id: ownerLearnerId,
+          client_id: ownerClientId,
+          trainer_id: ownerTrainerId,
+        },
+      },
+      {
+        onSuccess: (result) => {
+          const byteChars = atob(result.base64);
+          const byteArray = new Uint8Array(byteChars.length);
+          for (let i = 0; i < byteChars.length; i++) byteArray[i] = byteChars.charCodeAt(i);
+          const blob = new Blob([byteArray], { type: "application/pdf" });
+          const pdfDataUrl = URL.createObjectURL(blob);
 
-      // base64 → Blob → blob URL (Chrome bloque data:pdf en iframe)
-      const byteChars = atob(json.base64);
-      const byteArray = new Uint8Array(byteChars.length);
-      for (let i = 0; i < byteChars.length; i++) byteArray[i] = byteChars.charCodeAt(i);
-      const blob = new Blob([byteArray], { type: "application/pdf" });
-      const pdfDataUrl = URL.createObjectURL(blob);
-
-      setPreviewDoc({
-        open: true,
-        html: "",
-        pdfDataUrl,
-        title: label,
-        filename: `${doc.doc_type}_${Date.now()}`,
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Erreur génération PDF";
-      console.error("[handleView] error:", err);
-      // Fallback : tente le rendu HTML legacy si la route serveur échoue
-      try {
-        const html = await generateDocHtml(doc);
-        if (html) {
-          setPreviewDoc({ open: true, html, title: label, filename: `${doc.doc_type}_${Date.now()}` });
-          return;
-        }
-      } catch (err) {
-        // Intentional fallthrough vers le toast d'erreur — on log pour audit.
-        console.error("[TabConventionDocs handleView fallthrough]", err);
-      }
-      toast({ title: "Erreur d'aperçu", description: msg, variant: "destructive" });
-    }
+          setPreviewDoc({
+            open: true,
+            html: "",
+            pdfDataUrl,
+            title: label,
+            filename: `${doc.doc_type}_${Date.now()}`,
+          });
+        },
+      },
+    );
   };
 
   // ===== HELPERS =====
@@ -1875,6 +1855,9 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
           entityName={entityName}
         />
       )}
+
+      {/* Incomplete data dialog (422 INCOMPLETE_DATA from useDocumentGeneration) */}
+      {incompleteDialog}
     </div>
   );
 }

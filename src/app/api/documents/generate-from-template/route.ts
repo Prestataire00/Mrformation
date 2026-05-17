@@ -15,6 +15,7 @@ import {
   loadEntitySettings,
   type ResolveContext,
 } from "@/lib/utils/resolve-variables";
+import { validateDocumentVariables, type MissingByEntity } from "@/lib/validation/document-vars-validator";
 import { getOrCreateConvocationMagicLink } from "@/lib/services/convocation-magic-link";
 import { loadSignaturesBySessionId } from "@/lib/services/load-signatures";
 import { loadClientWithContacts } from "@/lib/services/load-client";
@@ -241,6 +242,7 @@ export async function POST(request: NextRequest) {
     let pdfBase64: string;
     let sizeBytes: number;
     let pdfNameBase: string;
+    let validationWarnings: { missingByEntity: MissingByEntity } | null = null;
 
     if (template) {
       const tplMode = (template.mode as "editable" | "docx_fidelity" | null) ?? "editable";
@@ -363,6 +365,26 @@ export async function POST(request: NextRequest) {
         const resolvedHtml = resolveDocumentVariables(systemTemplate.html, ctx);
         const resolvedFooter = resolveDocumentVariables(systemTemplate.footer, ctx);
 
+        // Validation pré-génération : refuse de générer un PDF Qualiopi avec
+        // des placeholders [Xxx] visibles. Cf spec
+        // docs/superpowers/specs/2026-05-17-document-vars-validation-design.md
+        const validation = validateDocumentVariables(systemTemplate.html, ctx);
+        if (!validation.valid && systemTemplate.qualiopiBlocking) {
+          return NextResponse.json(
+            {
+              error: "INCOMPLETE_DATA",
+              docType: payload.doc_type,
+              missingByEntity: validation.missingByEntity,
+              entityIds: validation.entityIds,
+            },
+            { status: 422 },
+          );
+        }
+        if (!validation.valid) {
+          // Non-bloquant : on génère mais on prévient le client via le payload.
+          validationWarnings = { missingByEntity: validation.missingByEntity };
+        }
+
         // Utilise DocumentGenerationService (Puppeteer + footer template) plutôt
         // que generatePdfFromFragment (CloudConvert sans footer). Cohérent avec
         // les batch endpoints F1/F2.x qui passent par DGS.
@@ -425,6 +447,7 @@ export async function POST(request: NextRequest) {
       filename,
       sizeBytes,
       cached: false,
+      ...(validationWarnings && { warnings: validationWarnings }),
     });
   } catch (err) {
     console.error("[documents/generate-from-template] error:", err);
