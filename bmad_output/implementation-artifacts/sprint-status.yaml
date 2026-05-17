@@ -39,7 +39,7 @@
 #   → E2-E3-E4 (parallèles, après B+C+D+F stables) → E1 (last, après 90j stabilité)
 
 generated: 2026-05-17
-last_updated: 2026-05-17 (d-2 done → epic-d complete)
+last_updated: 2026-05-17 (f-1 done → Mass Operations démarré)
 project: lms-platform
 project_key: NOKEY
 tracking_system: file-system
@@ -92,8 +92,8 @@ development_status:
 
   # ── Epic F : Mass Operations (TabConventionDocs) (Lot F) ──
   # PR2 sous-PR 2.5 — Ajouté 2026-05-17 (gap traçabilité résolu)
-  epic-f: backlog
-  f-1-mass-download-batch-zip: backlog
+  epic-f: in-progress
+  f-1-mass-download-batch-zip: done  # helper batch-doc-download.ts + refactor TabConventionDocs.handleDownloadAllPDF (PR #93)
   f-2-mass-send-email-batch: backlog
   f-3-mass-signature-request-batch: backlog
   epic-f-retrospective: optional
