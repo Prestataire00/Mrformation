@@ -516,24 +516,33 @@ export default function ClientDetailPage() {
   const [formationDocs, setFormationDocs] = useState<Array<{ id: string; doc_type: string; is_confirmed: boolean; is_sent: boolean; is_signed: boolean; session_id: string; session_title: string; created_at: string }>>([]);
 
   const fetchFormationDocs = useCallback(async () => {
+    // Table unifiée `documents` : status='generated'|'sent'|'signed' → flags is_*
     const { data } = await supabase
-      .from("formation_convention_documents")
-      .select("id, doc_type, is_confirmed, is_sent, is_signed, session_id, created_at")
+      .from("documents")
+      .select("id, doc_type, status, source_id, created_at")
+      .eq("source_table", "sessions")
       .eq("owner_type", "company")
       .eq("owner_id", clientId);
     if (data && data.length > 0) {
       // Fetch session titles
-      const sessionIds = [...new Set(data.map((d: { session_id: string }) => d.session_id))];
+      const sessionIds = [...new Set(data.map((d: { source_id: string }) => d.source_id))];
       const { data: sessionsData } = await supabase
         .from("sessions")
         .select("id, title")
         .in("id", sessionIds);
       const titleMap: Record<string, string> = {};
       for (const s of sessionsData || []) titleMap[s.id] = s.title;
-      setFormationDocs(data.map((d: Record<string, unknown>) => ({
-        ...d,
-        session_title: titleMap[d.session_id as string] || "Formation",
-      })) as typeof formationDocs);
+      // Adapter shape vers legacy (is_confirmed/is_sent/is_signed dérivés du status)
+      setFormationDocs(data.map((d) => ({
+        id: d.id as string,
+        doc_type: d.doc_type as string,
+        is_confirmed: d.status !== "draft",
+        is_sent: d.status === "sent" || d.status === "signed",
+        is_signed: d.status === "signed",
+        session_id: d.source_id as string,
+        created_at: d.created_at as string,
+        session_title: titleMap[d.source_id as string] || "Formation",
+      })));
     }
   }, [supabase, clientId]);
 

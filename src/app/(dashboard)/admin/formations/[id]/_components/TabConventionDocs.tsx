@@ -31,6 +31,14 @@ import {
   hasBatchSignatureRequestEndpoint,
   requestBatchSignatures,
 } from "@/lib/utils/batch-doc-signature-request";
+import {
+  getDocKeysForSession,
+  insertDocs,
+  upsertDocsIgnoreDuplicates,
+  markDocConfirmed,
+  unmarkDocConfirmed,
+  markDocSent,
+} from "@/lib/services/documents-store";
 import { cn } from "@/lib/utils";
 import { DocMatrixSection } from "@/components/formations/DocMatrixSection";
 import type {
@@ -221,28 +229,31 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     if (loadingTemplates) return;
     if (enrollments.length === 0 && companies.length === 0 && trainers.length === 0) return;
 
+    if (!entity?.id) {
+      setInitializing(false);
+      return;
+    }
+
     setInitializing(true);
     try {
       // Fetch direct depuis la DB pour avoir la vue la plus à jour (évite race conditions)
-      const { data: existingDocs } = await supabase
-        .from("formation_convention_documents")
-        .select("doc_type, owner_type, owner_id")
-        .eq("session_id", formation.id);
+      const existingDocs = await getDocKeysForSession(supabase, formation.id);
       const existingKeys = new Set(
-        (existingDocs ?? []).map((d) => `${d.doc_type}|${d.owner_type}|${d.owner_id}`)
+        existingDocs.map((d) => `${d.doc_type}|${d.owner_type}|${d.owner_id}`)
       );
 
       const now = new Date().toISOString();
-      const rows: {
+      const rows: Array<{
+        entity_id: string;
         session_id: string;
         doc_type: string;
-        owner_type: string;
+        owner_type: "learner" | "company" | "trainer";
         owner_id: string;
         requires_signature: boolean;
         template_id: null;
         is_confirmed?: boolean;
         confirmed_at?: string;
-      }[] = [];
+      }> = [];
 
       // For each learner: default docs + static docs
       for (const enrollment of enrollments) {
@@ -252,6 +263,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
           if (existingKeys.has(`${dt}|learner|${learnerId}`)) continue;
           const isStatic = STATIC_DOCS.includes(dt);
           rows.push({
+            entity_id: entity.id,
             session_id: formation.id,
             doc_type: dt,
             owner_type: "learner",
@@ -271,6 +283,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
           if (existingKeys.has(`${dt}|company|${clientId}`)) continue;
           const isStatic = STATIC_DOCS.includes(dt);
           rows.push({
+            entity_id: entity.id,
             session_id: formation.id,
             doc_type: dt,
             owner_type: "company",
@@ -290,6 +303,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
           if (existingKeys.has(`${dt}|trainer|${trainerId}`)) continue;
           const isStatic = STATIC_DOCS.includes(dt);
           rows.push({
+            entity_id: entity.id,
             session_id: formation.id,
             doc_type: dt,
             owner_type: "trainer",
@@ -302,18 +316,18 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
       }
 
       if (rows.length > 0) {
-        const { error } = await supabase.from("formation_convention_documents").insert(rows);
-        if (error) {
-          console.error("[initializeDefaultDocs] insert error:", error);
-        } else {
+        try {
+          await insertDocs(supabase, rows);
           console.log(`[initializeDefaultDocs] Created ${rows.length} default docs`);
           await onRefresh();
+        } catch (err) {
+          console.error("[initializeDefaultDocs] insert error:", err);
         }
       }
     } finally {
       setInitializing(false);
     }
-  }, [formation.id, enrollments, companies, trainers, supabase, onRefresh, loadingTemplates, initializing]);
+  }, [formation.id, enrollments, companies, trainers, supabase, onRefresh, loadingTemplates, initializing, entity?.id]);
 
   // Re-déclenche l'init à chaque changement de count d'enrollments/companies/trainers.
   // Le check existingKeys (depuis DB) évite les doublons.
@@ -519,32 +533,28 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
 
   const handleConfirm = async (docId: string) => {
     setSaving(docId);
-    const { error } = await supabase
-      .from("formation_convention_documents")
-      .update({ is_confirmed: true, confirmed_at: new Date().toISOString() })
-      .eq("id", docId);
-    setSaving(null);
-    if (error) {
-      toast({ title: "Erreur", description: error.message, variant: "destructive" });
-    } else {
+    try {
+      await markDocConfirmed(supabase, docId);
+      setSaving(null);
       toast({ title: "Document figé" });
       onRefresh();
+    } catch (err) {
+      setSaving(null);
+      toast({ title: "Erreur", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
     }
   };
 
   const handleResetConfirm = async (docId: string) => {
     if (!confirm("Réinitialiser la confirmation de ce document ?")) return;
     setSaving(`reset-${docId}`);
-    const { error } = await supabase
-      .from("formation_convention_documents")
-      .update({ is_confirmed: false, confirmed_at: null })
-      .eq("id", docId);
-    setSaving(null);
-    if (error) {
-      toast({ title: "Erreur", description: error.message, variant: "destructive" });
-    } else {
+    try {
+      await unmarkDocConfirmed(supabase, docId);
+      setSaving(null);
       toast({ title: "Document déverrouillé" });
       onRefresh();
+    } catch (err) {
+      setSaving(null);
+      toast({ title: "Erreur", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
     }
   };
 
@@ -555,20 +565,14 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
       return;
     }
     setSaving(`date-${docId}`);
-    const { error } = await supabase
-      .from("formation_convention_documents")
-      .update({
-        is_confirmed: true,
-        confirmed_at: new Date().toISOString(),
-        document_date: dateValue,
-      })
-      .eq("id", docId);
-    setSaving(null);
-    if (error) {
-      toast({ title: "Erreur", description: error.message, variant: "destructive" });
-    } else {
+    try {
+      await markDocConfirmed(supabase, docId, dateValue);
+      setSaving(null);
       toast({ title: "Document figé avec date" });
       onRefresh();
+    } catch (err) {
+      setSaving(null);
+      toast({ title: "Erreur", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
     }
   };
 
@@ -655,10 +659,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
 
     if (!res.ok) throw new Error("Erreur envoi");
 
-    await supabase
-      .from("formation_convention_documents")
-      .update({ is_sent: true, sent_at: new Date().toISOString() })
-      .eq("id", docId);
+    await markDocSent(supabase, docId);
 
     toast({ title: "Document envoyé par email" });
     setEmailPreview(null);
@@ -750,10 +751,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
         });
 
         if (res.ok) {
-          await supabase
-            .from("formation_convention_documents")
-            .update({ is_sent: true, sent_at: new Date().toISOString() })
-            .eq("id", doc.id);
+          await markDocSent(supabase, doc.id);
           sent++;
         } else {
           failed++;
@@ -875,11 +873,12 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
   const handleMassConfirm = async (docType: ConventionDocType) => {
     setSaving(`mass-confirm-${docType}`);
     const { error } = await supabase
-      .from("formation_convention_documents")
-      .update({ is_confirmed: true, confirmed_at: new Date().toISOString() })
-      .eq("session_id", formation.id)
+      .from("documents")
+      .update({ status: "generated", generated_at: new Date().toISOString() })
+      .eq("source_table", "sessions")
+      .eq("source_id", formation.id)
       .eq("doc_type", docType)
-      .eq("is_confirmed", false);
+      .eq("status", "draft");
     setSaving(null);
     if (error) {
       toast({ title: "Erreur", description: error.message, variant: "destructive" });
@@ -912,10 +911,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
               session_id: formation.id,
             }),
           });
-          await supabase
-            .from("formation_convention_documents")
-            .update({ is_sent: true, sent_at: new Date().toISOString() })
-            .eq("id", doc.id);
+          await markDocSent(supabase, doc.id);
           sent++;
         } catch (err) {
           // Continue à itérer même si un envoi échoue, mais log pour audit.
@@ -932,12 +928,13 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
   const handleConfirmAllForOwner = async (ownerType: ConventionOwnerType, ownerId: string) => {
     setSaving(`confirm-all-${ownerId}`);
     const { error } = await supabase
-      .from("formation_convention_documents")
-      .update({ is_confirmed: true, confirmed_at: new Date().toISOString() })
-      .eq("session_id", formation.id)
+      .from("documents")
+      .update({ status: "generated", generated_at: new Date().toISOString() })
+      .eq("source_table", "sessions")
+      .eq("source_id", formation.id)
       .eq("owner_type", ownerType)
       .eq("owner_id", ownerId)
-      .eq("is_confirmed", false);
+      .eq("status", "draft");
     setSaving(null);
     if (error) {
       toast({ title: "Erreur", variant: "destructive" });
@@ -955,38 +952,50 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     withSignature: boolean
   ) => {
     if (!templateId) return;
+    if (!entity?.id) {
+      toast({ title: "Entity non chargée", variant: "destructive" });
+      return;
+    }
     const template = templates.find((t) => t.id === templateId);
     setSaving(`add-custom-${ownerId}-${templateId}`);
-    const { error } = await supabase.from("formation_convention_documents").insert({
-      session_id: formation.id,
-      doc_type: "custom",
-      owner_type: ownerType,
-      owner_id: ownerId,
-      template_id: templateId,
-      custom_label: template?.name || "Document personnalisé",
-      requires_signature: withSignature,
-    });
-    setSaving(null);
-    if (error) {
-      if (error.code === "23505") {
-        toast({ title: "Ce document est déjà attribué", variant: "destructive" });
-      } else {
-        toast({ title: "Erreur", description: error.message, variant: "destructive" });
-      }
-    } else {
+    try {
+      await insertDocs(supabase, [{
+        entity_id: entity.id,
+        session_id: formation.id,
+        doc_type: "custom",
+        owner_type: ownerType,
+        owner_id: ownerId,
+        template_id: templateId,
+        custom_label: template?.name || "Document personnalisé",
+        requires_signature: withSignature,
+      }]);
+      setSaving(null);
       toast({ title: "Document ajouté" });
       onRefresh();
+    } catch (err: unknown) {
+      setSaving(null);
+      const code = (err as { code?: string })?.code;
+      if (code === "23505") {
+        toast({ title: "Ce document est déjà attribué", variant: "destructive" });
+      } else {
+        toast({ title: "Erreur", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+      }
     }
   };
 
   // Assign template to all learners
   const handleAssignTemplateToAll = async (templateId: string) => {
     if (!templateId) return;
+    if (!entity?.id) {
+      toast({ title: "Entity non chargée", variant: "destructive" });
+      return;
+    }
     const template = templates.find((t) => t.id === templateId);
     setSaving("assign-all");
     const rows = enrollments
       .filter((e) => e.learner)
       .map((e) => ({
+        entity_id: entity.id,
         session_id: formation.id,
         doc_type: "custom" as const,
         owner_type: "learner" as const,
@@ -996,9 +1005,11 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
         requires_signature: false,
       }));
     if (rows.length > 0) {
-      await supabase
-        .from("formation_convention_documents")
-        .upsert(rows, { onConflict: "session_id,doc_type,owner_type,owner_id,template_id", ignoreDuplicates: true });
+      try {
+        await upsertDocsIgnoreDuplicates(supabase, rows);
+      } catch (err) {
+        console.error("[handleAssignTemplateToAll] upsert failed:", err);
+      }
     }
     setSaving(null);
     toast({ title: "Document attribué à tous les apprenants" });
@@ -1439,10 +1450,11 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
             if (!confirm(`Figer ${unfrozenCount} document(s) ? Les informations ne seront plus modifiables ensuite.`)) return;
             setSaving("confirm-all-learners");
             const { error } = await supabase
-              .from("formation_convention_documents")
-              .update({ is_confirmed: true, confirmed_at: new Date().toISOString() })
-              .eq("session_id", formation.id)
-              .eq("is_confirmed", false);
+              .from("documents")
+              .update({ status: "generated", generated_at: new Date().toISOString() })
+              .eq("source_table", "sessions")
+              .eq("source_id", formation.id)
+              .eq("status", "draft");
             setSaving(null);
             if (!error) { toast({ title: `${unfrozenCount} document(s) figé(s)` }); onRefresh(); }
           }}
@@ -1647,11 +1659,12 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
               onClick={async () => {
                 setSaving("confirm-custom");
                 await supabase
-                  .from("formation_convention_documents")
-                  .update({ is_confirmed: true, confirmed_at: new Date().toISOString() })
-                  .eq("session_id", formation.id)
+                  .from("documents")
+                  .update({ status: "generated", generated_at: new Date().toISOString() })
+                  .eq("source_table", "sessions")
+                  .eq("source_id", formation.id)
                   .eq("doc_type", "custom")
-                  .eq("is_confirmed", false);
+                  .eq("status", "draft");
                 setSaving(null);
                 toast({ title: "Documents figés" });
                 onRefresh();

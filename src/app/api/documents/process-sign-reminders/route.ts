@@ -39,17 +39,36 @@ export async function POST(request: NextRequest) {
   let totalReminders = 0;
 
   try {
-    // Fetch documents pending signature
-    const { data: pendingDocs } = await supabase
-      .from("formation_convention_documents")
-      .select("id, doc_type, session_id, signer_name, signer_email, signature_token, signature_requested_at, signature_reminder_count")
-      .eq("requires_signature", true)
-      .eq("is_sent", true)
-      .eq("is_signed", false)
-      .not("signature_requested_at", "is", null)
-      .not("signer_email", "is", null);
+    // Fetch documents pending signature (table unifiée `documents`)
+    const { data: pendingDocsRaw } = await supabase
+      .from("documents")
+      .select("id, doc_type, source_id, signature_token, metadata")
+      .eq("source_table", "sessions")
+      .eq("status", "sent")
+      .not("signature_token", "is", null);
 
-    if (!pendingDocs || pendingDocs.length === 0) {
+    // Filtre côté app : requires_signature dans metadata + signature_requested_at non-null
+    const pendingDocs = (pendingDocsRaw ?? [])
+      .filter((d) => {
+        const meta = d.metadata as { requires_signature?: boolean; signature_requested_at?: string; signer_email?: string } | null;
+        return meta?.requires_signature && meta?.signature_requested_at && meta?.signer_email;
+      })
+      .map((d) => {
+        const meta = (d.metadata as Record<string, unknown>);
+        return {
+          id: d.id as string,
+          doc_type: d.doc_type as string,
+          session_id: d.source_id as string,
+          signature_token: d.signature_token as string,
+          signer_email: meta.signer_email as string,
+          signer_name: (meta.signer_name as string | undefined) ?? null,
+          signature_requested_at: meta.signature_requested_at as string,
+          signature_reminder_count: (meta.signature_reminder_count as number | undefined) ?? 0,
+          metadata: meta,
+        };
+      });
+
+    if (pendingDocs.length === 0) {
       return NextResponse.json({ success: true, totalReminders: 0 });
     }
 
@@ -118,9 +137,11 @@ export async function POST(request: NextRequest) {
       }
 
       if (sent) {
+        // Increment reminder count dans metadata jsonb
+        const newMetadata = { ...doc.metadata, signature_reminder_count: reminderCount + 1 };
         await supabase
-          .from("formation_convention_documents")
-          .update({ signature_reminder_count: reminderCount + 1 })
+          .from("documents")
+          .update({ metadata: newMetadata })
           .eq("id", doc.id);
         totalReminders++;
       }

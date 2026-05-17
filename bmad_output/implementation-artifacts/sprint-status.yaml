@@ -39,7 +39,7 @@
 #   → E2-E3-E4 (parallèles, après B+C+D+F stables) → E1 (last, après 90j stabilité)
 
 generated: 2026-05-17
-last_updated: 2026-05-17 (b-2 backfill exécuté en prod : 181 rows backfillées depuis 2277 legacy après dedup DISTINCT ON, status alignés)
+last_updated: 2026-05-17 (b-3 à b-7 bascule applicative complète : tous les .from(formation_convention_documents) migrés vers .from(documents) via service documents-store.ts + helpers inline)
 project: lms-platform
 project_key: NOKEY
 tracking_system: file-system
@@ -59,11 +59,11 @@ development_status:
   b-0-resolve-document-variables: done  # fonction unique resolveDocumentVariables existe + utilisée par 90+ endpoints
   b-1-migration-table-documents: done  # PR #39 mergée 2026-05-15
   b-2-backfill-idempotent: done  # Exécuté en prod 2026-05-17 : 181 rows backfillées depuis 2277 legacy (delta 2096 = doublons template_id dédupliqués via DISTINCT ON fix PR #103). Status alignés. Rollback Niveau 1 dispo si besoin.
-  b-3-migration-conventions: in-progress  # endpoint generate-convention existe + DGS mais écrit dans tables legacy (manque b-2)
-  b-4-migration-attestations-certificats: in-progress  # 9 variantes attestations OK via DGS, mais legacy table
-  b-5-migration-emargements: in-progress  # endpoints + sign existent mais legacy table
-  b-6-migration-docs-administratifs: in-progress  # programme/convocation/CGV/règlement via DGS, legacy table
-  b-7-migration-factures-devis: in-progress  # invoices+quotes via DGS, signatures dans quote_signatures legacy
+  b-3-migration-conventions: done  # Bascule applicative complète : convention_entreprise + convention_intervention + contrat_sous_traitance lisent/écrivent dans `documents` (PR #105)
+  b-4-migration-attestations-certificats: done  # Bascule applicative : attestation_assiduite + certificat_realisation + 9 variantes lisent/écrivent dans `documents` (PR #105)
+  b-5-migration-emargements: done  # Bascule applicative : feuille_emargement + feuille_emargement_collectif lisent/écrivent dans `documents` (signatures legacy table conservée par design — flux sémantique distinct, voir c-2 résolution)
+  b-6-migration-docs-administratifs: done  # Bascule applicative : programme/convocation/CGV/règlement/politique lisent/écrivent dans `documents` (PR #105)
+  b-7-migration-factures-devis: done  # Bascule applicative : factures + devis via documents (quote_signatures legacy conservée par design — flux sémantique distinct CRM, voir c-2 résolution)
   epic-b-retrospective: optional
 
   # ── Epic C : Signatures électroniques unifiées (Lot C) ──

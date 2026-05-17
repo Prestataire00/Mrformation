@@ -35,11 +35,11 @@ export async function POST(request: NextRequest) {
 
     // Validation : vérifier que le document existe ET appartient à l'entity déclarée.
     // Sans ça, un attaquant peut tracker des vues sur des docs qui ne sont pas les siens
-    // (audit Vague 1, P3). On vérifie sur la table principale formation_convention_documents.
+    // (audit Vague 1, P3). Table unifiée `documents` (post b-3..b-7).
     if (entity_id) {
       const { data: doc, error: docErr } = await supabase
-        .from("formation_convention_documents")
-        .select("id, entity_id, session_id")
+        .from("documents")
+        .select("id, entity_id, source_id")
         .eq("id", document_id)
         .eq("entity_id", entity_id)
         .maybeSingle();
@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ tracked: false, reason: "document_not_found_or_cross_entity" });
       }
       // Aligne session_id si pas fourni dans le body
-      if (!session_id && doc.session_id) {
+      if (!session_id && doc.source_id) {
         // (variable redéfinie pour insert)
       }
     }

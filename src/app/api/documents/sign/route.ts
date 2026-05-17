@@ -117,16 +117,30 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Token non lié à un document" }, { status: 400 });
     }
 
-    // Fetch document
-    const { data: doc } = await supabase
-      .from("formation_convention_documents")
-      .select("id, doc_type, owner_type, owner_id, session_id, is_signed, signed_at, signer_name, signer_email")
+    // Fetch document (nouvelle table unifiée `documents`)
+    const { data: docRow } = await supabase
+      .from("documents")
+      .select("id, doc_type, owner_type, owner_id, source_id, status, signed_at, metadata")
       .eq("id", tokenData.document_id)
       .maybeSingle();
 
-    if (!doc) {
+    if (!docRow) {
       return NextResponse.json({ error: "Document introuvable" }, { status: 404 });
     }
+
+    // Adapter shape pour le reste du code (legacy-compatible)
+    const docMeta = (docRow.metadata as { signer_email?: string; signer_name?: string } | null) ?? {};
+    const doc = {
+      id: docRow.id,
+      doc_type: docRow.doc_type,
+      owner_type: docRow.owner_type as "learner" | "company" | "trainer" | null,
+      owner_id: docRow.owner_id,
+      session_id: docRow.source_id,
+      is_signed: docRow.status === "signed",
+      signed_at: docRow.signed_at,
+      signer_name: docMeta.signer_name ?? null,
+      signer_email: docMeta.signer_email ?? null,
+    };
 
     // Idempotent : si déjà signé (used_at OU is_signed), on renvoie success
     // avec already_signed=true (le client affiche l'écran de confirmation).
@@ -166,9 +180,9 @@ export async function POST(request: NextRequest) {
     // Mark document as signed (idempotent : si déjà fait, c'est un no-op)
     if (!alreadySigned) {
       await supabase
-        .from("formation_convention_documents")
+        .from("documents")
         .update({
-          is_signed: true,
+          status: "signed",
           signed_at: new Date().toISOString(),
         })
         .eq("id", doc.id);

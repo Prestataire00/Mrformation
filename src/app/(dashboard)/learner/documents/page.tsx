@@ -130,15 +130,27 @@ export default function LearnerDocumentsPage() {
       }
       setLearner(learnerData);
 
-      const { data: docs } = await supabase
-        .from("formation_convention_documents")
-        .select("id, doc_type, is_sent, template_id, custom_label, session_id")
+      // Table unifiée `documents` : status != 'draft' = confirmé
+      const { data: docsRaw } = await supabase
+        .from("documents")
+        .select("id, doc_type, status, template_id, source_id, metadata")
+        .eq("source_table", "sessions")
         .eq("owner_id", learnerData.id)
         .eq("owner_type", "learner")
-        .eq("is_confirmed", true)
+        .neq("status", "draft")
         .order("created_at", { ascending: true });
 
-      if (!docs || docs.length === 0) {
+      // Adapter shape vers legacy attendue (is_sent + custom_label + session_id)
+      const docs = (docsRaw ?? []).map((d) => ({
+        id: d.id as string,
+        doc_type: d.doc_type as string,
+        is_sent: d.status === "sent" || d.status === "signed",
+        template_id: d.template_id as string | null,
+        custom_label: (d.metadata as { custom_label?: string } | null)?.custom_label ?? null,
+        session_id: d.source_id as string,
+      }));
+
+      if (docs.length === 0) {
         setGroups([]);
         setLoading(false);
         return;

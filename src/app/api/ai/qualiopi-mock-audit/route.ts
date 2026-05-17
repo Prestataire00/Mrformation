@@ -16,15 +16,28 @@ export async function POST(req: NextRequest) {
     const { mode, session_id } = await req.json();
 
     if (mode === "formation" && session_id) {
-      const { data: session } = await auth.supabase
-        .from("sessions")
-        .select(`*, formation_convention_documents(doc_type, is_confirmed, is_signed, is_sent), formation_evaluation_assignments(evaluation_type), enrollments(id)`)
-        .eq("id", session_id)
-        .single();
+      const [{ data: session }, { data: documentsRows }] = await Promise.all([
+        auth.supabase
+          .from("sessions")
+          .select(`*, formation_evaluation_assignments(evaluation_type), enrollments(id)`)
+          .eq("id", session_id)
+          .single(),
+        auth.supabase
+          .from("documents")
+          .select("doc_type, status")
+          .eq("source_table", "sessions")
+          .eq("source_id", session_id),
+      ]);
 
       if (!session) return NextResponse.json({ error: "Session introuvable" }, { status: 404 });
 
-      const docs = session.formation_convention_documents || [];
+      // Adapter shape pour le reste du code (legacy-compatible : is_signed/is_sent dérivés du status)
+      const docs = (documentsRows ?? []).map((d) => ({
+        doc_type: d.doc_type,
+        is_confirmed: d.status !== "draft",
+        is_signed: d.status === "signed",
+        is_sent: d.status === "sent" || d.status === "signed",
+      }));
       const evals = session.formation_evaluation_assignments || [];
       const context = {
         title: session.title,

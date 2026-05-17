@@ -88,11 +88,22 @@ export async function GET(request: NextRequest) {
   const { data: entity } = await supabase
     .from("entities").select("name, slug").eq("id", tokenData.entity_id).single();
 
-  const { data: doc } = await supabase
-    .from("formation_convention_documents")
-    .select("id, doc_type, owner_type, is_signed, signed_at, signer_name, signer_email")
+  const { data: docRow } = await supabase
+    .from("documents")
+    .select("id, doc_type, owner_type, status, signed_at, metadata")
     .eq("id", tokenData.document_id)
     .single();
+
+  const docMeta = (docRow?.metadata as { signer_name?: string; signer_email?: string } | null) ?? {};
+  const doc = docRow ? {
+    id: docRow.id,
+    doc_type: docRow.doc_type,
+    owner_type: docRow.owner_type,
+    is_signed: docRow.status === "signed",
+    signed_at: docRow.signed_at,
+    signer_name: docMeta.signer_name ?? null,
+    signer_email: docMeta.signer_email ?? null,
+  } : null;
 
   const { data: session } = await supabase
     .from("sessions").select("title, start_date, end_date")
