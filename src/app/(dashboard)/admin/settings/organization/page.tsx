@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -55,6 +56,7 @@ export default function OrganizationSettingsPage() {
   const supabase = createClient();
   const { toast } = useToast();
   const { entityId } = useEntity();
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<OrgForm>(emptyForm);
@@ -100,6 +102,11 @@ export default function OrganizationSettingsPage() {
       }).eq("id", entityId);
       if (error) throw error;
       toast({ title: "Paramètres enregistrés" });
+      // Refresh server-side pour que EntityProvider (layout) reload l'entity
+      // avec les nouvelles valeurs (RIB, mentions, etc.). Sans ce refresh,
+      // les autres pages (TabFinances, génération PDF facture) lisent
+      // entity.* depuis le contexte stale et "RIB manquant" est levé.
+      router.refresh();
     } catch (err) {
       toast({ title: "Erreur", description: err instanceof Error ? err.message : "Erreur", variant: "destructive" });
     }
