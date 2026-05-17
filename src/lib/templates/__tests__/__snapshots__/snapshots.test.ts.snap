@@ -924,7 +924,7 @@ exports[`Templates snapshots — couvre F1/F2.x/F3 > convocation-apprenant : HTM
       </tr>
       <tr>
         <td style="padding: 4px 8px; font-weight: 700;">Mot de passe :</td>
-        <td style="padding: 4px 8px; font-family: monospace; background: #fff; border: 1px dashed #cbd5e1; border-radius: 4px;">[Mot de passe apprenant]</td>
+        <td style="padding: 4px 8px; font-family: monospace; background: #fff; border: 1px dashed #cbd5e1; border-radius: 4px;">SnapPass2026</td>
       </tr>
     </table>
     <p style="font-size: 9pt; color: #6b7280; margin-top: 12px; margin-bottom: 0;">

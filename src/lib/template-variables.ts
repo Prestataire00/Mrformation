@@ -143,9 +143,6 @@ export const TEMPLATE_VARIABLES: TemplateVariable[] = [
   { key: "tableau_signature_individuel", placeholder: "[%Tableau de signature de l'apprenant%]", techPlaceholder: "{{tableau_signature_individuel}}", label: "Tableau émargement individuel", description: "Pour émargement individuel apprenant (par créneau)", example: "[Tableau HTML]", category: "signatures", availableIn: ["document"] },
   { key: "tableau_signature_compact", placeholder: "[%Tableau de signature entreprise compact%]", techPlaceholder: "{{tableau_signature_compact}}", label: "Tableau émargement collectif", description: "Émargement collectif compact (entreprise)", example: "[Tableau HTML]", category: "signatures", availableIn: ["document"] },
 
-  // ── 📱 QR / EXTRANET ──
-  { key: "qr_code_extranet_apprenant", placeholder: "[%QR Code de l'extranet de l'apprenant%]", techPlaceholder: "{{qr_code_extranet_apprenant}}", label: "QR Code extranet apprenant", description: "QR pour magic link apprenant (auto-login). Async, calculé côté API.", example: "[Image QR]", category: "qr", availableIn: ["document"] },
-
   // ── 📄 TABLEAUX & DOCUMENTS ──
   { key: "tableau_resultats_evaluations", placeholder: "[%Tableau des résultats des évaluations%]", techPlaceholder: "{{tableau_resultats_evaluations}}", label: "Résultats des évaluations (par apprenant)", description: "Tableau HTML avec scores par questionnaire", example: "[Tableau HTML]", category: "documents", availableIn: ["document"] },
   { key: "tableau_reponses_satisfaction", placeholder: "[%Tableau des réponses des questionnaires de satisfaction (suivi qualité)%]", techPlaceholder: "{{tableau_reponses_satisfaction}}", label: "Réponses satisfaction (agrégés session)", description: "Vue admin/Qualiopi", example: "[Tableau HTML]", category: "documents", availableIn: ["document"] },

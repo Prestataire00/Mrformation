@@ -208,8 +208,6 @@ interface LegacyTemplateData {
   // Champs additionnels utilisés par certains call sites legacy
   doc?: { document_date?: string | null; confirmed_at?: string | null };
   clientSignature?: { signature_data: string; signer_name: string; signed_at: string } | null;
-  magicLinkUrl?: string;
-  qrCodeDataUrl?: string;
 }
 
 export function renderSystemTemplate(
@@ -226,7 +224,6 @@ export function renderSystemTemplate(
     client: data.company as Client | undefined,
     trainer: data.trainer as Trainer | undefined,
     entity: data.entity,
-    extranetQrDataUrl: data.qrCodeDataUrl,
   };
 
   // Résout HTML + footer + concatène (le footer Puppeteer est géré séparément
