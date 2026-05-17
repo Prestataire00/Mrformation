@@ -169,11 +169,15 @@ export default async function AccessPage({ params }: { params: { token: string }
       .eq("id", learner.id);
   }
 
-  // 6. Generate magic link to sign in as this learner
+  // 6. Generate magic link to sign in as this learner.
+  // redirectTo pointe vers /api/auth/callback qui va exchanger le code
+  // Supabase OAuth contre une session cookie côté app (sinon la session
+  // Supabase est posée sur supabase.co, pas sur le domaine app → /learner
+  // verrait pas de session → middleware redirige vers /login).
   const { data: magicLink } = await supabase.auth.admin.generateLink({
     type: "magiclink",
     email: learner.email,
-    options: { redirectTo: `${APP_URL}/learner` },
+    options: { redirectTo: `${APP_URL}/api/auth/callback?next=/learner` },
   });
 
   if (magicLink?.properties?.action_link) {
@@ -182,7 +186,7 @@ export default async function AccessPage({ params }: { params: { token: string }
     if (actionLink.includes("localhost")) {
       actionLink = actionLink.replace(
         /redirect_to=http%3A%2F%2Flocalhost[^&]*/,
-        `redirect_to=${encodeURIComponent(`${APP_URL}/learner`)}`
+        `redirect_to=${encodeURIComponent(`${APP_URL}/api/auth/callback?next=/learner`)}`
       );
     }
     redirect(actionLink);
