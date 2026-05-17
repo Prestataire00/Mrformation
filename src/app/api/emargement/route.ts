@@ -104,6 +104,45 @@ export async function GET(request: NextRequest) {
     .filter((s: { signer_type: string }) => s.signer_type === "trainer")
     .map((s: { signer_id: string }) => s.signer_id);
 
+  // Charger tous les créneaux de la session avec statut signé par le signer du token
+  const { data: allSlotsRaw } = await supabase
+    .from("formation_time_slots")
+    .select("id, title, start_time, end_time")
+    .eq("session_id", tokenData.session_id)
+    .order("start_time", { ascending: true });
+
+  // Identifier le signer du token pour filtrer les signatures
+  // - Trainer individual : tokenData.trainer_id
+  // - Learner individual : tokenData.learner_id
+  // - Session token : null (page côté client filtrera après sélection de learner)
+  const tokenSignerId: string | null =
+    tokenData.signer_type === "trainer"
+      ? tokenData.trainer_id ?? null
+      : tokenData.learner_id ?? null;
+
+  let signedSlotIdsForSigner = new Set<string>();
+  if (tokenSignerId) {
+    const { data: sigsForSigner } = await supabase
+      .from("signatures")
+      .select("time_slot_id")
+      .eq("session_id", tokenData.session_id)
+      .eq("signer_id", tokenSignerId)
+      .eq("signer_type", tokenData.signer_type ?? "learner");
+    signedSlotIdsForSigner = new Set(
+      (sigsForSigner ?? [])
+        .map((s: { time_slot_id: string | null }) => s.time_slot_id)
+        .filter((id): id is string => Boolean(id))
+    );
+  }
+
+  const all_slots = (allSlotsRaw ?? []).map((s: { id: string; title: string | null; start_time: string; end_time: string }) => ({
+    id: s.id,
+    title: s.title,
+    start_time: s.start_time,
+    end_time: s.end_time,
+    signed: signedSlotIdsForSigner.has(s.id),
+  }));
+
   // Handle trainer individual tokens
   if (tokenData.signer_type === "trainer" && tokenData.trainer_id) {
     const { data: trainer } = await supabase
@@ -125,6 +164,7 @@ export async function GET(request: NextRequest) {
         training_title: trainingTitle,
       },
       time_slot: timeSlot,
+      all_slots,
       trainer: trainer
         ? {
             id: trainer.id,
@@ -169,6 +209,7 @@ export async function GET(request: NextRequest) {
         training_title: trainingTitle,
       },
       time_slot: timeSlot,
+      all_slots,
       learners,
     });
   } else {
@@ -192,6 +233,7 @@ export async function GET(request: NextRequest) {
         training_title: trainingTitle,
       },
       time_slot: timeSlot,
+      all_slots,
       learner: learner
         ? {
             id: learner.id,
