@@ -210,7 +210,8 @@ export async function POST(_request: NextRequest) {
       client: mockClient,
       entity,
       signaturesById,
-      // Pas de signedLearnerIds → fallback "Présent" pour les manquants
+      // Pas de signedLearnerIds → renderUnsignedCell : cellule vide si session future,
+      // "Non signé" si passée (cf src/lib/utils/resolve-variables.ts:renderUnsignedCell)
     };
     const resolvedHtml = resolveDocumentVariables(EMARGEMENT_COLLECTIF_HTML, context);
     const resolvedFooter = resolveDocumentVariables(EMARGEMENT_FOOTER_TEMPLATE, context);

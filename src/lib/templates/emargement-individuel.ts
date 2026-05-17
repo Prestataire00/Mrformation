@@ -109,6 +109,10 @@ export const EMARGEMENT_INDIVIDUEL_HTML = `<!DOCTYPE html>
   .creneau-card .status-absent {
     color: #b91c1c;
   }
+  .creneau-card .status-unsigned {
+    color: #ef4444;
+    font-style: italic;
+  }
 
   strong { font-weight: 700; }
 </style>

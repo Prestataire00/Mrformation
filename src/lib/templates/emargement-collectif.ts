@@ -147,6 +147,11 @@ export const EMARGEMENT_COLLECTIF_HTML = `<!DOCTYPE html>
   }
   table.signature-table .person-status:last-child { margin-bottom: 0; }
   table.signature-table .status-absent { color: #b91c1c; }
+  table.signature-table .status-unsigned {
+    color: #ef4444;
+    font-style: italic;
+    font-size: 8.5pt;
+  }
 
   strong { font-weight: 700; }
 </style>

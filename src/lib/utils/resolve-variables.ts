@@ -111,6 +111,26 @@ const MODE_LABELS: Record<string, string> = {
 };
 
 /**
+ * Rendu d'une cellule d'émargement non signée, comportement date-aware.
+ *
+ * Spec : docs/superpowers/specs/2026-05-17-emargement-collectif-fix-default-status-design.md
+ * Bug initial : le fallback hardcodé "Présent (A signé en présentiel)" était
+ * affiché pour tous les apprenants même sans signature → trompeur pour Qualiopi.
+ *
+ * Nouvelle logique :
+ * - Session passée (end_date < now)   → "Non signé" rouge italique
+ * - Session à venir / end_date inconnu → cellule vide (prête pour signature manuscrite)
+ */
+export function renderUnsignedCell(sessionEndDate: string | null | undefined): string {
+  if (!sessionEndDate) return "";
+  const isPastSession = new Date(sessionEndDate) < new Date();
+  if (isPastSession) {
+    return `<span class="person-status status-unsigned">Non signé</span>`;
+  }
+  return "";
+}
+
+/**
  * Replaces {{variable}} placeholders in content with actual data.
  * Shared between document generation and email sending.
  */
@@ -549,15 +569,11 @@ export function resolveVariables(content: string, data: ResolveContext): string 
       }
 
       // Status learner : signature image si dispo (signaturesById), sinon
-      // texte présent/absent depuis signedLearnerIds.
+      // texte présent/non signé date-aware via renderUnsignedCell.
       const signed = data.signedLearnerIds;
       const sigMap = data.signaturesById;
+      const sessionEndDate = data.session?.end_date;
       const learnerSig = sigMap?.get(data.learner.id);
-      const learnerPresent = learnerSig
-        ? true
-        : signed
-          ? signed.has(data.learner.id)
-          : true; // fallback mock = présent
 
       const learnerName = `${data.learner.last_name?.toUpperCase() ?? ""} ${data.learner.first_name ?? ""}`.trim();
       const formateursLine = formateursNoms || "[Formateur]";
@@ -565,11 +581,22 @@ export function resolveVariables(content: string, data: ResolveContext): string 
       const renderSigImg = (sig: string) =>
         `<img src="${sig}" alt="Signature" style="max-height:50px;max-width:160px;display:block;margin-top:4px;" />`;
 
+      // Note: renderUnsignedCell utilise <span>, mais ce template individuel utilise <p>
+      // pour respecter sa mise en page. On reproduit donc la logique en local avec <p>.
+      const renderUnsignedP = (): string => {
+        if (!sessionEndDate) return "";
+        const isPastSession = new Date(sessionEndDate) < new Date();
+        if (isPastSession) {
+          return `<p class="person-status status-unsigned">Non signé</p>`;
+        }
+        return "";
+      };
+
       const learnerStatusHtml = learnerSig
         ? `<p class="person-status">Présent</p>${renderSigImg(learnerSig)}`
-        : learnerPresent
-          ? `<p class="person-status">Présent (A signé en présentiel)</p>`
-          : `<p class="person-status status-absent">Absent</p>`;
+        : signed?.has(data.learner.id)
+          ? `<p class="person-status">Signé</p>`
+          : renderUnsignedP();
 
       // Formateur status : signature si dispo
       const firstTrainerId = (data.session?.formation_trainers ?? [])
@@ -577,7 +604,7 @@ export function resolveVariables(content: string, data: ResolveContext): string 
       const firstTrainerSig = firstTrainerId ? sigMap?.get(firstTrainerId) : undefined;
       const formateurStatusHtml = firstTrainerSig
         ? `<p class="person-status">Présent</p>${renderSigImg(firstTrainerSig)}`
-        : `<p class="person-status">Présent (A signé en présentiel)</p>`;
+        : renderUnsignedP();
 
       const cards = creneaux.map((c) => `
 <div class="creneau-card">
@@ -878,17 +905,17 @@ export function resolveVariables(content: string, data: ResolveContext): string 
       const sigMap = data.signaturesById;
       const renderSignature = (sigData: string): string =>
         `<img src="${sigData}" alt="Signature" style="max-height:42px;max-width:120px;display:block;margin-top:2px;" />`;
+      const sessionEndDate = data.session?.end_date;
       const learnerStatus = (learnerId: string): string => {
         const sig = sigMap?.get(learnerId);
         if (sig) {
           return `<span class="person-status">Présent</span>${renderSignature(sig)}`;
         }
-        if (!signed) {
-          return `<span class="person-status">Présent (A signé en présentiel)</span>`;
+        if (signed?.has(learnerId)) {
+          // Signé électroniquement mais pas d'image rendable (rare, ex: legacy)
+          return `<span class="person-status">Signé</span>`;
         }
-        return signed.has(learnerId)
-          ? `<span class="person-status">Présent (A signé en présentiel)</span>`
-          : `<span class="person-status status-absent">Absent</span>`;
+        return renderUnsignedCell(sessionEndDate);
       };
 
       // Construit la liste des créneaux : pour chaque jour entre start et end,
@@ -921,7 +948,7 @@ export function resolveVariables(content: string, data: ResolveContext): string 
       const firstTrainerSig = firstTrainerId ? sigMap?.get(firstTrainerId) : undefined;
       const formateurStatus = firstTrainerSig
         ? `<span class="person-status">Présent</span>${renderSignature(firstTrainerSig)}`
-        : `<span class="person-status">Présent (A signé en présentiel)</span>`;
+        : renderUnsignedCell(sessionEndDate);
 
       const apprenantsCellHtml = learnersForTable
         .map((e) => {
