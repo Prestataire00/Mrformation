@@ -6,14 +6,14 @@
  * Body : `{ sessionId: UUID, learnerId: UUID }`. L'apprenant doit être inscrit
  * à la session via `enrollments` (gate d'accès).
  *
- * QR code généré côté serveur (lib qrcode) pointant vers
- * `${APP_URL}/learner/sessions/${sessionId}` (page extranet apprenant).
+ * Injecte les credentials de connexion (email + mot de passe temporaire) via
+ * `ensureLearnerAccount` (idempotent) — le template affiche les credentials
+ * dans le PDF à la place de l'ancien QR code magic link.
  */
 
 import { createClient } from "@/lib/supabase/server";
 import { sanitizeError } from "@/lib/api-error";
 import { NextRequest, NextResponse } from "next/server";
-import QRCode from "qrcode";
 import {
   CONVOCATION_APPRENANT_HTML,
   CONVOCATION_APPRENANT_FOOTER_TEMPLATE,
@@ -27,8 +27,18 @@ import {
   DocumentGenerationService,
   createDefaultEngine,
 } from "@/lib/services/document-generation";
-import { getOrCreateConvocationMagicLink } from "@/lib/services/convocation-magic-link";
+import { ensureLearnerAccount } from "@/lib/services/learner-account";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import type { Session, Learner } from "@/lib/types";
+
+function createServiceClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) throw new Error("Missing Supabase service role configuration");
+  return createSupabaseClient(url, key, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -95,26 +105,22 @@ export async function POST(request: NextRequest) {
 
     const entity = await loadEntitySettings(supabase, profile.entity_id);
 
-    // Magic link par apprenant : auto-login + redirect vers sa session
-    // (token valide 30 jours, réutilisé si déjà existant non-expiré)
-    const magicLink = await getOrCreateConvocationMagicLink({
-      supabase,
-      learnerId: body.learnerId,
-      sessionId: body.sessionId,
-      entityId: profile.entity_id,
-      createdByUserId: user.id,
-    });
-    const qrDataUrl = await QRCode.toDataURL(magicLink.url, {
-      width: 400,
-      margin: 1,
-      errorCorrectionLevel: "M",
-    });
+    // Ensure que l'apprenant a un compte Supabase + mot de passe temporaire
+    // (idempotent : réutilise les credentials existants si déjà setup).
+    // Remplace l'ancien flow magic link + QR code.
+    let learnerCredentials: { email: string; tempPassword: string } | null = null;
+    try {
+      const serviceClient = createServiceClient();
+      learnerCredentials = await ensureLearnerAccount(serviceClient, body.learnerId);
+    } catch (err) {
+      console.warn("[generate-convocation] ensureLearnerAccount failed:", err);
+    }
 
     const context: ResolveContext = {
       session: session as unknown as Session,
       learner,
       entity,
-      extranetQrDataUrl: qrDataUrl,
+      learnerCredentials: learnerCredentials ?? undefined,
     };
     const resolvedHtml = resolveDocumentVariables(CONVOCATION_APPRENANT_HTML, context);
     const resolvedFooter = resolveDocumentVariables(CONVOCATION_APPRENANT_FOOTER_TEMPLATE, context);
@@ -131,8 +137,7 @@ export async function POST(request: NextRequest) {
         session_id: body.sessionId,
         learner_id: body.learnerId,
         session_updated_at: (session as { updated_at?: string }).updated_at ?? null,
-        // Cache invalidé si le token change (rotation 30j, ou recréation)
-        custom_variables: { magic_token: magicLink.token },
+        custom_variables: null,
       },
       options: {
         format: "A4",
@@ -150,9 +155,6 @@ export async function POST(request: NextRequest) {
       engineUsed: result.engineUsed,
       fileSizeBytes: result.fileSizeBytes,
       latencyMs: result.latencyMs,
-      magicLinkUrl: magicLink.url,
-      magicLinkExpiresAt: magicLink.expiresAt,
-      magicLinkReused: magicLink.reused,
     });
   } catch (err) {
     return NextResponse.json(

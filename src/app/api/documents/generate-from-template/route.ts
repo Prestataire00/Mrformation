@@ -16,11 +16,20 @@ import {
   type ResolveContext,
 } from "@/lib/utils/resolve-variables";
 import { validateDocumentVariables, type MissingByEntity } from "@/lib/validation/document-vars-validator";
-import { getOrCreateConvocationMagicLink } from "@/lib/services/convocation-magic-link";
 import { loadSignaturesBySessionId } from "@/lib/services/load-signatures";
 import { loadClientWithContacts } from "@/lib/services/load-client";
-import QRCode from "qrcode";
+import { ensureLearnerAccount } from "@/lib/services/learner-account";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import type { Session, Learner, Client, Trainer } from "@/lib/types";
+
+function createServiceClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) throw new Error("Missing Supabase service role configuration");
+  return createSupabaseClient(url, key, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+}
 
 /**
  * POST /api/documents/generate-from-template
@@ -288,7 +297,7 @@ export async function POST(request: NextRequest) {
       if (systemTemplate) {
         // Charge le context enrichi pour resolveDocumentVariables (resolver
         // unifié [%Var%]) : entity full + learner/client/trainer + signatures
-        // si applicable + magic link convocation si applicable.
+        // si applicable + credentials apprenant si convocation.
         const learnerData = payload.context.learner_id
           ? (await auth.supabase.from("learners").select("*").eq("id", payload.context.learner_id).single()).data as Learner | null
           : null;
@@ -314,24 +323,19 @@ export async function POST(request: NextRequest) {
           : null;
         const entity = await loadEntitySettings(auth.supabase, auth.profile.entity_id);
 
-        // Magic link convocation : créé si doc_type=convocation + learner_id
-        let extranetQrDataUrl: string | undefined;
-        let magicToken: string | null = null;
-        if (payload.doc_type === "convocation" && learnerData?.id && payload.context.session_id) {
+        // Convocation : ensure l'apprenant a un compte Supabase + password
+        // (idempotent : réutilise les credentials existants si déjà créés).
+        // Cf spec docs/superpowers/specs/2026-05-17-convocation-credentials-design.md
+        let learnerCredentials: { email: string; tempPassword: string } | null = null;
+        if (payload.doc_type === "convocation" && learnerData?.id) {
           try {
-            const magicLink = await getOrCreateConvocationMagicLink({
-              supabase: auth.supabase,
-              learnerId: learnerData.id,
-              sessionId: payload.context.session_id,
-              entityId: auth.profile.entity_id,
-              createdByUserId: auth.user.id,
-            });
-            extranetQrDataUrl = await QRCode.toDataURL(magicLink.url, {
-              width: 400, margin: 1, errorCorrectionLevel: "M",
-            });
-            magicToken = magicLink.token;
+            const serviceClient = createServiceClient();
+            learnerCredentials = await ensureLearnerAccount(serviceClient, learnerData.id);
           } catch (err) {
-            console.warn("[generate-from-template] magic link creation failed:", err);
+            console.warn("[generate-from-template] ensureLearnerAccount failed:", err);
+            // Continue sans credentials : le template affichera les fallback
+            // "[Mot de passe apprenant]" → l'admin verra qu'il y a un problème
+            // et peut investiguer/relancer.
           }
         }
 
@@ -359,10 +363,10 @@ export async function POST(request: NextRequest) {
           client: clientData ?? undefined,
           trainer: trainerData ?? undefined,
           entity,
-          extranetQrDataUrl,
           signedLearnerIds,
           signaturesById: signaturesById as ResolveContext["signaturesById"],
           signaturesBySlotPerson: signaturesBySlotPerson as ResolveContext["signaturesBySlotPerson"],
+          learnerCredentials: learnerCredentials ?? undefined,
         };
 
         const resolvedHtml = resolveDocumentVariables(systemTemplate.html, ctx);
@@ -405,7 +409,7 @@ export async function POST(request: NextRequest) {
             client_id: payload.context.client_id ?? null,
             trainer_id: payload.context.trainer_id ?? null,
             session_updated_at: sessionUpdatedAt,
-            custom_variables: magicToken ? { magic_token: magicToken } : null,
+            custom_variables: null,
           },
           options: {
             format: "A4",
@@ -422,7 +426,6 @@ export async function POST(request: NextRequest) {
         pdfBase64 = dgsResult.buffer.toString("base64");
         sizeBytes = dgsResult.fileSizeBytes;
         pdfNameBase = payload.doc_type;
-        if (magicToken) console.log(`[generate-from-template] Magic link convocation : ${magicToken.slice(0, 8)}...`);
       } else {
         // Pas de beau template registry pour ce doc_type → 404 explicite.
         // (Le fichier legacy document-templates-defaults.ts a été drop avec

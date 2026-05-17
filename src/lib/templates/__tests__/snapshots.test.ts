@@ -187,9 +187,12 @@ const FULL_ENTITY: ResolveContext["entity"] = {
   logo_url: "https://example.com/logo.png",
 };
 
-// QR data URL fixe pour snapshot stable (sinon dépend du moment de génération)
-const FIXED_QR_DATA_URL =
-  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABAQAAAAA3bvkkAAAACklEQVR4nGNgAAAAAgABc3UBGAAAAABJRU5ErkJggg==";
+// Credentials fixes pour snapshot stable (sinon dépend de l'output aléatoire
+// de generateTempPassword)
+const FIXED_LEARNER_CREDENTIALS = {
+  email: "apprenant.snap@example.fr",
+  tempPassword: "SnapPass2026",
+};
 
 // ─── Tests par doc_type ─────────────────────────────────────────────────
 
@@ -199,7 +202,7 @@ describe("Templates snapshots — couvre F1/F2.x/F3", () => {
       session: makeSession(),
       learner: makeLearner(),
       entity: FULL_ENTITY,
-      extranetQrDataUrl: FIXED_QR_DATA_URL,
+      learnerCredentials: FIXED_LEARNER_CREDENTIALS,
     };
     const html = resolveDocumentVariables(CONVOCATION_APPRENANT_HTML, context);
     const footer = resolveDocumentVariables(CONVOCATION_APPRENANT_FOOTER_TEMPLATE, context);
@@ -290,7 +293,7 @@ describe("Templates régression : aucune balise [%...%] non résolue dans output
         learner: makeLearner(),
         client: makeClient(),
         entity: FULL_ENTITY,
-        extranetQrDataUrl: FIXED_QR_DATA_URL,
+        learnerCredentials: FIXED_LEARNER_CREDENTIALS,
         signedLearnerIds: new Set(["learner-snap-1"]),
         signaturesById: new Map(),
       };

@@ -149,11 +149,29 @@ export const CONVOCATION_APPRENANT_HTML = `<!DOCTYPE html>
   <p><strong>Vos dates en détail :</strong></p>
   [%Vos dates en détail%]
 
-  <p><strong>Vous trouverez des informations complémentaires concernant la formation sur la page web dédiée aux stagiaires de cette formation :</strong></p>
+  <p><strong>Accès à votre espace de formation :</strong></p>
 
-  <div class="qr-block">[%QR Code de l'extranet de l'apprenant%]</div>
-
-  <p>Vous pourrez vous connecter à cette page en scannant le QR code ci-dessus.</p>
+  <div class="login-credentials" style="border: 2px solid #2563EB; padding: 16px; margin: 20px 0; border-radius: 8px; background: #f0f7ff;">
+    <h3 style="margin: 0 0 12px; color: #1e3a8a; font-size: 13pt;">🔐 Accès à votre espace formation</h3>
+    <p style="margin: 0 0 12px;">Connectez-vous à votre espace personnel avec vos identifiants :</p>
+    <table style="width: 100%; margin: 8px 0; border-collapse: collapse;">
+      <tr>
+        <td style="padding: 4px 8px; font-weight: 700; width: 30%;">URL :</td>
+        <td style="padding: 4px 8px;">[%URL de connexion%]</td>
+      </tr>
+      <tr>
+        <td style="padding: 4px 8px; font-weight: 700;">Email :</td>
+        <td style="padding: 4px 8px;">[%Email de l'apprenant%]</td>
+      </tr>
+      <tr>
+        <td style="padding: 4px 8px; font-weight: 700;">Mot de passe :</td>
+        <td style="padding: 4px 8px; font-family: monospace; background: #fff; border: 1px dashed #cbd5e1; border-radius: 4px;">[%Mot de passe apprenant%]</td>
+      </tr>
+    </table>
+    <p style="font-size: 9pt; color: #6b7280; margin-top: 12px; margin-bottom: 0;">
+      💡 Vous pouvez modifier votre mot de passe à tout moment via "Mot de passe oublié" sur la page de connexion. Si vous avez déjà modifié votre mot de passe, utilisez le nouveau.
+    </p>
+  </div>
   <p>En cas d'indisponibilité ou de renoncement, veuillez nous prévenir le plus rapidement possible.</p>
 
   <div class="important-block">

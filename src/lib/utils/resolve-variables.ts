@@ -17,11 +17,11 @@ export interface ResolveContext {
    */
   signedLearnerIds?: Set<string>;
   /**
-   * Data URL (data:image/png;base64,...) du QR code de l'extranet apprenant,
-   * pré-calculé côté API (qrcode lib est async, le resolver est sync).
-   * Utilisé par `{{qr_code_extranet_apprenant}}` dans la convocation.
+   * Credentials de connexion de l'apprenant pour la convocation
+   * (cf src/lib/services/learner-account.ts:ensureLearnerAccount).
+   * Si undefined → fallback "[Mot de passe apprenant]" dans le template.
    */
-  extranetQrDataUrl?: string;
+  learnerCredentials?: { email: string; tempPassword: string };
   /**
    * Map signer_id → signature_data URL (depuis table signatures).
    * Inclut apprenants ET formateurs. Si présente, les builders
@@ -696,11 +696,15 @@ export function resolveVariables(content: string, data: ResolveContext): string 
       }
       return `<ul class="dates-list">${items.join("")}</ul>`;
     })(),
-    // QR Code extranet apprenant : pré-calculé côté API (lib qrcode est async).
-    // Si extranetQrDataUrl est fourni → <img>. Sinon → placeholder.
-    "{{qr_code_extranet_apprenant}}": data.extranetQrDataUrl
-      ? `<img src="${data.extranetQrDataUrl}" alt="QR Code Extranet" width="200" height="200" />`
-      : "[QR Code]",
+    // URL de connexion à l'espace apprenant — utilisée dans la convocation
+    // (remplace l'ancien QR code magic link, cf spec convocation-credentials)
+    "{{url_connexion}}": process.env.NEXT_PUBLIC_APP_URL
+      ? `${process.env.NEXT_PUBLIC_APP_URL}/login`
+      : "[URL de connexion]",
+
+    // Mot de passe temporaire de l'apprenant — injecté par /api/documents/
+    // generate-from-template via ensureLearnerAccount pour doc_type=convocation
+    "{{mot_de_passe_apprenant}}": data.learnerCredentials?.tempPassword || "[Mot de passe apprenant]",
 
     // === Story B-Convention Intervention (contrat sous-traitance formateur) ===
     "{{nom_formateur_complet}}": (() => {
@@ -1199,7 +1203,8 @@ export const ALIAS_TO_VARIABLE_KEY: Record<string, string> = {
   "Nom de l'apprenant": "{{nom_apprenant}}",
   "Email de l'apprenant": "{{email_apprenant}}",
   "Vos dates en détail": "{{dates_detail}}",
-  "QR Code de l'extranet de l'apprenant": "{{qr_code_extranet_apprenant}}",
+  "URL de connexion": "{{url_connexion}}",
+  "Mot de passe apprenant": "{{mot_de_passe_apprenant}}",
   // === Story B-Certificat Réalisation ===
   "URL Logo Ministère du Travail": "{{url_logo_ministere_travail}}",
   "Objectifs pédagogiques du programme": "{{liste_objectifs_pedagogiques}}",
@@ -1398,7 +1403,8 @@ export const VARIABLE_KEYS = [
   "{{contenu_pedagogique}}",
   // Story B-Convocation Apprenant
   "{{dates_detail}}",
-  "{{qr_code_extranet_apprenant}}",
+  "{{url_connexion}}",
+  "{{mot_de_passe_apprenant}}",
   // Story B-Certificat Réalisation
   "{{url_logo_ministere_travail}}",
   // Story B-Attestation Assiduité
