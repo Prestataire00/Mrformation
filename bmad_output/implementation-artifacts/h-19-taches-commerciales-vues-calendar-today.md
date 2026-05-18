@@ -3,7 +3,7 @@ storyId: H19
 storyKey: h-19-taches-commerciales-vues-calendar-today
 epic: H
 title: Tâches commerciales — ajouter vues Calendar + Aujourd'hui (Epic H)
-status: ready-for-dev
+status: review
 priority: P2
 effort: 1-2 j-h
 wave: hot-fix (extension Epic H)
@@ -110,37 +110,41 @@ Cette story h-19 est volontairement **minimale** : on ajoute juste les 2 vues ma
 
 ## 5. Tasks / Subtasks
 
-- [ ] **Task 1 — Étendre le type de viewMode** (AC-5)
-  - [ ] Ligne ~121 de `page.tsx` : `useState<"list" | "kanban" | "calendar" | "today">("list")`
-  - [ ] Ajouter les imports d'icônes manquantes (`Sun` ou autre depuis `lucide-react`)
-- [ ] **Task 2 — Ajouter les 2 boutons toggle dans la barre de vue** (AC-5)
-  - [ ] Lignes ~463-467 de `page.tsx` : ajouter 2 `<button>` après le bouton Kanban, même styling Tailwind
-  - [ ] Title attribute pour accessibilité : "Vue calendrier" / "Focus du jour"
-- [ ] **Task 3 — Implémenter le rendu Calendar** (AC-1, AC-2)
-  - [ ] Extraire un nouveau composant `<CalendarView tasks={...} onTaskClick={...} />` dans `src/app/(dashboard)/admin/crm/tasks/_components/CalendarView.tsx` (NEW file, pour ne pas alourdir page.tsx déjà gros)
-  - [ ] Utiliser `date-fns` (déjà installé, v4) : `startOfMonth`, `endOfMonth`, `startOfWeek`, `endOfWeek`, `eachDayOfInterval`, `isSameMonth`, `isSameDay`, `format`, `addMonths`, `subMonths`
-  - [ ] State local `currentMonth: Date` initialisé à `new Date()`
-  - [ ] Grille 7 colonnes × 5-6 lignes via Tailwind `grid grid-cols-7`
-  - [ ] Pour chaque jour : filtrer `tasks.filter(t => t.due_date && isSameDay(parseISO(t.due_date), day))`, afficher max 3, badge "+N" si plus
-  - [ ] Bordure gauche couleur priorité via `PRIORITY_BORDER` existant (lignes 75-79)
-  - [ ] Click tâche → callback `onTaskClick(task)` qui appelle `openEditDialog` du parent
-- [ ] **Task 4 — Implémenter le rendu Today** (AC-3, AC-4)
-  - [ ] Extraire un composant `<TodayView tasks={...} onTaskClick={...} onToggleStatus={...} />` dans `_components/TodayView.tsx` (NEW)
-  - [ ] Réutiliser la logique existante (lignes ~425-444 de page.tsx) pour `todayStr`, `kanbanOverdue`, `kanbanToday` — extract en helpers si pas déjà
-  - [ ] Section "En retard" (collapse pliable optionnel) puis section "Aujourd'hui"
-  - [ ] Tri par priorité : `[...tasks].sort((a, b) => PRIORITY_ORDER[b.priority] - PRIORITY_ORDER[a.priority])` avec `PRIORITY_ORDER = { high: 3, medium: 2, low: 1 }`
-  - [ ] Empty state si les 2 sections vides
-  - [ ] Checkbox click → `onToggleStatus(task.id, 'completed')` qui PATCH `/api/crm/tasks/[id]`
-- [ ] **Task 5 — Brancher les 2 vues dans la section de rendu principale** (AC-1, AC-3)
-  - [ ] Ligne ~624 de `page.tsx`, étendre le conditionnel actuel `viewMode === "kanban"` en `switch (viewMode)`
-  - [ ] Importer les 2 nouveaux composants
-- [ ] **Task 6 — Validation tsc + smoke manuel** (AC-6)
-  - [ ] `npx tsc --noEmit` clean
-  - [ ] `npx vitest run` sans régression
-  - [ ] Smoke local : créer 5-10 tâches test, switcher entre les 4 vues, vérifier que chaque vue affiche les bonnes données et que les clicks fonctionnent
-- [ ] **Task 7 — Commit + push**
-  - [ ] Commit : `feat(crm): h-19 vues Calendar + Aujourd'hui pour les taches commerciales (Epic H)`
-  - [ ] MAJ sprint-status : `h-19 → review`
+- [x] **Task 1 — Étendre le type de viewMode** (AC-5)
+  - [x] `useState<"list" | "kanban" | "calendar" | "today">("list")`
+  - [x] Imports d'icônes ajoutés : `CalendarDays`, `Sun` depuis `lucide-react`
+- [x] **Task 2 — Ajouter les 2 boutons toggle dans la barre de vue** (AC-5)
+  - [x] 2 `<button>` ajoutés après le bouton Kanban, même styling Tailwind
+  - [x] Title attributes : "Vue calendrier" / "Focus du jour" + titres ajoutés aux 2 boutons existants pour cohérence
+- [x] **Task 3 — Implémenter le rendu Calendar** (AC-1, AC-2)
+  - [x] Composant `<CalendarView>` créé dans `_components/CalendarView.tsx`
+  - [x] Utilise `date-fns` (déjà installé) + locale `fr` pour weekday lundi-dimanche
+  - [x] State local `currentMonth: Date`, navigation `< / Aujourd'hui / >`
+  - [x] Grille 7 colonnes via Tailwind `grid grid-cols-7`
+  - [x] Max 3 tâches par jour, badge "+N" pour les autres
+  - [x] Bordure gauche couleur priorité (PRIORITY_BORDER local au composant)
+  - [x] Click tâche → callback `onTaskClick` qui appelle `startEditingTask` du parent
+  - [x] Today highlighted avec ring blue, jours hors mois en gris atténué
+  - [ ] Click case vide pour pré-remplir date (non implémenté — noté nice-to-have v2)
+- [x] **Task 4 — Implémenter le rendu Today** (AC-3, AC-4)
+  - [x] Composant `<TodayView>` créé dans `_components/TodayView.tsx`
+  - [x] Réutilise `overdueTasks` et `todayTasks` (computés déjà côté page.tsx, passés en props)
+  - [x] Section "En retard" collapsible (state local `overdueExpanded`) puis "Aujourd'hui"
+  - [x] Tri par priorité via PRIORITY_ORDER `{ high: 3, medium: 2, low: 1 }`
+  - [x] Empty state "🎉 Aucune tâche à traiter aujourd'hui — Profitez-en pour préparer demain !"
+  - [x] Checkbox via `TaskKanbanCard` partagé (full handlers complétion notes)
+- [x] **Task 5 — Brancher les 2 vues + extraire TaskKanbanCard** (AC-1, AC-3, AC-6)
+  - [x] `TaskKanbanCard` extrait dans `_components/TaskKanbanCard.tsx` (partagé Kanban + Today)
+  - [x] Fonction locale supprimée de page.tsx (1265 LOC → 1226 LOC)
+  - [x] Rendu conditionnel étendu : Calendar / Today / Kanban / List (ordre)
+  - [x] Imports ajoutés : `TaskKanbanCard`, `CalendarView`, `TodayView`
+- [x] **Task 6 — Validation tsc + smoke manuel** (AC-6)
+  - [x] `npx tsc --noEmit` : 0 erreur
+  - [x] `npx vitest run` : 395/395 tests passent (zéro régression)
+  - [ ] Smoke manuel : à charge Wissam (pas de compte test commercial local dispo)
+- [x] **Task 7 — Commit + push**
+  - [x] Commit : `feat(crm): h-19 vues Calendar + Aujourd'hui pour les taches commerciales (Epic H)`
+  - [x] MAJ sprint-status : `h-19 → review`
 
 ## 6. Dev Notes
 
@@ -260,19 +264,83 @@ f5c519d feat(users): h-18 ajoute Commercial dans le formulaire de creation + sta
 
 ### Agent Model Used
 
-(à renseigner par le dev — ex: `claude-opus-4-7[1m]`)
+`claude-opus-4-7[1m]` via bmad-dev-story (continuation directe de bmad-create-story).
 
 ### Debug Log References
 
-(à renseigner pendant l'implémentation)
+- `npx tsc --noEmit` (post-implementation) : clean
+- `npx vitest run` : 32 fichiers, 395 tests, 1.79s — tous passent
+- Tentative de suppression de `TaskKanbanCard` local via Edit tool a échoué (caractère Unicode escape `📝` dans la fonction body) → fallback `sed -i '1226,1292d'` propre
 
-### Completion Notes List
+### Completion Notes
 
-(à renseigner avant code-review)
+#### Implémentation effective
+
+**6 fichiers touchés** (3 NEW + 1 UPDATE + 2 DOCS) :
+
+1. **NEW** `src/app/(dashboard)/admin/crm/tasks/_components/TaskKanbanCard.tsx` (109 LOC)
+   - Extraction de la fonction `TaskKanbanCard` qui était locale à page.tsx
+   - Composant pure UI, props inchangées
+   - Permet la réutilisation par Kanban (4 colonnes) + Today
+2. **NEW** `src/app/(dashboard)/admin/crm/tasks/_components/CalendarView.tsx` (161 LOC)
+   - Grille mensuelle 7 colonnes × 5-6 lignes via `eachDayOfInterval` + Tailwind grid
+   - Navigation `< Mois précédent / Aujourd'hui / Mois suivant >`
+   - Max 3 tâches par jour, badge "+N" pour le reste
+   - Bordure gauche couleur priorité (high=rouge, medium=ambre, low=gris)
+   - Today highlighted avec `ring-1 ring-inset ring-blue-400`
+   - Jours hors mois en `bg-gray-50/60` atténué
+   - Click sur une tâche → callback `onTaskClick(task)` → parent ouvre l'edit modal existant
+3. **NEW** `src/app/(dashboard)/admin/crm/tasks/_components/TodayView.tsx` (132 LOC)
+   - 2 sections : "En retard" (collapsible, rouge) + "Aujourd'hui" (bleu)
+   - Tri par priorité descendante via `PRIORITY_ORDER` map
+   - Réutilise `TaskKanbanCard` complet (avec gestion completion notes)
+   - Empty state : "🎉 Aucune tâche à traiter aujourd'hui — Profitez-en pour préparer demain !"
+4. **UPDATE** `src/app/(dashboard)/admin/crm/tasks/page.tsx` (1265 → 1226 LOC, -39 LOC net malgré ajout de 14 LOC)
+   - Type `viewMode` étendu : `"list" | "kanban" | "calendar" | "today"`
+   - 2 imports d'icônes : `CalendarDays`, `Sun`
+   - 2 boutons toggle ajoutés (avec `title` attributes sur les 4 pour accessibilité)
+   - 3 imports composants ajoutés
+   - Rendu conditionnel étendu : `calendar` / `today` / `kanban` / `list` (priorité ordre)
+   - Fonction locale `TaskKanbanCard` supprimée (-65 LOC) au profit de l'import partagé
+5. **UPDATE** `bmad_output/implementation-artifacts/sprint-status.yaml` — `h-19 → review`
+6. **UPDATE** `bmad_output/implementation-artifacts/h-19-taches-commerciales-vues-calendar-today.md` — Dev Agent Record + tasks cochées + status review
+
+#### Décisions techniques
+
+1. **Extraction TaskKanbanCard** : non listée explicitement dans la story mais devenue nécessaire pour DRY (TodayView l'utilise directement, ça évite duplication). Décision pragmatique du dev agent.
+2. **Pas de click case vide** pour pré-remplir date (Calendar AC-2) : noté nice-to-have v2, pas implémenté. Raisons : (a) demande coordination avec le state form parent, (b) hors AC strict, (c) story dit "pas obligatoire pour MVP".
+3. **PRIORITY_BORDER local à CalendarView** au lieu d'extraire dans un helper partagé : pas de duplication avec page.tsx (qui a `PRIORITY_BORDER` différent avec `border-l-4`), donc 2 maps différentes intentionnellement (UI calendar plus compacte = bordure `border-l-2`).
+4. **Locale `fr` partout dans Calendar** : `startOfWeek({ locale: fr })` pour démarrer lundi, `format(currentMonth, "MMMM yyyy", { locale: fr })` pour mois en français.
+5. **TodayView reçoit `overdueTasks` et `todayTasks` en props** (pas `tasks` brut) : permet de réutiliser le filtrage déjà fait côté page.tsx (lignes 427-435) sans dupliquer la logique.
+
+#### Smoke à faire par Wissam
+
+- Aller sur `/admin/crm/tasks`
+- Vérifier les 4 boutons toggle (List, Kanban, Calendar, Today) en haut à droite
+- Cliquer Calendar → grille mensuelle, navigation mois fonctionne
+- Cliquer une tâche dans le calendrier → edit modal s'ouvre avec données pré-remplies
+- Cliquer Today → focus sur tâches du jour + en retard, tri priorité
+- Si aucune tâche aujourd'hui : empty state 🎉
+- Cliquer Kanban → fonctionnement inchangé (régression test)
+- Cliquer List → fonctionnement inchangé (régression test)
+
+### Change Log
+
+| Date | Description |
+|---|---|
+| 2026-05-18 | Story h-19 implémentée via bmad-dev-story : 2 vues Calendar + Today ajoutées au module /admin/crm/tasks existant. Extraction TaskKanbanCard pour DRY. tsc clean + 395/395 tests passent. En attente smoke prod par Wissam. |
 
 ### File List
 
-(à renseigner avant code-review — liste exhaustive des fichiers modifiés/créés)
+**Created** :
+- `src/app/(dashboard)/admin/crm/tasks/_components/TaskKanbanCard.tsx`
+- `src/app/(dashboard)/admin/crm/tasks/_components/CalendarView.tsx`
+- `src/app/(dashboard)/admin/crm/tasks/_components/TodayView.tsx`
+
+**Modified** :
+- `src/app/(dashboard)/admin/crm/tasks/page.tsx`
+- `bmad_output/implementation-artifacts/sprint-status.yaml`
+- `bmad_output/implementation-artifacts/h-19-taches-commerciales-vues-calendar-today.md`
 
 ## 9. Questions ouvertes pour le dev
 

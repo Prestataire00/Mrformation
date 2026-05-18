@@ -32,6 +32,8 @@ import {
   ClipboardList,
   List,
   LayoutGrid,
+  CalendarDays,
+  Sun,
   Mail,
   Download,
   Tag,
@@ -71,6 +73,9 @@ import {
   TASK_PRIORITY_LABELS,
 } from "@/lib/utils";
 import type { CrmTask, Profile, CrmProspect, Client, TaskPriority, TaskStatus } from "@/lib/types";
+import { TaskKanbanCard } from "./_components/TaskKanbanCard";
+import { CalendarView } from "./_components/CalendarView";
+import { TodayView } from "./_components/TodayView";
 
 const PRIORITY_BORDER: Record<TaskPriority, string> = {
   high: "border-l-red-500",
@@ -118,7 +123,7 @@ export default function TasksPage() {
   const { toast } = useToast();
   const { entityId } = useEntity();
 
-  const [viewMode, setViewMode] = useState<"list" | "kanban">("list");
+  const [viewMode, setViewMode] = useState<"list" | "kanban" | "calendar" | "today">("list");
   const [tasks, setTasks] = useState<CrmTask[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [prospects, setProspects] = useState<CrmProspect[]>([]);
@@ -460,11 +465,17 @@ export default function TasksPage() {
         </div>
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
-            <button onClick={() => setViewMode("list")} className={cn("px-2 py-1 text-xs rounded-md transition", viewMode === "list" ? "bg-white shadow-sm font-medium" : "text-gray-500")}>
+            <button onClick={() => setViewMode("list")} className={cn("px-2 py-1 text-xs rounded-md transition", viewMode === "list" ? "bg-white shadow-sm font-medium" : "text-gray-500")} title="Vue liste">
               <List className="h-3.5 w-3.5" />
             </button>
-            <button onClick={() => setViewMode("kanban")} className={cn("px-2 py-1 text-xs rounded-md transition", viewMode === "kanban" ? "bg-white shadow-sm font-medium" : "text-gray-500")}>
+            <button onClick={() => setViewMode("kanban")} className={cn("px-2 py-1 text-xs rounded-md transition", viewMode === "kanban" ? "bg-white shadow-sm font-medium" : "text-gray-500")} title="Vue kanban">
               <LayoutGrid className="h-3.5 w-3.5" />
+            </button>
+            <button onClick={() => setViewMode("calendar")} className={cn("px-2 py-1 text-xs rounded-md transition", viewMode === "calendar" ? "bg-white shadow-sm font-medium" : "text-gray-500")} title="Vue calendrier">
+              <CalendarDays className="h-3.5 w-3.5" />
+            </button>
+            <button onClick={() => setViewMode("today")} className={cn("px-2 py-1 text-xs rounded-md transition", viewMode === "today" ? "bg-white shadow-sm font-medium" : "text-gray-500")} title="Focus du jour">
+              <Sun className="h-3.5 w-3.5" />
             </button>
           </div>
           <Button onClick={toggleAddForm} size="sm" style={{ background: "#374151" }} className="text-white gap-1.5 text-xs">
@@ -637,6 +648,19 @@ export default function TasksPage() {
             <Plus className="h-3.5 w-3.5" /> Nouvelle tâche
           </Button>
         </div>
+      ) : viewMode === "calendar" ? (
+        <CalendarView tasks={tasks} onTaskClick={startEditingTask} />
+      ) : viewMode === "today" ? (
+        <TodayView
+          overdueTasks={overdueTasks}
+          todayTasks={todayTasks}
+          onToggle={handleToggleComplete}
+          completingTask={completingTask}
+          completionNotes={completionNotes}
+          onCompletionNotesChange={setCompletionNotes}
+          onConfirmComplete={handleConfirmComplete}
+          onCancelComplete={() => { setCompletingTask(null); setCompletionNotes(""); }}
+        />
       ) : viewMode === "kanban" ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* Column: En retard */}
@@ -1199,67 +1223,4 @@ function TaskRow({
   );
 }
 
-function TaskKanbanCard({ task, onToggle, completingTask, completionNotes, onCompletionNotesChange, onConfirmComplete, onCancelComplete }: {
-  task: CrmTask;
-  onToggle: (t: CrmTask) => void;
-  completingTask?: CrmTask | null;
-  completionNotes?: string;
-  onCompletionNotesChange?: (v: string) => void;
-  onConfirmComplete?: () => void;
-  onCancelComplete?: () => void;
-}) {
-  const priorityColor = task.priority === "high" ? "bg-red-500" : task.priority === "medium" ? "bg-amber-400" : "bg-gray-300";
-  // Fallback display : si title est générique (= label ou un des 4 types Sellsy
-  // connus) on préfère description ou prospect.company_name → évite les cartes
-  // identiques "Rappel / Rappel / Rappel..." sur les 1773 tâches Sellsy.
-  const titleIsGeneric = isGenericTaskTitle(task.title, task.label);
-  const displayTitle = titleIsGeneric
-    ? (task.description?.trim() || task.prospect?.company_name || task.title)
-    : task.title;
-  return (
-    <div className="rounded-lg border border-gray-100 bg-white p-3 hover:shadow-sm transition-shadow">
-      <div className="flex items-start gap-2">
-        <Checkbox checked={task.status === "completed"} onCheckedChange={() => onToggle(task)} className="mt-0.5 flex-shrink-0" />
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5">
-            <div className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", priorityColor)} />
-            <p className={cn("text-sm font-medium text-gray-900 truncate", task.status === "completed" && "line-through opacity-50")}>{displayTitle}</p>
-          </div>
-          <div className="flex items-center gap-2 mt-1.5 text-[10px] text-gray-400">
-            {task.due_date && <span>{task.due_date}</span>}
-            {task.assignee && <span>{task.assignee.first_name}</span>}
-            {/* Si on a remplacé le titre par la description, on remet le prospect
-                lié ici pour pas le perdre. */}
-            {task.prospect && task.prospect_id && (
-              <Link href={`/admin/crm/prospects/${task.prospect_id}`} className="truncate text-[#374151] hover:underline font-medium" onClick={(e) => e.stopPropagation()}>
-                {task.prospect.company_name}
-              </Link>
-            )}
-            {task.prospect && !task.prospect_id && <span className="truncate">{task.prospect.company_name}</span>}
-          </div>
-          {task.completion_notes && task.status === "completed" && (
-            <p className="text-xs text-gray-500 italic mt-1">{"\uD83D\uDCDD"} {task.completion_notes}</p>
-          )}
-          {completingTask?.id === task.id && onCompletionNotesChange && onConfirmComplete && onCancelComplete && (
-            <div className="mt-2 border rounded-lg p-3 bg-gray-50/50 space-y-2">
-              <Textarea
-                value={completionNotes ?? ""}
-                onChange={(e) => onCompletionNotesChange(e.target.value)}
-                placeholder="Notes de complétion (ex: résumé de l'appel, décision prise...)"
-                rows={2}
-                autoFocus
-                className="text-sm resize-none"
-              />
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] text-gray-400 flex-1">Optionnel</span>
-                <Button size="sm" variant="ghost" className="text-xs h-6" onClick={() => onCancelComplete()}>Annuler</Button>
-                <Button size="sm" className="text-xs h-6" onClick={() => onConfirmComplete()}>Terminer</Button>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
 
