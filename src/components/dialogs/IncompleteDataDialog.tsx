@@ -9,7 +9,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, ExternalLink } from "lucide-react";
+import { AlertTriangle, ExternalLink, FileWarning } from "lucide-react";
 import type {
   EntityKey,
   MissingByEntity,
@@ -88,6 +88,10 @@ export type IncompleteDataDialogProps = {
   entityIds: EntityIds;
   sessionId?: string;
   onRetry?: () => void;
+  // h-16 : bypass validation et génère le PDF avec placeholders restants.
+  // L'admin assume le document partiel (à compléter ensuite ou utile pour
+  // un brouillon à envoyer en signature).
+  onForceGenerate?: () => void;
 };
 
 export function IncompleteDataDialog({
@@ -98,6 +102,7 @@ export function IncompleteDataDialog({
   entityIds,
   sessionId,
   onRetry,
+  onForceGenerate,
 }: IncompleteDataDialogProps) {
   const docLabel = docType ? (DOC_TYPE_LABEL[docType] ?? "le document") : "le document";
   const entityKeys = Object.keys(missingByEntity) as EntityKey[];
@@ -146,10 +151,24 @@ export function IncompleteDataDialog({
           })}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="gap-2 sm:gap-2">
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             Annuler
           </Button>
+          {onForceGenerate && (
+            <Button
+              variant="outline"
+              className="gap-1 border-amber-300 text-amber-700 hover:bg-amber-50"
+              onClick={() => {
+                onOpenChange(false);
+                onForceGenerate();
+              }}
+              title="Génère le PDF avec les champs manquants laissés vides (utile pour un brouillon ou un envoi en signature)"
+            >
+              <FileWarning className="h-3 w-3" />
+              Générer quand même
+            </Button>
+          )}
           {onRetry && (
             <Button
               onClick={() => {

@@ -764,7 +764,7 @@ exports[`Templates snapshots — couvre F1/F2.x/F3 > convention-intervention : H
     <div class="signature-col">
       <div class="role">Pour le sous-traitant</div>
       <div class="signatory">Karim AZIZI</div>
-      <div class="signature-img">[Signature formateur]</div>
+      <div class="signature-img"></div>
     </div>
   </div>
 

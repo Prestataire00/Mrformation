@@ -67,6 +67,11 @@ const PayloadSchema = z
       trainer_id: z.string().uuid().optional(),
     }),
     custom_variables: z.record(z.string(), z.string()).optional(),
+    // h-16 : si true, bypass la validation Qualiopi bloquante. Le PDF est
+    // genere meme avec champs manquants ; les manques sont remontes en warnings
+    // dans la reponse. Utilise par le bouton "Generer quand meme" du
+    // IncompleteDataDialog quand l'admin assume le doc partiellement complete.
+    force: z.boolean().optional(),
   })
   .refine((d) => !!d.template_id || !!d.doc_type, {
     message: "template_id ou doc_type requis",
@@ -443,7 +448,11 @@ export async function POST(request: NextRequest) {
         // des placeholders [Xxx] visibles. Cf spec
         // docs/superpowers/specs/2026-05-17-document-vars-validation-design.md
         const validation = validateDocumentVariables(systemTemplate.html, ctx);
-        if (!validation.valid && systemTemplate.qualiopiBlocking) {
+        // h-16 : si force=true, l'admin a explicitement choisi "Générer quand
+        // même" depuis le IncompleteDataDialog → on bypass le 422 et on
+        // rétrograde la validation en warning (le PDF est produit avec les
+        // placeholders restants, à charge de l'admin de compléter ensuite).
+        if (!validation.valid && systemTemplate.qualiopiBlocking && !payload.force) {
           return NextResponse.json(
             {
               error: "INCOMPLETE_DATA",

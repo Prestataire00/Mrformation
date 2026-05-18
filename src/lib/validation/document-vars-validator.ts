@@ -34,7 +34,9 @@ export const FALLBACK_TO_ENTITY_FIELD: Record<string, { entityKey: EntityKey; fi
   "[Adresse formateur]": { entityKey: "trainer", field: "address" },
   "[SIRET formateur]": { entityKey: "trainer", field: "siret" },
   "[NDA formateur]": { entityKey: "trainer", field: "nda" },
-  "[Signature formateur]": { entityKey: "trainer", field: "signature_url" },
+  // [Signature formateur] retiré (h-16) : la signature trainer suit désormais
+  // le pattern client/entreprise — vide tant que le trainer n'a pas signé via
+  // /sign/<token>. Pas bloquant pour la génération, juste rempli à signature.
   "[Coût formateur]": { entityKey: "trainer", field: "hourly_rate" },
 
   // Client

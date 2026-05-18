@@ -813,11 +813,25 @@ export function resolveVariables(content: string, data: ResolveContext): string 
       const t = data.trainer as unknown as { extranet_link?: string | null } | null;
       return t?.extranet_link || "[Lien extranet]";
     })(),
+    // h-16 : aligné sur {{e_signature_client}}. Priorité à documentSignature
+    // (signature obtenue via /sign/<token> pour convention_intervention /
+    // contrat_sous_traitance), fallback sur signature_url (image pré-uploadée
+    // sur le profil trainer, legacy), fallback final = "" (pas de placeholder
+    // texte, pour ne pas bloquer la validation Qualiopi quand le doc est en
+    // attente de signature trainer via le lien).
     "{{e_signature_formateur}}": (() => {
+      const sig = data.documentSignature;
+      if (sig) {
+        const dataUrl = sig.startsWith("data:")
+          ? sig
+          : `data:image/svg+xml;base64,${Buffer.from(sig).toString("base64")}`;
+        return `<img src="${dataUrl}" alt="Signature formateur" style="max-height:100px;max-width:240px;display:block;margin-top:6px;" />`;
+      }
       const t = data.trainer as unknown as { signature_url?: string | null } | null;
-      return t?.signature_url
-        ? `<img src="${t.signature_url}" alt="Signature formateur" style="max-height:100px;" />`
-        : "[Signature formateur]";
+      if (t?.signature_url) {
+        return `<img src="${t.signature_url}" alt="Signature formateur" style="max-height:100px;" />`;
+      }
+      return "";
     })(),
     // Adresse de la formation : alias direct de session.location (Loris la
     // colle après [%Lieu de la formation%] pour un affichage compact).

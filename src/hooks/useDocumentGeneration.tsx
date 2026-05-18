@@ -17,6 +17,9 @@ export type GenerateRequest = {
     client_id?: string;
     trainer_id?: string;
   };
+  // h-16 : bypass la validation Qualiopi bloquante. Le PDF est produit
+  // avec placeholders restants ; le caller reçoit warnings.missingByEntity.
+  force?: boolean;
 };
 
 export type GenerateSuccess = {
@@ -119,6 +122,17 @@ export function useDocumentGeneration() {
         incomplete.lastRequest
           ? () => {
               const req = incomplete.lastRequest!;
+              const cb = incomplete.lastOnSuccess;
+              void generate(req, { onSuccess: cb });
+            }
+          : undefined
+      }
+      onForceGenerate={
+        incomplete.lastRequest
+          ? () => {
+              // h-16 : rejoue la requête avec force=true pour bypasser la
+              // validation bloquante. L'admin assume le document partiel.
+              const req = { ...incomplete.lastRequest!, force: true };
               const cb = incomplete.lastOnSuccess;
               void generate(req, { onSuccess: cb });
             }
