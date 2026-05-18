@@ -570,6 +570,20 @@ export function resolveVariables(content: string, data: ResolveContext): string 
     // Source = formation_time_slots (fallback : matin/aprem par jour).
     // Le formateur affiché : data.trainer ou formateursNoms (premier seulement
     // pour MVP, on liste TOUS séparément si plusieurs formateurs).
+    //
+    // Statut Présent/Absent par CRÉNEAU (h-14 fix, miroir de h-11) :
+    //   - Lookup dans signaturesBySlotPerson("slotId|signerId|signerType")
+    //   - Si une signature existe pour ce slot précis → "Présent" + image
+    //   - Sinon → "Non signé" (date-aware via renderUnsignedP)
+    //
+    // AVANT le fix : learnerStatusHtml/formateurStatusHtml calculés UNE FOIS
+    // hors boucle avec sigMap global (signaturesById = vue agrégée par
+    // personne) → tous les créneaux affichaient la même signature dès qu'1
+    // créneau était signé. Bug Qualiopi majeur (cf h-11 sur le collectif).
+    //
+    // Si formation_time_slots vide (cas legacy : session sans créneaux
+    // détaillés) → fallback sur le comportement legacy avec sigMap global
+    // (imprécis mais évite l'écran vide).
     "{{tableau_signature_individuel}}": (() => {
       const sess = data.session;
       if (!sess?.start_date || !sess?.end_date) return "[Tableau signature]";
@@ -585,43 +599,13 @@ export function resolveVariables(content: string, data: ResolveContext): string 
         }
       };
 
-      // Construit la liste des créneaux : depuis formation_time_slots si
-      // disponibles, sinon fallback matin/aprem par jour.
-      type Creneau = { startIso: string; endIso: string; label: string };
-      const slotsRaw = (sess as unknown as { formation_time_slots?: { start_time: string; end_time: string; title?: string | null }[] })?.formation_time_slots;
-      const creneaux: Creneau[] = [];
-      if (slotsRaw && slotsRaw.length > 0) {
-        for (const s of slotsRaw) {
-          // Détecte matin/aprem à partir de l'heure de début
-          const h = new Date(s.start_time).getUTCHours();
-          const label = s.title || (h < 13 ? "MATIN" : "APRES MIDI");
-          creneaux.push({ startIso: s.start_time, endIso: s.end_time, label });
-        }
-      } else {
-        // Fallback : 2 créneaux par jour
-        const start = new Date(sess.start_date);
-        const end = new Date(sess.end_date);
-        const cursor = new Date(start);
-        cursor.setHours(0, 0, 0, 0);
-        const endDay = new Date(end);
-        endDay.setHours(0, 0, 0, 0);
-        while (cursor.getTime() <= endDay.getTime()) {
-          const dateStr = cursor.toISOString().slice(0, 10);
-          creneaux.push({ startIso: `${dateStr}T09:00:00Z`, endIso: `${dateStr}T12:00:00Z`, label: "MATIN" });
-          creneaux.push({ startIso: `${dateStr}T13:00:00Z`, endIso: `${dateStr}T17:00:00Z`, label: "APRES MIDI" });
-          cursor.setDate(cursor.getDate() + 1);
-        }
-      }
-
-      // Status learner : signature image si dispo (signaturesById), sinon
-      // texte présent/non signé date-aware via renderUnsignedCell.
-      const signed = data.signedLearnerIds;
       const sigMap = data.signaturesById;
+      const slotSigMap = data.signaturesBySlotPerson;
       const sessionEndDate = data.session?.end_date;
-      const learnerSig = sigMap?.get(data.learner.id);
-
       const learnerName = `${data.learner.last_name?.toUpperCase() ?? ""} ${data.learner.first_name ?? ""}`.trim();
       const formateursLine = formateursNoms || "[Formateur]";
+      const firstTrainerId = (data.session?.formation_trainers ?? [])
+        .find((ft) => ft.trainer)?.trainer?.id;
 
       // Convertit le SVG brut en data URL pour l'inliner dans src=""
       // (cf h-1 : sans ça les " du SVG cassent l'attribut HTML et le tag
@@ -644,15 +628,64 @@ export function resolveVariables(content: string, data: ResolveContext): string 
         return "";
       };
 
+      type RealSlot = { id: string; start_time: string; end_time: string; title?: string | null };
+      const realSlots = (sess as unknown as { formation_time_slots?: RealSlot[] })?.formation_time_slots ?? [];
+
+      // Mode slot-aware : statut calculé PAR créneau via signaturesBySlotPerson
+      if (realSlots.length > 0) {
+        const learnerStatusForSlot = (slotId: string): string => {
+          const sig = slotSigMap?.get(`${slotId}|${data.learner!.id}|learner`);
+          if (sig) return `<p class="person-status">Présent</p>${renderSigImg(sig)}`;
+          return renderUnsignedP();
+        };
+        const trainerStatusForSlot = (slotId: string): string => {
+          if (!firstTrainerId) return renderUnsignedP();
+          const sig = slotSigMap?.get(`${slotId}|${firstTrainerId}|trainer`);
+          if (sig) return `<p class="person-status">Présent</p>${renderSigImg(sig)}`;
+          return renderUnsignedP();
+        };
+
+        const cards = realSlots.map((s) => {
+          const h = new Date(s.start_time).getUTCHours();
+          const label = s.title || (h < 13 ? "MATIN" : "APRES MIDI");
+          return `
+<div class="creneau-card">
+  <p class="creneau-header">Créneau : De ${fmtDate(s.start_time)} - ${fmtTime(s.start_time)} À ${fmtDate(s.end_time)} - ${fmtTime(s.end_time)} (${label})</p>
+  <p class="person-name">${formateursLine}</p>
+  ${trainerStatusForSlot(s.id)}
+  <p class="person-name learner">${learnerName}</p>
+  ${learnerStatusForSlot(s.id)}
+</div>`;
+        }).join("");
+        return cards;
+      }
+
+      // Fallback legacy : pas de formation_time_slots → 2 créneaux simulés par
+      // jour, statut basé sur sigMap global (imprécis : 1 sig dupliquée sur
+      // tous les créneaux). Conservé pour ne pas casser les vieilles sessions
+      // sans slots détaillés.
+      type Creneau = { startIso: string; endIso: string; label: string };
+      const creneaux: Creneau[] = [];
+      const start = new Date(sess.start_date);
+      const end = new Date(sess.end_date);
+      const cursor = new Date(start);
+      cursor.setHours(0, 0, 0, 0);
+      const endDay = new Date(end);
+      endDay.setHours(0, 0, 0, 0);
+      while (cursor.getTime() <= endDay.getTime()) {
+        const dateStr = cursor.toISOString().slice(0, 10);
+        creneaux.push({ startIso: `${dateStr}T09:00:00Z`, endIso: `${dateStr}T12:00:00Z`, label: "MATIN" });
+        creneaux.push({ startIso: `${dateStr}T13:00:00Z`, endIso: `${dateStr}T17:00:00Z`, label: "APRES MIDI" });
+        cursor.setDate(cursor.getDate() + 1);
+      }
+
+      const signed = data.signedLearnerIds;
+      const learnerSig = sigMap?.get(data.learner.id);
       const learnerStatusHtml = learnerSig
         ? `<p class="person-status">Présent</p>${renderSigImg(learnerSig)}`
         : signed?.has(data.learner.id)
           ? `<p class="person-status">Signé</p>`
           : renderUnsignedP();
-
-      // Formateur status : signature si dispo
-      const firstTrainerId = (data.session?.formation_trainers ?? [])
-        .find((ft) => ft.trainer)?.trainer?.id;
       const firstTrainerSig = firstTrainerId ? sigMap?.get(firstTrainerId) : undefined;
       const formateurStatusHtml = firstTrainerSig
         ? `<p class="person-status">Présent</p>${renderSigImg(firstTrainerSig)}`

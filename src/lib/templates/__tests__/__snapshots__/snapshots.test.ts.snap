@@ -1097,14 +1097,14 @@ exports[`Templates snapshots — couvre F1/F2.x/F3 > emargement-individuel : HTM
   <p class="person-name">[Nom formateur]</p>
   
   <p class="person-name learner">MARTIN Pierre</p>
-  <p class="person-status">Signé</p>
+  
 </div>
 <div class="creneau-card">
   <p class="creneau-header">Créneau : De 16/06/2026 - 09:00 À 16/06/2026 - 17:00 (MATIN)</p>
   <p class="person-name">[Nom formateur]</p>
   
   <p class="person-name learner">MARTIN Pierre</p>
-  <p class="person-status">Signé</p>
+  
 </div>
 
 </body>
