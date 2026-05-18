@@ -12,11 +12,11 @@ import {
   format,
   addMonths,
   subMonths,
-  parseISO,
 } from "date-fns";
 import { fr } from "date-fns/locale";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { isGenericTaskTitle } from "@/lib/utils/crm-task-label-style";
 import type { CrmTask, TaskPriority } from "@/lib/types";
@@ -55,11 +55,13 @@ export function CalendarView({ tasks, onTaskClick }: CalendarViewProps) {
   const tasksByDay = new Map<string, CrmTask[]>();
   for (const task of tasks) {
     if (!task.due_date) continue;
-    if (task.status === "cancelled") continue;
-    const key = format(parseISO(task.due_date), "yyyy-MM-dd");
-    const arr = tasksByDay.get(key) ?? [];
+    if (task.status === "cancelled" || task.status === "completed") continue;
+    // task.due_date est déjà au format "yyyy-MM-dd" (colonne DATE Postgres).
+    // Pas de parseISO + reformat — ça introduisait une conversion timezone
+    // sournoise (UTC → local) et pouvait crash sur valeur corrompue.
+    const arr = tasksByDay.get(task.due_date) ?? [];
     arr.push(task);
-    tasksByDay.set(key, arr);
+    tasksByDay.set(task.due_date, arr);
   }
 
   const weekdayLabels = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
@@ -163,7 +165,41 @@ export function CalendarView({ tasks, onTaskClick }: CalendarViewProps) {
                 );
               })}
               {hiddenCount > 0 && (
-                <div className="text-[10px] text-gray-400 px-1.5">+{hiddenCount}</div>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      className="text-[10px] text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded px-1.5 py-0.5 text-left transition-colors"
+                    >
+                      +{hiddenCount}
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent align="start" className="w-64 p-2 space-y-1">
+                    <div className="text-[11px] font-semibold text-gray-500 px-1.5 pb-1 border-b mb-1">
+                      {format(day, "EEEE d MMMM", { locale: fr })}
+                    </div>
+                    {dayTasks.slice(MAX_TASKS_PER_DAY).map((task) => {
+                      const titleIsGeneric = isGenericTaskTitle(task.title, task.label);
+                      const displayTitle = titleIsGeneric
+                        ? task.description?.trim() || task.prospect?.company_name || task.title
+                        : task.title;
+                      return (
+                        <button
+                          key={task.id}
+                          type="button"
+                          onClick={() => onTaskClick(task)}
+                          className={cn(
+                            "w-full text-left text-xs rounded-sm bg-gray-50 hover:bg-gray-100 px-2 py-1.5 truncate transition-colors",
+                            PRIORITY_BORDER[task.priority]
+                          )}
+                          title={displayTitle}
+                        >
+                          {displayTitle}
+                        </button>
+                      );
+                    })}
+                  </PopoverContent>
+                </Popover>
               )}
             </div>
           );

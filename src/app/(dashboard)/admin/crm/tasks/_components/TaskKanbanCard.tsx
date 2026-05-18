@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { cn } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 import { isGenericTaskTitle } from "@/lib/utils/crm-task-label-style";
 import type { CrmTask } from "@/lib/types";
 
@@ -15,6 +15,7 @@ import type { CrmTask } from "@/lib/types";
 export function TaskKanbanCard({
   task,
   onToggle,
+  onEdit,
   completingTask,
   completionNotes,
   onCompletionNotesChange,
@@ -23,6 +24,7 @@ export function TaskKanbanCard({
 }: {
   task: CrmTask;
   onToggle: (t: CrmTask) => void;
+  onEdit?: (t: CrmTask) => void;
   completingTask?: CrmTask | null;
   completionNotes?: string;
   onCompletionNotesChange?: (v: string) => void;
@@ -53,17 +55,31 @@ export function TaskKanbanCard({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
             <div className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", priorityColor)} />
-            <p
-              className={cn(
-                "text-sm font-medium text-gray-900 truncate",
-                task.status === "completed" && "line-through opacity-50"
-              )}
-            >
-              {displayTitle}
-            </p>
+            {onEdit ? (
+              <button
+                type="button"
+                onClick={() => onEdit(task)}
+                className={cn(
+                  "text-left text-sm font-medium text-gray-900 truncate hover:underline",
+                  task.status === "completed" && "line-through opacity-50"
+                )}
+                title="Modifier la tâche"
+              >
+                {displayTitle}
+              </button>
+            ) : (
+              <p
+                className={cn(
+                  "text-sm font-medium text-gray-900 truncate",
+                  task.status === "completed" && "line-through opacity-50"
+                )}
+              >
+                {displayTitle}
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-2 mt-1.5 text-[10px] text-gray-400">
-            {task.due_date && <span>{task.due_date}</span>}
+            {task.due_date && <span>{formatDate(task.due_date)}</span>}
             {task.assignee && <span>{task.assignee.first_name}</span>}
             {/* Si on a remplacé le titre par la description, on remet le prospect
                 lié ici pour pas le perdre. */}

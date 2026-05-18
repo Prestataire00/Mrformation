@@ -31,6 +31,7 @@ interface TodayViewProps {
   overdueTasks: CrmTask[];
   todayTasks: CrmTask[];
   onToggle: (task: CrmTask) => void;
+  onEdit: (task: CrmTask) => void;
   completingTask: CrmTask | null;
   completionNotes: string;
   onCompletionNotesChange: (v: string) => void;
@@ -42,6 +43,7 @@ export function TodayView({
   overdueTasks,
   todayTasks,
   onToggle,
+  onEdit,
   completingTask,
   completionNotes,
   onCompletionNotesChange,
@@ -95,6 +97,7 @@ export function TodayView({
                 key={task.id}
                 task={task}
                 onToggle={onToggle}
+                onEdit={onEdit}
                 completingTask={completingTask}
                 completionNotes={completionNotes}
                 onCompletionNotesChange={onCompletionNotesChange}
@@ -121,6 +124,7 @@ export function TodayView({
                 key={task.id}
                 task={task}
                 onToggle={onToggle}
+                onEdit={onEdit}
                 completingTask={completingTask}
                 completionNotes={completionNotes}
                 onCompletionNotesChange={onCompletionNotesChange}
