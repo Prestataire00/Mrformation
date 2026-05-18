@@ -41,7 +41,6 @@ function shortLabel(label: string): string {
     .replace("FEUILLE D'ÉMARGEMENT", "Émarg.")
     .replace("CONVENTION ENTREPRISE", "Convention")
     .replace("CONVENTION D'INTERVENTION", "Conv. interv.")
-    .replace("CONTRAT CADRE DE SOUS-TRAITANCE", "Contrat S-T")
     .replace("PLANNING DE LA SEMAINE", "Planning");
 }
 

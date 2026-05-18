@@ -98,7 +98,6 @@ function buildAttachmentsForRecipient(
         }
         break;
       case "convention_intervention":
-      case "contrat_sous_traitance":
         if (recipient.type === "trainer") {
           descriptors.push({
             type: docType,

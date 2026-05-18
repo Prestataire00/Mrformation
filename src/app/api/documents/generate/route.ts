@@ -29,7 +29,6 @@ const PayloadSchema = z.object({
     "convocation",
     "convention_entreprise",
     "convention_intervention",
-    "contrat_sous_traitance",
     "certificat_realisation",
     "programme_formation",
     "facture",

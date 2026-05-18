@@ -192,15 +192,12 @@ export function TabQualiopi({ formation, onRefresh }: Props) {
     ];
 
     // Sous-traitance items
+    // Note (2026-05-18) : item "contrat_sous_traitance_sent" retiré (le type
+    // contrat_sous_traitance était un doublon de convention_intervention,
+    // supprimé en même temps). Le check "convention_intervention_signed"
+    // (ligne ~147) couvre déjà le signed côté formateur.
     if (isSubcontracted) {
       list.push(
-        {
-          id: "contrat_sous_traitance_sent",
-          label: "Contrat sous-traitance envoyé",
-          category: "sous_traitance",
-          type: "auto",
-          value: hasAnySent("contrat_sous_traitance"),
-        },
         {
           id: "docs_formation_sent",
           label: "Documents formation envoyés au formateur",
@@ -314,7 +311,6 @@ export function TabQualiopi({ formation, onRefresh }: Props) {
     satisfaction_learner: "questionnaires",
     certificat_sent: "documents",
     support_cours: "elearning",
-    contrat_sous_traitance_sent: "documents",
     docs_formation_sent: "documents",
   };
 

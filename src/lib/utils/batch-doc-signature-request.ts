@@ -1,9 +1,9 @@
 /**
  * Mass signature request helper pour TabConventionDocs (Story F3).
  *
- * Pour chaque doc_type "signature" (convention_entreprise / intervention /
- * contrat_sous_traitance), envoie une demande de signature batch :
- * N magic links créés + N emails envoyés en parallèle server-side.
+ * Pour chaque doc_type "signature" (convention_entreprise / intervention),
+ * envoie une demande de signature batch : N magic links créés + N emails
+ * envoyés en parallèle server-side.
  *
  * Le destinataire arrive sur `/sign/{token}` qui appelle ensuite
  * `/api/documents/sign` (C1 unified) pour la signature elle-même.
@@ -12,7 +12,6 @@
 export const SIGNATURE_BATCH_SUPPORTED_DOC_TYPES = new Set<string>([
   "convention_entreprise",
   "convention_intervention",
-  "contrat_sous_traitance",
 ]);
 
 export interface BatchSignatureRequestResult {

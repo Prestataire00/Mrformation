@@ -12,7 +12,6 @@ function createServiceClient() {
 const DOC_LABELS: Record<string, string> = {
   convention_entreprise: "Convention de formation",
   convention_intervention: "Convention d'intervention",
-  contrat_sous_traitance: "Contrat de sous-traitance",
 };
 
 // GET /api/documents/sign-status?token= — PUBLIC

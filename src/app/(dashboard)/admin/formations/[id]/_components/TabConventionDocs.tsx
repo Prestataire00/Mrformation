@@ -67,7 +67,6 @@ const DOC_COLORS: Record<string, string> = {
   programme_formation: "border-l-gray-400",
   convention_entreprise: "border-l-purple-500",
   convention_intervention: "border-l-purple-400",
-  contrat_sous_traitance: "border-l-rose-500",
   planning_semaine: "border-l-teal-500",
   custom: "border-l-slate-500",
 };
@@ -84,7 +83,6 @@ const DOC_BADGE_COLORS: Record<string, string> = {
   programme_formation: "bg-gray-50 text-gray-600 border-gray-200",
   convention_entreprise: "bg-purple-50 text-purple-700 border-purple-200",
   convention_intervention: "bg-purple-50 text-purple-700 border-purple-200",
-  contrat_sous_traitance: "bg-rose-50 text-rose-700 border-rose-200",
   planning_semaine: "bg-teal-50 text-teal-700 border-teal-200",
   custom: "bg-slate-50 text-slate-600 border-slate-200",
 };
@@ -101,7 +99,6 @@ const DOC_SHORT: Record<string, string> = {
   programme_formation: "Prog.",
   convention_entreprise: "Convention",
   convention_intervention: "Conv. interv.",
-  contrat_sous_traitance: "Sous-trait.",
   planning_semaine: "Planning",
   custom: "Custom",
 };
@@ -119,7 +116,6 @@ const DOC_LABELS: Record<string, string> = {
   convention_entreprise: "CONVENTION ENTREPRISE",
   feuille_emargement_collectif: "FEUILLE D'ÉMARGEMENT COLLECTIF",
   convention_intervention: "CONVENTION D'INTERVENTION",
-  contrat_sous_traitance: "CONTRAT CADRE DE SOUS-TRAITANCE",
   planning_semaine: "PLANNING DE LA SEMAINE",
 };
 
@@ -145,11 +141,11 @@ const DEFAULT_COMPANY_DOCS: ConventionDocType[] = [
 ];
 
 const DEFAULT_TRAINER_DOCS: ConventionDocType[] = [
-  "convention_intervention", "contrat_sous_traitance",
+  "convention_intervention",
 ];
 
 const REQUIRES_SIGNATURE_TYPES: ConventionDocType[] = [
-  "convention_entreprise", "convention_intervention", "contrat_sous_traitance",
+  "convention_entreprise", "convention_intervention",
 ];
 
 export function TabConventionDocs({ formation, onRefresh }: Props) {

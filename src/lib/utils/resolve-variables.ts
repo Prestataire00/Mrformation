@@ -814,11 +814,11 @@ export function resolveVariables(content: string, data: ResolveContext): string 
       return t?.extranet_link || "[Lien extranet]";
     })(),
     // h-16 : aligné sur {{e_signature_client}}. Priorité à documentSignature
-    // (signature obtenue via /sign/<token> pour convention_intervention /
-    // contrat_sous_traitance), fallback sur signature_url (image pré-uploadée
-    // sur le profil trainer, legacy), fallback final = "" (pas de placeholder
-    // texte, pour ne pas bloquer la validation Qualiopi quand le doc est en
-    // attente de signature trainer via le lien).
+    // (signature obtenue via /sign/<token> pour convention_intervention),
+    // fallback sur signature_url (image pré-uploadée sur le profil trainer,
+    // legacy), fallback final = "" (pas de placeholder texte, pour ne pas
+    // bloquer la validation Qualiopi quand le doc est en attente de signature
+    // trainer via le lien).
     "{{e_signature_formateur}}": (() => {
       const sig = data.documentSignature;
       if (sig) {

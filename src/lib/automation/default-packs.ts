@@ -142,12 +142,14 @@ export const AUTOMATION_PACKS: AutomationPack[] = [
     color: "amber",
     rules: [
       {
-        name: "Contrat sous-traitance J-10",
-        description: "Envoi du contrat de sous-traitance 10 jours avant",
+        // Renommée 2026-05-18 : contrat_sous_traitance supprimé (doublon de
+        // convention_intervention), on utilise désormais ce dernier ici.
+        name: "Convention intervention J-10",
+        description: "Envoi de la convention d'intervention 10 jours avant",
         trigger_type: "session_start_minus_days",
         days_offset: 10,
         recipient_type: "trainers",
-        document_type: "contrat_sous_traitance",
+        document_type: "convention_intervention",
         scope: "formation",
       },
       {

@@ -6,21 +6,22 @@ import {
 } from "@/lib/utils/batch-doc-signature-request";
 
 describe("hasBatchSignatureRequestEndpoint", () => {
-  it("retourne true pour les 3 doc_types signature", () => {
+  it("retourne true pour les 2 doc_types signature", () => {
+    // contrat_sous_traitance retiré 2026-05-18 (doublon convention_intervention).
     expect(hasBatchSignatureRequestEndpoint("convention_entreprise")).toBe(true);
     expect(hasBatchSignatureRequestEndpoint("convention_intervention")).toBe(true);
-    expect(hasBatchSignatureRequestEndpoint("contrat_sous_traitance")).toBe(true);
   });
 
-  it("retourne false pour les doc_types non-signature", () => {
+  it("retourne false pour les doc_types non-signature ou retirés", () => {
     expect(hasBatchSignatureRequestEndpoint("convocation")).toBe(false);
     expect(hasBatchSignatureRequestEndpoint("certificat_realisation")).toBe(false);
     expect(hasBatchSignatureRequestEndpoint("cgv")).toBe(false);
+    expect(hasBatchSignatureRequestEndpoint("contrat_sous_traitance")).toBe(false);
     expect(hasBatchSignatureRequestEndpoint("doc_inexistant")).toBe(false);
   });
 
-  it("le set de doc_types supportés est exactement de taille 3", () => {
-    expect(SIGNATURE_BATCH_SUPPORTED_DOC_TYPES.size).toBe(3);
+  it("le set de doc_types supportés est exactement de taille 2", () => {
+    expect(SIGNATURE_BATCH_SUPPORTED_DOC_TYPES.size).toBe(2);
   });
 });
 

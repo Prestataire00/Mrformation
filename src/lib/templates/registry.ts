@@ -121,13 +121,10 @@ export const SYSTEM_TEMPLATES_BY_DOC_TYPE: Record<string, SystemTemplate> = {
     ownerType: "trainer",
     qualiopiBlocking: true,
   },
-  contrat_sous_traitance: {
-    // Réutilise le template convention-intervention (même structure légale)
-    html: CONVENTION_INTERVENTION_HTML,
-    footer: CONVENTION_INTERVENTION_FOOTER_TEMPLATE,
-    ownerType: "trainer",
-    qualiopiBlocking: true,
-  },
+  // contrat_sous_traitance retiré le 2026-05-18 : c'était un doublon strict de
+  // convention_intervention (même HTML, même footer, même ownerType), source de
+  // confusion utilisateur. Décision Wissam : on garde uniquement
+  // convention_intervention. Cf migration SQL drop_contrat_sous_traitance.sql.
   programme_formation: {
     html: PROGRAMME_FORMATION_HTML,
     footer: PROGRAMME_FORMATION_FOOTER_TEMPLATE,

@@ -21,7 +21,6 @@ function getFromAddress(entityName: string): string {
 const DOC_LABELS: Record<string, string> = {
   convention_entreprise: "Convention de formation",
   convention_intervention: "Convention d'intervention",
-  contrat_sous_traitance: "Contrat de sous-traitance",
 };
 
 function toHtml(text: string): string {

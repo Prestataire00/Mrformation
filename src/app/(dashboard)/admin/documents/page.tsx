@@ -185,7 +185,6 @@ const OFFICIAL_TEMPLATES: OfficialTemplate[] = [
   { id: "planning_semaine", name: "PLANNING DE LA SEMAINE", category: "company", categoryLabel: "Entreprise", type: "attendance", autoConfirmed: false },
   // Formateur
   { id: "convention_intervention", name: "CONVENTION D'INTERVENTION", category: "trainer", categoryLabel: "Formateur", type: "agreement", autoConfirmed: false },
-  { id: "contrat_sous_traitance", name: "CONTRAT CADRE DE SOUS-TRAITANCE", category: "trainer", categoryLabel: "Formateur", type: "agreement", autoConfirmed: false },
   // Communs (auto-confirmés)
   { id: "cgv", name: "CGV", category: "common", categoryLabel: "Commun", type: "other", autoConfirmed: true },
   { id: "politique_confidentialite", name: "POLITIQUE DE CONFIDENTIALITÉ", category: "common", categoryLabel: "Commun", type: "other", autoConfirmed: true },

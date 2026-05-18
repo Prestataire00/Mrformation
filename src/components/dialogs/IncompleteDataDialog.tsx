@@ -65,7 +65,6 @@ const FIELD_LABEL: Record<string, string> = {
 const DOC_TYPE_LABEL: Record<string, string> = {
   convention_entreprise: "la convention de formation",
   convention_intervention: "la convention d'intervention",
-  contrat_sous_traitance: "le contrat de sous-traitance",
   attestation_assiduite: "l'attestation d'assiduité",
   certificat_realisation: "le certificat de réalisation",
   feuille_emargement: "la feuille d'émargement",

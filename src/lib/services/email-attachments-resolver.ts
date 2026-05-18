@@ -30,7 +30,6 @@ const FILENAME_LABELS: Record<string, string> = {
   convocation: "Convocation",
   convention_entreprise: "Convention",
   convention_intervention: "Convention-intervention",
-  contrat_sous_traitance: "Contrat-sous-traitance",
   certificat_realisation: "Certificat-realisation",
   programme_formation: "Programme",
   facture: "Facture",

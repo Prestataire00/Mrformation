@@ -371,7 +371,7 @@ export async function POST(request: NextRequest) {
         // document_signatures.
         let documentSignature: string | undefined;
         if (
-          ["convention_entreprise", "convention_intervention", "contrat_sous_traitance"].includes(payload.doc_type ?? "")
+          ["convention_entreprise", "convention_intervention"].includes(payload.doc_type ?? "")
           && payload.context.session_id
         ) {
           try {

@@ -5,7 +5,6 @@ const DOCUMENT_TYPES = [
   { key: "convocation", label: "Convocation à la formation", category: "communication", icon: "📅" },
   { key: "convention_entreprise", label: "Convention entreprise", category: "contract", icon: "📜" },
   { key: "convention_intervention", label: "Convention d'intervention", category: "contract", icon: "📜" },
-  { key: "contrat_sous_traitance", label: "Contrat de sous-traitance", category: "contract", icon: "🤝" },
   { key: "certificat_realisation", label: "Certificat de réalisation", category: "certificate", icon: "🏆" },
   { key: "attestation_assiduite", label: "Attestation d'assiduité", category: "certificate", icon: "🏆" },
   { key: "feuille_emargement", label: "Feuille d'émargement", category: "attendance", icon: "✍️" },

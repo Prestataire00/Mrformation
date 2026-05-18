@@ -37,7 +37,6 @@ function createServiceClient() {
 const DOC_LABELS: Record<string, string> = {
   convention_entreprise: "Convention de formation",
   convention_intervention: "Convention d'intervention",
-  contrat_sous_traitance: "Contrat de sous-traitance",
 };
 
 const ALLOWED_DOC_TYPES = new Set(Object.keys(DOC_LABELS));

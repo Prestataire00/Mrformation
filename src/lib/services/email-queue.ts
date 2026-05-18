@@ -26,7 +26,6 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  *   - "convocation"     : génère la convocation pour {session_id, learner_id}
  *   - "convention_entreprise" : convention pour {session_id, client_id}
  *   - "convention_intervention" : convention intervention pour {session_id, trainer_id}
- *   - "contrat_sous_traitance" : contrat pour {session_id, trainer_id}
  *   - "certificat_realisation" : certificat pour {session_id, learner_id}
  *   - "programme_formation" : programme pour {session_id}
  *   - "facture"         : facture pour {invoice_id}
@@ -40,7 +39,6 @@ export type EmailAttachmentDescriptor =
   | { type: "convocation"; payload: { session_id: string; learner_id: string } }
   | { type: "convention_entreprise"; payload: { session_id: string; client_id: string } }
   | { type: "convention_intervention"; payload: { session_id: string; trainer_id: string } }
-  | { type: "contrat_sous_traitance"; payload: { session_id: string; trainer_id: string } }
   | { type: "certificat_realisation"; payload: { session_id: string; learner_id: string } }
   | { type: "programme_formation"; payload: { session_id: string } }
   | { type: "facture"; payload: { invoice_id: string } }
