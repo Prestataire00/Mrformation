@@ -200,7 +200,7 @@ describe("createUserSchema", () => {
   });
 
   it("accepts all valid roles", () => {
-    for (const role of ["admin", "trainer", "client", "learner"]) {
+    for (const role of ["admin", "commercial", "trainer", "client", "learner"]) {
       const result = createUserSchema.safeParse({ ...validUser, role });
       expect(result.success).toBe(true);
     }

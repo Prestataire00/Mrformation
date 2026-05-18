@@ -97,7 +97,7 @@ export const createUserSchema = z.object({
     .regex(/[0-9]/, "Le mot de passe doit contenir au moins un chiffre"),
   first_name: z.string().min(1).max(100),
   last_name: z.string().min(1).max(100),
-  role: z.enum(["admin", "trainer", "client", "learner"]),
+  role: z.enum(["admin", "commercial", "trainer", "client", "learner"]),
   phone: phoneField,
 });
 

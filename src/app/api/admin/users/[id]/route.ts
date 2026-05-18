@@ -46,7 +46,7 @@ export async function PATCH(
     );
   }
 
-  const validRoles = ["admin", "trainer", "client", "learner"];
+  const validRoles = ["admin", "commercial", "trainer", "client", "learner"];
   if (role && !validRoles.includes(role)) {
     return NextResponse.json(
       { error: `Rôle invalide. Rôles acceptés : ${validRoles.join(", ")}` },
