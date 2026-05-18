@@ -469,9 +469,13 @@ export function TabEmargements({ formation, onRefresh }: Props) {
   // dans le titre du document.
   const handleExportEmargementPerCompany = async () => {
     let succeeded = 0;
+    let skippedNoLearners = 0;
     for (const fc of companies) {
       const learnersForCompany = getLearnersForCompany(formation, fc.client_id);
-      if (learnersForCompany.length === 0) continue;
+      if (learnersForCompany.length === 0) {
+        skippedNoLearners++;
+        continue;
+      }
 
       await generateDocument(
         {
@@ -487,7 +491,20 @@ export function TabEmargements({ formation, onRefresh }: Props) {
         },
       );
     }
-    toast({ title: `${succeeded}/${companies.length} PDF générés` });
+    // Feedback différencié : silence trompeur (\"0/2 PDF générés\") remplaçé
+    // par une erreur explicite quand AUCUN PDF n'est produit. La cause la plus
+    // fréquente est des apprenants sans entreprise rattachée (enrollment.client_id null).
+    if (succeeded === 0 && skippedNoLearners > 0) {
+      toast({
+        title: "Aucun PDF généré",
+        description: `${skippedNoLearners} entreprise(s) sans apprenant rattaché. Vérifie le rattachement entreprise dans l'onglet Résumé.`,
+        variant: "destructive",
+      });
+    } else if (succeeded === 0) {
+      toast({ title: "Aucun PDF généré", description: "Erreur génération. Réessaie ou contacte le support.", variant: "destructive" });
+    } else {
+      toast({ title: `${succeeded}/${companies.length} PDF générés` });
+    }
   };
 
   // ── Print empty attendance sheet ──

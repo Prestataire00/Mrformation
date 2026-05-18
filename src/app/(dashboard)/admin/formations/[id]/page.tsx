@@ -83,7 +83,7 @@ export default function FormationDetailPage() {
             program:programs(*),
             manager:profiles!manager_id(id, first_name, last_name, email),
             formation_trainers(id, role, trainer_id, hourly_rate, daily_rate, hours_done, created_at, trainer:trainers(*)),
-            enrollments(id, status, completion_rate, enrolled_at, learner:learners(*), client:clients(id, company_name)),
+            enrollments(id, client_id, status, completion_rate, enrolled_at, learner:learners(*), client:clients(id, company_name)),
             formation_companies(id, client_id, amount, email, reference, created_at, client:clients(*)),
             formation_financiers(*),
             formation_comments(id, content, created_at, updated_at, author_id, author:profiles(id, first_name, last_name)),
