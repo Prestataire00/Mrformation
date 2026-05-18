@@ -15,7 +15,7 @@
  * le HTML pré-PDF plutôt que le PDF binaire qui est trop fragile en CI).
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { resolveDocumentVariables, type ResolveContext } from "@/lib/utils/resolve-variables";
 import { CONVOCATION_APPRENANT_HTML, CONVOCATION_APPRENANT_FOOTER_TEMPLATE } from "@/lib/templates/convocation-apprenant";
 import { CERTIFICAT_REALISATION_HTML, CERTIFICAT_REALISATION_FOOTER_TEMPLATE } from "@/lib/templates/certificat-realisation";
@@ -195,6 +195,16 @@ const FIXED_LEARNER_CREDENTIALS = {
 };
 
 // ─── Tests par doc_type ─────────────────────────────────────────────────
+
+// Date "aujourd'hui" figée pour stabiliser les snapshots qui resolvent
+// {{date_du_jour}} ou utilisent `new Date()` dans renderUnsignedCell.
+// 2026-05-17 = jour où les snapshots ont été générés à l'origine.
+beforeAll(() => {
+  vi.useFakeTimers({ now: new Date("2026-05-17T12:00:00Z"), toFake: ["Date"] });
+});
+afterAll(() => {
+  vi.useRealTimers();
+});
 
 describe("Templates snapshots — couvre F1/F2.x/F3", () => {
   it("convocation-apprenant : HTML + footer résolus correctement", () => {
