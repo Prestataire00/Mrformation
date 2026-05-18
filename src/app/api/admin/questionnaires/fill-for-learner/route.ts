@@ -71,15 +71,15 @@ export async function POST(request: NextRequest) {
       // NOTE : fill_mode est forcé à "learner" pour rendre la substitution invisible
       // côté UI (demande client Loris). La traçabilité reste assurée par
       // filled_by_admin + filled_by_admin_at, consultable via SQL pour audit Qualiopi.
+      // h-13 fix : la colonne DB s'appelle 'responses' (cf schema.sql:269), pas 'answers'.
       const { error: updateErr } = await supabase
         .from("questionnaire_responses")
         .update({
-          answers,
+          responses: answers,
           filled_by_admin: auth.profile.id,
           filled_by_admin_at: new Date().toISOString(),
           fill_mode: "learner",
           admin_notes: admin_notes || null,
-          updated_at: new Date().toISOString(),
         })
         .eq("id", existing.id);
 
@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
         questionnaire_id,
         learner_id,
         session_id,
-        answers,
+        responses: answers,
         filled_by_admin: auth.profile.id,
         filled_by_admin_at: new Date().toISOString(),
         fill_mode: "learner",
@@ -135,11 +135,12 @@ export async function GET(request: NextRequest) {
 
   const { data } = await supabase
     .from("questionnaire_responses")
-    .select("id, answers, fill_mode, filled_by_admin, filled_by_admin_at, admin_notes, submitted_at")
+    .select("id, responses, fill_mode, filled_by_admin, filled_by_admin_at, admin_notes, submitted_at")
     .eq("questionnaire_id", questionnaire_id)
     .eq("learner_id", learner_id)
     .eq("session_id", session_id)
     .maybeSingle();
 
-  return NextResponse.json({ data: data ?? null });
+  // Alias 'answers' pour cohérence avec le payload POST côté client
+  return NextResponse.json({ data: data ? { ...data, answers: data.responses } : null });
 }
