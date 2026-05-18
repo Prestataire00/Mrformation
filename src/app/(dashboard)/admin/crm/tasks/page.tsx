@@ -170,7 +170,11 @@ export default function TasksPage() {
   const [formErrors, setFormErrors] = useState<Partial<Record<keyof TaskFormData, string>>>({});
 
   useEffect(() => {
-    if (entityId === undefined) return;
+    // h-20 hotfix : entityId est `string | null` (jamais undefined). L'ancien check
+    // `=== undefined` était mort → fetchTasks tirait au mount avec entityId=null,
+    // créant une race condition (1ère query sans filtre entity_id, 2ème avec).
+    // La 1ère pouvait revenir en LAST WRITE WINS et overwriter stats/counts.
+    if (!entityId) return;
     fetchTasks();
     fetchProfiles();
     fetchProspects();
@@ -281,22 +285,21 @@ export default function TasksPage() {
       const list = (data as CrmTask[]) ?? [];
       setTasks(list);
 
-      // Stats hero : appliquent le MEME filtre assignee pour rester cohérentes
-      // avec ce que voit l'utilisateur. Sinon "12 aujourd'hui" mais la liste
-      // n'en montre que 3 (= ses propres) = stats menteuses.
-      let allQuery = supabase
+      // h-20 hotfix : SINGLE source of truth pour stats + counts.
+      // Avant : 2 queries séparées (allQuery + countsQuery) qui pouvaient retourner
+      // des datasets différents (race condition + select clauses différents).
+      // Symptôme observé : "Toute l'équipe (3)" alors que la liste affiche 32+ tâches.
+      // Fix : une seule query full-entity (no filter sauf entity_id) servant aux 2.
+      // Plus de divergence possible.
+      const { data: entityData, error: entityErr } = await supabase
         .from("crm_tasks")
-        .select("status, due_date, priority, reminder_at, assigned_to");
-      if (entityId) allQuery = allQuery.eq("entity_id", entityId);
-      if (assigneeFilter === "me" && currentUserId) {
-        allQuery = allQuery.eq("assigned_to", currentUserId);
-      } else if (assigneeFilter === "unassigned") {
-        allQuery = allQuery.is("assigned_to", null);
-      } else if (assigneeFilter !== "all" && assigneeFilter !== "me") {
-        allQuery = allQuery.eq("assigned_to", assigneeFilter);
+        .select("id, assigned_to, status, due_date, reminder_at")
+        .eq("entity_id", entityId)
+        .limit(10000);
+      if (entityErr) {
+        console.error("fetchTasks entityData error:", entityErr);
       }
-      const { data: allData } = await allQuery;
-      if (allData) {
+      if (entityData) {
         const now = new Date();
         const todayStr = now.toISOString().split("T")[0];
         const nowIso = now.toISOString();
@@ -304,31 +307,34 @@ export default function TasksPage() {
         startOfWeek.setDate(now.getDate() - now.getDay());
         const startOfWeekStr = startOfWeek.toISOString().split("T")[0];
 
-        const dueToday = allData.filter(
+        // Si filtre assignee actif, on restreint les stats pour rester cohérent
+        // avec ce que voit l'utilisateur dans la liste. Les counts (dropdown)
+        // utilisent TOUJOURS le dataset complet (sinon les options seraient
+        // toutes à 0 sauf la sélectionnée).
+        const statsScope = entityData.filter((t) => {
+          if (assigneeFilter === "me") return currentUserId ? t.assigned_to === currentUserId : true;
+          if (assigneeFilter === "unassigned") return t.assigned_to === null;
+          if (assigneeFilter !== "all") return t.assigned_to === assigneeFilter;
+          return true;
+        });
+
+        const dueToday = statsScope.filter(
           (t) => t.due_date === todayStr && t.status !== "completed" && t.status !== "cancelled"
         ).length;
-        const overdue = allData.filter(
+        const overdue = statsScope.filter(
           (t) => t.due_date && t.due_date < todayStr && t.status !== "completed" && t.status !== "cancelled"
         ).length;
-        const activeReminders = allData.filter(
+        const activeReminders = statsScope.filter(
           (t) => t.reminder_at && t.reminder_at <= nowIso && t.status !== "completed" && t.status !== "cancelled"
         ).length;
-        const completedThisWeek = allData.filter(
+        const completedThisWeek = statsScope.filter(
           (t) => t.status === "completed" && t.due_date && t.due_date >= startOfWeekStr
         ).length;
         setStats({ dueToday, overdue, activeReminders, completedThisWeek });
-      }
 
-      // h-20 : counts par assignee (tâches actives uniquement, pas filtré par assignee).
-      // Sert à enrichir le select "Marc (12) / Taline (8) / Non assigné (3)".
-      let countsQuery = supabase
-        .from("crm_tasks")
-        .select("assigned_to, status");
-      if (entityId) countsQuery = countsQuery.eq("entity_id", entityId);
-      const { data: countsData } = await countsQuery;
-      if (countsData) {
+        // Counts par assignee (full entity, active only). Ne dépend pas du filtre courant.
         const counts = new Map<string, number>();
-        for (const t of countsData) {
+        for (const t of entityData) {
           if (t.status === "completed" || t.status === "cancelled") continue;
           const key = t.assigned_to ?? "__unassigned__";
           counts.set(key, (counts.get(key) ?? 0) + 1);
@@ -534,7 +540,7 @@ export default function TasksPage() {
     (t) => t.due_date === todayStr && t.status !== "completed" && t.status !== "cancelled"
   );
   const upcomingTasks = tasks.filter(
-    (t) => (!t.due_date || t.due_date > todayStr) && t.status !== "cancelled"
+    (t) => (!t.due_date || t.due_date > todayStr) && t.status !== "completed" && t.status !== "cancelled"
   );
   const overdueTasks = tasks.filter(
     (t) => t.due_date && t.due_date < todayStr && t.status !== "completed" && t.status !== "cancelled"
@@ -549,6 +555,11 @@ export default function TasksPage() {
   const kanbanToday = tasks.filter(t => t.status !== "completed" && t.status !== "cancelled" && t.due_date === todayStr);
   const kanbanUpcoming = tasks.filter(t => t.status !== "completed" && t.status !== "cancelled" && (!t.due_date || t.due_date > todayStr));
   const kanbanCompleted = tasks.filter(t => t.status === "completed").slice(0, 20);
+
+  // h-20 hotfix : section "Terminées" en List view (manquait — onglet "Terminées"
+  // dans la barre de filtres rendait du blanc car les 5 sections actives excluent
+  // toutes les tâches completed).
+  const completedTasks = tasks.filter(t => t.status === "completed").slice(0, 100);
 
   // h-20 : le "default" assignee dépend du rôle (commercial = "me", autres = "all")
   const roleDefaultAssignee = currentUserRole === "commercial" ? "me" : "all";
@@ -991,6 +1002,7 @@ export default function TasksPage() {
               (t) =>
                 !t.due_date &&
                 t.status !== "cancelled" &&
+                t.status !== "completed" &&
                 !todayTasks.find((x) => x.id === t.id) &&
                 !upcomingTasks.find((x) => x.id === t.id) &&
                 !overdueTasks.find((x) => x.id === t.id)
@@ -1031,6 +1043,65 @@ export default function TasksPage() {
               </>
             );
           })()}
+
+          {/* h-20 hotfix : section Terminées (manquait en List view, causait blanc
+              sur onglet "Terminées" + "Toutes" quand toutes les tâches étaient completed) */}
+          {completedTasks.length > 0 && (
+            <>
+              <p className="text-xs font-semibold text-green-600 uppercase tracking-wider mt-4 mb-2 flex items-center gap-1.5">
+                <CheckCircle2 className="h-3 w-3" /> Terminées ({completedTasks.length}{tasks.filter(t => t.status === "completed").length > 100 ? ` sur ${tasks.filter(t => t.status === "completed").length}` : ""})
+              </p>
+              <div className="space-y-1">
+                {completedTasks.map((task) => (
+                  <TaskRow
+                    key={`completed-${task.id}`}
+                    task={task}
+                    getProfileName={getProfileName}
+                    onToggleComplete={() => handleToggleComplete(task)}
+                    onEdit={() => startEditingTask(task)}
+                    onDelete={() => openDeleteDialog(task)}
+                    isEditing={editingTaskId === task.id}
+                    editFormData={editingTaskId === task.id ? formData : undefined}
+                    editFormErrors={editingTaskId === task.id ? formErrors : undefined}
+                    onUpdateField={editingTaskId === task.id ? updateField : undefined}
+                    onSaveEdit={editingTaskId === task.id ? handleUpdate : undefined}
+                    onCancelEdit={() => { setEditingTaskId(null); setSelectedTask(null); setFormData(EMPTY_FORM); }}
+                    saving={saving}
+                    profiles={profiles}
+                    prospects={prospects}
+                    clients={clients}
+                    completingTask={completingTask}
+                    completionNotes={completionNotes}
+                    onCompletionNotesChange={setCompletionNotes}
+                    onConfirmComplete={handleConfirmComplete}
+                    onCancelComplete={() => { setCompletingTask(null); setCompletionNotes(""); }}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* h-20 hotfix : empty state défensif. Si tasks > 0 mais TOUTES les sections
+              vides (ex: que des cancelled, ou un état imprévu), on affiche un message
+              au lieu d'un blanc silencieux. */}
+          {tasks.length > 0
+            && overdueTasks.length === 0
+            && reminderTasks.length === 0
+            && todayTasks.length === 0
+            && upcomingTasks.length === 0
+            && completedTasks.length === 0
+            && (
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <ClipboardList className="h-8 w-8 text-gray-300 mb-2" />
+                <p className="text-sm font-medium text-gray-500">Aucune tâche dans cette vue</p>
+                <p className="text-xs text-gray-400 mt-1">
+                  {tasks.length} tâche{tasks.length > 1 ? "s" : ""} masquée{tasks.length > 1 ? "s" : ""} par les filtres (probablement annulée{tasks.length > 1 ? "s" : ""}).
+                </p>
+                <button onClick={() => { setSearch(""); setPriorityFilter("all"); setStatusFilter("all"); setAssigneeFilter(roleDefaultAssignee); }} className="mt-3 text-xs text-blue-600 hover:underline">
+                  Réinitialiser les filtres
+                </button>
+              </div>
+            )}
         </div>
       )}
 
