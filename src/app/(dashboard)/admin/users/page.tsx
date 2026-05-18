@@ -400,15 +400,16 @@ export default function UsersPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         {[
           { label: "Total", count: counts.total, color: "bg-gray-100 text-gray-700" },
           { label: "Administrateurs", count: counts.admin, color: "bg-blue-50 text-blue-700" },
+          { label: "Commerciaux", count: counts.commercial, color: "bg-pink-50 text-pink-700" },
           { label: "Formateurs", count: counts.trainer, color: "bg-green-50 text-green-700" },
           { label: "Entreprises", count: counts.client, color: "bg-purple-50 text-purple-700" },
           { label: "Apprenants", count: counts.learner, color: "bg-orange-50 text-orange-700" },
         ].map((stat) => {
-          const roleMap: Record<string, string> = { "Administrateurs": "admin", "Formateurs": "trainer", "Entreprises": "client", "Apprenants": "learner" };
+          const roleMap: Record<string, string> = { "Administrateurs": "admin", "Commerciaux": "commercial", "Formateurs": "trainer", "Entreprises": "client", "Apprenants": "learner" };
           const role = roleMap[stat.label];
           const isActive = role && roleFilter === role;
           return (
@@ -509,9 +510,10 @@ export default function UsersPage() {
             </div>
             <div className="col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-2">Type d&apos;utilisateur *</label>
-              <div className="grid grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
                 {[
                   { role: "admin", label: "Administrateur", icon: "👤", desc: "Accès complet" },
+                  { role: "commercial", label: "Commercial", icon: "💼", desc: "CRM uniquement" },
                   { role: "trainer", label: "Formateur", icon: "🎓", desc: "Gère les formations" },
                   { role: "learner", label: "Apprenant", icon: "📚", desc: "Suit les formations" },
                   { role: "client", label: "Entreprise", icon: "🏢", desc: "Accès entreprise" },
