@@ -67,12 +67,20 @@ CREATE POLICY "crm_quotes_admin_commercial_all" ON crm_quotes
   WITH CHECK (public.user_role() IN ('admin', 'super_admin', 'commercial') AND entity_id = public.user_entity_id());
 
 -- ===== crm_quote_lines =====
+-- Pas de colonne entity_id native -> check via JOIN sur crm_quotes parent.
 DROP POLICY IF EXISTS "crm_quote_lines_admin_all" ON crm_quote_lines;
+DROP POLICY IF EXISTS "crm_quote_lines_all" ON crm_quote_lines;
 DROP POLICY IF EXISTS "crm_quote_lines_admin_commercial_all" ON crm_quote_lines;
 CREATE POLICY "crm_quote_lines_admin_commercial_all" ON crm_quote_lines
   FOR ALL TO authenticated
-  USING (public.user_role() IN ('admin', 'super_admin', 'commercial') AND entity_id = public.user_entity_id())
-  WITH CHECK (public.user_role() IN ('admin', 'super_admin', 'commercial') AND entity_id = public.user_entity_id());
+  USING (
+    public.user_role() IN ('admin', 'super_admin', 'commercial')
+    AND quote_id IN (SELECT id FROM crm_quotes WHERE entity_id = public.user_entity_id())
+  )
+  WITH CHECK (
+    public.user_role() IN ('admin', 'super_admin', 'commercial')
+    AND quote_id IN (SELECT id FROM crm_quotes WHERE entity_id = public.user_entity_id())
+  );
 
 -- ===== crm_campaigns =====
 DROP POLICY IF EXISTS "crm_campaigns_admin_all" ON crm_campaigns;
@@ -83,20 +91,34 @@ CREATE POLICY "crm_campaigns_admin_commercial_all" ON crm_campaigns
   WITH CHECK (public.user_role() IN ('admin', 'super_admin', 'commercial') AND entity_id = public.user_entity_id());
 
 -- ===== crm_client_tags =====
+-- Pas de colonne entity_id native -> check via JOIN sur clients parent.
 DROP POLICY IF EXISTS "crm_client_tags_admin_all" ON crm_client_tags;
 DROP POLICY IF EXISTS "crm_client_tags_admin_commercial_all" ON crm_client_tags;
 CREATE POLICY "crm_client_tags_admin_commercial_all" ON crm_client_tags
   FOR ALL TO authenticated
-  USING (public.user_role() IN ('admin', 'super_admin', 'commercial') AND entity_id = public.user_entity_id())
-  WITH CHECK (public.user_role() IN ('admin', 'super_admin', 'commercial') AND entity_id = public.user_entity_id());
+  USING (
+    public.user_role() IN ('admin', 'super_admin', 'commercial')
+    AND client_id IN (SELECT id FROM clients WHERE entity_id = public.user_entity_id())
+  )
+  WITH CHECK (
+    public.user_role() IN ('admin', 'super_admin', 'commercial')
+    AND client_id IN (SELECT id FROM clients WHERE entity_id = public.user_entity_id())
+  );
 
 -- ===== crm_prospect_tags =====
+-- Pas de colonne entity_id native -> check via JOIN sur crm_prospects parent.
 DROP POLICY IF EXISTS "crm_prospect_tags_admin_all" ON crm_prospect_tags;
 DROP POLICY IF EXISTS "crm_prospect_tags_admin_commercial_all" ON crm_prospect_tags;
 CREATE POLICY "crm_prospect_tags_admin_commercial_all" ON crm_prospect_tags
   FOR ALL TO authenticated
-  USING (public.user_role() IN ('admin', 'super_admin', 'commercial') AND entity_id = public.user_entity_id())
-  WITH CHECK (public.user_role() IN ('admin', 'super_admin', 'commercial') AND entity_id = public.user_entity_id());
+  USING (
+    public.user_role() IN ('admin', 'super_admin', 'commercial')
+    AND prospect_id IN (SELECT id FROM crm_prospects WHERE entity_id = public.user_entity_id())
+  )
+  WITH CHECK (
+    public.user_role() IN ('admin', 'super_admin', 'commercial')
+    AND prospect_id IN (SELECT id FROM crm_prospects WHERE entity_id = public.user_entity_id())
+  );
 
 -- ===== crm_automation_rules =====
 -- Note : l'API /api/crm/automations reste admin-only (story scope),
