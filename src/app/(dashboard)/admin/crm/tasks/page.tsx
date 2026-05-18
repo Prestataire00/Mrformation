@@ -285,57 +285,66 @@ export default function TasksPage() {
       const list = (data as CrmTask[]) ?? [];
       setTasks(list);
 
-      // h-20 hotfix : SINGLE source of truth pour stats + counts.
-      // Avant : 2 queries séparées (allQuery + countsQuery) qui pouvaient retourner
-      // des datasets différents (race condition + select clauses différents).
-      // Symptôme observé : "Toute l'équipe (3)" alors que la liste affiche 32+ tâches.
-      // Fix : une seule query full-entity (no filter sauf entity_id) servant aux 2.
-      // Plus de divergence possible.
-      const { data: entityData, error: entityErr } = await supabase
-        .from("crm_tasks")
-        .select("id, assigned_to, status, due_date, reminder_at")
-        .eq("entity_id", entityId)
-        .limit(10000);
-      if (entityErr) {
-        console.error("fetchTasks entityData error:", entityErr);
-      }
-      if (entityData) {
-        const now = new Date();
-        const todayStr = now.toISOString().split("T")[0];
-        const nowIso = now.toISOString();
-        const startOfWeek = new Date(now);
-        startOfWeek.setDate(now.getDate() - now.getDay());
-        const startOfWeekStr = startOfWeek.toISOString().split("T")[0];
+      // h-20 hotfix v2 : Supabase a un cap par défaut à 1000 rows par query.
+      // L'entité a 1000+ tâches `completed` (import Sellsy) ET ~418 actives.
+      // Une seule query "full entity" sans filtre status était capée à 1000
+      // lignes, majoritairement des completed → counts/stats actifs quasi vides
+      // (visible : "Toute l'équipe (3)" alors que 418 actives existent).
+      //
+      // Fix : 2 queries scopées qui ne risquent jamais le cap.
+      //   (a) activeData : SELECT scope status IN (pending, in_progress) →
+      //       sert aux counts dropdown ET aux stats hero (dueToday/overdue/reminders).
+      //       418 rows << 1000 cap.
+      //   (b) completedWeekCount : COUNT exact head:true des completed-this-week →
+      //       sert au seul compteur "X terminées" du hero.
+      const now = new Date();
+      const todayStr = now.toISOString().split("T")[0];
+      const nowIso = now.toISOString();
+      const startOfWeek = new Date(now);
+      startOfWeek.setDate(now.getDate() - now.getDay());
+      const startOfWeekStr = startOfWeek.toISOString().split("T")[0];
 
-        // Si filtre assignee actif, on restreint les stats pour rester cohérent
-        // avec ce que voit l'utilisateur dans la liste. Les counts (dropdown)
-        // utilisent TOUJOURS le dataset complet (sinon les options seraient
-        // toutes à 0 sauf la sélectionnée).
-        const statsScope = entityData.filter((t) => {
+      const { data: activeData, error: activeErr } = await supabase
+        .from("crm_tasks")
+        .select("assigned_to, due_date, reminder_at, status")
+        .eq("entity_id", entityId)
+        .in("status", ["pending", "in_progress"])
+        .limit(5000);
+      if (activeErr) console.error("fetchTasks activeData error:", activeErr);
+
+      const { count: completedThisWeekRaw } = await supabase
+        .from("crm_tasks")
+        .select("*", { count: "exact", head: true })
+        .eq("entity_id", entityId)
+        .eq("status", "completed")
+        .gte("due_date", startOfWeekStr);
+
+      if (activeData) {
+        // Si filtre assignee actif, restreindre les stats pour cohérence avec
+        // ce que voit l'utilisateur dans la liste. Les counts dropdown utilisent
+        // TOUJOURS le dataset complet (sinon options à 0 sauf sélectionnée).
+        const statsScope = activeData.filter((t) => {
           if (assigneeFilter === "me") return currentUserId ? t.assigned_to === currentUserId : true;
           if (assigneeFilter === "unassigned") return t.assigned_to === null;
           if (assigneeFilter !== "all") return t.assigned_to === assigneeFilter;
           return true;
         });
 
-        const dueToday = statsScope.filter(
-          (t) => t.due_date === todayStr && t.status !== "completed" && t.status !== "cancelled"
-        ).length;
-        const overdue = statsScope.filter(
-          (t) => t.due_date && t.due_date < todayStr && t.status !== "completed" && t.status !== "cancelled"
-        ).length;
+        const dueToday = statsScope.filter((t) => t.due_date === todayStr).length;
+        const overdue = statsScope.filter((t) => t.due_date && t.due_date < todayStr).length;
         const activeReminders = statsScope.filter(
-          (t) => t.reminder_at && t.reminder_at <= nowIso && t.status !== "completed" && t.status !== "cancelled"
+          (t) => t.reminder_at && t.reminder_at <= nowIso
         ).length;
-        const completedThisWeek = statsScope.filter(
-          (t) => t.status === "completed" && t.due_date && t.due_date >= startOfWeekStr
-        ).length;
-        setStats({ dueToday, overdue, activeReminders, completedThisWeek });
+        setStats({
+          dueToday,
+          overdue,
+          activeReminders,
+          completedThisWeek: completedThisWeekRaw ?? 0,
+        });
 
-        // Counts par assignee (full entity, active only). Ne dépend pas du filtre courant.
+        // Counts par assignee (full entity active). Source unique du dropdown.
         const counts = new Map<string, number>();
-        for (const t of entityData) {
-          if (t.status === "completed" || t.status === "cancelled") continue;
+        for (const t of activeData) {
           const key = t.assigned_to ?? "__unassigned__";
           counts.set(key, (counts.get(key) ?? 0) + 1);
         }
