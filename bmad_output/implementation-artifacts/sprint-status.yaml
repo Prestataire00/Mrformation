@@ -39,7 +39,7 @@
 #   → E2-E3-E4 (parallèles, après B+C+D+F stables) → E1 (last, après 90j stabilité)
 
 generated: 2026-05-17
-last_updated: 2026-05-18 (Epic H : h-17 code dev terminé via bmad-dev-story — RLS migration + helper isCrmAuthorized + sidebar cleanup, en attente smoke prod après exécution SQL Wissam)
+last_updated: 2026-05-18 (Epic H : h-18 done (card Commercial form users) + h-19 ready-for-dev (vues Calendar + Aujourd'hui post-brainstorming))
 project: lms-platform
 project_key: NOKEY
 tracking_system: file-system
@@ -146,6 +146,8 @@ development_status:
   h-15-enrollments-client-id-select-manquant: done  # débloque 1 PDF par entreprise + 3 autres consommateurs (commit ed58e61)
   h-16-signature-trainer-via-lien-signature: done  # signature trainer alignée sur client + 'Générer quand même' (commit a5bc60b)
   h-17-acces-commerciaux-crm: review  # P0 Business — code dev terminé 2026-05-18 (tsc clean + 395/395 tests), en attente smoke prod après exécution migration SQL
+  h-18-commercial-form-stats: done  # UX consistency — card 'Commercial' dans le form de creation + stats hero (commits f5c519d + b71e8dc)
+  h-19-taches-commerciales-vues-calendar-today: ready-for-dev  # P2 UX — ajoute vues Calendar + Aujourd'hui au module crm/tasks existant (scope minimal post-brainstorming)
   epic-h-retrospective: optional
 
   # Mises à jour post-merge :
