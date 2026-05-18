@@ -209,6 +209,18 @@ const clientNavSections: NavSection[] = [
   },
 ];
 
+// h-17 (Epic H) : sidebar commerciale recentrée sur le CRM uniquement.
+// AVANT : listait aussi "Clients & Financeurs" + section Pédagogie
+// (Formations, Planning) qui pointaient vers /admin/clients,
+// /admin/trainings, /admin/planning — tous bloqués par permissions.ts
+// (rule "/admin" → admin/super_admin only) → clic = 403/logout.
+// Si besoin de lecture seule sur clients/formations pour commerciaux,
+// créer une story h-18 séparée (extension permissions + RLS).
+// Note : "Suivi Commercial" reste car la route /api/crm/suivi est admin-only
+// → la page elle-même peut être admin-only aussi (à vérifier en validation).
+// Décision : on retire "Suivi Commercial" de la sidebar commercial pour
+// cohérence (sinon clic vide ou 403). Si commercial doit y avoir accès
+// plus tard, ouvrir /api/crm/suivi à commercial dans une story dédiée.
 const commercialNavSections: NavSection[] = [
   {
     items: [
@@ -225,34 +237,12 @@ const commercialNavSections: NavSection[] = [
           { label: "Tunnel de Vente", href: "/admin/crm/prospects", icon: TrendingUp },
           { label: "Tous les Prospects", href: "/admin/crm/prospects/liste", icon: Users },
           { label: "Tâches", href: "/admin/crm/tasks", icon: ClipboardList },
-          { label: "Suivi Commercial", href: "/admin/crm/suivi", icon: Activity },
           { label: "Devis", href: "/admin/crm/quotes", icon: FileText },
           { label: "Formulaires", href: "/admin/crm/formulaires", icon: FileQuestion },
           { label: "Campagnes", href: "/admin/crm/campaigns", icon: Repeat },
           { label: "Séquences", href: "/admin/crm/sequences", icon: Sparkles },
         ],
       },
-      {
-        label: "Clients & Financeurs",
-        icon: Users,
-        children: [
-          { label: "Toutes les Entreprises", href: "/admin/clients", icon: Building2 },
-          { label: "Tous les Financeurs", href: "/admin/clients/financeurs", icon: Banknote },
-        ],
-      },
-    ],
-  },
-  {
-    section: "Pédagogie",
-    items: [
-      {
-        label: "Formations",
-        icon: BookOpen,
-        children: [
-          { label: "Toutes les Formations", href: "/admin/trainings", icon: BookOpen },
-        ],
-      },
-      { label: "Planning", href: "/admin/planning", icon: Calendar },
     ],
   },
 ];

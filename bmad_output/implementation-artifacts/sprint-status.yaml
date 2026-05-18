@@ -39,7 +39,7 @@
 #   → E2-E3-E4 (parallèles, après B+C+D+F stables) → E1 (last, après 90j stabilité)
 
 generated: 2026-05-17
-last_updated: 2026-05-18 (Epic H : h-13/14/15/16 mergés sur main + ajout h-17-acces-commerciaux-crm ready-for-dev suite remontée client urgente)
+last_updated: 2026-05-18 (Epic H : h-17 code dev terminé via bmad-dev-story — RLS migration + helper isCrmAuthorized + sidebar cleanup, en attente smoke prod après exécution SQL Wissam)
 project: lms-platform
 project_key: NOKEY
 tracking_system: file-system
@@ -145,7 +145,7 @@ development_status:
   h-14-emargement-individuel-signature-par-slot: done  # miroir h-11 sur feuille individuelle (commit 03a6894)
   h-15-enrollments-client-id-select-manquant: done  # débloque 1 PDF par entreprise + 3 autres consommateurs (commit ed58e61)
   h-16-signature-trainer-via-lien-signature: done  # signature trainer alignée sur client + 'Générer quand même' (commit a5bc60b)
-  h-17-acces-commerciaux-crm: ready-for-dev  # P0 Business — commerciaux n'ont accès à rien (RLS + API + sidebar) — ajouté 2026-05-18 suite remontée client
+  h-17-acces-commerciaux-crm: review  # P0 Business — code dev terminé 2026-05-18 (tsc clean + 395/395 tests), en attente smoke prod après exécution migration SQL
   epic-h-retrospective: optional
 
   # Mises à jour post-merge :

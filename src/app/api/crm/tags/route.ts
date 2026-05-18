@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
+import { isCrmAuthorized } from "@/lib/auth/permissions";
 
 export async function GET(request: NextRequest) {
   try {
@@ -17,7 +18,7 @@ export async function GET(request: NextRequest) {
 
     const { data: profile } = await supabase
       .from("profiles")
-      .select("entity_id, role")
+      .select("entity_id, role, has_crm_access")
       .eq("id", user.id)
       .single();
 
@@ -56,11 +57,12 @@ export async function POST(request: NextRequest) {
 
     const { data: profile } = await supabase
       .from("profiles")
-      .select("entity_id, role")
+      .select("entity_id, role, has_crm_access")
       .eq("id", user.id)
       .single();
 
-    if (!profile?.entity_id || !["admin","super_admin"].includes(profile.role)) {
+    // h-17 : helper centralisé (admin/super_admin/commercial + trainer avec has_crm_access)
+    if (!profile?.entity_id || !isCrmAuthorized(profile)) {
       return NextResponse.json({ data: null, error: "Accès non autorisé" }, { status: 403 });
     }
 
@@ -109,11 +111,12 @@ export async function DELETE(request: NextRequest) {
 
     const { data: profile } = await supabase
       .from("profiles")
-      .select("entity_id, role")
+      .select("entity_id, role, has_crm_access")
       .eq("id", user.id)
       .single();
 
-    if (!profile?.entity_id || !["admin","super_admin"].includes(profile.role)) {
+    // h-17 : helper centralisé (admin/super_admin/commercial + trainer avec has_crm_access)
+    if (!profile?.entity_id || !isCrmAuthorized(profile)) {
       return NextResponse.json({ data: null, error: "Accès non autorisé" }, { status: 403 });
     }
 

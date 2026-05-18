@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 import { parsePagination, createProspectSchema } from "@/lib/validations";
 import { logAudit } from "@/lib/audit-log";
+import { isCrmAuthorized } from "@/lib/auth/permissions";
 
 export async function GET(request: NextRequest) {
   try {
@@ -22,7 +23,7 @@ export async function GET(request: NextRequest) {
 
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("entity_id, role")
+      .select("entity_id, role, has_crm_access")
       .eq("id", user.id)
       .single();
 
@@ -33,7 +34,8 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    if (!["admin","super_admin"].includes(profile.role)) {
+    // h-17 : helper centralisé (admin/super_admin/commercial + trainer avec has_crm_access)
+    if (!isCrmAuthorized(profile)) {
       return NextResponse.json({ data: null, error: "Accès non autorisé" }, { status: 403 });
     }
 
@@ -133,7 +135,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!["admin","super_admin"].includes(profile.role) && !profile.has_crm_access) {
+    // h-17 : helper centralisé (admin/super_admin/commercial + trainer avec has_crm_access)
+    if (!isCrmAuthorized(profile)) {
       return NextResponse.json({ data: null, error: "Accès non autorisé" }, { status: 403 });
     }
 

@@ -1,6 +1,34 @@
 export type Role = "super_admin" | "admin" | "commercial" | "trainer" | "client" | "learner";
 
 /**
+ * h-17 (Epic H) : helper centralisé pour autoriser l'accès au CRM.
+ *
+ * 4 cas autorisés :
+ *  - super_admin / admin : toujours OK (admin produit)
+ *  - commercial          : toujours OK (rôle métier dédié CRM)
+ *  - trainer + has_crm_access=true : OK (trainer ayant accès CRM en
+ *    parallèle de son rôle pédagogique, scope sales reps via les
+ *    policies `crm-access.sql` qui filtrent par assigned_to/created_by)
+ *
+ * À utiliser dans toutes les routes API CRM ouvertes à commercial+trainer
+ * (prospects, quotes, tags) en remplacement des checks dupliqués
+ * `if (!["admin","super_admin"].includes(profile.role) && !profile.has_crm_access)`.
+ *
+ * Note : les routes admin-only (suivi, automations, notifications)
+ * gardent leur check direct sur ["admin","super_admin"] et N'utilisent
+ * PAS ce helper.
+ */
+export function isCrmAuthorized(profile: { role: Role | string; has_crm_access?: boolean | null }): boolean {
+  if (profile.role === "super_admin" || profile.role === "admin" || profile.role === "commercial") {
+    return true;
+  }
+  if (profile.role === "trainer" && profile.has_crm_access === true) {
+    return true;
+  }
+  return false;
+}
+
+/**
  * Règles de pages UI — premier match gagne, du plus spécifique au plus large.
  * Utilise Array (ordre garanti) plutôt que Record.
  */

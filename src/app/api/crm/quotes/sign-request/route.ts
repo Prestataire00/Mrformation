@@ -15,7 +15,12 @@ function getServiceSupabase() {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await requireRole(["super_admin", "admin"]);
+  // h-17 : commercial autorisé à demander signature sur ses propres devis
+  // (cohérent avec l'ouverture en CRUD via /api/crm/quotes).
+  // Note : `requireRole` ne supporte pas le helper has_crm_access — un
+  // trainer ayant has_crm_access=true et voulant envoyer un devis devra
+  // passer par le portail admin ou voir l'évolution future de requireRole.
+  const auth = await requireRole(["super_admin", "admin", "commercial"]);
   if (auth.error) return auth.error;
 
   try {
