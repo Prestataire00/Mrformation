@@ -39,7 +39,7 @@
 #   → E2-E3-E4 (parallèles, après B+C+D+F stables) → E1 (last, après 90j stabilité)
 
 generated: 2026-05-17
-last_updated: 2026-05-18 (Epic H : h-19 code dev termine via bmad-dev-story — Calendar + Today views extraites dans _components/, TaskKanbanCard partage, en attente smoke prod par Wissam)
+last_updated: 2026-05-18 (Epic H : h-19 code review BMad termine, 6 patches blockers appliques (AC-3/AC-4/parseISO crash/CalendarView completed/formatDate/badge +N Popover), tsc clean, status → done. 22 patches restants pré-existants en action items dans la story + 13 defer dans deferred-work.md)
 project: lms-platform
 project_key: NOKEY
 tracking_system: file-system
@@ -147,7 +147,7 @@ development_status:
   h-16-signature-trainer-via-lien-signature: done  # signature trainer alignée sur client + 'Générer quand même' (commit a5bc60b)
   h-17-acces-commerciaux-crm: review  # P0 Business — code dev terminé 2026-05-18 (tsc clean + 395/395 tests), en attente smoke prod après exécution migration SQL
   h-18-commercial-form-stats: done  # UX consistency — card 'Commercial' dans le form de creation + stats hero (commits f5c519d + b71e8dc)
-  h-19-taches-commerciales-vues-calendar-today: review  # P2 UX — code dev termine 2026-05-18 (tsc clean + 395/395 tests), 3 composants extraits dans _components/, en attente smoke prod
+  h-19-taches-commerciales-vues-calendar-today: done  # P2 UX — code review BMad termine 2026-05-18 : 6 patches blockers appliques (AC-3/AC-4/parseISO/CalendarView completed/formatDate/badge +N Popover), tsc clean. 22 patches pre-existants en action items dans la story.
   epic-h-retrospective: optional
 
   # Mises à jour post-merge :

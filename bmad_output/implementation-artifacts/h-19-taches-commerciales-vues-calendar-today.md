@@ -3,7 +3,7 @@ storyId: H19
 storyKey: h-19-taches-commerciales-vues-calendar-today
 epic: H
 title: Tâches commerciales — ajouter vues Calendar + Aujourd'hui (Epic H)
-status: review
+status: done
 priority: P2
 effort: 1-2 j-h
 wave: hot-fix (extension Epic H)
@@ -329,6 +329,7 @@ f5c519d feat(users): h-18 ajoute Commercial dans le formulaire de creation + sta
 | Date | Description |
 |---|---|
 | 2026-05-18 | Story h-19 implémentée via bmad-dev-story : 2 vues Calendar + Today ajoutées au module /admin/crm/tasks existant. Extraction TaskKanbanCard pour DRY. tsc clean + 395/395 tests passent. En attente smoke prod par Wissam. |
+| 2026-05-18 | Code review BMad : 3 reviewers parallèles (Blind Hunter / Edge Case Hunter / Acceptance Auditor) → 43 findings après dedup. 6 patches h-19 appliqués (AC-3 completed filter, AC-4 onEdit titre, parseISO crash fix, CalendarView completed exclu, formatDate dans TaskKanbanCard, +N badge cliquable via Popover). tsc clean. Status → done. 22 patches restants (pré-existants : todayStr UTC, mass-assignment PATCH, etc.) consignés comme action items dans cette story + 13 defer dans deferred-work.md. |
 
 ### File List
 
@@ -347,3 +348,65 @@ f5c519d feat(users): h-18 ajoute Commercial dans le formulaire de creation + sta
 1. **Vue Calendar : grille mensuelle ou semaine + mois en toggle ?** — proposé mensuel par défaut, mais si Wissam préfère une vue semaine plus dense pour le commercial type "agenda RDV", à confirmer.
 2. **TodayView : afficher aussi les tâches sans date ?** — débat UX. Proposé non par défaut (cohérent avec "Today" stricte), mais peut se justifier (tâches "ASAP" sans date). Décision DEV ou demande à Wissam.
 3. **Empty state Calendar** : montrer un message global "Aucune tâche ce mois-ci" si zéro tâche dans le mois affiché ? Ou laisser la grille vide sans message ?
+
+### Review Findings
+
+_Code review BMad du 2026-05-18 (Blind Hunter + Edge Case Hunter + Acceptance Auditor sur le module CRM Tasks dans son état actuel). 43 findings après dedup. Voir [deferred-work.md](deferred-work.md) pour les items pré-existants reportés._
+
+#### Decisions résolues (3) — 2026-05-18
+
+- [x] [Review][Decision→Patch] **handleCreate refactor via POST /api/crm/tasks** — décision : refactor maintenant. Voir patch ajouté en section "Patch P0/P1" ci-dessous.
+- [x] [Review][Decision→Dismiss] **Scope rôle `commercial`** — décision Wissam : **peer-access (statu quo h-17/h-18)**. Coherent avec esprit "équipe commerciale". Pas de modif RLS ni route. Décision produit assumée.
+- [x] [Review][Decision→Defer] **Pagination front** — décision : status quo tant que volume < 1000 tâches. Reporté dans `deferred-work.md` avec seuil de déclenchement.
+
+#### Patch (P0/P1) — bugs introduits ou aggravés par h-19 — **APPLIQUÉS le 2026-05-18**
+
+- [ ] [Review][Patch][P0] **handleCreate refactor via POST /api/crm/tasks** (résolu de Decision-needed #1) : remplacer `supabase.from("crm_tasks").insert([payload])` par `fetch("/api/crm/tasks", { method: "POST", body: JSON.stringify(payload) })` + gestion réponse ; récupère la validation Zod backend, l'audit, la notification d'assignation et le logCommercialAction. [src/app/(dashboard)/admin/crm/tasks/page.tsx:252-272] — **À traiter dans une story dédiée (touche flux de création principal, besoin de re-tester)**
+- [x] [Review][Patch][P0] `parseISO(task.due_date)` crash `RangeError` + conversion timezone fixé — utilisation directe de `task.due_date` (format `yyyy-MM-dd` natif). [CalendarView.tsx:55-63]
+- [x] [Review][Patch][P1] AC-4 implémenté : prop `onEdit?: (t: CrmTask) => void` ajoutée à TaskKanbanCard, titre devient `<button>` cliquable si onEdit fourni. Propagé via TodayView + 4 callsites Kanban dans page.tsx.
+- [x] [Review][Patch][P1] AC-3 fixé : `&& t.status !== "completed"` ajouté au filtre `todayTasks`. [page.tsx:432-434]
+- [x] [Review][Patch][P1] CalendarView : `completed` désormais exclu (au même titre que `cancelled`) du `tasksByDay`. [CalendarView.tsx:58]
+- [x] [Review][Patch][P1] `TaskKanbanCard` utilise `formatDate(task.due_date)` au lieu d'affichage brut. [TaskKanbanCard.tsx:66]
+- [x] [Review][Patch][P1] Badge "+N" rendu cliquable via `Popover` shadcn → ouvre la liste complète des tâches du jour, chacune clickable pour ouvrir l'edit modal. [CalendarView.tsx:165-202]
+
+#### Patch (P0/P1) — bugs pré-existants signalés dans le périmètre
+
+- [ ] [Review][Patch][P0] `todayStr = now.toISOString().split("T")[0]` → date UTC vs perception locale FR. À 23h Paris, todayStr = lendemain. Casse stats `dueToday/overdue/completedThisWeek`. Fix : `format(new Date(), "yyyy-MM-dd")` via date-fns. [src/app/(dashboard)/admin/crm/tasks/page.tsx:217,430]
+- [ ] [Review][Patch][P0] PATCH `{ ...parsed.data, ... }` = mass-assignment. Permet d'écraser `completed_at` (fausse stats) ; selon strictness Zod, potentiellement d'autres champs. Fix : liste blanche explicite via `pick()` ou destructuring. [src/app/api/crm/tasks/[id]/route.ts:99]
+- [ ] [Review][Patch][P0] `assigned_to`, `prospect_id`, `client_id` acceptés sans vérification d'appartenance à `entity_id`. Cross-entity assignment + notif fantôme possible. Fix : SELECT exists + entity_id check avant insert/update. [src/app/api/crm/tasks/route.ts:203 + [id]/route.ts:99,107-113]
+- [ ] [Review][Patch][P1] `startOfWeek` calculé via `getDay()` → démarre dimanche, pas lundi FR. `completedThisWeek` faux. CalendarView est correct (date-fns locale fr) — incohérence dans le même module. Fix : `startOfWeek(now, { locale: fr })` de date-fns. [src/app/(dashboard)/admin/crm/tasks/page.tsx:219-221]
+- [ ] [Review][Patch][P1] PATCH ne reset pas `completed_at` quand status revient `completed → in_progress` via form édition (seul `handleToggleComplete` le fait via fetch direct). Fausse stats. Fix : `else { updateData.completed_at = null; }`. [src/app/api/crm/tasks/[id]/route.ts:100-102]
+- [ ] [Review][Patch][P1] `logCommercialAction` envoie `actionType: "task_created"` lors d'une complétion. Fix : `task_completed`. [src/app/api/crm/tasks/[id]/route.ts:158]
+- [ ] [Review][Patch][P1] `auth as { user: any; ... }` viole règle CLAUDE.md "jamais de `any`". Fix : type discriminant ou type `User` depuis `@supabase/supabase-js`. [src/app/api/crm/tasks/[id]/route.ts:63,188]
+
+#### Patch (P2) — UX / DX / perf
+
+- [ ] [Review][Patch][P2] `handleConfirmComplete` : catch silencieux sans description ni `console.error`, ne reset pas `completingTask` en cas d'erreur, pas d'état `saving`/`disabled` (double-clic possible). [src/app/(dashboard)/admin/crm/tasks/page.tsx:366-385]
+- [ ] [Review][Patch][P2] `useEffect` deps `search/filtres` sans debounce + re-fetch profiles/prospects/clients à chaque keystroke + pas d'AbortController = race conditions. Fix : debounce 300ms sur search + séparer les useEffect. [src/app/(dashboard)/admin/crm/tasks/page.tsx:156-163]
+- [ ] [Review][Patch][P2] Optimistic update + refetch immédiat = race/flicker double source de vérité. Choisir l'un OU l'autre. [src/app/(dashboard)/admin/crm/tasks/page.tsx:353-354,378-381]
+- [ ] [Review][Patch][P2] `tasks` re-filtré ~10× par render sans `useMemo`. Lourd à 1000+ tâches. [src/app/(dashboard)/admin/crm/tasks/page.tsx:432-450]
+- [ ] [Review][Patch][P2] `validateForm` ne valide pas `contact_email` côté UI ; combiné au bypass API (#1) → données invalides en base. Fix : valider via Zod / regex avant insert. [src/app/(dashboard)/admin/crm/tasks/page.tsx:245-250]
+- [ ] [Review][Patch][P2] `data` peut être `null` après `.single()` UPDATE (RLS partielle). Aucun guard avant `data.assigned_to`/`data.title`. NPE potentiel. [src/app/api/crm/tasks/[id]/route.ts:133,153]
+- [ ] [Review][Patch][P2] `handleConfirmComplete` réécrit `completed_at` sur tâche déjà completed (multi-onglet). Fix : early return si `task.status === "completed"`. [src/app/api/crm/tasks/[id]/route.ts:100-102 + src/app/(dashboard)/admin/crm/tasks/page.tsx:366-385]
+- [ ] [Review][Patch][P2] `others = tasks.filter(...).find...find...find` = O(N×(T+U+O)) ; 3/4 des `find` sont logiquement impossibles (`!t.due_date` n'est ni dans today ni overdue). Simplifier. [src/app/(dashboard)/admin/crm/tasks/page.tsx:854-862]
+- [ ] [Review][Patch][P2] Comparaison string ISO `reminder_at <= nowIso` fragile selon offset stocké (`+02:00` vs `Z`). Fix : `new Date(reminder_at).getTime() <= now.getTime()`. [src/app/(dashboard)/admin/crm/tasks/page.tsx:230,443]
+- [ ] [Review][Patch][P3] `Link` importé jamais utilisé (devrait casser le lint strict). [src/app/(dashboard)/admin/crm/tasks/page.tsx:5]
+- [ ] [Review][Patch][P3] `setTasks` après PATCH ignore `result.data` retourné → désync `completed_at` UI vs DB jusqu'au refetch. [src/app/(dashboard)/admin/crm/tasks/page.tsx:353,378]
+- [ ] [Review][Patch][P3] JSON body malformé → 500 au lieu de 400. Try/catch sur `request.json()`. [src/app/api/crm/tasks/route.ts:172 + [id]/route.ts:68]
+- [ ] [Review][Patch][P3] Empty state TodayView sans CTA "+ Créer une tâche" (spec §6.5 le recommande). [src/app/(dashboard)/admin/crm/tasks/_components/TodayView.tsx:62-69]
+
+#### Defer — items pré-existants reportés dans deferred-work.md
+
+- [x] [Review][Defer] Cross-tenant : `entity_id` conditionnel `if (entityId)` côté front + RLS prod `allow_all` (mémoire) [src/app/(dashboard)/admin/crm/tasks/page.tsx:167,174,181,200,213,269] — deferred, pré-existant (RLS state global)
+- [x] [Review][Defer] `createServiceClient()` par défaut sur POST/PATCH/DELETE — RLS bypassée [src/app/api/crm/tasks/route.ts:185-191 + [id]/route.ts:65-66,190-191] — deferred, pré-existant
+- [x] [Review][Defer] `reminder_at` non éditable ni inspectable sur tâche existante (seulement presets à création) [src/app/(dashboard)/admin/crm/tasks/page.tsx:262,599-622] — deferred, scope story h-21
+- [x] [Review][Defer] `<button>` HTML natif au lieu de `Button` shadcn (règle CLAUDE.md n°9) [src/app/(dashboard)/admin/crm/tasks/page.tsx:468,471,474,477,491 + TodayView.tsx:77] — deferred, pré-existant, pattern explicitement instruit par spec h-19 §6.3
+- [x] [Review][Defer] Pas de RHF + Zod côté UI form (règle 6) [src/app/(dashboard)/admin/crm/tasks/page.tsx:153-321] — deferred, pré-existant
+- [x] [Review][Defer] Appels Supabase inline dans composant, pas de `src/lib/services/crm-tasks.ts` (règle 10) — deferred, pré-existant
+- [x] [Review][Defer] Pas de bascule auto à minuit en session longue [src/app/(dashboard)/admin/crm/tasks/page.tsx:429-444] — deferred, low priority UX
+- [x] [Review][Defer] `handleRowClick` redirige sans confirm si `editingTaskId` actif → perte modifs [src/app/(dashboard)/admin/crm/tasks/page.tsx:1054-1062] — deferred, UX iteration
+- [x] [Review][Defer] `PRIORITY_BORDER[task.priority]` peut être `undefined` (sans fallback) [src/app/(dashboard)/admin/crm/tasks/_components/CalendarView.tsx:156] — deferred, edge import Sellsy
+- [x] [Review][Defer] `assigneeFilter` non validé contre liste profiles [src/app/(dashboard)/admin/crm/tasks/page.tsx:204,506-515] — deferred, protégé par RLS si fonctionnelles
+- [x] [Review][Defer] Tâches sans `due_date` invisibles dans CalendarView (silencieux) [src/app/(dashboard)/admin/crm/tasks/_components/CalendarView.tsx:57] — deferred, comportement attendu
+- [x] [Review][Defer] DST / timezone local dans `crm-task-reminder.ts` (computeReminderDate + getReminderStatus) — deferred, low priority
+- [x] [Review][Defer] `crm_notifications` insert sans check user actif → pollution table — deferred, minor

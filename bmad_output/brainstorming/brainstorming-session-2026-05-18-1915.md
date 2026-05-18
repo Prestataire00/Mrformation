@@ -1,10 +1,12 @@
 ---
-stepsCompleted: [1, 2, 3]
+stepsCompleted: [1, 2, 3, 4]
+session_continued: true
+continuation_date: 2026-05-18
 inputDocuments: []
 session_topic: 'Nouvelle gestion du système des tâches dans le CRM commercial'
-session_goals: "Benchmark best-in-class (HubSpot / Pipedrive / Salesforce / Asana) et identifier ce qui s'adapte au contexte LMS-CRM hybride pour les commerciaux Marc & Taline"
+session_goals: "Benchmark best-in-class (HubSpot / Pipedrive / Salesforce / Asana) et identifier ce qui s'adapte au contexte LMS-CRM hybride pour les commerciaux Marc & Taline. Phase 4 (continuation 2026-05-18) : filtre par propriétaire pour admin/super_admin/commercial."
 selected_approach: ''
-techniques_used: []
+techniques_used: ['Competitive Analysis', 'SCAMPER Adapt', 'Analogical Thinking', 'Divergence multi-domaines orthogonaux (Phase 4)']
 ideas_generated: []
 context_file: ''
 ---
@@ -200,3 +202,137 @@ Réutiliser la table existante. Vérifier les colonnes nécessaires :
 ### Prochaine étape recommandée
 
 Lancer `bmad-create-story` pour produire la story h-19 (ou les 3 stories h-19/20/21 séquentielles).
+
+---
+
+## Phase 4 — Continuation 2026-05-18 (post code review h-19)
+
+### Sujet de la phase
+
+**Ajouter dans `/admin/crm/tasks` un filtre par propriétaire (`assigned_to`), visible et utile pour les rôles `admin`, `super_admin`, `commercial`.**
+
+### Contexte technique injecté
+
+Hérité du code review BMad h-19 du 2026-05-18 :
+- Le filtre `assigneeFilter` existe déjà dans `page.tsx` (state ligne 140, query ligne 204) mais utilise un `<Select>` simple noyé dans la barre de filtres → faible discoverability.
+- Décision produit confirmée : **commercial = peer-access** (voit toutes les tâches de son entité, pas seulement les siennes — voir `deferred-work.md`).
+- **Bug pré-existant** : `fetchProfiles` ligne 166 filtre `["admin", "trainer"]` → ne contient PAS les `commercial`. Un commercial assigné à une tâche n'apparaît pas dans le select. **Prérequis P0 à fixer quel que soit le design retenu.**
+
+### Cadrage produit
+
+- **Besoin double** : opérationnel (commercial filtre sur ses propres tâches en 1 clic) ET manager (admin/super_admin filtre sur un commercial donné pour voir sa charge)
+- **Couplage vues** : filtre global, affecte les 4 vues (List + Kanban + Calendar + Today)
+
+### Technique facilitateur
+
+**Divergence multi-domaines orthogonaux** (anti-bias) avec pivot tous les ~6 idées. 6 domaines explorés :
+- A. Surface UX du filtre
+- B. Comportement et presets intelligents
+- C. Persistance, sharing, URL
+- D. Sécurité, RLS, data quality
+- E. Intégration vues (List/Kanban/Calendar/Today)
+- F. Adjacent / cross-feature (idées débloquées)
+
+### Idées générées (37)
+
+#### Domaine A — Surface UX
+
+1. Select existant remonté à côté des stats hero (pas noyé)
+2. Pill toggle preset "Mes tâches" / "Toute l'équipe" + Combobox secondaire pour cibler 1 commercial
+3. Avatar bar HubSpot-style (bulles initiales, ⌘+clic multi-sel)
+4. Combobox recherchable shadcn (`Command` / `Popover`) — scale >10 commerciaux
+5. ❌ Tabs assignee (conflit avec les tabs vues existantes)
+6. Filtre dans URL `?assignee=...` + breadcrumb cliquable "Filtré : Marc ✕"
+7. ❌ Sidebar dédiée "Équipe" Asana-style (pivot trop lourd)
+
+#### Domaine B — Comportement / presets
+
+8. Default automatique par rôle : commercial → "Mes tâches" ; admin/super_admin → "Toute l'équipe"
+9. Preset "Non assigné" — voir les tâches orphelines à dispatcher
+10. Preset "Sans moi" — manager veut voir ce que font les autres
+11. Preset "Équipe + moi" — multi-sélection rapide
+12. Sticky session : dernier choix mémorisé par utilisateur (localStorage)
+13. ❌ Override Today auto vers user_id (rejeté par cadrage : filtre global)
+
+#### Domaine C — Persistance / sharing
+
+14. URL canonique `?assignee=<uuid>` pour partage Slack/email
+15. localStorage par user (persistance cross-session sur même navigateur)
+16. Pas de persistance (reset chaque visite)
+17. ❌ Cookie serveur sync multi-device (overkill)
+18. Historique "Last 5 filters used"
+
+#### Domaine D — Sécurité / RLS / data quality
+
+19. **Bug fix prereq P0** : `fetchProfiles` ne filtre pas `commercial`. Élargir aux rôles `["admin", "super_admin", "trainer", "commercial"]`.
+20. Inclure tous les rôles capables d'avoir des tâches dans le select
+21. Filtrer aux rôles avec `has_crm_access = true` (join propre)
+22. RLS check : un commercial peut filtrer sur un admin ? Oui (peer-access). OK.
+23. Garde anti-fuite URL : UUID d'autre entité → 0 résultat (déjà couvert par `eq("entity_id", entityId)`)
+24. ❌ Audit log "qui regarde qui" (overkill GDPR)
+
+#### Domaine E — Intégration vues
+
+25. Filtre appliqué uniformément aux 4 vues
+26. Indicator visuel persistant "Filtré : Marc (12 tâches)" dans la barre de vue
+27. Counts dynamiques dans le select : "Marc (12) / Taline (8) / Moi (5) / Non assigné (3)"
+28. Stats hero recalculées selon filtre (sinon stats menteuses)
+29. Reset auto au switch d'entité (MR ↔ C3V)
+30. Color-code par owner dans Kanban / Calendar (bordure colorée)
+
+#### Domaine F — Adjacent / cross-feature débloqués
+
+31. Swimlanes Kanban par owner (mode "vue manager")
+32. Workload widget : graphe top "Marc 12 | Taline 8 | Moi 5" cliquable comme filtre
+33. Réassignation rapide depuis menu 3-points + filtre owner → workflow rebalance fluide
+34. Bulk actions : "Réassigner toutes les tâches filtrées à Taline"
+35. Email digest matin (h-21) — filtre owner = base technique pour scoper
+36. Notification "X t'a assigné une tâche" + redirect vers vue filtrée sur moi
+37. Badge global rouge sidebar si tâches "non assignées" existent
+
+### Convergence — design MVP recommandé
+
+**Story h-20 candidat (~1 j-h)** : combo de 5 idées qui se renforcent.
+
+| # | Idée retenue | Source | Rôle |
+|---|--------------|--------|------|
+| A | Pill toggle preset "Mes tâches" / "Toute l'équipe" + Combobox shadcn cible 1 commercial | #2 + #4 | Couvre besoin double, scale >10 commerciaux |
+| B | Default automatique par rôle (commercial → Moi ; admin → Équipe) | #8 | Zero friction au premier load |
+| C | Fix bug `fetchProfiles` + élargir rôles + check `has_crm_access` | #19 + #20 + #21 | **Prereq P0** — sans ça le filtre est cassé |
+| D | URL canonique `?assignee=<uuid>` + counts dynamiques select + stats hero recalculées | #14 + #27 + #28 | Partage + cohérence visuelle |
+| E | Preset bonus "Non assigné" | #9 | Tiny add, gros impact manager |
+
+**Hors MVP — vagues 2/3 (stories séparées)** :
+- Avatar bar HubSpot (#3) — UX premium, validation post-MVP
+- Swimlanes Kanban par owner (#31) — pivot lourd, story dédiée si demande terrain
+- Bulk réassignation (#34) — surface produit nouvelle
+- Color-code Calendar/Kanban (#30) — nice-to-have
+- Workload widget (#32) — utile pour story dashboard manager
+
+**Explicitement écartés** :
+- ❌ Sidebar Asana (#7) — pivot trop lourd
+- ❌ Override Today auto (#13) — rejeté en cadrage
+- ❌ Audit log GDPR (#24) — overkill
+
+### Effort estimé MVP
+
+| Tâche | Lignes | Temps |
+|-------|--------|-------|
+| Fix `fetchProfiles` (rôles + `has_crm_access`) | ~5 | 15 min |
+| Pill toggle "Mes tâches" / "Toute l'équipe" (pattern toggle vue existant) | ~30 | 30 min |
+| Combobox shadcn `Command` cible commercial | ~50 | 1h |
+| Default par rôle (useEffect) | ~5 | 15 min |
+| URL params (`useSearchParams` Next.js) | ~10 | 30 min |
+| Counts dans select + stats hero recalculées | ~15 | 1h |
+| Preset "Non assigné" | ~10 | 30 min |
+| Smoke tests + tsc | — | 30 min |
+| **Total** | **~125 LOC** | **~1 j-h** |
+
+### Prochaine étape recommandée pour la Phase 4
+
+Lancer `bmad-create-story` pour produire la story **h-20 — Filtre par propriétaire dans /admin/crm/tasks**.
+
+Inputs prêts pour la story :
+- Acceptance criteria : 1 AC par idée retenue A-E + AC anti-régression sur le filtre existant
+- Dev notes : pattern toggle vue existant (page.tsx:467-480), Combobox shadcn dispo, `has_crm_access` à vérifier dans le schema
+- Risque clé : ne PAS casser le comportement actuel pour les rôles `trainer` (qui sont scopés différemment côté backend route.ts)
