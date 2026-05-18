@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
@@ -56,6 +56,9 @@ import {
   Select,
   SelectContent,
   SelectItem,
+  SelectLabel,
+  SelectGroup,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -72,7 +75,7 @@ import {
   formatDate,
   TASK_PRIORITY_LABELS,
 } from "@/lib/utils";
-import type { CrmTask, Profile, CrmProspect, Client, TaskPriority, TaskStatus } from "@/lib/types";
+import type { CrmTask, Profile, CrmProspect, Client, TaskPriority, TaskStatus, UserRole } from "@/lib/types";
 import { TaskKanbanCard } from "./_components/TaskKanbanCard";
 import { CalendarView } from "./_components/CalendarView";
 import { TodayView } from "./_components/TodayView";
@@ -122,6 +125,9 @@ export default function TasksPage() {
   const supabase = createClient();
   const { toast } = useToast();
   const { entityId } = useEntity();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
 
   const [viewMode, setViewMode] = useState<"list" | "kanban" | "calendar" | "today">("list");
   const [tasks, setTasks] = useState<CrmTask[]>([]);
@@ -133,11 +139,21 @@ export default function TasksPage() {
   const [deleting, setDeleting] = useState(false);
   const [stats, setStats] = useState<TaskStats>({ dueToday: 0, overdue: 0, activeReminders: 0, completedThisWeek: 0 });
 
+  // h-20 : current user + counts par assignee pour le Select
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
+  const [assigneeCounts, setAssigneeCounts] = useState<Map<string, number>>(new Map());
+  const [assigneeRoleDefaultApplied, setAssigneeRoleDefaultApplied] = useState(false);
+
   // Filters
   const [search, setSearch] = useState("");
   const [priorityFilter, setPriorityFilter] = useState<TaskPriority | "all">("all");
   const [statusFilter, setStatusFilter] = useState<TaskStatus | "all">("pending");
-  const [assigneeFilter, setAssigneeFilter] = useState<string>("all");
+  // h-20 : init depuis URL (?assignee=me|unassigned|all|<uuid>). Le default
+  // par rôle est appliqué après chargement du profile dans un useEffect dédié.
+  const [assigneeFilter, setAssigneeFilter] = useState<string>(
+    () => searchParams.get("assignee") ?? "all"
+  );
 
   // Inline forms
   const [showAddForm, setShowAddForm] = useState(false);
@@ -160,10 +176,58 @@ export default function TasksPage() {
     fetchProspects();
     fetchClients();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entityId, search, priorityFilter, statusFilter, assigneeFilter]);
+  }, [entityId, search, priorityFilter, statusFilter, assigneeFilter, currentUserId]);
+
+  // h-20 : charge le profile courant une seule fois pour résoudre "me" + appliquer
+  // le default par rôle (commercial = "me", admin/super_admin = "all").
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user || cancelled) return;
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("id, role")
+        .eq("id", user.id)
+        .single();
+      if (cancelled) return;
+      setCurrentUserId(user.id);
+      if (profile?.role) setCurrentUserRole(profile.role as UserRole);
+
+      // Default par rôle : seulement si l'URL n'a pas spécifié explicitement
+      // d'assignee ET qu'on n'a jamais encore appliqué de default cette session.
+      const urlAssignee = searchParams.get("assignee");
+      if (!urlAssignee && !assigneeRoleDefaultApplied) {
+        if (profile?.role === "commercial") setAssigneeFilter("me");
+        setAssigneeRoleDefaultApplied(true);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase]);
+
+  // h-20 : sync state assigneeFilter -> URL (?assignee=...). Utilise replace
+  // pour ne pas polluer l'historique. "all" = pas de param (URL propre).
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (assigneeFilter === "all") {
+      params.delete("assignee");
+    } else {
+      params.set("assignee", assigneeFilter);
+    }
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assigneeFilter]);
 
   const fetchProfiles = useCallback(async () => {
-    let query = supabase.from("profiles").select("id, first_name, last_name, email, role").in("role", ["admin", "trainer"]).order("first_name");
+    // h-20 : inclure 'super_admin' et 'commercial' (cf brainstorming Phase 4 #19/#20).
+    // Sans ça, un commercial assigné à une tâche n'apparaissait pas dans le select.
+    let query = supabase
+      .from("profiles")
+      .select("id, first_name, last_name, email, role")
+      .in("role", ["admin", "super_admin", "trainer", "commercial"])
+      .order("first_name");
     if (entityId) query = query.eq("entity_id", entityId);
     const { data } = await query;
     setProfiles((data as Profile[]) ?? []);
@@ -201,16 +265,36 @@ export default function TasksPage() {
       if (priorityFilter !== "all") query = query.eq("priority", priorityFilter);
       if (statusFilter !== "all") query = query.eq("status", statusFilter);
       if (search.trim()) query = query.ilike("title", `%${search.trim()}%`);
-      if (assigneeFilter !== "all") query = query.eq("assigned_to", assigneeFilter);
+      // h-20 : "me" résolu à currentUserId, "unassigned" → is.null, sinon UUID exact.
+      // Si currentUserId pas encore chargé, on skip pour éviter requête .eq(undefined).
+      if (assigneeFilter === "me") {
+        if (currentUserId) query = query.eq("assigned_to", currentUserId);
+        else return; // attend que le profile charge → retrigger via dep currentUserId
+      } else if (assigneeFilter === "unassigned") {
+        query = query.is("assigned_to", null);
+      } else if (assigneeFilter !== "all") {
+        query = query.eq("assigned_to", assigneeFilter);
+      }
 
       const { data, error } = await query;
       if (error) throw error;
       const list = (data as CrmTask[]) ?? [];
       setTasks(list);
 
-      // Compute stats (from all tasks, not filtered)
-      let allQuery = supabase.from("crm_tasks").select("status, due_date, priority, reminder_at");
+      // Stats hero : appliquent le MEME filtre assignee pour rester cohérentes
+      // avec ce que voit l'utilisateur. Sinon "12 aujourd'hui" mais la liste
+      // n'en montre que 3 (= ses propres) = stats menteuses.
+      let allQuery = supabase
+        .from("crm_tasks")
+        .select("status, due_date, priority, reminder_at, assigned_to");
       if (entityId) allQuery = allQuery.eq("entity_id", entityId);
+      if (assigneeFilter === "me" && currentUserId) {
+        allQuery = allQuery.eq("assigned_to", currentUserId);
+      } else if (assigneeFilter === "unassigned") {
+        allQuery = allQuery.is("assigned_to", null);
+      } else if (assigneeFilter !== "all" && assigneeFilter !== "me") {
+        allQuery = allQuery.eq("assigned_to", assigneeFilter);
+      }
       const { data: allData } = await allQuery;
       if (allData) {
         const now = new Date();
@@ -234,13 +318,30 @@ export default function TasksPage() {
         ).length;
         setStats({ dueToday, overdue, activeReminders, completedThisWeek });
       }
+
+      // h-20 : counts par assignee (tâches actives uniquement, pas filtré par assignee).
+      // Sert à enrichir le select "Marc (12) / Taline (8) / Non assigné (3)".
+      let countsQuery = supabase
+        .from("crm_tasks")
+        .select("assigned_to, status");
+      if (entityId) countsQuery = countsQuery.eq("entity_id", entityId);
+      const { data: countsData } = await countsQuery;
+      if (countsData) {
+        const counts = new Map<string, number>();
+        for (const t of countsData) {
+          if (t.status === "completed" || t.status === "cancelled") continue;
+          const key = t.assigned_to ?? "__unassigned__";
+          counts.set(key, (counts.get(key) ?? 0) + 1);
+        }
+        setAssigneeCounts(counts);
+      }
     } catch (err) {
       console.error("fetchTasks error:", err);
       toast({ title: "Erreur", description: "Impossible de charger les tâches.", variant: "destructive" });
     } finally {
       setLoading(false);
     }
-  }, [supabase, entityId, priorityFilter, statusFilter, search, assigneeFilter, toast]);
+  }, [supabase, entityId, priorityFilter, statusFilter, search, assigneeFilter, currentUserId, toast]);
 
   function validateForm(): boolean {
     const errors: Partial<Record<keyof TaskFormData, string>> = {};
@@ -430,7 +531,7 @@ export default function TasksPage() {
   const todayStr = now.toISOString().split("T")[0];
 
   const todayTasks = tasks.filter(
-    (t) => t.due_date === todayStr && t.status !== "cancelled"
+    (t) => t.due_date === todayStr && t.status !== "completed" && t.status !== "cancelled"
   );
   const upcomingTasks = tasks.filter(
     (t) => (!t.due_date || t.due_date > todayStr) && t.status !== "cancelled"
@@ -449,7 +550,9 @@ export default function TasksPage() {
   const kanbanUpcoming = tasks.filter(t => t.status !== "completed" && t.status !== "cancelled" && (!t.due_date || t.due_date > todayStr));
   const kanbanCompleted = tasks.filter(t => t.status === "completed").slice(0, 20);
 
-  const hasActiveFilters = search || priorityFilter !== "all" || statusFilter !== "all" || assigneeFilter !== "all";
+  // h-20 : le "default" assignee dépend du rôle (commercial = "me", autres = "all")
+  const roleDefaultAssignee = currentUserRole === "commercial" ? "me" : "all";
+  const hasActiveFilters = search || priorityFilter !== "all" || statusFilter !== "all" || assigneeFilter !== roleDefaultAssignee;
 
   return (
     <div className="space-y-4 p-6">
@@ -504,14 +607,45 @@ export default function TasksPage() {
             </SelectContent>
           </Select>
           <Select value={assigneeFilter} onValueChange={setAssigneeFilter}>
-            <SelectTrigger className="h-8 w-36 text-xs"><SelectValue placeholder="Assigné à" /></SelectTrigger>
+            <SelectTrigger className="h-8 w-44 text-xs"><SelectValue placeholder="Propriétaire" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Tous</SelectItem>
-              {profiles.map((p) => (
-                <SelectItem key={p.id} value={p.id}>
-                  {[p.first_name, p.last_name].filter(Boolean).join(" ") || p.email}
+              <SelectGroup>
+                <SelectLabel className="text-[10px] uppercase tracking-wider text-gray-400">Vues rapides</SelectLabel>
+                <SelectItem value="all">
+                  Toute l&apos;équipe
+                  <span className="text-gray-400 ml-1.5">({Array.from(assigneeCounts.values()).reduce((a, b) => a + b, 0)})</span>
                 </SelectItem>
-              ))}
+                {currentUserId && (
+                  <SelectItem value="me">
+                    Mes tâches
+                    <span className="text-gray-400 ml-1.5">({assigneeCounts.get(currentUserId) ?? 0})</span>
+                  </SelectItem>
+                )}
+                <SelectItem value="unassigned">
+                  Non assigné
+                  <span className="text-gray-400 ml-1.5">({assigneeCounts.get("__unassigned__") ?? 0})</span>
+                </SelectItem>
+              </SelectGroup>
+              {profiles.length > 0 && (
+                <>
+                  <SelectSeparator />
+                  <SelectGroup>
+                    <SelectLabel className="text-[10px] uppercase tracking-wider text-gray-400">Par personne</SelectLabel>
+                    {profiles
+                      .filter((p) => p.id !== currentUserId)
+                      .map((p) => {
+                        const name = [p.first_name, p.last_name].filter(Boolean).join(" ") || p.email || "—";
+                        const count = assigneeCounts.get(p.id) ?? 0;
+                        return (
+                          <SelectItem key={p.id} value={p.id}>
+                            {name}
+                            <span className="text-gray-400 ml-1.5">({count})</span>
+                          </SelectItem>
+                        );
+                      })}
+                  </SelectGroup>
+                </>
+              )}
             </SelectContent>
           </Select>
           <div className="relative w-48">
@@ -519,7 +653,7 @@ export default function TasksPage() {
             <Input placeholder="Rechercher..." value={search} onChange={(e) => setSearch(e.target.value)} className="h-8 pl-8 text-xs" />
           </div>
           {hasActiveFilters && (
-            <button onClick={() => { setSearch(""); setPriorityFilter("all"); setStatusFilter("all"); setAssigneeFilter("all"); }} className="text-[11px] text-gray-400 hover:text-gray-600 whitespace-nowrap">
+            <button onClick={() => { setSearch(""); setPriorityFilter("all"); setStatusFilter("all"); setAssigneeFilter(roleDefaultAssignee); }} className="text-[11px] text-gray-400 hover:text-gray-600 whitespace-nowrap">
               Réinitialiser
             </button>
           )}
@@ -655,6 +789,7 @@ export default function TasksPage() {
           overdueTasks={overdueTasks}
           todayTasks={todayTasks}
           onToggle={handleToggleComplete}
+          onEdit={startEditingTask}
           completingTask={completingTask}
           completionNotes={completionNotes}
           onCompletionNotesChange={setCompletionNotes}
@@ -670,7 +805,7 @@ export default function TasksPage() {
               <span className="text-xs font-semibold text-gray-600 uppercase tracking-wider">En retard</span>
               <span className="text-[10px] text-gray-400">{kanbanOverdue.length}</span>
             </div>
-            {kanbanOverdue.map(task => <TaskKanbanCard key={task.id} task={task} onToggle={handleToggleComplete} completingTask={completingTask} completionNotes={completionNotes} onCompletionNotesChange={setCompletionNotes} onConfirmComplete={handleConfirmComplete} onCancelComplete={() => { setCompletingTask(null); setCompletionNotes(""); }} />)}
+            {kanbanOverdue.map(task => <TaskKanbanCard key={task.id} task={task} onToggle={handleToggleComplete} onEdit={startEditingTask} completingTask={completingTask} completionNotes={completionNotes} onCompletionNotesChange={setCompletionNotes} onConfirmComplete={handleConfirmComplete} onCancelComplete={() => { setCompletingTask(null); setCompletionNotes(""); }} />)}
           </div>
 
           {/* Column: Aujourd'hui */}
@@ -680,7 +815,7 @@ export default function TasksPage() {
               <span className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Aujourd&apos;hui</span>
               <span className="text-[10px] text-gray-400">{kanbanToday.length}</span>
             </div>
-            {kanbanToday.map(task => <TaskKanbanCard key={task.id} task={task} onToggle={handleToggleComplete} completingTask={completingTask} completionNotes={completionNotes} onCompletionNotesChange={setCompletionNotes} onConfirmComplete={handleConfirmComplete} onCancelComplete={() => { setCompletingTask(null); setCompletionNotes(""); }} />)}
+            {kanbanToday.map(task => <TaskKanbanCard key={task.id} task={task} onToggle={handleToggleComplete} onEdit={startEditingTask} completingTask={completingTask} completionNotes={completionNotes} onCompletionNotesChange={setCompletionNotes} onConfirmComplete={handleConfirmComplete} onCancelComplete={() => { setCompletingTask(null); setCompletionNotes(""); }} />)}
           </div>
 
           {/* Column: À venir */}
@@ -690,7 +825,7 @@ export default function TasksPage() {
               <span className="text-xs font-semibold text-gray-600 uppercase tracking-wider">À venir</span>
               <span className="text-[10px] text-gray-400">{kanbanUpcoming.length}</span>
             </div>
-            {kanbanUpcoming.map(task => <TaskKanbanCard key={task.id} task={task} onToggle={handleToggleComplete} completingTask={completingTask} completionNotes={completionNotes} onCompletionNotesChange={setCompletionNotes} onConfirmComplete={handleConfirmComplete} onCancelComplete={() => { setCompletingTask(null); setCompletionNotes(""); }} />)}
+            {kanbanUpcoming.map(task => <TaskKanbanCard key={task.id} task={task} onToggle={handleToggleComplete} onEdit={startEditingTask} completingTask={completingTask} completionNotes={completionNotes} onCompletionNotesChange={setCompletionNotes} onConfirmComplete={handleConfirmComplete} onCancelComplete={() => { setCompletingTask(null); setCompletionNotes(""); }} />)}
           </div>
 
           {/* Column: Terminées */}
@@ -700,7 +835,7 @@ export default function TasksPage() {
               <span className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Terminées</span>
               <span className="text-[10px] text-gray-400">{kanbanCompleted.length}</span>
             </div>
-            {kanbanCompleted.map(task => <TaskKanbanCard key={task.id} task={task} onToggle={handleToggleComplete} completingTask={completingTask} completionNotes={completionNotes} onCompletionNotesChange={setCompletionNotes} onConfirmComplete={handleConfirmComplete} onCancelComplete={() => { setCompletingTask(null); setCompletionNotes(""); }} />)}
+            {kanbanCompleted.map(task => <TaskKanbanCard key={task.id} task={task} onToggle={handleToggleComplete} onEdit={startEditingTask} completingTask={completingTask} completionNotes={completionNotes} onCompletionNotesChange={setCompletionNotes} onConfirmComplete={handleConfirmComplete} onCancelComplete={() => { setCompletingTask(null); setCompletionNotes(""); }} />)}
           </div>
         </div>
       ) : (
