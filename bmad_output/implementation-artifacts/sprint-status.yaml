@@ -39,7 +39,7 @@
 #   → E2-E3-E4 (parallèles, après B+C+D+F stables) → E1 (last, après 90j stabilité)
 
 generated: 2026-05-17
-last_updated: 2026-05-17 (b-3 à b-7 bascule applicative complète : tous les .from(formation_convention_documents) migrés vers .from(documents) via service documents-store.ts + helpers inline)
+last_updated: 2026-05-18 (Epic H : h-13/14/15/16 mergés sur main + ajout h-17-acces-commerciaux-crm ready-for-dev suite remontée client urgente)
 project: lms-platform
 project_key: NOKEY
 tracking_system: file-system
@@ -127,18 +127,25 @@ development_status:
 
   # ── Epic H : Stabilisation Admin & PDFs Entreprise ──
   # Hot-fix epic créé 2026-05-17 suite audit BMad super admin (cf epics-admin-pdfs-stabilisation.md)
-  # 10 bugs : 4 P0 (Qualiopi + facturation), 4 P1 (UX PDFs + config), 2 P2 (polish)
-  epic-h: backlog
-  h-1-signatures-emargement-pdf: backlog  # P0 Qualiopi — signatures absentes du PDF feuille émargement
-  h-2-convention-signee-non-rendue: backlog  # P0 Qualiopi — convention signée mais signature pas reprise
-  h-3-rib-facture-invalide: backlog  # P0 Business — RIB configuré ignoré (toast IBAN manquant)
-  h-4-factures-filtre-entreprise: backlog  # P0 Business — factures INTER prennent tous les apprenants
-  h-5-nom-client-non-resolu: backlog  # P1 UX — variable {{nom_client}} non câblée dans certificat
-  h-6-unite-heures-attestation: backlog  # P1 UX — durée sans suffix heures (à reclarifier user)
-  h-7-nom-entreprise-tronque: backlog  # P1 UX — facture affiche nom court au lieu de raison sociale
-  h-8-programme-formation-saisie: backlog  # P1 Métier — bloc objectifs/contenu à ajouter à la session
-  h-9-emargement-page-par-entreprise: backlog  # P2 UX — option présente non fonctionnelle (ou retirer ?)
-  h-10-questionnaires-acces-admin-apprenant: backlog  # P2 UX — admin voit réponses + apprenant voit ses questionnaires
+  # 10 bugs initiaux + 7 hot-fix ajoutés en cours (h-11 à h-17), majoritairement mergés 2026-05-18
+  epic-h: in-progress  # passé in-progress 2026-05-18 (h-13 à h-16 mergés sur main)
+  h-1-signatures-emargement-pdf: done  # P0 Qualiopi — mergé PR fix h-1/h-2 (commit ad44b30)
+  h-2-convention-signee-non-rendue: done  # P0 Qualiopi — mergé PR #134 (commit ad44b30)
+  h-3-rib-facture-invalide: done  # P0 Business — mergé PR #133 (commit 2f89012)
+  h-4-factures-filtre-entreprise: done  # P0 Business — mergé PR #133 (commit 2f89012)
+  h-5-nom-client-non-resolu: done  # P1 UX — mergé PR #132 (commit f648468)
+  h-6-unite-heures-attestation: done  # P1 UX — mergé PR #132 (commit f648468)
+  h-7-nom-entreprise-tronque: backlog  # P1 UX — facture affiche nom court au lieu de raison sociale (à reprendre)
+  h-8-programme-formation-saisie: done  # P1 Métier — mergé PR #135 (commit e404953)
+  h-9-emargement-page-par-entreprise: done  # P0 — fix racine via h-15 (SELECT client_id manquant, commit ed58e61)
+  h-10-questionnaires-acces-admin-apprenant: done  # P2 UX — mergé PR #136 (commit 556c815)
+  h-11-emargement-signature-par-slot: done  # P0 Qualiopi — sig par slot réel collectif (commit 673dcdb)
+  h-12-pdf-facture-lignes-manquantes: done  # mergé PR #139 (commit 7687c31)
+  h-13-fill-for-learner-responses-vs-answers: done  # bug colonne DB questionnaire (commit bb57d46)
+  h-14-emargement-individuel-signature-par-slot: done  # miroir h-11 sur feuille individuelle (commit 03a6894)
+  h-15-enrollments-client-id-select-manquant: done  # débloque 1 PDF par entreprise + 3 autres consommateurs (commit ed58e61)
+  h-16-signature-trainer-via-lien-signature: done  # signature trainer alignée sur client + 'Générer quand même' (commit a5bc60b)
+  h-17-acces-commerciaux-crm: ready-for-dev  # P0 Business — commerciaux n'ont accès à rien (RLS + API + sidebar) — ajouté 2026-05-18 suite remontée client
   epic-h-retrospective: optional
 
   # Mises à jour post-merge :
