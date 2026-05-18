@@ -44,6 +44,7 @@ const FIELD_LABEL: Record<string, string> = {
   signature_url: "Signature (image)",
   signature_text: "Signature (texte)",
   hourly_rate: "Tarif horaire",
+  cout_formateur_ht: "Coût/tarif horaire du formateur (à saisir sur la formation, section Formateurs)",
   company_name: "Raison sociale",
   email: "Email",
   phone: "Téléphone",
@@ -79,6 +80,17 @@ function buildEditUrl(entityKey: EntityKey, entityId: string | undefined, sessio
   if (entityKey === "session" && sessionId) return `/admin/formations/${sessionId}`;
   return null;
 }
+
+// Libellé du bouton d'action selon l'entité visée. Avant : "Compléter le profil"
+// systématique → trompeur pour entity (organisme = settings) et session
+// (formation = pas un profil). Désormais explicite.
+const EDIT_CTA_LABEL: Record<EntityKey, string> = {
+  trainer: "Compléter le profil",
+  client: "Compléter le profil",
+  learner: "Compléter le profil",
+  entity: "Modifier l'organisme",
+  session: "Modifier la formation",
+};
 
 export type IncompleteDataDialogProps = {
   open: boolean;
@@ -143,7 +155,7 @@ export function IncompleteDataDialog({
                     onClick={() => window.open(editUrl, "_blank", "noopener,noreferrer")}
                   >
                     <ExternalLink className="h-3 w-3" />
-                    Compléter le profil
+                    {EDIT_CTA_LABEL[entityKey]}
                   </Button>
                 )}
               </div>

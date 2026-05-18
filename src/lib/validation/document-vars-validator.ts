@@ -37,7 +37,14 @@ export const FALLBACK_TO_ENTITY_FIELD: Record<string, { entityKey: EntityKey; fi
   // [Signature formateur] retiré (h-16) : la signature trainer suit désormais
   // le pattern client/entreprise — vide tant que le trainer n'a pas signé via
   // /sign/<token>. Pas bloquant pour la génération, juste rempli à signature.
-  "[Coût formateur]": { entityKey: "trainer", field: "hourly_rate" },
+
+  // Note : [Coût formateur] mappé sur entityKey "session" (pas "trainer") parce
+  // que la donnée vit dans formation_trainers.agreed_cost_ht (ou calculée via
+  // hourly_rate × hours_done sur ce même join), donc s'édite sur la page de la
+  // formation (section ResumeTrainers), PAS sur le profil du formateur.
+  // Précédemment mappé sur trainer.hourly_rate → bouton "Compléter le profil"
+  // renvoyait à tort sur /admin/trainers/{id}.
+  "[Coût formateur]": { entityKey: "session", field: "cout_formateur_ht" },
 
   // Client
   "[Nom client]": { entityKey: "client", field: "company_name" },
