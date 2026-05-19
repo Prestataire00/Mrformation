@@ -7,7 +7,6 @@ import { MessageSquare, Send, Trash2, Loader2, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
 import { cn, formatDate, getInitials } from "@/lib/utils";
@@ -181,7 +180,11 @@ export default function ProspectCommentsSection({ prospectId }: ProspectComments
           </p>
         </div>
       ) : (
-        <ScrollArea className="max-h-[500px]">
+        // 2026-05-19 : ScrollArea max-h-[500px] retiree — coupait les cartes
+        // a la 6e note environ (rapporte par Wissam : note 16/09 visible
+        // uniquement en header sans texte). La liste flow maintenant
+        // naturellement avec le scroll de la page.
+        <div>
           <div className="space-y-3">
             {comments.map((comment) => {
               const isSellsy = !!comment.sellsy_id;
@@ -258,7 +261,7 @@ export default function ProspectCommentsSection({ prospectId }: ProspectComments
               );
             })}
           </div>
-        </ScrollArea>
+        </div>
       )}
     </div>
   );
