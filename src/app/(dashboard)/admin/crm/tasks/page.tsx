@@ -269,33 +269,34 @@ export default function TasksPage() {
       if (priorityFilter !== "all") query = query.eq("priority", priorityFilter);
       if (statusFilter !== "all") query = query.eq("status", statusFilter);
 
-      // h-23 AC-5b : recherche étendue Tasks.
-      // Avant : ilike("title", ...) seul — chercher "OBEO YZEURE" sur une tâche
-      // liée au prospect OBEO YZEURE retournait zéro résultat (car le nom de la
-      // société est dans prospect.company_name, pas dans task.title).
-      // Maintenant : OR sur (title, description, prospect_id IN matches, client_id IN matches).
-      // Escape `,` / `(` / `)` / `:` / `"` / `'` qui cassent le DSL PostgREST `.or()`.
+      // h-23 AC-5b : recherche étendue Tasks (title + description + prospect/client name).
+      // Patches code review h-23 :
+      //   P3 — escape LIKE wildcards `%`/`_`/`\` avant strip DSL PostgREST
+      //   P10 — bail si pattern apres clean = que des `%`
+      //   P8 — pre-fetch limit 200 (au lieu de 500) + warning si limite atteinte
+      //   B5 — URL `.in.(uuids…)` peut depasser 8 KB. Cap pratique 200 UUIDs ≈ 7.4 KB.
       if (search.trim() && entityId) {
         const raw = search.trim();
-        const safe = raw.replace(/[,()"':]/g, "%");
-        if (safe.length > 0) {
+        const likeEscaped = raw.replace(/[\\%_]/g, "\\$&");
+        const safe = likeEscaped.replace(/[,()"':.*\\]/g, "%");
+        const onlyWildcards = /^%*$/.test(safe);
+        if (safe.length > 0 && !onlyWildcards) {
           const pat = `%${safe}%`;
+          const MAX_CROSS_REF = 200;
 
-          // Pré-fetch en parallèle des prospects/clients dont company_name match.
-          // Volume attendu : qq dizaines max → pas de cap Supabase à craindre.
           const [prospMatchRes, clientMatchRes] = await Promise.all([
             supabase
               .from("crm_prospects")
               .select("id")
               .eq("entity_id", entityId)
               .ilike("company_name", pat)
-              .limit(500),
+              .limit(MAX_CROSS_REF),
             supabase
               .from("clients")
               .select("id")
               .eq("entity_id", entityId)
               .ilike("company_name", pat)
-              .limit(500),
+              .limit(MAX_CROSS_REF),
           ]);
 
           const prospectIds = (prospMatchRes.data ?? []).map(
@@ -304,6 +305,17 @@ export default function TasksPage() {
           const clientIds = (clientMatchRes.data ?? []).map(
             (r) => r.id as string,
           );
+
+          // P8 — warning toast si on a hit la limite (resultats incomplets).
+          if (
+            prospectIds.length === MAX_CROSS_REF ||
+            clientIds.length === MAX_CROSS_REF
+          ) {
+            toast({
+              title: "Recherche trop large",
+              description: `${MAX_CROSS_REF}+ correspondances par nom. Affine ta recherche pour des resultats complets.`,
+            });
+          }
 
           const orClauses: string[] = [
             `title.ilike.${pat}`,

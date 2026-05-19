@@ -658,7 +658,9 @@ export default function ProspectDetailPage() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   const handleConvertToClient = async () => {
-    if (!prospect) return;
+    // P6 (code review h-23) — re-ajouter le guard entityId pour eviter un flash
+    // 403 transitoire pendant le chargement du profile.
+    if (!prospect || !entityId) return;
     setConverting(true);
     try {
       // h-23 task 3 : route API transactionnelle (fonction SQL RPC).
@@ -673,11 +675,14 @@ export default function ProspectDetailPage() {
       const result = await res.json();
 
       if (!res.ok) {
-        // 409 doublon : message serveur explicite + référence client existant si dispo
+        // 409 doublon : message serveur explicite + référence client existant si dispo.
+        // P9 (code review h-23) : strip "(id=...)" du message pour eviter UUID double
+        // (le serveur RAISE EXCEPTION inclut deja l'UUID, et on l'ajoute en lien).
         if (res.status === 409 && result.existingClientId) {
+          const cleanedError = String(result.error || "").replace(/\s*\(id=[^)]*\)\s*/g, "");
           toast({
             title: "Doublon détecté",
-            description: `${result.error} — fiche client existante visible dans /admin/clients/${result.existingClientId}`,
+            description: `${cleanedError} — fiche client : /admin/clients/${result.existingClientId}`,
             variant: "destructive",
           });
         } else {

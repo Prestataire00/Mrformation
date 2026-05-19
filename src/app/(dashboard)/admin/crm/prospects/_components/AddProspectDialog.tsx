@@ -79,16 +79,19 @@ export function AddProspectDialog({
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
 
-  // h-23 AC-4 : Pappers UPFRONT — auto-fill tous les champs disponibles
+  // h-23 AC-4 : Pappers UPFRONT — auto-fill les champs vides uniquement.
+  // P5 (code review h-23) : ne PAS overwrite les champs déjà saisis par
+  // l'utilisateur (si le user a tapé un nom custom avant de selectionner
+  // un resultat Pappers, on respecte sa saisie).
   function handleCompanySelect(company: CompanySearchResult) {
     setForm((f) => ({
       ...f,
-      company_name: company.company_name || f.company_name,
-      siret: company.siret || f.siret,
-      naf_code: company.naf_code || f.naf_code,
-      address: company.address || f.address,
-      city: company.city || f.city,
-      postal_code: company.postal_code || f.postal_code,
+      company_name: f.company_name || company.company_name,
+      siret: f.siret || company.siret,
+      naf_code: f.naf_code || (company.naf_code ?? ""),
+      address: f.address || company.address,
+      city: f.city || company.city,
+      postal_code: f.postal_code || company.postal_code,
     }));
   }
 

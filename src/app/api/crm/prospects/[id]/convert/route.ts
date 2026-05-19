@@ -3,6 +3,11 @@ import { requireRole } from "@/lib/auth/require-role";
 import { logAudit } from "@/lib/audit-log";
 import { sanitizeError } from "@/lib/api-error";
 
+// P1 (code review h-23 2026-05-19) — empêcher Next.js de statiquement optimiser
+// la route (cookies() doit lire la session à CHAQUE requête, pas au build).
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 /**
  * POST /api/crm/prospects/[id]/convert
  *
@@ -56,14 +61,18 @@ export async function POST(
   const { user, profile, supabase } = auth;
 
   try {
-    // Vérifier que le prospect appartient bien à l'entité du user
-    // (défense en profondeur, en plus du SECURITY DEFINER de la fonction).
-    const { data: prospectRow, error: fetchErr } = await supabase
+    // P4 (code review h-23) — super_admin opere cross-entite par design.
+    // Pour les autres roles, restreindre au profile.entity_id.
+    let prospectQuery = supabase
       .from("crm_prospects")
       .select("id, company_name, entity_id, converted_client_id")
-      .eq("id", prospectId)
-      .eq("entity_id", profile.entity_id)
-      .single();
+      .eq("id", prospectId);
+
+    if (profile.role !== "super_admin") {
+      prospectQuery = prospectQuery.eq("entity_id", profile.entity_id);
+    }
+
+    const { data: prospectRow, error: fetchErr } = await prospectQuery.single();
 
     if (fetchErr || !prospectRow) {
       return NextResponse.json(
@@ -71,6 +80,10 @@ export async function POST(
         { status: 404 },
       );
     }
+
+    // Capturer l'entity_id reel du prospect pour le audit log
+    // (different de profile.entity_id si super_admin cross-tenant).
+    const effectiveEntityId = prospectRow.entity_id as string;
 
     if (prospectRow.converted_client_id) {
       return NextResponse.json(
@@ -148,9 +161,11 @@ export async function POST(
     }
 
     // Audit log (sync void avec error-handling interne, cf src/lib/audit-log.ts)
+    // P4 : entity_id = celui du prospect (effectiveEntityId), pas profile.entity_id
+    // (super_admin peut convertir cross-tenant — l'audit doit pointer au bon tenant).
     logAudit({
       supabase,
-      entityId: profile.entity_id,
+      entityId: effectiveEntityId,
       userId: user.id,
       action: "create",
       resourceType: "clients",
@@ -159,6 +174,8 @@ export async function POST(
         kind: "prospect_converted",
         prospect_id: prospectId,
         prospect_company: prospectRow.company_name,
+        was_converted: true,
+        cross_entity: profile.role === "super_admin" && effectiveEntityId !== profile.entity_id,
         contact_created: Boolean(newContactId),
       },
     });

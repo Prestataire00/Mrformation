@@ -145,16 +145,19 @@ export default function ProspectListePage() {
       .range(from, to);
 
     if (search.trim()) {
-      // h-23 AC-5a : PostgREST `.or()` casse sur les valeurs qui contiennent
-      // virgules, parenthèses ou guillemets (séparateurs internes du DSL).
-      // Pour gérer "OBEO YZEURE" (espace OK) et des valeurs plus exotiques :
-      // - On strip les caractères interdits dans .or() (`,`, `(`, `)`, `:`)
-      //   en les remplaçant par un wildcard `%` côté pattern. Les espaces
-      //   sont préservés car PostgREST/PostgREST URL-encode l'espace OK.
-      // - Si après nettoyage la pattern est vide, on skip la clause.
+      // h-23 AC-5a — recherche prospects : 3 protections.
+      // P3 (code review) : echapper les wildcards SQL LIKE (`%`, `_`, `\`)
+      //   AVANT le strip DSL → un utilisateur tapant "A_B" matche bien
+      //   exactement, pas "AXB" / "A1B" / "A?B".
+      // Strip DSL PostgREST : `,()` `"`' `:` `.` `*` `\` cassent `.or()`.
+      //   Remplaces par `%` (wildcard SQL) pour ne pas perdre la search.
+      // P10 (code review) : bail si apres nettoyage la pattern n'est que des
+      //   `%` → eviter le `%%%` qui matche TOUTES les rows (cas single-comma).
       const raw = search.trim();
-      const safe = raw.replace(/[,()"':]/g, "%");
-      if (safe.length > 0) {
+      const likeEscaped = raw.replace(/[\\%_]/g, "\\$&");
+      const safe = likeEscaped.replace(/[,()"':.*\\]/g, "%");
+      const onlyWildcards = /^%*$/.test(safe);
+      if (safe.length > 0 && !onlyWildcards) {
         const pat = `%${safe}%`;
         query = query.or(
           `company_name.ilike.${pat},contact_name.ilike.${pat},email.ilike.${pat},naf_code.ilike.${pat}`,
