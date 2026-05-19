@@ -268,7 +268,56 @@ export default function TasksPage() {
       if (entityId) query = query.eq("entity_id", entityId);
       if (priorityFilter !== "all") query = query.eq("priority", priorityFilter);
       if (statusFilter !== "all") query = query.eq("status", statusFilter);
-      if (search.trim()) query = query.ilike("title", `%${search.trim()}%`);
+
+      // h-23 AC-5b : recherche étendue Tasks.
+      // Avant : ilike("title", ...) seul — chercher "OBEO YZEURE" sur une tâche
+      // liée au prospect OBEO YZEURE retournait zéro résultat (car le nom de la
+      // société est dans prospect.company_name, pas dans task.title).
+      // Maintenant : OR sur (title, description, prospect_id IN matches, client_id IN matches).
+      // Escape `,` / `(` / `)` / `:` / `"` / `'` qui cassent le DSL PostgREST `.or()`.
+      if (search.trim() && entityId) {
+        const raw = search.trim();
+        const safe = raw.replace(/[,()"':]/g, "%");
+        if (safe.length > 0) {
+          const pat = `%${safe}%`;
+
+          // Pré-fetch en parallèle des prospects/clients dont company_name match.
+          // Volume attendu : qq dizaines max → pas de cap Supabase à craindre.
+          const [prospMatchRes, clientMatchRes] = await Promise.all([
+            supabase
+              .from("crm_prospects")
+              .select("id")
+              .eq("entity_id", entityId)
+              .ilike("company_name", pat)
+              .limit(500),
+            supabase
+              .from("clients")
+              .select("id")
+              .eq("entity_id", entityId)
+              .ilike("company_name", pat)
+              .limit(500),
+          ]);
+
+          const prospectIds = (prospMatchRes.data ?? []).map(
+            (r) => r.id as string,
+          );
+          const clientIds = (clientMatchRes.data ?? []).map(
+            (r) => r.id as string,
+          );
+
+          const orClauses: string[] = [
+            `title.ilike.${pat}`,
+            `description.ilike.${pat}`,
+          ];
+          if (prospectIds.length > 0) {
+            orClauses.push(`prospect_id.in.(${prospectIds.join(",")})`);
+          }
+          if (clientIds.length > 0) {
+            orClauses.push(`client_id.in.(${clientIds.join(",")})`);
+          }
+          query = query.or(orClauses.join(","));
+        }
+      }
       // h-20 : "me" résolu à currentUserId, "unassigned" → is.null, sinon UUID exact.
       // Si currentUserId pas encore chargé, on skip pour éviter requête .eq(undefined).
       if (assigneeFilter === "me") {

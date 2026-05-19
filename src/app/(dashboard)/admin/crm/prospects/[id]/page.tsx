@@ -65,6 +65,11 @@ import ProspectEmailSection from "../liste/_components/ProspectEmailSection";
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
+// h-23 AC-4b : feature flag pour le bouton "Enrichir Pappers" post-création.
+// false par défaut depuis h-23 (Pappers UPFRONT à la création via AddProspectDialog).
+// Passer à true si besoin de réactiver (cas Sellsy import sans Pappers).
+const FEATURE_PAPPERS_ENRICH_POST_CREATE = false;
+
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   new:       { label: "Lead",        color: "#374151" },
   contacted: { label: "Contacté",    color: "#f97316" },
@@ -653,59 +658,52 @@ export default function ProspectDetailPage() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   const handleConvertToClient = async () => {
-    if (!prospect || !entityId) return;
+    if (!prospect) return;
     setConverting(true);
     try {
-      // 1. Create client with all transferable data
-      const { data: newClient, error: clientErr } = await supabase
-        .from("clients")
-        .insert({
-          entity_id: entityId,
-          company_name: prospect.company_name,
-          siret: prospect.siret || null,
-          email: prospect.email || null,
-          phone: prospect.phone || null,
-          address: prospect.address || null,
-          city: prospect.city || null,
-          postal_code: prospect.postal_code || null,
-          naf_code: prospect.naf_code || null,
-          notes: prospect.notes || null,
-          status: "active",
-        })
-        .select("id")
-        .single();
-      if (clientErr) throw clientErr;
+      // h-23 task 3 : route API transactionnelle (fonction SQL RPC).
+      // Remplace les 3 inserts/update inline non-transactionnels.
+      const res = await fetch(
+        `/api/crm/prospects/${prospect.id}/convert`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+      const result = await res.json();
 
-      // 2. Create contact from prospect contact_name if available
-      if (prospect.contact_name && newClient.id) {
-        const nameParts = prospect.contact_name.trim().split(/\s+/);
-        const firstName = nameParts[0] || "";
-        const lastName = nameParts.slice(1).join(" ") || nameParts[0] || "";
-        await supabase.from("contacts").insert({
-          client_id: newClient.id,
-          first_name: firstName,
-          last_name: lastName || firstName,
-          email: prospect.email || null,
-          phone: prospect.phone || null,
-          is_primary: true,
-        });
+      if (!res.ok) {
+        // 409 doublon : message serveur explicite + référence client existant si dispo
+        if (res.status === 409 && result.existingClientId) {
+          toast({
+            title: "Doublon détecté",
+            description: `${result.error} — fiche client existante visible dans /admin/clients/${result.existingClientId}`,
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: "Erreur de conversion",
+            description: result.error || `Erreur HTTP ${res.status}`,
+            variant: "destructive",
+          });
+        }
+        return;
       }
 
-      // 3. Mark prospect as converted (defense-in-depth : entity_id en plus
-      // du filtre RLS qui devrait déjà cadrer)
-      const { error: updateErr } = await supabase
-        .from("crm_prospects")
-        .update({ converted_client_id: newClient.id, status: "won" })
-        .eq("id", prospect.id)
-        .eq("entity_id", entityId);
-      if (updateErr) throw updateErr;
-
-      toast({ title: "Prospect converti en client", description: "Redirection vers la fiche client..." });
+      toast({
+        title: "Prospect converti en client",
+        description: "Redirection vers la fiche client...",
+      });
       setConvertDialogOpen(false);
-      router.push(`/admin/clients/${newClient.id}`);
+      router.push(`/admin/clients/${result.clientId}`);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Erreur lors de la conversion";
-      toast({ title: "Erreur", description: message, variant: "destructive" });
+      const message =
+        err instanceof Error ? err.message : "Erreur lors de la conversion";
+      toast({
+        title: "Erreur",
+        description: message,
+        variant: "destructive",
+      });
     } finally {
       setConverting(false);
     }
@@ -915,7 +913,8 @@ export default function ProspectDetailPage() {
                 className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-600 data-[state=active]:text-blue-600 data-[state=active]:shadow-none bg-transparent px-1 pb-2.5 text-sm font-medium"
               >
                 <Send className="h-4 w-4 mr-1.5" />
-                Communication
+                {/* h-23 AC-6 : tab limité aux emails uniquement (commentaires migrés dans Timeline) */}
+                📧 Emails
               </TabsTrigger>
             </TabsList>
 
@@ -926,18 +925,12 @@ export default function ProspectDetailPage() {
               />
             </TabsContent>
             <TabsContent value="communication">
-              <div className="space-y-6">
-                <ProspectEmailSection
-                  prospectId={prospect.id}
-                  prospect={prospect}
-                />
-                <div className="border-t pt-4">
-                  <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-1.5">
-                    <MessageSquare className="h-4 w-4" /> Commentaires internes
-                  </h3>
-                  <ProspectCommentsSection prospectId={prospect.id} />
-                </div>
-              </div>
+              {/* h-23 AC-6 : tab "📧 Emails" — emails uniquement,
+                  les commentaires internes ont été migrés vers Timeline. */}
+              <ProspectEmailSection
+                prospectId={prospect.id}
+                prospect={prospect}
+              />
             </TabsContent>
             <TabsContent value="timeline">
               <div className="space-y-4">
@@ -1010,6 +1003,15 @@ export default function ProspectDetailPage() {
                       </div>
                     );
                   })}
+                </div>
+
+                {/* h-23 AC-6 : commentaires internes migrés ici (depuis Communication).
+                    Séparation propre : Communication = emails / Timeline = actions + commentaires. */}
+                <div className="border-t pt-4 mt-4">
+                  <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-1.5">
+                    <MessageSquare className="h-4 w-4" /> Commentaires internes
+                  </h3>
+                  <ProspectCommentsSection prospectId={prospect.id} />
                 </div>
               </div>
             </TabsContent>
@@ -1087,13 +1089,18 @@ export default function ProspectDetailPage() {
           <div className="space-y-3">
             <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Intelligence commerciale</h3>
 
-            {/* Bouton Enrichir Pappers */}
-            <Button size="sm" variant="outline" className="w-full text-xs h-7 gap-1" onClick={() => handleEnrichPappers()} disabled={enriching}>
-              {enriching ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
-              {prospect.siret ? "Enrichir via Pappers" : "Rechercher l'entreprise"}
-            </Button>
+            {/* h-23 AC-4b : bouton "Enrichir Pappers" masqué derrière feature flag.
+                Pappers est désormais utilisé UPFRONT à la création (AddProspectDialog).
+                Code conservé pour réversibilité si besoin futur (ex: import Sellsy sans
+                Pappers). Réactiver en mettant FEATURE_PAPPERS_ENRICH_POST_CREATE à true. */}
+            {FEATURE_PAPPERS_ENRICH_POST_CREATE && (
+              <Button size="sm" variant="outline" className="w-full text-xs h-7 gap-1" onClick={() => handleEnrichPappers()} disabled={enriching}>
+                {enriching ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
+                {prospect.siret ? "Enrichir via Pappers" : "Rechercher l'entreprise"}
+              </Button>
+            )}
 
-            {/* Résultat Pappers */}
+            {/* Résultat Pappers (lecture seule conservée pour les enrichissements historiques) */}
             {enrichData && (
               <div className="text-xs space-y-1 p-2 bg-blue-50 rounded-lg">
                 {!!enrichData.naf_label && <p><span className="text-muted-foreground">NAF :</span> <strong>{String(enrichData.naf_code)}</strong> — {String(enrichData.naf_label)}</p>}

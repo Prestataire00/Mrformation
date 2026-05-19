@@ -42,6 +42,8 @@ import type { CrmProspect, ProspectStatus } from "@/lib/types";
 import ProspectTasksSection from "./_components/ProspectTasksSection";
 import ProspectCommentsSection from "./_components/ProspectCommentsSection";
 import ProspectEmailSection from "./_components/ProspectEmailSection";
+import { AddProspectDialog } from "../_components/AddProspectDialog";
+import { Plus } from "lucide-react";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -125,6 +127,9 @@ export default function ProspectListePage() {
   // Selection
   const [selectedProspect, setSelectedProspect] = useState<CrmProspect | null>(null);
 
+  // h-23 AC-3 : Dialog "Créer un prospect" (réutilise AddProspectDialog partagé)
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
+
   // ── Fetch prospects ─────────────────────────────────────────────────────────
 
   const fetchProspects = useCallback(async () => {
@@ -140,9 +145,21 @@ export default function ProspectListePage() {
       .range(from, to);
 
     if (search.trim()) {
-      query = query.or(
-        `company_name.ilike.%${search.trim()}%,contact_name.ilike.%${search.trim()}%,email.ilike.%${search.trim()}%,naf_code.ilike.%${search.trim()}%`
-      );
+      // h-23 AC-5a : PostgREST `.or()` casse sur les valeurs qui contiennent
+      // virgules, parenthèses ou guillemets (séparateurs internes du DSL).
+      // Pour gérer "OBEO YZEURE" (espace OK) et des valeurs plus exotiques :
+      // - On strip les caractères interdits dans .or() (`,`, `(`, `)`, `:`)
+      //   en les remplaçant par un wildcard `%` côté pattern. Les espaces
+      //   sont préservés car PostgREST/PostgREST URL-encode l'espace OK.
+      // - Si après nettoyage la pattern est vide, on skip la clause.
+      const raw = search.trim();
+      const safe = raw.replace(/[,()"':]/g, "%");
+      if (safe.length > 0) {
+        const pat = `%${safe}%`;
+        query = query.or(
+          `company_name.ilike.${pat},contact_name.ilike.${pat},email.ilike.${pat},naf_code.ilike.${pat}`,
+        );
+      }
     }
 
     if (statusFilter && statusFilter !== "all") {
@@ -245,6 +262,15 @@ export default function ProspectListePage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {/* h-23 AC-3 : bouton créer prospect sur la liste */}
+          <Button
+            size="sm"
+            onClick={() => setAddDialogOpen(true)}
+            style={{ background: "#374151" }}
+            className="text-white text-xs h-8 gap-1"
+          >
+            <Plus className="h-3 w-3" /> Créer un prospect
+          </Button>
           <Button
             size="sm"
             variant="outline"
@@ -263,6 +289,18 @@ export default function ProspectListePage() {
           </button>
         </div>
       </div>
+
+      {/* h-23 AC-3 : Dialog création prospect partagé (Pappers UPFRONT) */}
+      {entityId && (
+        <AddProspectDialog
+          open={addDialogOpen}
+          onOpenChange={setAddDialogOpen}
+          entityId={entityId}
+          onCreated={() => {
+            fetchProspects();
+          }}
+        />
+      )}
 
       {/* Batch progress */}
       {batchScoring && (
@@ -410,13 +448,37 @@ export default function ProspectListePage() {
                             <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-gray-100 text-xs font-bold text-gray-600">
                               {p.company_name.substring(0, 2).toUpperCase()}
                             </div>
-                            <span className="font-medium text-gray-900 truncate max-w-[200px]">
+                            {/* h-23 AC-1 : nom société cliquable pour ouvrir la fiche */}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                router.push(`/admin/crm/prospects/${p.id}`);
+                              }}
+                              className="font-medium text-gray-900 truncate max-w-[200px] text-left hover:text-blue-600 hover:underline transition-colors"
+                              title="Ouvrir la fiche prospect"
+                            >
                               {p.company_name}
-                            </span>
+                            </button>
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-gray-600 truncate max-w-[150px]">
-                          {p.contact_name || "—"}
+                        <td className="px-4 py-3 truncate max-w-[150px]">
+                          {/* h-23 AC-1 : contact_name cliquable aussi (Q4 résolu) */}
+                          {p.contact_name ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                router.push(`/admin/crm/prospects/${p.id}`);
+                              }}
+                              className="text-gray-600 text-left hover:text-blue-600 hover:underline transition-colors truncate max-w-[150px]"
+                              title="Ouvrir la fiche prospect"
+                            >
+                              {p.contact_name}
+                            </button>
+                          ) : (
+                            <span className="text-gray-600">—</span>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-gray-600 truncate max-w-[180px] hidden md:table-cell">
                           {p.email || "—"}
