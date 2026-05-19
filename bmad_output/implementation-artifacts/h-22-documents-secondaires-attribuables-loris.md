@@ -3,7 +3,7 @@ storyId: H22
 storyKey: h-22-documents-secondaires-attribuables-loris
 epic: H
 title: Documents secondaires attribuables aux sessions par Loris (Epic H)
-status: ready-for-dev
+status: review
 priority: P1
 effort: 3-4 j-h
 wave: hot-fix (extension Epic H, suite h-19/h-20)
@@ -145,32 +145,32 @@ Conséquence : Loris a accès à ces templates uniquement via la page de test `/
 
 ## 5. Tasks / Subtasks
 
-- [ ] **Task 1 — Étendre le registry SYSTEM_TEMPLATES_BY_DOC_TYPE** (AC-1)
+- [x] **Task 1 — Étendre le registry SYSTEM_TEMPLATES_BY_DOC_TYPE** (AC-1)
   - [ ] Importer les 23 templates fantômes dans `src/lib/templates/registry.ts` (23 paires `_HTML` + `_FOOTER_TEMPLATE`)
   - [ ] Ajouter 23 entrées au mapping avec `ownerType` et `qualiopiBlocking: false`
   - [ ] Mapping owner type :
     - learner : `avis_hab_elec_*` (9), `attestation_aipr`, `attestation_competences`, `attestation_abandon_formation`, `certificat_travail_hauteur`, `certificat_diplome`, `autorisation_image`, `decharge_responsabilite`, `lettre_decharge_responsabilite`, `contrat_engagement_stagiaire`
     - trainer : `charte_formateur`
     - session : `bilan_poe`, `reponses_evaluations`, `reponses_satisfaction_session`, `resultats_evaluations`
-- [ ] **Task 2 — Étendre l'union TypeScript DocumentType** (AC-1)
+- [x] **Task 2 — Étendre l'union TypeScript DocumentType** (AC-1)
   - [ ] Modifier `src/lib/types/index.ts` ligne ~451
   - [ ] Ajouter les 23 nouveaux types snake_case dans l'union
-- [ ] **Task 3 — Migration SQL** (AC-2)
+- [x] **Task 3 — Migration SQL** (AC-2)
   - [ ] Créer `supabase/migrations/h-22-add-secondary-doc-types.sql`
   - [ ] DROP + CREATE de la CHECK constraint avec les 23 nouvelles valeurs (+ les 13 existantes + `custom`)
   - [ ] Inclure pre-check (count existing rows) + post-check (pg_get_constraintdef)
   - [ ] À exécuter manuellement dans Supabase Dashboard après merge
-- [ ] **Task 4 — Constante SECONDARY_TEMPLATE_CATEGORIES** (AC-5)
+- [x] **Task 4 — Constante SECONDARY_TEMPLATE_CATEGORIES** (AC-5)
   - [ ] Créer `src/lib/templates/secondary-categories.ts`
   - [ ] Exporter `SECONDARY_DOC_TYPES: readonly DocumentType[]` (les 23 keys)
   - [ ] Exporter `SECONDARY_TEMPLATE_CATEGORIES: Record<DocumentType, { category, label, icon, description? }>`
   - [ ] Exporter `SECONDARY_CATEGORY_LABELS: Record<Category, { label, icon }>` pour les sections du Dialog
-- [ ] **Task 5 — Étendre les maps UI TabConventionDocs** (AC-5, AC-8)
+- [x] **Task 5 — Étendre les maps UI TabConventionDocs** (AC-5, AC-8)
   - [ ] `DOC_LABELS` : ajouter les 23 labels longs (ex: `attestation_aipr: "ATTESTATION AIPR"`)
   - [ ] `DOC_BADGE_COLORS` : ajouter les 23 entrées (vert pour attestations, ambre pour habilitation, gris pour admin, bleu pour évaluation)
   - [ ] `DOC_SHORT` : ajouter les 23 entrées (max 12 chars)
   - [ ] `DOC_BORDER_COLORS` : ajouter les 23 entrées
-- [ ] **Task 6 — Nouveau composant `SecondaryDocCatalogDialog`** (AC-3, AC-4)
+- [x] **Task 6 — Nouveau composant `SecondaryDocCatalogDialog`** (AC-3, AC-4)
   - [ ] Créer `src/app/(dashboard)/admin/formations/[id]/_components/SecondaryDocCatalogDialog.tsx`
   - [ ] Props : `{ open, onOpenChange, formationId, onAttributed: (docTypes: DocumentType[]) => void }`
   - [ ] Utilise `Dialog`, `Command` (shadcn), `Checkbox`, `Button` shadcn
@@ -178,7 +178,7 @@ Conséquence : Loris a accès à ces templates uniquement via la page de test `/
   - [ ] 4 sections déroulées par défaut, ordre : Habilitation > Attestations > Admin > Évaluation
   - [ ] Footer fixe avec bouton "Attribuer (N)" disabled si N=0
   - [ ] Au submit : POST `/api/documents/attribute-secondary` avec `{ formationId, docTypes }`
-- [ ] **Task 7 — Nouvelle route API `/api/documents/attribute-secondary`** (AC-4)
+- [x] **Task 7 — Nouvelle route API `/api/documents/attribute-secondary`** (AC-4)
   - [ ] Créer `src/app/api/documents/attribute-secondary/route.ts`
   - [ ] POST : body Zod `{ formationId: uuid, docTypes: DocumentType[] }`
   - [ ] Pour chaque docType : INSERT row dans `formation_convention_documents` avec status `brouillon`, owner_type = registry.ownerType
@@ -187,24 +187,24 @@ Conséquence : Loris a accès à ces templates uniquement via la page de test `/
   - [ ] Si ownerType = session → 1 row pour la session
   - [ ] Validation entity_id + role admin/super_admin
   - [ ] Retour `{ created: number, docTypes: DocumentType[] }`
-- [ ] **Task 8 — Brancher le bouton dans TabConventionDocs** (AC-3)
+- [x] **Task 8 — Brancher le bouton dans TabConventionDocs** (AC-3)
   - [ ] Ajouter état `secondaryDialogOpen` à `TabConventionDocs.tsx`
   - [ ] Ajouter bouton "+ Ajouter document secondaire" à côté ou en remplacement de "Ajouter un document personnalisé"
   - [ ] Render `<SecondaryDocCatalogDialog open={...} formationId={formation.id} onAttributed={refresh} />`
   - [ ] `onAttributed` appelle `onRefresh()` du parent pour recharger les docs
-- [ ] **Task 9 — Étendre SIGNATURE_BATCH_SUPPORTED_DOC_TYPES** (AC-6)
+- [x] **Task 9 — Étendre SIGNATURE_BATCH_SUPPORTED_DOC_TYPES** (AC-6)
   - [ ] Modifier `src/lib/utils/batch-doc-signature-request.ts`
   - [ ] Ajouter au Set : `autorisation_image`, `decharge_responsabilite`, `lettre_decharge_responsabilite`, `charte_formateur`, `contrat_engagement_stagiaire`
   - [ ] Mettre à jour le test `batch-doc-signature-request.test.ts` : size 2 → 7 + expectations
-- [ ] **Task 10 — Étendre EmailAttachmentDescriptor** (AC-7)
+- [x] **Task 10 — Étendre EmailAttachmentDescriptor** (AC-7)
   - [ ] Modifier `src/lib/services/email-queue.ts`
   - [ ] Ajouter 23 nouveaux discriminators à l'union `EmailAttachmentDescriptor`
   - [ ] Payload selon ownerType (`session_id + learner_id` ou `+ trainer_id` ou juste `session_id`)
   - [ ] Mettre à jour le worker `/api/emails/process-scheduled` (vérifier si déjà generic via `renderSystemTemplate` ou s'il faut switch cases)
-- [ ] **Task 11 — Étendre FILENAME_LABELS** (AC-7)
+- [x] **Task 11 — Étendre FILENAME_LABELS** (AC-7)
   - [ ] Modifier `src/lib/services/email-attachments-resolver.ts`
   - [ ] Ajouter 23 entrées avec noms de fichiers PDF lisibles (ex: `attestation_aipr: "Attestation-AIPR"`)
-- [ ] **Task 12 — Tests + validation** (AC-1 à AC-8)
+- [x] **Task 12 — Tests + validation** (AC-1 à AC-8)
   - [ ] `npx tsc --noEmit` : 0 erreur
   - [ ] `npx vitest run` : tous les tests existants passent + le test batch-doc-signature mis à jour (taille set = 7)
   - [ ] Smoke manuel par Wissam après merge :
@@ -214,7 +214,7 @@ Conséquence : Loris a accès à ces templates uniquement via la page de test `/
     - Sélectionner 2-3 templates → vérifier qu'ils apparaissent dans la liste après attribution
     - Générer un PDF → vérifier rendu
     - (Si template signable) Envoyer signature batch → vérifier email reçu + /sign/<token>
-- [ ] **Task 13 — Commit + push + MAJ sprint-status**
+- [x] **Task 13 — Commit + push + MAJ sprint-status**
   - [ ] Commits structurés par concern (feat code + chore migration + docs story)
   - [ ] Push origin/main
   - [ ] MAJ `bmad_output/implementation-artifacts/sprint-status.yaml` : `h-22 → review` après dev
@@ -428,41 +428,87 @@ Le commit `eec6829` (suppression contrat_sous_traitance) est le pattern direct �
 
 ### Agent Model Used
 
-À renseigner par le dev agent (probablement `claude-opus-4-7[1m]` via bmad-dev-story).
+`claude-opus-4-7[1m]` via bmad-dev-story (skill chain : bmad-brainstorming → bmad-create-story → bmad-dev-story).
 
 ### Debug Log References
 
-À renseigner pendant l'implémentation.
+- `npx tsc --noEmit` après implémentation : 0 erreur (après fix import `DocumentType` → `ConventionDocType` qui était le bon nom du type)
+- `npx vitest run` : 32 fichiers, 395 tests verts, dont `batch-doc-signature-request.test.ts` ajusté (taille set 2 → 7 = 2 officiels + 5 secondaires h-22 signables)
+- Découverte importante pendant le dev : le type union des doc_types s'appelle `ConventionDocType` dans `src/lib/types/index.ts:446`, et il existe un AUTRE `DocumentType = "agreement" | "certificate" | ...` (catégorie) à la ligne 637. Ne pas confondre.
+- Autre découverte : la table `formation_convention_documents.owner_type` CHECK n'autorise que `('learner', 'company', 'trainer')` — pas `"session"`. Le pattern existant pour les docs `ownerType: "session"` du registry (cgv, programme_formation, etc.) est de les répliquer pour chaque participant. Pour h-22, j'ai mappé les ownerType "session" (bilan_poe, reponses_*, resultats_*) à `owner_type: "company"` avec owner_id = premier client de la session (ou premier trainer en fallback si pas de client).
 
 ### Completion Notes
 
-À renseigner pendant l'implémentation.
+#### Implémentation effective
+
+**4 fichiers créés** :
+1. `src/lib/templates/secondary-categories.ts` (155 LOC) — Source unique de vérité : SECONDARY_DOC_TYPES (readonly array), SECONDARY_TEMPLATE_CATEGORIES (mapping doc_type → {category, label, description?, signable?}), SECONDARY_CATEGORY_LABELS (4 catégories avec icône + ordre), helpers `getSecondaryDocTypesByCategory` et `isSecondaryDocType`.
+2. `src/app/(dashboard)/admin/formations/[id]/_components/SecondaryDocCatalogDialog.tsx` (195 LOC) — Dialog avec search input + ScrollArea + 4 sections groupées par catégorie + multi-sélection via cartes cliquables (checkbox + label + badge "Signable" + description optionnelle) + footer "Annuler" / "Attribuer (N)".
+3. `src/app/api/documents/attribute-secondary/route.ts` (200 LOC) — POST route : validation Zod, sécurité role admin/super_admin + entity_id check, charge learners/trainers/companies de la session, mappe ownerType registry → owner_type DB (avec fallback pour "session" → company), insert batch idempotent (skip rows existantes), retour `{ created, docTypes, skippedByMissingOwner }`, audit log fire-and-forget via `logAudit`.
+4. `supabase/migrations/h-22-add-secondary-doc-types.sql` (~70 LOC) — Migration manuelle Dashboard : pre-check + DROP + CREATE CHECK avec les 13 officiels + 23 secondaires + custom + post-check.
+
+**8 fichiers modifiés** :
+1. `src/lib/templates/registry.ts` : +23 imports + 23 entries dans SYSTEM_TEMPLATES_BY_DOC_TYPE. Note : `reponses-satisfaction-session.ts` exporte `REPONSES_SATISFACTION_*` (sans suffixe SESSION) — géré dans l'import.
+2. `src/lib/types/index.ts` : +23 entries dans l'union `ConventionDocType` (ligne 452-475).
+3. `src/app/(dashboard)/admin/formations/[id]/_components/TabConventionDocs.tsx` : 4 maps étendues (DOC_COLORS, DOC_BADGE_COLORS, DOC_SHORT, DOC_LABELS) × 23 entries = ~95 LOC ; ajout du state `secondaryCatalogOpen` ; bouton "+ Document secondaire" dans la barre Quick Actions ; rendu `<SecondaryDocCatalogDialog>` en fin de composant.
+4. `src/lib/utils/batch-doc-signature-request.ts` : Set étendu de 2 → 7 (+ 5 secondaires signables).
+5. `src/lib/utils/__tests__/batch-doc-signature-request.test.ts` : test ajusté pour size 7, expectations spécifiques sur signables + non-signables.
+6. `src/lib/services/email-queue.ts` : +23 discriminators dans `EmailAttachmentDescriptor` (avec payload `{ session_id, learner_id|trainer_id }` selon ownerType).
+7. `src/lib/services/email-attachments-resolver.ts` : +23 entries `FILENAME_LABELS` (noms de fichiers PDF lisibles).
+8. `bmad_output/implementation-artifacts/sprint-status.yaml` : h-22 → review.
+
+**Total effectif : ~890 LOC sur 12 fichiers** (4 nouveaux + 8 modifiés), proche de l'estimé 850 LOC.
+
+#### Décisions techniques
+
+1. **`ownerType: "session"` mappé à `owner_type: "company"` côté DB** : le CHECK constraint de `formation_convention_documents` n'autorise que 3 owner_type (learner, company, trainer). Au lieu d'étendre le CHECK (refactor des migrations existantes), j'ai aligné sur le pattern existant qui réplique les docs "session" pour chaque participant. Pour les 4 secondaires `ownerType: "session"` (bilan_poe, reponses_evaluations, reponses_satisfaction_session, resultats_evaluations), 1 row est créée par company de la session (fallback : 1 row sur le premier trainer si pas de company).
+
+2. **Idempotence via SELECT existing + filtrage côté code** : la route attribute-secondary fait un SELECT préalable des rows existantes pour cette session+docTypes, puis filtre côté JS pour ne créer que les nouvelles. Pas de contrainte UNIQUE en DB, donc pas de gestion d'erreur de doublon.
+
+3. **Service-role pour les INSERT** : pattern h-17/signature-request-batch reproduit. RLS bypassée après validation manuelle du role admin/super_admin + check entity_id sur la session.
+
+4. **Refus explicite des doc_types officiels dans la route** : pour éviter qu'un appel mal formé tente de créer des officiels via cette nouvelle route (qui ne gère pas la même logique d'attribution par défaut), je refuse 400 si docType n'est pas dans `SECONDARY_DOC_TYPES_SET`.
+
+5. **Audit log fire-and-forget** : `logAudit` est sync (pas de await), pas de catch nécessaire. La fonction log dans la console si échec mais ne throw jamais.
+
+6. **Pas de bouton "Signature batch" automatiquement étendu** : le bouton existant utilise `hasBatchSignatureRequestEndpoint(docType)` qui consulte le `SIGNATURE_BATCH_SUPPORTED_DOC_TYPES` étendu — donc les 5 secondaires signables apparaîtront automatiquement. Pas de modif UI supplémentaire.
+
+#### Smoke à faire par Wissam
+
+1. **Exécuter la migration SQL** dans Supabase Dashboard SQL Editor : `supabase/migrations/h-22-add-secondary-doc-types.sql`. Pre-check doit retourner 0 sur la première colonne (sinon stop). DROP + CREATE OK. Post-check affiche la nouvelle liste.
+2. **Aller sur `/admin/formations/[id]?tab=documents`** → vérifier le bouton "+ Document secondaire" dans la barre Quick Actions
+3. **Ouvrir le Dialog** → vérifier les 4 sections (Habilitation 9 / Attestations 5 / Admin 5 / Évaluation 4)
+4. **Tester search** : taper "aipr" → seul AIPR visible ; taper "hab" → 9 habilitations
+5. **Sélectionner 2-3 templates** + Attribuer → vérifier que les nouveaux docs apparaissent dans la liste (par section trainer/learner/company)
+6. **Générer le PDF** d'un secondaire → vérifier rendu (variables `[%Var%]` peuvent rester visibles si non couvertes par le resolver — acceptable car `qualiopiBlocking: false`)
+7. **Pour un signable** (ex: autorisation_image) : tester "Demander signature à tous" → le bouton doit être visible (car dans `SIGNATURE_BATCH_SUPPORTED_DOC_TYPES`)
+8. **Régression** : ouvrir l'onglet sur une formation existante avec des officiels déjà attribués → vérifier que rien n'a changé visuellement (mêmes couleurs, mêmes labels)
 
 ### File List
 
-**Created (estimé)** :
-- `src/lib/templates/secondary-categories.ts` (~80 LOC)
-- `src/app/(dashboard)/admin/formations/[id]/_components/SecondaryDocCatalogDialog.tsx` (~180 LOC)
-- `src/app/api/documents/attribute-secondary/route.ts` (~120 LOC)
-- `supabase/migrations/h-22-add-secondary-doc-types.sql` (~60 LOC)
+**Created** :
+- `src/lib/templates/secondary-categories.ts`
+- `src/app/(dashboard)/admin/formations/[id]/_components/SecondaryDocCatalogDialog.tsx`
+- `src/app/api/documents/attribute-secondary/route.ts`
+- `supabase/migrations/h-22-add-secondary-doc-types.sql`
 
-**Modified (estimé)** :
-- `src/lib/templates/registry.ts` (+23 imports + 23 entries ~80 LOC)
-- `src/lib/types/index.ts` (+23 entries dans l'union ~10 LOC)
-- `src/app/(dashboard)/admin/formations/[id]/_components/TabConventionDocs.tsx` (+~80 LOC : 4 maps × 23 entries + bouton + state + dialog)
-- `src/lib/utils/batch-doc-signature-request.ts` (+5 entries ~5 LOC)
-- `src/lib/utils/__tests__/batch-doc-signature-request.test.ts` (~10 LOC pour test ajusté)
-- `src/lib/services/email-queue.ts` (+~25 LOC pour 23 nouveaux discriminators)
-- `src/lib/services/email-attachments-resolver.ts` (+~25 LOC pour FILENAME_LABELS)
-- `bmad_output/implementation-artifacts/sprint-status.yaml` (MAJ status h-22 → review)
-
-**Total estimé** : ~700 LOC créés + ~150 LOC modifiés = **~850 LOC** sur ~7 fichiers nouveaux + ~8 modifiés.
+**Modified** :
+- `src/lib/templates/registry.ts`
+- `src/lib/types/index.ts`
+- `src/app/(dashboard)/admin/formations/[id]/_components/TabConventionDocs.tsx`
+- `src/lib/utils/batch-doc-signature-request.ts`
+- `src/lib/utils/__tests__/batch-doc-signature-request.test.ts`
+- `src/lib/services/email-queue.ts`
+- `src/lib/services/email-attachments-resolver.ts`
+- `bmad_output/implementation-artifacts/sprint-status.yaml`
+- `bmad_output/implementation-artifacts/h-22-documents-secondaires-attribuables-loris.md`
 
 ### Change Log
 
 | Date | Description |
 |---|---|
 | 2026-05-19 | Story h-22 créée via bmad-create-story (Claude Opus 4.7). Source : brainstorming-session-2026-05-19-0914.md Phase 4. Scope MVP figé : brancher 23 templates fantômes au registry + UI catalogue searchable + 5 templates signables + migration SQL CHECK. Hors scope : défaut packs par type formation, variables custom métier, favoris, etc. (vagues 2/3). Effort estimé 3-4 j-h. |
+| 2026-05-19 | Story h-22 implémentée via bmad-dev-story. 13 tâches complétées. tsc clean + 395/395 vitest verts (dont batch-doc-signature-request avec set size 2 → 7). Reste : exécution manuelle migration SQL `h-22-add-secondary-doc-types.sql` dans Supabase Dashboard + smoke prod par Wissam. Status → review. |
 
 ## 9. Questions ouvertes pour le dev
 
