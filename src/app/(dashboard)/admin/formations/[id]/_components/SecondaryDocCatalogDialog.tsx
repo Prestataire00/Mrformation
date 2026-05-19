@@ -49,8 +49,10 @@ export function SecondaryDocCatalogDialog({
   const [selected, setSelected] = useState<Set<SecondaryDocType>>(new Set());
   const [submitting, setSubmitting] = useState(false);
 
-  // Filtrage searchable : on filtre les doc_types dont le label ou la
-  // description matche (case-insensitive).
+  // Filtrage searchable (P9 code review h-22) : haystack = label + description
+  // + libellé catégorie + doc_type slug + version "full words" (remplace les
+  // abrégés "Hab." par "Habilitation", "élec." par "électrique") pour
+  // matcher les recherches naturelles. Case-insensitive.
   const filteredByCategory = useMemo(() => {
     const q = search.trim().toLowerCase();
     const byCat: Record<SecondaryCategory, SecondaryDocType[]> = {
@@ -62,8 +64,14 @@ export function SecondaryDocCatalogDialog({
     for (const docType of SECONDARY_DOC_TYPES) {
       const meta = SECONDARY_TEMPLATE_CATEGORIES[docType];
       if (q) {
-        const hay = `${meta.label} ${meta.description ?? ""}`.toLowerCase();
-        if (!hay.includes(q)) continue;
+        const catLabel = SECONDARY_CATEGORY_LABELS[meta.category].label;
+        const expanded = `${meta.label} ${meta.description ?? ""} ${catLabel} ${docType}`
+          .toLowerCase()
+          .replaceAll("hab.", "habilitation")
+          .replaceAll("élec.", "électrique")
+          .replaceAll("éval.", "évaluation")
+          .replaceAll("_", " ");
+        if (!expanded.includes(q)) continue;
       }
       byCat[meta.category].push(docType);
     }
@@ -74,6 +82,22 @@ export function SecondaryDocCatalogDialog({
     (a, b) => a + b.length,
     0,
   );
+
+  // P11 (code review h-22) : compter les items sélectionnés invisibles à
+  // cause du filtre, pour alerter l'utilisateur qu'ils seront tout de même
+  // attribués au submit.
+  const selectedHiddenCount = useMemo(() => {
+    if (!search.trim()) return 0;
+    const visible = new Set<SecondaryDocType>();
+    for (const docs of Object.values(filteredByCategory)) {
+      for (const d of docs) visible.add(d);
+    }
+    let hidden = 0;
+    for (const d of selected) {
+      if (!visible.has(d)) hidden++;
+    }
+    return hidden;
+  }, [search, filteredByCategory, selected]);
 
   const toggle = (docType: SecondaryDocType) => {
     setSelected((prev) => {
@@ -105,10 +129,28 @@ export function SecondaryDocCatalogDialog({
       if (!res.ok) {
         throw new Error(result.error || "Erreur serveur");
       }
-      toast({
-        title: "Documents attribués",
-        description: `${result.created} document${result.created > 1 ? "s" : ""} ajouté${result.created > 1 ? "s" : ""} à la session.`,
-      });
+      // P7 (code review h-22) : si created === 0, surface le message serveur
+      // (skippedByMissingOwner, "déjà attribué", etc.) au lieu d'un toast vide.
+      if (result.created === 0) {
+        const skippedLabels = Array.isArray(result.skippedByMissingOwner)
+          ? (result.skippedByMissingOwner as string[])
+              .map((dt) => SECONDARY_TEMPLATE_CATEGORIES[dt as SecondaryDocType]?.label ?? dt)
+              .join(", ")
+          : "";
+        toast({
+          title: "Aucun document ajouté",
+          description:
+            (result.message as string | undefined) ??
+            (skippedLabels
+              ? `Skippés faute d'owner : ${skippedLabels}`
+              : "Tous les documents demandés étaient déjà attribués."),
+        });
+      } else {
+        toast({
+          title: "Documents attribués",
+          description: `${result.created} document${result.created > 1 ? "s" : ""} ajouté${result.created > 1 ? "s" : ""} à la session.`,
+        });
+      }
       reset();
       onOpenChange(false);
       onAttributed();
@@ -133,6 +175,9 @@ export function SecondaryDocCatalogDialog({
     <Dialog
       open={open}
       onOpenChange={(o) => {
+        // P8 (code review h-22) : bloquer la fermeture (Esc / click-outside)
+        // pendant un submit en cours pour éviter les closures stales.
+        if (submitting) return;
         if (!o) reset();
         onOpenChange(o);
       }}
@@ -201,7 +246,10 @@ export function SecondaryDocCatalogDialog({
                             />
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2">
-                                <span className="text-sm font-medium text-gray-900 truncate">
+                                <span
+                                  className="text-sm font-medium text-gray-900 truncate"
+                                  title={tplMeta.label}
+                                >
                                   {tplMeta.label}
                                 </span>
                                 {tplMeta.signable && (
@@ -233,24 +281,34 @@ export function SecondaryDocCatalogDialog({
           </div>
         </ScrollArea>
 
-        <DialogFooter className="gap-2 sm:gap-2 border-t pt-3">
-          <Button
-            variant="ghost"
-            onClick={() => onOpenChange(false)}
-            disabled={submitting}
-          >
-            Annuler
-          </Button>
-          <Button
-            onClick={handleSubmit}
-            disabled={selected.size === 0 || submitting}
-            className="gap-2"
-          >
-            {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-            {submitting
-              ? "Attribution…"
-              : `Attribuer (${selected.size})`}
-          </Button>
+        <DialogFooter className="gap-2 sm:gap-2 border-t pt-3 sm:justify-between">
+          {/* P11 (code review h-22) : signaler les items sélectionnés filtrés. */}
+          {selectedHiddenCount > 0 ? (
+            <p className="text-[11px] text-amber-700 self-center">
+              {selected.size} sélectionné{selected.size > 1 ? "s" : ""} (dont {selectedHiddenCount} hors filtre)
+            </p>
+          ) : (
+            <span />
+          )}
+          <div className="flex gap-2">
+            <Button
+              variant="ghost"
+              onClick={() => onOpenChange(false)}
+              disabled={submitting}
+            >
+              Annuler
+            </Button>
+            <Button
+              onClick={handleSubmit}
+              disabled={selected.size === 0 || submitting}
+              className="gap-2"
+            >
+              {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              {submitting
+                ? "Attribution…"
+                : `Attribuer (${selected.size})`}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

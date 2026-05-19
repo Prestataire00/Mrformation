@@ -37,6 +37,12 @@ function createServiceClient() {
 const DOC_LABELS: Record<string, string> = {
   convention_entreprise: "Convention de formation",
   convention_intervention: "Convention d'intervention",
+  // h-22 (code review 2026-05-19) — 5 secondaires signables
+  autorisation_image: "Autorisation droit à l'image",
+  decharge_responsabilite: "Décharge de responsabilité",
+  lettre_decharge_responsabilite: "Lettre de décharge de responsabilité",
+  charte_formateur: "Charte formateur",
+  contrat_engagement_stagiaire: "Contrat d'engagement stagiaire",
 };
 
 const ALLOWED_DOC_TYPES = new Set(Object.keys(DOC_LABELS));

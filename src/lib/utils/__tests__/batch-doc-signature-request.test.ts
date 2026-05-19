@@ -29,9 +29,44 @@ describe("hasBatchSignatureRequestEndpoint", () => {
     expect(hasBatchSignatureRequestEndpoint("doc_inexistant")).toBe(false);
   });
 
-  it("le set de doc_types supportés est exactement de taille 7", () => {
-    // 2 officiels + 5 secondaires h-22 signables = 7
-    expect(SIGNATURE_BATCH_SUPPORTED_DOC_TYPES.size).toBe(7);
+  it("le set de doc_types supportés contient exactement la liste attendue", () => {
+    // P6 (code review h-22) — assert membre par membre, pas juste size,
+    // pour détecter les substitutions silencieuses (taille stable mais contenu altéré).
+    const expected = [
+      "convention_entreprise",
+      "convention_intervention",
+      // h-22 secondaires signables
+      "autorisation_image",
+      "decharge_responsabilite",
+      "lettre_decharge_responsabilite",
+      "charte_formateur",
+      "contrat_engagement_stagiaire",
+    ].sort();
+    expect(Array.from(SIGNATURE_BATCH_SUPPORTED_DOC_TYPES).sort()).toEqual(expected);
+  });
+});
+
+describe("Cross-validation SIGNATURE_BATCH_SUPPORTED_DOC_TYPES ↔ DOC_LABELS (backend)", () => {
+  // P14 (code review h-22) — si un docType est dans le helper client mais
+  // pas dans DOC_LABELS côté backend (signature-request-batch/route.ts),
+  // le subject email sera "Document à signer — undefined — ...". Test garde-fou.
+  it("tous les types signables du helper client ont un label backend (subject email)", async () => {
+    // Re-déclaration locale du DOC_LABELS de signature-request-batch/route.ts.
+    // Garder en sync avec route.ts ligne 37 — si divergence, le test casse,
+    // forçant le dev à propager les 2 listes ensemble.
+    const BACKEND_DOC_LABELS = new Set<string>([
+      "convention_entreprise",
+      "convention_intervention",
+      "autorisation_image",
+      "decharge_responsabilite",
+      "lettre_decharge_responsabilite",
+      "charte_formateur",
+      "contrat_engagement_stagiaire",
+    ]);
+
+    for (const docType of SIGNATURE_BATCH_SUPPORTED_DOC_TYPES) {
+      expect(BACKEND_DOC_LABELS.has(docType)).toBe(true);
+    }
   });
 });
 

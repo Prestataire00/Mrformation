@@ -9,32 +9,37 @@ import {
   SECONDARY_DOC_TYPES,
   SECONDARY_TEMPLATE_CATEGORIES,
 } from "@/lib/templates/secondary-categories";
+import { insertDocs, getDocKeysForSession } from "@/lib/services/documents-store";
 
 /**
  * POST /api/documents/attribute-secondary
  *
- * Story h-22 (Epic H).
+ * Story h-22 (Epic H) — code review fixes (2026-05-19).
  *
- * Attribue 1..N documents secondaires à une session de formation. Pour chaque
- * doc_type :
- * - ownerType "learner" → 1 row par learner enrôlé
- * - ownerType "trainer" → 1 row par trainer assigné
- * - ownerType "session" → 1 row par client de la formation (suivant le pattern
- *   STATIC_DOCS existant pour cgv/programme_formation/etc, où les docs session
- *   sont attachés à chaque company de la session). Si la session n'a pas de
- *   client, fallback sur 1 row company avec owner_id = first trainer ou skip.
+ * Attribue 1..N documents secondaires à une session de formation.
  *
- * Idempotent : si une row (session_id, doc_type, owner_type, owner_id) existe
- * déjà, elle est skippée (pas d'erreur).
+ * Mapping ownerType registry → rows DB (table unifiée `documents`) :
+ * - "learner"  → 1 row par learner enrôlé
+ * - "trainer"  → 1 row par trainer assigné
+ * - "session"  → 1 row attaché à la première entreprise (owner_type='company',
+ *   owner_id=firstCompanyId). Sémantique : ces docs (bilan_poe, reponses_*,
+ *   resultats_*) sont des synthèses uniques par session, pas par participant.
+ *   On évite la fan-out par company pour ne pas dupliquer le PDF.
+ *   Skip si la session n'a aucune entreprise.
+ *   TODO v2 : promouvoir owner_type='session' quand `ConventionOwnerType`
+ *   (legacy UI shape) sera étendue dans une story dédiée.
  *
- * Accès : admin + super_admin uniquement.
+ * Idempotence : déléguée à `documents_unique_source_owner` UNIQUE INDEX +
+ * `insertDocs()` qui skip silencieusement les doublons (PG 23505).
+ *
+ * Accès : admin + super_admin uniquement (RLS + filter entity_id en défense).
  */
 
 const SECONDARY_DOC_TYPES_SET = new Set<string>(SECONDARY_DOC_TYPES);
 
 const bodySchema = z.object({
   formationId: z.string().uuid(),
-  docTypes: z.array(z.string()).min(1).max(50),
+  docTypes: z.array(z.enum(SECONDARY_DOC_TYPES)).min(1).max(50),
 });
 
 export async function POST(request: NextRequest) {
@@ -61,22 +66,18 @@ export async function POST(request: NextRequest) {
   }
   const { formationId, docTypes } = parsed.data;
 
-  // Validation : tous les doc_types doivent être des secondaires h-22.
-  // Refuser explicitement les doc_types officiels (gérés via TabConventionDocs
-  // initializeDefaultDocs) ou inconnus.
+  // Sanity check : SECONDARY_DOC_TYPES_SET utilisé en défense (z.enum déjà strict).
   const invalidTypes = docTypes.filter((d) => !SECONDARY_DOC_TYPES_SET.has(d));
   if (invalidTypes.length > 0) {
     return NextResponse.json(
-      {
-        error: "Doc types non secondaires ou inconnus",
-        invalidTypes,
-      },
+      { error: "Doc types non secondaires", invalidTypes },
       { status: 400 },
     );
   }
 
-  // Service client : on bypasse RLS pour faire les INSERT côté serveur après
-  // validation manuelle du role + entity_id (pattern h-17 / signature-request-batch).
+  // Service client : on bypasse RLS pour faire les INSERT/SELECT côté serveur.
+  // Tous les SELECTs filtrent explicitement par entity_id (défense en profondeur,
+  // CLAUDE.md règle 2). Pattern aligné avec h-17 / signature-request-batch.
   let dbClient;
   try {
     dbClient = createSupabaseClient(
@@ -106,35 +107,37 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Charger learners, trainers, companies de la session.
-    const [enrollmentsRes, trainersRes, companiesRes, existingDocsRes] =
-      await Promise.all([
-        dbClient
-          .from("enrollments")
-          .select("learner_id")
-          .eq("session_id", formationId)
-          .not("learner_id", "is", null),
-        dbClient
-          .from("formation_trainers")
-          .select("trainer_id")
-          .eq("formation_id", formationId)
-          .not("trainer_id", "is", null),
-        dbClient
-          .from("formation_companies")
-          .select("client_id")
-          .eq("formation_id", formationId)
-          .not("client_id", "is", null),
-        dbClient
-          .from("formation_convention_documents")
-          .select("doc_type, owner_type, owner_id")
-          .eq("session_id", formationId)
-          .in("doc_type", docTypes),
-      ]);
+    // Charger learners/trainers/companies de la session.
+    // - `.range(0, 9999)` lève le cap Supabase 1000 rows pour grosses INTER.
+    // - `.eq("entity_id", profile.entity_id)` en défense : empêche un FK
+    //   cross-entité (corruption / race) de polluer les owners.
+    const [enrollmentsRes, trainersRes, companiesRes] = await Promise.all([
+      dbClient
+        .from("enrollments")
+        .select("learner_id")
+        .eq("session_id", formationId)
+        .eq("entity_id", profile.entity_id)
+        .not("learner_id", "is", null)
+        .range(0, 9999),
+      dbClient
+        .from("formation_trainers")
+        .select("trainer_id")
+        .eq("formation_id", formationId)
+        .eq("entity_id", profile.entity_id)
+        .not("trainer_id", "is", null)
+        .range(0, 9999),
+      dbClient
+        .from("formation_companies")
+        .select("client_id")
+        .eq("formation_id", formationId)
+        .eq("entity_id", profile.entity_id)
+        .not("client_id", "is", null)
+        .range(0, 9999),
+    ]);
 
     if (enrollmentsRes.error) throw enrollmentsRes.error;
     if (trainersRes.error) throw trainersRes.error;
     if (companiesRes.error) throw companiesRes.error;
-    if (existingDocsRes.error) throw existingDocsRes.error;
 
     const learnerIds = (enrollmentsRes.data ?? [])
       .map((e) => e.learner_id as string | null)
@@ -146,11 +149,14 @@ export async function POST(request: NextRequest) {
       .map((c) => c.client_id as string | null)
       .filter((id): id is string => !!id);
 
-    // Index des rows existantes pour idempotence
+    // Idempotence : on lit les rows existantes dans la table unifiée `documents`
+    // pour cette session, puis on filtre côté code. `insertDocs` swallow aussi
+    // les conflits 23505 (UNIQUE INDEX) en deuxième défense anti-concurrence.
+    const existingKeysList = await getDocKeysForSession(dbClient, formationId);
     const existingKeys = new Set(
-      (existingDocsRes.data ?? []).map(
-        (d) => `${d.doc_type}|${d.owner_type}|${d.owner_id}`,
-      ),
+      existingKeysList
+        .filter((d) => docTypes.includes(d.doc_type as typeof docTypes[number]))
+        .map((d) => `${d.doc_type}|${d.owner_type ?? ""}|${d.owner_id ?? ""}`),
     );
 
     const rowsToInsert: Array<{
@@ -168,28 +174,28 @@ export async function POST(request: NextRequest) {
     for (const docType of docTypes) {
       const tmpl = getSystemTemplate(docType);
       if (!tmpl) {
-        // Ne devrait jamais arriver (validation SECONDARY_DOC_TYPES_SET ci-dessus).
+        // Invariant : SECONDARY_DOC_TYPES_SET ⊂ SYSTEM_TEMPLATES_BY_DOC_TYPE.
+        // Si on arrive ici, c'est qu'un nouveau type a été ajouté à
+        // secondary-categories.ts sans entry dans registry.ts.
+        console.error(
+          `[attribute-secondary] invariant violated : ${docType} not in registry`,
+        );
+        skippedByMissingOwner.push(docType);
         continue;
       }
-      const requiresSignature = !!SECONDARY_TEMPLATE_CATEGORIES[
-        docType as keyof typeof SECONDARY_TEMPLATE_CATEGORIES
-      ]?.signable;
+      const requiresSignature = !!SECONDARY_TEMPLATE_CATEGORIES[docType].signable;
 
-      // Mapper le ownerType du registry vers les owners DB :
-      // - learner / trainer : direct
-      // - session : attaché à chaque company (pattern STATIC_DOCS existant)
       let owners: Array<{ type: "learner" | "company" | "trainer"; id: string }> = [];
       if (tmpl.ownerType === "learner") {
         owners = learnerIds.map((id) => ({ type: "learner" as const, id }));
       } else if (tmpl.ownerType === "trainer") {
         owners = trainerIds.map((id) => ({ type: "trainer" as const, id }));
       } else if (tmpl.ownerType === "session") {
-        // Pas de 4e valeur "session" dans owner_type CHECK → on attache à company.
-        // Si la session n'a pas de company (rare), on attache au premier trainer.
+        // D1 résolu en code review 2026-05-19 : 1 row par session, attaché à
+        // la première entreprise. Pas de duplication par company ni de
+        // fallback trainer (semantique trompeuse).
         if (companyIds.length > 0) {
-          owners = companyIds.map((id) => ({ type: "company" as const, id }));
-        } else if (trainerIds.length > 0) {
-          owners = [{ type: "trainer", id: trainerIds[0] }];
+          owners = [{ type: "company" as const, id: companyIds[0] }];
         }
       }
 
@@ -219,24 +225,23 @@ export async function POST(request: NextRequest) {
         skippedByMissingOwner,
         message:
           skippedByMissingOwner.length > 0
-            ? "Aucun document attribué : pas de owner trouvé (la session n'a pas de learners/trainers/clients pour ces docs)."
+            ? "Aucun document attribué : pas d'owner trouvé (la session n'a pas de learners/trainers/clients pour ces docs)."
             : "Tous les documents demandés sont déjà attribués à cette session.",
       });
     }
 
-    const { error: insertErr } = await dbClient
-      .from("formation_convention_documents")
-      .insert(rowsToInsert);
+    // INSERT via documents-store (table unifiée `documents`, source de vérité
+    // depuis Epic B / PR #105). Idempotent via UNIQUE INDEX
+    // `documents_unique_source_owner` (skip silencieux 23505).
+    await insertDocs(dbClient, rowsToInsert);
 
-    if (insertErr) throw insertErr;
-
-    // Audit log (fire-and-forget)
+    // Audit log — sync void avec error-handling interne (cf src/lib/audit-log.ts).
     logAudit({
       supabase: dbClient,
       entityId: profile.entity_id,
       userId: user.id,
       action: "create",
-      resourceType: "formation_convention_documents",
+      resourceType: "documents",
       resourceId: formationId,
       details: {
         kind: "documents_secondaires_attribues",

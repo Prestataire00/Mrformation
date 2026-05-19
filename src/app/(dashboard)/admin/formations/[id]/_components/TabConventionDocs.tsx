@@ -1514,7 +1514,8 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
           {saving === "confirm-all-learners" && <Loader2 className="h-3 w-3 animate-spin" />}
           <CheckCircle className="h-3 w-3" /> Tout figer
         </Button>
-        {/* h-22 : bouton catalogue documents secondaires */}
+        {/* h-22 : bouton catalogue documents secondaires
+            P10 (code review 2026-05-19) — libellé aligné sur spec AC-3 */}
         <Button
           size="sm"
           variant="outline"
@@ -1522,7 +1523,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
           onClick={() => setSecondaryCatalogOpen(true)}
           title="Attribuer des documents secondaires (avis habilitation, attestations métier, autorisations…)"
         >
-          <Plus className="h-3 w-3" /> Document secondaire
+          <Plus className="h-3 w-3 mr-1" /> Ajouter doc secondaire
         </Button>
         <div className="flex-1" />
         <Button
