@@ -42,6 +42,7 @@ import {
 import { cn } from "@/lib/utils";
 import { DocMatrixSection } from "@/components/formations/DocMatrixSection";
 import { useDocumentGeneration } from "@/hooks/useDocumentGeneration";
+import { SecondaryDocCatalogDialog } from "./SecondaryDocCatalogDialog";
 import type {
   Session, ConventionDocType, ConventionOwnerType,
   FormationConventionDocument, DocumentTemplate,
@@ -68,6 +69,30 @@ const DOC_COLORS: Record<string, string> = {
   convention_entreprise: "border-l-purple-500",
   convention_intervention: "border-l-purple-400",
   planning_semaine: "border-l-teal-500",
+  // h-22 secondaires : 4 couleurs par catégorie
+  avis_hab_elec_generique: "border-l-orange-500",
+  avis_hab_elec_b0_bf_bs: "border-l-orange-500",
+  avis_hab_elec_b1v_b2v_br: "border-l-orange-500",
+  avis_hab_elec_bf_hf: "border-l-orange-500",
+  avis_hab_elec_bt: "border-l-orange-500",
+  avis_hab_elec_bt_ht: "border-l-orange-500",
+  avis_hab_elec_h0_b0: "border-l-orange-500",
+  avis_hab_elec_h0_b0_bf_hf_bs: "border-l-orange-500",
+  avis_hab_elec_h0_b0_initial: "border-l-orange-500",
+  attestation_aipr: "border-l-emerald-500",
+  attestation_competences: "border-l-emerald-500",
+  attestation_abandon_formation: "border-l-emerald-500",
+  certificat_travail_hauteur: "border-l-emerald-500",
+  certificat_diplome: "border-l-emerald-500",
+  autorisation_image: "border-l-slate-500",
+  decharge_responsabilite: "border-l-slate-500",
+  lettre_decharge_responsabilite: "border-l-slate-500",
+  charte_formateur: "border-l-slate-500",
+  contrat_engagement_stagiaire: "border-l-slate-500",
+  bilan_poe: "border-l-sky-500",
+  reponses_evaluations: "border-l-sky-500",
+  reponses_satisfaction_session: "border-l-sky-500",
+  resultats_evaluations: "border-l-sky-500",
   custom: "border-l-slate-500",
 };
 
@@ -84,6 +109,30 @@ const DOC_BADGE_COLORS: Record<string, string> = {
   convention_entreprise: "bg-purple-50 text-purple-700 border-purple-200",
   convention_intervention: "bg-purple-50 text-purple-700 border-purple-200",
   planning_semaine: "bg-teal-50 text-teal-700 border-teal-200",
+  // h-22 secondaires : badges par catégorie
+  avis_hab_elec_generique: "bg-orange-50 text-orange-700 border-orange-200",
+  avis_hab_elec_b0_bf_bs: "bg-orange-50 text-orange-700 border-orange-200",
+  avis_hab_elec_b1v_b2v_br: "bg-orange-50 text-orange-700 border-orange-200",
+  avis_hab_elec_bf_hf: "bg-orange-50 text-orange-700 border-orange-200",
+  avis_hab_elec_bt: "bg-orange-50 text-orange-700 border-orange-200",
+  avis_hab_elec_bt_ht: "bg-orange-50 text-orange-700 border-orange-200",
+  avis_hab_elec_h0_b0: "bg-orange-50 text-orange-700 border-orange-200",
+  avis_hab_elec_h0_b0_bf_hf_bs: "bg-orange-50 text-orange-700 border-orange-200",
+  avis_hab_elec_h0_b0_initial: "bg-orange-50 text-orange-700 border-orange-200",
+  attestation_aipr: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  attestation_competences: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  attestation_abandon_formation: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  certificat_travail_hauteur: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  certificat_diplome: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  autorisation_image: "bg-slate-50 text-slate-700 border-slate-200",
+  decharge_responsabilite: "bg-slate-50 text-slate-700 border-slate-200",
+  lettre_decharge_responsabilite: "bg-slate-50 text-slate-700 border-slate-200",
+  charte_formateur: "bg-slate-50 text-slate-700 border-slate-200",
+  contrat_engagement_stagiaire: "bg-slate-50 text-slate-700 border-slate-200",
+  bilan_poe: "bg-sky-50 text-sky-700 border-sky-200",
+  reponses_evaluations: "bg-sky-50 text-sky-700 border-sky-200",
+  reponses_satisfaction_session: "bg-sky-50 text-sky-700 border-sky-200",
+  resultats_evaluations: "bg-sky-50 text-sky-700 border-sky-200",
   custom: "bg-slate-50 text-slate-600 border-slate-200",
 };
 
@@ -100,6 +149,30 @@ const DOC_SHORT: Record<string, string> = {
   convention_entreprise: "Convention",
   convention_intervention: "Conv. interv.",
   planning_semaine: "Planning",
+  // h-22 secondaires : labels compacts (max 14 chars)
+  avis_hab_elec_generique: "Hab. élec.",
+  avis_hab_elec_b0_bf_bs: "Hab. B0/BF/BS",
+  avis_hab_elec_b1v_b2v_br: "Hab. B1V/B2V",
+  avis_hab_elec_bf_hf: "Hab. BF/HF",
+  avis_hab_elec_bt: "Hab. BT",
+  avis_hab_elec_bt_ht: "Hab. BT/HT",
+  avis_hab_elec_h0_b0: "Hab. H0/B0",
+  avis_hab_elec_h0_b0_bf_hf_bs: "Hab. H0/B0+",
+  avis_hab_elec_h0_b0_initial: "Hab. H0/B0 ini",
+  attestation_aipr: "AIPR",
+  attestation_competences: "Att. compét.",
+  attestation_abandon_formation: "Abandon",
+  certificat_travail_hauteur: "Trav. hauteur",
+  certificat_diplome: "Diplôme",
+  autorisation_image: "Auto. image",
+  decharge_responsabilite: "Décharge",
+  lettre_decharge_responsabilite: "Lettre déch.",
+  charte_formateur: "Charte form.",
+  contrat_engagement_stagiaire: "Engagement",
+  bilan_poe: "Bilan POE",
+  reponses_evaluations: "Rép. éval.",
+  reponses_satisfaction_session: "Rép. satis.",
+  resultats_evaluations: "Résultats éval",
   custom: "Custom",
 };
 
@@ -117,6 +190,30 @@ const DOC_LABELS: Record<string, string> = {
   feuille_emargement_collectif: "FEUILLE D'ÉMARGEMENT COLLECTIF",
   convention_intervention: "CONVENTION D'INTERVENTION",
   planning_semaine: "PLANNING DE LA SEMAINE",
+  // h-22 secondaires : labels longs (cf SECONDARY_TEMPLATE_CATEGORIES)
+  avis_hab_elec_generique: "AVIS HABILITATION ÉLECTRIQUE",
+  avis_hab_elec_b0_bf_bs: "AVIS HAB. ÉLEC. B0 / BF / BS",
+  avis_hab_elec_b1v_b2v_br: "AVIS HAB. ÉLEC. B1V / B2V / BR",
+  avis_hab_elec_bf_hf: "AVIS HAB. ÉLEC. BF / HF",
+  avis_hab_elec_bt: "AVIS HAB. ÉLEC. BT",
+  avis_hab_elec_bt_ht: "AVIS HAB. ÉLEC. BT / HT",
+  avis_hab_elec_h0_b0: "AVIS HAB. ÉLEC. H0 / B0",
+  avis_hab_elec_h0_b0_bf_hf_bs: "AVIS HAB. ÉLEC. H0 / B0 / BF / HF / BS",
+  avis_hab_elec_h0_b0_initial: "AVIS HAB. ÉLEC. H0 / B0 (INITIAL)",
+  attestation_aipr: "ATTESTATION AIPR",
+  attestation_competences: "ATTESTATION DE COMPÉTENCES",
+  attestation_abandon_formation: "ATTESTATION D'ABANDON DE FORMATION",
+  certificat_travail_hauteur: "CERTIFICAT TRAVAIL EN HAUTEUR",
+  certificat_diplome: "CERTIFICAT / DIPLÔME",
+  autorisation_image: "AUTORISATION DROIT À L'IMAGE",
+  decharge_responsabilite: "DÉCHARGE DE RESPONSABILITÉ",
+  lettre_decharge_responsabilite: "LETTRE DÉCHARGE DE RESPONSABILITÉ",
+  charte_formateur: "CHARTE FORMATEUR",
+  contrat_engagement_stagiaire: "CONTRAT D'ENGAGEMENT STAGIAIRE",
+  bilan_poe: "BILAN POE",
+  reponses_evaluations: "RÉPONSES AUX ÉVALUATIONS",
+  reponses_satisfaction_session: "RÉPONSES SATISFACTION SESSION",
+  resultats_evaluations: "RÉSULTATS DES ÉVALUATIONS",
 };
 
 const DOC_LABELS_PLURAL: Record<string, string> = {
@@ -162,6 +259,9 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
   const [massSending, setMassSending] = useState<string | null>(null);
   const [massDownloading, setMassDownloading] = useState<string | null>(null);
   const [massRequestingSig, setMassRequestingSig] = useState<string | null>(null);
+
+  // h-22 : Dialog catalogue documents secondaires
+  const [secondaryCatalogOpen, setSecondaryCatalogOpen] = useState(false);
 
   // Custom doc template selections
   const [customSelections, setCustomSelections] = useState<Record<string, string>>({});
@@ -1414,6 +1514,16 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
           {saving === "confirm-all-learners" && <Loader2 className="h-3 w-3 animate-spin" />}
           <CheckCircle className="h-3 w-3" /> Tout figer
         </Button>
+        {/* h-22 : bouton catalogue documents secondaires */}
+        <Button
+          size="sm"
+          variant="outline"
+          className="text-xs h-7 gap-1"
+          onClick={() => setSecondaryCatalogOpen(true)}
+          title="Attribuer des documents secondaires (avis habilitation, attestations métier, autorisations…)"
+        >
+          <Plus className="h-3 w-3" /> Document secondaire
+        </Button>
         <div className="flex-1" />
         <Button
           size="sm"
@@ -1829,6 +1939,16 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
 
       {/* Incomplete data dialog (422 INCOMPLETE_DATA from useDocumentGeneration) */}
       {incompleteDialog}
+
+      {/* h-22 : Dialog catalogue documents secondaires */}
+      <SecondaryDocCatalogDialog
+        open={secondaryCatalogOpen}
+        onOpenChange={setSecondaryCatalogOpen}
+        formationId={formation.id}
+        onAttributed={async () => {
+          await onRefresh();
+        }}
+      />
     </div>
   );
 }

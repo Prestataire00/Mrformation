@@ -54,7 +54,35 @@ export type EmailAttachmentDescriptor =
       filename: string;
       url: string;
       variables?: Record<string, string | number | boolean | null | undefined>;
-    };
+    }
+  // h-22 : 23 documents secondaires (cf src/lib/templates/registry.ts + secondary-categories.ts)
+  // Payload selon ownerType du registry :
+  // - learner : { session_id, learner_id }
+  // - trainer : { session_id, trainer_id }
+  // - session : { session_id } (sera attaché côté DB au premier client de la session)
+  | { type: "avis_hab_elec_generique"; payload: { session_id: string; learner_id: string } }
+  | { type: "avis_hab_elec_b0_bf_bs"; payload: { session_id: string; learner_id: string } }
+  | { type: "avis_hab_elec_b1v_b2v_br"; payload: { session_id: string; learner_id: string } }
+  | { type: "avis_hab_elec_bf_hf"; payload: { session_id: string; learner_id: string } }
+  | { type: "avis_hab_elec_bt_ht"; payload: { session_id: string; learner_id: string } }
+  | { type: "avis_hab_elec_bt"; payload: { session_id: string; learner_id: string } }
+  | { type: "avis_hab_elec_h0_b0"; payload: { session_id: string; learner_id: string } }
+  | { type: "avis_hab_elec_h0_b0_bf_hf_bs"; payload: { session_id: string; learner_id: string } }
+  | { type: "avis_hab_elec_h0_b0_initial"; payload: { session_id: string; learner_id: string } }
+  | { type: "attestation_aipr"; payload: { session_id: string; learner_id: string } }
+  | { type: "attestation_competences"; payload: { session_id: string; learner_id: string } }
+  | { type: "attestation_abandon_formation"; payload: { session_id: string; learner_id: string } }
+  | { type: "certificat_travail_hauteur"; payload: { session_id: string; learner_id: string } }
+  | { type: "certificat_diplome"; payload: { session_id: string; learner_id: string } }
+  | { type: "autorisation_image"; payload: { session_id: string; learner_id: string } }
+  | { type: "decharge_responsabilite"; payload: { session_id: string; learner_id: string } }
+  | { type: "lettre_decharge_responsabilite"; payload: { session_id: string; learner_id: string } }
+  | { type: "charte_formateur"; payload: { session_id: string; trainer_id: string } }
+  | { type: "contrat_engagement_stagiaire"; payload: { session_id: string; learner_id: string } }
+  | { type: "bilan_poe"; payload: { session_id: string } }
+  | { type: "reponses_evaluations"; payload: { session_id: string } }
+  | { type: "reponses_satisfaction_session"; payload: { session_id: string } }
+  | { type: "resultats_evaluations"; payload: { session_id: string } };
 
 export interface EnqueueEmailPayload {
   to: string;

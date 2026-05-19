@@ -59,6 +59,104 @@ import {
   PLANNING_HEBDO_SIGNE_FOOTER_TEMPLATE,
 } from "./planning-hebdo-signe";
 
+// h-22 (2026-05-19) : 23 templates secondaires branchés au registry. Code des
+// templates existant depuis avant mais ils n'étaient pas attribuables aux
+// sessions (ni dans le registry, ni dans CHECK, ni dans UI). Voir story
+// bmad_output/implementation-artifacts/h-22-documents-secondaires-attribuables-loris.md
+import {
+  AVIS_HABILITATION_ELECTRIQUE_HTML,
+  AVIS_HABILITATION_ELECTRIQUE_FOOTER_TEMPLATE,
+} from "./avis-habilitation-electrique";
+import {
+  AVIS_HABILITATION_ELECTRIQUE_B0_BF_BS_HTML,
+  AVIS_HABILITATION_ELECTRIQUE_B0_BF_BS_FOOTER_TEMPLATE,
+} from "./avis-habilitation-electrique-b0-bf-bs";
+import {
+  AVIS_HABILITATION_ELECTRIQUE_B1V_B2V_BR_HTML,
+  AVIS_HABILITATION_ELECTRIQUE_B1V_B2V_BR_FOOTER_TEMPLATE,
+} from "./avis-habilitation-electrique-b1v-b2v-br";
+import {
+  AVIS_HABILITATION_ELECTRIQUE_BF_HF_HTML,
+  AVIS_HABILITATION_ELECTRIQUE_BF_HF_FOOTER_TEMPLATE,
+} from "./avis-habilitation-electrique-bf-hf";
+import {
+  AVIS_HABILITATION_ELECTRIQUE_BT_HT_HTML,
+  AVIS_HABILITATION_ELECTRIQUE_BT_HT_FOOTER_TEMPLATE,
+} from "./avis-habilitation-electrique-bt-ht";
+import {
+  AVIS_HABILITATION_ELECTRIQUE_BT_HTML,
+  AVIS_HABILITATION_ELECTRIQUE_BT_FOOTER_TEMPLATE,
+} from "./avis-habilitation-electrique-bt";
+import {
+  AVIS_HABILITATION_ELECTRIQUE_H0_B0_HTML,
+  AVIS_HABILITATION_ELECTRIQUE_H0_B0_FOOTER_TEMPLATE,
+} from "./avis-habilitation-electrique-h0-b0";
+import {
+  AVIS_HABILITATION_ELECTRIQUE_H0_B0_BF_HF_BS_HTML,
+  AVIS_HABILITATION_ELECTRIQUE_H0_B0_BF_HF_BS_FOOTER_TEMPLATE,
+} from "./avis-habilitation-electrique-h0-b0-bf-hf-bs";
+import {
+  AVIS_HABILITATION_ELECTRIQUE_H0_B0_INITIAL_HTML,
+  AVIS_HABILITATION_ELECTRIQUE_H0_B0_INITIAL_FOOTER_TEMPLATE,
+} from "./avis-habilitation-electrique-h0-b0-initial";
+import {
+  ATTESTATION_AIPR_HTML,
+  ATTESTATION_AIPR_FOOTER_TEMPLATE,
+} from "./attestation-aipr";
+import {
+  ATTESTATION_COMPETENCES_HTML,
+  ATTESTATION_COMPETENCES_FOOTER_TEMPLATE,
+} from "./attestation-competences";
+import {
+  ATTESTATION_ABANDON_FORMATION_HTML,
+  ATTESTATION_ABANDON_FORMATION_FOOTER_TEMPLATE,
+} from "./attestation-abandon-formation";
+import {
+  CERTIFICAT_TRAVAIL_HAUTEUR_HTML,
+  CERTIFICAT_TRAVAIL_HAUTEUR_FOOTER_TEMPLATE,
+} from "./certificat-travail-hauteur";
+import {
+  CERTIFICAT_DIPLOME_HTML,
+  CERTIFICAT_DIPLOME_FOOTER_TEMPLATE,
+} from "./certificat-diplome";
+import {
+  AUTORISATION_IMAGE_HTML,
+  AUTORISATION_IMAGE_FOOTER_TEMPLATE,
+} from "./autorisation-image";
+import {
+  DECHARGE_RESPONSABILITE_HTML,
+  DECHARGE_RESPONSABILITE_FOOTER_TEMPLATE,
+} from "./decharge-responsabilite";
+import {
+  LETTRE_DECHARGE_RESPONSABILITE_HTML,
+  LETTRE_DECHARGE_RESPONSABILITE_FOOTER_TEMPLATE,
+} from "./lettre-decharge-responsabilite";
+import {
+  CHARTE_FORMATEUR_HTML,
+  CHARTE_FORMATEUR_FOOTER_TEMPLATE,
+} from "./charte-formateur";
+import {
+  CONTRAT_ENGAGEMENT_STAGIAIRE_HTML,
+  CONTRAT_ENGAGEMENT_STAGIAIRE_FOOTER_TEMPLATE,
+} from "./contrat-engagement-stagiaire";
+import {
+  BILAN_POE_HTML,
+  BILAN_POE_FOOTER_TEMPLATE,
+} from "./bilan-poe";
+import {
+  REPONSES_EVALUATIONS_HTML,
+  REPONSES_EVALUATIONS_FOOTER_TEMPLATE,
+} from "./reponses-evaluations";
+// Note : reponses-satisfaction-session.ts exporte REPONSES_SATISFACTION_* (sans suffixe SESSION)
+import {
+  REPONSES_SATISFACTION_HTML,
+  REPONSES_SATISFACTION_FOOTER_TEMPLATE,
+} from "./reponses-satisfaction-session";
+import {
+  RESULTATS_EVALUATIONS_HTML,
+  RESULTATS_EVALUATIONS_FOOTER_TEMPLATE,
+} from "./resultats-evaluations";
+
 export interface SystemTemplate {
   html: string;
   footer: string;
@@ -158,6 +256,152 @@ export const SYSTEM_TEMPLATES_BY_DOC_TYPE: Record<string, SystemTemplate> = {
   planning_hebdo_signe: {
     html: PLANNING_HEBDO_SIGNE_HTML,
     footer: PLANNING_HEBDO_SIGNE_FOOTER_TEMPLATE,
+    ownerType: "session",
+    qualiopiBlocking: false,
+  },
+
+  // ====================================================================
+  // h-22 — Documents secondaires (23 templates, qualiopiBlocking: false)
+  // ====================================================================
+  // Avis habilitation électrique (9 variantes, ownerType: learner)
+  avis_hab_elec_generique: {
+    html: AVIS_HABILITATION_ELECTRIQUE_HTML,
+    footer: AVIS_HABILITATION_ELECTRIQUE_FOOTER_TEMPLATE,
+    ownerType: "learner",
+    qualiopiBlocking: false,
+  },
+  avis_hab_elec_b0_bf_bs: {
+    html: AVIS_HABILITATION_ELECTRIQUE_B0_BF_BS_HTML,
+    footer: AVIS_HABILITATION_ELECTRIQUE_B0_BF_BS_FOOTER_TEMPLATE,
+    ownerType: "learner",
+    qualiopiBlocking: false,
+  },
+  avis_hab_elec_b1v_b2v_br: {
+    html: AVIS_HABILITATION_ELECTRIQUE_B1V_B2V_BR_HTML,
+    footer: AVIS_HABILITATION_ELECTRIQUE_B1V_B2V_BR_FOOTER_TEMPLATE,
+    ownerType: "learner",
+    qualiopiBlocking: false,
+  },
+  avis_hab_elec_bf_hf: {
+    html: AVIS_HABILITATION_ELECTRIQUE_BF_HF_HTML,
+    footer: AVIS_HABILITATION_ELECTRIQUE_BF_HF_FOOTER_TEMPLATE,
+    ownerType: "learner",
+    qualiopiBlocking: false,
+  },
+  avis_hab_elec_bt_ht: {
+    html: AVIS_HABILITATION_ELECTRIQUE_BT_HT_HTML,
+    footer: AVIS_HABILITATION_ELECTRIQUE_BT_HT_FOOTER_TEMPLATE,
+    ownerType: "learner",
+    qualiopiBlocking: false,
+  },
+  avis_hab_elec_bt: {
+    html: AVIS_HABILITATION_ELECTRIQUE_BT_HTML,
+    footer: AVIS_HABILITATION_ELECTRIQUE_BT_FOOTER_TEMPLATE,
+    ownerType: "learner",
+    qualiopiBlocking: false,
+  },
+  avis_hab_elec_h0_b0: {
+    html: AVIS_HABILITATION_ELECTRIQUE_H0_B0_HTML,
+    footer: AVIS_HABILITATION_ELECTRIQUE_H0_B0_FOOTER_TEMPLATE,
+    ownerType: "learner",
+    qualiopiBlocking: false,
+  },
+  avis_hab_elec_h0_b0_bf_hf_bs: {
+    html: AVIS_HABILITATION_ELECTRIQUE_H0_B0_BF_HF_BS_HTML,
+    footer: AVIS_HABILITATION_ELECTRIQUE_H0_B0_BF_HF_BS_FOOTER_TEMPLATE,
+    ownerType: "learner",
+    qualiopiBlocking: false,
+  },
+  avis_hab_elec_h0_b0_initial: {
+    html: AVIS_HABILITATION_ELECTRIQUE_H0_B0_INITIAL_HTML,
+    footer: AVIS_HABILITATION_ELECTRIQUE_H0_B0_INITIAL_FOOTER_TEMPLATE,
+    ownerType: "learner",
+    qualiopiBlocking: false,
+  },
+  // Attestations métier (5 templates, ownerType: learner)
+  attestation_aipr: {
+    html: ATTESTATION_AIPR_HTML,
+    footer: ATTESTATION_AIPR_FOOTER_TEMPLATE,
+    ownerType: "learner",
+    qualiopiBlocking: false,
+  },
+  attestation_competences: {
+    html: ATTESTATION_COMPETENCES_HTML,
+    footer: ATTESTATION_COMPETENCES_FOOTER_TEMPLATE,
+    ownerType: "learner",
+    qualiopiBlocking: false,
+  },
+  attestation_abandon_formation: {
+    html: ATTESTATION_ABANDON_FORMATION_HTML,
+    footer: ATTESTATION_ABANDON_FORMATION_FOOTER_TEMPLATE,
+    ownerType: "learner",
+    qualiopiBlocking: false,
+  },
+  certificat_travail_hauteur: {
+    html: CERTIFICAT_TRAVAIL_HAUTEUR_HTML,
+    footer: CERTIFICAT_TRAVAIL_HAUTEUR_FOOTER_TEMPLATE,
+    ownerType: "learner",
+    qualiopiBlocking: false,
+  },
+  certificat_diplome: {
+    html: CERTIFICAT_DIPLOME_HTML,
+    footer: CERTIFICAT_DIPLOME_FOOTER_TEMPLATE,
+    ownerType: "learner",
+    qualiopiBlocking: false,
+  },
+  // Documents administratifs (5 templates, signables sauf charte)
+  autorisation_image: {
+    html: AUTORISATION_IMAGE_HTML,
+    footer: AUTORISATION_IMAGE_FOOTER_TEMPLATE,
+    ownerType: "learner",
+    qualiopiBlocking: false,
+  },
+  decharge_responsabilite: {
+    html: DECHARGE_RESPONSABILITE_HTML,
+    footer: DECHARGE_RESPONSABILITE_FOOTER_TEMPLATE,
+    ownerType: "learner",
+    qualiopiBlocking: false,
+  },
+  lettre_decharge_responsabilite: {
+    html: LETTRE_DECHARGE_RESPONSABILITE_HTML,
+    footer: LETTRE_DECHARGE_RESPONSABILITE_FOOTER_TEMPLATE,
+    ownerType: "learner",
+    qualiopiBlocking: false,
+  },
+  charte_formateur: {
+    html: CHARTE_FORMATEUR_HTML,
+    footer: CHARTE_FORMATEUR_FOOTER_TEMPLATE,
+    ownerType: "trainer",
+    qualiopiBlocking: false,
+  },
+  contrat_engagement_stagiaire: {
+    html: CONTRAT_ENGAGEMENT_STAGIAIRE_HTML,
+    footer: CONTRAT_ENGAGEMENT_STAGIAIRE_FOOTER_TEMPLATE,
+    ownerType: "learner",
+    qualiopiBlocking: false,
+  },
+  // Pédagogie / Évaluation (4 templates, ownerType: session)
+  bilan_poe: {
+    html: BILAN_POE_HTML,
+    footer: BILAN_POE_FOOTER_TEMPLATE,
+    ownerType: "session",
+    qualiopiBlocking: false,
+  },
+  reponses_evaluations: {
+    html: REPONSES_EVALUATIONS_HTML,
+    footer: REPONSES_EVALUATIONS_FOOTER_TEMPLATE,
+    ownerType: "session",
+    qualiopiBlocking: false,
+  },
+  reponses_satisfaction_session: {
+    html: REPONSES_SATISFACTION_HTML,
+    footer: REPONSES_SATISFACTION_FOOTER_TEMPLATE,
+    ownerType: "session",
+    qualiopiBlocking: false,
+  },
+  resultats_evaluations: {
+    html: RESULTATS_EVALUATIONS_HTML,
+    footer: RESULTATS_EVALUATIONS_FOOTER_TEMPLATE,
     ownerType: "session",
     qualiopiBlocking: false,
   },

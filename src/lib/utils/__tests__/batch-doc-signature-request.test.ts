@@ -6,10 +6,16 @@ import {
 } from "@/lib/utils/batch-doc-signature-request";
 
 describe("hasBatchSignatureRequestEndpoint", () => {
-  it("retourne true pour les 2 doc_types signature", () => {
+  it("retourne true pour les doc_types signables (2 officiels + 5 secondaires h-22)", () => {
     // contrat_sous_traitance retiré 2026-05-18 (doublon convention_intervention).
     expect(hasBatchSignatureRequestEndpoint("convention_entreprise")).toBe(true);
     expect(hasBatchSignatureRequestEndpoint("convention_intervention")).toBe(true);
+    // h-22 secondaires signables
+    expect(hasBatchSignatureRequestEndpoint("autorisation_image")).toBe(true);
+    expect(hasBatchSignatureRequestEndpoint("decharge_responsabilite")).toBe(true);
+    expect(hasBatchSignatureRequestEndpoint("lettre_decharge_responsabilite")).toBe(true);
+    expect(hasBatchSignatureRequestEndpoint("charte_formateur")).toBe(true);
+    expect(hasBatchSignatureRequestEndpoint("contrat_engagement_stagiaire")).toBe(true);
   });
 
   it("retourne false pour les doc_types non-signature ou retirés", () => {
@@ -17,11 +23,15 @@ describe("hasBatchSignatureRequestEndpoint", () => {
     expect(hasBatchSignatureRequestEndpoint("certificat_realisation")).toBe(false);
     expect(hasBatchSignatureRequestEndpoint("cgv")).toBe(false);
     expect(hasBatchSignatureRequestEndpoint("contrat_sous_traitance")).toBe(false);
+    // h-22 : secondaires NON signables
+    expect(hasBatchSignatureRequestEndpoint("attestation_aipr")).toBe(false);
+    expect(hasBatchSignatureRequestEndpoint("avis_hab_elec_b1v_b2v_br")).toBe(false);
     expect(hasBatchSignatureRequestEndpoint("doc_inexistant")).toBe(false);
   });
 
-  it("le set de doc_types supportés est exactement de taille 2", () => {
-    expect(SIGNATURE_BATCH_SUPPORTED_DOC_TYPES.size).toBe(2);
+  it("le set de doc_types supportés est exactement de taille 7", () => {
+    // 2 officiels + 5 secondaires h-22 signables = 7
+    expect(SIGNATURE_BATCH_SUPPORTED_DOC_TYPES.size).toBe(7);
   });
 });
 

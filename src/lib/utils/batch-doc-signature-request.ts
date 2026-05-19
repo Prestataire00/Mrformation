@@ -12,6 +12,12 @@
 export const SIGNATURE_BATCH_SUPPORTED_DOC_TYPES = new Set<string>([
   "convention_entreprise",
   "convention_intervention",
+  // h-22 (2026-05-19) : 5 documents secondaires signables.
+  "autorisation_image",
+  "decharge_responsabilite",
+  "lettre_decharge_responsabilite",
+  "charte_formateur",
+  "contrat_engagement_stagiaire",
 ]);
 
 export interface BatchSignatureRequestResult {
