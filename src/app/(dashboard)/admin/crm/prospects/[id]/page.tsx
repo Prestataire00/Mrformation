@@ -835,11 +835,9 @@ export default function ProspectDetailPage() {
           >
             <Plus className="w-3 h-3" /> Action
           </Button>
-          <Button size="sm" variant="outline" className="text-xs h-8 gap-1.5"
-            onClick={() => { setShowNoteForm(true); setActiveTab("timeline"); }}
-          >
-            <StickyNote className="w-3 h-3" /> Note
-          </Button>
+          {/* 2026-05-19 : bouton "Note" retiré sur demande Wissam. Le bouton
+              "Action" couvre déjà l'ajout d'une note via le formulaire timeline.
+              Code `showNoteForm` / `handleAddNote` conservé pour réversibilité. */}
           {!prospect.converted_client_id ? (
             <Button size="sm" variant="outline" className="text-xs h-8 gap-1.5 border-green-300 text-green-700 hover:bg-green-50"
               onClick={() => setConvertDialogOpen(true)}
@@ -1115,32 +1113,9 @@ export default function ProspectDetailPage() {
               </div>
             )}
 
-            {/* Bouton Insights IA */}
-            <Button size="sm" variant="outline" className="w-full text-xs h-7 gap-1" onClick={handleAiInsights} disabled={aiLoading}>
-              {aiLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <span>✨</span>}
-              Analyser ce prospect (IA)
-            </Button>
-
-            {/* Résultats IA */}
-            {aiInsights && (
-              <div className="text-xs space-y-2 p-3 bg-indigo-50 rounded-lg border border-indigo-200">
-                <p className="font-semibold text-indigo-800 flex items-center gap-1">✨ Insights IA</p>
-                {Array.isArray(aiInsights.suggested_trainings) && (
-                  <div>
-                    <p className="text-muted-foreground mb-1">Formations suggérées :</p>
-                    <div className="flex flex-wrap gap-1">
-                      {(aiInsights.suggested_trainings as string[]).map((t, i) => (
-                        <Badge key={i} variant="outline" className="text-[9px]">{t}</Badge>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {!!aiInsights.sales_pitch && <p className="italic text-indigo-700">{String(aiInsights.sales_pitch)}</p>}
-                {!!aiInsights.estimated_budget && <p><span className="text-muted-foreground">Budget estimé :</span> <strong>{String(aiInsights.estimated_budget)}</strong></p>}
-                {!!aiInsights.key_contact_role && <p><span className="text-muted-foreground">Contact idéal :</span> <strong>{String(aiInsights.key_contact_role)}</strong></p>}
-                {!!aiInsights.opco_tips && <p><span className="text-muted-foreground">Conseil OPCO :</span> {String(aiInsights.opco_tips)}</p>}
-              </div>
-            )}
+            {/* 2026-05-19 : bouton "Analyser ce prospect (IA)" + bloc résultats
+                Insights IA retirés sur demande Wissam (feature inutile en pratique).
+                Code handler `handleAiInsights` conservé pour réversibilité. */}
           </div>
 
           <hr className="border-gray-100" />

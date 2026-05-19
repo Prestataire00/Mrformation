@@ -66,3 +66,21 @@ Scope review : 6 sujets bundle h-23 (nom cliquable, hardening conversion, bouton
 - **Empty state du tab Communication post-h-23** — Si prospect a zéro email, tab affiche blanc. Ajouter fallback dans `ProspectEmailSection`.
 - **`splitName` SQL fragile sur NBSP / whitespace exotique** — `regexp_split_to_array` plus robuste, cosmétique data quality.
 - **UX confusion liste prospects** — Cellules name/contact naviguent vers la fiche, autres cellules togglent le panel select bas. Choisir un seul comportement (tout naviguer OU tout toggler + icône dédiée). Itération UX.
+
+---
+
+## Deferred from: spec-tasks-attribution-bug (2026-05-19)
+
+- **Sellsy import : tâches importées ont `assigned_to = NULL`** — Le script `scripts/import-sellsy-crm.py` (ligne 467-469) ne mappe PAS la colonne Sellsy "assigné à" → UUID profile. Conséquence : les counts dropdown du module Tasks (qui dérivent de `crm_tasks.assigned_to`) ignorent toutes les tâches Sellsy historiques. Solutions possibles : (a) backfill SQL via matching nom prénom Sellsy → profile (comme c'est fait pour `created_by`), (b) extension script v2 qui parse la colonne assignee Sellsy. À traiter dans une story dédiée si Loris se plaint que ses tâches Sellsy historiques ne remontent pas via "Mes tâches".
+
+### Defers code review spec-tasks-attribution-bug (2026-05-19)
+
+- **Race condition commercial default URL desync** — Au mount d'un user `commercial`, fetchTasks fire 2 fois : (1) avec `assigneeFilter="all"` (initial state lu de l'URL vide), (2) après chargement du profile avec `assigneeFilter="me"`. La 1ère query montre brièvement toutes les tâches de l'équipe avant le filter "Mes tâches". Flicker visible. Fix possible : gater fetchTasks sur `assigneeRoleDefaultApplied === true`. Hors scope du fix actuel (race < 200ms en pratique).
+- **Back-button URL clearing ne re-applique pas le default rôle** — Un commercial qui navigue avec `?assignee=me`, clique sur une tâche puis back, peut se retrouver sur une URL sans param. Le default n'est appliqué qu'au mount initial. Edge case rare, hors scope.
+- **`statusFilter === "all"` + `assigneeFilter` non-"all" → `cancelled` invisible** — La fix #3 force `pending+in_progress` ce qui cache `cancelled`. Asymétrie : `cancelled` visible dans "Toute l'équipe → Toutes", invisible quand on filtre par personne. Pré-existant des tabs UI (only `all/pending/completed`). Si Loris a besoin de voir les cancelled, ajouter un tab dédié.
+- **Combined cross-ref URL overflow** — Si search active + 200 prospects + 200 clients matchent en pre-fetch, l'URL combinée peut atteindre 14-18 KB. Le warning P8 actuel ne fire que par cross-ref individuel (200 atteint). À ajouter : aggregate cap.
+- **`completedThisWeek` stat hero compte par `due_date` au lieu de `completed_at`** — Mauvaise sémantique : une tâche complétée cette semaine avec `due_date` ancien n'est pas comptée. Fix : utiliser `completed_at >= startOfWeek`.
+- **Stale tasks après entity switch** — L'effect outer ne reset pas `tasks` quand entityId passe à null. Le bailout interne le fait mais l'effect skip avant. Edge case rare (entity switcher en cours de session).
+- **`statusFilter`, `priorityFilter`, `search` non-synchronisés à l'URL** — Seul `assigneeFilter` est persistant URL. Refresh/share lose les autres filtres.
+- **Label "Toute l'équipe (N)" inclut __unassigned__** — Ambigu : suggère "humans only" mais somme tout. Renommer en "Toutes" ou exclure __unassigned__ du compteur.
+- **`hasActiveFilters` ne reflète pas le auto-restrict actif** — Quand fix #3 cache silencieusement les completed pour un commercial, "Réinitialiser" n'aide pas (les statuts restent restreints car statusFilter="all"). UX edge case.

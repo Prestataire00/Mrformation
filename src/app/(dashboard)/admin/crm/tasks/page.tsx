@@ -151,9 +151,18 @@ export default function TasksPage() {
   const [statusFilter, setStatusFilter] = useState<TaskStatus | "all">("pending");
   // h-20 : init depuis URL (?assignee=me|unassigned|all|<uuid>). Le default
   // par rôle est appliqué après chargement du profile dans un useEffect dédié.
-  const [assigneeFilter, setAssigneeFilter] = useState<string>(
-    () => searchParams.get("assignee") ?? "all"
-  );
+  // Code review patch : valider la valeur URL pour éviter `eq("assigned_to","foobar")`
+  // qui crash Postgres avec "invalid input syntax for type uuid" → toast d'erreur
+  // sur la page entière depuis un simple typo URL.
+  const [assigneeFilter, setAssigneeFilter] = useState<string>(() => {
+    const raw = searchParams.get("assignee");
+    if (!raw) return "all";
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (raw === "me" || raw === "unassigned" || raw === "all" || UUID_RE.test(raw)) {
+      return raw;
+    }
+    return "all";
+  });
 
   // Inline forms
   const [showAddForm, setShowAddForm] = useState(false);
@@ -252,6 +261,17 @@ export default function TasksPage() {
   }, [supabase, entityId]);
 
   const fetchTasks = useCallback(async () => {
+    // spec-tasks-attribution-bug fix #1 : bailout entityId null AVANT toute query.
+    // Avant ce fix, si entityId était null/undefined au mount, le filter
+    // `if (entityId) query = query.eq(...)` était silencieusement skip, et la
+    // query partait sans scope d'entité → résultats incohérents.
+    // Code review patch : on reset aussi `tasks` pour éviter qu'un user qui
+    // switch d'entité voie les tâches stale de l'ancienne entité.
+    if (!entityId) {
+      setTasks([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       let query = supabase
@@ -263,11 +283,24 @@ export default function TasksPage() {
           prospect:crm_prospects!crm_tasks_prospect_id_fkey(id, company_name),
           client:clients!crm_tasks_client_id_fkey(id, company_name)
         `)
-        .order("due_date", { ascending: true, nullsFirst: false });
+        .eq("entity_id", entityId)
+        .order("due_date", { ascending: true, nullsFirst: false })
+        // spec-tasks-attribution-bug fix #2 : cap explicite. Sans .limit(),
+        // Supabase truncate à 1000 rows silencieux. Une entité avec 1500+
+        // tâches (Sellsy historique) perdait des résultats.
+        .limit(5000);
 
-      if (entityId) query = query.eq("entity_id", entityId);
       if (priorityFilter !== "all") query = query.eq("priority", priorityFilter);
       if (statusFilter !== "all") query = query.eq("status", statusFilter);
+
+      // spec-tasks-attribution-bug fix #3 : aligner sémantique counts ↔ display.
+      // Le dropdown affiche "Camille (12)" basé sur activeData (pending+in_progress).
+      // Si on retourne TOUS les statuts, l'user voit 50+ tâches → confusion.
+      // S'applique aussi à "unassigned" : le count `__unassigned__` est dérivé
+      // de la même scope active. L'utilisateur garde la main via statusFilter.
+      if (statusFilter === "all" && assigneeFilter !== "all") {
+        query = query.in("status", ["pending", "in_progress"]);
+      }
 
       // h-23 AC-5b : recherche étendue Tasks (title + description + prospect/client name).
       // Patches code review h-23 :
@@ -275,7 +308,8 @@ export default function TasksPage() {
       //   P10 — bail si pattern apres clean = que des `%`
       //   P8 — pre-fetch limit 200 (au lieu de 500) + warning si limite atteinte
       //   B5 — URL `.in.(uuids…)` peut depasser 8 KB. Cap pratique 200 UUIDs ≈ 7.4 KB.
-      if (search.trim() && entityId) {
+      // entityId est garanti non-null à ce stade (cf bailout fix #1 en tête)
+      if (search.trim()) {
         const raw = search.trim();
         const likeEscaped = raw.replace(/[\\%_]/g, "\\$&");
         const safe = likeEscaped.replace(/[,()"':.*\\]/g, "%");
@@ -345,6 +379,16 @@ export default function TasksPage() {
       if (error) throw error;
       const list = (data as CrmTask[]) ?? [];
       setTasks(list);
+
+      // Code review patch : si on hit le cap .limit(5000), warning toast
+      // (cohérent avec pattern P8 sur la pré-fetch cross-ref). Une entité
+      // qui dépasse 5000 tâches doit savoir que les résultats sont tronqués.
+      if (list.length === 5000) {
+        toast({
+          title: "Résultats tronqués",
+          description: "5000+ tâches correspondent. Affine tes filtres pour des résultats complets.",
+        });
+      }
 
       // h-20 hotfix v2 : Supabase a un cap par défaut à 1000 rows par query.
       // L'entité a 1000+ tâches `completed` (import Sellsy) ET ~418 actives.
