@@ -37,3 +37,16 @@ Scope du review : module CRM Tasks complet (frontend `src/app/(dashboard)/admin/
 - **Tâches sans `due_date` invisibles dans CalendarView** — `CalendarView.tsx:57` `if (!task.due_date) continue;`. Comportement attendu mais aucune UI ne signale qu'il y a N tâches non visibles.
 - **DST / timezone local dans `crm-task-reminder.ts`** — `computeReminderDate` (`setHours(9,0,0,0)` local) et `getReminderStatus` (comparaison Date locale vs ISO UTC) peuvent décaler de 1h autour des changements heure été/hiver.
 - **`crm_notifications` insert sans check user actif** — `route.ts:242-260`, `[id]/route.ts:133-150`. Pollution possible de la table avec entrées non-lisibles par RLS.
+
+---
+
+## Deferred from: code review of h-22-documents-secondaires-attribuables-loris (2026-05-19)
+
+Scope du review : story h-22 (branche 23 templates secondaires + UI catalogue + 5 signables + migration). Defers identifiés post-triage (BLOCKER/HIGH traités séparément).
+
+- **Triple-source des doc_types** — `SECONDARY_DOC_TYPES` (secondary-categories.ts) + `SYSTEM_TEMPLATES_BY_DOC_TYPE` keys (registry.ts) + `ConventionDocType` union (types/index.ts). Le `satisfies readonly ConventionDocType[]` protège la direction array → union mais pas l'inverse. Test runtime cross-check à ajouter quand on aura un 4e ajout (h-23+) qui forcera la factorisation.
+- **`decharge_responsabilite` vs `lettre_decharge_responsabilite`** — Templates near-duplicates. UX call avec Loris au smoke prod : garder les 2, en deprecate un, ou guidance UI ("Choisir l'un des deux"). Pas un bug code.
+- **Pas de "favoris templates par formation"** — Story h-23 candidate (cf spec h-22 §3 Hors scope). Loris attribue manuellement à chaque session pour le MVP.
+- **`DOC_SHORT` perd la disambiguation "BR"** — Label compact `"Hab. B1V/B2V"` pour `avis_hab_elec_b1v_b2v_br`. Acceptable car le doc_type technique reste précis ; à revisiter si Loris signale confusion.
+- **Param API `formationId` est sémantiquement un `session.id`** — Convention projet (formation = session côté UI). Rename hors-scope. Note : peut induire en erreur sur les jointures `formation_trainers.formation_id` / `formation_companies.formation_id` (vraies FK formation_id) qui sont distinctes de `enrollments.session_id` — vérifier au moment du fix B1 que ces FK sont bien préservées si on bascule sur `insertDocs`.
+- **`DOC_LABELS_PLURAL` non mis à jour pour les 23 nouveaux types** — Fallback string-slug fonctionne. À compléter quand une UI surface concrètement un label pluriel pour un secondaire (mass action ciblée).
