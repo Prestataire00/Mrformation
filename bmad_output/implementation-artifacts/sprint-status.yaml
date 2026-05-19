@@ -39,7 +39,7 @@
 #   → E2-E3-E4 (parallèles, après B+C+D+F stables) → E1 (last, après 90j stabilité)
 
 generated: 2026-05-17
-last_updated: 2026-05-19 (Epic H : h-23 implementee via bmad-dev-story — 6 sujets livres en 9 taches. Fonction SQL fn_convert_prospect_to_client (vraie transaction native, ERRCODE custom 404/400/409) + route API /convert + AddProspectDialog partage avec Pappers UPFRONT auto-fill tous champs + bouton Creer sur liste + nom/contact cliquables + search Tasks+Prospects fix (escape .or() + JOIN prospect+client) + feature flag Pappers post-creation (false) + tab Communication = Emails only / commentaires migres vers Timeline. tsc clean + 396/396 vitest. Status → review. Reste exec migration SQL + commit + smoke prod.)
+last_updated: 2026-05-19 (Epic H : h-23 dev + code review BMad termines. 5 BLOCKERS securite/correctness corriges (SECURITY DEFINER search_path, entity_id check intra-fonction SQL, LOWER vs ILIKE pour doublon, re-check converted_client_id apres lock, .in.(uuids) cap 200 anti HTTP 414) + 10 patches HIGH/MEDIUM (dynamic route, super_admin cross-entite, escape complet .or(), preserve user edits Pappers, guard entityId UI, etc). Migration SQL v2 (add_convert_prospect_function.sql) a re-executer en Dashboard avant smoke. tsc clean + 396/396 vitest.)
 project: lms-platform
 project_key: NOKEY
 tracking_system: file-system

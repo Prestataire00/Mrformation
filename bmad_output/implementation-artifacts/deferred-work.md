@@ -50,3 +50,19 @@ Scope du review : story h-22 (branche 23 templates secondaires + UI catalogue + 
 - **`DOC_SHORT` perd la disambiguation "BR"** — Label compact `"Hab. B1V/B2V"` pour `avis_hab_elec_b1v_b2v_br`. Acceptable car le doc_type technique reste précis ; à revisiter si Loris signale confusion.
 - **Param API `formationId` est sémantiquement un `session.id`** — Convention projet (formation = session côté UI). Rename hors-scope. Note : peut induire en erreur sur les jointures `formation_trainers.formation_id` / `formation_companies.formation_id` (vraies FK formation_id) qui sont distinctes de `enrollments.session_id` — vérifier au moment du fix B1 que ces FK sont bien préservées si on bascule sur `insertDocs`.
 - **`DOC_LABELS_PLURAL` non mis à jour pour les 23 nouveaux types** — Fallback string-slug fonctionne. À compléter quand une UI surface concrètement un label pluriel pour un secondaire (mass action ciblée).
+
+---
+
+## Deferred from: code review of h-23-crm-prospects-hotfixes (2026-05-19)
+
+Scope review : 6 sujets bundle h-23 (nom cliquable, hardening conversion, bouton créer, Pappers UPFRONT, search Tasks+Prospects, Communications/Timeline). 5 BLOCKERS sécurité/correctness à patcher + 10 patches HIGH/MEDIUM. Defers ci-dessous = debt acceptable pour ne pas bloquer le smoke prod.
+
+- **Kanban inline form non refactoré vers `AddProspectDialog` partagé** — Auditor BLOCKER. La spec h-23 demandait l'extraction depuis la kanban vers un composant partagé. Livré comme NEW composant sur la liste uniquement, kanban garde son Dialog inline. Anti-DRY mais sans régression fonctionnelle. À traiter dans une story h-24 si on consolide.
+- **`sector` field pas auto-fillé par Pappers à la création** — `CompanySearchResult` n'expose pas `sector`, requires extension du type + appel Pappers naf_label → sector mapping. Hors-scope MVP. Pourra être ajouté quand un user concret le demande.
+- **Pattern `useState` + manual validation dans `AddProspectDialog`** — Violation CLAUDE.md rule #6 (RHF+Zod). Hérité du kanban (qui utilise aussi useState). Migration projet-wide à faire dans une story dédiée d'harmonisation forms CRM.
+- **Inline `supabase.from().insert()` dans `AddProspectDialog`** — Violation CLAUDE.md rule #10. Refactor services dédié (extraction vers `src/lib/services/crm-prospects.ts`).
+- **Pas de UNIQUE constraint sur `crm_prospects(entity_id, LOWER(company_name))`** — Permet 2 prospects identiques côté DB. Migration séparée si besoin.
+- **A11y : button cliquable nested dans `<tr onClick>` (liste prospects)** — Audit a11y dédié, axe/WCAG warnings.
+- **Empty state du tab Communication post-h-23** — Si prospect a zéro email, tab affiche blanc. Ajouter fallback dans `ProspectEmailSection`.
+- **`splitName` SQL fragile sur NBSP / whitespace exotique** — `regexp_split_to_array` plus robuste, cosmétique data quality.
+- **UX confusion liste prospects** — Cellules name/contact naviguent vers la fiche, autres cellules togglent le panel select bas. Choisir un seul comportement (tout naviguer OU tout toggler + icône dédiée). Itération UX.

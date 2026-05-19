@@ -479,6 +479,69 @@ Convention de commit Epic H confirmée : `<type>(<scope>): <h-XX> <description> 
 |---|---|
 | 2026-05-19 | Story h-23 créée via bmad-create-story (Claude Opus 4.7). Source : audit BMad CRM commercial Wissam 2026-05-19 — 6 sujets : nom cliquable, hardening conversion, bouton créer sur liste, Pappers upfront, search bars Tasks+Prospects, Communications/Timeline séparation. Cas test conversion OBEO YZEURE : fonctionne (rollback SQL effectué). Scope : pas de bug systémique sur conversion, mais hardening (transaction + validation + erreur explicite) ajouté. Effort estimé 4-6 j-h. |
 | 2026-05-19 | Story h-23 implémentée via bmad-dev-story. Les 9 tâches complétées : (T1) `company_name` + `contact_name` cliquables sur liste/page.tsx → `router.push`. (T2) Fonction SQL `fn_convert_prospect_to_client` créée (`supabase/migrations/add_convert_prospect_function.sql`) avec ERRCODE custom P0001/P0002/P0003 + lock FOR UPDATE + détection doublon ILIKE/SIRET ; route API `/api/crm/prospects/[id]/convert/route.ts` qui appelle le RPC et map ERRCODE → HTTP 404/400/409. (T3) Handler client-side refactorisé pour fetch la route + toast avec message serveur (incl. existingClientId si 409). (T4) Composant `AddProspectDialog.tsx` partagé créé avec Pappers UPFRONT auto-fill tous les champs (company_name + siret + address + city + postal_code + naf_code) + bouton "Créer un prospect" sur la liste. (T5) Feature flag `FEATURE_PAPPERS_ENRICH_POST_CREATE = false` ajouté dans `[id]/page.tsx` → bouton "Enrichir via Pappers" masqué. (T6) Search Prospects : escape `[,()"':]` → wildcard. Search Tasks : pré-fetch parallèle `crm_prospects` + `clients` matching company_name, puis OR-clause `title.ilike + description.ilike + prospect_id.in + client_id.in`. (T7) `ProspectCommentsSection` déplacé du tab Communication vers Timeline (sous séparateur). Tab Communication renommé "📧 Emails". (T8) tsc clean + 396/396 vitest verts. Reste : (T9) commit + push + smoke prod par Wissam. Status → review. |
+| 2026-05-19 | Code review BMad h-23 (Blind + Edge Case + Acceptance Auditor) : 5 BLOCKERS sécurité/correctness identifiés + 10 patches HIGH/MEDIUM + 9 defers. 15 patches appliqués : (B1) `SET search_path = public, pg_temp` sur la fonction SQL (privilege escalation Postgres). (B2) Verification `auth.uid()` → profile entity_id vs prospect entity_id dans la fonction (sinon RPC direct bypass cross-tenant). (B3) `LOWER() = LOWER()` au lieu de `ILIKE` sur company_name (wildcard injection sur `%`/`_`). (B4) Re-check `converted_client_id` apres FOR UPDATE lock (anti race double-click). (B5) Tasks `.in.(uuids)` cap a 200 (au lieu de 500) pour eviter HTTP 414. (P1) `export const dynamic = "force-dynamic"; runtime = "nodejs";` sur route convert. (P2) Message doublon aligne sur spec AC-2c "Un client existe deja avec ce nom / SIRET (id=...)". (P3) Escape complet `.or()` : `[\\%_]` → `\\$&` AVANT strip DSL `[,()"':.*\\]`. (P4) super_admin filtre cross-entite + audit log `effectiveEntityId` (entity_id du prospect, pas du profile). (P5) `handleCompanySelect` preserve les edits utilisateur (precedence inversee : `f.field || company.field`). (P6) Re-ajout guard `entityId` UI `handleConvertToClient`. (P8) Tasks pre-fetch limit 200 + warning toast si limite atteinte. (P9) Toast 409 : strip `(id=...)` du message pour eviter UUID double. (P10) Bail si pattern apres clean = que des `%` (single-comma case). tsc clean + 396/396 vitest verts. Migration SQL `add_convert_prospect_function.sql` v2 a re-executer dans Supabase Dashboard avant smoke prod. |
+
+## 8.1 Review Findings (2026-05-19 — bmad-code-review : Blind+Edge+Auditor)
+
+### BLOCKERS — security + correctness
+
+- [x] [Review][Patch] **B1 — `SECURITY DEFINER` sans `SET search_path`** [supabase/migrations/add_convert_prospect_function.sql:125] — Vector privilege escalation Postgres CVE pattern : tout user pouvant créer des objets dans un schéma en amont du search_path peut shadow `crm_prospects`/`clients`/`contacts` ou les builtins (`trim`, `length`, `split_part`, `position`, `substring`, `NULLIF`, `COALESCE`) et exécuter du code arbitraire avec les privilèges de l'owner. **Fix** : ajouter `SET search_path = public, pg_temp` immédiatement après `LANGUAGE plpgsql SECURITY DEFINER`. Sources : Blind+Edge.
+
+- [x] [Review][Patch] **B2 — Fonction SQL ne vérifie pas l'entity_id du caller** [route.ts gate vs SQL function] — `GRANT EXECUTE TO authenticated` + SECURITY DEFINER = tout user authentifié peut appeler `supabase.rpc('fn_convert_prospect_to_client', { p_prospect_id: <uuid-d-une-autre-entite> })` directement depuis la console navigateur. Le gate Next.js est by-passé. **Fix** : dans la fonction, après le SELECT prospect, lookup `caller_entity_id` via `(SELECT entity_id FROM profiles WHERE id = auth.uid())` puis assert match avec `v_prospect.entity_id` (raise P0001 si mismatch). Sources : Blind+Edge.
+
+- [x] [Review][Patch] **B3 — Détection doublon ILIKE = wildcard injection** [add_convert_prospect_function.sql:55] — `company_name ILIKE v_prospect.company_name` interprète `%` et `_` du prospect comme wildcards. Un prospect nommé `100%` ou `A_B` match faux-positivement ; un prospect `%` 409 contre TOUS les clients. **Fix** : remplacer ILIKE par `LOWER(company_name) = LOWER(v_prospect.company_name)` (égalité exacte case-insensitive, pas pattern matching). Sources : Blind+Edge.
+
+- [x] [Review][Patch] **B4 — Race condition double-click : fonction ne re-vérifie pas `converted_client_id` après le lock** [add_convert_prospect_function.sql:35 + route.ts:69-89] — Le route check pre-RPC sur `converted_client_id` est out-of-transaction, donc 2 POSTs concurrents passent tous deux le check, lancent tous deux le RPC ; le second voit `converted_client_id != NULL` mais la fonction n'a pas de short-circuit → tente de re-créer et 409 sur la détection doublon → user voit "Doublon" pointant vers son propre client. **Fix** : après le `SELECT FOR UPDATE`, ajouter `IF v_prospect.converted_client_id IS NOT NULL THEN RAISE EXCEPTION 'Prospect déjà converti' USING ERRCODE='P0003', HINT = v_prospect.converted_client_id::text; END IF;`. Sources : Blind+Edge.
+
+- [x] [Review][Patch] **B5 — Tasks search `.in.(uuids…)` peut dépasser le cap URL 8KB** [tasks/page.tsx:313,316] — 500 UUIDs × ~37 chars ≈ 19 KB d'URL, Netlify rejette 414. **Fix** : chunker en batches de ~50 UUIDs joints par OR, OU switcher en RPC avec body POST. Décision pratique : limiter le pre-fetch à ~200 (au lieu de 500) ET ajouter un warning toast si la limite est atteinte. Sources : Edge.
+
+### HIGH — correctness + UX
+
+- [x] [Review][Patch] **P1 — Route convert pas marquée `dynamic`/`runtime`** [convert/route.ts] — Sans `export const dynamic = "force-dynamic"; export const runtime = "nodejs";`, Next.js peut statiquement optimiser et cookies() retourne vide. **Fix** : ajouter ces 2 exports en tête de la route. Sources : Edge H1.
+
+- [x] [Review][Patch] **P2 — Message de doublon dévie de la spec** [add_convert_prospect_function.sql:53] — Spec AC-2c exige `"Un client existe déjà avec ce nom / SIRET (id: ...)"`, livré `"Doublon : client existe déjà (id=...)"`. **Fix** : aligner le `RAISE EXCEPTION`. Sources : Auditor H2.
+
+- [x] [Review][Patch] **P3 — Escape `.or()` PostgREST incomplète** [liste/page.tsx:156, tasks/page.tsx:280] — `[,()"':]` → `%` ne couvre pas `\`, `*`, `.` (qui sont DSL-significatifs). Plus grave : `_` et `%` du user pattern ne sont pas escapés → wildcards LIKE non-voulus (user tape `A_B` → matche `A_B`, `AXB`, `A?B`). **Fix** : ajouter `pattern = pattern.replace(/[\\%_]/g, "\\$&")` AVANT le strip des chars DSL, + bail si le pattern après escape ne contient que `%`. Sources : Blind+Edge.
+
+- [x] [Review][Patch] **P4 — super_admin filtré strictement par profile.entity_id** [convert/route.ts:60] — Le `super_admin` opère cross-entité par design (cf project rules), mais le route hard-filtre `eq("entity_id", profile.entity_id)`. **Fix** : pour `super_admin`, lire `prospectRow.entity_id` au lieu de filtrer sur `profile.entity_id`. Sources : Blind H4.
+
+- [x] [Review][Patch] **P5 — handleCompanySelect overwrite les champs user-edités** [AddProspectDialog.tsx:83-93] — Si l'utilisateur tape un nom custom puis sélectionne un résultat Pappers, le résultat écrase silencieusement les edits. **Fix** : inverser la précédence `company_name: f.company_name || company.company_name` (préserver l'edit utilisateur). Sources : Edge M2.
+
+- [x] [Review][Patch] **P6 — handleConvertToClient a perdu le guard `entityId`** [[id]/page.tsx:660] — Le guard était `if (!prospect || !entityId) return;` avant h-23 ; maintenant juste `if (!prospect) return;`. Le serveur enforce via requireRole, mais une 403 transitoire peut flasher pendant le chargement du profile. **Fix** : remettre le guard côté UI. Sources : Edge M5.
+
+- [x] [Review][Patch] **P7 — Pappers post-création : feature flag cache le bouton mais pas le fetch** [[id]/page.tsx (handleEnrichPappers + enrichData state)] — Le bouton est gated, mais la fonction `handleEnrichPappers` et le state `enrichData` restent actifs. Si un useEffect ou un autre call déclenche `handleEnrichPappers`, ça part. **Fix** : gater aussi tout call de `handleEnrichPappers` derrière le flag, ou stripper le résultat affiché. Sources : Blind M.
+
+- [x] [Review][Patch] **P8 — Tasks `limit(500)` silencieux** [tasks/page.tsx:282,289] — Une recherche large ("le", "société") peut dépasser 500 prospects matchant ; les tâches au-delà disparaissent sans warning. **Fix** : limit baissé à 200 (cohérent avec B5) + toast "Trop de correspondances, affine la recherche" si limite atteinte. Sources : Edge H6.
+
+- [x] [Review][Patch] **P9 — Toast 409 UUID doublé** [[id]/page.tsx:680-686] — Message backend `"Doublon … (id=abc)"` + toast `"… — visible dans /admin/clients/abc"` = UUID écrit 2x. **Fix** : strip `(id=…)` du message avant rendu, ou simplifier le RAISE EXCEPTION pour ne pas inclure l'UUID dans le message (rester via HINT). Sources : Edge M6.
+
+- [x] [Review][Patch] **P10 — Single-comma search renvoie tous les prospects** [liste/page.tsx + tasks/page.tsx] — Si l'user tape juste `,` ou `()`, le replace transforme en `%`, `safe.length === 1` passe le guard, pattern devient `%%%` qui match tout. **Fix** : bail si `safe` ne contient que des `%` après replace. Sources : Edge H5.
+
+### DEFER — pre-existing, hors-scope, ou debt à traiter en story dédiée
+
+- [x] [Review][Defer] **W1 — Kanban inline form non refactoré vers AddProspectDialog partagé** — Auditor BLOCKER B1. La spec demandait l'extraction depuis la kanban ; livré comme NEW component sur la liste uniquement. Le kanban a toujours son Dialog inline. Debt acceptable pour le smoke prod, à traiter dans h-24 si on consolide. Sources : Auditor.
+- [x] [Review][Defer] **W2 — `sector` field pas auto-fillé par Pappers** — `CompanySearchResult` ne l'expose pas, requires extension du type + API Pappers. Hors-scope MVP h-23. Sources : Auditor H1.
+- [x] [Review][Defer] **W3 — AddProspectDialog n'utilise pas React Hook Form + Zod** — Violation rule CLAUDE.md #6. Hérité du pattern kanban (qui utilise aussi useState). Story dédiée pour migrer le pattern projet-wide. Sources : Auditor M2, Blind L.
+- [x] [Review][Defer] **W4 — Inline `supabase.insert` dans AddProspectDialog** — Violation rule CLAUDE.md #10. Cohérent avec kanban existant. Story refactor services à part. Sources : Auditor M3.
+- [x] [Review][Defer] **W5 — Pas de UNIQUE constraint sur `crm_prospects(entity_id, LOWER(company_name))`** — Permet créer 2 prospects identiques. Migration séparée. Sources : Edge M3.
+- [x] [Review][Defer] **W6 — A11y nested interactive button dans tr clickable** [liste/page.tsx] — Tab navigation hits both row + button. Audit a11y dédié. Sources : Edge L3.
+- [x] [Review][Defer] **W7 — Empty state du tab Communication** — Si zéro email, le tab affiche un blanc. Améliorer ProspectEmailSection avec fallback empty state. Sources : Edge L4.
+- [x] [Review][Defer] **W8 — `splitName` SQL ne gère pas NBSP/whitespace exotique** [add_convert_prospect_function.sql:92-101] — `regexp_split_to_array` plus robuste, cosmétique data quality. Sources : Edge M7.
+- [x] [Review][Defer] **W9 — UX confusion : certaines cellules de la row liste naviguent, d'autres sélectionnent** — Cohérence row click vs cell button. Itération UX à part. Sources : Edge M4.
+
+### DISMISSED
+
+- **Blind H1 (ProspectCommentsSection rendu 2x)** — vérifié : occurrence unique ligne 1014 (Timeline). Faux positif.
+- **Blind H2 (`updated_at` colonne absente)** — vérifié schema.sql : colonne existe ligne 398.
+- **Blind L (émoji `📧 Emails` dans label tab)** — décision UX explicite Q3 résolue pré-dev (Wissam a choisi). Pas un bug.
+- **Blind L (`existing_client_id` returned column naming)** — cosmétique, la colonne reste dans la signature mais le HINT porte la valeur (cf B4 fix).
+- **Edge L1 (`request` param unused)** — convention Next.js App Router, pas bloquant.
+- **Edge L2 (`logAudit` console.error PII)** — leak interne Netlify logs only, low risk.
+- **Edge L5 (feature flag hardcoded)** — by-design per spec (réversible en 1 push).
+- **Edge L6 (DROP FUNCTION avant CREATE OR REPLACE)** — safe tant que la signature ne change pas.
+- **Blind M6 (`splitName` brittle sur hyphens/accents)** — accents OK en plpgsql, hyphens "Jean-Pierre" fonctionnent, cas marginal.
+- **Auditor M1 (no Zod body schema)** — body est `{}` vide, la validation params.id par UUID_RE est suffisante.
+- **Auditor L4 (`p_user_id` arg dropped)** — user_id est dans le audit log via auth.uid() côté route, suffisant.
 
 ## 9. Décisions actées (2026-05-19, pré-dev)
 
