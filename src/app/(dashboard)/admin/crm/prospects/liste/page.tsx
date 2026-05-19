@@ -177,6 +177,26 @@ export default function ProspectListePage() {
       query = query.ilike("naf_code", `${nafFilter.trim()}%`);
     }
 
+    // Fix 2026-05-19 : filtres précédemment client-side (sur les 15 prospects
+    // de la page courante) sont passés en server-side. Avant, sélectionner
+    // "Camille Manaz" filtrait UNIQUEMENT les 15 prospects affichés → résultats
+    // vides si Camille n'avait aucun prospect dans les 15 premiers.
+    if (assignedFilter && assignedFilter !== "all") {
+      query = query.eq("assigned_to", assignedFilter);
+    }
+
+    if (dateFrom) {
+      query = query.gte("created_at", dateFrom);
+    }
+
+    if (dateTo) {
+      query = query.lte("created_at", `${dateTo}T23:59:59`);
+    }
+
+    if (amountMin && !Number.isNaN(parseFloat(amountMin))) {
+      query = query.gte("amount", parseFloat(amountMin));
+    }
+
     const { data, count, error } = await query;
 
     if (!error) {
@@ -184,28 +204,24 @@ export default function ProspectListePage() {
       setTotalCount(count ?? 0);
     }
     setLoading(false);
-  }, [supabase, entityId, page, search, statusFilter, sourceFilter, nafFilter]);
+  }, [supabase, entityId, page, search, statusFilter, sourceFilter, nafFilter,
+      assignedFilter, dateFrom, dateTo, amountMin]);
 
   useEffect(() => {
     if (entityId) fetchProspects();
   }, [fetchProspects, entityId]);
 
-  // Reset page when filters change
+  // Reset page when filters change (incl. new server-side filters)
   useEffect(() => {
     setPage(1);
-  }, [search, statusFilter, sourceFilter, nafFilter]);
+  }, [search, statusFilter, sourceFilter, nafFilter,
+      assignedFilter, dateFrom, dateTo, amountMin]);
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
-  function extractAmount(prospect: CrmProspect): number {
-    return Number(prospect.amount) || 0;
-  }
-
+  // scoreFilter reste côté code car `score` est calculé/dérivé,
+  // pas une colonne DB stable.
   const extraFiltered = prospects.filter((p) => {
-    if (assignedFilter !== "all" && p.assigned_to !== assignedFilter) return false;
-    if (dateFrom && p.created_at < dateFrom) return false;
-    if (dateTo && p.created_at > dateTo + "T23:59:59") return false;
-    if (amountMin && extractAmount(p) < parseFloat(amountMin)) return false;
     if (scoreFilter === "hot" && (p.score || 0) < 60) return false;
     if (scoreFilter === "warm" && ((p.score || 0) < 30 || (p.score || 0) >= 60)) return false;
     if (scoreFilter === "cold" && (p.score || 0) >= 30) return false;
@@ -242,7 +258,7 @@ export default function ProspectListePage() {
       p.phone ?? "",
       STATUS_CONFIG[p.status]?.label ?? p.status,
       p.source ?? "",
-      extractAmount(p).toFixed(2),
+      (Number(p.amount) || 0).toFixed(2),
       new Date(p.created_at).toLocaleDateString("fr-FR"),
     ]);
     downloadXlsx(headers, rows, `prospects_${new Date().toISOString().slice(0, 10)}.xlsx`);
