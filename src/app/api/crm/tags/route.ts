@@ -3,6 +3,7 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 import { isCrmAuthorized } from "@/lib/auth/permissions";
+import { resolveActiveEntityId } from "@/lib/crm/active-entity";
 
 function createServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -34,10 +35,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ data: null, error: "Profile not found" }, { status: 403 });
     }
 
+    const activeEntityId = resolveActiveEntityId(profile);
+
     const { data, error } = await supabase
       .from("crm_tags")
       .select("*")
-      .eq("entity_id", profile.entity_id)
+      .eq("entity_id", activeEntityId)
       .order("name");
 
     if (error) {
@@ -74,6 +77,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ data: null, error: "Accès non autorisé" }, { status: 403 });
     }
 
+    const activeEntityId = resolveActiveEntityId(profile);
+
     const body = await request.json();
     const { name, color } = body;
 
@@ -84,7 +89,7 @@ export async function POST(request: NextRequest) {
     const { data, error } = await supabase
       .from("crm_tags")
       .insert({
-        entity_id: profile.entity_id,
+        entity_id: activeEntityId,
         name: name.trim(),
         color: color || "#6B7280",
       })
