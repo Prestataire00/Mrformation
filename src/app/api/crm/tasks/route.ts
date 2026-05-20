@@ -6,6 +6,7 @@ import { parsePagination } from "@/lib/validations";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 import { logAudit } from "@/lib/audit-log";
 import { logCommercialAction } from "@/lib/crm/log-commercial-action";
+import { resolveActiveEntityId } from "@/lib/crm/active-entity";
 
 function createServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -47,6 +48,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ data: null, error: "Accès non autorisé" }, { status: 403 });
     }
 
+    const activeEntityId = resolveActiveEntityId(profile);
+
     const { searchParams } = new URL(request.url);
     const taskStatus = searchParams.get("status") ?? "";
     const priority = searchParams.get("priority") ?? "";
@@ -67,7 +70,7 @@ export async function GET(request: NextRequest) {
       `,
         { count: "exact" }
       )
-      .eq("entity_id", profile.entity_id)
+      .eq("entity_id", activeEntityId)
       .order("due_date", { ascending: true, nullsFirst: false })
       .range(offset, offset + perPage - 1);
 
@@ -169,6 +172,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ data: null, error: "Accès non autorisé" }, { status: 403 });
     }
 
+    const activeEntityId = resolveActiveEntityId(profile);
+
     const body = await request.json();
 
     const parsed = createTaskSchema.safeParse(body);
@@ -191,7 +196,7 @@ export async function POST(request: NextRequest) {
     const { data, error } = await dbClient
       .from("crm_tasks")
       .insert({
-        entity_id: profile.entity_id,
+        entity_id: activeEntityId,
         title,
         description: description ?? null,
         status,
@@ -218,7 +223,7 @@ export async function POST(request: NextRequest) {
 
     logAudit({
       supabase,
-      entityId: profile.entity_id,
+      entityId: activeEntityId,
       userId: user.id,
       action: "create",
       resourceType: "task",
@@ -230,7 +235,7 @@ export async function POST(request: NextRequest) {
     if (data.prospect_id) {
       logCommercialAction({
         supabase,
-        entityId: profile.entity_id,
+        entityId: activeEntityId,
         authorId: user.id,
         actionType: "task_created",
         prospectId: data.prospect_id,
@@ -243,7 +248,7 @@ export async function POST(request: NextRequest) {
       try {
         const notifClient = createServiceClient();
         await notifClient.from("crm_notifications").insert({
-          entity_id: profile.entity_id,
+          entity_id: activeEntityId,
           user_id: data.assigned_to,
           type: "general",
           title: "Nouvelle tâche assignée",
