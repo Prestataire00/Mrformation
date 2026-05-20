@@ -13,7 +13,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/use-toast";
@@ -201,12 +200,12 @@ export function SecondaryDocCatalogDialog({
           />
         </div>
 
-        {/* max-h DIRECT sur la ScrollArea (pattern éprouvé du projet, cf
-            CommentsSection / EmailSection en max-h-[500px]). flex-1 ne
-            fonctionnait pas : le DialogContent est en max-h (pas une hauteur
-            définie) → flex-1 n'a aucune hauteur à distribuer → la ScrollArea
-            ne se bornait jamais et ne scrollait pas. max-h auto-borne. */}
-        <ScrollArea className="max-h-[60vh] -mx-6 px-6">
+        {/* Scroll natif (div overflow-y-auto + max-h). Le composant shadcn
+            ScrollArea (Radix) ne scrollait PAS ici : son Viewport interne en
+            height:100% ne se résout pas tant que le parent n'a pas de hauteur
+            définie (DialogContent est en max-h, pas h-). Une simple div en
+            overflow-y-auto n'a aucune de ces fragilités → scroll garanti. */}
+        <div className="max-h-[60vh] overflow-y-auto -mx-6 px-6">
           <div className="space-y-5 py-2">
             {totalFiltered === 0 ? (
               <p className="text-sm text-gray-400 text-center py-12">
@@ -284,7 +283,7 @@ export function SecondaryDocCatalogDialog({
               })
             )}
           </div>
-        </ScrollArea>
+        </div>
 
         <DialogFooter className="gap-2 sm:gap-2 border-t pt-3 sm:justify-between">
           {/* P11 (code review h-22) : signaler les items sélectionnés filtrés. */}
