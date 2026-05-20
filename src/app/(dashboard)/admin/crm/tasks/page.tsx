@@ -23,6 +23,8 @@ import {
   Trash2,
   AlertCircle,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   Clock,
   Bell,
   MoreHorizontal,
@@ -131,6 +133,8 @@ export default function TasksPage() {
   const pathname = usePathname();
 
   const [viewMode, setViewMode] = useState<"list" | "kanban" | "calendar" | "today">("list");
+  // Section "Terminées" de la vue Liste — repliée par défaut.
+  const [showCompletedList, setShowCompletedList] = useState(false);
   const [tasks, setTasks] = useState<CrmTask[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [prospects, setProspects] = useState<CrmProspect[]>([]);
@@ -980,7 +984,7 @@ export default function TasksPage() {
               <span className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Terminées</span>
               <span className="text-[10px] text-gray-400">{kanbanCompleted.length}</span>
             </div>
-            {kanbanCompleted.map(task => <TaskKanbanCard key={task.id} task={task} onToggle={handleToggleComplete} onEdit={startEditingTask} completingTask={completingTask} completionNotes={completionNotes} onCompletionNotesChange={setCompletionNotes} onConfirmComplete={handleConfirmComplete} onCancelComplete={() => { setCompletingTask(null); setCompletionNotes(""); }} />)}
+            {kanbanCompleted.map(task => <TaskKanbanCard key={task.id} task={task} onToggle={handleToggleComplete} onEdit={startEditingTask} completingTask={completingTask} completionNotes={completionNotes} onCompletionNotesChange={setCompletionNotes} onConfirmComplete={handleConfirmComplete} onCancelComplete={() => { setCompletingTask(null); setCompletionNotes(""); }} compact />)}
           </div>
         </div>
       ) : (
@@ -1180,11 +1184,22 @@ export default function TasksPage() {
 
           {/* h-20 hotfix : section Terminées (manquait en List view, causait blanc
               sur onglet "Terminées" + "Toutes" quand toutes les tâches étaient completed) */}
-          {completedTasks.length > 0 && (
+          {completedTasks.length > 0 && (() => {
+            // Dépliée d'office sur l'onglet "Terminées" (sinon onglet vide) ;
+            // sinon repliée par défaut.
+            const completedExpanded = showCompletedList || statusFilter === "completed";
+            const completedTotal = tasks.filter(t => t.status === "completed").length;
+            return (
             <>
-              <p className="text-xs font-semibold text-green-600 uppercase tracking-wider mt-4 mb-2 flex items-center gap-1.5">
-                <CheckCircle2 className="h-3 w-3" /> Terminées ({completedTasks.length}{tasks.filter(t => t.status === "completed").length > 100 ? ` sur ${tasks.filter(t => t.status === "completed").length}` : ""})
-              </p>
+              <button
+                type="button"
+                onClick={() => setShowCompletedList((v) => !v)}
+                className="w-full text-xs font-semibold text-green-600 uppercase tracking-wider mt-4 mb-2 flex items-center gap-1.5"
+              >
+                {completedExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                <CheckCircle2 className="h-3 w-3" /> Terminées ({completedTasks.length}{completedTotal > 100 ? ` sur ${completedTotal}` : ""})
+              </button>
+              {completedExpanded && (
               <div className="space-y-1">
                 {completedTasks.map((task) => (
                   <TaskRow
@@ -1209,11 +1224,14 @@ export default function TasksPage() {
                     onCompletionNotesChange={setCompletionNotes}
                     onConfirmComplete={handleConfirmComplete}
                     onCancelComplete={() => { setCompletingTask(null); setCompletionNotes(""); }}
+                    compact
                   />
                 ))}
               </div>
+              )}
             </>
-          )}
+            );
+          })()}
 
           {/* h-20 hotfix : empty state défensif. Si tasks > 0 mais TOUTES les sections
               vides (ex: que des cancelled, ou un état imprévu), on affiche un message
