@@ -1,7 +1,15 @@
 import { createClient } from "@/lib/supabase/server";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 import { isCrmAuthorized } from "@/lib/auth/permissions";
+
+function createServiceClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) throw new Error("Missing Supabase service role configuration");
+  return createSupabaseClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -127,11 +135,30 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ data: null, error: "ID du tag requis" }, { status: 400 });
     }
 
-    const { error } = await supabase
+    let dbClient;
+    try { dbClient = createServiceClient(); } catch { dbClient = supabase; }
+
+    // Recherche par PK seule, puis autorisation par rôle : super_admin
+    // agit cross-entité, les autres rôles restent cloisonnés.
+    const { data: existing, error: findError } = await dbClient
+      .from("crm_tags")
+      .select("id, entity_id")
+      .eq("id", tagId)
+      .single();
+
+    if (findError || !existing) {
+      return NextResponse.json({ data: null, error: "Tag non trouvé" }, { status: 404 });
+    }
+
+    if (profile.role !== "super_admin" && existing.entity_id !== profile.entity_id) {
+      return NextResponse.json({ data: null, error: "Accès non autorisé à ce tag" }, { status: 403 });
+    }
+
+    const { error } = await dbClient
       .from("crm_tags")
       .delete()
       .eq("id", tagId)
-      .eq("entity_id", profile.entity_id);
+      .eq("entity_id", existing.entity_id);
 
     if (error) {
       return NextResponse.json({ data: null, error: sanitizeDbError(error, "deleting tag") }, { status: 500 });
