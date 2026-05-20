@@ -96,21 +96,14 @@ export default function ProspectListePage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [sourceFilter, setSourceFilter] = useState<string>("all");
-  // Filtre NAF/APE — supporte le matching partiel (ex : "87.10" matche
-  // "87.10A" et "87.10B"). Utile pour cibler tous les EHPADs (87.10A) ou
-  // tous les hôpitaux (86.10) en une recherche.
-  const [nafFilter, setNafFilter] = useState<string>("");
   const [page, setPage] = useState(1);
 
   // Extra filters
   const [assignedFilter, setAssignedFilter] = useState("all");
   const [scoreFilter, setScoreFilter] = useState("all");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
   const [batchScoring, setBatchScoring] = useState(false);
   const [batchProgress, setBatchProgress] = useState(0);
   const { toast } = useToast();
-  const [amountMin, setAmountMin] = useState("");
   const [profiles, setProfiles] = useState<Array<{ id: string; first_name: string; last_name: string }>>([]);
 
   useEffect(() => {
@@ -173,28 +166,12 @@ export default function ProspectListePage() {
       query = query.eq("source", sourceFilter);
     }
 
-    if (nafFilter.trim()) {
-      query = query.ilike("naf_code", `${nafFilter.trim()}%`);
-    }
-
     // Fix 2026-05-19 : filtres précédemment client-side (sur les 15 prospects
     // de la page courante) sont passés en server-side. Avant, sélectionner
     // "Camille Manaz" filtrait UNIQUEMENT les 15 prospects affichés → résultats
     // vides si Camille n'avait aucun prospect dans les 15 premiers.
     if (assignedFilter && assignedFilter !== "all") {
       query = query.eq("assigned_to", assignedFilter);
-    }
-
-    if (dateFrom) {
-      query = query.gte("created_at", dateFrom);
-    }
-
-    if (dateTo) {
-      query = query.lte("created_at", `${dateTo}T23:59:59`);
-    }
-
-    if (amountMin && !Number.isNaN(parseFloat(amountMin))) {
-      query = query.gte("amount", parseFloat(amountMin));
     }
 
     const { data, count, error } = await query;
@@ -204,8 +181,8 @@ export default function ProspectListePage() {
       setTotalCount(count ?? 0);
     }
     setLoading(false);
-  }, [supabase, entityId, page, search, statusFilter, sourceFilter, nafFilter,
-      assignedFilter, dateFrom, dateTo, amountMin]);
+  }, [supabase, entityId, page, search, statusFilter, sourceFilter,
+      assignedFilter]);
 
   useEffect(() => {
     if (entityId) fetchProspects();
@@ -214,8 +191,7 @@ export default function ProspectListePage() {
   // Reset page when filters change (incl. new server-side filters)
   useEffect(() => {
     setPage(1);
-  }, [search, statusFilter, sourceFilter, nafFilter,
-      assignedFilter, dateFrom, dateTo, amountMin]);
+  }, [search, statusFilter, sourceFilter, assignedFilter]);
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
@@ -337,13 +313,6 @@ export default function ProspectListePage() {
             className="pl-9"
           />
         </div>
-        <Input
-          placeholder="NAF/APE (ex: 87.10A, 86.10)"
-          value={nafFilter}
-          onChange={(e) => setNafFilter(e.target.value)}
-          className="w-[180px]"
-          title="Filtre les prospects par code NAF/APE (matching par préfixe). Ex : 87.10 → tous les EHPADs"
-        />
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-[160px]">
             <SelectValue placeholder="Statut" />
@@ -390,28 +359,6 @@ export default function ProspectListePage() {
             ))}
           </SelectContent>
         </Select>
-        <div className="flex items-center gap-2">
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#374151]"
-          />
-          <span className="text-xs text-gray-400">→</span>
-          <input
-            type="date"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#374151]"
-          />
-        </div>
-        <input
-          type="number"
-          placeholder="Montant min €"
-          value={amountMin}
-          onChange={(e) => setAmountMin(e.target.value)}
-          className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#374151] w-[130px]"
-        />
       </div>
 
       {/* Table */}
