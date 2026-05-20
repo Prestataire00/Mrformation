@@ -5,6 +5,7 @@ import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 import { parsePagination, createQuoteSchema } from "@/lib/validations";
 import { logAudit } from "@/lib/audit-log";
 import { isCrmAuthorized } from "@/lib/auth/permissions";
+import { resolveActiveEntityId } from "@/lib/crm/active-entity";
 
 export async function GET(request: NextRequest) {
   try {
@@ -40,6 +41,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ data: null, error: "Accès non autorisé" }, { status: 403 });
     }
 
+    const activeEntityId = resolveActiveEntityId(profile);
+
     const { searchParams } = new URL(request.url);
     const quoteStatus = searchParams.get("status") ?? "";
     const clientId = searchParams.get("client_id") ?? "";
@@ -59,7 +62,7 @@ export async function GET(request: NextRequest) {
       `,
         { count: "exact" }
       )
-      .eq("entity_id", profile.entity_id)
+      .eq("entity_id", activeEntityId)
       .order("created_at", { ascending: false })
       .range(offset, offset + perPage - 1);
 
@@ -141,6 +144,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ data: null, error: "Accès non autorisé" }, { status: 403 });
     }
 
+    const activeEntityId = resolveActiveEntityId(profile);
+
     const body = await request.json();
 
     const parsed = createQuoteSchema.safeParse(body);
@@ -156,7 +161,7 @@ export async function POST(request: NextRequest) {
     const { data, error } = await supabase
       .from("crm_quotes")
       .insert({
-        entity_id: profile.entity_id,
+        entity_id: activeEntityId,
         reference: body.reference ?? title,
         client_id: client_id ?? null,
         prospect_id: prospect_id ?? null,
@@ -177,13 +182,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Auto-transition prospect status when a quote is created
-    if (data && prospect_id && profile.entity_id) {
-      await evaluateProspectStatusFromQuotes(supabase, prospect_id, profile.entity_id);
+    if (data && prospect_id && activeEntityId) {
+      await evaluateProspectStatusFromQuotes(supabase, prospect_id, activeEntityId);
     }
 
     logAudit({
       supabase,
-      entityId: profile.entity_id,
+      entityId: activeEntityId,
       userId: user.id,
       action: "create",
       resourceType: "quote",
