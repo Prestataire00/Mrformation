@@ -108,29 +108,29 @@ export async function POST(request: NextRequest) {
     }
 
     // Charger learners/trainers/companies de la session.
-    // - `.range(0, 9999)` lève le cap Supabase 1000 rows pour grosses INTER.
-    // - `.eq("entity_id", profile.entity_id)` en défense : empêche un FK
-    //   cross-entité (corruption / race) de polluer les owners.
+    // Sécurité multi-tenant : la session a déjà été vérifiée comme
+    // appartenant à profile.entity_id ci-dessus ; ses enrollments /
+    // formation_trainers / formation_companies en découlent par FK.
+    // ⚠️ Ces 3 tables de liaison n'ont PAS de colonne entity_id, et leur
+    // clé de session est `session_id` (pas `formation_id`).
+    // `.range(0, 9999)` lève le cap Supabase 1000 rows pour grosses INTER.
     const [enrollmentsRes, trainersRes, companiesRes] = await Promise.all([
       dbClient
         .from("enrollments")
         .select("learner_id")
         .eq("session_id", formationId)
-        .eq("entity_id", profile.entity_id)
         .not("learner_id", "is", null)
         .range(0, 9999),
       dbClient
         .from("formation_trainers")
         .select("trainer_id")
-        .eq("formation_id", formationId)
-        .eq("entity_id", profile.entity_id)
+        .eq("session_id", formationId)
         .not("trainer_id", "is", null)
         .range(0, 9999),
       dbClient
         .from("formation_companies")
         .select("client_id")
-        .eq("formation_id", formationId)
-        .eq("entity_id", profile.entity_id)
+        .eq("session_id", formationId)
         .not("client_id", "is", null)
         .range(0, 9999),
     ]);
