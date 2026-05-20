@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { sanitizeError } from "@/lib/api-error";
+import { resolveActiveEntityId } from "@/lib/crm/active-entity";
 import type { SegmentCriteria, SegmentCriterion } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
@@ -33,7 +34,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ data: { count: 0, prospectCount: 0, clientCount: 0 }, error: null });
     }
 
-    const entityId = profile.entity_id;
+    const entityId = resolveActiveEntityId(profile);
     let prospectCount = 0;
     let clientCount = 0;
 

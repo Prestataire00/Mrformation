@@ -7,6 +7,7 @@ import {
   notifyOverdueTasks,
 } from "@/lib/crm/automations";
 import { sanitizeError } from "@/lib/api-error";
+import { resolveActiveEntityId } from "@/lib/crm/active-entity";
 
 export async function POST(request: NextRequest) {
   try {
@@ -31,7 +32,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ data: null, error: "Admin access required" }, { status: 403 });
     }
 
-    const entityId = profile.entity_id;
+    const entityId = resolveActiveEntityId(profile);
 
     // Fetch enabled rules
     const { data: rules } = await supabase

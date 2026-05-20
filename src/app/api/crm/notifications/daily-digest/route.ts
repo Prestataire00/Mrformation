@@ -4,6 +4,7 @@ import { createExpiringQuoteTasks, notifyOverdueTasks } from "@/lib/crm/automati
 import { sanitizeError } from "@/lib/api-error";
 import { DORMANCY_THRESHOLD_DAYS } from "@/lib/crm/constants";
 import { verifyCronAuth, unauthorizedCronResponse } from "@/lib/cron-auth";
+import { resolveActiveEntityId } from "@/lib/crm/active-entity";
 
 export async function POST(request: NextRequest) {
   try {
@@ -37,7 +38,7 @@ export async function POST(request: NextRequest) {
       if (!profile?.entity_id || !["admin","super_admin"].includes(profile.role)) {
         return NextResponse.json({ data: null, error: "Admin access required" }, { status: 403 });
       }
-      entityId = profile.entity_id;
+      entityId = resolveActiveEntityId(profile);
     }
     const today = new Date().toISOString().split("T")[0];
 

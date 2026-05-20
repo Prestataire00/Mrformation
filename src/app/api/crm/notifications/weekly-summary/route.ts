@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { sanitizeError } from "@/lib/api-error";
 import { verifyCronAuth, unauthorizedCronResponse } from "@/lib/cron-auth";
+import { resolveActiveEntityId } from "@/lib/crm/active-entity";
 
 export async function POST(request: NextRequest) {
   try {
@@ -34,7 +35,7 @@ export async function POST(request: NextRequest) {
       if (!profile?.entity_id || !["admin","super_admin"].includes(profile.role)) {
         return NextResponse.json({ data: null, error: "Admin access required" }, { status: 403 });
       }
-      entityId = profile.entity_id;
+      entityId = resolveActiveEntityId(profile);
     }
     const now = new Date();
     const weekStart = new Date(now);

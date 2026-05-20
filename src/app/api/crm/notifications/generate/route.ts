@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 import { DORMANCY_THRESHOLD_DAYS } from "@/lib/crm/constants";
 import { verifyCronAuth, unauthorizedCronResponse } from "@/lib/cron-auth";
+import { resolveActiveEntityId } from "@/lib/crm/active-entity";
 
 export async function POST(request: NextRequest) {
   try {
@@ -37,7 +38,7 @@ export async function POST(request: NextRequest) {
       if (!profile?.entity_id) {
         return NextResponse.json({ data: null, error: "Profile not found" }, { status: 403 });
       }
-      entityId = profile.entity_id;
+      entityId = resolveActiveEntityId(profile);
     }
 
     // En mode cron, récupérer le premier admin comme fallback pour les notifications sans assigned_to
