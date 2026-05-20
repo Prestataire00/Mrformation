@@ -84,3 +84,16 @@ Scope review : 6 sujets bundle h-23 (nom cliquable, hardening conversion, bouton
 - **`statusFilter`, `priorityFilter`, `search` non-synchronisés à l'URL** — Seul `assigneeFilter` est persistant URL. Refresh/share lose les autres filtres.
 - **Label "Toute l'équipe (N)" inclut __unassigned__** — Ambigu : suggère "humans only" mais somme tout. Renommer en "Toutes" ou exclure __unassigned__ du compteur.
 - **`hasActiveFilters` ne reflète pas le auto-restrict actif** — Quand fix #3 cache silencieusement les completed pour un commercial, "Réinitialiser" n'aide pas (les statuts restent restreints car statusFilter="all"). UX edge case.
+
+---
+
+## Deferred from: code review of h-22-documents-secondaires-attribuables-loris (2026-05-20)
+
+Scope review : revue adversariale du flux complet « documents secondaires » (attribution → affichage TabConventionDocs → génération PDF → envoi → signature). 1 BLOCKER + 3 patches + 1 decision-needed tracés en action items dans la story ; defers ci-dessous = pré-existants hors symptôme.
+
+- **`created_by` non renseigné sur les docs secondaires** [attribute-secondary/route.ts] — les rows sont insérées sans `created_by`. Colonne nullable → pas de blocage, mais l'audit Qualiopi « qui a attribué ce document » est incomplet. À renseigner (`user.id`) quand la route sera touchée pour le fix BLOCKER.
+- **`getDocsForSession` sans filtre `entity_id` explicite** [documents-store.ts:132-143] — le SELECT ne filtre que par `session_id`. RLS `entity_isolation` + vérification de session en amont compensent. Défense en profondeur à ajouter si la fonction est réutilisée hors d'un contexte déjà vérifié.
+- **Clé d'idempotence incohérente entre call-sites** — `attribute-secondary` construit la clé avec `owner_type ?? ""` / `owner_id ?? ""` (chaîne vide) là où d'autres call-sites utilisent `null`. Latent : sans effet tant que tous les owners sont non-null (cas actuel). À unifier si un doc_type à owner null apparaît.
+- **`markDoc*` : read-modify-write non atomique sur `metadata`** [documents-store.ts] — deux mises à jour concurrentes du JSON `metadata` peuvent s'écraser. Pré-existant, pas une régression h-22 ; à traiter globalement si la concurrence devient réelle.
+- **`generate-from-template` ne valide pas `ownerType` vs contexte** [generate-from-template/route.ts] — un doc généré avec un owner incohérent (ex. doc `learner` sans learner) sort en PDF avec placeholders non résolus au lieu d'une erreur explicite. Lié à la decision-needed `ownerType:"session"`.
+- **Refonte `owner_type='session'` pour les 4 docs de synthèse** — `bilan_poe`, `reponses_evaluations`, `reponses_satisfaction_session`, `resultats_evaluations` restent rattachés à la 1ʳᵉ entreprise (`owner_type='company'`). Décision 2026-05-21 : conservé tel quel — le fix d'affichage (section « Documents secondaires ») les rend visibles sous leur entreprise. Amélioration future : passer en `owner_type='session'` (owner_id null) + section « Documents de session » + suppression du skip-si-aucune-entreprise dans `attribute-secondary`. Nécessite de vérifier la CHECK constraint `documents.owner_type` et d'étendre `ConventionOwnerType` côté UI.

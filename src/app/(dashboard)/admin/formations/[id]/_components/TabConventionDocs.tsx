@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import {
   Loader2, Eye, CheckCircle, Send, Copy, Clock, Download,
   ChevronDown, ChevronUp, Plus, FileDown, PenLine, Undo2, Pencil,
-  AlertTriangle,
+  AlertTriangle, Paperclip,
 } from "lucide-react";
 import DOMPurify from "dompurify";
 import { Button } from "@/components/ui/button";
@@ -43,6 +43,11 @@ import { cn } from "@/lib/utils";
 import { DocMatrixSection } from "@/components/formations/DocMatrixSection";
 import { useDocumentGeneration } from "@/hooks/useDocumentGeneration";
 import { SecondaryDocCatalogDialog } from "./SecondaryDocCatalogDialog";
+import {
+  isSecondaryDocType,
+  SECONDARY_TEMPLATE_CATEGORIES,
+  type SecondaryDocType,
+} from "@/lib/templates/secondary-categories";
 import type {
   Session, ConventionDocType, ConventionOwnerType,
   FormationConventionDocument, DocumentTemplate,
@@ -732,6 +737,35 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     return null;
   };
 
+  // h-22 — nom + email d'affichage selon l'owner_type d'un doc. Sert à
+  // regrouper les documents secondaires par destinataire dans leur section.
+  const getOwnerInfo = (
+    doc: FormationConventionDocument,
+  ): { name: string; email: string | null } => {
+    if (doc.owner_type === "learner") {
+      const l = enrollments.find((e) => e.learner?.id === doc.owner_id)?.learner;
+      return {
+        name: l ? `${l.first_name} ${l.last_name}` : "Apprenant retiré",
+        email: l?.email ?? null,
+      };
+    }
+    if (doc.owner_type === "company") {
+      const fc = companies.find((c) => c.client_id === doc.owner_id);
+      return {
+        name: fc?.client?.company_name ?? "Entreprise retirée",
+        email: fc?.email ?? null,
+      };
+    }
+    if (doc.owner_type === "trainer") {
+      const t = trainers.find((tr) => tr.trainer_id === doc.owner_id)?.trainer;
+      return {
+        name: t ? `${t.first_name} ${t.last_name}` : "Formateur retiré",
+        email: t?.email ?? null,
+      };
+    }
+    return { name: "Propriétaire inconnu", email: null };
+  };
+
   const handleMassSendWithPDF = async (ownerType: ConventionOwnerType, docType: string) => {
     const key = `${ownerType}-${docType}`;
     setMassSending(key);
@@ -1417,6 +1451,44 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     return { id: trainer.id, name: `${trainer.first_name} ${trainer.last_name}`, row };
   });
 
+  // ── h-22 — Documents secondaires ─────────────────────────────────────
+  // Les doc_types secondaires (∈ SECONDARY_DOC_TYPES) ne sont ni dans
+  // DEFAULT_*_DOCS, ni STATIC_DOCS, ni "custom" : ils étaient bien chargés
+  // dans `docs` mais aucun rendu ne les itérait → invisibles. On les
+  // regroupe ici par destinataire pour la section dédiée (2 vues).
+  const secondaryDocs = docs.filter((d) => isSecondaryDocType(d.doc_type));
+  const secondaryDocTypesPresent = Array.from(
+    new Set(secondaryDocs.map((d) => d.doc_type)),
+  );
+  const secondaryGroups = (() => {
+    const ownerRank: Record<string, number> = { learner: 0, company: 1, trainer: 2 };
+    const map = new Map<
+      string,
+      {
+        key: string;
+        ownerType: string;
+        name: string;
+        email: string | null;
+        docs: FormationConventionDocument[];
+      }
+    >();
+    for (const d of secondaryDocs) {
+      const key = `${d.owner_type}-${d.owner_id}`;
+      let group = map.get(key);
+      if (!group) {
+        const info = getOwnerInfo(d);
+        group = { key, ownerType: d.owner_type, name: info.name, email: info.email, docs: [] };
+        map.set(key, group);
+      }
+      group.docs.push(d);
+    }
+    return Array.from(map.values()).sort(
+      (a, b) =>
+        (ownerRank[a.ownerType] ?? 9) - (ownerRank[b.ownerType] ?? 9) ||
+        a.name.localeCompare(b.name),
+    );
+  })();
+
   // ── Avatar color helper ──
   const getAvatarColor = (name: string) => {
     const colors = ["bg-blue-100 text-blue-700", "bg-purple-100 text-purple-700", "bg-pink-100 text-pink-700", "bg-amber-100 text-amber-700", "bg-emerald-100 text-emerald-700", "bg-indigo-100 text-indigo-700", "bg-rose-100 text-rose-700", "bg-teal-100 text-teal-700"];
@@ -1856,6 +1928,80 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
       )}
 
         </>
+      )}
+
+      {/* ═══ DOCUMENTS SECONDAIRES (h-22) — visibles dans les 2 vues ═══ */}
+      {secondaryDocs.length > 0 && (
+        <div className="border rounded-lg overflow-hidden">
+          <div className="bg-sky-50 border-b border-sky-100 px-4 py-2.5">
+            <h3 className="text-sm font-semibold text-sky-900 flex items-center gap-2">
+              <Paperclip className="h-4 w-4" />
+              Documents secondaires ({secondaryDocs.length})
+            </h3>
+            <p className="text-xs text-sky-700 mt-0.5">
+              Attribués via « Ajouter doc secondaire ». Figez, générez (Voir) et signez-les comme les documents officiels.
+            </p>
+          </div>
+
+          {/* Actions en masse — une ligne par type secondaire présent */}
+          <div className="px-4 py-2 space-y-1.5 border-b bg-muted/20">
+            {secondaryDocTypesPresent.map((docType) => {
+              const meta = SECONDARY_TEMPLATE_CATEGORIES[docType as SecondaryDocType];
+              const typeLabel = meta?.label || DOC_LABELS[docType] || docType;
+              const count = secondaryDocs.filter((d) => d.doc_type === docType).length;
+              const signable = !!meta?.signable && hasBatchSignatureRequestEndpoint(docType);
+              const isMassConfirming = saving === `mass-confirm-${docType}`;
+              return (
+                <div key={docType} className="flex items-center justify-between py-1 gap-2">
+                  <span className="text-xs font-medium text-muted-foreground truncate">
+                    {typeLabel} <span className="text-gray-400">({count})</span>
+                  </span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-6 text-xs gap-1"
+                      onClick={() => handleMassConfirm(docType as ConventionDocType)}
+                      disabled={isMassConfirming}
+                    >
+                      {isMassConfirming && <Loader2 className="h-3 w-3 animate-spin" />}
+                      <CheckCircle className="h-3 w-3" /> Tout figer
+                    </Button>
+                    {signable && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 text-xs gap-1 border-orange-300 text-orange-700 hover:bg-orange-50"
+                        onClick={() => handleMassSignatureRequest(docType)}
+                        disabled={massRequestingSig !== null}
+                        title="Crée un magic link de signature pour chaque destinataire (valide 30 jours)"
+                      >
+                        {massRequestingSig === docType ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <PenLine className="h-3 w-3" />
+                        )}
+                        Demander signature à tous
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Documents groupés par destinataire */}
+          <div className="divide-y">
+            {secondaryGroups.map((group) => (
+              <div key={group.key} className="px-4 py-2">
+                <p className="text-xs font-semibold text-gray-700 py-1">{group.name}</p>
+                {group.docs.map((doc) =>
+                  renderDocRow(doc, doc.doc_type as ConventionDocType, group.email),
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
       )}
 
       {/* ── Dialog: Document preview ── */}

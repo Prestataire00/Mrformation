@@ -163,16 +163,35 @@ export async function getDocKeysForSession(
 
 /**
  * Insert batch de docs (par défaut ou custom). Idempotent via UNIQUE INDEX
- * `documents_unique_source_owner` (skip silencieux des doublons).
+ * `documents_unique_source_owner` : les doublons sont ignorés et le retour
+ * `{ inserted }` indique le nombre RÉEL de lignes créées.
+ *
+ * Subtilité PostgreSQL : un `INSERT` multi-lignes est atomique — une seule
+ * ligne en doublon (23505) fait rejeter TOUT le batch. L'ancienne version
+ * avalait ce 23505 et insérait alors 0 ligne en silence, tout en laissant
+ * croire à l'appelant que tout était passé. On retombe donc sur un insert
+ * ligne-à-ligne dès qu'un conflit survient, pour ne perdre que les vrais
+ * doublons et renvoyer un compte exact.
  */
 export async function insertDocs(
   supabase: SupabaseClient,
   inputs: InsertDocInput[],
-): Promise<void> {
-  if (inputs.length === 0) return;
+): Promise<{ inserted: number }> {
+  if (inputs.length === 0) return { inserted: 0 };
   const rows = inputs.map(mapInsertInputToDocumentsRow);
   const { error } = await supabase.from("documents").insert(rows);
-  if (error && error.code !== "23505") throw error; // 23505 = duplicate key → idempotent skip
+  // Pas d'erreur ⇒ insert atomique réussi ⇒ toutes les lignes sont passées.
+  if (!error) return { inserted: rows.length };
+  if (error.code !== "23505") throw error;
+  // Conflit 23505 sur le batch : on rejoue ligne-à-ligne en comptant les
+  // insertions réelles et en ignorant uniquement les doublons.
+  let inserted = 0;
+  for (const row of rows) {
+    const { error: rowErr } = await supabase.from("documents").insert(row);
+    if (!rowErr) inserted++;
+    else if (rowErr.code !== "23505") throw rowErr;
+  }
+  return { inserted };
 }
 
 /**

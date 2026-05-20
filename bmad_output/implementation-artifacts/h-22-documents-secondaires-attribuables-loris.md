@@ -3,7 +3,7 @@ storyId: H22
 storyKey: h-22-documents-secondaires-attribuables-loris
 epic: H
 title: Documents secondaires attribuables aux sessions par Loris (Epic H)
-status: done
+status: in-progress
 priority: P1
 effort: 3-4 j-h
 wave: hot-fix (extension Epic H, suite h-19/h-20)
@@ -281,6 +281,43 @@ Conséquence : Loris a accès à ces templates uniquement via la page de test `/
 - [x] [Review][Defer] **W4 — `DOC_SHORT` perd le "BR" sur "Hab. B1V/B2V"** — Clarification post-smoke, cosmétique.
 - [x] [Review][Defer] **W5 — Param `formationId` est en fait un `session.id`** — Convention projet (formation = session côté UI), rename hors-scope.
 - [x] [Review][Defer] **W6 — `DOC_LABELS_PLURAL` non mis à jour pour les 23 nouveaux** — Fallback fonctionne, à compléter quand un label pluriel sera surfacé (mass action concrète).
+
+### Review Findings (2026-05-20 — bmad-code-review, revue du flux complet)
+
+Revue adversariale (Blind Hunter + Edge Case Hunter + Acceptance Auditor) du
+flux complet « documents secondaires ». **Les 3 couches ont convergé sur la
+même cause racine.** Story repassée en `in-progress`.
+
+#### decision-needed
+
+- [x] [Review][Decision] **Docs `ownerType:"session"` — modèle de propriété** — `bilan_poe`, `reponses_evaluations`, `reponses_satisfaction_session`, `resultats_evaluations` sont mappés `owner_type='company'` + 1ʳᵉ entreprise ; skippés si la session n'a aucune entreprise ; génération alimentée d'un `client_id` au lieu du contexte session. La table `documents` supporte `owner_type='session'`. Décision : les passer en `owner_type='session'` (owner_id null) + section "Documents de session" dans TabConventionDocs ?
+
+#### patch
+
+- [x] [Review][Patch] **BLOCKER — Les documents secondaires ne sont rendus nulle part dans TabConventionDocs** [TabConventionDocs.tsx:1300-1325 (Détail), :1376-1413 + :1557-1585 (Matrice)] — `renderOwnerSection` et les matrices n'itèrent que `DEFAULT_LEARNER_DOCS` / `DEFAULT_COMPANY_DOCS` / `DEFAULT_TRAINER_DOCS` / `STATIC_DOCS` / `doc_type==="custom"`. Les 23 doc_types secondaires ne sont dans aucune liste → ligne insérée en base, chargée dans `docs`, mais aucun JSX ne l'itère. **CAUSE RACINE du symptôme « le document n'apparaît nulle part ».** Fix : étendre le rendu (filtrer `isSecondaryDocType(d.doc_type)`, rendre comme les `customDocs` dans la section owner + colonnes matrice).
+- [x] [Review][Patch] **Aucun bouton de signature pour les docs secondaires signables** [TabConventionDocs.tsx:1798-1842] — boutons « Demander signature » hardcodés sur `convention_entreprise` / `convention_intervention`. Les 5 secondaires signables n'ont aucun point d'entrée UI alors que le backend les supporte. Completion Note h-22 #6 (« apparaîtront automatiquement ») fausse.
+- [x] [Review][Patch] **« Tout générer » (batch) ignore les docs secondaires** [TabConventionDocs.tsx ~:1642] — le batch ne boucle que sur `DEFAULT_LEARNER_DOCS`. AC-7 non satisfait pour les secondaires.
+- [x] [Review][Patch] **`insertDocs` : un INSERT batch en conflit 23505 partiel échoue en totalité, silencieusement** [documents-store.ts:168-176 ; attribute-secondary/route.ts:255] — `insert(rows)` multi-lignes : si 1 ligne viole l'UNIQUE, PG rejette tout le batch ; `insertDocs` avale le 23505 → 0 ligne insérée, mais la route renvoie `created: rowsToInsert.length` (faux). Fix : `upsert` `ignoreDuplicates` ou insert ligne-à-ligne + renvoyer le `count` réel.
+
+#### Résolution (2026-05-21 — branche `fix/h-22-affichage-docs-secondaires`)
+
+Les 4 `patch` et la `decision-needed` sont traités. `tsc --noEmit` clean, 400/400 vitest.
+
+- **BLOCKER affichage** — Nouvelle section « Documents secondaires » dans `TabConventionDocs`, rendue dans les 2 vues (hors du ternaire `matrixView`, avant les dialogs). `secondaryDocs = docs.filter(isSecondaryDocType)` regroupés par destinataire (`secondaryGroups`) et rendus via le `renderDocRow` existant → visibles + actionnables (Voir / Figer / signature).
+- **Boutons de signature** — Le bouton « Envoyer pour signature » par document apparaît automatiquement via `renderDocRow` (`doc.requires_signature`, posé par la route d'attribution). En complément : bouton de masse « Demander signature à tous » par type, affiché pour les 5 types signables (`signable && hasBatchSignatureRequestEndpoint`).
+- **Batch / « Tout générer »** — Bande d'actions de masse par type secondaire présent dans la nouvelle section : « Tout figer » (`handleMassConfirm`). Le « Tout figer » global (sans filtre `doc_type`) couvrait déjà le gel ; la génération PDF par document passe par « Voir ».
+- **`insertDocs` 23505** — Renvoie désormais `{ inserted }` (compte réel) ; sur conflit 23505 d'un batch, fallback insert ligne-à-ligne. La route `attribute-secondary` renvoie `created: inserted` (compte exact) au lieu de `rowsToInsert.length`.
+- **decision-needed `ownerType:"session"`** — Conservé `owner_type='company'` : le fix d'affichage rend ces 4 docs visibles sous leur entreprise, donc le symptôme est levé sans migration. La refonte `owner_type='session'` est reportée (`deferred-work.md`).
+
+Reste : merge de la branche + smoke prod (vérification visuelle sur une session avec documents secondaires attribués).
+
+#### defer (pré-existant / hors symptôme)
+
+- [x] [Review][Defer] **`created_by` non renseigné sur les docs secondaires** [attribute-secondary/route.ts] — colonne nullable, audit incomplet.
+- [x] [Review][Defer] **`getDocsForSession` sans filtre `entity_id` explicite** [documents-store.ts:132-143] — pré-existant ; RLS `entity_isolation` + vérif session amont compensent.
+- [x] [Review][Defer] **Clé d'idempotence incohérente entre call-sites** (`…|""` vs `…|null`) — latent, sans effet tant que les owners sont non-null.
+- [x] [Review][Defer] **`markDoc*` : read-modify-write non atomique sur `metadata`** [documents-store.ts] — pré-existant.
+- [x] [Review][Defer] **`generate-from-template` ne valide pas `ownerType` vs contexte** [generate-from-template/route.ts] — PDF à placeholders au lieu d'erreur explicite.
 
 ## 6. Dev Notes
 

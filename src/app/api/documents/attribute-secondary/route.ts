@@ -30,7 +30,9 @@ import { insertDocs, getDocKeysForSession } from "@/lib/services/documents-store
  *   (legacy UI shape) sera étendue dans une story dédiée.
  *
  * Idempotence : déléguée à `documents_unique_source_owner` UNIQUE INDEX +
- * `insertDocs()` qui skip silencieusement les doublons (PG 23505).
+ * `insertDocs()` qui ignore les doublons (PG 23505) et renvoie le nombre
+ * réel de lignes créées via `{ inserted }` — c'est ce compte exact, et non
+ * `rowsToInsert.length`, qui est renvoyé dans `created`.
  *
  * Accès : admin + super_admin uniquement (RLS + filter entity_id en défense).
  */
@@ -232,8 +234,10 @@ export async function POST(request: NextRequest) {
 
     // INSERT via documents-store (table unifiée `documents`, source de vérité
     // depuis Epic B / PR #105). Idempotent via UNIQUE INDEX
-    // `documents_unique_source_owner` (skip silencieux 23505).
-    await insertDocs(dbClient, rowsToInsert);
+    // `documents_unique_source_owner`. `inserted` = compte réel (gère le cas
+    // d'une attribution concurrente où une ligne aurait été créée entre le
+    // SELECT existingKeys ci-dessus et cet INSERT).
+    const { inserted } = await insertDocs(dbClient, rowsToInsert);
 
     // Audit log — sync void avec error-handling interne (cf src/lib/audit-log.ts).
     logAudit({
@@ -246,13 +250,13 @@ export async function POST(request: NextRequest) {
       details: {
         kind: "documents_secondaires_attribues",
         docTypes,
-        rowsCreated: rowsToInsert.length,
+        rowsCreated: inserted,
         skippedByMissingOwner,
       },
     });
 
     return NextResponse.json({
-      created: rowsToInsert.length,
+      created: inserted,
       docTypes,
       skippedByMissingOwner,
     });
