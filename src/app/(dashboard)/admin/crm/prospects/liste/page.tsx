@@ -49,6 +49,26 @@ import { Plus } from "lucide-react";
 
 const PAGE_SIZE = 15;
 
+/**
+ * Recherche prospects — construit le pattern `ilike` pour le `.or()` PostgREST.
+ * Protections (h-23 AC-5a, code review P3/P10) :
+ *  - échappe les wildcards SQL LIKE (`%`, `_`, `\`) AVANT le strip DSL, pour
+ *    qu'un "A_B" matche exactement et pas "AXB" ;
+ *  - strippe les caractères qui cassent le DSL `.or()` PostgREST
+ *    (`,()` `"'` `:` `.` `*` `\`) en les remplaçant par `%` ;
+ *  - retourne null si la recherche est vide ou ne donne que des `%`
+ *    (éviter le `%%%` qui matcherait toutes les lignes).
+ * Partagée par fetchProspects (page) et handleExportExcel (export complet).
+ */
+function computeSearchPattern(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const likeEscaped = trimmed.replace(/[\\%_]/g, "\\$&");
+  const safe = likeEscaped.replace(/[,()"':.*\\]/g, "%");
+  if (safe.length === 0 || /^%*$/.test(safe)) return null;
+  return `%${safe}%`;
+}
+
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   new:       { label: "Lead",        color: "#374151" },
   contacted: { label: "Contacté",    color: "#f97316" },
@@ -91,6 +111,7 @@ export default function ProspectListePage() {
   const [prospects, setProspects] = useState<CrmProspect[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
 
   // Filters
   const [search, setSearch] = useState("");
@@ -137,25 +158,11 @@ export default function ProspectListePage() {
       .order("created_at", { ascending: false })
       .range(from, to);
 
-    if (search.trim()) {
-      // h-23 AC-5a — recherche prospects : 3 protections.
-      // P3 (code review) : echapper les wildcards SQL LIKE (`%`, `_`, `\`)
-      //   AVANT le strip DSL → un utilisateur tapant "A_B" matche bien
-      //   exactement, pas "AXB" / "A1B" / "A?B".
-      // Strip DSL PostgREST : `,()` `"`' `:` `.` `*` `\` cassent `.or()`.
-      //   Remplaces par `%` (wildcard SQL) pour ne pas perdre la search.
-      // P10 (code review) : bail si apres nettoyage la pattern n'est que des
-      //   `%` → eviter le `%%%` qui matche TOUTES les rows (cas single-comma).
-      const raw = search.trim();
-      const likeEscaped = raw.replace(/[\\%_]/g, "\\$&");
-      const safe = likeEscaped.replace(/[,()"':.*\\]/g, "%");
-      const onlyWildcards = /^%*$/.test(safe);
-      if (safe.length > 0 && !onlyWildcards) {
-        const pat = `%${safe}%`;
-        query = query.or(
-          `company_name.ilike.${pat},contact_name.ilike.${pat},email.ilike.${pat},naf_code.ilike.${pat}`,
-        );
-      }
+    const searchPattern = computeSearchPattern(search);
+    if (searchPattern) {
+      query = query.or(
+        `company_name.ilike.${searchPattern},contact_name.ilike.${searchPattern},email.ilike.${searchPattern},naf_code.ilike.${searchPattern}`,
+      );
     }
 
     if (statusFilter && statusFilter !== "all") {
@@ -225,19 +232,68 @@ export default function ProspectListePage() {
     fetchProspects();
   };
 
-  const handleExportExcel = () => {
-    const headers = ["Entreprise", "Contact", "Email", "Téléphone", "Statut", "Source", "Montant", "Date de création"];
-    const rows = extraFiltered.map((p) => [
-      p.company_name,
-      p.contact_name ?? "",
-      p.email ?? "",
-      p.phone ?? "",
-      STATUS_CONFIG[p.status]?.label ?? p.status,
-      p.source ?? "",
-      (Number(p.amount) || 0).toFixed(2),
-      new Date(p.created_at).toLocaleDateString("fr-FR"),
-    ]);
-    downloadXlsx(headers, rows, `prospects_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  const handleExportExcel = async () => {
+    setExporting(true);
+    try {
+      // Récupère TOUS les prospects correspondant aux filtres actifs, pas
+      // seulement la page courante (bug : l'export ne prenait que les 15
+      // lignes de `extraFiltered`). Supabase plafonne les réponses à ~1000
+      // lignes → on boucle par lots jusqu'à épuisement.
+      const EXPORT_BATCH = 1000;
+      const searchPattern = computeSearchPattern(search);
+      const all: CrmProspect[] = [];
+      let offset = 0;
+      let hasMore = true;
+      while (hasMore && offset < 100000) {
+        let query = supabase
+          .from("crm_prospects")
+          .select("*")
+          .eq("entity_id", entityId)
+          .order("created_at", { ascending: false })
+          .range(offset, offset + EXPORT_BATCH - 1);
+        if (searchPattern) {
+          query = query.or(
+            `company_name.ilike.${searchPattern},contact_name.ilike.${searchPattern},email.ilike.${searchPattern},naf_code.ilike.${searchPattern}`,
+          );
+        }
+        if (statusFilter !== "all") query = query.eq("status", statusFilter);
+        if (sourceFilter !== "all") query = query.eq("source", sourceFilter);
+        if (assignedFilter !== "all") query = query.eq("assigned_to", assignedFilter);
+        const { data, error } = await query;
+        if (error) throw error;
+        const batch = (data as CrmProspect[]) ?? [];
+        all.push(...batch);
+        hasMore = batch.length === EXPORT_BATCH;
+        offset += EXPORT_BATCH;
+      }
+      // scoreFilter appliqué côté client — identique à `extraFiltered`.
+      const filtered = all
+        .filter((p) => {
+          if (scoreFilter === "hot" && (p.score || 0) < 60) return false;
+          if (scoreFilter === "warm" && ((p.score || 0) < 30 || (p.score || 0) >= 60)) return false;
+          if (scoreFilter === "cold" && (p.score || 0) >= 30) return false;
+          return true;
+        })
+        .sort((a, b) => (b.score || 0) - (a.score || 0));
+      const headers = ["Entreprise", "Contact", "Email", "Téléphone", "Statut", "Source", "Montant", "Date de création"];
+      const rows = filtered.map((p) => [
+        p.company_name,
+        p.contact_name ?? "",
+        p.email ?? "",
+        p.phone ?? "",
+        STATUS_CONFIG[p.status]?.label ?? p.status,
+        p.source ?? "",
+        (Number(p.amount) || 0).toFixed(2),
+        new Date(p.created_at).toLocaleDateString("fr-FR"),
+      ]);
+      downloadXlsx(headers, rows, `prospects_${new Date().toISOString().slice(0, 10)}.xlsx`);
+      toast({ title: `${rows.length} prospect${rows.length > 1 ? "s" : ""} exporté${rows.length > 1 ? "s" : ""}` });
+    } catch (err) {
+      console.error("[Export Excel prospects]", err);
+      toast({ title: "Erreur lors de l'export Excel", variant: "destructive" });
+    } finally {
+      setExporting(false);
+    }
   };
 
   function handleSelectProspect(p: CrmProspect) {
@@ -278,9 +334,11 @@ export default function ProspectListePage() {
           </Button>
           <button
             onClick={handleExportExcel}
-            className="border border-[#374151] text-[#374151] px-4 py-2 rounded-lg text-sm flex items-center gap-1"
+            disabled={exporting}
+            className="border border-[#374151] text-[#374151] px-4 py-2 rounded-lg text-sm flex items-center gap-1 disabled:opacity-60"
           >
-            <Download className="h-4 w-4" /> Excel
+            {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            {exporting ? "Export…" : "Excel"}
           </button>
         </div>
       </div>
