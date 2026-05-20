@@ -1513,6 +1513,17 @@ function TaskRow({
               {task.client.company_name}
             </span>
           )}
+          {!task.prospect && !task.client && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onEdit(); }}
+              title="Cette tâche n'est rattachée à aucun prospect — cliquer pour en attribuer un"
+              className="flex items-center gap-1 rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 font-medium text-amber-700 hover:bg-amber-100 transition-colors"
+            >
+              <AlertTriangle className="h-2.5 w-2.5" />
+              Sans prospect
+            </button>
+          )}
         </div>
         {task.completion_notes && task.status === "completed" && (
           <p className="text-xs text-gray-500 italic mt-1 pl-4">{"\uD83D\uDCDD"} {task.completion_notes}</p>
