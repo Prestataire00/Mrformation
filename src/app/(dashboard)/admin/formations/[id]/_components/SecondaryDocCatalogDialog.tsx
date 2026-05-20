@@ -201,10 +201,12 @@ export function SecondaryDocCatalogDialog({
           />
         </div>
 
-        {/* min-h-0 : sans lui, l'enfant flex-1 garde min-height:auto et refuse
-            de rétrécir → la ScrollArea s'étire à la hauteur du contenu et ne
-            scrolle jamais (seule la 1re catégorie restait atteignable). */}
-        <ScrollArea className="flex-1 min-h-0 -mx-6 px-6">
+        {/* max-h DIRECT sur la ScrollArea (pattern éprouvé du projet, cf
+            CommentsSection / EmailSection en max-h-[500px]). flex-1 ne
+            fonctionnait pas : le DialogContent est en max-h (pas une hauteur
+            définie) → flex-1 n'a aucune hauteur à distribuer → la ScrollArea
+            ne se bornait jamais et ne scrollait pas. max-h auto-borne. */}
+        <ScrollArea className="max-h-[60vh] -mx-6 px-6">
           <div className="space-y-5 py-2">
             {totalFiltered === 0 ? (
               <p className="text-sm text-gray-400 text-center py-12">
