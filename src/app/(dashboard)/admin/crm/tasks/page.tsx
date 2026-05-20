@@ -1272,6 +1272,7 @@ interface TaskRowProps {
   onEdit: () => void;
   onDelete: () => void;
   isOverdue?: boolean;
+  compact?: boolean;
   isEditing?: boolean;
   editFormData?: TaskFormData;
   editFormErrors?: Partial<Record<keyof TaskFormData, string>>;
@@ -1290,7 +1291,7 @@ interface TaskRowProps {
 }
 
 function TaskRow({
-  task, getProfileName, onToggleComplete, onEdit, onDelete, isOverdue,
+  task, getProfileName, onToggleComplete, onEdit, onDelete, isOverdue, compact,
   isEditing, editFormData, editFormErrors, onUpdateField, onSaveEdit, onCancelEdit, saving,
   profiles, prospects, clients,
   completingTask, completionNotes, onCompletionNotesChange, onConfirmComplete, onCancelComplete,
@@ -1298,6 +1299,10 @@ function TaskRow({
   const router = useRouter();
   const isCompleted = task.status === "completed";
   const profileName = getProfileName(task.assigned_to);
+  const titleIsGeneric = isGenericTaskTitle(task.title, task.label);
+  const displayTitle = titleIsGeneric
+    ? (task.description?.trim() || task.prospect?.company_name || task.title)
+    : task.title;
 
   if (isEditing && editFormData && onUpdateField && onSaveEdit && onCancelEdit) {
     return (
@@ -1401,6 +1406,32 @@ function TaskRow({
     }
   };
 
+  if (compact) {
+    return (
+      <div
+        onClick={handleRowClick}
+        className={cn(
+          "flex items-center gap-2 rounded-lg border bg-white px-3 py-1.5 hover:bg-gray-50/80 transition-colors cursor-pointer",
+          isCompleted && "opacity-50",
+        )}
+      >
+        <div onClick={(e) => e.stopPropagation()}>
+          <Checkbox
+            checked={isCompleted}
+            onCheckedChange={onToggleComplete}
+            className="flex-shrink-0"
+          />
+        </div>
+        <p className={cn("flex-1 min-w-0 truncate text-sm text-gray-500", isCompleted && "line-through")}>
+          {displayTitle}
+        </p>
+        {task.due_date && (
+          <span className="flex-shrink-0 text-[11px] text-gray-400">{formatDate(task.due_date)}</span>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div
       onClick={handleRowClick}
@@ -1424,10 +1455,6 @@ function TaskRow({
             // Sellsy historique a un title générique (= label). On évite ainsi
             // 32% des lignes affichant "Relance par téléphone/mail" en doublon
             // avec le badge label.
-            const titleIsGeneric = isGenericTaskTitle(task.title, task.label);
-            const displayTitle = titleIsGeneric
-              ? (task.description?.trim() || task.prospect?.company_name || task.title)
-              : task.title;
             const showDescriptionInline = !titleIsGeneric && task.description;
             return (
               <>
