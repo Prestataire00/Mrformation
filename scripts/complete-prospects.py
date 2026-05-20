@@ -110,6 +110,36 @@ def parse_contacts(csv_path):
     return contacts, skipped_no_societe
 
 
+def build_email_societe_map(csv_path):
+    """
+    Construit une map email -> id_societe à partir du fichier contacts, en
+    prenant EMAIL CONTACT *et* EMAIL SOCIETE. Ne garde que les emails qui
+    identifient UNE SEULE société (les emails partagés entre plusieurs
+    sociétés sont écartés — rattachement ambigu).
+
+    Sert à re-lier les tâches orphelines dont le `contact_email` ne matche
+    aucun prospect par email principal, mais correspond à une société connue.
+    """
+    email_to_societes = {}  # email -> dict {id_societe: nom_societe}
+    with open(csv_path, encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f, delimiter=";")
+        for row in reader:
+            id_societe = (row.get("ID SOCIETE SELLSY") or "").strip()
+            if not is_numeric_id(id_societe):
+                continue
+            nom_societe = norm_space(row.get("NOM SOCIETE"))
+            for col in ("EMAIL CONTACT", "EMAIL SOCIETE"):
+                email = norm_space(row.get(col)).lower()
+                if email and "@" in email:
+                    email_to_societes.setdefault(email, {})[id_societe] = nom_societe
+    # On ne garde que les emails identifiant UNE SEULE société.
+    return {
+        email: (next(iter(socs)), next(iter(socs.values())))
+        for email, socs in email_to_societes.items()
+        if len(socs) == 1
+    }
+
+
 def pick_best_per_societe(contacts):
     """
     1 société -> 1 contact retenu.
@@ -189,6 +219,140 @@ def emit_staging_block(best):
         lines.append(",\n".join(values) + ";")
         lines.append("")
     return "\n".join(lines)
+
+
+STAGING_EMAIL_TABLE = "crm_import_staging_email2societe"
+
+
+def emit_email_map_block(email_map):
+    """Génère le SQL : table staging email -> (sellsy_id, nom_societe)."""
+    lines = [
+        f"DROP TABLE IF EXISTS {STAGING_EMAIL_TABLE};",
+        f"CREATE TABLE {STAGING_EMAIL_TABLE} (",
+        "  email       TEXT PRIMARY KEY,",
+        "  sellsy_id   TEXT NOT NULL,",
+        "  nom_societe TEXT",
+        ");",
+        f"ALTER TABLE {STAGING_EMAIL_TABLE} ENABLE ROW LEVEL SECURITY;",
+        "",
+    ]
+    items = sorted(email_map.items())
+    for i in range(0, len(items), BATCH_SIZE):
+        batch = items[i:i + BATCH_SIZE]
+        lines.append(f"INSERT INTO {STAGING_EMAIL_TABLE} (email, sellsy_id, nom_societe) VALUES")
+        values = [
+            f"  ({sql_str(email)}, {sql_str(sid)}, {sql_str(nom)})"
+            for email, (sid, nom) in batch
+        ]
+        lines.append(",\n".join(values) + ";")
+        lines.append("")
+    return "\n".join(lines)
+
+
+TEMPLATE_05 = f"""-- ============================================================
+-- 05 — RE-LIAISON des tâches orphelines via le fichier contacts
+-- ============================================================
+-- Généré par scripts/complete-prospects.py — NE PAS éditer à la main.
+--
+-- Complète relink-orphan-tasks.sql : ce dernier ne relie que par email
+-- PRINCIPAL du prospect. Or beaucoup de tâches portent un email
+-- (ex. EMAIL SOCIETE) différent de l'email principal du prospect.
+-- Ce script utilise la map `email -> société` issue du fichier contacts
+-- Sellsy (EMAIL CONTACT + EMAIL SOCIETE) pour retrouver le prospect.
+--
+-- Ne relie que les emails identifiant UNE SEULE société (non ambigus).
+-- Idempotent (ne touche que les tâches encore prospect_id IS NULL).
+--
+-- ⚠️ ORDRE : après 04b et après relink-orphan-tasks.sql.
+-- Lance les 3 sections une par une (sélection + Run).
+-- ============================================================
+
+-- Pont de matching : email tâche -> société (fichier contacts), puis
+-- société -> prospect via sellsy_id OU nom de société. Le double critère
+-- est nécessaire car Sellsy a des doublons de fiche société : la même
+-- entreprise peut avoir un sellsy_id différent entre l'export contacts et
+-- l'import prospects. Garde-fou : on ne relie que si le couple identifie
+-- UN SEUL prospect (sinon ambiguïté -> tâche laissée orpheline).
+
+-- ╔══ SECTION 1 — CHARGEMENT de la map email -> société ════════════════════╗
+BEGIN;
+
+{{email_map_sql}}
+COMMIT;
+-- ╚══ FIN SECTION 1 ════════════════════════════════════════════════════════╝
+
+
+-- ── SECTION 2 — PREVIEW (read-only) : tâches orphelines et leurs candidats ─
+-- nb_candidats = 1  -> sera re-liée par la SECTION 3
+-- nb_candidats > 1  -> ambiguë, laissée orpheline (à traiter manuellement)
+WITH task_matches AS (
+  SELECT t.id AS task_id, t.title, t.contact_email,
+         p.id AS prospect_id, p.company_name
+  FROM crm_tasks t
+  JOIN {STAGING_EMAIL_TABLE} m ON lower(t.contact_email) = m.email
+  JOIN crm_prospects p
+    ON p.entity_id = t.entity_id
+   AND ( p.sellsy_id = m.sellsy_id
+      OR lower(btrim(p.company_name)) = lower(btrim(m.nom_societe)) )
+  WHERE t.prospect_id IS NULL
+    AND t.contact_email IS NOT NULL
+)
+SELECT task_id, title, contact_email,
+       COUNT(DISTINCT prospect_id)              AS nb_candidats,
+       string_agg(DISTINCT company_name, ' | ') AS prospect_candidat
+FROM task_matches
+GROUP BY task_id, title, contact_email
+ORDER BY nb_candidats DESC, title;
+
+
+-- ── SECTION 3 — UPDATE transactionnel + nettoyage ────────────────────────
+DO $$
+BEGIN
+  IF to_regclass('public.{STAGING_EMAIL_TABLE}') IS NULL THEN
+    RAISE EXCEPTION 'Table {STAGING_EMAIL_TABLE} absente — exécute la SECTION 1 d''abord.';
+  END IF;
+END $$;
+
+BEGIN;
+
+WITH task_matches AS (
+  SELECT t.id AS task_id, p.id AS prospect_id
+  FROM crm_tasks t
+  JOIN {STAGING_EMAIL_TABLE} m ON lower(t.contact_email) = m.email
+  JOIN crm_prospects p
+    ON p.entity_id = t.entity_id
+   AND ( p.sellsy_id = m.sellsy_id
+      OR lower(btrim(p.company_name)) = lower(btrim(m.nom_societe)) )
+  WHERE t.prospect_id IS NULL
+    AND t.contact_email IS NOT NULL
+),
+unambiguous AS (
+  -- COUNT(DISTINCT) = 1 garantit un seul prospect ; array_agg car MIN()
+  -- ne supporte pas le type uuid.
+  SELECT task_id, (array_agg(DISTINCT prospect_id))[1] AS prospect_id
+  FROM task_matches
+  GROUP BY task_id
+  HAVING COUNT(DISTINCT prospect_id) = 1
+)
+UPDATE crm_tasks t
+SET prospect_id = u.prospect_id,
+    updated_at  = NOW()
+FROM unambiguous u
+WHERE t.id = u.task_id;
+
+COMMIT;
+
+DROP TABLE IF EXISTS {STAGING_EMAIL_TABLE};
+
+-- ── Bilan : tâches encore orphelines ──
+SELECT e.slug AS entite,
+       COUNT(*)                                       AS taches_total,
+       COUNT(*) FILTER (WHERE t.prospect_id IS NULL)   AS encore_orphelines
+FROM crm_tasks t
+JOIN entities e ON e.id = t.entity_id
+GROUP BY e.slug
+ORDER BY e.slug;
+"""
 
 
 HEADER_04A = f"""-- ============================================================
@@ -299,11 +463,12 @@ COMMIT;
 DROP TABLE IF EXISTS {STAGING_TABLE};
 
 -- ── Bilan post-complétion ──
+-- Colonnes préfixées p. : entities possède aussi email/phone (sinon "ambiguous").
 SELECT e.slug AS entite,
-       COUNT(*)                                          AS prospects_total,
-       COUNT(*) FILTER (WHERE contact_name IS NULL)       AS sans_contact_name,
-       COUNT(*) FILTER (WHERE email        IS NULL)       AS sans_email,
-       COUNT(*) FILTER (WHERE phone        IS NULL)       AS sans_phone
+       COUNT(*)                                            AS prospects_total,
+       COUNT(*) FILTER (WHERE p.contact_name IS NULL)       AS sans_contact_name,
+       COUNT(*) FILTER (WHERE p.email        IS NULL)       AS sans_email,
+       COUNT(*) FILTER (WHERE p.phone        IS NULL)       AS sans_phone
 FROM crm_prospects p
 JOIN entities e ON e.id = p.entity_id
 GROUP BY e.slug
@@ -325,6 +490,7 @@ def main():
 
     contacts, skipped = parse_contacts(csv_path)
     best, multi_report = pick_best_per_societe(contacts)
+    email_map = build_email_societe_map(csv_path)
 
     staging_sql = emit_staging_block(best)
 
@@ -334,6 +500,11 @@ def main():
         HEADER_04A + staging_sql + "\n" + FOOTER_04A, encoding="utf-8")
     (out_dir / "04b_complete_prospects.sql").write_text(
         HEADER_04B, encoding="utf-8")
+
+    # 05 : re-liaison des tâches orphelines via la map email -> société.
+    (out_dir / "05_relink_orphan_tasks.sql").write_text(
+        TEMPLATE_05.replace("{email_map_sql}", emit_email_map_block(email_map)),
+        encoding="utf-8")
 
     # Rapport multi-contacts (CSV local — données client, gitignored)
     multi_path = out_dir / "multi_contacts_report.csv"
@@ -346,12 +517,14 @@ def main():
 
     nb_multi = len({m["id_societe"] for m in multi_report})
     print("── Génération terminée ──")
-    print(f"  Contacts lus              : {len(contacts)}")
-    print(f"  Lignes sans ID société    : {skipped} (ignorées)")
-    print(f"  Sociétés uniques (staging): {len(best)}")
-    print(f"  Sociétés multi-contacts   : {nb_multi}")
+    print(f"  Contacts lus               : {len(contacts)}")
+    print(f"  Lignes sans ID société     : {skipped} (ignorées)")
+    print(f"  Sociétés uniques (staging) : {len(best)}")
+    print(f"  Sociétés multi-contacts    : {nb_multi}")
+    print(f"  Emails -> société (uniques): {len(email_map)}")
     print(f"  → {out_dir / '04a_conflicts_report_prospects.sql'}")
     print(f"  → {out_dir / '04b_complete_prospects.sql'}")
+    print(f"  → {out_dir / '05_relink_orphan_tasks.sql'}")
     print(f"  → {multi_path}")
 
 
