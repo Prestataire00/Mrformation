@@ -240,7 +240,11 @@ const commercialNavSections: NavSection[] = [
           { label: "Devis", href: "/admin/crm/quotes", icon: FileText },
           { label: "Formulaires", href: "/admin/crm/formulaires", icon: FileQuestion },
           { label: "Campagnes", href: "/admin/crm/campaigns", icon: Repeat },
-          { label: "Séquences", href: "/admin/crm/sequences", icon: Sparkles },
+          // "Séquences" retiré : crm_sequences n'est pas ouvert au rôle
+          // 'commercial' en RLS (cf. add_commercial_role_to_crm_rls.sql,
+          // périmètre "future story h-18"). Page accessible mais vide pour
+          // un commercial → lien trompeur. À réintégrer quand crm_sequences
+          // sera étendu au rôle commercial.
         ],
       },
     ],
