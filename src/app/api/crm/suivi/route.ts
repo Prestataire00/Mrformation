@@ -5,6 +5,7 @@ import { createCommercialActionSchema } from "@/lib/validations/crm-suivi";
 import { parsePagination } from "@/lib/validations";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 import { logAudit } from "@/lib/audit-log";
+import { resolveActiveEntityId } from "@/lib/crm/active-entity";
 
 function createServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -49,6 +50,8 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const activeEntityId = resolveActiveEntityId(profile);
+
     const { searchParams } = new URL(request.url);
     const actionType = searchParams.get("action_type") ?? "";
     const prospectId = searchParams.get("prospect_id") ?? "";
@@ -68,7 +71,7 @@ export async function GET(request: NextRequest) {
       `,
         { count: "exact" }
       )
-      .eq("entity_id", profile.entity_id)
+      .eq("entity_id", activeEntityId)
       .order("created_at", { ascending: false })
       .range(offset, offset + perPage - 1);
 
@@ -161,6 +164,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const activeEntityId = resolveActiveEntityId(profile);
+
     const body = await request.json();
 
     const parsed = createCommercialActionSchema.safeParse(body);
@@ -177,7 +182,7 @@ export async function POST(request: NextRequest) {
     const { data, error } = await supabase
       .from("crm_commercial_actions")
       .insert({
-        entity_id: profile.entity_id,
+        entity_id: activeEntityId,
         author_id: user.id,
         action_type,
         prospect_id: prospect_id ?? null,
@@ -198,7 +203,7 @@ export async function POST(request: NextRequest) {
 
     logAudit({
       supabase,
-      entityId: profile.entity_id,
+      entityId: activeEntityId,
       userId: user.id,
       action: "create",
       resourceType: "commercial_action",
