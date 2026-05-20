@@ -27,6 +27,7 @@ import {
   Bell,
   MoreHorizontal,
   Calendar,
+  AlertTriangle,
   Building2,
   User,
   ClipboardList,
@@ -149,6 +150,8 @@ export default function TasksPage() {
   const [search, setSearch] = useState("");
   const [priorityFilter, setPriorityFilter] = useState<TaskPriority | "all">("all");
   const [statusFilter, setStatusFilter] = useState<TaskStatus | "all">("pending");
+  // Filtre : n'afficher que les tâches non rattachées (ni prospect ni client).
+  const [noProspectFilter, setNoProspectFilter] = useState(false);
   // h-20 : init depuis URL (?assignee=me|unassigned|all|<uuid>). Le default
   // par rôle est appliqué après chargement du profile dans un useEffect dédié.
   // Code review patch : valider la valeur URL pour éviter `eq("assigned_to","foobar")`
@@ -189,7 +192,7 @@ export default function TasksPage() {
     fetchProspects();
     fetchClients();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entityId, search, priorityFilter, statusFilter, assigneeFilter, currentUserId]);
+  }, [entityId, search, priorityFilter, statusFilter, assigneeFilter, currentUserId, noProspectFilter]);
 
   // h-20 : charge le profile courant une seule fois pour résoudre "me" + appliquer
   // le default par rôle (commercial = "me", admin/super_admin = "all").
@@ -292,6 +295,8 @@ export default function TasksPage() {
 
       if (priorityFilter !== "all") query = query.eq("priority", priorityFilter);
       if (statusFilter !== "all") query = query.eq("status", statusFilter);
+      // « Sans prospect » = tâche rattachée à rien (ni prospect ni client).
+      if (noProspectFilter) query = query.is("prospect_id", null).is("client_id", null);
 
       // spec-tasks-attribution-bug fix #3 : aligner sémantique counts ↔ display.
       // Le dropdown affiche "Camille (12)" basé sur activeData (pending+in_progress).
@@ -461,7 +466,7 @@ export default function TasksPage() {
     } finally {
       setLoading(false);
     }
-  }, [supabase, entityId, priorityFilter, statusFilter, search, assigneeFilter, currentUserId, toast]);
+  }, [supabase, entityId, priorityFilter, statusFilter, search, assigneeFilter, currentUserId, toast, noProspectFilter]);
 
   function validateForm(): boolean {
     const errors: Partial<Record<keyof TaskFormData, string>> = {};
@@ -677,7 +682,7 @@ export default function TasksPage() {
 
   // h-20 : le "default" assignee dépend du rôle (commercial = "me", autres = "all")
   const roleDefaultAssignee = currentUserRole === "commercial" ? "me" : "all";
-  const hasActiveFilters = search || priorityFilter !== "all" || statusFilter !== "all" || assigneeFilter !== roleDefaultAssignee;
+  const hasActiveFilters = search || priorityFilter !== "all" || statusFilter !== "all" || assigneeFilter !== roleDefaultAssignee || noProspectFilter;
 
   return (
     <div className="space-y-4 p-6">
@@ -722,6 +727,21 @@ export default function TasksPage() {
           ))}
         </div>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setNoProspectFilter((v) => !v)}
+            aria-pressed={noProspectFilter}
+            title="N'afficher que les tâches non rattachées à un prospect"
+            className={cn(
+              "flex items-center gap-1 h-8 px-2.5 rounded-md text-xs font-medium border transition",
+              noProspectFilter
+                ? "border-amber-300 bg-amber-50 text-amber-700"
+                : "border-gray-200 text-gray-500 hover:bg-gray-100",
+            )}
+          >
+            <AlertTriangle className="h-3.5 w-3.5" />
+            Sans prospect
+          </button>
           <Select value={priorityFilter} onValueChange={(v) => setPriorityFilter(v as TaskPriority | "all")}>
             <SelectTrigger className="h-8 w-32 text-xs"><SelectValue placeholder="Priorité" /></SelectTrigger>
             <SelectContent>
