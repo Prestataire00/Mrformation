@@ -21,6 +21,7 @@ export function TaskKanbanCard({
   onCompletionNotesChange,
   onConfirmComplete,
   onCancelComplete,
+  compact,
 }: {
   task: CrmTask;
   onToggle: (t: CrmTask) => void;
@@ -30,6 +31,7 @@ export function TaskKanbanCard({
   onCompletionNotesChange?: (v: string) => void;
   onConfirmComplete?: () => void;
   onCancelComplete?: () => void;
+  compact?: boolean;
 }) {
   const priorityColor =
     task.priority === "high"
@@ -44,6 +46,25 @@ export function TaskKanbanCard({
   const displayTitle = titleIsGeneric
     ? task.description?.trim() || task.prospect?.company_name || task.title
     : task.title;
+  if (compact) {
+    return (
+      <div className="rounded-lg border border-gray-100 bg-white px-2.5 py-1.5">
+        <div className="flex items-center gap-2">
+          <Checkbox
+            checked={task.status === "completed"}
+            onCheckedChange={() => onToggle(task)}
+            className="flex-shrink-0"
+          />
+          <span className={cn("flex-1 min-w-0 truncate text-xs text-gray-500", task.status === "completed" && "line-through")}>
+            {displayTitle}
+          </span>
+          {task.due_date && (
+            <span className="flex-shrink-0 text-[10px] text-gray-400">{formatDate(task.due_date)}</span>
+          )}
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="rounded-lg border border-gray-100 bg-white p-3 hover:shadow-sm transition-shadow">
       <div className="flex items-start gap-2">
