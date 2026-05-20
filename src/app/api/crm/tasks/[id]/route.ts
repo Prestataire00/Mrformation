@@ -74,12 +74,12 @@ export async function PATCH(
       );
     }
 
-    // Verify task exists and belongs to entity
+    // Verify task exists. Recherche par PK seule : l'autorisation par
+    // entité est faite ensuite (un super_admin agit cross-entité).
     let findQuery = dbClient
       .from("crm_tasks")
-      .select("id, assigned_to")
-      .eq("id", params.id)
-      .eq("entity_id", profile.entity_id);
+      .select("id, assigned_to, entity_id")
+      .eq("id", params.id);
 
     // Trainers can only modify their own tasks
     if (profile.role === "trainer") {
@@ -95,6 +95,17 @@ export async function PATCH(
       );
     }
 
+    // Autorisation entité : super_admin cross-entité ; les autres rôles
+    // restent cloisonnés à l'entité de leur profil.
+    if (profile.role !== "super_admin" && existing.entity_id !== profile.entity_id) {
+      return NextResponse.json(
+        { data: null, error: "Accès non autorisé à cette tâche" },
+        { status: 403 }
+      );
+    }
+    // Entité effective = celle de la tâche (pas du profil, pour super_admin).
+    const taskEntityId = existing.entity_id as string;
+
     // Trainers cannot reassign tasks to others
     const updateData: Record<string, unknown> = { ...parsed.data, updated_at: new Date().toISOString() };
     if (parsed.data.status === "completed") {
@@ -108,7 +119,7 @@ export async function PATCH(
       .from("crm_tasks")
       .update(updateData)
       .eq("id", params.id)
-      .eq("entity_id", profile.entity_id)
+      .eq("entity_id", taskEntityId)
       .select()
       .single();
 
@@ -121,7 +132,7 @@ export async function PATCH(
 
     logAudit({
       supabase,
-      entityId: profile.entity_id,
+      entityId: taskEntityId,
       userId: user.id,
       action: "update",
       resourceType: "task",
@@ -134,7 +145,7 @@ export async function PATCH(
       try {
         const notifClient = createServiceClient();
         await notifClient.from("crm_notifications").insert({
-          entity_id: profile.entity_id,
+          entity_id: taskEntityId,
           user_id: data.assigned_to,
           type: "general",
           title: "Tâche réassignée",
@@ -153,7 +164,7 @@ export async function PATCH(
     if (parsed.data.status === "completed" && data.prospect_id) {
       logCommercialAction({
         supabase,
-        entityId: profile.entity_id,
+        entityId: taskEntityId,
         authorId: user.id,
         actionType: "task_created",
         prospectId: data.prospect_id,
@@ -190,12 +201,12 @@ export async function DELETE(
     let dbClient;
     try { dbClient = createServiceClient(); } catch { dbClient = supabase; }
 
-    // Verify task exists and belongs to entity
+    // Verify task exists. Recherche par PK seule : l'autorisation par
+    // entité est faite ensuite (un super_admin agit cross-entité).
     let delFindQuery = dbClient
       .from("crm_tasks")
-      .select("id")
-      .eq("id", params.id)
-      .eq("entity_id", profile.entity_id);
+      .select("id, entity_id")
+      .eq("id", params.id);
 
     // Trainers can only delete their own tasks
     if (profile.role === "trainer") {
@@ -211,11 +222,21 @@ export async function DELETE(
       );
     }
 
+    // Autorisation entité : super_admin cross-entité ; les autres rôles
+    // restent cloisonnés à l'entité de leur profil.
+    if (profile.role !== "super_admin" && existing.entity_id !== profile.entity_id) {
+      return NextResponse.json(
+        { data: null, error: "Accès non autorisé à cette tâche" },
+        { status: 403 }
+      );
+    }
+    const taskEntityId = existing.entity_id as string;
+
     const { error } = await dbClient
       .from("crm_tasks")
       .delete()
       .eq("id", params.id)
-      .eq("entity_id", profile.entity_id);
+      .eq("entity_id", taskEntityId);
 
     if (error) {
       return NextResponse.json(
@@ -226,7 +247,7 @@ export async function DELETE(
 
     logAudit({
       supabase,
-      entityId: profile.entity_id,
+      entityId: taskEntityId,
       userId: user.id,
       action: "delete",
       resourceType: "task",
