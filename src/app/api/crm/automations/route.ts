@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
+import { resolveActiveEntityId } from "@/lib/crm/active-entity";
 
 function createServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -102,16 +103,18 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ data: null, error: "Admin access required" }, { status: 403 });
     }
 
+    const activeEntityId = resolveActiveEntityId(profile);
+
     // Check if rules exist, if not seed them
     const { data: existing, count } = await supabase
       .from("crm_automation_rules")
       .select("id", { count: "exact", head: true })
-      .eq("entity_id", profile.entity_id);
+      .eq("entity_id", activeEntityId);
 
     if (!count || count === 0) {
       const seeds = DEFAULT_RULES.map((rule) => ({
         ...rule,
-        entity_id: profile.entity_id,
+        entity_id: activeEntityId,
         is_enabled: true,
       }));
       await supabase.from("crm_automation_rules").insert(seeds);
@@ -121,7 +124,7 @@ export async function GET(request: NextRequest) {
     const { data: rules, error } = await supabase
       .from("crm_automation_rules")
       .select("*")
-      .eq("entity_id", profile.entity_id)
+      .eq("entity_id", activeEntityId)
       .order("created_at", { ascending: true });
 
     if (error) {
