@@ -1,9 +1,17 @@
 import { createClient } from "@/lib/supabase/server";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { createCommercialActionSchema } from "@/lib/validations/crm-suivi";
 import { parsePagination } from "@/lib/validations";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 import { logAudit } from "@/lib/audit-log";
+
+function createServiceClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) throw new Error("Missing Supabase service role configuration");
+  return createSupabaseClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -253,11 +261,37 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    const { error } = await supabase
+    let dbClient;
+    try { dbClient = createServiceClient(); } catch { dbClient = supabase; }
+
+    // Recherche par PK seule, puis autorisation par rôle : super_admin
+    // agit cross-entité, admin reste cloisonné à son entité.
+    const { data: existing, error: findError } = await dbClient
+      .from("crm_commercial_actions")
+      .select("id, entity_id")
+      .eq("id", actionId)
+      .single();
+
+    if (findError || !existing) {
+      return NextResponse.json(
+        { data: null, error: "Action non trouvée" },
+        { status: 404 }
+      );
+    }
+
+    if (profile.role !== "super_admin" && existing.entity_id !== profile.entity_id) {
+      return NextResponse.json(
+        { data: null, error: "Accès non autorisé à cette action" },
+        { status: 403 }
+      );
+    }
+    const actionEntityId = existing.entity_id as string;
+
+    const { error } = await dbClient
       .from("crm_commercial_actions")
       .delete()
       .eq("id", actionId)
-      .eq("entity_id", profile.entity_id);
+      .eq("entity_id", actionEntityId);
 
     if (error) {
       return NextResponse.json(
@@ -268,7 +302,7 @@ export async function DELETE(request: NextRequest) {
 
     logAudit({
       supabase,
-      entityId: profile.entity_id,
+      entityId: actionEntityId,
       userId: user.id,
       action: "delete",
       resourceType: "commercial_action",

@@ -1,6 +1,14 @@
 import { createClient } from "@/lib/supabase/server";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
+
+function createServiceClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) throw new Error("Missing Supabase service role configuration");
+  return createSupabaseClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
+}
 
 const DEFAULT_RULES = [
   {
@@ -156,11 +164,30 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ data: null, error: "id and is_enabled required" }, { status: 400 });
     }
 
-    const { data, error } = await supabase
+    let dbClient;
+    try { dbClient = createServiceClient(); } catch { dbClient = supabase; }
+
+    // Recherche par PK seule, puis autorisation par rôle : super_admin
+    // agit cross-entité, admin reste cloisonné à son entité.
+    const { data: existing, error: findError } = await dbClient
+      .from("crm_automation_rules")
+      .select("id, entity_id")
+      .eq("id", id)
+      .single();
+
+    if (findError || !existing) {
+      return NextResponse.json({ data: null, error: "Règle non trouvée" }, { status: 404 });
+    }
+
+    if (profile.role !== "super_admin" && existing.entity_id !== profile.entity_id) {
+      return NextResponse.json({ data: null, error: "Accès non autorisé à cette règle" }, { status: 403 });
+    }
+
+    const { data, error } = await dbClient
       .from("crm_automation_rules")
       .update({ is_enabled, updated_at: new Date().toISOString() })
       .eq("id", id)
-      .eq("entity_id", profile.entity_id)
+      .eq("entity_id", existing.entity_id)
       .select()
       .single();
 
