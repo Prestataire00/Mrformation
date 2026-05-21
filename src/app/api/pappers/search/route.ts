@@ -96,7 +96,7 @@ function mapPappersResult(entreprise: Record<string, unknown>): PappersCompany {
 // ─── Route handler ────────────────────────────────────────────────────────────
 
 export async function GET(request: NextRequest) {
-  const auth = await requireRole(["super_admin", "admin"]);
+  const auth = await requireRole(["super_admin", "admin", "commercial"]);
   if (auth.error) return auth.error;
 
   try {

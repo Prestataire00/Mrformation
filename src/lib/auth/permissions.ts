@@ -58,10 +58,12 @@ export const PAGE_PERMISSIONS: Array<[string, Role[]]> = [
 export const API_PERMISSIONS: Array<[string, Role[]]> = [
   // ── Admin uniquement ───────────────────────────────────────────────────────
   ["/api/admin",                   ["super_admin", "admin"]],
+  // Exception : le scoring IA de prospect est ouvert au CRM (commercial).
+  ["/api/ai/score-prospect",       ["super_admin", "admin", "commercial"]],
   ["/api/ai",                      ["super_admin", "admin"]],
   ["/api/emails",                  ["super_admin", "admin"]],
   ["/api/infogreffe",              ["super_admin", "admin"]],
-  ["/api/pappers",                 ["super_admin", "admin"]],
+  ["/api/pappers",                 ["super_admin", "admin", "commercial"]],
   ["/api/clients",                 ["super_admin", "admin"]],
   ["/api/trainers",                ["super_admin", "admin"]],
   ["/api/trainings",               ["super_admin", "admin"]],

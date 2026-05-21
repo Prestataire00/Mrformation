@@ -4,7 +4,7 @@ import { calculateProspectScore } from "@/lib/ai/prospect-scoring";
 import { sanitizeError } from "@/lib/api-error";
 
 export async function POST(request: NextRequest) {
-  const auth = await requireRole(["super_admin", "admin"]);
+  const auth = await requireRole(["super_admin", "admin", "commercial"]);
   if (auth.error) return auth.error;
 
   try {
