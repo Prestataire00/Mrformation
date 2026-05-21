@@ -12,8 +12,10 @@
  * peuvent pas faire le UPDATE directement. On utilise le service_role ici
  * pour bypass RLS, après vérification du rôle super_admin.
  *
- * Autorisé pour : `super_admin` uniquement. Les autres rôles ne doivent
- * pas pouvoir changer d'entité (sinon brèche de cloisonnement).
+ * Autorisé pour : `super_admin` et `commercial` — les deux rôles cross-entité
+ * (le commercial gère le CRM des deux entités, MR FORMATION et C3V FORMATION).
+ * Les autres rôles (admin, trainer, client, learner) restent rattachés à leur
+ * entité et ne peuvent pas basculer (cloisonnement).
  */
 
 import { createClient } from "@/lib/supabase/server";
@@ -39,9 +41,11 @@ export async function POST(request: NextRequest) {
       .eq("id", user.id)
       .single();
 
-    if (profile?.role !== "super_admin") {
+    // super_admin ET commercial sont cross-entité : ils peuvent basculer
+    // entre MR FORMATION et C3V FORMATION. Les autres rôles restent rattachés.
+    if (profile?.role !== "super_admin" && profile?.role !== "commercial") {
       return NextResponse.json(
-        { error: "Seuls les super_admin peuvent changer d'entité" },
+        { error: "Vous n'êtes pas autorisé à changer d'entité" },
         { status: 403 },
       );
     }

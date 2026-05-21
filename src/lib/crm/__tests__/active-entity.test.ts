@@ -31,8 +31,16 @@ describe("resolveActiveEntityId", () => {
     expect(resolveActiveEntityId({ role: "super_admin", entity_id: C3V })).toBe(C3V);
   });
 
-  it("rôle non super_admin + cookie présent → renvoie profile.entity_id", () => {
+  it("admin + cookie présent → ignore le cookie, renvoie profile.entity_id", () => {
     h.cookie = MR;
     expect(resolveActiveEntityId({ role: "admin", entity_id: C3V })).toBe(C3V);
+  });
+
+  it("commercial + cookie présent → ignore le cookie, renvoie profile.entity_id", () => {
+    // Le commercial est cross-entité, mais piloté par profile.entity_id
+    // (synchronisé par /api/auth/switch-entity) — jamais le cookie, pour
+    // rester aligné sur la RLS commercial (filtre public.user_entity_id()).
+    h.cookie = MR;
+    expect(resolveActiveEntityId({ role: "commercial", entity_id: C3V })).toBe(C3V);
   });
 });
