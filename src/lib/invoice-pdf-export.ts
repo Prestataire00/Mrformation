@@ -291,9 +291,9 @@ function renderLinesTable(doc: jsPDF, data: InvoicePdfData, y: number): number {
       fontSize: 9,
     },
     columnStyles: {
-      0: { cellWidth: 95 },
-      1: { cellWidth: 25, halign: "center" },
-      2: { cellWidth: 30, halign: "right" },
+      0: { cellWidth: 86 },
+      1: { cellWidth: 24, halign: "center" },
+      2: { cellWidth: 40, halign: "right" },
       3: { cellWidth: 30, halign: "right" },
     },
   });
@@ -336,57 +336,117 @@ function renderLinesTable(doc: jsPDF, data: InvoicePdfData, y: number): number {
   return ((doc as any).lastAutoTable?.finalY || y) + 6;
 }
 
-function renderPenaltyAndDueDate(doc: jsPDF, data: InvoicePdfData, y: number): number {
-  const penaltyText = data.entityPenaltyText?.trim() || DEFAULT_PENALTY_TEXT;
-  const labelPrefix = "Mention libre & Pénalités: ";
-  const full = labelPrefix + penaltyText;
-
-  // Mention pénalités à gauche (largeur ~110mm)
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "normal");
-  doc.setTextColor(GRAY);
-  const lines = doc.splitTextToSize(full, 110);
-  doc.text(lines, MARGIN, y + 4);
-
-  // Date d'échéance à droite (gros bold)
-  if (data.dueDate) {
-    doc.setFontSize(13);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(DARK);
-    doc.text(`Date d'échéance: ${formatDateFr(data.dueDate)}`, PAGE_W - MARGIN, y + 6, { align: "right" });
-  }
-
-  // Hauteur du bloc = max(hauteur du texte mention, hauteur date échéance)
-  const blockHeight = Math.max(lines.length * 3.5, 12);
-  return y + blockHeight + 6;
-}
-
-function renderRib(doc: jsPDF, data: InvoicePdfData, y: number): number {
+/**
+ * Bloc RIB (colonne gauche) + encadré « Date d'échéance » (colonne droite)
+ * sur la même bande horizontale. Les deux moitiés de page sont utilisées —
+ * l'échéance n'est plus un gros texte flottant et isolé.
+ */
+function renderRibAndDueDate(doc: jsPDF, data: InvoicePdfData, y: number): number {
+  // ── Colonne gauche : RIB ──
+  let yLeft = y;
   doc.setFontSize(9);
-  doc.setFont("helvetica", "normal");
   doc.setTextColor(DARK);
-
   doc.setFont("helvetica", "bold");
-  doc.text("RIB:", MARGIN, y);
-  y += 5;
+  doc.text("RIB:", MARGIN, yLeft);
+  yLeft += 5;
 
   doc.setFont("helvetica", "normal");
   if (data.entityBankName) {
-    doc.text(`Nom de la banque: ${data.entityBankName}`, MARGIN, y);
-    y += 4.5;
+    doc.text(`Nom de la banque: ${data.entityBankName}`, MARGIN, yLeft);
+    yLeft += 4.5;
   }
   if (data.entityBankBeneficiary) {
-    doc.text(`Nom du bénéficiaire: ${data.entityBankBeneficiary}`, MARGIN, y);
-    y += 4.5;
+    doc.text(`Nom du bénéficiaire: ${data.entityBankBeneficiary}`, MARGIN, yLeft);
+    yLeft += 4.5;
   }
-  doc.text(`IBAN: ${data.entityBankIban}`, MARGIN, y);
-  y += 4.5;
+  doc.text(`IBAN: ${data.entityBankIban}`, MARGIN, yLeft);
+  yLeft += 4.5;
   if (data.entityBankBic) {
-    doc.text(`BIC/SWIFT: ${data.entityBankBic}`, MARGIN, y);
-    y += 4.5;
+    doc.text(`BIC/SWIFT: ${data.entityBankBic}`, MARGIN, yLeft);
+    yLeft += 4.5;
   }
 
-  return y + 2;
+  // ── Colonne droite : encadré « Date d'échéance » ──
+  let yRight = y;
+  if (data.dueDate) {
+    const boxW = 62;
+    const boxH = 17;
+    const bandH = 6;
+    const boxX = PAGE_W - MARGIN - boxW;
+
+    // Bandeau label — même gris que l'en-tête du tableau des lignes.
+    doc.setFillColor(HEADER_GRAY[0], HEADER_GRAY[1], HEADER_GRAY[2]);
+    doc.rect(boxX, y, boxW, bandH, "F");
+    doc.setFontSize(7.5);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(255, 255, 255);
+    doc.text("DATE D'ÉCHÉANCE", boxX + boxW / 2, y + 4, { align: "center" });
+
+    // Bordure du bloc.
+    doc.setDrawColor(HEADER_GRAY[0], HEADER_GRAY[1], HEADER_GRAY[2]);
+    doc.setLineWidth(0.4);
+    doc.rect(boxX, y, boxW, boxH);
+
+    // Date.
+    doc.setFontSize(13);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(DARK);
+    doc.text(formatDateFr(data.dueDate), boxX + boxW / 2, y + 13, { align: "center" });
+
+    yRight = y + boxH;
+  }
+
+  return Math.max(yLeft, yRight) + 6;
+}
+
+/**
+ * Bloc « Note » — rend le champ libre `notes` de la facture (ex. la note
+ * des participants saisie dans le formulaire). Rien n'est dessiné si le
+ * champ est vide.
+ */
+function renderNotes(doc: jsPDF, data: InvoicePdfData, y: number): number {
+  const note = data.notes?.trim();
+  if (!note) return y;
+
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(DARK);
+  const label = "Note: ";
+  doc.text(label, MARGIN, y);
+  const labelWidth = doc.getTextWidth(label);
+
+  doc.setFont("helvetica", "normal");
+  const noteLines = doc.splitTextToSize(note, PAGE_W - MARGIN * 2 - labelWidth);
+  doc.text(noteLines, MARGIN + labelWidth, y);
+
+  return y + Math.max(noteLines.length * 4, 4) + 4;
+}
+
+/**
+ * Mention légale L.441-6 — encadré gris clair pleine largeur, lu comme une
+ * note de bas de facture délimitée plutôt qu'un paragraphe tassé à gauche.
+ */
+function renderPenalty(doc: jsPDF, data: InvoicePdfData, y: number): number {
+  const penaltyText = data.entityPenaltyText?.trim() || DEFAULT_PENALTY_TEXT;
+  const full = `Mention libre & Pénalités: ${penaltyText}`;
+
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "normal");
+  const boxW = PAGE_W - MARGIN * 2;
+  const pad = 3;
+  const lines = doc.splitTextToSize(full, boxW - pad * 2);
+  const boxH = lines.length * 3.6 + pad * 2;
+
+  // Encadré gris clair pleine largeur.
+  doc.setFillColor(245, 245, 245);
+  doc.setDrawColor(218, 218, 218);
+  doc.setLineWidth(0.3);
+  doc.rect(MARGIN, y, boxW, boxH, "FD");
+
+  doc.setTextColor(GRAY);
+  doc.text(lines, MARGIN + pad, y + pad + 2.6);
+
+  return y + boxH + 6;
 }
 
 async function renderStampAndFooter(doc: jsPDF, data: InvoicePdfData, y: number): Promise<void> {
@@ -440,8 +500,9 @@ export async function generateInvoicePDF(data: InvoicePdfData): Promise<jsPDF> {
   y = renderRecipient(doc, data, y);
   y = renderFormationDetails(doc, data, y);
   y = renderLinesTable(doc, data, y);
-  y = renderPenaltyAndDueDate(doc, data, y);
-  y = renderRib(doc, data, y);
+  y = renderRibAndDueDate(doc, data, y);
+  y = renderNotes(doc, data, y);
+  y = renderPenalty(doc, data, y);
   await renderStampAndFooter(doc, data, y);
 
   return doc;
