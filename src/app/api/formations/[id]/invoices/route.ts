@@ -138,14 +138,22 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     // Insert invoice lines if provided
+    let lineWarning: string | null = null;
     if (lines && Array.isArray(lines) && lines.length > 0) {
-      const lineRows = lines.map((l: { description: string; quantity: number; unit_price: number }) => ({
+      const lineRows = lines.map((l: { description: string; quantity: number; unit_price: number }, idx: number) => ({
         invoice_id: data.id,
         description: l.description,
         quantity: l.quantity,
         unit_price: l.unit_price,
+        order_index: idx,
       }));
-      await auth.supabase.from("formation_invoice_lines").insert(lineRows);
+      const { error: lineError } = await auth.supabase.from("formation_invoice_lines").insert(lineRows);
+      if (lineError) {
+        // La facture est créée (RPC atomique) — on ne masque pas l'échec des
+        // lignes derrière un faux succès : on le remonte au client.
+        console.error("[invoices POST] lines insert failed:", lineError);
+        lineWarning = sanitizeDbError(lineError, "invoice lines INSERT");
+      }
     }
 
     logAudit({
@@ -158,7 +166,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
       details: { reference: data.reference, amount, recipient_name },
     });
 
-    return NextResponse.json({ invoice: data });
+    return NextResponse.json({
+      invoice: data,
+      ...(lineWarning
+        ? { warning: `Facture créée, mais l'enregistrement des lignes a échoué : ${lineWarning}` }
+        : {}),
+    });
   } catch (err: unknown) {
     return NextResponse.json(
       { error: sanitizeError(err, "invoices POST") },
@@ -180,6 +193,45 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         { error: "Le champ invoice_id est requis." },
         { status: 400 }
       );
+    }
+
+    // H7 — garde anti-altération : une facture déjà émise (sent/paid/late/
+    // cancelled) ne peut plus voir son contenu modifié (montant, lignes,
+    // destinataire, dates…). Seul un changement de statut reste autorisé.
+    const contentEdit =
+      recipient_name !== undefined ||
+      recipient_type !== undefined ||
+      recipient_siret !== undefined ||
+      recipient_address !== undefined ||
+      due_date !== undefined ||
+      notes !== undefined ||
+      external_reference !== undefined ||
+      amount !== undefined ||
+      funding_type !== undefined ||
+      lines !== undefined;
+
+    if (contentEdit) {
+      const { data: current, error: currentErr } = await auth.supabase
+        .from("formation_invoices")
+        .select("status")
+        .eq("id", invoice_id)
+        .eq("entity_id", auth.profile.entity_id)
+        .maybeSingle();
+      if (currentErr) {
+        return NextResponse.json(
+          { error: sanitizeDbError(currentErr, "invoices PATCH lookup") },
+          { status: 500 }
+        );
+      }
+      if (!current) {
+        return NextResponse.json({ error: "Facture introuvable." }, { status: 404 });
+      }
+      if (current.status !== "pending") {
+        return NextResponse.json(
+          { error: "Cette facture est déjà émise : seul son statut peut encore être modifié, pas son contenu." },
+          { status: 409 }
+        );
+      }
     }
 
     const updateData: Record<string, unknown> = {
@@ -216,12 +268,15 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       );
     }
 
-    // Update lines if provided (delete + re-insert)
+    // Update lines if provided. INSERT-puis-DELETE-par-id : on ne purge
+    // l'ancien détail QU'APRÈS une ré-insertion réussie — un échec d'INSERT
+    // ne perd plus les lignes (l'ancien DELETE-puis-INSERT le faisait).
     if (lines && Array.isArray(lines)) {
-      await auth.supabase
+      const { data: oldLines } = await auth.supabase
         .from("formation_invoice_lines")
-        .delete()
+        .select("id")
         .eq("invoice_id", invoice_id);
+      const oldLineIds = (oldLines ?? []).map((l) => l.id as string);
 
       if (lines.length > 0) {
         const lineInserts = lines.map((l: { description: string; quantity: number; unit_price: number }, idx: number) => ({
@@ -231,7 +286,23 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           unit_price: l.unit_price,
           order_index: idx,
         }));
-        await auth.supabase.from("formation_invoice_lines").insert(lineInserts);
+        const { error: lineInsertErr } = await auth.supabase
+          .from("formation_invoice_lines")
+          .insert(lineInserts);
+        if (lineInsertErr) {
+          // INSERT échoué → on NE supprime PAS l'ancien détail (pas de perte).
+          return NextResponse.json(
+            { error: sanitizeDbError(lineInsertErr, "invoice lines INSERT") },
+            { status: 500 }
+          );
+        }
+      }
+      // Ré-insertion OK (ou plus aucune ligne voulue) → purge de l'ancien détail.
+      if (oldLineIds.length > 0) {
+        await auth.supabase
+          .from("formation_invoice_lines")
+          .delete()
+          .in("id", oldLineIds);
       }
     }
 

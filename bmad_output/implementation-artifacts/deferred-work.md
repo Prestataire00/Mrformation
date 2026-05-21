@@ -97,3 +97,19 @@ Scope review : revue adversariale du flux complet « documents secondaires » (a
 - **`markDoc*` : read-modify-write non atomique sur `metadata`** [documents-store.ts] — deux mises à jour concurrentes du JSON `metadata` peuvent s'écraser. Pré-existant, pas une régression h-22 ; à traiter globalement si la concurrence devient réelle.
 - **`generate-from-template` ne valide pas `ownerType` vs contexte** [generate-from-template/route.ts] — un doc généré avec un owner incohérent (ex. doc `learner` sans learner) sort en PDF avec placeholders non résolus au lieu d'une erreur explicite. Lié à la decision-needed `ownerType:"session"`.
 - **Refonte `owner_type='session'` pour les 4 docs de synthèse** — `bilan_poe`, `reponses_evaluations`, `reponses_satisfaction_session`, `resultats_evaluations` restent rattachés à la 1ʳᵉ entreprise (`owner_type='company'`). Décision 2026-05-21 : conservé tel quel — le fix d'affichage (section « Documents secondaires ») les rend visibles sous leur entreprise. Amélioration future : passer en `owner_type='session'` (owner_id null) + section « Documents de session » + suppression du skip-si-aucune-entreprise dans `attribute-secondary`. Nécessite de vérifier la CHECK constraint `documents.owner_type` et d'étendre `ConventionOwnerType` côté UI.
+
+---
+
+## Deferred from: code review (2026-05-21) — Facturation espace formation
+
+Scope review : revue adversariale de la sous-catégorie Facturation (13 fichiers, mode `no-spec`, 2 couches). 27 `patch` + 9 `defer`. Rapport complet : `code-review-facturation-2026-05-21.md`. Defers = réels mais nécessitant un travail plus large ou une décision produit.
+
+- **`recipient_id` factice à l'import (`crypto.randomUUID()`)** [invoices/import/route.ts:81] — UUID ne pointant sur aucun client/apprenant → relances et email impossibles sur les factures importées. Fix correct : faire capturer un vrai destinataire par `ImportInvoiceDialog`, ou rendre `recipient_id` nullable + skip gracieux des externes dans `process-reminders`.
+- **`affacturage` POST : 3 écritures séquentielles sans transaction** [affacturage/route.ts:85-130] — INSERT lot + INSERT pivots + UPDATE `is_factored` ; échec partiel → état incohérent. Atomicité réelle = RPC DB.
+- **`affacturage/[id]` : cascade `paid` non réversible** [affacturage/[id]/route.ts:37-50] — Repasser un lot en `pending`/`cancelled` ne « dé-paie » pas les factures. Décision produit.
+- **`auto-generate` : modèle de co-financement financeur/entreprise** [invoices/auto-generate/route.ts:231-277] — Le montant entreprise n'est pas déduit du co-financement financeur ; double facturation potentielle. À clarifier avec le métier avant de coder.
+- **`invoice-pdf-export` : aucune pagination, débordement A4** [invoice-pdf-export.ts:431-447] — Facture INTER avec beaucoup d'apprenants déborde la page (footer figé « 1 »). Feature layout multi-pages.
+- **Calcul TVA dupliqué ×3 + `calculateInvoiceTotals` code mort** [invoice-builder.ts:99-108] — Centraliser HT/TVA/TTC. Refactor.
+- **`process-reminders` : pas de verrou de traitement par facture** — Deux runs concurrents du cron peuvent relancer 2×. Architectural.
+- **Appels Supabase inline dans `TabFinances`** — Charges, passage `sent` etc. en `supabase.from(...)` direct dans le composant (viole CLAUDE.md règle 10). Extraire vers `src/lib/services/`.
+- **`invoice-pdf-export` : avoir avec lignes → lignes positives, total négatif** [invoice-pdf-export.ts:250-315] — Document contradictoire ; edge case rare (avoirs créés avec `lines: []`).

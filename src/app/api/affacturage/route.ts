@@ -2,16 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/require-role";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 import { logAudit } from "@/lib/audit-log";
+import { resolveActiveEntityId } from "@/lib/crm/active-entity";
 
 export async function GET() {
   const auth = await requireRole(["super_admin", "admin"]);
   if (auth.error) return auth.error;
 
+  // super_admin : entité sélectionnée (cookie) ; autres rôles : profile.entity_id.
+  const entityId = resolveActiveEntityId(auth.profile);
+
   try {
     const { data: lots, error } = await auth.supabase
       .from("affacturage_lots")
       .select("*")
-      .eq("entity_id", auth.profile.entity_id)
+      .eq("entity_id", entityId)
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -51,6 +55,9 @@ export async function POST(request: NextRequest) {
   const auth = await requireRole(["super_admin", "admin"]);
   if (auth.error) return auth.error;
 
+  // super_admin : entité sélectionnée (cookie) ; autres rôles : profile.entity_id.
+  const entityId = resolveActiveEntityId(auth.profile);
+
   try {
     const { factor_name, lot_reference, advance_rate = 90, notes, invoice_ids } = await request.json();
 
@@ -66,7 +73,7 @@ export async function POST(request: NextRequest) {
       .from("formation_invoices")
       .select("id, amount")
       .in("id", invoice_ids)
-      .eq("entity_id", auth.profile.entity_id)
+      .eq("entity_id", entityId)
       .eq("is_factored", false)
       .eq("is_avoir", false);
 
@@ -85,7 +92,7 @@ export async function POST(request: NextRequest) {
     const { data: lot, error: lotError } = await auth.supabase
       .from("affacturage_lots")
       .insert({
-        entity_id: auth.profile.entity_id,
+        entity_id: entityId,
         lot_reference: lot_reference?.trim() || `AFF-${Date.now()}`,
         factor_name: factor_name.trim(),
         total_amount: totalAmount,
@@ -123,7 +130,8 @@ export async function POST(request: NextRequest) {
         factored_at: new Date().toISOString(),
         factor_name: factor_name.trim(),
       })
-      .in("id", invoices.map((inv) => inv.id));
+      .in("id", invoices.map((inv) => inv.id))
+      .eq("entity_id", entityId);
 
     if (updateError) {
       return NextResponse.json({ error: sanitizeDbError(updateError, "affacturage invoices UPDATE") }, { status: 500 });
@@ -131,7 +139,7 @@ export async function POST(request: NextRequest) {
 
     logAudit({
       supabase: auth.supabase,
-      entityId: auth.profile.entity_id,
+      entityId: entityId,
       userId: auth.user.id,
       action: "create",
       resourceType: "affacturage_lot",

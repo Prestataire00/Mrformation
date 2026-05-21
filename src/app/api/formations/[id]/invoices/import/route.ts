@@ -53,51 +53,64 @@ export async function POST(req: NextRequest, context: RouteContext) {
 
     const pdfUrl = signed?.signedUrl || filePath;
 
-    // Numérotation
+    // Numérotation atomique via la RPC (advisory lock par entité/année/préfixe
+    // dans la même transaction que l'INSERT) — élimine la race condition du
+    // SELECT MAX + INSERT séparés, qui pouvait produire des doublons de numéro.
     const fiscalYear = new Date().getFullYear();
-    const { data: maxRow } = await auth.supabase
-      .from("formation_invoices")
-      .select("global_number")
-      .eq("entity_id", entityId)
-      .eq("fiscal_year", fiscalYear)
-      .eq("prefix", "FAC")
-      .order("global_number", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    const nextNumber = (maxRow?.global_number ?? 0) + 1;
 
-    // Insérer
-    const { data: invoice, error: insertErr } = await auth.supabase
+    // `amount` est stocké en HT (convention du module — la TVA est recalculée
+    // au rendu PDF). On prend le HT saisi ; repli : si seul le TTC est connu,
+    // on dérive le HT depuis le taux de TVA.
+    const amountHt = parseFloat(payload.amount_ht) || 0;
+    const amountTtc = parseFloat(payload.amount_ttc) || 0;
+    const vatRate = parseFloat(payload.vat_rate);
+    const amount = amountHt > 0
+      ? amountHt
+      : Number.isFinite(vatRate) && vatRate > 0
+        ? Math.round((amountTtc / (1 + vatRate / 100)) * 100) / 100
+        : amountTtc;
+
+    const { data: invoice, error: rpcErr } = await auth.supabase.rpc("create_invoice_with_atomic_number", {
+      p_entity_id: entityId,
+      p_session_id: sessionId,
+      p_recipient_type: payload.recipient_type || "company",
+      p_recipient_id: crypto.randomUUID(),
+      p_recipient_name: payload.recipient_name || "Inconnu",
+      p_amount: amount,
+      p_prefix: "FAC",
+      p_fiscal_year: fiscalYear,
+      p_due_date: payload.due_date || null,
+      p_notes: payload.description || `Facture importée — ${session.title}`,
+      p_is_avoir: false,
+      p_parent_invoice_id: null,
+      p_external_reference: payload.external_ref || null,
+      p_recipient_siret: payload.recipient_siret || null,
+      p_recipient_address: payload.recipient_address || null,
+      p_funding_type: null,
+    });
+
+    if (rpcErr || !invoice) {
+      await auth.supabase.storage.from("invoices").remove([filePath]);
+      return NextResponse.json(
+        { error: rpcErr?.message || "Création de la facture échouée" },
+        { status: 500 },
+      );
+    }
+
+    // Champs propres aux factures externes — non couverts par la RPC.
+    const { error: extErr } = await auth.supabase
       .from("formation_invoices")
-      .insert({
-        session_id: sessionId,
-        entity_id: entityId,
+      .update({
         is_external: true,
         external_pdf_url: pdfUrl,
         external_source: payload.ai_parsed ? "ai_parsed" : "upload",
-        external_reference: payload.external_ref || null,
-        recipient_type: payload.recipient_type || "company",
-        recipient_id: crypto.randomUUID(),
-        recipient_name: payload.recipient_name || "Inconnu",
-        recipient_siret: payload.recipient_siret || null,
-        recipient_address: payload.recipient_address || null,
         recipient_postal_code: payload.recipient_postal_code || null,
         recipient_city: payload.recipient_city || null,
-        amount: parseFloat(payload.amount_ttc) || 0,
-        due_date: payload.due_date || null,
-        notes: payload.description || `Facture importée — ${session.title}`,
-        status: "pending",
-        prefix: "FAC",
-        number: nextNumber,
-        global_number: nextNumber,
-        fiscal_year: fiscalYear,
       })
-      .select()
-      .single();
-
-    if (insertErr) {
-      await auth.supabase.storage.from("invoices").remove([filePath]);
-      return NextResponse.json({ error: insertErr.message }, { status: 500 });
+      .eq("id", invoice.id);
+    if (extErr) {
+      // Non bloquant : la facture est créée et numérotée. On loggue l'écart.
+      console.error("[invoice-import] external fields update failed:", extErr.message);
     }
 
     logAudit({

@@ -112,11 +112,12 @@ export async function POST(_request: NextRequest, context: RouteContext) {
       // INSERT lignes de facture (1 par apprenant en INTER, 1 globale en INTRA).
       if (item.lines && item.lines.length > 0) {
         const { error: linesError } = await auth.supabase.from("formation_invoice_lines").insert(
-          item.lines.map((l) => ({
+          item.lines.map((l, idx) => ({
             invoice_id: inv.id,
             description: l.description,
             quantity: l.quantity,
             unit_price: l.unit_price,
+            order_index: idx,
           }))
         );
         if (linesError) {

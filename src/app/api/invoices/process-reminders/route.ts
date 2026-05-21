@@ -155,6 +155,17 @@ export async function POST(request: NextRequest) {
           .eq("id", invoice.recipient_id)
           .maybeSingle();
         recipientEmail = learner?.email || null;
+      } else if (invoice.recipient_type === "financier") {
+        // recipient_id pointe sur formation_financiers ; l'email est porté
+        // par le financeur maître lié (formation_financiers.financeur_id).
+        const { data: ff } = await supabase
+          .from("formation_financiers")
+          .select("financeur:financeurs(email)")
+          .eq("id", invoice.recipient_id)
+          .maybeSingle();
+        const finRel = (ff as { financeur?: { email?: string } | { email?: string }[] } | null)?.financeur;
+        const finRec = Array.isArray(finRel) ? finRel[0] : finRel;
+        recipientEmail = finRec?.email || null;
       }
 
       if (!recipientEmail) {
@@ -204,37 +215,46 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      // Enqueue email (le worker s'occupera de l'envoi avec retry exponential)
-      await enqueueEmail(supabase, {
-        to: recipientEmail,
-        subject,
-        body: textBody,
-        entity_id: invoice.entity_id,
-        session_id: invoice.session_id,
-        recipient_type: invoice.recipient_type,
-        recipient_id: invoice.recipient_id,
-      });
+      // H6 — la mise en file et l'incrément du compteur sont enveloppés dans
+      // un try/catch PAR facture : un échec de mise en file n'incrémente PAS
+      // le compteur (sinon la relance serait définitivement perdue — exclue
+      // au prochain run par `reminderCount < N`) et n'interrompt PAS le
+      // traitement des autres factures du lot.
+      try {
+        await enqueueEmail(supabase, {
+          to: recipientEmail,
+          subject,
+          body: textBody,
+          entity_id: invoice.entity_id,
+          session_id: invoice.session_id,
+          recipient_type: invoice.recipient_type,
+          recipient_id: invoice.recipient_id,
+        });
 
-      // Met à jour les compteurs immédiatement (le worker enverra l'email
-      // avec retry — si tous les retries échouent, l'email passera en
-      // failed_permanent mais les compteurs reflètent la tentative).
-      await supabase
-        .from("formation_invoices")
-        .update({
-          reminder_count: reminderCount + 1,
-          last_reminder_at: now.toISOString(),
-          updated_at: now.toISOString(),
-        })
-        .eq("id", invoice.id);
+        // Compteurs mis à jour APRÈS la mise en file réussie uniquement.
+        await supabase
+          .from("formation_invoices")
+          .update({
+            reminder_count: reminderCount + 1,
+            last_reminder_at: now.toISOString(),
+            updated_at: now.toISOString(),
+          })
+          .eq("id", invoice.id);
 
-      await supabase.from("invoice_reminders").insert({
-        invoice_id: invoice.id,
-        entity_id: invoice.entity_id,
-        reminder_type: reminderType,
-        email_to: recipientEmail,
-      });
+        await supabase.from("invoice_reminders").insert({
+          invoice_id: invoice.id,
+          entity_id: invoice.entity_id,
+          reminder_type: reminderType,
+          email_to: recipientEmail,
+        });
 
-      totalReminders++;
+        totalReminders++;
+      } catch (e) {
+        errors.push(
+          `${invoice.reference}: échec de mise en file de la relance — ${e instanceof Error ? e.message : "erreur inconnue"}`,
+        );
+        continue;
+      }
     }
 
     console.log(`[reminders] Processed: ${totalReminders} reminders sent, ${errors.length} errors`);

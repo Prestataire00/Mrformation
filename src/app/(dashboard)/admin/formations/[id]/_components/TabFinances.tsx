@@ -517,6 +517,9 @@ export function TabFinances({ formation, onRefresh }: Props) {
       const data = await res.json();
       if (res.ok) {
         toast({ title: isAvoir ? "Avoir créé" : "Facture créée", description: data.invoice.reference });
+        if (data.warning) {
+          toast({ title: "Attention", description: data.warning, variant: "destructive" });
+        }
         if (!isAvoir) {
           setInvoiceDialog(false);
           setInvoiceForm({ recipient_type: "learner", recipient_name: "", recipient_id: "", recipient_siret: "", recipient_address: "", due_date: "", notes: "", external_reference: "", funding_type: "", lines: [{ description: "", quantity: "1", unit_price: "" }] });
@@ -663,7 +666,12 @@ export function TabFinances({ formation, onRefresh }: Props) {
 
   const handleDeleteCharge = async (id: string) => {
     try {
-      const { error } = await supabase.from("formation_charges").delete().eq("id", id).eq("session_id", formation.id);
+      const { error } = await supabase
+        .from("formation_charges")
+        .delete()
+        .eq("id", id)
+        .eq("session_id", formation.id)
+        .eq("entity_id", formation.entity_id);
       if (error) throw error;
       toast({ title: "Charge supprimée" });
       fetchData();
@@ -746,7 +754,7 @@ export function TabFinances({ formation, onRefresh }: Props) {
       .from("formation_invoice_lines")
       .select("description, quantity, unit_price")
       .eq("invoice_id", inv.id)
-      .order("position", { ascending: true });
+      .order("order_index", { ascending: true });
     if (lines && lines.length > 0) {
       pdfData.lines = lines.map((l) => ({
         description: l.description as string,
@@ -769,11 +777,26 @@ export function TabFinances({ formation, onRefresh }: Props) {
   };
 
   const handleSendInvoiceEmail = async (inv: Invoice) => {
-    // Find recipient email
+    // Find recipient email — selon le type de destinataire (les 3 types
+    // sont gérés : le bouton « Email » est affiché sur toutes les factures).
     let email: string | null = null;
     if (inv.recipient_type === "company") {
       const company = formation.formation_companies?.find((c) => c.client_id === inv.recipient_id);
       email = company?.email || (company?.client as unknown as Record<string, string>)?.email || null;
+    } else if (inv.recipient_type === "learner") {
+      const enr = formation.enrollments?.find((e) => e.learner?.id === inv.recipient_id);
+      email = (enr?.learner as unknown as Record<string, string> | undefined)?.email || null;
+    } else if (inv.recipient_type === "financier") {
+      // L'email du financeur est porté par le financeur maître lié.
+      const ff = formation.formation_financiers?.find((f) => f.id === inv.recipient_id);
+      if (ff?.financeur_id) {
+        const { data: fin } = await supabase
+          .from("financeurs")
+          .select("email")
+          .eq("id", ff.financeur_id)
+          .maybeSingle();
+        email = (fin as { email?: string } | null)?.email || null;
+      }
     }
     if (!email) {
       toast({ title: "Pas d'email pour ce destinataire", variant: "destructive" });

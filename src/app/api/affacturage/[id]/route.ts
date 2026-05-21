@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/require-role";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 import { logAudit } from "@/lib/audit-log";
+import { resolveActiveEntityId } from "@/lib/crm/active-entity";
 
 interface RouteContext {
   params: { id: string };
@@ -12,6 +13,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   if (auth.error) return auth.error;
 
   const lotId = context.params.id;
+  // super_admin : entité sélectionnée (cookie) ; autres rôles : profile.entity_id.
+  const entityId = resolveActiveEntityId(auth.profile);
 
   try {
     const { status } = await request.json();
@@ -25,7 +28,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       .from("affacturage_lots")
       .update({ status, updated_at: new Date().toISOString() })
       .eq("id", lotId)
-      .eq("entity_id", auth.profile.entity_id)
+      .eq("entity_id", entityId)
       .select()
       .single();
 
@@ -45,13 +48,14 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         await auth.supabase
           .from("formation_invoices")
           .update({ status: "paid", paid_at: new Date().toISOString() })
-          .in("id", invoiceIds);
+          .in("id", invoiceIds)
+          .eq("entity_id", entityId);
       }
     }
 
     logAudit({
       supabase: auth.supabase,
-      entityId: auth.profile.entity_id,
+      entityId: entityId,
       userId: auth.user.id,
       action: "update",
       resourceType: "affacturage_lot",
