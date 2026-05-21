@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Session } from "@/lib/types";
-import { buildInvoiceLinesForCompany } from "@/lib/utils/invoice-builder";
+import { buildInvoiceLines } from "@/lib/utils/invoice-builder";
+import { getAmountForCompany } from "@/lib/utils/formation-companies";
 
 export type ServiceResult<T> =
   | ({ ok: true } & T)
@@ -75,15 +76,22 @@ export async function cascadeSessionPriceToPendingInvoices(
       continue;
     }
 
-    // pending + company → rebuild lines
-    let built;
-    try {
-      built = buildInvoiceLinesForCompany(formation, invoice.recipient_id);
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      report.errors.push({ invoiceId: invoice.id, message });
+    // pending + company → rebuild lines via le builder unifié.
+    // Le builder ne lève pas : on valide le montant ici (l'ancien helper
+    // levait une exception sur montant nul, capturée par le try/catch).
+    const amount = getAmountForCompany(formation, invoice.recipient_id);
+    if (amount === null) {
+      report.errors.push({
+        invoiceId: invoice.id,
+        message: `Montant non défini pour l'entreprise ${invoice.recipient_id}`,
+      });
       continue;
     }
+    const built = buildInvoiceLines(formation, {
+      type: "company",
+      id: invoice.recipient_id,
+      amount,
+    });
 
     const { error: deleteError } = await supabase
       .from("formation_invoice_lines")

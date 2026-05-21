@@ -2,13 +2,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { cascadeSessionPriceToPendingInvoices } from "@/lib/services/invoices";
 import type { Session } from "@/lib/types";
 
-// Mock formation. The helper passes it to buildInvoiceLinesForCompany.
-// We mock buildInvoiceLinesForCompany via vi.mock so we can control its output.
+// Mock du builder unifié — on contrôle sa sortie pour tester le cascade.
 vi.mock("@/lib/utils/invoice-builder", () => ({
-  buildInvoiceLinesForCompany: vi.fn(),
+  buildInvoiceLines: vi.fn(),
 }));
 
-import { buildInvoiceLinesForCompany } from "@/lib/utils/invoice-builder";
+import { buildInvoiceLines } from "@/lib/utils/invoice-builder";
 
 function makeMockSupabase(opts: {
   invoices: Array<{ id: string; status: string; recipient_type: string; recipient_id: string }>;
@@ -68,17 +67,24 @@ function makeMockSupabase(opts: {
   };
 }
 
-const fakeFormation = { id: "s1", title: "Test" } as Session;
+const fakeFormation = {
+  id: "s1",
+  title: "Test",
+  formation_companies: [
+    { id: "fc1", session_id: "s1", client_id: "c1", amount: 1000, email: null, reference: null, created_at: "2026-01-01" },
+    { id: "fc2", session_id: "s1", client_id: "c2", amount: 1000, email: null, reference: null, created_at: "2026-01-01" },
+    { id: "fc3", session_id: "s1", client_id: "c3", amount: 1000, email: null, reference: null, created_at: "2026-01-01" },
+  ],
+} as unknown as Session;
 
 describe("cascadeSessionPriceToPendingInvoices", () => {
   beforeEach(() => {
-    vi.mocked(buildInvoiceLinesForCompany).mockReset();
+    vi.mocked(buildInvoiceLines).mockReset();
   });
 
   it("happy path : 2 pending company invoices recalculées", async () => {
-    vi.mocked(buildInvoiceLinesForCompany).mockReturnValue({
+    vi.mocked(buildInvoiceLines).mockReturnValue({
       lines: [{ description: "Formation", quantity: 1, unit_price: 1000 }],
-      participantsNote: null,
       amountHT: 1000,
     });
 
@@ -98,15 +104,14 @@ describe("cascadeSessionPriceToPendingInvoices", () => {
       expect(result.skipped).toBe(0);
       expect(result.errors).toEqual([]);
     }
-    expect(buildInvoiceLinesForCompany).toHaveBeenCalledTimes(2);
+    expect(buildInvoiceLines).toHaveBeenCalledTimes(2);
     expect(insertLines).toHaveBeenCalledTimes(2);
     expect(updateInvoiceEq).toHaveBeenCalledTimes(2);
   });
 
   it("mixed : 1 pending company + 1 sent + 1 paid → 1 impacted, 2 blocked", async () => {
-    vi.mocked(buildInvoiceLinesForCompany).mockReturnValue({
+    vi.mocked(buildInvoiceLines).mockReturnValue({
       lines: [{ description: "Formation", quantity: 1, unit_price: 500 }],
-      participantsNote: null,
       amountHT: 500,
     });
 
@@ -144,13 +149,12 @@ describe("cascadeSessionPriceToPendingInvoices", () => {
       expect(result.skipped).toBe(2);
       expect(result.blocked).toBe(0);
     }
-    expect(buildInvoiceLinesForCompany).not.toHaveBeenCalled();
+    expect(buildInvoiceLines).not.toHaveBeenCalled();
   });
 
   it("partial error : 1 facture pending company avec lines insert error → ajoutée à errors mais ne crash pas", async () => {
-    vi.mocked(buildInvoiceLinesForCompany).mockReturnValue({
+    vi.mocked(buildInvoiceLines).mockReturnValue({
       lines: [{ description: "Formation", quantity: 1, unit_price: 800 }],
-      participantsNote: null,
       amountHT: 800,
     });
 
@@ -186,5 +190,20 @@ describe("cascadeSessionPriceToPendingInvoices", () => {
       expect(result.error.message).toBe("RLS denied");
       expect(result.error.code).toBe("42501");
     }
+  });
+
+  it("pending company sans montant défini → erreur dans le rapport, pas de crash", async () => {
+    // recipient_id "cX" absent de fakeFormation.formation_companies
+    const { supabase } = makeMockSupabase({
+      invoices: [{ id: "inv1", status: "pending", recipient_type: "company", recipient_id: "cX" }],
+    });
+    const result = await cascadeSessionPriceToPendingInvoices(supabase, "s1", fakeFormation);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0].invoiceId).toBe("inv1");
+      expect(result.impacted).toBe(0);
+    }
+    expect(buildInvoiceLines).not.toHaveBeenCalled();
   });
 });

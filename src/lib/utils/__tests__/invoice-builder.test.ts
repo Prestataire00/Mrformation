@@ -1,12 +1,12 @@
 import { describe, it, expect } from "vitest";
 import {
-  buildInvoiceLinesForCompany,
+  buildInvoiceLines,
   calculateInvoiceTotals,
 } from "@/lib/utils/invoice-builder";
 import type { Session, Enrollment, FormationCompany, Learner } from "@/lib/types";
 
 // ──────────────────────────────────────────────
-// Fixtures (équivalent à formation-companies.test.ts)
+// Fixtures
 // ──────────────────────────────────────────────
 
 function makeLearner(id: string, last: string, first: string): Learner {
@@ -71,87 +71,59 @@ function makeSession(opts: {
 }
 
 // ──────────────────────────────────────────────
-// buildInvoiceLinesForCompany — INTRA
+// buildInvoiceLines — fonction unifiée
 // ──────────────────────────────────────────────
 
-describe("buildInvoiceLinesForCompany — INTRA", () => {
-  it("INTRA: 1 ligne globale + participantsNote avec liste apprenants", () => {
+describe("buildInvoiceLines", () => {
+  it("learner : 1 ligne nominative", () => {
+    const enrollments = [makeEnrollment("e-1", "l-1", "client-A", "Dupont", "Jean")];
+    const formation = makeSession({ title: "Sécurité", enrollments });
+    const result = buildInvoiceLines(formation, { type: "learner", id: "l-1", amount: 800 });
+    expect(result.lines).toEqual([
+      { description: "Formation : Sécurité — DUPONT Jean", quantity: 1, unit_price: 800 },
+    ]);
+    expect(result.amountHT).toBe(800);
+  });
+
+  it("learner introuvable : 1 ligne sans nom", () => {
+    const formation = makeSession({ title: "Sécurité", enrollments: [] });
+    const result = buildInvoiceLines(formation, { type: "learner", id: "absent", amount: 500 });
+    expect(result.lines).toEqual([
+      { description: "Formation : Sécurité", quantity: 1, unit_price: 500 },
+    ]);
+  });
+
+  it("entreprise INTRA (1 entreprise) : 1 ligne globale", () => {
     const fc = makeFormationCompany("fc-1", "client-A", 5000);
     const enrollments = [
       makeEnrollment("e-1", "l-1", "client-A", "Dupont", "Jean"),
       makeEnrollment("e-2", "l-2", "client-A", "Martin", "Marie"),
-      makeEnrollment("e-3", "l-3", null, "Durand", "Paul"),
     ];
     const formation = makeSession({ title: "Sécurité", formation_companies: [fc], enrollments });
-
-    const result = buildInvoiceLinesForCompany(formation, "client-A");
-
-    expect(result.lines).toHaveLength(1);
-    expect(result.lines[0]).toEqual({
-      description: "Formation : Sécurité",
-      quantity: 1,
-      unit_price: 5000,
-    });
+    const result = buildInvoiceLines(formation, { type: "company", id: "client-A", amount: 5000 });
+    expect(result.lines).toEqual([
+      { description: "Formation : Sécurité", quantity: 1, unit_price: 5000 },
+    ]);
     expect(result.amountHT).toBe(5000);
-    expect(result.participantsNote).toBe("Participants : DUPONT Jean, MARTIN Marie, DURAND Paul");
   });
 
-  it("INTRA sans apprenants: 1 ligne globale + participantsNote null", () => {
-    const fc = makeFormationCompany("fc-1", "client-A", 1000);
-    const formation = makeSession({ formation_companies: [fc], enrollments: [] });
-    const result = buildInvoiceLinesForCompany(formation, "client-A");
-    expect(result.lines).toHaveLength(1);
-    expect(result.lines[0].unit_price).toBe(1000);
-    expect(result.participantsNote).toBeNull();
-  });
-});
-
-// ──────────────────────────────────────────────
-// buildInvoiceLinesForCompany — INTER
-// ──────────────────────────────────────────────
-
-describe("buildInvoiceLinesForCompany — INTER", () => {
-  it("INTER 3 apprenants 3000€: 3 lignes 1000€ chacune, pas de participantsNote", () => {
+  it("entreprise INTER (2+ entreprises) : 1 ligne par apprenant de l'entreprise", () => {
     const fcA = makeFormationCompany("fc-1", "client-A", 3000);
     const fcB = makeFormationCompany("fc-2", "client-B", 5000);
     const enrollments = [
       makeEnrollment("e-1", "l-1", "client-A", "Dupont", "Jean"),
       makeEnrollment("e-2", "l-2", "client-A", "Martin", "Marie"),
       makeEnrollment("e-3", "l-3", "client-A", "Durand", "Paul"),
-      makeEnrollment("e-4", "l-4", "client-B", "Other", "Emma"),
+      makeEnrollment("e-4", "l-4", "client-B", "Autre", "Emma"),
     ];
     const formation = makeSession({ title: "Sécurité", formation_companies: [fcA, fcB], enrollments });
-
-    const result = buildInvoiceLinesForCompany(formation, "client-A");
-
+    const result = buildInvoiceLines(formation, { type: "company", id: "client-A", amount: 3000 });
     expect(result.lines).toHaveLength(3);
-    expect(result.lines[0]).toEqual({
-      description: "Formation : Sécurité — DUPONT Jean",
-      quantity: 1,
-      unit_price: 1000,
-    });
-    expect(result.lines[1].description).toBe("Formation : Sécurité — MARTIN Marie");
-    expect(result.lines[2].description).toBe("Formation : Sécurité — DURAND Paul");
+    expect(result.lines[0].description).toBe("Formation : Sécurité — DUPONT Jean");
     expect(result.amountHT).toBe(3000);
-    expect(result.participantsNote).toBeNull();
   });
 
-  it("INTER 1 apprenant: 1 ligne avec unit_price = amount (split de 1)", () => {
-    const fcA = makeFormationCompany("fc-1", "client-A", 1000);
-    const fcB = makeFormationCompany("fc-2", "client-B", 2000);
-    const enrollments = [
-      makeEnrollment("e-1", "l-1", "client-A", "Solo", "Alice"),
-      makeEnrollment("e-2", "l-2", "client-B", "Other", "Bob"),
-    ];
-    const formation = makeSession({ formation_companies: [fcA, fcB], enrollments });
-
-    const result = buildInvoiceLinesForCompany(formation, "client-A");
-    expect(result.lines).toHaveLength(1);
-    expect(result.lines[0].unit_price).toBe(1000);
-    expect(result.amountHT).toBe(1000);
-  });
-
-  it("INTER avec arrondi: 1000€ / 3 apprenants = 333.33€ par ligne", () => {
+  it("INTER : reste d'arrondi absorbé sur la dernière ligne (somme exacte)", () => {
     const fcA = makeFormationCompany("fc-1", "client-A", 1000);
     const fcB = makeFormationCompany("fc-2", "client-B", 500);
     const enrollments = [
@@ -161,39 +133,71 @@ describe("buildInvoiceLinesForCompany — INTER", () => {
       makeEnrollment("e-4", "l-4", "client-B", "X", "X"),
     ];
     const formation = makeSession({ formation_companies: [fcA, fcB], enrollments });
-
-    const result = buildInvoiceLinesForCompany(formation, "client-A");
+    const result = buildInvoiceLines(formation, { type: "company", id: "client-A", amount: 1000 });
     expect(result.lines).toHaveLength(3);
-    // Split équitable arrondi à 2 décimales : 333.33 + 333.33 + 333.34 = 1000.00
     const total = result.lines.reduce((s, l) => s + l.quantity * l.unit_price, 0);
     expect(total).toBeCloseTo(1000, 2);
     expect(result.amountHT).toBeCloseTo(1000, 2);
   });
-});
 
-// ──────────────────────────────────────────────
-// buildInvoiceLinesForCompany — Erreurs
-// ──────────────────────────────────────────────
-
-describe("buildInvoiceLinesForCompany — Erreurs", () => {
-  it("amount manquant (NULL) → throw avec message clair", () => {
-    const fc = makeFormationCompany("fc-1", "client-A", null);
-    const formation = makeSession({ formation_companies: [fc], enrollments: [] });
-    expect(() => buildInvoiceLinesForCompany(formation, "client-A")).toThrow(/montant/i);
+  it("M3 — INTER avec un enrollment sans learner : diviseur = apprenants réels, somme exacte", () => {
+    const fcA = makeFormationCompany("fc-1", "client-A", 900);
+    const fcB = makeFormationCompany("fc-2", "client-B", 100);
+    const broken = { ...makeEnrollment("e-x", "l-x", "client-A", "X", "X"), learner: null } as unknown as Enrollment;
+    const enrollments = [
+      makeEnrollment("e-1", "l-1", "client-A", "A", "A"),
+      makeEnrollment("e-2", "l-2", "client-A", "B", "B"),
+      makeEnrollment("e-3", "l-3", "client-A", "C", "C"),
+      broken,
+      makeEnrollment("e-4", "l-4", "client-B", "X", "X"),
+    ];
+    const formation = makeSession({ formation_companies: [fcA, fcB], enrollments });
+    const result = buildInvoiceLines(formation, { type: "company", id: "client-A", amount: 900 });
+    expect(result.lines).toHaveLength(3); // l'enrollment cassé est exclu
+    const total = result.lines.reduce((s, l) => s + l.quantity * l.unit_price, 0);
+    expect(total).toBeCloseTo(900, 2);
   });
 
-  it("companyId inconnue → throw", () => {
-    const fc = makeFormationCompany("fc-1", "client-A", 1000);
-    const formation = makeSession({ formation_companies: [fc] });
-    expect(() => buildInvoiceLinesForCompany(formation, "client-Z")).toThrow();
+  it("financeur INTER : 1 ligne par apprenant de la SESSION (toutes entreprises)", () => {
+    const fcA = makeFormationCompany("fc-1", "client-A", 3000);
+    const fcB = makeFormationCompany("fc-2", "client-B", 5000);
+    const enrollments = [
+      makeEnrollment("e-1", "l-1", "client-A", "Dupont", "Jean"),
+      makeEnrollment("e-2", "l-2", "client-B", "Autre", "Emma"),
+    ];
+    const formation = makeSession({ formation_companies: [fcA, fcB], enrollments });
+    const result = buildInvoiceLines(formation, { type: "financier", id: "fin-1", amount: 2000 });
+    expect(result.lines).toHaveLength(2);
+    expect(result.lines[0].description).toContain("DUPONT Jean");
+    expect(result.lines[1].description).toContain("AUTRE Emma");
+    expect(result.amountHT).toBe(2000);
   });
 
-  it("INTER avec 0 apprenants pour cette entreprise → throw (sécurité)", () => {
+  it("financeur INTRA : 1 ligne globale", () => {
+    const fc = makeFormationCompany("fc-1", "client-A", 4000);
+    const enrollments = [makeEnrollment("e-1", "l-1", "client-A", "Dupont", "Jean")];
+    const formation = makeSession({ formation_companies: [fc], enrollments });
+    const result = buildInvoiceLines(formation, { type: "financier", id: "fin-1", amount: 4000 });
+    expect(result.lines).toHaveLength(1);
+    expect(result.lines[0].description).toBe("Formation : Formation X");
+  });
+
+  it("0 entreprise (unset) : traité comme Intra → 1 ligne globale", () => {
+    const enrollments = [makeEnrollment("e-1", "l-1", null, "Dupont", "Jean")];
+    const formation = makeSession({ enrollments });
+    const result = buildInvoiceLines(formation, { type: "company", id: "client-A", amount: 1200 });
+    expect(result.lines).toHaveLength(1);
+    expect(result.lines[0].unit_price).toBe(1200);
+  });
+
+  it("INTER mais 0 apprenant réel pour l'entreprise : 1 ligne globale, pas d'exception", () => {
     const fcA = makeFormationCompany("fc-1", "client-A", 1000);
     const fcB = makeFormationCompany("fc-2", "client-B", 2000);
     const enrollments = [makeEnrollment("e-1", "l-1", "client-B", "X", "X")];
     const formation = makeSession({ formation_companies: [fcA, fcB], enrollments });
-    expect(() => buildInvoiceLinesForCompany(formation, "client-A")).toThrow(/apprenant/i);
+    const result = buildInvoiceLines(formation, { type: "company", id: "client-A", amount: 1000 });
+    expect(result.lines).toHaveLength(1);
+    expect(result.lines[0].unit_price).toBe(1000);
   });
 });
 

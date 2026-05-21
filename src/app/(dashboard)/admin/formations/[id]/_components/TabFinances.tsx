@@ -10,8 +10,8 @@ import { useEntity } from "@/contexts/EntityContext";
 import { ImportInvoiceDialog } from "./ImportInvoiceDialog";
 import { downloadInvoicePDF, invoicePDFBase64 } from "@/lib/invoice-pdf-export";
 import type { InvoicePdfData } from "@/lib/invoice-pdf-export";
-import { buildInvoiceLinesForCompany } from "@/lib/utils/invoice-builder";
-import { getFormationKind, getLearnersForCompany } from "@/lib/utils/formation-companies";
+import { buildInvoiceLines } from "@/lib/utils/invoice-builder";
+import { getFormationKind, getLearnersForCompany, getAmountForCompany } from "@/lib/utils/formation-companies";
 
 const MODE_LABELS: Record<string, string> = {
   presentiel: "En présentiel",
@@ -228,73 +228,35 @@ export function TabFinances({ formation, onRefresh }: Props) {
   // ── Create invoice ──
 
   /**
-   * Construit les lignes auto de la facture selon le type de destinataire :
-   *   - Entreprise / Financeur : 1 ligne PAR apprenant avec son nom dans la
-   *     description (chaque participant apparaît explicitement sur la facture).
-   *   - Apprenant : 1 ligne globale (l'apprenant est déjà le destinataire).
-   *
-   * Si la formation n'a pas d'apprenants inscrits, fallback sur 1 ligne
-   * globale (cas formation à venir avec prix défini mais sans inscrits).
+   * Construit les lignes auto du formulaire via le builder unifié
+   * `buildInvoiceLines`. Le montant est dérivé du type de destinataire ;
+   * la sortie numérique du builder est formatée en chaînes (décimale
+   * virgule) pour les champs du formulaire. L'admin reste libre d'éditer.
    */
   const buildAutoLines = (recipientType: string, recipientId?: string): { description: string; quantity: string; unit_price: string }[] => {
-    const enrollments = formation.enrollments || [];
-    const totalPrice = formation.total_price || 0;
-    const hours = formation.planned_hours;
-    const dateRange = formation.start_date && formation.end_date
-      ? ` (${new Date(formation.start_date).toLocaleDateString("fr-FR")} → ${new Date(formation.end_date).toLocaleDateString("fr-FR")})`
-      : "";
-    const titlePart = `Formation : ${formation.title}${hours ? ` — ${hours}h` : ""}${dateRange}`;
-
-    // Cas company avec companyId connu : utilise le helper PR 14 (multi-entreprises).
-    // INTRA → 1 ligne globale avec amount de l'entreprise ; INTER → N lignes par apprenant
-    // de cette entreprise, unit_price = amount / N (split équitable).
+    let amount = 0;
     if (recipientType === "company" && recipientId) {
-      try {
-        const built = buildInvoiceLinesForCompany(formation, recipientId);
-        return built.lines.map((l) => ({
-          description: l.description.replace("Formation : " + (formation.title || "Formation"), titlePart),
-          quantity: String(l.quantity),
-          unit_price: l.unit_price.toFixed(2).replace(".", ","),
-        }));
-      } catch {
-        // Fallback : entreprise sans amount défini ou inconnue → comportement legacy
-      }
+      amount = getAmountForCompany(formation, recipientId) ?? 0;
+    } else if (recipientType === "financier" && recipientId) {
+      const fin = (formation.formation_financiers || []).find((f) => f.id === recipientId);
+      // amount_granted = montant accordé après accord OPCO ; amount = montant
+      // saisi à la création du dossier. On privilégie l'accordé, repli sur le saisi.
+      amount = Number(fin?.amount_granted) || Number(fin?.amount) || 0;
+    } else {
+      // learner (ou type/id incomplet) : suggestion = total_price ÷ nb apprenants.
+      const realCount = (formation.enrollments || []).filter((e) => e.learner).length;
+      const total = formation.total_price || 0;
+      amount = realCount > 1 ? total / realCount : total;
     }
-
-    const enrolledLearners = enrollments.filter((e) => e.learner);
-    // Story h-4 : si company + recipientId, on filtre par client_id de l'enrollment
-    // pour ne PAS inclure les apprenants des autres entreprises de la session INTER.
-    // Cas reproductible : entreprise sans `amount` dans formation_companies →
-    // buildInvoiceLinesForCompany throw → on tombe ici en fallback legacy.
-    const targetLearners = (recipientType === "company" && recipientId)
-      ? enrolledLearners.filter((e) => e.client_id === recipientId)
-      : enrolledLearners;
-    const enrollCount = targetLearners.length || 1;
-    const pricePerLearner = enrollCount > 0 ? totalPrice / enrollCount : totalPrice;
-    const priceStr = pricePerLearner.toFixed(2).replace(".", ",");
-
-    // Pour apprenant destinataire : 1 ligne globale (le nom est déjà sur le destinataire)
-    if (recipientType === "learner") {
-      return [{
-        description: titlePart,
-        quantity: "1",
-        unit_price: (enrollCount > 1 ? pricePerLearner : totalPrice).toFixed(2).replace(".", ","),
-      }];
-    }
-
-    // Financeur (ou company sans amount) : 1 ligne PAR apprenant
-    if (targetLearners.length === 0) {
-      return [{
-        description: titlePart,
-        quantity: "1",
-        unit_price: totalPrice.toFixed(2).replace(".", ","),
-      }];
-    }
-
-    return targetLearners.map((e) => ({
-      description: `${titlePart} — ${e.learner!.last_name?.toUpperCase()} ${e.learner!.first_name}`,
-      quantity: "1",
-      unit_price: priceStr,
+    const { lines } = buildInvoiceLines(formation, {
+      type: recipientType === "company" || recipientType === "financier" ? recipientType : "learner",
+      id: recipientId ?? "",
+      amount,
+    });
+    return lines.map((l) => ({
+      description: l.description,
+      quantity: String(l.quantity),
+      unit_price: l.unit_price.toFixed(2).replace(".", ","),
     }));
   };
 
@@ -693,9 +655,13 @@ export function TabFinances({ formation, onRefresh }: Props) {
     const learnerEnrollments = inv.recipient_type === "company"
       ? getLearnersForCompany(formation, inv.recipient_id)
       : allEnrollments;
-    const sessionLearners = learnerEnrollments
-      .filter((e) => e.learner)
-      .map((e) => `${e.learner!.last_name?.toUpperCase()} ${e.learner!.first_name}`);
+    // La liste « Apprenant(s) » n'apparaît sur le PDF qu'en Intra ; en Inter
+    // les lignes nominatives la rendent redondante (cf. spec §3.3/§3.4).
+    const sessionLearners = getFormationKind(formation) === "intra"
+      ? learnerEnrollments
+          .filter((e) => e.learner)
+          .map((e) => `${e.learner!.last_name?.toUpperCase()} ${e.learner!.first_name}`)
+      : [];
 
     // Formateurs
     const sessionTrainers = (formation.formation_trainers || [])

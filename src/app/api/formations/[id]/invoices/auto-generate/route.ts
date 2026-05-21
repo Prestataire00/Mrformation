@@ -6,8 +6,9 @@ import { logAudit } from "@/lib/audit-log";
 import {
   getCompaniesForFormation,
   validateCompanyExport,
+  getAmountForCompany,
 } from "@/lib/utils/formation-companies";
-import { buildInvoiceLinesForCompany } from "@/lib/utils/invoice-builder";
+import { buildInvoiceLines } from "@/lib/utils/invoice-builder";
 import type { Session } from "@/lib/types";
 
 type SupabaseServerClient = ReturnType<typeof createClient>;
@@ -68,7 +69,7 @@ export async function POST(_request: NextRequest, context: RouteContext) {
     // bloque alors la prochaine tentative et l'admin supprime les factures partielles.
     for (const item of preview) {
       // Crée la facture via la RPC atomique (anti-race-condition).
-      // La RPC ne couvre pas participants_note ni auto_generated → on UPDATE après.
+      // La RPC ne couvre pas auto_generated → on UPDATE après.
       const baseNotes = `Formation : ${session?.title || "—"}${item.detail ? ` — ${item.detail}` : ""}`;
       const { data: inv, error: rpcError } = await auth.supabase.rpc("create_invoice_with_atomic_number", {
         p_entity_id: entityId,
@@ -95,9 +96,8 @@ export async function POST(_request: NextRequest, context: RouteContext) {
         }, { status: 500 });
       }
 
-      // UPDATE participants_note + auto_generated (non couverts par la RPC).
+      // UPDATE auto_generated (non couvert par la RPC).
       const updates: Record<string, unknown> = { auto_generated: true };
-      if (item.participantsNote) updates.participants_note = item.participantsNote;
       const { error: updateError } = await auth.supabase
         .from("formation_invoices")
         .update(updates)
@@ -179,7 +179,6 @@ interface PreviewItem {
   amount: number;
   detail: string;
   lines: PreviewLine[];
-  participantsNote: string | null;
 }
 
 async function buildInvoicePreview(supabase: SupabaseServerClient, sessionId: string, entityId: string): Promise<{
@@ -233,14 +232,18 @@ async function buildInvoicePreview(supabase: SupabaseServerClient, sessionId: st
     if (finAmount <= 0) continue;
     if (fin.status === "refusee") continue;
 
+    const finBuilt = buildInvoiceLines(formation, {
+      type: "financier",
+      id: fin.id,
+      amount: finAmount,
+    });
     preview.push({
       recipientType: "financier",
       recipientId: fin.id,
       recipientName: fin.name,
       amount: finAmount,
       detail: `Financeur ${fin.type || ""}`.trim(),
-      lines: [],
-      participantsNote: null,
+      lines: finBuilt.lines,
     });
     financeurTotal += finAmount;
   }
@@ -257,16 +260,20 @@ async function buildInvoicePreview(supabase: SupabaseServerClient, sessionId: st
     }
 
     for (const fc of companies) {
-      const result = buildInvoiceLinesForCompany(formation, fc.client_id);
+      const amount = getAmountForCompany(formation, fc.client_id) ?? 0;
+      const built = buildInvoiceLines(formation, {
+        type: "company",
+        id: fc.client_id,
+        amount,
+      });
       const cname = fc.client?.company_name || "Entreprise";
       preview.push({
         recipientType: "company",
         recipientId: fc.client_id,
         recipientName: cname,
-        amount: result.amountHT,
+        amount: built.amountHT,
         detail: financeurTotal > 0 ? `Co-financement (financeurs ${financeurTotal}€)` : "",
-        lines: result.lines,
-        participantsNote: result.participantsNote,
+        lines: built.lines,
       });
     }
 
@@ -289,18 +296,19 @@ async function buildInvoicePreview(supabase: SupabaseServerClient, sessionId: st
     const learner = Array.isArray(e.learner) ? e.learner[0] : e.learner;
     if (!learner || pricePerLearner <= 0) continue;
     const fullName = `${learner.last_name?.toUpperCase()} ${learner.first_name}`;
+    const learnerAmount = Math.round(pricePerLearner * 100) / 100;
+    const learnerBuilt = buildInvoiceLines(formation, {
+      type: "learner",
+      id: learner.id,
+      amount: learnerAmount,
+    });
     preview.push({
       recipientType: "learner",
       recipientId: learner.id,
       recipientName: fullName,
-      amount: Math.round(pricePerLearner * 100) / 100,
+      amount: learnerAmount,
       detail: "Particulier",
-      lines: [{
-        description: `Formation : ${session.title}`,
-        quantity: 1,
-        unit_price: Math.round(pricePerLearner * 100) / 100,
-      }],
-      participantsNote: null,
+      lines: learnerBuilt.lines,
     });
   }
 

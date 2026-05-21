@@ -1,16 +1,14 @@
-import type { Session } from "@/lib/types";
+import type { Session, Enrollment } from "@/lib/types";
 import {
   getLearnersForCompany,
-  getAmountForCompany,
-  isIntraFormation,
-  getCompaniesForFormation,
+  getFormationKind,
 } from "@/lib/utils/formation-companies";
 
 /**
  * Helpers facturation multi-entreprises (PR 14).
  *
  * Distinction INTRA / INTER :
- *  - INTRA : 1 ligne globale + participantsNote listant tous les apprenants.
+ *  - INTRA : 1 ligne globale.
  *  - INTER : N lignes (1 par apprenant de cette entreprise), unit_price = amount / N.
  *
  * Réutilise les helpers de PR 13 (formation-companies.ts).
@@ -24,7 +22,6 @@ export interface InvoiceLineDraft {
 
 export interface InvoiceBuildResult {
   lines: InvoiceLineDraft[];
-  participantsNote: string | null;
   amountHT: number;
 }
 
@@ -32,67 +29,72 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
-export function buildInvoiceLinesForCompany(formation: Session, companyId: string): InvoiceBuildResult {
-  const companies = getCompaniesForFormation(formation);
-  const company = companies.find((c) => c.client_id === companyId);
-  if (!company) {
-    throw new Error(`Entreprise ${companyId} introuvable pour cette formation`);
-  }
+export interface InvoiceRecipient {
+  type: "company" | "financier" | "learner";
+  id: string;
+  amount: number;
+}
 
-  const amount = getAmountForCompany(formation, companyId);
-  if (amount === null) {
-    throw new Error(`Le montant pour cette entreprise n'est pas défini`);
-  }
+/**
+ * Génère les lignes d'une facture selon le type de formation et le
+ * destinataire. Fonction PURE — source de vérité unique. Cf. spec
+ * docs/superpowers/specs/2026-05-21-facturation-lignes-unifiees-design.md
+ *
+ * - learner                    → 1 ligne nominative.
+ * - company/financier, Inter   → 1 ligne par participant (split équitable,
+ *                                 reste d'arrondi absorbé sur la dernière).
+ * - company/financier, Intra / unset / 0 participant → 1 ligne globale.
+ *
+ * Ne lève jamais d'exception : tout cas dégénéré produit 1 ligne cohérente.
+ */
+export function buildInvoiceLines(
+  formation: Session,
+  recipient: InvoiceRecipient,
+): InvoiceBuildResult {
+  const titre = formation.title || "Formation";
+  const desc = `Formation : ${titre}`;
+  const nom = (e: Enrollment): string => {
+    if (!e.learner) return "";
+    return `${e.learner.last_name?.toUpperCase() ?? ""} ${e.learner.first_name ?? ""}`.trim();
+  };
 
-  const learners = getLearnersForCompany(formation, companyId);
-  const title = formation.title || "Formation";
-  const description = `Formation : ${title}`;
-
-  // INTRA : 1 ligne globale + participantsNote
-  if (isIntraFormation(formation)) {
-    const participantsNote = learners.length > 0
-      ? `Participants : ${learners
-          .filter((e) => e.learner)
-          .map((e) => `${e.learner!.last_name?.toUpperCase()} ${e.learner!.first_name}`)
-          .join(", ")}`
-      : null;
-
+  // ── Apprenant : 1 ligne nominative ──
+  if (recipient.type === "learner") {
+    const enr = (formation.enrollments ?? []).find((e) => e.learner?.id === recipient.id);
+    const description = enr?.learner ? `${desc} — ${nom(enr)}` : desc;
     return {
-      lines: [{ description, quantity: 1, unit_price: amount }],
-      participantsNote,
-      amountHT: amount,
+      lines: [{ description, quantity: 1, unit_price: recipient.amount }],
+      amountHT: round2(recipient.amount),
     };
   }
 
-  // INTER : N lignes par apprenant, split équitable
-  if (learners.length === 0) {
-    throw new Error(`Aucun apprenant rattaché à cette entreprise pour cette formation`);
+  // ── Entreprise / Financeur ──
+  const participants =
+    recipient.type === "company"
+      ? getLearnersForCompany(formation, recipient.id)
+      : (formation.enrollments ?? []);
+  const realParticipants = participants.filter((e) => e.learner);
+
+  // INTER avec ≥ 1 apprenant réel → 1 ligne par participant.
+  if (getFormationKind(formation) === "inter" && realParticipants.length >= 1) {
+    const n = realParticipants.length;
+    const base = round2(recipient.amount / n);
+    const reste = round2(recipient.amount - round2(base * n));
+    const lines: InvoiceLineDraft[] = realParticipants.map((e, idx) => ({
+      description: `${desc} — ${nom(e)}`,
+      quantity: 1,
+      unit_price: idx === n - 1 ? round2(base + reste) : base,
+    }));
+    return {
+      lines,
+      amountHT: round2(lines.reduce((s, l) => s + l.quantity * l.unit_price, 0)),
+    };
   }
 
-  // Split équitable : on arrondit chaque ligne à 2 décimales et on absorbe le reste
-  // sur la dernière ligne pour que la somme = amount exactement.
-  const baseUnit = round2(amount / learners.length);
-  const totalBeforeAdjust = round2(baseUnit * learners.length);
-  const adjustment = round2(amount - totalBeforeAdjust);
-
-  const lines: InvoiceLineDraft[] = learners
-    .filter((e) => e.learner)
-    .map((e, idx, arr) => {
-      const isLast = idx === arr.length - 1;
-      const unit = isLast ? round2(baseUnit + adjustment) : baseUnit;
-      return {
-        description: `${description} — ${e.learner!.last_name?.toUpperCase()} ${e.learner!.first_name}`,
-        quantity: 1,
-        unit_price: unit,
-      };
-    });
-
-  const amountHT = round2(lines.reduce((s, l) => s + l.quantity * l.unit_price, 0));
-
+  // INTRA / unset / 0 participant → 1 ligne globale.
   return {
-    lines,
-    participantsNote: null,
-    amountHT,
+    lines: [{ description: desc, quantity: 1, unit_price: recipient.amount }],
+    amountHT: round2(recipient.amount),
   };
 }
 
