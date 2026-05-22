@@ -1,30 +1,16 @@
-import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
+import { requireElearningCourse } from "@/lib/auth/elearning-access";
+import { logAudit } from "@/lib/audit-log";
 
 export async function PATCH(
   request: NextRequest,
   { params }: { params: { courseId: string; chapterId: string } }
 ) {
   try {
-    const supabase = createClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    if (!["admin", "super_admin", "learner"].includes(profile?.role)) {
-      return NextResponse.json({ data: null, error: "Accès non autorisé" }, { status: 403 });
-    }
+    const access = await requireElearningCourse(params.courseId, ["admin", "super_admin"]);
+    if (!access.ok) return access.error;
+    const { supabase, profile, userId } = access;
 
     const body = await request.json();
     const { title, summary, content_html, content_markdown, key_concepts, order_index, estimated_duration_minutes } = body;
@@ -50,6 +36,16 @@ export async function PATCH(
       return NextResponse.json({ error: sanitizeDbError(error, "updating chapter") }, { status: 500 });
     }
 
+    logAudit({
+      supabase,
+      entityId: profile.entity_id,
+      userId,
+      action: "update",
+      resourceType: "elearning_chapter",
+      resourceId: params.chapterId,
+      details: { courseId: params.courseId },
+    });
+
     return NextResponse.json({ data });
   } catch (error) {
     return NextResponse.json({ error: sanitizeError(error, "updating chapter") }, { status: 500 });
@@ -61,24 +57,9 @@ export async function DELETE(
   { params }: { params: { courseId: string; chapterId: string } }
 ) {
   try {
-    const supabase = createClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    if (!["admin", "super_admin", "learner"].includes(profile?.role)) {
-      return NextResponse.json({ data: null, error: "Accès non autorisé" }, { status: 403 });
-    }
+    const access = await requireElearningCourse(params.courseId, ["admin", "super_admin"]);
+    if (!access.ok) return access.error;
+    const { supabase, profile, userId } = access;
 
     const { error } = await supabase
       .from("elearning_chapters")
@@ -89,6 +70,16 @@ export async function DELETE(
     if (error) {
       return NextResponse.json({ error: sanitizeDbError(error, "deleting chapter") }, { status: 500 });
     }
+
+    logAudit({
+      supabase,
+      entityId: profile.entity_id,
+      userId,
+      action: "delete",
+      resourceType: "elearning_chapter",
+      resourceId: params.chapterId,
+      details: { courseId: params.courseId },
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {

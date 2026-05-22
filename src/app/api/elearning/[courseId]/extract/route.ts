@@ -1,7 +1,7 @@
-import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { extractText } from "@/lib/services/doc-extraction";
 import { sanitizeError } from "@/lib/api-error";
+import { requireElearningCourse } from "@/lib/auth/elearning-access";
 
 export const maxDuration = 60;
 
@@ -9,38 +9,17 @@ export async function POST(
   request: NextRequest,
   { params }: { params: { courseId: string } }
 ) {
+  const access = await requireElearningCourse(params.courseId, ["admin", "super_admin"]);
+  if (!access.ok) return access.error;
+  // supabase is captured outside try so the catch block can update DB on error
+  const { supabase, course: guardCourse } = access;
+
   try {
-    const supabase = createClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    // Le garde a déjà chargé le cours (entity_id vérifiée) — pas de seconde requête.
+    const sourceFileUrl = guardCourse.source_file_url as string | null | undefined;
+    const sourceFileType = guardCourse.source_file_type as string | null | undefined;
 
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    if (!["admin","super_admin"].includes(profile?.role ?? "")) {
-      return NextResponse.json({ data: null, error: "Accès non autorisé" }, { status: 403 });
-    }
-
-    // Get course
-    const { data: course, error: courseError } = await supabase
-      .from("elearning_courses")
-      .select("id, source_file_url, source_file_type")
-      .eq("id", params.courseId)
-      .single();
-
-    if (courseError || !course) {
-      return NextResponse.json({ error: "Cours non trouvé" }, { status: 404 });
-    }
-
-    if (!course.source_file_url) {
+    if (!sourceFileUrl) {
       return NextResponse.json({ error: "Aucun fichier source" }, { status: 400 });
     }
 
@@ -51,7 +30,7 @@ export async function POST(
       .eq("id", params.courseId);
 
     // Download file from Supabase Storage
-    const filePath = course.source_file_url.replace(/^.*\/storage\/v1\/object\/public\//, "");
+    const filePath = sourceFileUrl.replace(/^.*\/storage\/v1\/object\/public\//, "");
     const bucketAndPath = filePath.split("/");
     const bucket = bucketAndPath[0];
     const path = bucketAndPath.slice(1).join("/");
@@ -70,7 +49,7 @@ export async function POST(
 
     // Extract text
     const buffer = Buffer.from(await fileData.arrayBuffer());
-    const { text, metadata } = await extractText(buffer, course.source_file_type || "pdf");
+    const { text, metadata } = await extractText(buffer, sourceFileType || "pdf");
 
     if (!text || text.trim().length < 100) {
       await supabase
@@ -108,7 +87,6 @@ export async function POST(
     const message = sanitizeError(error, "extracting text from document");
     // Update course with error
     try {
-      const supabase = createClient();
       await supabase
         .from("elearning_courses")
         .update({ generation_status: "failed", generation_error: message })

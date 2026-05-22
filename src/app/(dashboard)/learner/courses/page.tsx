@@ -155,16 +155,52 @@ export default function LearnerCoursesPage() {
     }
 
     // Fetch e-learning assigned via formations (formation_elearning_assignments)
+    // Note: elearning_courses is NOT embedded here because the FK course_id was dropped
+    // (polymorphic ref — ai courses vs programme courses). We fetch courses separately.
     if (currentLearnerId) {
       const { data: assignments } = await supabase
         .from("formation_elearning_assignments")
         .select(
-          "id, course_id, session_id, is_completed, start_date, end_date, elearning_courses(id, title, description, estimated_duration_minutes, elearning_chapters(id)), sessions(title, training:trainings(title))"
+          "id, course_id, session_id, is_completed, start_date, end_date, sessions(title, training:trainings(title))"
         )
         .eq("learner_id", currentLearnerId);
 
-      if (assignments) {
-        setAssignedCourses(assignments as unknown as AssignedCourse[]);
+      if (assignments && assignments.length > 0) {
+        const courseIds = [...new Set(assignments.map((a) => a.course_id).filter(Boolean))];
+        let coursesById: Record<string, {
+          id: string;
+          title: string;
+          description: string | null;
+          estimated_duration_minutes: number;
+          elearning_chapters: { id: string }[];
+        }> = {};
+
+        if (courseIds.length > 0) {
+          const { data: courses } = await supabase
+            .from("elearning_courses")
+            .select("id, title, description, estimated_duration_minutes, elearning_chapters(id)")
+            .in("id", courseIds);
+
+          if (courses) {
+            for (const c of courses) {
+              coursesById[c.id] = c as {
+                id: string;
+                title: string;
+                description: string | null;
+                estimated_duration_minutes: number;
+                elearning_chapters: { id: string }[];
+              };
+            }
+          }
+        }
+
+        const stitched = assignments.map((a) => ({
+          ...a,
+          elearning_courses: coursesById[a.course_id] ?? null,
+        }));
+        setAssignedCourses(stitched as unknown as AssignedCourse[]);
+      } else if (assignments) {
+        setAssignedCourses([]);
       }
     }
 

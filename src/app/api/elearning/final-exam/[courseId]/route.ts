@@ -1,5 +1,5 @@
-import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
+import { requireElearningCourse } from "@/lib/auth/elearning-access";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 
 export async function GET(
@@ -7,19 +7,9 @@ export async function GET(
   { params }: { params: { courseId: string } }
 ) {
   try {
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    if (!["admin", "super_admin", "learner"].includes(profile?.role)) {
-      return NextResponse.json({ data: null, error: "Accès non autorisé" }, { status: 403 });
-    }
+    const access = await requireElearningCourse(params.courseId, ["admin", "super_admin", "learner"]);
+    if (!access.ok) return access.error;
+    const { supabase, profile } = access;
 
     const { searchParams } = new URL(request.url);
     const difficulty = searchParams.get("difficulty");
@@ -41,18 +31,16 @@ export async function GET(
     const { data, error } = await query;
     if (error) return NextResponse.json({ error: sanitizeDbError(error, "fetching final exam questions") }, { status: 500 });
 
-    // Strip correct answers for learner mode (don't reveal before submission)
-    const stripAnswers = searchParams.get("strip_answers") === "true";
-    if (stripAnswers && data) {
-      const stripped = data.map((q: Record<string, unknown>) => ({
+    if (profile.role === "learner" && data) {
+      const masked = data.map((q: Record<string, unknown>) => ({
         ...q,
         correct_answer: null,
         explanation: null,
         options: Array.isArray(q.options)
           ? (q.options as { text: string }[]).map((o) => ({ text: o.text }))
-          : q.options,
+          : null,
       }));
-      return NextResponse.json({ data: stripped });
+      return NextResponse.json({ data: masked });
     }
 
     return NextResponse.json({ data });

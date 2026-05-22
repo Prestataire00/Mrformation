@@ -93,7 +93,7 @@ export default function FormationDetailPage() {
             signatures(id, signer_id, signer_type, signature_data, signed_at, time_slot_id),
             formation_evaluation_assignments(*, questionnaire:questionnaires(id, title, type, quality_indicator_type)),
             formation_satisfaction_assignments(*, questionnaire:questionnaires(id, title, type, quality_indicator_type)),
-            formation_elearning_assignments(*, course:elearning_courses(id, title, status, estimated_duration_minutes))
+            formation_elearning_assignments(*)
           `)
           .eq("id", formationId)
           .eq("entity_id", entityId)

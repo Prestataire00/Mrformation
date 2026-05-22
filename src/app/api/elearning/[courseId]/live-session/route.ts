@@ -1,4 +1,5 @@
-import { createClient } from "@/lib/supabase/server";
+import { requireElearningCourse } from "@/lib/auth/elearning-access";
+import { logAudit } from "@/lib/audit-log";
 import { NextRequest, NextResponse } from "next/server";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 
@@ -8,19 +9,9 @@ export async function GET(
   { params }: { params: { courseId: string } }
 ) {
   try {
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    if (!["admin","super_admin"].includes(profile?.role ?? "")) {
-      return NextResponse.json({ data: null, error: "Accès non autorisé" }, { status: 403 });
-    }
+    const access = await requireElearningCourse(params.courseId, ["admin", "super_admin"]);
+    if (!access.ok) return access.error;
+    const { supabase } = access;
 
     const { data, error } = await supabase
       .from("elearning_live_sessions")
@@ -45,32 +36,25 @@ export async function POST(
   { params }: { params: { courseId: string } }
 ) {
   try {
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const access = await requireElearningCourse(params.courseId, ["admin", "super_admin"]);
+    if (!access.ok) return access.error;
+    const { supabase, profile, userId } = access;
 
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    if (!["admin","super_admin"].includes(profile?.role ?? "")) {
-      return NextResponse.json({ data: null, error: "Accès non autorisé" }, { status: 403 });
-    }
-
-    // End any existing active sessions for this course
-    await supabase
+    // End any existing active sessions for this course (écriture vérifiée — pas de fire-and-forget)
+    const { error: endErr } = await supabase
       .from("elearning_live_sessions")
       .update({ status: "ended", ended_at: new Date().toISOString() })
       .eq("course_id", params.courseId)
       .eq("status", "active");
+    if (endErr) {
+      return NextResponse.json({ error: sanitizeDbError(endErr, "ending previous live sessions") }, { status: 500 });
+    }
 
     const { data, error } = await supabase
       .from("elearning_live_sessions")
       .insert({
         course_id: params.courseId,
-        presenter_id: user.id,
+        presenter_id: userId,
         status: "active",
         current_slide_index: 0,
         current_state: {},
@@ -79,6 +63,15 @@ export async function POST(
       .single();
 
     if (error) return NextResponse.json({ error: sanitizeDbError(error, "creating live session") }, { status: 500 });
+
+    logAudit({
+      supabase,
+      entityId: profile.entity_id,
+      userId,
+      action: "create",
+      resourceType: "elearning_live_session",
+      resourceId: (data as Record<string, unknown>).id as string ?? params.courseId,
+    });
 
     return NextResponse.json({ data }, { status: 201 });
   } catch (error) {
@@ -92,19 +85,9 @@ export async function PATCH(
   { params }: { params: { courseId: string } }
 ) {
   try {
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    if (!["admin","super_admin"].includes(profile?.role ?? "")) {
-      return NextResponse.json({ data: null, error: "Accès non autorisé" }, { status: 403 });
-    }
+    const access = await requireElearningCourse(params.courseId, ["admin", "super_admin"]);
+    if (!access.ok) return access.error;
+    const { supabase, profile, userId } = access;
 
     const body = await request.json();
     const updates: Record<string, unknown> = {};
@@ -125,6 +108,15 @@ export async function PATCH(
       .single();
 
     if (error) return NextResponse.json({ error: sanitizeDbError(error, "updating live session") }, { status: 500 });
+
+    logAudit({
+      supabase,
+      entityId: profile.entity_id,
+      userId,
+      action: "update",
+      resourceType: "elearning_live_session",
+      resourceId: (data as Record<string, unknown>).id as string ?? params.courseId,
+    });
 
     return NextResponse.json({ data });
   } catch (error) {

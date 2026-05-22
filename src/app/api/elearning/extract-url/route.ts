@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { requireRole } from "@/lib/auth/require-role";
 import { NextRequest, NextResponse } from "next/server";
 import { extractFromUrl } from "@/lib/services/doc-extraction";
 import { sanitizeError } from "@/lib/api-error";
@@ -13,24 +13,8 @@ export const maxDuration = 120;
  */
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    if (!["admin","super_admin"].includes(profile?.role ?? "")) {
-      return NextResponse.json({ error: "Accès non autorisé" }, { status: 403 });
-    }
+    const auth = await requireRole(["admin", "super_admin"]);
+    if (auth.error) return auth.error;
 
     const body = await request.json();
     const { url } = body;

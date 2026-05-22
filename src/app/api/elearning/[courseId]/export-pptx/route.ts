@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { requireElearningCourse } from "@/lib/auth/elearning-access";
 import { NextRequest, NextResponse } from "next/server";
 import { generatePptxBuffer } from "@/lib/services/pptx-generator";
 import { sanitizeError } from "@/lib/api-error";
@@ -8,19 +8,9 @@ export async function GET(
   { params }: { params: { courseId: string } }
 ) {
   try {
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    if (!["admin","super_admin"].includes(profile?.role ?? "")) {
-      return NextResponse.json({ data: null, error: "Accès non autorisé" }, { status: 403 });
-    }
+    const access = await requireElearningCourse(params.courseId, ["admin", "super_admin"]);
+    if (!access.ok) return access.error;
+    const { supabase, course } = access;
 
     // Get slide spec
     const { data: slideSpec, error } = await supabase
@@ -35,15 +25,8 @@ export async function GET(
       return NextResponse.json({ error: "Slide spec non trouvé" }, { status: 404 });
     }
 
-    // Get course title for filename
-    const { data: course } = await supabase
-      .from("elearning_courses")
-      .select("title")
-      .eq("id", params.courseId)
-      .single();
-
     const buffer = await generatePptxBuffer(slideSpec.slide_spec);
-    const safeName = (course?.title || "cours").replace(/[^a-zA-Z0-9\u00C0-\u024F ]/g, "_").substring(0, 50);
+    const safeName = ((course.title as string) || "cours").replace(/[^a-zA-Z0-9À-ɏ ]/g, "_").substring(0, 50);
 
     return new Response(buffer, {
       headers: {

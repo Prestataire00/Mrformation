@@ -67,6 +67,7 @@ Exécuter dans l'ordre dans Supabase Dashboard :
 3. add_veille_notes.sql
 4. add_affacturage.sql
 5. add_certificateurs.sql
+6. elearning_solidification.sql
 
 ## Variables d'environnement
 Voir .env.example
