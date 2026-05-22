@@ -134,7 +134,6 @@ export default function LearnerMyTrainingsPage() {
           program:programs(id, title, description, content),
           module_progress:program_module_progress(id, module_id, is_completed)),
         formation_elearning_assignments(id, course_id, session_id, is_completed, start_date, end_date,
-          elearning_courses(id, title, description, estimated_duration_minutes, elearning_chapters(id)),
           sessions(title, training_id))
         `
       )
@@ -155,8 +154,35 @@ export default function LearnerMyTrainingsPage() {
       (learnerData.enrollments as unknown as EnrolledSession[]) ?? []
     ).filter((e) => e.status !== "cancelled");
 
-    const assignments =
-      (learnerData.formation_elearning_assignments as unknown as ElearningAssignment[]) ?? [];
+    // Note: elearning_courses was NOT embedded in the learners query above because the FK
+    // course_id was dropped (polymorphic ref — ai courses vs programme courses).
+    // We fetch courses separately and stitch them back, which is RLS-safe (open policy).
+    const rawAssignments =
+      (learnerData.formation_elearning_assignments as unknown as (Omit<ElearningAssignment, "elearning_courses"> & { elearning_courses?: ElearningAssignment["elearning_courses"] })[]) ?? [];
+
+    let assignments: ElearningAssignment[] = rawAssignments.map((a) => ({
+      ...a,
+      elearning_courses: null,
+    }));
+
+    const assignmentCourseIds = [...new Set(rawAssignments.map((a) => a.course_id).filter(Boolean))];
+    if (assignmentCourseIds.length > 0) {
+      const { data: courses } = await supabase
+        .from("elearning_courses")
+        .select("id, title, description, estimated_duration_minutes, elearning_chapters(id)")
+        .in("id", assignmentCourseIds);
+
+      if (courses) {
+        const coursesById: Record<string, NonNullable<ElearningAssignment["elearning_courses"]>> = {};
+        for (const c of courses) {
+          coursesById[c.id] = c as NonNullable<ElearningAssignment["elearning_courses"]>;
+        }
+        assignments = rawAssignments.map((a) => ({
+          ...a,
+          elearning_courses: coursesById[a.course_id] ?? null,
+        }));
+      }
+    }
 
     // Group by training
     const groupMap = new Map<string, TrainingGroup>();
