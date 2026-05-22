@@ -1,31 +1,27 @@
-import { createClient } from "@/lib/supabase/server";
+import { requireElearningEnrollment } from "@/lib/auth/elearning-access";
 import { NextRequest, NextResponse } from "next/server";
-import { sanitizeError } from "@/lib/api-error";
+import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 
 export async function POST(
   request: NextRequest,
   { params }: { params: { courseId: string } }
 ) {
   try {
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    if (!["admin", "super_admin", "learner"].includes(profile?.role)) {
-      return NextResponse.json({ data: null, error: "Accès non autorisé" }, { status: 403 });
-    }
-
-    const { enrollment_id, answers } = await request.json();
+    const body = await request.json();
+    const { enrollment_id, answers } = body as { enrollment_id?: string; answers?: Record<string, number | boolean | string> };
     // answers: { [question_id]: number | boolean | string }
 
     if (!enrollment_id || !answers) {
       return NextResponse.json({ error: "enrollment_id et answers requis" }, { status: 400 });
+    }
+
+    const access = await requireElearningEnrollment(enrollment_id, ["admin", "super_admin", "learner"]);
+    if (!access.ok) return access.error;
+    const { supabase, enrollment } = access;
+
+    // Course consistency check: prevent submitting a different course's exam against this enrollment
+    if (enrollment.course_id !== params.courseId) {
+      return NextResponse.json({ error: "Inscription hors du cours de l'examen" }, { status: 403 });
     }
 
     // Fetch all final exam questions
@@ -40,11 +36,15 @@ export async function POST(
     }
 
     // Fetch passing score from course
-    const { data: course } = await supabase
+    const { data: course, error: courseErr } = await supabase
       .from("elearning_courses")
       .select("final_exam_passing_score")
       .eq("id", params.courseId)
-      .single();
+      .maybeSingle();
+
+    if (courseErr) {
+      return NextResponse.json({ error: sanitizeDbError(courseErr, "fetching course passing score") }, { status: 500 });
+    }
 
     const passingScore = course?.final_exam_passing_score ?? 70;
 
@@ -73,19 +73,12 @@ export async function POST(
     const score = questions.length > 0 ? Math.round((correct / questions.length) * 100) : 0;
     const passed = score >= passingScore;
 
-    // Fetch existing progress
-    const { data: existing } = await supabase
-      .from("elearning_final_exam_progress")
-      .select("attempts")
-      .eq("enrollment_id", enrollment_id)
-      .single();
-
-    await supabase.from("elearning_final_exam_progress").upsert(
+    // Upsert final exam progress WITHOUT attempts (handled atomically by RPC below)
+    const { error: upsertErr } = await supabase.from("elearning_final_exam_progress").upsert(
       {
         enrollment_id,
         score,
         passed,
-        attempts: (existing?.attempts || 0) + 1,
         last_answers: answers,
         completed_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -93,9 +86,22 @@ export async function POST(
       { onConflict: "enrollment_id" }
     );
 
+    if (upsertErr) {
+      return NextResponse.json({ error: sanitizeDbError(upsertErr, "saving final exam progress") }, { status: 500 });
+    }
+
+    // Atomic attempt counter increment
+    const { error: bumpErr } = await supabase.rpc("elearning_bump_final_exam_attempts", {
+      p_enrollment_id: enrollment_id,
+    });
+
+    if (bumpErr) {
+      return NextResponse.json({ error: "Erreur de comptage des tentatives" }, { status: 500 });
+    }
+
     // If exam passed, mark enrollment as completed
     if (passed) {
-      await supabase
+      const { error: enrollErr } = await supabase
         .from("elearning_enrollments")
         .update({
           status: "completed",
@@ -103,6 +109,10 @@ export async function POST(
           completed_at: new Date().toISOString(),
         })
         .eq("id", enrollment_id);
+
+      if (enrollErr) {
+        return NextResponse.json({ error: sanitizeDbError(enrollErr, "updating enrollment status") }, { status: 500 });
+      }
     }
 
     return NextResponse.json({

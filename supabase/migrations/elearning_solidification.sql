@@ -81,3 +81,47 @@ BEGIN
   RETURN v_new;
 END;
 $$;
+
+-- 2c. Incréments atomiques des compteurs de tentatives.
+-- La ligne de progression/score est upsertée par la route AVANT l'appel ;
+-- ces RPC font un UPDATE atomique (verrou de ligne) et renvoient le compteur à jour.
+CREATE OR REPLACE FUNCTION elearning_bump_chapter_quiz_attempts(
+  p_enrollment_id UUID, p_chapter_id UUID)
+RETURNS INT LANGUAGE plpgsql AS $$
+DECLARE v_attempts INT;
+BEGIN
+  UPDATE elearning_chapter_progress
+    SET quiz_attempts = COALESCE(quiz_attempts, 0) + 1
+    WHERE enrollment_id = p_enrollment_id AND chapter_id = p_chapter_id
+    RETURNING quiz_attempts INTO v_attempts;
+  IF NOT FOUND THEN RAISE EXCEPTION 'chapter_progress_not_found'; END IF;
+  RETURN v_attempts;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION elearning_bump_final_exam_attempts(p_enrollment_id UUID)
+RETURNS INT LANGUAGE plpgsql AS $$
+DECLARE v_attempts INT;
+BEGIN
+  UPDATE elearning_final_exam_progress
+    SET attempts = COALESCE(attempts, 0) + 1
+    WHERE enrollment_id = p_enrollment_id
+    RETURNING attempts INTO v_attempts;
+  IF NOT FOUND THEN RAISE EXCEPTION 'final_exam_progress_not_found'; END IF;
+  RETURN v_attempts;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION elearning_bump_course_score_attempts(
+  p_course_id UUID, p_user_id UUID)
+RETURNS INT LANGUAGE plpgsql AS $$
+DECLARE v_attempts INT;
+BEGIN
+  UPDATE elearning_course_scores
+    SET attempts = COALESCE(attempts, 0) + 1
+    WHERE course_id = p_course_id AND user_id = p_user_id
+    RETURNING attempts INTO v_attempts;
+  IF NOT FOUND THEN RAISE EXCEPTION 'course_score_not_found'; END IF;
+  RETURN v_attempts;
+END;
+$$;
