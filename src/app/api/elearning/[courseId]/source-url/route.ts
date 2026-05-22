@@ -1,6 +1,6 @@
-import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { sanitizeError } from "@/lib/api-error";
+import { requireElearningCourse } from "@/lib/auth/elearning-access";
 
 export const maxDuration = 10;
 
@@ -9,32 +9,26 @@ export const maxDuration = 10;
  *
  * Generates a short-lived signed URL for the course's source file stored in Supabase Storage.
  * Needed because the elearning-documents bucket is private (public URLs return 404).
+ * Learners are allowed because they need to access the course source document.
  */
 export async function GET(
   _request: NextRequest,
   { params }: { params: { courseId: string } }
 ) {
   try {
-    const supabase = createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
-    }
+    const access = await requireElearningCourse(params.courseId, ["admin", "super_admin", "learner"]);
+    if (!access.ok) return access.error;
+    const { supabase, course: guardCourse } = access;
 
-    const { data: course } = await supabase
-      .from("elearning_courses")
-      .select("id, source_file_url")
-      .eq("id", params.courseId)
-      .single();
-
-    if (!course?.source_file_url) {
+    const sourceFileUrl = guardCourse.source_file_url as string | null | undefined;
+    if (!sourceFileUrl) {
       return NextResponse.json({ error: "Aucun fichier source" }, { status: 404 });
     }
 
     // Extract storage path from public URL:
     // https://{project}.supabase.co/storage/v1/object/public/elearning-documents/elearning/...
     // → elearning-documents/elearning/...
-    const url = course.source_file_url;
+    const url = sourceFileUrl;
     const marker = "/storage/v1/object/public/";
     const markerIndex = url.indexOf(marker);
 

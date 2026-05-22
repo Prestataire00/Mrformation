@@ -1,8 +1,8 @@
-import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { generateGammaChapterDeck } from "@/lib/services/gamma";
 import type { GammaGenerateOptions } from "@/lib/services/gamma";
 import { sanitizeError } from "@/lib/api-error";
+import { requireElearningCourse } from "@/lib/auth/elearning-access";
 
 export const maxDuration = 300;
 
@@ -20,21 +20,9 @@ export async function POST(
   { params }: { params: { courseId: string } }
 ) {
   try {
-    const supabase = createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
-    }
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    if (!["admin","super_admin"].includes(profile?.role ?? "")) {
-      return NextResponse.json({ error: "Accès non autorisé" }, { status: 403 });
-    }
+    const access = await requireElearningCourse(params.courseId, ["admin", "super_admin"]);
+    if (!access.ok) return access.error;
+    const { supabase } = access;
 
     // Load course + chapters
     const { data: course, error: courseError } = await supabase
@@ -144,11 +132,9 @@ export async function GET(
   { params }: { params: { courseId: string } }
 ) {
   try {
-    const supabase = createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
-    }
+    const access = await requireElearningCourse(params.courseId, ["admin", "super_admin"]);
+    if (!access.ok) return access.error;
+    const { supabase } = access;
 
     const { data: chapters } = await supabase
       .from("elearning_chapters")

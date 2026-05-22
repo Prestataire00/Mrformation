@@ -1,25 +1,15 @@
-import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
+import { requireElearningCourse } from "@/lib/auth/elearning-access";
 
 export async function GET(
   request: NextRequest,
   { params }: { params: { courseId: string } }
 ) {
   try {
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    if (!["admin","super_admin"].includes(profile?.role ?? "")) {
-      return NextResponse.json({ data: null, error: "Accès non autorisé" }, { status: 403 });
-    }
+    const access = await requireElearningCourse(params.courseId, ["admin", "super_admin"]);
+    if (!access.ok) return access.error;
+    const { supabase } = access;
 
     const { data, error } = await supabase
       .from("elearning_slide_specs")

@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { NextRequest } from "next/server";
 import { sanitizeError } from "@/lib/api-error";
 import { verifyCronAuth } from "@/lib/cron-auth";
+import { requireElearningCourse } from "@/lib/auth/elearning-access";
 import {
   generateCourseOutline,
   generateChapterContent,
@@ -19,6 +20,14 @@ export async function POST(
   request: NextRequest,
   { params }: { params: { courseId: string } }
 ) {
+  // Auth before streaming: a valid cron token bypasses the guard; otherwise the
+  // shared guard enforces role + entity_id isolation. Hoisted out of the stream
+  // because a streaming handler cannot `return` an error response from start().
+  if (!verifyCronAuth(request)) {
+    const access = await requireElearningCourse(params.courseId, ["admin", "super_admin"]);
+    if (!access.ok) return access.error;
+  }
+
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream({
@@ -30,30 +39,6 @@ export async function POST(
 
       try {
         const supabase = createClient();
-        const isCron = verifyCronAuth(request);
-
-        if (!isCron) {
-          const {
-            data: { user },
-          } = await supabase.auth.getUser();
-          if (!user) {
-            send("error", 0, "Non autorisé");
-            controller.close();
-            return;
-          }
-
-          const { data: profile } = await supabase
-            .from("profiles")
-            .select("role")
-            .eq("id", user.id)
-            .single();
-
-          if (!["admin","super_admin"].includes(profile?.role ?? "")) {
-            send("error", 0, "Accès non autorisé");
-            controller.close();
-            return;
-          }
-        }
 
         // Get course with extracted text
         const { data: course, error: courseError } = await supabase
