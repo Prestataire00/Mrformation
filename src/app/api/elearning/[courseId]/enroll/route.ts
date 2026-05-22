@@ -1,5 +1,6 @@
-import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
+import { requireElearningCourse } from "@/lib/auth/elearning-access";
+import { logAudit } from "@/lib/audit-log";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 
 export async function POST(
@@ -7,24 +8,9 @@ export async function POST(
   { params }: { params: { courseId: string } }
 ) {
   try {
-    const supabase = createClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    if (!["admin", "super_admin", "learner"].includes(profile?.role)) {
-      return NextResponse.json({ data: null, error: "Accès non autorisé" }, { status: 403 });
-    }
+    const access = await requireElearningCourse(params.courseId, ["admin", "super_admin"]);
+    if (!access.ok) return access.error;
+    const { supabase, profile, userId } = access;
 
     const body = await request.json();
     const { learner_ids } = body;
@@ -47,6 +33,16 @@ export async function POST(
     if (error) {
       return NextResponse.json({ error: sanitizeDbError(error, "enrolling learners") }, { status: 500 });
     }
+
+    logAudit({
+      supabase,
+      entityId: profile.entity_id,
+      userId,
+      action: "create",
+      resourceType: "elearning_enrollment",
+      resourceId: params.courseId,
+      details: { count: data?.length ?? 0 },
+    });
 
     return NextResponse.json({ data, enrolled: data?.length ?? 0 });
   } catch (error) {
