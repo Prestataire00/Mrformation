@@ -7,10 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/use-toast";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
-import { Building2, MapPin, Phone, User, Image as ImageIcon, Upload, Loader2, Save, CreditCard, Receipt } from "lucide-react";
+import { Building2, MapPin, Phone, User, Image as ImageIcon, Upload, Loader2, Save, CreditCard, Receipt, Percent } from "lucide-react";
 
 interface OrgForm {
   name: string;
@@ -40,6 +41,9 @@ interface OrgForm {
   bank_beneficiary: string;
   // Mention pénalités (L.441-6) — pour bloc facture
   invoice_penalty_text: string;
+  // TVA — pilote l'affichage de la TVA sur les factures
+  tva_exempt: boolean;
+  tva_rate: string;
 }
 
 const emptyForm: OrgForm = {
@@ -50,6 +54,7 @@ const emptyForm: OrgForm = {
   signature_text: "", logo_url: "", stamp_url: "", signature_url: "",
   bank_name: "", bank_iban: "", bank_bic: "", bank_beneficiary: "",
   invoice_penalty_text: "",
+  tva_exempt: false, tva_rate: "20",
 };
 
 export default function OrganizationSettingsPage() {
@@ -67,6 +72,7 @@ export default function OrganizationSettingsPage() {
       const { data } = await supabase.from("entities").select("*").eq("id", entityId).single();
       if (data) {
         const d = data as Record<string, string | null>;
+        const raw = data as Record<string, unknown>;
         setForm({
           name: d.name || "", legal_form: d.legal_form || "", siret: d.siret || "",
           nda: d.nda || "", ape_code: d.ape_code || "", capital: d.capital || "", rcs: d.rcs || "",
@@ -78,6 +84,8 @@ export default function OrganizationSettingsPage() {
           bank_name: d.bank_name || "", bank_iban: d.bank_iban || "",
           bank_bic: d.bank_bic || "", bank_beneficiary: d.bank_beneficiary || "",
           invoice_penalty_text: d.invoice_penalty_text || "",
+          tva_exempt: raw.tva_exempt === true,
+          tva_rate: raw.tva_rate != null ? String(Number(raw.tva_rate)) : "20",
         });
       }
       setLoading(false);
@@ -99,6 +107,8 @@ export default function OrganizationSettingsPage() {
         bank_name: form.bank_name || null, bank_iban: form.bank_iban || null,
         bank_bic: form.bank_bic || null, bank_beneficiary: form.bank_beneficiary || null,
         invoice_penalty_text: form.invoice_penalty_text || null,
+        tva_exempt: form.tva_exempt,
+        tva_rate: Number(form.tva_rate.replace(",", ".")) || 20,
       }).eq("id", entityId);
       if (error) throw error;
       toast({ title: "Paramètres enregistrés" });
@@ -259,6 +269,40 @@ export default function OrganizationSettingsPage() {
               <Input value={form.bank_iban} onChange={u("bank_iban")} placeholder="FR76 3000 3022 7400 0200 3557 196" />
             </div>
             <div><Label>BIC / SWIFT</Label><Input value={form.bank_bic} onChange={u("bank_bic")} placeholder="SOGEFRPP" /></div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* TVA */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Percent className="h-5 w-5" />TVA</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-start justify-between gap-6">
+            <div>
+              <Label>Assujettie à la TVA</Label>
+              <p className="text-xs text-gray-500 mt-1">
+                Activé : la TVA au taux ci-dessous est appliquée sur les factures (Total HT, TVA, Total TTC).
+                Désactivé : les factures affichent « TVA non applicable, art. 261-4-4° du CGI » (exonération formation professionnelle).
+              </p>
+            </div>
+            <Switch
+              checked={!form.tva_exempt}
+              onCheckedChange={(c) => setForm(f => ({ ...f, tva_exempt: !c }))}
+              className="mt-1 shrink-0"
+            />
+          </div>
+          <div className="w-40">
+            <Label>Taux de TVA (%)</Label>
+            <Input
+              type="number"
+              step="0.01"
+              value={form.tva_rate}
+              onChange={u("tva_rate")}
+              disabled={form.tva_exempt}
+              placeholder="20"
+            />
           </div>
         </CardContent>
       </Card>

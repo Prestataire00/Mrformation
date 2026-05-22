@@ -25,6 +25,9 @@ export interface Entity {
   signature_text?: string | null;
   stamp_url?: string | null;
   signature_url?: string | null;
+  // TVA (facturation) — pilote l'affichage de la TVA sur les factures
+  tva_exempt?: boolean | null;
+  tva_rate?: number | null;
 }
 
 // ===== USERS / PROFILES =====
