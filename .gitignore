@@ -56,3 +56,6 @@ next-env.d.ts
 
 # Generated CRM import SQL (contains client data — never commit)
 scripts/generated-crm-import/
+
+# Superpowers brainstorming companion (mockups, local server state)
+.superpowers/

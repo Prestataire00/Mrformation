@@ -3,15 +3,17 @@
 import { useEffect, useState, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import {
-  Plus, CheckCircle, Loader2, Trash2, Undo2, FileDown, Send, Upload, Eye, Pencil,
-} from "lucide-react";
+import { Plus, Trash2, Loader2 } from "lucide-react";
 import { useEntity } from "@/contexts/EntityContext";
 import { ImportInvoiceDialog } from "./ImportInvoiceDialog";
 import { downloadInvoicePDF, invoicePDFBase64 } from "@/lib/invoice-pdf-export";
 import type { InvoicePdfData } from "@/lib/invoice-pdf-export";
 import { buildInvoiceLines } from "@/lib/utils/invoice-builder";
 import { getFormationKind, getLearnersForCompany, getAmountForCompany } from "@/lib/utils/formation-companies";
+import { getDefaultRecipientType, type Invoice, type Charge, type Stats } from "@/lib/utils/finances-display";
+import { FinancesKpiBand } from "./finances/FinancesKpiBand";
+import { InvoiceSection } from "./finances/InvoiceSection";
+import { ChargesPanel } from "./finances/ChargesPanel";
 
 const MODE_LABELS: Record<string, string> = {
   presentiel: "En présentiel",
@@ -32,73 +34,16 @@ import { useToast } from "@/components/ui/use-toast";
 import { formatCurrency } from "@/lib/utils";
 import type { Session } from "@/lib/types";
 
-interface Invoice {
-  id: string;
-  recipient_type: string;
-  recipient_id: string;
-  recipient_name: string;
-  amount: number;
-  prefix: string;
-  number: number;
-  global_number: number;
-  fiscal_year: number;
-  reference: string;
-  status: string;
-  due_date: string | null;
-  paid_at: string | null;
-  notes: string | null;
-  is_avoir: boolean;
-  parent_invoice_id: string | null;
-  created_at: string;
-  reminder_count?: number;
-  auto_generated?: boolean;
-  external_reference?: string | null;
-}
-
-const REMINDER_BADGES: Record<number, { label: string; className: string }> = {
-  1: { label: "1 relance", className: "bg-amber-100 text-amber-700" },
-  2: { label: "2 relances", className: "bg-orange-100 text-orange-700" },
-  3: { label: "Mise en demeure", className: "bg-red-100 text-red-700" },
-};
-
-interface Charge {
-  id: string;
-  label: string;
-  amount: number;
-  created_at: string;
-}
-
-interface Stats {
-  total_invoiced: number;
-  total_paid: number;
-  total_pending: number;
-  total_late: number;
-  total_charges: number;
-}
 
 interface Props {
   formation: Session;
   onRefresh: () => Promise<void>;
 }
 
-const STATUS_BADGES: Record<string, { label: string; className: string }> = {
-  pending: { label: "En attente", className: "bg-gray-100 text-gray-700" },
-  sent: { label: "Envoyée", className: "bg-blue-100 text-blue-700" },
-  paid: { label: "Payée", className: "bg-green-100 text-green-700" },
-  late: { label: "En retard", className: "bg-red-100 text-red-700" },
-  cancelled: { label: "Annulée", className: "bg-gray-100 text-gray-500 line-through" },
-};
-
-const RECIPIENT_LABELS: Record<string, string> = {
-  learner: "Apprenant",
-  company: "Entreprise",
-  financier: "Financeur",
-};
-
 const SECTION_CONFIG = [
-  { type: "learner", title: "Factures Apprenants", icon: "👤" },
-  { type: "company", title: "Factures Entreprises", icon: "🏢" },
-  { type: "financier", title: "Factures Financeurs", icon: "🏛️" },
+  { type: "learner", title: "Apprenants", icon: "👤" },
+  { type: "company", title: "Entreprises", icon: "🏢" },
+  { type: "financier", title: "Financeurs", icon: "🏛️" },
 ] as const;
 
 export function TabFinances({ formation, onRefresh }: Props) {
@@ -150,11 +95,6 @@ export function TabFinances({ formation, onRefresh }: Props) {
   const invoiceTvaAmount = entityTvaExempt ? 0 : Math.round(invoiceSubtotal * (entityTvaRate / 100) * 100) / 100;
   const invoiceTotal = Math.round((invoiceSubtotal + invoiceTvaAmount) * 100) / 100;
 
-  // Inline charge form
-  const [chargeLabel, setChargeLabel] = useState("");
-  const [chargeAmount, setChargeAmount] = useState("");
-  const [savingCharge, setSavingCharge] = useState(false);
-
   // Prefix — managed server-side (FAC for invoices, AV for avoirs)
   const prefix = "FAC";
 
@@ -189,26 +129,55 @@ export function TabFinances({ formation, onRefresh }: Props) {
     fetchData();
   }, [fetchData]);
 
-  // Auto-pré-remplit la facture à l'ouverture du dialog (création nouveau).
-  // Évite à l'admin de cliquer "Pré-remplir" — toutes les infos viennent
-  // automatiquement de la formation (titre, dates, prix, apprenants, entreprise).
-  //
-  // Story 3.6 : en INTER, on n'auto-fill plus arbitrairement sur formation_companies[0].
-  // À la place, on ouvre un picker pour que l'admin choisisse l'entreprise à facturer.
-  // - INTRA : auto-fill (comportement inchangé, une seule entreprise possible).
-  // - INTER : ouvre le picker, prefill différé après choix utilisateur.
-  // - UNSET (0 entreprise) : aucun auto-fill, aucun modal — l'admin saisit manuellement.
+  // Crée un formulaire de facture vierge (fonction → `lines` jamais partagé).
+  const createEmptyInvoiceForm = () => ({
+    recipient_type: "learner",
+    recipient_name: "",
+    recipient_id: "",
+    recipient_siret: "",
+    recipient_address: "",
+    due_date: "",
+    notes: "",
+    external_reference: "",
+    funding_type: "",
+    lines: [{ description: "", quantity: "1", unit_price: "" }],
+  });
+
+  // Ouvre le dialogue de création (le useEffect ci-dessous applique le
+  // type par défaut + déclenche picker/préremplissage — spec §4.1/§4.2).
+  const openCreateInvoice = () => {
+    setEditingInvoiceId(null);
+    setInvoiceForm(createEmptyInvoiceForm());
+    setInvoiceDialog(true);
+  };
+
+  // Changement de type de destinataire (à l'ouverture du dialogue ET via le
+  // Select). Spec §4.1 : le picker entreprise se déclenche ICI sur INTER,
+  // plus à l'ouverture du dialogue.
+  const handleRecipientTypeChange = (newType: string) => {
+    setInvoiceForm((f) => ({
+      ...f,
+      recipient_type: newType,
+      recipient_name: "",
+      recipient_id: "",
+      recipient_siret: "",
+      recipient_address: "",
+    }));
+    const kind = getFormationKind(formation);
+    if (newType === "company" && kind === "inter") {
+      setCompanyPickerOpen(true);
+    } else if (newType === "company" && kind === "intra") {
+      setTimeout(() => prefillInvoiceLines("company"), 50);
+    }
+    // learner / financier : le préremplissage attend le choix du destinataire
+    // précis (handleRecipientSelect s'en charge).
+  };
+
+  // À l'ouverture du dialogue (création), applique le type par défaut puis
+  // délègue à handleRecipientTypeChange (picker INTER / préremplissage INTRA).
   useEffect(() => {
     if (invoiceDialog && !editingInvoiceId) {
-      const kind = getFormationKind(formation);
-      if (kind === "inter") {
-        setCompanyPickerOpen(true);
-      } else if (kind === "intra") {
-        // Petit délai pour laisser React appliquer le state initial
-        const timer = setTimeout(() => prefillInvoiceLines(), 50);
-        return () => clearTimeout(timer);
-      }
-      // kind === "unset" : ne rien faire, form vide
+      handleRecipientTypeChange(getDefaultRecipientType(formation));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [invoiceDialog, editingInvoiceId, formation.id]);
@@ -594,33 +563,23 @@ export function TabFinances({ formation, onRefresh }: Props) {
     }
   };
 
-  // ── Create charge ──
+  // ── Add charge ── (le formulaire est porté par ChargesPanel)
 
-  const handleCreateCharge = async () => {
-    if (!chargeLabel.trim() || !chargeAmount) return;
-    const parsedAmount = parseFloat(chargeAmount);
-    if (isNaN(parsedAmount) || parsedAmount <= 0) {
-      toast({ title: "Montant invalide", description: "Entrez un montant positif", variant: "destructive" });
-      return;
-    }
-    setSavingCharge(true);
+  const handleAddCharge = async (label: string, amount: number): Promise<void> => {
     try {
       const { error } = await supabase.from("formation_charges").insert({
         session_id: formation.id,
         entity_id: formation.entity_id,
-        label: chargeLabel.trim(),
-        amount: parsedAmount,
+        label,
+        amount,
       });
       if (error) throw error;
       toast({ title: "Charge ajoutée" });
-      setChargeLabel("");
-      setChargeAmount("");
       fetchData();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Impossible d'ajouter la charge";
       toast({ title: "Erreur", description: message, variant: "destructive" });
-    } finally {
-      setSavingCharge(false);
+      throw err; // ChargesPanel doit savoir que l'ajout a échoué.
     }
   };
 
@@ -856,31 +815,23 @@ export function TabFinances({ formation, onRefresh }: Props) {
 
   return (
     <div className="space-y-6">
-      {/* ═══ HERO ROW — Stats financières ═══ */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="border rounded-lg p-3">
-          <p className="text-xs text-muted-foreground">Facturé</p>
-          <p className="text-xl font-bold text-gray-900">{formatCurrency(stats.total_invoiced)}</p>
-          {formation.total_price && stats.total_invoiced > 0 && (
-            <div className="mt-1.5">
-              <div className="bg-gray-100 rounded-full h-1.5">
-                <div className="bg-blue-500 h-1.5 rounded-full" style={{ width: `${Math.min(100, (stats.total_invoiced / formation.total_price) * 100)}%` }} />
-              </div>
-              <p className="text-[10px] text-muted-foreground mt-0.5">sur {formatCurrency(formation.total_price)} objectif</p>
-            </div>
-          )}
-        </div>
-        <div className="border rounded-lg p-3">
-          <p className="text-xs text-muted-foreground">Payé</p>
-          <p className="text-xl font-bold text-green-700">{formatCurrency(stats.total_paid)}</p>
-        </div>
-        <div className="border rounded-lg p-3">
-          <p className="text-xs text-muted-foreground">En attente</p>
-          <p className="text-xl font-bold text-amber-600">{formatCurrency(stats.total_pending)}</p>
-        </div>
-        <div className="border rounded-lg p-3">
-          <p className="text-xs text-muted-foreground">Charges</p>
-          <p className="text-xl font-bold text-red-600">{formatCurrency(stats.total_charges)}</p>
+      {/* Zone 1 — Indicateurs */}
+      <FinancesKpiBand stats={stats} objectif={formation.total_price ?? null} />
+
+      {/* Zone 2 — Barre d'action */}
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-bold text-gray-900">Factures</h3>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => { setImportRecipientType("company"); setImportDialogOpen(true); }}
+            className="text-sm text-muted-foreground hover:underline"
+          >
+            Importer une facture
+          </button>
+          <Button size="sm" onClick={openCreateInvoice}>
+            <Plus className="h-4 w-4 mr-1" /> Créer une facture
+          </Button>
         </div>
       </div>
 
@@ -905,218 +856,40 @@ export function TabFinances({ formation, onRefresh }: Props) {
         </div>
       )}
 
-      {/* Factures par type */}
-      {SECTION_CONFIG.map(({ type, title, icon }) => {
-        const sectionInvoices = invoices.filter((i) => i.recipient_type === type);
-        return (
-          <div key={type} className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                {icon} {title} ({sectionInvoices.length})
-              </h3>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 text-xs"
-                onClick={() => {
-                  setInvoiceForm((f) => ({ ...f, recipient_type: type }));
-                  setInvoiceDialog(true);
-                }}
-              >
-                <Plus className="h-3 w-3 mr-1" /> Facture
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-7 text-xs"
-                onClick={() => { setImportRecipientType(type); setImportDialogOpen(true); }}
-              >
-                <Upload className="h-3 w-3 mr-1" /> Importer
-              </Button>
-            </div>
-            {sectionInvoices.length === 0 ? (
-              <div className="text-center py-6 border border-dashed rounded-lg">
-                <p className="text-sm text-muted-foreground">Aucune facture {title.toLowerCase()}</p>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="mt-2 text-xs gap-1"
-                  onClick={() => { setInvoiceForm((f) => ({ ...f, recipient_type: type })); setInvoiceDialog(true); }}
-                >
-                  <Plus className="h-3 w-3" /> Créer
-                </Button>
-              </div>
-            ) : (
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-xs text-gray-400 border-b">
-                    <th className="text-left py-1 font-medium">Réf.</th>
-                    <th className="text-left py-1 font-medium">Destinataire</th>
-                    <th className="text-right py-1 font-medium">Montant</th>
-                    <th className="text-left py-1 pl-3 font-medium">Statut</th>
-                    <th className="text-left py-1 font-medium">Échéance</th>
-                    <th className="text-right py-1 font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sectionInvoices.map((inv) => {
-                    const badge = STATUS_BADGES[inv.status] ?? STATUS_BADGES.pending;
-                    return (
-                      <tr key={inv.id} className="border-b border-gray-100 last:border-0">
-                        <td className="py-1.5 font-mono text-xs">
-                          {inv.reference}
-                          {inv.is_avoir && (
-                            <Badge variant="outline" className="ml-1 text-[10px] px-1 py-0 border-purple-300 text-purple-600">AV</Badge>
-                          )}
-                        </td>
-                        <td className="py-1.5 truncate max-w-[160px]">{inv.recipient_name}</td>
-                        <td className={`py-1.5 text-right font-medium ${inv.is_avoir ? "text-purple-600" : ""}`}>
-                          {formatCurrency(inv.amount)}
-                        </td>
-                        <td className="py-1.5 pl-3">
-                          <div className="flex items-center gap-1">
-                            <Badge className={`${badge.className} hover:${badge.className} text-[10px] px-1.5 py-0`}>
-                              {badge.label}
-                            </Badge>
-                            {inv.reminder_count && inv.reminder_count > 0 && REMINDER_BADGES[inv.reminder_count] && (
-                              <Badge className={`${REMINDER_BADGES[inv.reminder_count].className} text-[10px] px-1.5 py-0`}>
-                                {REMINDER_BADGES[inv.reminder_count].label}
-                              </Badge>
-                            )}
-                            {inv.auto_generated && (
-                              <Badge variant="outline" className="text-[10px] px-1 py-0 text-blue-600 border-blue-200">
-                                Auto
-                              </Badge>
-                            )}
-                          </div>
-                        </td>
-                        <td className="py-1.5 text-xs text-muted-foreground">
-                          {inv.due_date ? new Date(inv.due_date).toLocaleDateString("fr-FR") : "—"}
-                        </td>
-                        <td className="py-1.5 text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 text-[11px] px-1.5"
-                              onClick={() => handleDownloadPdf(inv)}
-                            >
-                              <FileDown className="h-3 w-3 mr-0.5" /> PDF
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 text-[11px] px-1.5 text-blue-600"
-                              onClick={() => handleSendInvoiceEmail(inv)}
-                            >
-                              <Send className="h-3 w-3 mr-0.5" /> Email
-                            </Button>
-                            {inv.status !== "paid" && inv.status !== "cancelled" && !inv.is_avoir && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 text-[11px] px-1.5 text-green-600"
-                                onClick={() => handleUpdateStatus(inv.id, "paid")}
-                              >
-                                <CheckCircle className="h-3 w-3 mr-0.5" /> Payée
-                              </Button>
-                            )}
-                            {inv.status === "pending" && !inv.is_avoir && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 text-[11px] px-1.5 text-gray-600"
-                                onClick={() => handleEditInvoice(inv)}
-                              >
-                                <Pencil className="h-3 w-3 mr-0.5" /> Modifier
-                              </Button>
-                            )}
-                            {!inv.is_avoir && inv.status !== "cancelled" && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 text-[11px] px-1.5 text-purple-600"
-                                onClick={() => handleCreateInvoice(true, inv)}
-                                disabled={savingInvoice}
-                              >
-                                <Undo2 className="h-3 w-3 mr-0.5" /> Avoir
-                              </Button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
-          </div>
-        );
-      })}
-
-      {/* Charges */}
-      <div className="space-y-3">
-        <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-          Charges ({charges.length})
-          {charges.length > 0 && (
-            <span className="ml-2 text-gray-500 normal-case font-normal">
-              Total : {formatCurrency(stats.total_charges)}
-            </span>
-          )}
-        </h3>
-        {charges.length > 0 && (
-          <table className="w-full text-sm">
-            <tbody>
-              {charges.map((c) => (
-                <tr key={c.id} className="border-b border-gray-100 last:border-0">
-                  <td className="py-1.5">{c.label}</td>
-                  <td className="py-1.5 text-right font-medium">{formatCurrency(c.amount)}</td>
-                  <td className="py-1.5 text-right text-xs text-muted-foreground w-24">
-                    {new Date(c.created_at).toLocaleDateString("fr-FR")}
-                  </td>
-                  <td className="py-1.5 text-right w-8">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 text-red-500"
-                      onClick={() => handleDeleteCharge(c.id)}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-        {/* Inline add charge */}
-        <div className="flex items-center gap-2">
-          <Input
-            value={chargeLabel}
-            onChange={(e) => setChargeLabel(e.target.value)}
-            placeholder="Libellé charge..."
-            className="h-7 text-xs flex-1 max-w-[200px]"
-          />
-          <Input
-            type="number"
-            step="0.01"
-            value={chargeAmount}
-            onChange={(e) => setChargeAmount(e.target.value)}
-            placeholder="Montant"
-            className="h-7 text-xs w-24"
-          />
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-7 text-xs"
-            onClick={handleCreateCharge}
-            disabled={savingCharge || !chargeLabel.trim() || !chargeAmount}
-          >
-            {savingCharge ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3 mr-1" />}
-            Ajouter
+      {/* Zone 3 — Sections par type (vides masquées) ou état vide global */}
+      {invoices.length === 0 ? (
+        <div className="text-center py-10 border border-dashed rounded-lg">
+          <p className="text-sm text-muted-foreground">Aucune facture pour cette formation.</p>
+          <Button size="sm" variant="outline" className="mt-3" onClick={openCreateInvoice}>
+            <Plus className="h-4 w-4 mr-1" /> Créer une facture
           </Button>
         </div>
-      </div>
+      ) : (
+        <div className="space-y-5">
+          {SECTION_CONFIG.map(({ type, title, icon }) => (
+            <InvoiceSection
+              key={type}
+              title={title}
+              icon={icon}
+              invoices={invoices.filter((i) => i.recipient_type === type)}
+              onDownloadPdf={handleDownloadPdf}
+              onSendEmail={handleSendInvoiceEmail}
+              onMarkPaid={(inv) => handleUpdateStatus(inv.id, "paid")}
+              onEdit={handleEditInvoice}
+              onCreateAvoir={(inv) => handleCreateInvoice(true, inv)}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Zone 5 — Charges & marge */}
+      <ChargesPanel
+        charges={charges}
+        totalInvoiced={stats.total_invoiced}
+        totalCharges={stats.total_charges}
+        onAddCharge={handleAddCharge}
+        onDeleteCharge={handleDeleteCharge}
+      />
 
       {/* Dialog -- Créer une facture avec lignes */}
       <Dialog open={invoiceDialog} onOpenChange={setInvoiceDialog}>
@@ -1132,7 +905,7 @@ export function TabFinances({ formation, onRefresh }: Props) {
                   <Label>Type de destinataire</Label>
                   <Select
                     value={invoiceForm.recipient_type}
-                    onValueChange={(v) => setInvoiceForm((f) => ({ ...f, recipient_type: v, recipient_siret: "", recipient_address: "" }))}
+                    onValueChange={handleRecipientTypeChange}
                   >
                     <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
                     <SelectContent>
