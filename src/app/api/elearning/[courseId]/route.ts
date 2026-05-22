@@ -1,30 +1,16 @@
-import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
+import { requireElearningCourse } from "@/lib/auth/elearning-access";
+import { logAudit } from "@/lib/audit-log";
 
 export async function GET(
   request: NextRequest,
   { params }: { params: { courseId: string } }
 ) {
   try {
-    const supabase = createClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    if (!["admin", "super_admin", "learner"].includes(profile?.role)) {
-      return NextResponse.json({ data: null, error: "Accès non autorisé" }, { status: 403 });
-    }
+    const access = await requireElearningCourse(params.courseId, ["admin", "super_admin", "learner"]);
+    if (!access.ok) return access.error;
+    const { supabase, profile } = access;
 
     // shallow=true returns only course + chapter counts (fast, for admin page)
     const isShallow = request.nextUrl.searchParams.get("shallow") === "true";
@@ -77,6 +63,25 @@ export async function GET(
       return NextResponse.json({ error: sanitizeDbError(error, "fetching course details") }, { status: 404 });
     }
 
+    // Strip is_correct from quiz options before returning to learners
+    if (profile.role === "learner" && data) {
+      type QuizQuestion = { options?: unknown[] };
+      type Quiz = { elearning_quiz_questions?: QuizQuestion[] };
+      type Chapter = { elearning_quizzes?: Quiz[] };
+      const courseData = data as { elearning_chapters?: Chapter[] };
+      for (const ch of courseData.elearning_chapters ?? []) {
+        for (const q of ch.elearning_quizzes?.[0]?.elearning_quiz_questions ?? []) {
+          q.options = (q.options ?? []).map((o: unknown) => {
+            if (typeof o === "object" && o !== null) {
+              const { is_correct: _removed, ...rest } = o as Record<string, unknown>;
+              return rest;
+            }
+            return o;
+          });
+        }
+      }
+    }
+
     return NextResponse.json({ data });
   } catch (error) {
     return NextResponse.json({ error: sanitizeError(error, "fetching course details") }, { status: 500 });
@@ -88,24 +93,9 @@ export async function PATCH(
   { params }: { params: { courseId: string } }
 ) {
   try {
-    const supabase = createClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    if (!["admin","super_admin"].includes(profile?.role ?? "")) {
-      return NextResponse.json({ data: null, error: "Accès non autorisé" }, { status: 403 });
-    }
+    const access = await requireElearningCourse(params.courseId, ["admin", "super_admin"]);
+    if (!access.ok) return access.error;
+    const { supabase, profile, userId } = access;
 
     const body = await request.json();
     const { title, description, objectives, status, difficulty_level, estimated_duration_minutes } = body;
@@ -129,6 +119,16 @@ export async function PATCH(
       return NextResponse.json({ error: sanitizeDbError(error, "updating course") }, { status: 500 });
     }
 
+    logAudit({
+      supabase,
+      entityId: profile.entity_id,
+      userId,
+      action: "update",
+      resourceType: "elearning_course",
+      resourceId: params.courseId,
+      details: { fields: Object.keys(updates) },
+    });
+
     return NextResponse.json({ data });
   } catch (error) {
     return NextResponse.json({ error: sanitizeError(error, "updating course") }, { status: 500 });
@@ -140,24 +140,9 @@ export async function DELETE(
   { params }: { params: { courseId: string } }
 ) {
   try {
-    const supabase = createClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    if (!["admin","super_admin"].includes(profile?.role ?? "")) {
-      return NextResponse.json({ data: null, error: "Accès non autorisé" }, { status: 403 });
-    }
+    const access = await requireElearningCourse(params.courseId, ["admin", "super_admin"]);
+    if (!access.ok) return access.error;
+    const { supabase, profile, userId } = access;
 
     const { error } = await supabase
       .from("elearning_courses")
@@ -167,6 +152,15 @@ export async function DELETE(
     if (error) {
       return NextResponse.json({ error: sanitizeDbError(error, "deleting course") }, { status: 500 });
     }
+
+    logAudit({
+      supabase,
+      entityId: profile.entity_id,
+      userId,
+      action: "delete",
+      resourceType: "elearning_course",
+      resourceId: params.courseId,
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {

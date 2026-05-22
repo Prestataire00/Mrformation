@@ -1,31 +1,13 @@
-import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 import { logAudit } from "@/lib/audit-log";
+import { requireRole } from "@/lib/auth/require-role";
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("entity_id, role")
-      .eq("id", user.id)
-      .single();
-    if (!profile?.entity_id) {
-      return NextResponse.json({ error: "Entity not found" }, { status: 403 });
-    }
-
-    if (!["admin","super_admin"].includes(profile.role)) {
-      return NextResponse.json({ data: null, error: "Accès non autorisé" }, { status: 403 });
-    }
+    const auth = await requireRole(["admin", "super_admin"]);
+    if (auth.error) return auth.error;
+    const { supabase, profile } = auth;
 
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status") ?? "";
@@ -53,27 +35,9 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("entity_id, role")
-      .eq("id", user.id)
-      .single();
-    if (!profile?.entity_id) {
-      return NextResponse.json({ error: "Entity not found" }, { status: 403 });
-    }
-
-    if (!["admin","super_admin"].includes(profile.role)) {
-      return NextResponse.json({ data: null, error: "Accès non autorisé" }, { status: 403 });
-    }
+    const auth = await requireRole(["admin", "super_admin"]);
+    if (auth.error) return auth.error;
+    const { supabase, profile, user } = auth;
 
     const body = await request.json();
     const { title, source_file_name, source_file_url, source_file_type, final_quiz_target_count, flashcards_target_count, extracted_text, course_type, gamma_theme_id, gamma_template_id, num_chapters, program_id } = body;
