@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { requireRole } from "@/lib/auth/require-role";
 import { NextResponse } from "next/server";
 import { listGammaThemes } from "@/lib/services/gamma";
 import { sanitizeError } from "@/lib/api-error";
@@ -9,9 +9,8 @@ import { sanitizeError } from "@/lib/api-error";
  */
 export async function GET() {
   try {
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const auth = await requireRole(["admin", "super_admin"]);
+    if (auth.error) return auth.error;
 
     const themes = await listGammaThemes();
     return NextResponse.json({ data: themes });
