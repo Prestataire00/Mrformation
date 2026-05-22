@@ -506,6 +506,7 @@ export interface FormationElearningAssignment {
   session_id: string;
   learner_id: string;
   course_id: string;
+  course_source: "ai" | "program";
   elearning_enrollment_id: string | null;
   start_date: string | null;
   end_date: string | null;
