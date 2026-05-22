@@ -37,6 +37,9 @@ export async function POST(request: NextRequest) {
     const auth = await requireRole(["admin", "super_admin", "learner"]);
     if (auth.error) return auth.error;
 
+    // Isolation : route clé sur user_id (RLS elearning_course_scores : user_id = auth.uid()).
+    // user_id est forcé à l'utilisateur authentifié ci-dessous — pas de contrôle entité/cours
+    // nécessaire, un course_id arbitraire ne toucherait que la propre ligne de l'appelant.
     const { course_id, total_score, chapter_pct, final_pct } = await request.json() as {
       course_id?: string;
       total_score?: number;

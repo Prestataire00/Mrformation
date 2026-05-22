@@ -40,12 +40,15 @@ export async function POST(
     if (!access.ok) return access.error;
     const { supabase, profile, userId } = access;
 
-    // End any existing active sessions for this course
-    await supabase
+    // End any existing active sessions for this course (écriture vérifiée — pas de fire-and-forget)
+    const { error: endErr } = await supabase
       .from("elearning_live_sessions")
       .update({ status: "ended", ended_at: new Date().toISOString() })
       .eq("course_id", params.courseId)
       .eq("status", "active");
+    if (endErr) {
+      return NextResponse.json({ error: sanitizeDbError(endErr, "ending previous live sessions") }, { status: 500 });
+    }
 
     const { data, error } = await supabase
       .from("elearning_live_sessions")
@@ -61,7 +64,7 @@ export async function POST(
 
     if (error) return NextResponse.json({ error: sanitizeDbError(error, "creating live session") }, { status: 500 });
 
-    void logAudit({
+    logAudit({
       supabase,
       entityId: profile.entity_id,
       userId,
@@ -106,7 +109,7 @@ export async function PATCH(
 
     if (error) return NextResponse.json({ error: sanitizeDbError(error, "updating live session") }, { status: 500 });
 
-    void logAudit({
+    logAudit({
       supabase,
       entityId: profile.entity_id,
       userId,
