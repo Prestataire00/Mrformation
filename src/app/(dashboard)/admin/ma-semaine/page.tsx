@@ -146,7 +146,7 @@ export default function MaSemainePage() {
       await fetch("/api/formations/automation-rules/trigger-event", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ trigger_type: "manual_test", session_id: event.session_id, rule_id: event.rule_id }),
+        body: JSON.stringify({ session_id: event.session_id, rule_id: event.rule_id }),
       });
       toast({ title: "Exécution lancée" });
     } catch {
