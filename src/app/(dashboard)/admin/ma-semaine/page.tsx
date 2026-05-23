@@ -125,17 +125,22 @@ export default function MaSemainePage() {
 
   const handleToggleOverride = async (event: TimelineEvent) => {
     setActing(event.id);
-    const isEnabled = event.status !== "overridden";
-    if (isEnabled) {
-      await supabase.from("session_automation_overrides")
-        .upsert({ session_id: event.session_id, rule_id: event.rule_id, is_enabled: false }, { onConflict: "session_id,rule_id" });
-      toast({ title: "Règle désactivée" });
-    } else {
-      await supabase.from("session_automation_overrides")
-        .delete().eq("session_id", event.session_id).eq("rule_id", event.rule_id);
-      toast({ title: "Règle réactivée" });
+    const isCurrentlyEnabled = event.status !== "overridden";
+    try {
+      // Sémantique unifiée avec TabAutomation et AutomationTimeline : upsert sur (session_id, rule_id),
+      // réactiver = is_enabled:true (plus de delete).
+      const { error } = await supabase
+        .from("session_automation_overrides")
+        .upsert(
+          { session_id: event.session_id, rule_id: event.rule_id, is_enabled: !isCurrentlyEnabled },
+          { onConflict: "session_id,rule_id" },
+        );
+      if (error) throw error;
+      toast({ title: isCurrentlyEnabled ? "Règle désactivée" : "Règle réactivée" });
+      await fetchData();
+    } catch {
+      toast({ title: "Erreur", description: "Impossible de modifier la règle", variant: "destructive" });
     }
-    await fetchData();
     setActing(null);
     setDetailEvent(null);
   };

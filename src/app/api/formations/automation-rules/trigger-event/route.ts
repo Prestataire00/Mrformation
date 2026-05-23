@@ -22,6 +22,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "session_id et (trigger_type ou rule_id) requis" }, { status: 400 });
     }
 
+    // Isolation entité (défense en profondeur — la RLS plateforme est allow-all) :
+    // un appelant non-super_admin ne peut déclencher que sur les sessions de sa propre entité.
+    if (authResult.profile.role !== "super_admin") {
+      const { data: sessionRow } = await authResult.supabase
+        .from("sessions")
+        .select("entity_id")
+        .eq("id", session_id)
+        .maybeSingle();
+      if (!sessionRow) {
+        return NextResponse.json({ error: "Session introuvable" }, { status: 404 });
+      }
+      if (sessionRow.entity_id !== authResult.profile.entity_id) {
+        return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
+      }
+    }
+
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.URL || "https://mrformationcrm.netlify.app";
 
     const res = await fetch(`${appUrl}/api/formations/automation-rules/run-cron`, {

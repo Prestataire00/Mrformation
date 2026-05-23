@@ -88,12 +88,17 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      const { enqueued } = await executeRuleForSession(supabase, {
+      const { enqueued, skipped, failed } = await executeRuleForSession(supabase, {
         rule: rule as unknown as RuleInfo,
         session: session as unknown as SessionInfo,
         template,
         customTemplatesById,
       });
+
+      // Statut reflète failed/skipped (CHECK constraint : success/partial/failed/skipped/test).
+      const status = failed > 0
+        ? (enqueued > 0 ? "partial" : "failed")
+        : (enqueued > 0 ? "success" : "skipped");
 
       try {
         await supabase.from("session_automation_logs").insert({
@@ -102,16 +107,16 @@ export async function POST(request: NextRequest) {
           rule_name: rule.name || rule.document_type,
           trigger_type: rule.trigger_type,
           recipient_count: enqueued,
-          status: enqueued > 0 ? "success" : "skipped",
+          status,
           is_manual: true,
-          details: { mode: "rule_scoped" },
+          details: { mode: "rule_scoped", skipped, failed },
         });
       } catch (logErr) {
         // Le log d'audit ne doit pas faire échouer l'opération : les emails sont déjà enqueués.
         console.warn("[automation rule-scoped] log insert failed:", logErr instanceof Error ? logErr.message : logErr);
       }
 
-      return NextResponse.json({ success: true, enqueued });
+      return NextResponse.json({ success: true, enqueued, skipped, failed });
     } catch (err) {
       console.error("[automation rule-scoped]", err);
       return NextResponse.json({ error: "Internal server error" }, { status: 500 });
