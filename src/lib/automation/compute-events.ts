@@ -5,8 +5,7 @@
  * - /api/automation/weekly-overview (multi-sessions)
  */
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type SupabaseLike = { from: (table: string) => any };
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export interface TimelineEvent {
   id: string;
@@ -171,7 +170,7 @@ export function buildSessionEvents(
 
 /** Charge et calcule la timeline d'une session unique */
 export async function computeSessionEvents(
-  supabase: SupabaseLike,
+  supabase: SupabaseClient,
   sessionId: string,
   entityId: string,
 ): Promise<{ session: SessionData; events: TimelineEvent[] } | null> {
@@ -207,7 +206,7 @@ export async function computeSessionEvents(
 
 /** Calcule les événements pour plusieurs sessions en batch (optimisé) */
 export async function computeBatchEvents(
-  supabase: SupabaseLike,
+  supabase: SupabaseClient,
   entityId: string,
   window?: { from: Date; to: Date },
 ): Promise<{ events: Array<TimelineEvent & { session_id: string; session_title: string }>; sessions: SessionData[] }> {
