@@ -3,15 +3,12 @@
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
-  Zap, Loader2, CheckCircle, XCircle, Clock, Send, Play,
+  Zap, Loader2, CheckCircle, XCircle, Clock, Play,
   Settings, ChevronDown, ExternalLink, CalendarDays,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-} from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/use-toast";
 import { formatDate } from "@/lib/utils";
 import Link from "next/link";
@@ -32,7 +29,7 @@ interface AutoRule {
   document_type: string | null;
   recipient_type: string;
   template_id: string | null;
-  is_active: boolean;
+  is_enabled: boolean;
   condition_subcontracted: boolean | null;
 }
 
@@ -86,17 +83,13 @@ export function TabAutomation({ formation, onRefresh }: Props) {
   const [testing, setTesting] = useState<string | null>(null);
   const [showLogs, setShowLogs] = useState(false);
 
-  // Bulk action dialog
-  const [bulkDialog, setBulkDialog] = useState<{ open: boolean; action: string; label: string }>({ open: false, action: "", label: "" });
-  const [bulkSending, setBulkSending] = useState(false);
-
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       // Fetch global rules for this entity
       const { data: rulesData } = await supabase
         .from("formation_automation_rules")
-        .select("id, name, trigger_type, days_offset, document_type, recipient_type, template_id, is_active, condition_subcontracted")
+        .select("id, name, trigger_type, days_offset, document_type, recipient_type, template_id, is_enabled, condition_subcontracted")
         .eq("entity_id", formation.entity_id)
         .order("trigger_type");
 
@@ -117,7 +110,9 @@ export function TabAutomation({ formation, onRefresh }: Props) {
       setRules((rulesData as AutoRule[]) || []);
       setOverrides((overridesData as Override[]) || []);
       setLogs((logsData as LogEntry[]) || []);
-    } catch { /* ignore */ }
+    } catch {
+      toast({ title: "Erreur de chargement des automatisations", variant: "destructive" });
+    }
     setLoading(false);
   }, [formation.id, formation.entity_id, supabase]);
 
@@ -129,7 +124,7 @@ export function TabAutomation({ formation, onRefresh }: Props) {
     return rule.condition_subcontracted === (formation as unknown as { is_subcontracted?: boolean }).is_subcontracted;
   };
 
-  const applicableRules = rules.filter(r => r.is_active && ruleApplies(r));
+  const applicableRules = rules.filter(r => r.is_enabled && ruleApplies(r));
 
   // Get effective enabled state (override takes precedence)
   const isRuleEnabled = (ruleId: string) => {
@@ -141,16 +136,13 @@ export function TabAutomation({ formation, onRefresh }: Props) {
   const handleToggle = async (ruleId: string, enabled: boolean) => {
     setToggling(ruleId);
     try {
-      const existing = overrides.find(o => o.rule_id === ruleId);
-      if (existing) {
-        await supabase.from("session_automation_overrides").update({ is_enabled: enabled }).eq("id", existing.id);
-      } else {
-        await supabase.from("session_automation_overrides").insert({
-          session_id: formation.id,
-          rule_id: ruleId,
-          is_enabled: enabled,
-        });
-      }
+      const { error } = await supabase
+        .from("session_automation_overrides")
+        .upsert(
+          { session_id: formation.id, rule_id: ruleId, is_enabled: enabled },
+          { onConflict: "session_id,rule_id" },
+        );
+      if (error) throw error;
       await fetchData();
     } catch {
       toast({ title: "Erreur", variant: "destructive" });
@@ -158,18 +150,18 @@ export function TabAutomation({ formation, onRefresh }: Props) {
     setToggling(null);
   };
 
-  // Test single rule
-  const handleTest = async (ruleId: string) => {
+  // Execute single rule now
+  const handleRunRule = async (ruleId: string) => {
     setTesting(ruleId);
     try {
       const res = await fetch("/api/formations/automation-rules/trigger-event", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ trigger_type: "manual_test", session_id: formation.id, rule_id: ruleId }),
+        body: JSON.stringify({ session_id: formation.id, rule_id: ruleId }),
       });
       const data = await res.json();
       if (res.ok) {
-        toast({ title: "Test envoyé", description: `${data.sent || 0} email(s) envoyé(s)` });
+        toast({ title: "Exécution lancée", description: `${data.enqueued ?? 0} email(s) en file d'envoi` });
         await fetchData();
       } else {
         toast({ title: "Erreur", description: data.error, variant: "destructive" });
@@ -180,29 +172,6 @@ export function TabAutomation({ formation, onRefresh }: Props) {
     setTesting(null);
   };
 
-  // Bulk action
-  const handleBulkAction = async () => {
-    setBulkSending(true);
-    try {
-      const res = await fetch(`/api/formations/${formation.id}/automation-trigger`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action_type: bulkDialog.action }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        toast({ title: "Envoi effectué", description: `${data.sent || 0} email(s)` });
-        setBulkDialog({ open: false, action: "", label: "" });
-        await fetchData();
-      } else {
-        toast({ title: "Erreur", description: data.error, variant: "destructive" });
-      }
-    } catch {
-      toast({ title: "Erreur réseau", variant: "destructive" });
-    }
-    setBulkSending(false);
-  };
-
   if (loading) {
     return (
       <div className="flex justify-center py-8">
@@ -210,12 +179,6 @@ export function TabAutomation({ formation, onRefresh }: Props) {
       </div>
     );
   }
-
-  const bulkActions = [
-    { action: "bulk_convocation", label: "Envoyer toutes les convocations", icon: Send },
-    { action: "bulk_convention", label: "Envoyer conventions aux entreprises", icon: Send },
-    { action: "bulk_certificate", label: "Envoyer certificats de réalisation", icon: CheckCircle },
-  ];
 
   return (
     <Tabs defaultValue="timeline" className="space-y-4">
@@ -286,11 +249,11 @@ export function TabAutomation({ formation, onRefresh }: Props) {
                       size="sm"
                       variant="ghost"
                       className="h-7 text-xs gap-1"
-                      onClick={() => handleTest(rule.id)}
+                      onClick={() => handleRunRule(rule.id)}
                       disabled={testing === rule.id || !enabled}
                     >
                       {testing === rule.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
-                      Tester
+                      Exécuter
                     </Button>
                     <Switch
                       checked={enabled}
@@ -304,24 +267,6 @@ export function TabAutomation({ formation, onRefresh }: Props) {
           })}
         </div>
       )}
-
-      {/* Actions manuelles rapides */}
-      <div>
-        <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Actions manuelles</h4>
-        <div className="flex flex-wrap gap-2">
-          {bulkActions.map(ba => (
-            <Button
-              key={ba.action}
-              size="sm"
-              variant="outline"
-              className="text-xs gap-1.5"
-              onClick={() => setBulkDialog({ open: true, action: ba.action, label: ba.label })}
-            >
-              <ba.icon className="h-3.5 w-3.5" /> {ba.label}
-            </Button>
-          ))}
-        </div>
-      </div>
 
       {/* Historique */}
       <div>
@@ -358,24 +303,6 @@ export function TabAutomation({ formation, onRefresh }: Props) {
         )}
       </div>
 
-      {/* Bulk action confirmation dialog */}
-      <Dialog open={bulkDialog.open} onOpenChange={(o) => setBulkDialog(prev => ({ ...prev, open: o }))}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>{bulkDialog.label}</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            Cette action va envoyer les emails correspondants à tous les destinataires de cette formation. Continuer ?
-          </p>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setBulkDialog({ open: false, action: "", label: "" })}>Annuler</Button>
-            <Button onClick={handleBulkAction} disabled={bulkSending}>
-              {bulkSending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Envoyer
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
       </TabsContent>
     </Tabs>
