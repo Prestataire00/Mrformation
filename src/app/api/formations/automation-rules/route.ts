@@ -2,13 +2,23 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/require-role";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 import { logAudit } from "@/lib/audit-log";
+import { AUTOMATION_PACKS } from "@/lib/automation/default-packs";
 
-const DEFAULT_RULES = [
-  { trigger_type: "session_start_minus_days", document_type: "convention_entreprise", days_offset: 5, is_enabled: true, template_id: null, recipient_type: "learners", name: "Convention J-5" },
-  { trigger_type: "session_start_minus_days", document_type: "convocation", days_offset: 2, is_enabled: true, template_id: null, recipient_type: "learners", name: "Convocation J-2" },
-  { trigger_type: "session_end_plus_days", document_type: "certificat_realisation", days_offset: 5, is_enabled: true, template_id: null, recipient_type: "learners", name: "Certificat J+5" },
-  { trigger_type: "session_end_plus_days", document_type: "questionnaire_satisfaction", days_offset: 7, is_enabled: true, template_id: null, recipient_type: "learners", name: "Satisfaction J+7" },
-];
+// Règles par défaut proposées quand une entité n'a encore aucune règle :
+// dérivées du pack Qualiopi standard (source unique, cf. default-packs.ts).
+const DEFAULT_RULES = AUTOMATION_PACKS
+  .find((p) => p.id === "qualiopi-standard")!
+  .rules
+  .filter((r) => r.scope === "formation")
+  .map((r) => ({
+    trigger_type: r.trigger_type,
+    document_type: r.document_type ?? "",
+    days_offset: r.days_offset ?? 0,
+    is_enabled: true,
+    template_id: null,
+    recipient_type: r.recipient_type ?? "learners",
+    name: r.name,
+  }));
 
 export async function GET() {
   const auth = await requireRole(["super_admin", "admin"]);
