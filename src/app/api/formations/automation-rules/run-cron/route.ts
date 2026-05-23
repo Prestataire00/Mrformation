@@ -1,132 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { resolveVariables } from "@/lib/utils/resolve-variables";
-import { enqueueEmail, type EmailAttachmentDescriptor } from "@/lib/services/email-queue";
-
-// Map UUID → template Word custom (chargée au début du cron, utilisée par buildAttachmentsForRecipient)
-type CustomTemplateInfo = {
-  id: string;
-  name: string;
-  mode: "editable" | "docx_fidelity" | null;
-  source_docx_url: string | null;
-};
-
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-interface RecipientInfo {
-  id: string;
-  type: "learner" | "trainer";
-  first_name?: string;
-  last_name?: string;
-  email?: string;
-}
-
-interface SessionInfo {
-  id: string;
-  title?: string | null;
-  start_date?: string | null;
-  end_date?: string | null;
-  location?: string | null;
-}
-
-/**
- * Construit les descripteurs d'attachments pour un destinataire donné,
- * en fonction des types de doc déclarés dans le template email.
- *
- * Supporte 2 sources de templates :
- *   1. Types système (string lisible) : convocation, convention_entreprise, etc.
- *      → mappe vers les types correspondants du resolver (templates HTML hardcodés)
- *   2. Templates Word custom (UUID) : référence vers document_templates.id
- *      → descripteur uploaded_docx avec variables auto-substituées via docxtemplater
- */
-function buildAttachmentsForRecipient(
-  attachmentDocTypes: string[] | null | undefined,
-  session: SessionInfo,
-  recipient: RecipientInfo,
-  recipientType: string,
-  customTemplatesById: Record<string, CustomTemplateInfo>
-): EmailAttachmentDescriptor[] {
-  if (!attachmentDocTypes || attachmentDocTypes.length === 0) return [];
-
-  const sessionId = session.id;
-  const descriptors: EmailAttachmentDescriptor[] = [];
-
-  for (const docType of attachmentDocTypes) {
-    // Cas 1 : UUID → template Word custom
-    if (UUID_REGEX.test(docType)) {
-      const tpl = customTemplatesById[docType];
-      if (!tpl || tpl.mode !== "docx_fidelity" || !tpl.source_docx_url) continue;
-
-      // Variables auto-déduites depuis recipient + session
-      const variables: Record<string, string> = {
-        nom_apprenant: `${recipient.first_name ?? ""} ${recipient.last_name ?? ""}`.trim(),
-        prenom_apprenant: recipient.first_name ?? "",
-        email_apprenant: recipient.email ?? "",
-        titre_formation: session.title ?? "",
-        date_debut: session.start_date ?? "",
-        date_fin: session.end_date ?? "",
-        lieu: session.location ?? "",
-        date_today: new Date().toLocaleDateString("fr-FR"),
-      };
-
-      descriptors.push({
-        type: "uploaded_docx",
-        filename: `${tpl.name}.pdf`,
-        url: tpl.source_docx_url,
-        variables,
-      });
-      continue;
-    }
-
-    // Cas 2 : type système
-    switch (docType) {
-      case "convocation":
-      case "certificat_realisation":
-        if (recipient.type === "learner") {
-          descriptors.push({
-            type: docType,
-            payload: { session_id: sessionId, learner_id: recipient.id },
-          });
-        }
-        break;
-      case "convention_entreprise":
-        if (recipientType === "companies") {
-          descriptors.push({
-            type: "convention_entreprise",
-            payload: { session_id: sessionId, client_id: recipient.id },
-          });
-        }
-        break;
-      case "convention_intervention":
-        if (recipient.type === "trainer") {
-          descriptors.push({
-            type: docType,
-            payload: { session_id: sessionId, trainer_id: recipient.id },
-          });
-        }
-        break;
-      case "programme_formation":
-        descriptors.push({
-          type: "programme_formation",
-          payload: { session_id: sessionId },
-        });
-        break;
-    }
-  }
-  return descriptors;
-}
+import { enqueueEmail } from "@/lib/services/email-queue";
+import {
+  executeRuleForSession,
+  UUID_REGEX,
+  type RuleInfo,
+  type SessionInfo,
+  type TemplateInfo,
+  type CustomTemplateInfo,
+} from "@/lib/automation/execute-rule";
 
 // Note : ce cron n'envoie plus d'email synchronously. Il enqueue dans email_history
 // (status='pending') ; le worker /api/emails/process-scheduled (toutes les 5 min)
 // gère l'envoi avec retry exponential backoff. Bénéfices : pas de timeout Netlify
 // même sur 500+ destinataires, retry automatique, rate-limit Resend respecté.
-
-const DOCUMENT_TYPE_SUBJECTS: Record<string, string> = {
-  convention_entreprise: "Convention de formation",
-  convocation: "Convocation à la formation",
-  certificat_realisation: "Certificat de réalisation",
-  questionnaire_satisfaction: "Questionnaire de satisfaction",
-};
 
 function createServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -146,21 +33,97 @@ export async function POST(request: NextRequest) {
   const supabase = createServiceClient();
   const today = new Date().toISOString().split("T")[0];
 
-  // Parse optional body for targeted mode
+  // Parse optional body for targeted modes
   let specificTrigger: string | null = null;
   let specificSessionId: string | null = null;
+  let specificRuleId: string | null = null;
   try {
     const body = await request.json();
     specificTrigger = body.trigger_type || null;
     specificSessionId = body.session_id || null;
+    specificRuleId = body.rule_id || null;
   } catch { /* empty body = normal cron mode */ }
+
+  // ── RULE-SCOPED MODE: une règle précise, une session précise ──
+  if (specificRuleId && specificSessionId) {
+    try {
+      const { data: rule } = await supabase
+        .from("formation_automation_rules")
+        .select("*")
+        .eq("id", specificRuleId)
+        .single();
+      if (!rule) return NextResponse.json({ error: "Règle introuvable" }, { status: 404 });
+
+      const { data: session } = await supabase
+        .from("sessions")
+        .select("id, title, start_date, end_date, location, entity_id, is_subcontracted, status")
+        .eq("id", specificSessionId)
+        .single();
+      if (!session) return NextResponse.json({ error: "Session introuvable" }, { status: 404 });
+
+      // Contrôle d'appartenance : la règle et la session doivent être de la même entité.
+      if (rule.entity_id !== session.entity_id) {
+        return NextResponse.json({ error: "Règle hors de l'entité de la session" }, { status: 403 });
+      }
+
+      let template: TemplateInfo | null = null;
+      const customTemplatesById: Record<string, CustomTemplateInfo> = {};
+      if (rule.template_id) {
+        const { data: tpl } = await supabase
+          .from("email_templates")
+          .select("subject, body, attachment_doc_types")
+          .eq("id", rule.template_id)
+          .single();
+        template = (tpl as unknown as TemplateInfo) ?? null;
+        for (const v of template?.attachment_doc_types ?? []) {
+          if (UUID_REGEX.test(v)) {
+            const { data: ct } = await supabase
+              .from("document_templates")
+              .select("id, name, mode, source_docx_url")
+              .eq("id", v)
+              .eq("entity_id", session.entity_id)
+              .single();
+            if (ct) customTemplatesById[v] = ct as unknown as CustomTemplateInfo;
+          }
+        }
+      }
+
+      const { enqueued } = await executeRuleForSession(supabase, {
+        rule: rule as unknown as RuleInfo,
+        session: session as unknown as SessionInfo,
+        template,
+        customTemplatesById,
+      });
+
+      try {
+        await supabase.from("session_automation_logs").insert({
+          session_id: session.id,
+          rule_id: rule.id,
+          rule_name: rule.name || rule.document_type,
+          trigger_type: rule.trigger_type,
+          recipient_count: enqueued,
+          status: enqueued > 0 ? "success" : "skipped",
+          is_manual: true,
+          details: { mode: "rule_scoped" },
+        });
+      } catch (logErr) {
+        // Le log d'audit ne doit pas faire échouer l'opération : les emails sont déjà enqueués.
+        console.warn("[automation rule-scoped] log insert failed:", logErr instanceof Error ? logErr.message : logErr);
+      }
+
+      return NextResponse.json({ success: true, enqueued });
+    } catch (err) {
+      console.error("[automation rule-scoped]", err);
+      return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    }
+  }
 
   // ── TARGETED MODE: specific trigger + session ──
   if (specificTrigger && specificSessionId) {
     try {
       const { data: session } = await supabase
         .from("sessions")
-        .select("id, title, start_date, end_date, location, entity_id, status")
+        .select("id, title, start_date, end_date, location, entity_id, is_subcontracted, status")
         .eq("id", specificSessionId)
         .single();
 
@@ -180,11 +143,14 @@ export async function POST(request: NextRequest) {
       }
 
       // Pre-load templates
-      const templateIds = rules.filter((r) => r.template_id).map((r) => r.template_id);
-      let templateMap: Record<string, { subject: string; body: string; attachment_doc_types: string[] | null }> = {};
+      const templateIds = rules.filter((r) => r.template_id).map((r) => r.template_id) as string[];
+      let templateMap: Record<string, TemplateInfo> = {};
       if (templateIds.length > 0) {
-        const { data: tplData } = await supabase.from("email_templates").select("id, subject, body, attachment_doc_types").in("id", templateIds);
-        if (tplData) templateMap = Object.fromEntries(tplData.map((t) => [t.id, t]));
+        const { data: tplData } = await supabase
+          .from("email_templates")
+          .select("id, subject, body, attachment_doc_types")
+          .in("id", templateIds);
+        if (tplData) templateMap = Object.fromEntries(tplData.map((t) => [t.id, t as unknown as TemplateInfo]));
       }
 
       // Pre-load les templates Word custom (mode docx_fidelity) référencés par UUID dans les attachment_doc_types
@@ -201,7 +167,7 @@ export async function POST(request: NextRequest) {
           .select("id, name, mode, source_docx_url")
           .in("id", Array.from(customTplIds))
           .eq("entity_id", session.entity_id);
-        if (customTpls) customTemplatesById = Object.fromEntries(customTpls.map((t) => [t.id, t as CustomTemplateInfo]));
+        if (customTpls) customTemplatesById = Object.fromEntries(customTpls.map((t) => [t.id, t as unknown as CustomTemplateInfo]));
       }
 
       let emailsSent = 0;
@@ -212,85 +178,13 @@ export async function POST(request: NextRequest) {
         if (condSub === true && !(session as Record<string, unknown>).is_subcontracted) continue;
         if (condSub === false && (session as Record<string, unknown>).is_subcontracted) continue;
 
-        const recipientType = rule.recipient_type || "learners";
-        type Recipient = { id: string; email: string; first_name: string; last_name: string; type: "learner" | "trainer" };
-        const recipients: Recipient[] = [];
-
-        if (recipientType === "learners" || recipientType === "all") {
-          const { data: enrollments } = await supabase
-            .from("enrollments")
-            .select("learner_id, learner:learners!enrollments_learner_id_fkey(id, email, first_name, last_name)")
-            .eq("session_id", session.id).in("status", ["registered", "confirmed", "completed"]);
-          for (const e of enrollments ?? []) {
-            const l = e.learner as unknown as { id: string; email: string | null; first_name: string; last_name: string } | null;
-            if (l?.email) recipients.push({ id: l.id, email: l.email, first_name: l.first_name, last_name: l.last_name, type: "learner" });
-          }
-        }
-
-        if (recipientType === "trainers" || recipientType === "all") {
-          const { data: trainerLinks } = await supabase
-            .from("formation_trainers")
-            .select("trainer:trainers!formation_trainers_trainer_id_fkey(id, email, first_name, last_name)")
-            .eq("session_id", session.id);
-          for (const tl of trainerLinks ?? []) {
-            const t = tl.trainer as unknown as { id: string; email: string | null; first_name: string; last_name: string } | null;
-            if (t?.email) recipients.push({ id: t.id, email: t.email, first_name: t.first_name, last_name: t.last_name, type: "trainer" });
-          }
-        }
-
-        if (recipientType === "companies") {
-          const { data: companyLinks } = await supabase
-            .from("formation_companies")
-            .select("client_id, email, client:clients!formation_companies_client_id_fkey(id, company_name)")
-            .eq("session_id", session.id);
-          for (const cl of companyLinks ?? []) {
-            const c = cl.client as unknown as { id: string; company_name: string } | null;
-            const companyEmail = cl.email;
-            if (c && companyEmail) recipients.push({ id: c.id, email: companyEmail, first_name: c.company_name, last_name: "", type: "learner" });
-          }
-        }
-
-        const tpl = rule.template_id ? templateMap[rule.template_id] : null;
-
-        for (const recipient of recipients) {
-          let subject: string;
-          let textBody: string;
-
-          if (tpl) {
-            subject = resolveVariables(tpl.subject, { session: session as unknown as import("@/lib/types").Session, learner: recipient.type === "learner" ? recipient as unknown as import("@/lib/types").Learner : null, trainer: recipient.type === "trainer" ? recipient as unknown as import("@/lib/types").Trainer : null });
-            textBody = resolveVariables(tpl.body, { session: session as unknown as import("@/lib/types").Session, learner: recipient.type === "learner" ? recipient as unknown as import("@/lib/types").Learner : null, trainer: recipient.type === "trainer" ? recipient as unknown as import("@/lib/types").Trainer : null });
-          } else {
-            subject = `${DOCUMENT_TYPE_SUBJECTS[rule.document_type] ?? rule.document_type} — ${session.title}`;
-            textBody = `Bonjour ${recipient.first_name} ${recipient.last_name},\n\nVeuillez trouver ci-joint votre document : ${DOCUMENT_TYPE_SUBJECTS[rule.document_type] ?? rule.document_type}.\n\nFormation : ${session.title}\n\nCordialement,\nL'équipe de formation`;
-          }
-
-          // Try/catch par recipient : un échec d'enqueue (DB transient,
-          // contrainte unique violée) ne fait pas crasher tout le batch.
-          // Sinon Netlify retry depuis le début → re-enqueue les emails déjà
-          // partis = doublons côté apprenant.
-          try {
-            await enqueueEmail(supabase, {
-              to: recipient.email,
-              subject,
-              body: textBody,
-              entity_id: session.entity_id,
-              session_id: session.id,
-              recipient_type: recipient.type,
-              recipient_id: recipient.id,
-              attachments: buildAttachmentsForRecipient(
-                tpl?.attachment_doc_types,
-                { id: session.id, title: session.title, start_date: session.start_date, end_date: session.end_date, location: session.location },
-                recipient,
-                recipientType,
-                customTemplatesById
-              ),
-            });
-            emailsSent++;
-          } catch (enqueueErr) {
-            console.error(`[automation] enqueue failed for ${recipient.email}:`, enqueueErr instanceof Error ? enqueueErr.message : enqueueErr);
-            // continue, ne bloque pas les autres recipients
-          }
-        }
+        const { enqueued } = await executeRuleForSession(supabase, {
+          rule: rule as unknown as RuleInfo,
+          session: session as unknown as SessionInfo,
+          template: rule.template_id ? (templateMap[rule.template_id] as TemplateInfo) ?? null : null,
+          customTemplatesById,
+        });
+        emailsSent += enqueued;
       }
 
       return NextResponse.json({ success: true, enqueued: emailsSent, trigger: specificTrigger, session: session.title });
@@ -327,11 +221,14 @@ export async function POST(request: NextRequest) {
       }
 
       // Pre-load templates
-      const templateIds = rules.filter((r) => r.template_id).map((r) => r.template_id);
-      let templateMap: Record<string, { subject: string; body: string; attachment_doc_types: string[] | null }> = {};
+      const templateIds = rules.filter((r) => r.template_id).map((r) => r.template_id) as string[];
+      let templateMap: Record<string, TemplateInfo> = {};
       if (templateIds.length > 0) {
-        const { data: tplData } = await supabase.from("email_templates").select("id, subject, body, attachment_doc_types").in("id", templateIds);
-        if (tplData) templateMap = Object.fromEntries(tplData.map((t) => [t.id, t]));
+        const { data: tplData } = await supabase
+          .from("email_templates")
+          .select("id, subject, body, attachment_doc_types")
+          .in("id", templateIds);
+        if (tplData) templateMap = Object.fromEntries(tplData.map((t) => [t.id, t as unknown as TemplateInfo]));
       }
 
       // Pre-load Word custom templates referenced by UUID in attachment_doc_types
@@ -348,7 +245,7 @@ export async function POST(request: NextRequest) {
           .select("id, name, mode, source_docx_url")
           .in("id", Array.from(customTplIds))
           .eq("entity_id", entityId);
-        if (customTpls) customTemplatesById = Object.fromEntries(customTpls.map((t) => [t.id, t as CustomTemplateInfo]));
+        if (customTpls) customTemplatesById = Object.fromEntries(customTpls.map((t) => [t.id, t as unknown as CustomTemplateInfo]));
       }
 
       for (const rule of rules) {
@@ -378,97 +275,31 @@ export async function POST(request: NextRequest) {
         }
 
         const { data: sessions } = await supabase
-          .from("sessions").select("id, title, start_date, end_date, location")
+          .from("sessions").select("id, title, start_date, end_date, location, entity_id, is_subcontracted, status")
           .eq("entity_id", entityId).eq(dateField, targetDate)
           .in("status", ["upcoming", "in_progress", "completed"]);
 
         if (!sessions || sessions.length === 0) continue;
 
-        const recipientType = rule.recipient_type || "learners";
+        // Filter by subcontracted condition
+        const condSub = (rule as Record<string, unknown>).condition_subcontracted;
 
         for (const session of sessions) {
-          type Recipient = { id: string; email: string; first_name: string; last_name: string; type: "learner" | "trainer" };
-          const recipients: Recipient[] = [];
+          if (condSub === true && !(session as Record<string, unknown>).is_subcontracted) continue;
+          if (condSub === false && (session as Record<string, unknown>).is_subcontracted) continue;
 
-          if (recipientType === "learners" || recipientType === "all") {
-            const { data: enrollments } = await supabase
-              .from("enrollments")
-              .select("learner_id, learner:learners!enrollments_learner_id_fkey(id, email, first_name, last_name)")
-              .eq("session_id", session.id).in("status", ["registered", "confirmed", "completed"]);
-            for (const e of enrollments ?? []) {
-              const l = e.learner as unknown as { id: string; email: string | null; first_name: string; last_name: string } | null;
-              if (l?.email) recipients.push({ id: l.id, email: l.email, first_name: l.first_name, last_name: l.last_name, type: "learner" });
-            }
-          }
-
-          if (recipientType === "trainers" || recipientType === "all") {
-            const { data: trainerLinks } = await supabase
-              .from("formation_trainers")
-              .select("trainer:trainers!formation_trainers_trainer_id_fkey(id, email, first_name, last_name)")
-              .eq("session_id", session.id);
-            for (const tl of trainerLinks ?? []) {
-              const t = tl.trainer as unknown as { id: string; email: string | null; first_name: string; last_name: string } | null;
-              if (t?.email) recipients.push({ id: t.id, email: t.email, first_name: t.first_name, last_name: t.last_name, type: "trainer" });
-            }
-          }
-
-          if (recipients.length === 0) continue;
-
-          const tpl = rule.template_id ? templateMap[rule.template_id] : null;
-
-          for (const recipient of recipients) {
-            processed++;
-
-            // Anti-duplicate
-            const { count } = await supabase
-              .from("email_history").select("id", { count: "exact", head: true })
-              .eq("session_id", session.id).eq("recipient_id", recipient.id)
-              .eq("recipient_type", recipient.type)
-              .ilike("subject", `%${rule.name || DOCUMENT_TYPE_SUBJECTS[rule.document_type] || rule.document_type}%`)
-              .gte("sent_at", today);
-            if (count && count > 0) continue;
-
-            // Build email
-            let subject: string;
-            let textBody: string;
-
-            if (tpl) {
-              subject = resolveVariables(tpl.subject, {
-                session: session as any,
-                learner: recipient.type === "learner" ? recipient as any : null,
-                trainer: recipient.type === "trainer" ? recipient as any : null,
-              });
-              textBody = resolveVariables(tpl.body, {
-                session: session as any,
-                learner: recipient.type === "learner" ? recipient as any : null,
-                trainer: recipient.type === "trainer" ? recipient as any : null,
-              });
-            } else {
-              subject = `${DOCUMENT_TYPE_SUBJECTS[rule.document_type] ?? rule.document_type} — ${session.title}`;
-              textBody = `Bonjour ${recipient.first_name} ${recipient.last_name},\n\nVeuillez trouver ci-joint votre document : ${DOCUMENT_TYPE_SUBJECTS[rule.document_type] ?? rule.document_type}.\n\nFormation : ${session.title}\n\nCordialement,\nL'équipe de formation`;
-            }
-
-            try {
-              await enqueueEmail(supabase, {
-                to: recipient.email,
-                subject,
-                body: textBody,
-                entity_id: entityId,
-                session_id: session.id,
-                recipient_type: recipient.type,
-                recipient_id: recipient.id,
-                attachments: buildAttachmentsForRecipient(
-                  tpl?.attachment_doc_types,
-                  { id: session.id, title: session.title, start_date: session.start_date, end_date: session.end_date, location: session.location },
-                  recipient,
-                  recipientType,
-                  customTemplatesById
-                ),
-              });
-              emailsSent++;
-            } catch (enqueueErr) {
-              console.error(`[automation] enqueue failed for ${recipient.email}:`, enqueueErr instanceof Error ? enqueueErr.message : enqueueErr);
-            }
+          const { enqueued, skipped, failed } = await executeRuleForSession(supabase, {
+            rule: rule as unknown as RuleInfo,
+            session: session as unknown as SessionInfo,
+            template: rule.template_id ? (templateMap[rule.template_id] as TemplateInfo) ?? null : null,
+            customTemplatesById,
+            dedupAgainstHistoryFromDate: today,
+          });
+          // processed = total destinataires considérés (sémantique d'origine, pré-refactor).
+          processed += enqueued + skipped + failed;
+          emailsSent += enqueued;
+          if (failed > 0) {
+            errors.push(`${rule.name || rule.document_type} (${(session as Record<string, string>).title ?? "session"}): ${failed} échec(s) d'enqueue`);
           }
         }
       }

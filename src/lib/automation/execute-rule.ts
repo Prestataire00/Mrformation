@@ -8,7 +8,7 @@ import type { Session, Learner, Trainer } from "@/lib/types";
  * run-cron (global / ciblé-trigger / ciblé-règle). Cf. spec §3.
  */
 
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export const DOCUMENT_TYPE_SUBJECTS: Record<string, string> = {
   convention_entreprise: "Convention de formation",
@@ -187,8 +187,13 @@ export async function resolveRecipients(
 /**
  * Exécute une règle pour une session : résout les destinataires, construit
  * sujet/corps (template ou repli) + attachements, enqueue chaque email.
- * Renvoie le nombre d'emails enqueués. Une erreur d'enqueue par destinataire
- * est journalisée sans interrompre les autres.
+ * Renvoie le nombre d'emails enqueués et ignorés (anti-doublon).
+ * Une erreur d'enqueue par destinataire est journalisée sans interrompre les autres.
+ *
+ * @param args.dedupAgainstHistoryFromDate - YYYY-MM-DD optionnel. Quand fourni, les
+ *   destinataires qui ont déjà reçu un email correspondant depuis cette date sont
+ *   ignorés (anti-doublon pour le mode global cron quotidien). Omettre pour les
+ *   modes ciblé-trigger et ciblé-règle (exécutions volontaires).
  */
 export async function executeRuleForSession(
   supabase: SupabaseClient,
@@ -197,14 +202,36 @@ export async function executeRuleForSession(
     session: SessionInfo;
     template: TemplateInfo | null;
     customTemplatesById: Record<string, CustomTemplateInfo>;
+    dedupAgainstHistoryFromDate?: string;
   },
-): Promise<{ enqueued: number }> {
-  const { rule, session, template, customTemplatesById } = args;
+): Promise<{ enqueued: number; skipped: number; failed: number }> {
+  const { rule, session, template, customTemplatesById, dedupAgainstHistoryFromDate } = args;
   const recipientType = rule.recipient_type || "learners";
   const recipients = await resolveRecipients(supabase, session.id, recipientType);
 
+  // Calculée une seule fois : la clé de matching anti-doublon dépend uniquement de la règle.
+  const matchKey = dedupAgainstHistoryFromDate
+    ? (rule.name || DOCUMENT_TYPE_SUBJECTS[rule.document_type] || rule.document_type)
+    : "";
+
   let enqueued = 0;
+  let skipped = 0;
+  let failed = 0;
   for (const recipient of recipients) {
+    // Anti-doublon : si une date de référence est fournie, on vérifie que le destinataire
+    // n'a pas déjà reçu un email correspondant à cette règle depuis cette date.
+    if (dedupAgainstHistoryFromDate) {
+      const { count } = await supabase
+        .from("email_history")
+        .select("id", { count: "exact", head: true })
+        .eq("session_id", session.id)
+        .eq("recipient_id", recipient.id)
+        .eq("recipient_type", recipient.type)
+        .ilike("subject", `%${matchKey}%`)
+        .gte("sent_at", dedupAgainstHistoryFromDate);
+      if (count && count > 0) { skipped++; continue; }
+    }
+
     let subject: string;
     let body: string;
     if (template) {
@@ -241,7 +268,8 @@ export async function executeRuleForSession(
       enqueued++;
     } catch (err) {
       console.error(`[automation] enqueue failed for ${recipient.email}:`, err instanceof Error ? err.message : err);
+      failed++;
     }
   }
-  return { enqueued };
+  return { enqueued, skipped, failed };
 }
