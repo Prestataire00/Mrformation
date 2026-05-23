@@ -98,23 +98,19 @@ export function AutomationTimeline({ sessionId }: Props) {
   const handleToggleOverride = async (event: TimelineEvent) => {
     setActing(event.id);
     const isCurrentlyEnabled = event.status !== "overridden";
-
-    if (isCurrentlyEnabled) {
-      // Disable this rule for the session
-      await supabase
+    try {
+      const { error } = await supabase
         .from("session_automation_overrides")
-        .upsert({ session_id: sessionId, rule_id: event.rule_id, is_enabled: false }, { onConflict: "session_id,rule_id" });
-      toast({ title: "Règle désactivée pour cette formation" });
-    } else {
-      // Re-enable: delete the override
-      await supabase
-        .from("session_automation_overrides")
-        .delete()
-        .eq("session_id", sessionId)
-        .eq("rule_id", event.rule_id);
-      toast({ title: "Règle réactivée" });
+        .upsert(
+          { session_id: sessionId, rule_id: event.rule_id, is_enabled: !isCurrentlyEnabled },
+          { onConflict: "session_id,rule_id" },
+        );
+      if (error) throw error;
+      toast({ title: isCurrentlyEnabled ? "Règle désactivée pour cette formation" : "Règle réactivée" });
+      await fetchTimeline();
+    } catch {
+      toast({ title: "Erreur", description: "Impossible de modifier la règle", variant: "destructive" });
     }
-    await fetchTimeline();
     setActing(null);
     setDetailEvent(null);
   };
@@ -125,7 +121,7 @@ export function AutomationTimeline({ sessionId }: Props) {
       const res = await fetch("/api/formations/automation-rules/trigger-event", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ trigger_type: "manual_test", session_id: sessionId, rule_id: event.rule_id }),
+        body: JSON.stringify({ session_id: sessionId, rule_id: event.rule_id }),
       });
       if (!res.ok) throw new Error("Erreur");
       toast({ title: "Exécution lancée", description: "Les emails seront envoyés sous peu." });
