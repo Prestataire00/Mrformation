@@ -352,6 +352,48 @@ export async function incrementReminderCount(
   if (error) throw error;
 }
 
+// ─── ServiceResult type ────────────────────────────────────────────────────
+/**
+ * Type résultat discriminé utilisé pour les helpers de mutation.
+ * Pattern cohérent avec enrollments.ts / sessions.ts / invoices.ts.
+ */
+export type ServiceResult<T = Record<never, never>> =
+  | ({ ok: true } & T)
+  | { ok: false; error: { message: string; code?: string } };
+
+// ─── BULK UPDATE helpers ────────────────────────────────────────────────────
+
+/**
+ * UPDATE en masse de documents par doc_type pour une session.
+ * Filtre par entity_id + source_table='sessions' + source_id (session) + doc_type.
+ * Filtre optionnel onlyStatus (pattern legacy mass confirm).
+ *
+ * Résout les UPDATE inline (TabConventionDocs.tsx:960, 1576) qui manquaient
+ * .eq("entity_id", entityId) — violation CLAUDE.md AR20.
+ */
+export async function updateDocsByDocType(
+  supabase: SupabaseClient,
+  entityId: string,
+  sessionId: string,
+  docType: string,
+  patch: Record<string, unknown>,
+  options?: { onlyStatus?: string },
+): Promise<ServiceResult<{ updated: number }>> {
+  let query = supabase
+    .from("documents")
+    .update(patch)
+    .eq("entity_id", entityId)
+    .eq("source_table", "sessions")
+    .eq("source_id", sessionId)
+    .eq("doc_type", docType);
+  if (options?.onlyStatus) {
+    query = query.eq("status", options.onlyStatus);
+  }
+  const { data, error } = await query.select("id");
+  if (error) return { ok: false, error: { message: error.message, code: error.code } };
+  return { ok: true, updated: (data ?? []).length };
+}
+
 /**
  * Lookup d'1 doc par id avec les champs nécessaires pour /api/documents/sign.
  */
