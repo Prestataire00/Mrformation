@@ -198,7 +198,7 @@ export function ResumeCompanies({ formation, onRefresh }: Props) {
     setAmount("");
     setEmail("");
     setLinkedLearners([]);
-    onRefresh();
+    await onRefresh();
   };
 
   const [deleting, setDeleting] = useState(false);
