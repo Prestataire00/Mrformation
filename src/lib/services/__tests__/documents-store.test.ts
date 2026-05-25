@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { updateDocsByDocType, updateDocsForOwner } from "@/lib/services/documents-store";
+import { updateDocsByDocType, updateDocsForOwner, getTemplateById } from "@/lib/services/documents-store";
 
 describe("updateDocsByDocType", () => {
   it("filtre par entity_id + source_table + source_id + doc_type", async () => {
@@ -161,5 +161,51 @@ describe("updateDocsForOwner", () => {
       const res = await updateDocsForOwner(supabase as never, "ENT", "SESS", ownerType, "ID", {});
       expect(res.ok).toBe(true);
     }
+  });
+});
+
+describe("getTemplateById", () => {
+  it("retourne le template si trouvé avec entity_id match", async () => {
+    const supabase = {
+      from: vi.fn(() => ({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        maybeSingle: vi.fn(async () => ({
+          data: { id: "T-1", name: "Convention custom", type: "agreement", mode: "docx_fidelity", source_docx_url: "https://x/y.docx" },
+          error: null,
+        })),
+      })),
+    };
+    const res = await getTemplateById(supabase as never, "ENT-A", "T-1");
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.template?.id).toBe("T-1");
+      expect(res.template?.mode).toBe("docx_fidelity");
+    }
+  });
+
+  it("retourne template null si pas trouvé (ou pas dans entity)", async () => {
+    const supabase = {
+      from: vi.fn(() => ({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+      })),
+    };
+    const res = await getTemplateById(supabase as never, "ENT-A", "UNKNOWN");
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.template).toBeNull();
+  });
+
+  it("retourne erreur sur erreur Supabase", async () => {
+    const supabase = {
+      from: vi.fn(() => ({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        maybeSingle: vi.fn(async () => ({ data: null, error: { message: "DB error", code: "ERR" } })),
+      })),
+    };
+    const res = await getTemplateById(supabase as never, "ENT-A", "T-1");
+    expect(res.ok).toBe(false);
   });
 });

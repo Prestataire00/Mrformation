@@ -19,7 +19,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { FormationConventionDocument } from "@/lib/types";
+import type { FormationConventionDocument, DocumentTemplate } from "@/lib/types";
 import { mapStatusToFlags } from "@/lib/utils/document-status";
 
 // ─── Types internes ─────────────────────────────────────────────────────
@@ -421,6 +421,27 @@ export async function updateDocsForOwner(
     .select("id");
   if (error) return { ok: false, error: { message: error.message, code: error.code } };
   return { ok: true, updated: (data ?? []).length };
+}
+
+/**
+ * SELECT un template par ID en filtrant par entity_id (défense en profondeur).
+ *
+ * Résout TabConventionDocs.tsx:508 qui fetchait par template_id seulement —
+ * un attaquant connaissant l'UUID pouvait charger un template cross-tenant.
+ */
+export async function getTemplateById(
+  supabase: SupabaseClient,
+  entityId: string,
+  templateId: string,
+): Promise<ServiceResult<{ template: DocumentTemplate | null }>> {
+  const { data, error } = await supabase
+    .from("document_templates")
+    .select("id, name, type, content, variables, mode, source_docx_url, default_for_doc_type")
+    .eq("entity_id", entityId)
+    .eq("id", templateId)
+    .maybeSingle();
+  if (error) return { ok: false, error: { message: error.message, code: error.code } };
+  return { ok: true, template: (data as DocumentTemplate | null) ?? null };
 }
 
 /**
