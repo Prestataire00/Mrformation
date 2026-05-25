@@ -143,12 +143,47 @@ async function loadSatisfactionAggregates(
 
 /**
  * Calcule les KPIs Qualiopi de la session.
+ *
+ * Défense en profondeur multi-tenant : on commence par confirmer que la session
+ * existe en chargeant son entity_id. Si la session est introuvable (caller
+ * passe un sessionId invalide ou supprimé), on renvoie des valeurs neutres
+ * sans accéder aux sub-tables.
+ *
+ * Note schéma : enrollments / signatures / questionnaire_sessions /
+ * questionnaire_responses n'ont PAS de colonne entity_id propre (cf
+ * supabase/schema.sql) — leur filtre multi-tenant transite par session_id
+ * (FK vers sessions) qui est déjà la clé de chacune des queries downstream.
+ * Le RLS de ces tables s'appuie sur la même mécanique (cf migrations
+ * cleanup_allow_all_phase2b_lots24.sql : « entity_id via sessions »).
+ * Ajouter ici un `.eq("entity_id", ...)` direct provoquerait un
+ * PostgREST 400 « column does not exist » en runtime.
  */
-async function loadQualiopiIndicators(
+export async function loadQualiopiIndicators(
   supabase: SupabaseClient,
   sessionId: string,
 ): Promise<QualiopiIndicators> {
-  // Apprenants inscrits
+  // Récupérer l'entity_id de la session une fois pour défense en profondeur.
+  // Si session introuvable, retourner des valeurs neutres (cas de session
+  // supprimée entre temps).
+  const { data: sessionRow } = await supabase
+    .from("sessions")
+    .select("entity_id")
+    .eq("id", sessionId)
+    .single();
+
+  if (!sessionRow?.entity_id) {
+    return {
+      totalLearners: 0,
+      signedLearnersCount: 0,
+      completionRate: 0,
+      satisfactionRate: null,
+      satisfactionResponses: 0,
+      acquisitionRate: null,
+      evaluationCount: 0,
+    };
+  }
+
+  // Apprenants inscrits (entity_id transite par session_id, cf JSDoc).
   const { data: enrollments } = await supabase
     .from("enrollments")
     .select("learner_id")
