@@ -82,6 +82,7 @@ export interface Client {
   bpf_category: BpfCategory | null;
   status: ClientStatus;
   notes: string | null;
+  email?: string | null;
   created_at: string;
   updated_at: string;
   contacts?: Contact[];
@@ -534,6 +535,7 @@ export interface Enrollment {
   enrolled_at: string;
   price_per_learner: number | null;
   hours_per_learner: number | null;
+  individual_price?: number | null;
   session?: Session;
   learner?: Learner;
   client?: Client;
