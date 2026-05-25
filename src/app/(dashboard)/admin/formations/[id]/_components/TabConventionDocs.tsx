@@ -425,6 +425,11 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
           await onRefresh();
         } catch (err) {
           console.error("[initializeDefaultDocs] insert error:", err);
+          toast({
+            title: "Erreur",
+            description: "Impossible de créer les documents par défaut",
+            variant: "destructive",
+          });
         }
       }
     } finally {
@@ -593,7 +598,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
       await markDocConfirmed(supabase, docId);
       setSaving(null);
       toast({ title: "Document figé" });
-      onRefresh();
+      await onRefresh();
     } catch (err) {
       setSaving(null);
       toast({ title: "Erreur", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
@@ -607,7 +612,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
       await unmarkDocConfirmed(supabase, docId);
       setSaving(null);
       toast({ title: "Document déverrouillé" });
-      onRefresh();
+      await onRefresh();
     } catch (err) {
       setSaving(null);
       toast({ title: "Erreur", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
@@ -625,7 +630,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
       await markDocConfirmed(supabase, docId, dateValue);
       setSaving(null);
       toast({ title: "Document figé avec date" });
-      onRefresh();
+      await onRefresh();
     } catch (err) {
       setSaving(null);
       toast({ title: "Erreur", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
@@ -719,7 +724,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
 
     toast({ title: "Document envoyé par email" });
     setEmailPreview(null);
-    onRefresh();
+    await onRefresh();
   };
 
   // ===== MASS SEND WITH PDF =====
@@ -797,7 +802,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
         });
       }
       setMassSending(null);
-      onRefresh();
+      await onRefresh();
       return;
     }
 
@@ -853,7 +858,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
       title: `${sent} envoyé${sent > 1 ? "s" : ""}${failed > 0 ? `, ${failed} échec${failed > 1 ? "s" : ""}` : ""}`,
     });
     setMassSending(null);
-    onRefresh();
+    await onRefresh();
   };
 
   // ===== MASS DOWNLOAD PDF =====
@@ -951,25 +956,28 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
       });
     }
     setMassRequestingSig(null);
-    onRefresh();
+    await onRefresh();
   };
 
   // Mass confirm all docs of a type
   const handleMassConfirm = async (docType: ConventionDocType) => {
     setSaving(`mass-confirm-${docType}`);
-    const { error } = await supabase
-      .from("documents")
-      .update({ status: "generated", generated_at: new Date().toISOString() })
-      .eq("source_table", "sessions")
-      .eq("source_id", formation.id)
-      .eq("doc_type", docType)
-      .eq("status", "draft");
-    setSaving(null);
-    if (error) {
-      toast({ title: "Erreur", description: error.message, variant: "destructive" });
-    } else {
+    try {
+      const { error } = await supabase
+        .from("documents")
+        .update({ status: "generated", generated_at: new Date().toISOString() })
+        .eq("source_table", "sessions")
+        .eq("source_id", formation.id)
+        .eq("doc_type", docType)
+        .eq("status", "draft");
+      if (error) throw error;
       toast({ title: `Toutes les ${DOC_LABELS_PLURAL[docType] || docType} confirmées` });
-      onRefresh();
+      await onRefresh();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Erreur";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
+    } finally {
+      setSaving(null);
     }
   };
 
@@ -1006,26 +1014,29 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     }
     setSaving(null);
     toast({ title: `${sent} document(s) envoyé(s)` });
-    onRefresh();
+    await onRefresh();
   };
 
   // Mass confirm all docs for a specific owner
   const handleConfirmAllForOwner = async (ownerType: ConventionOwnerType, ownerId: string) => {
     setSaving(`confirm-all-${ownerId}`);
-    const { error } = await supabase
-      .from("documents")
-      .update({ status: "generated", generated_at: new Date().toISOString() })
-      .eq("source_table", "sessions")
-      .eq("source_id", formation.id)
-      .eq("owner_type", ownerType)
-      .eq("owner_id", ownerId)
-      .eq("status", "draft");
-    setSaving(null);
-    if (error) {
-      toast({ title: "Erreur", variant: "destructive" });
-    } else {
+    try {
+      const { error } = await supabase
+        .from("documents")
+        .update({ status: "generated", generated_at: new Date().toISOString() })
+        .eq("source_table", "sessions")
+        .eq("source_id", formation.id)
+        .eq("owner_type", ownerType)
+        .eq("owner_id", ownerId)
+        .eq("status", "draft");
+      if (error) throw error;
       toast({ title: "Tous les documents figés" });
-      onRefresh();
+      await onRefresh();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Erreur";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
+    } finally {
+      setSaving(null);
     }
   };
 
@@ -1056,7 +1067,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
       }]);
       setSaving(null);
       toast({ title: "Document ajouté" });
-      onRefresh();
+      await onRefresh();
     } catch (err: unknown) {
       setSaving(null);
       const code = (err as { code?: string })?.code;
@@ -1092,13 +1103,15 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     if (rows.length > 0) {
       try {
         await upsertDocsIgnoreDuplicates(supabase, rows);
-      } catch (err) {
+      } catch (err: unknown) {
         console.error("[handleAssignTemplateToAll] upsert failed:", err);
+        const message = err instanceof Error ? err.message : "Échec de l'attribution";
+        toast({ title: "Erreur", description: message, variant: "destructive" });
       }
     }
     setSaving(null);
     toast({ title: "Document attribué à tous les apprenants" });
-    onRefresh();
+    await onRefresh();
   };
 
   // Send document for electronic signature via /api/documents/sign-request
@@ -1124,7 +1137,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
         throw new Error(errData.error || "Erreur lors de l'envoi");
       }
       toast({ title: "Demande de signature envoyée" });
-      onRefresh();
+      await onRefresh();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Erreur lors de l'envoi pour signature";
       toast({ title: "Erreur", description: message, variant: "destructive" });
@@ -1137,7 +1150,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
 
   const renderStatusBadge = (doc: FormationConventionDocument | undefined) => {
     if (!doc) return null;
-    const signerEmail = (doc as unknown as Record<string, string>).signer_email;
+    const signerEmail = doc.signer_email;
 
     // État progressif : Signé > En attente signature > Figé > Brouillon
     if (doc.is_signed) {
@@ -1626,7 +1639,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
                 id: lr.id, name: lr.name,
                 cells: Object.fromEntries(Object.entries(lr.row).map(([k, v]) => [k, { ...v, status: v.status === "signed" ? "completed" : v.status === "confirmed" ? "assigned" : v.status === "none" ? "not_assigned" : v.status }])),
               }))}
-              docTypes={DEFAULT_LEARNER_DOCS as unknown as string[]}
+              docTypes={DEFAULT_LEARNER_DOCS}
               docLabels={DOC_LABELS}
               avatarColorFn={getAvatarColor}
               onCellClick={(_ownerId, _docType, docId) => { if (docId) { const d = docs.find(x => x.id === docId); if (d) handleView(d); } }}
@@ -1640,7 +1653,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
                 id: cr.id, name: cr.name,
                 cells: Object.fromEntries(Object.entries(cr.row).map(([k, v]) => [k, { ...v, status: v.status === "signed" ? "completed" : v.status === "confirmed" ? "assigned" : v.status === "none" ? "not_assigned" : v.status }])),
               }))}
-              docTypes={DEFAULT_COMPANY_DOCS as unknown as string[]}
+              docTypes={DEFAULT_COMPANY_DOCS}
               docLabels={DOC_LABELS}
               avatarColorFn={getAvatarColor}
               onCellClick={(_ownerId, _docType, docId) => { if (docId) { const d = docs.find(x => x.id === docId); if (d) handleView(d); } }}
@@ -1654,7 +1667,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
                 id: tr.id, name: tr.name,
                 cells: Object.fromEntries(Object.entries(tr.row).map(([k, v]) => [k, { ...v, status: v.status === "signed" ? "completed" : v.status === "confirmed" ? "assigned" : v.status === "none" ? "not_assigned" : v.status }])),
               }))}
-              docTypes={DEFAULT_TRAINER_DOCS as unknown as string[]}
+              docTypes={DEFAULT_TRAINER_DOCS}
               docLabels={DOC_LABELS}
               avatarColorFn={getAvatarColor}
               onCellClick={(_ownerId, _docType, docId) => { if (docId) { const d = docs.find(x => x.id === docId); if (d) handleView(d); } }}
@@ -1801,7 +1814,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
                   .eq("status", "draft");
                 setSaving(null);
                 toast({ title: "Documents figés" });
-                onRefresh();
+                await onRefresh();
               }}
               disabled={saving === "confirm-custom"}
             >
