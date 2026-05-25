@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { enqueueEmail } from "@/lib/services/email-queue";
 
 export type ServiceResult<T> =
   | ({ ok: true } & T)
@@ -255,4 +256,86 @@ export async function deleteSession(
     .eq("entity_id", entityId);
   if (error) return { ok: false, error: { message: error.message, code: error.code } };
   return { ok: true };
+}
+
+/**
+ * Envoie le lien visio à tous les apprenants inscrits (registered/confirmed)
+ * d'une session via la queue email (asynchrone, retry inclus).
+ *
+ * Retourne { enqueued, skipped } : enqueued = emails ajoutés à email_history,
+ * skipped = learners sans email ou échec d'enqueue.
+ *
+ * Pré-conditions :
+ *  - La session existe et appartient à entityId (défense en profondeur)
+ *  - La session a un visio_link non vide
+ */
+export async function sendVisioLinkToLearners(
+  supabase: SupabaseClient,
+  sessionId: string,
+  entityId: string,
+): Promise<ServiceResult<{ enqueued: number; skipped: number }>> {
+  const { data: session, error: sessErr } = await supabase
+    .from("sessions")
+    .select("id, title, start_date, end_date, location, visio_link, entity_id")
+    .eq("id", sessionId)
+    .eq("entity_id", entityId)
+    .single();
+  if (sessErr || !session) {
+    return { ok: false, error: { message: sessErr?.message ?? "Session introuvable" } };
+  }
+  if (!session.visio_link) {
+    return { ok: false, error: { message: "Aucun lien visio configuré pour cette formation" } };
+  }
+
+  const { data: enrollments } = await supabase
+    .from("enrollments")
+    .select("learner:learners!enrollments_learner_id_fkey(id, email, first_name, last_name)")
+    .eq("session_id", sessionId)
+    .in("status", ["registered", "confirmed"]);
+
+  let enqueued = 0;
+  let skipped = 0;
+
+  for (const e of enrollments ?? []) {
+    const l = e.learner as unknown as {
+      id: string;
+      email: string | null;
+      first_name: string;
+      last_name: string;
+    } | null;
+    if (!l?.email) {
+      skipped++;
+      continue;
+    }
+
+    const subject = `Lien visio — ${session.title}`;
+    const body = `Bonjour ${l.first_name},
+
+Voici le lien pour rejoindre la formation "${session.title}" en visio :
+
+${session.visio_link}
+
+Dates : du ${session.start_date} au ${session.end_date}${session.location ? `
+Lieu : ${session.location}` : ""}
+
+À bientôt,
+L'équipe de formation`;
+
+    try {
+      await enqueueEmail(supabase, {
+        to: l.email,
+        subject,
+        body,
+        entity_id: entityId,
+        session_id: sessionId,
+        recipient_type: "learner",
+        recipient_id: l.id,
+      });
+      enqueued++;
+    } catch {
+      skipped++;
+    }
+  }
+
+  return { ok: true, enqueued, skipped };
 }

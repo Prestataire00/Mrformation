@@ -8,6 +8,7 @@ import {
   updateSessionField,
   duplicateSession,
   deleteSession,
+  sendVisioLinkToLearners,
 } from "@/lib/services/sessions";
 
 // Type minimal du client Supabase utilisé par les helpers
@@ -447,5 +448,105 @@ describe("deleteSession", () => {
     expect(res.ok).toBe(true);
     expect(eqCalls).toContainEqual({ col: "id", val: "SESS-1" });
     expect(eqCalls).toContainEqual({ col: "entity_id", val: "ENT-A" });
+  });
+});
+
+describe("sendVisioLinkToLearners", () => {
+  it("refuse si visio_link absent", async () => {
+    const supabase = {
+      from: vi.fn(() => ({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        single: vi.fn(async () => ({
+          data: { id: "S1", title: "F", start_date: "2026-01-01", end_date: "2026-01-31", location: null, visio_link: null, entity_id: "ENT-A" },
+          error: null,
+        })),
+      })),
+    };
+    const res = await sendVisioLinkToLearners(supabase as never, "S1", "ENT-A");
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.error.message).toContain("visio");
+    }
+  });
+
+  it("refuse si session pas dans entityId", async () => {
+    const supabase = {
+      from: vi.fn(() => ({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        single: vi.fn(async () => ({ data: null, error: null })),
+      })),
+    };
+    const res = await sendVisioLinkToLearners(supabase as never, "S1", "ENT-A");
+    expect(res.ok).toBe(false);
+  });
+
+  it("0 learners inscrits → enqueued=0, skipped=0", async () => {
+    const supabase = {
+      from: vi.fn((table: string) => {
+        if (table === "sessions") {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            single: vi.fn(async () => ({
+              data: { id: "S1", title: "F", start_date: "2026-01-01", end_date: "2026-01-31", location: "Paris", visio_link: "https://meet.example.com/abc", entity_id: "ENT-A" },
+              error: null,
+            })),
+          };
+        }
+        if (table === "enrollments") {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            in: vi.fn(() => Promise.resolve({ data: [], error: null })),
+          };
+        }
+        return {};
+      }),
+    };
+    const res = await sendVisioLinkToLearners(supabase as never, "S1", "ENT-A");
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.enqueued).toBe(0);
+      expect(res.skipped).toBe(0);
+    }
+  });
+
+  it("learner sans email → skipped=1, enqueued=0", async () => {
+    const supabase = {
+      from: vi.fn((table: string) => {
+        if (table === "sessions") {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            single: vi.fn(async () => ({
+              data: { id: "S1", title: "F", start_date: "2026-01-01", end_date: "2026-01-31", location: null, visio_link: "https://meet.example.com/abc", entity_id: "ENT-A" },
+              error: null,
+            })),
+          };
+        }
+        if (table === "enrollments") {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            in: vi.fn(() => Promise.resolve({
+              data: [{ learner: { id: "L1", email: null, first_name: "Jean", last_name: "Dupont" } }],
+              error: null,
+            })),
+          };
+        }
+        if (table === "email_history") {
+          return { insert: vi.fn(() => Promise.resolve({ data: null, error: null })) };
+        }
+        return {};
+      }),
+    };
+    const res = await sendVisioLinkToLearners(supabase as never, "S1", "ENT-A");
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.enqueued).toBe(0);
+      expect(res.skipped).toBe(1);
+    }
   });
 });
