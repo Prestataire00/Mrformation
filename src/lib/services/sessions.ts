@@ -308,6 +308,15 @@ export async function sendVisioLinkToLearners(
       continue;
     }
 
+    // Format dates en JJ/MM/AAAA fuseau Europe/Paris (les colonnes start_date/end_date
+    // sont des timestamptz, le rendu brut serait "2026-01-15T09:00:00+00:00" — illisible).
+    const fmtDate = (iso: string | null | undefined) =>
+      iso
+        ? new Date(iso).toLocaleDateString("fr-FR", {
+            day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Europe/Paris",
+          })
+        : "";
+
     const subject = `Lien visio — ${session.title}`;
     const body = `Bonjour ${l.first_name},
 
@@ -315,7 +324,7 @@ Voici le lien pour rejoindre la formation "${session.title}" en visio :
 
 ${session.visio_link}
 
-Dates : du ${session.start_date} au ${session.end_date}${session.location ? `
+Dates : du ${fmtDate(session.start_date)} au ${fmtDate(session.end_date)}${session.location ? `
 Lieu : ${session.location}` : ""}
 
 À bientôt,
