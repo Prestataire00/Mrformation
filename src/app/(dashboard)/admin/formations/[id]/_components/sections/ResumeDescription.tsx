@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Save, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
+import { updateSessionField } from "@/lib/services/sessions";
 import type { Session } from "@/lib/types";
 
 interface Props {
@@ -20,20 +21,22 @@ export function ResumeDescription({ formation, onRefresh }: Props) {
   const [description, setDescription] = useState(formation.description || "");
   const [saving, setSaving] = useState(false);
 
+  // Re-sync draft depuis la prop quand on n'édite pas (au mount, au cancel, après save).
+  useEffect(() => {
+    if (!editing) setDescription(formation.description || "");
+  }, [formation.description, editing]);
+
   const handleSave = async () => {
     setSaving(true);
-    const { error } = await supabase
-      .from("sessions")
-      .update({ description })
-      .eq("id", formation.id);
+    const result = await updateSessionField(supabase, formation.id, formation.entity_id, { description });
     setSaving(false);
-    if (error) {
-      toast({ title: "Erreur", variant: "destructive" });
-    } else {
-      toast({ title: "Description mise à jour" });
-      setEditing(false);
-      onRefresh();
+    if (!result.ok) {
+      toast({ title: "Erreur", description: result.error.message, variant: "destructive" });
+      return;
     }
+    toast({ title: "Description mise à jour" });
+    setEditing(false);
+    await onRefresh();
   };
 
   return (

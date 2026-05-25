@@ -118,7 +118,7 @@ export function ResumeFinanciers({ formation, onRefresh }: Props) {
       toast({ title: "Financeur ajouté" });
       setDialogOpen(false);
       setName(""); setType(""); setAmount(""); setReference(""); setSelectedFinanceurId("");
-      onRefresh();
+      await onRefresh();
     }
   };
 
@@ -146,7 +146,8 @@ export function ResumeFinanciers({ formation, onRefresh }: Props) {
     const { error } = await supabase
       .from("formation_financiers")
       .update({ status, updated_at: new Date().toISOString(), ...extra })
-      .eq("id", id);
+      .eq("id", id)
+      .eq("session_id", formation.id);  // Défense en profondeur, cohérent avec le pattern delete.
     setSaving(false);
     if (error) {
       toast({ title: "Erreur", description: error.message, variant: "destructive" });

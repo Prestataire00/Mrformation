@@ -9,6 +9,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/use-toast";
+import { deleteSession } from "@/lib/services/sessions";
 import type { Session } from "@/lib/types";
 
 interface Props {
@@ -16,7 +17,7 @@ interface Props {
   onRefresh: () => Promise<void>;
 }
 
-export function ResumeDangerZone({ formation, onRefresh }: Props) {
+export function ResumeDangerZone({ formation }: Props) {
   const router = useRouter();
   const { toast } = useToast();
   const supabase = createClient();
@@ -25,27 +26,14 @@ export function ResumeDangerZone({ formation, onRefresh }: Props) {
 
   const handleDelete = async () => {
     setDeleting(true);
-    try {
-      // D'abord supprimer les données liées
-      const tables = [
-        "formation_time_slots", "formation_trainers", "formation_companies",
-        "formation_financiers", "formation_comments", "enrollments",
-      ];
-      for (const table of tables) {
-        const { error } = await supabase.from(table).delete().eq("session_id", formation.id);
-        if (error) throw new Error(`Erreur suppression ${table}: ${error.message}`);
-      }
-
-      const { error } = await supabase.from("sessions").delete().eq("id", formation.id).eq("entity_id", formation.entity_id);
-      if (error) throw error;
-      toast({ title: "Formation supprimée" });
-      router.push("/admin/sessions");
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Impossible de supprimer la formation";
-      toast({ title: "Erreur", description: message, variant: "destructive" });
-    } finally {
-      setDeleting(false);
+    const result = await deleteSession(supabase, formation.id, formation.entity_id);
+    setDeleting(false);
+    if (!result.ok) {
+      toast({ title: "Erreur", description: result.error.message, variant: "destructive" });
+      return;
     }
+    toast({ title: "Formation supprimée" });
+    router.push("/admin/sessions");
   };
 
   return (

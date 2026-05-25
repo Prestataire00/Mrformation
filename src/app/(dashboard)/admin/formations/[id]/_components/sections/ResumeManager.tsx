@@ -7,6 +7,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
+import { updateSessionField } from "@/lib/services/sessions";
 import type { Session, Profile } from "@/lib/types";
 
 interface Props {
@@ -36,17 +37,17 @@ export function ResumeManager({ formation, onRefresh }: Props) {
 
   const handleSave = async () => {
     setSaving(true);
-    const { error } = await supabase
-      .from("sessions")
-      .update({ manager_id: selectedManager || null })
-      .eq("id", formation.id);
+    const result = await updateSessionField(
+      supabase, formation.id, formation.entity_id,
+      { manager_id: selectedManager || null },
+    );
     setSaving(false);
-    if (error) {
-      toast({ title: "Erreur", variant: "destructive" });
-    } else {
-      toast({ title: "Manager mis à jour" });
-      onRefresh();
+    if (!result.ok) {
+      toast({ title: "Erreur", description: result.error.message, variant: "destructive" });
+      return;
     }
+    toast({ title: "Manager mis à jour" });
+    await onRefresh();
   };
 
   return (

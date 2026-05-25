@@ -16,6 +16,7 @@ import {
 import { SearchSelect } from "@/components/ui/search-select";
 import { useToast } from "@/components/ui/use-toast";
 import { getInitials } from "@/lib/utils";
+import { getTrainerStats } from "@/lib/services/trainer-hours";
 import type { Session, Trainer, FormationTrainer } from "@/lib/types";
 
 interface Props {
@@ -39,33 +40,6 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
   const [suggestions, setSuggestions] = useState<Array<{ trainer_id: string; trainer_name: string; score: number; reasons_match: string[]; gaps: string[] }>>([]);
 
   const formationTrainers = formation.formation_trainers || [];
-  const signatures = formation.signatures || [];
-  const timeSlots = formation.formation_time_slots || [];
-
-  /** Calcule heures effectuées + dates signées pour un formateur */
-  function getTrainerStats(trainerId: string) {
-    const signedSlotIds = signatures
-      .filter((s) => s.signer_id === trainerId && s.signer_type === "trainer")
-      .map((s) => s.time_slot_id);
-
-    const signedSlots = timeSlots.filter((ts) => signedSlotIds.includes(ts.id));
-
-    let totalHours = 0;
-    const dates = new Set<string>();
-
-    for (const slot of signedSlots) {
-      const start = new Date(slot.start_time);
-      const end = new Date(slot.end_time);
-      totalHours += (end.getTime() - start.getTime()) / 3600000;
-      dates.add(start.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Europe/Paris" }));
-    }
-
-    return {
-      hours: Math.round(totalHours * 10) / 10,
-      dates: [...dates].sort(),
-      slotCount: signedSlots.length,
-    };
-  }
 
   useEffect(() => {
     const fetch = async () => {
@@ -100,7 +74,7 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
       setSelectedHourlyRate("");
       setSelectedDailyRate("");
       setSelectedHoursDone("");
-      onRefresh();
+      await onRefresh();
     }
   };
 
@@ -151,7 +125,7 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
         <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Formateurs ({formationTrainers.length})</h3>
         <div className="space-y-3">
           {formationTrainers.map((ft) => {
-            const stats = ft.trainer ? getTrainerStats(ft.trainer.id) : null;
+            const stats = ft.trainer ? getTrainerStats(formation, ft.trainer.id) : null;
             const plannedHours = ft.hours_done ?? formation.planned_hours ?? null;
             const actualHours = stats?.hours || 0;
             const progressPct = plannedHours && plannedHours > 0
@@ -263,8 +237,9 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
                 if (!res.ok) throw new Error("Suggestion échouée");
                 const data = await res.json();
                 setSuggestions(data.matches || []);
-              } catch {
-                toast({ title: "Erreur suggestions IA", variant: "destructive" });
+              } catch (err: unknown) {
+                const message = err instanceof Error ? err.message : "Erreur suggestions IA";
+                toast({ title: "Erreur", description: message, variant: "destructive" });
               } finally {
                 setSuggesting(false);
               }

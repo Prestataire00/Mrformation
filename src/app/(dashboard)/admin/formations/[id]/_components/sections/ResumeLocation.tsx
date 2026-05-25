@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Save, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
+import { updateSessionField } from "@/lib/services/sessions";
 import type { Session, SessionMode } from "@/lib/types";
 
 const MODE_LABELS: Record<string, string> = {
@@ -38,20 +39,27 @@ export function ResumeLocation({ formation, onRefresh }: Props) {
   const [location, setLocation] = useState(formation.location || "");
   const [saving, setSaving] = useState(false);
 
+  useEffect(() => {
+    if (!editing) {
+      setMode(formation.mode);
+      setLocation(formation.location || "");
+    }
+  }, [formation.mode, formation.location, editing]);
+
   const handleSave = async () => {
     setSaving(true);
-    const { error } = await supabase
-      .from("sessions")
-      .update({ mode, location })
-      .eq("id", formation.id);
+    const result = await updateSessionField(
+      supabase, formation.id, formation.entity_id,
+      { mode, location },
+    );
     setSaving(false);
-    if (error) {
-      toast({ title: "Erreur", variant: "destructive" });
-    } else {
-      toast({ title: "Emplacement mis à jour" });
-      setEditing(false);
-      onRefresh();
+    if (!result.ok) {
+      toast({ title: "Erreur", description: result.error.message, variant: "destructive" });
+      return;
     }
+    toast({ title: "Emplacement mis à jour" });
+    setEditing(false);
+    await onRefresh();
   };
 
   return (

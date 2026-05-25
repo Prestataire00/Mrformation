@@ -128,7 +128,7 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
       setDialogOpen(false);
       setSelectedLearnerId("");
       setSelectedClientId("");
-      onRefresh();
+      await onRefresh();
     }
   };
 
@@ -176,7 +176,7 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
       setNewEmail("");
       setNewLearnerClientId("");
       fetchLearners();
-      onRefresh();
+      await onRefresh();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Erreur";
       toast({ title: "Erreur", description: message, variant: "destructive" });
@@ -274,9 +274,9 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
                 <Badge className={ENROLLMENT_STATUS_COLORS[e.status] || "bg-gray-100"}>
                   {ENROLLMENT_STATUS_LABELS[e.status] || e.status}
                 </Badge>
-                {(e as unknown as { individual_price?: number }).individual_price != null && (
+                {e.individual_price != null && (
                   <Badge variant="secondary" className="text-[10px]">
-                    {((e as unknown as { individual_price: number }).individual_price).toLocaleString("fr-FR")} €
+                    {e.individual_price.toLocaleString("fr-FR")} €
                   </Badge>
                 )}
                 {(e as unknown as { individual_hours?: number }).individual_hours != null && (
@@ -317,16 +317,24 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
                 if (withEmail.length === 0) return;
                 if (!confirm(`Envoyer l'email d'accès à ${withEmail.length} apprenant(s) ?`)) return;
                 setSendingAccessAll(true);
-                let sent = 0;
+                let succeeded = 0;
+                let failed = 0;
                 for (const e of withEmail) {
                   try {
                     const res = await fetch(`/api/learners/${e.learner!.id}/send-welcome`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: formation.id }) });
-                    if (res.ok) sent++;
-                  } catch { /* skip */ }
+                    if (res.ok) succeeded++;
+                    else failed++;
+                  } catch {
+                    failed++;
+                  }
                 }
                 setSendingAccessAll(false);
-                toast({ title: `${sent} email(s) envoyé(s)` });
-                onRefresh();
+                toast({
+                  title: `${succeeded} email(s) envoyé(s)`,
+                  description: failed > 0 ? `${failed} échec(s) — vérifiez les logs` : undefined,
+                  variant: failed > 0 ? "destructive" : "default",
+                });
+                await onRefresh();
               }}
             >
               {sendingAccessAll ? <Loader2 className="h-3 w-3 animate-spin" /> : <Mail className="h-3 w-3" />}
