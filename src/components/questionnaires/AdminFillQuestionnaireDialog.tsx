@@ -19,19 +19,15 @@ import {
   Loader2, Star, Send, AlertTriangle, ShieldAlert,
 } from "lucide-react";
 
-import { expandObjectivesQuestions, buildResponsesPayload, type BaseQuestion } from "@/lib/expand-objectives-question";
+import { expandObjectivesQuestions, buildResponsesPayload, ExpandedQuestion } from "@/lib/expand-objectives-question";
 
-interface QuestionData {
-  id: string;
-  questionnaire_id?: string;
-  text: string;
+// QuestionData étend ExpandedQuestion du helper pour rester structurellement
+// compatible avec expandObjectivesQuestions() et buildResponsesPayload(),
+// tout en gardant le strict typing UI (type union, options array).
+type QuestionData = Omit<ExpandedQuestion, "type" | "options"> & {
   type: "rating" | "text" | "multiple_choice" | "yes_no" | "program_objectives";
   options: string[] | null;
-  is_required: boolean;
-  order_index: number;
-  parent_question_id?: string;
-  objective_text?: string;
-}
+};
 
 interface Props {
   open: boolean;
@@ -88,7 +84,7 @@ export function AdminFillQuestionnaireDialog({
         .eq("id", sessionId)
         .maybeSingle();
       expanded = expandObjectivesQuestions(
-        expanded as unknown as BaseQuestion[],
+        expanded,
         sessionData as never
       ) as QuestionData[];
     }
@@ -140,10 +136,7 @@ export function AdminFillQuestionnaireDialog({
     setSubmitting(true);
     try {
       // Snapshot des objectifs (utile si le programme change après)
-      const answersPayload = buildResponsesPayload(
-        responses,
-        questions as unknown as Parameters<typeof buildResponsesPayload>[1]
-      );
+      const answersPayload = buildResponsesPayload(responses, questions);
 
       const res = await fetch("/api/admin/questionnaires/fill-for-learner", {
         method: "POST",
