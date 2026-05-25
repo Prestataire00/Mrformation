@@ -259,6 +259,13 @@ export const SYSTEM_TEMPLATES_BY_DOC_TYPE: Record<string, SystemTemplate> = {
     ownerType: "session",
     qualiopiBlocking: false,
   },
+  // Alias : planning_semaine → même template que planning_hebdo_signe
+  planning_semaine: {
+    html: PLANNING_HEBDO_SIGNE_HTML,
+    footer: PLANNING_HEBDO_SIGNE_FOOTER_TEMPLATE,
+    ownerType: "session",
+    qualiopiBlocking: false,
+  },
 
   // ====================================================================
   // h-22 — Documents secondaires (23 templates, qualiopiBlocking: false)

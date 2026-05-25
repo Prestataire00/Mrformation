@@ -13,7 +13,7 @@ interface MatrixRow {
 interface Props {
   title: string;
   rows: MatrixRow[];
-  docTypes: string[];
+  docTypes: readonly string[];
   docLabels: Record<string, string>;
   onCellClick?: (ownerId: string, docType: string, docId?: string) => void;
   renderCellOverlay?: (ownerId: string, docType: string, docId?: string) => React.ReactNode;

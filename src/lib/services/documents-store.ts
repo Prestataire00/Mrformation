@@ -19,7 +19,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { FormationConventionDocument } from "@/lib/types";
+import type { FormationConventionDocument, DocumentTemplate } from "@/lib/types";
 import { mapStatusToFlags } from "@/lib/utils/document-status";
 
 // ─── Types internes ─────────────────────────────────────────────────────
@@ -350,6 +350,131 @@ export async function incrementReminderCount(
     .update({ metadata: newMetadata })
     .eq("id", docId);
   if (error) throw error;
+}
+
+// ─── ServiceResult type ────────────────────────────────────────────────────
+/**
+ * Type résultat discriminé utilisé pour les helpers de mutation.
+ * Pattern cohérent avec enrollments.ts / sessions.ts / invoices.ts.
+ */
+export type ServiceResult<T = Record<never, never>> =
+  | ({ ok: true } & T)
+  | { ok: false; error: { message: string; code?: string } };
+
+// ─── BULK UPDATE helpers ────────────────────────────────────────────────────
+
+/**
+ * UPDATE en masse de documents par doc_type pour une session.
+ * Filtre par entity_id + source_table='sessions' + source_id (session) + doc_type.
+ * Filtre optionnel onlyStatus (pattern legacy mass confirm).
+ *
+ * Résout les UPDATE inline (TabConventionDocs.tsx:960, 1576) qui manquaient
+ * .eq("entity_id", entityId) — violation CLAUDE.md AR20.
+ */
+export async function updateDocsByDocType(
+  supabase: SupabaseClient,
+  entityId: string,
+  sessionId: string,
+  docType: string,
+  patch: Record<string, unknown>,
+  options?: { onlyStatus?: string },
+): Promise<ServiceResult<{ updated: number }>> {
+  let query = supabase
+    .from("documents")
+    .update(patch)
+    .eq("entity_id", entityId)
+    .eq("source_table", "sessions")
+    .eq("source_id", sessionId)
+    .eq("doc_type", docType);
+  if (options?.onlyStatus) {
+    query = query.eq("status", options.onlyStatus);
+  }
+  const { data, error } = await query.select("id");
+  if (error) return { ok: false, error: { message: error.message, code: error.code } };
+  return { ok: true, updated: (data ?? []).length };
+}
+
+export type OwnerType = "session" | "learner" | "company" | "trainer" | "client" | "financier";
+
+/**
+ * UPDATE en masse de documents pour un destinataire (owner) précis.
+ * Filtre par entity_id + source_table='sessions' + source_id (session) + owner_type + owner_id.
+ *
+ * Résout TabConventionDocs.tsx:1016, 1796.
+ */
+export async function updateDocsForOwner(
+  supabase: SupabaseClient,
+  entityId: string,
+  sessionId: string,
+  ownerType: OwnerType,
+  ownerId: string,
+  patch: Record<string, unknown>,
+): Promise<ServiceResult<{ updated: number }>> {
+  const { data, error } = await supabase
+    .from("documents")
+    .update(patch)
+    .eq("entity_id", entityId)
+    .eq("source_table", "sessions")
+    .eq("source_id", sessionId)
+    .eq("owner_type", ownerType)
+    .eq("owner_id", ownerId)
+    .select("id");
+  if (error) return { ok: false, error: { message: error.message, code: error.code } };
+  return { ok: true, updated: (data ?? []).length };
+}
+
+/**
+ * SELECT un template par ID en filtrant par entity_id (défense en profondeur).
+ *
+ * Résout TabConventionDocs.tsx:508 qui fetchait par template_id seulement —
+ * un attaquant connaissant l'UUID pouvait charger un template cross-tenant.
+ */
+export async function getTemplateById(
+  supabase: SupabaseClient,
+  entityId: string,
+  templateId: string,
+): Promise<ServiceResult<{ template: DocumentTemplate | null }>> {
+  const { data, error } = await supabase
+    .from("document_templates")
+    .select("id, name, type, content, variables, mode, source_docx_url, default_for_doc_type")
+    .eq("entity_id", entityId)
+    .eq("id", templateId)
+    .maybeSingle();
+  if (error) return { ok: false, error: { message: error.message, code: error.code } };
+  return { ok: true, template: (data as DocumentTemplate | null) ?? null };
+}
+
+/**
+ * SELECT la dernière signature pour un document.
+ * Vérifie d'abord que le document appartient à entityId (défense en profondeur)
+ * puis lit la signature depuis document_signatures.
+ *
+ * Résout TabConventionDocs.tsx:472.
+ */
+export async function getLatestSignatureForDoc(
+  supabase: SupabaseClient,
+  entityId: string,
+  documentId: string,
+): Promise<ServiceResult<{ signature: { signer_name: string | null; signed_at: string | null } | null }>> {
+  // 1. Confirmer que le doc appartient à entityId
+  const { data: doc } = await supabase
+    .from("documents")
+    .select("id")
+    .eq("id", documentId)
+    .eq("entity_id", entityId)
+    .maybeSingle();
+  if (!doc) return { ok: true, signature: null };
+
+  // 2. Lire la signature
+  const { data: sig, error } = await supabase
+    .from("document_signatures")
+    .select("signer_name, signed_at")
+    .eq("document_id", documentId)
+    .order("signed_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) return { ok: false, error: { message: error.message, code: error.code } };
+  return { ok: true, signature: sig ?? null };
 }
 
 /**

@@ -502,6 +502,10 @@ export interface FormationConventionDocument {
   custom_label: string | null;
   requires_signature: boolean;
   created_at: string;
+  /** Injecté par `mapDocumentToLegacyShape()` depuis metadata.signer_email. */
+  signer_email?: string | null;
+  /** Injecté par `mapDocumentToLegacyShape()` depuis metadata.signer_name. */
+  signer_name?: string | null;
   template?: DocumentTemplate;
 }
 
@@ -648,12 +652,18 @@ export type DocumentType = "agreement" | "certificate" | "attendance" | "invoice
 
 export interface DocumentTemplate {
   id: string;
-  entity_id: string;
+  entity_id?: string;
   name: string;
-  type: DocumentType;
-  content: string | null;
-  variables: string[] | null;
-  created_at: string;
+  type: DocumentType | string | null;
+  content?: string | null;
+  variables?: string[] | Record<string, unknown> | null;
+  created_at?: string;
+  /** Mode de rendu : éditeur HTML ou fidélité .docx */
+  mode?: "editable" | "docx_fidelity" | null;
+  /** URL Storage du .docx source (mode docx_fidelity) */
+  source_docx_url?: string | null;
+  /** doc_type par défaut pour ce template */
+  default_for_doc_type?: string | null;
 }
 
 export interface GeneratedDocument {

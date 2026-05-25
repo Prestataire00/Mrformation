@@ -24,9 +24,9 @@ import { useEntity } from "@/contexts/EntityContext";
 import { renderSystemTemplate } from "@/lib/templates/registry";
 import { resolveVariables } from "@/lib/utils/resolve-variables";
 import { validateCompanyExport, findUncoveredLearners } from "@/lib/utils/formation-companies";
-import { exportHtmlToPDF, exportHtmlToPDFBase64 } from "@/lib/pdf-export";
+import { exportHtmlToPDF } from "@/lib/pdf-export";
 import { hasBatchEndpoint, downloadBatchZip } from "@/lib/utils/batch-doc-download";
-import { hasBatchSendEndpoint, sendBatchEmail } from "@/lib/utils/batch-doc-send";
+import { sendBatchEmail } from "@/lib/utils/batch-doc-send";
 import {
   hasBatchSignatureRequestEndpoint,
   requestBatchSignatures,
@@ -38,6 +38,11 @@ import {
   markDocConfirmed,
   unmarkDocConfirmed,
   markDocSent,
+  updateDocsByDocType,
+  updateDocsForOwner,
+  getTemplateById,
+  getLatestSignatureForDoc,
+  type OwnerType,
 } from "@/lib/services/documents-store";
 import { cn } from "@/lib/utils";
 import { DocMatrixSection } from "@/components/formations/DocMatrixSection";
@@ -425,6 +430,11 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
           await onRefresh();
         } catch (err) {
           console.error("[initializeDefaultDocs] insert error:", err);
+          toast({
+            title: "Erreur",
+            description: "Impossible de créer les documents par défaut",
+            variant: "destructive",
+          });
         }
       }
     } finally {
@@ -465,17 +475,11 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     const company = companies.find((c) => c.client_id === doc.owner_id)?.client;
     const trainerData = trainers.find((t) => t.trainer_id === doc.owner_id)?.trainer;
 
-    // Charger la signature client si le document est signé
-    let clientSignature: { signature_data: string; signer_name: string; signed_at: string; ip_address: string | null } | null = null;
+    // Charger la signature client si le document est signé (B3 — entity_id check)
+    let clientSignature: { signer_name: string | null; signed_at: string | null } | null = null;
     if (doc.is_signed) {
-      const { data: sig } = await supabase
-        .from("document_signatures")
-        .select("signature_data, signer_name, signed_at, ip_address")
-        .eq("document_id", doc.id)
-        .order("signed_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (sig) clientSignature = sig;
+      const sigResult = await getLatestSignatureForDoc(supabase, formation.entity_id, doc.id);
+      if (sigResult.ok && sigResult.signature) clientSignature = sigResult.signature;
     }
 
     const templateData = {
@@ -486,7 +490,10 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
       entityName,
       entity: entity ?? undefined,
       doc: { document_date: doc.document_date || null, confirmed_at: doc.confirmed_at || null },
-      clientSignature,
+      // signature_data omis intentionnellement (non utilisé par les templates, remplacé par B3)
+      clientSignature: clientSignature
+        ? { signature_data: "", signer_name: clientSignature.signer_name ?? "", signed_at: clientSignature.signed_at ?? "" }
+        : null,
     };
 
     // Bug Story B0 — résolu : `entity` était oublié dans le contexte, ce qui
@@ -504,13 +511,9 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     let htmlContent: string | null = null;
 
     if (doc.template_id) {
-      const { data: template } = await supabase
-        .from("document_templates")
-        .select("content")
-        .eq("id", doc.template_id)
-        .single();
-      if (template?.content?.trim()) {
-        htmlContent = resolveVariables(template.content, resolveCtx);
+      const tplResult = await getTemplateById(supabase, formation.entity_id, doc.template_id);
+      if (tplResult.ok && tplResult.template?.content?.trim()) {
+        htmlContent = resolveVariables(tplResult.template.content, resolveCtx);
       }
     } else {
       const { data: systemTemplate } = await supabase
@@ -593,7 +596,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
       await markDocConfirmed(supabase, docId);
       setSaving(null);
       toast({ title: "Document figé" });
-      onRefresh();
+      await onRefresh();
     } catch (err) {
       setSaving(null);
       toast({ title: "Erreur", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
@@ -607,7 +610,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
       await unmarkDocConfirmed(supabase, docId);
       setSaving(null);
       toast({ title: "Document déverrouillé" });
-      onRefresh();
+      await onRefresh();
     } catch (err) {
       setSaving(null);
       toast({ title: "Erreur", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
@@ -625,7 +628,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
       await markDocConfirmed(supabase, docId, dateValue);
       setSaving(null);
       toast({ title: "Document figé avec date" });
-      onRefresh();
+      await onRefresh();
     } catch (err) {
       setSaving(null);
       toast({ title: "Erreur", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
@@ -719,23 +722,10 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
 
     toast({ title: "Document envoyé par email" });
     setEmailPreview(null);
-    onRefresh();
+    await onRefresh();
   };
 
   // ===== MASS SEND WITH PDF =====
-
-  const getRecipientEmail = (doc: FormationConventionDocument): string | null => {
-    if (doc.owner_type === "learner") {
-      return enrollments.find((e) => e.learner?.id === doc.owner_id)?.learner?.email || null;
-    }
-    if (doc.owner_type === "company") {
-      return companies.find((c) => c.client_id === doc.owner_id)?.email || null;
-    }
-    if (doc.owner_type === "trainer") {
-      return trainers.find((t) => t.trainer_id === doc.owner_id)?.trainer?.email || null;
-    }
-    return null;
-  };
 
   // h-22 — nom + email d'affichage selon l'owner_type d'un doc. Sert à
   // regrouper les documents secondaires par destinataire dans leur section.
@@ -770,90 +760,32 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     const key = `${ownerType}-${docType}`;
     setMassSending(key);
 
-    // ─── PATH SERVER-SIDE (Story F2) ──────────────────────────────────
-    // Si un endpoint batch-send server-side existe pour ce doc_type, on
-    // l'utilise : DGS + Promise.allSettled + Resend en parallèle + update
-    // is_sent côté serveur. Pas de loop client-side avec jsPDF.
-    if (hasBatchSendEndpoint(docType)) {
-      try {
-        const res = await sendBatchEmail({ docType, sessionId: formation.id });
-        if (res.failureCount > 0) {
-          const sample = res.errors.slice(0, 3).map((e) => `${e.learnerName} (${e.error})`).join(", ");
-          toast({
-            title: `${res.successCount}/${res.totalRequested} ${DOC_LABELS_PLURAL[docType] ?? docType} envoyés`,
-            description: `${res.failureCount} échec(s) : ${sample}${res.errors.length > 3 ? "…" : ""}`,
-          });
-        } else {
-          toast({
-            title: `${res.successCount} ${DOC_LABELS_PLURAL[docType] ?? docType} envoyés`,
-            description: `Envoyé en ${(res.latencyMs / 1000).toFixed(1)}s`,
-          });
-        }
-      } catch (err) {
+    // Toutes les routes batch sont server-side après Stories F1.x/F2.x.
+    // BATCH_SEND_ENDPOINTS_BY_DOC_TYPE couvre les 21+ doc_types — la boucle
+    // client-side (800 ms × N) a été retirée.
+    try {
+      const res = await sendBatchEmail({ docType, sessionId: formation.id });
+      if (res.failureCount > 0) {
+        const sample = res.errors.slice(0, 3).map((e) => `${e.learnerName} (${e.error})`).join(", ");
         toast({
-          title: "Erreur envoi batch",
-          description: err instanceof Error ? err.message : String(err),
-          variant: "destructive",
+          title: `${res.successCount}/${res.totalRequested} ${DOC_LABELS_PLURAL[docType] ?? docType} envoyés`,
+          description: `${res.failureCount} échec(s) : ${sample}${res.errors.length > 3 ? "…" : ""}`,
+        });
+      } else {
+        toast({
+          title: `${res.successCount} ${DOC_LABELS_PLURAL[docType] ?? docType} envoyés`,
+          description: `Envoyé en ${(res.latencyMs / 1000).toFixed(1)}s`,
         });
       }
-      setMassSending(null);
-      onRefresh();
-      return;
+    } catch (err) {
+      toast({
+        title: "Erreur envoi batch",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
     }
-
-    // ─── FALLBACK LEGACY CLIENT-SIDE ──────────────────────────────────
-    // TODO Story F2.x : migrer les doc_types restants vers leurs endpoints
-    // send-X-batch-email server-side.
-    const targetDocs = docs.filter((d) => d.doc_type === docType && d.owner_type === ownerType);
-    let sent = 0;
-    let failed = 0;
-
-    for (const doc of targetDocs) {
-      const email = getRecipientEmail(doc);
-      if (!email) { failed++; continue; }
-      if (!canExportCompanyDoc(doc)) { failed++; continue; }
-
-      try {
-        const html = await generateDocHtml(doc);
-        const base64 = await exportHtmlToPDFBase64(
-          DOC_LABELS[doc.doc_type] || doc.doc_type, html, entityName
-        );
-
-        const res = await fetch("/api/emails/send", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            to: email,
-            subject: `${DOC_LABELS[doc.doc_type] || doc.doc_type} — ${formation.title}`,
-            body: `Bonjour,\n\nVeuillez trouver ci-joint votre document pour la formation "${formation.title}".\n\nCordialement,\nL'équipe formation`,
-            session_id: formation.id,
-            attachments: [{
-              filename: `${doc.doc_type.replace(/_/g, "-")}.pdf`,
-              content: base64,
-              type: "application/pdf",
-            }],
-          }),
-        });
-
-        if (res.ok) {
-          await markDocSent(supabase, doc.id);
-          sent++;
-        } else {
-          failed++;
-        }
-      } catch {
-        failed++;
-      }
-
-      // Anti-spam delay
-      await new Promise((r) => setTimeout(r, 800));
-    }
-
-    toast({
-      title: `${sent} envoyé${sent > 1 ? "s" : ""}${failed > 0 ? `, ${failed} échec${failed > 1 ? "s" : ""}` : ""}`,
-    });
     setMassSending(null);
-    onRefresh();
+    await onRefresh();
   };
 
   // ===== MASS DOWNLOAD PDF =====
@@ -896,8 +828,10 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     }
 
     // ─── FALLBACK LEGACY CLIENT-SIDE ──────────────────────────────────
-    // TODO Story F1.x : migrer ces doc_types (cgv, planning_semaine, etc.)
-    // vers leurs propres endpoints batch server-side.
+    // BATCH_ENDPOINTS_BY_DOC_TYPE (ZIP) couvre 6 doc_types originaux.
+    // Les 15 nouveaux doc_types (cgv, planning_semaine, bilan_poe, etc.)
+    // n'ont pas encore d'endpoint generate-*-batch → on garde le fallback
+    // client-side pour eux. Audit séparé requis pour les migrer.
     const targetDocs = docs.filter((d) => d.doc_type === docType && d.owner_type === ownerType);
     toast({ title: `Génération de ${targetDocs.length} PDF...` });
 
@@ -951,26 +885,24 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
       });
     }
     setMassRequestingSig(null);
-    onRefresh();
+    await onRefresh();
   };
 
-  // Mass confirm all docs of a type
+  // Mass confirm all docs of a type (B1 — entity_id via updateDocsByDocType)
   const handleMassConfirm = async (docType: ConventionDocType) => {
     setSaving(`mass-confirm-${docType}`);
-    const { error } = await supabase
-      .from("documents")
-      .update({ status: "generated", generated_at: new Date().toISOString() })
-      .eq("source_table", "sessions")
-      .eq("source_id", formation.id)
-      .eq("doc_type", docType)
-      .eq("status", "draft");
+    const result = await updateDocsByDocType(
+      supabase, formation.entity_id, formation.id, docType,
+      { status: "generated", generated_at: new Date().toISOString() },
+      { onlyStatus: "draft" },
+    );
     setSaving(null);
-    if (error) {
-      toast({ title: "Erreur", description: error.message, variant: "destructive" });
-    } else {
-      toast({ title: `Toutes les ${DOC_LABELS_PLURAL[docType] || docType} confirmées` });
-      onRefresh();
+    if (!result.ok) {
+      toast({ title: "Erreur", description: result.error.message, variant: "destructive" });
+      return;
     }
+    toast({ title: `${result.updated} document(s) confirmé(s)` });
+    await onRefresh();
   };
 
   // Mass send all confirmed docs of a type
@@ -1006,27 +938,23 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     }
     setSaving(null);
     toast({ title: `${sent} document(s) envoyé(s)` });
-    onRefresh();
+    await onRefresh();
   };
 
-  // Mass confirm all docs for a specific owner
+  // Mass confirm all docs for a specific owner (B1 — entity_id via updateDocsForOwner)
   const handleConfirmAllForOwner = async (ownerType: ConventionOwnerType, ownerId: string) => {
-    setSaving(`confirm-all-${ownerId}`);
-    const { error } = await supabase
-      .from("documents")
-      .update({ status: "generated", generated_at: new Date().toISOString() })
-      .eq("source_table", "sessions")
-      .eq("source_id", formation.id)
-      .eq("owner_type", ownerType)
-      .eq("owner_id", ownerId)
-      .eq("status", "draft");
+    setSaving(`confirm-all-owner-${ownerId}`);
+    const result = await updateDocsForOwner(
+      supabase, formation.entity_id, formation.id, ownerType as OwnerType, ownerId,
+      { status: "generated", generated_at: new Date().toISOString() },
+    );
     setSaving(null);
-    if (error) {
-      toast({ title: "Erreur", variant: "destructive" });
-    } else {
-      toast({ title: "Tous les documents figés" });
-      onRefresh();
+    if (!result.ok) {
+      toast({ title: "Erreur", description: result.error.message, variant: "destructive" });
+      return;
     }
+    toast({ title: `${result.updated} document(s) figé(s)` });
+    await onRefresh();
   };
 
   // Add custom doc for a specific owner
@@ -1056,7 +984,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
       }]);
       setSaving(null);
       toast({ title: "Document ajouté" });
-      onRefresh();
+      await onRefresh();
     } catch (err: unknown) {
       setSaving(null);
       const code = (err as { code?: string })?.code;
@@ -1092,13 +1020,15 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     if (rows.length > 0) {
       try {
         await upsertDocsIgnoreDuplicates(supabase, rows);
-      } catch (err) {
+      } catch (err: unknown) {
         console.error("[handleAssignTemplateToAll] upsert failed:", err);
+        const message = err instanceof Error ? err.message : "Échec de l'attribution";
+        toast({ title: "Erreur", description: message, variant: "destructive" });
       }
     }
     setSaving(null);
     toast({ title: "Document attribué à tous les apprenants" });
-    onRefresh();
+    await onRefresh();
   };
 
   // Send document for electronic signature via /api/documents/sign-request
@@ -1124,7 +1054,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
         throw new Error(errData.error || "Erreur lors de l'envoi");
       }
       toast({ title: "Demande de signature envoyée" });
-      onRefresh();
+      await onRefresh();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Erreur lors de l'envoi pour signature";
       toast({ title: "Erreur", description: message, variant: "destructive" });
@@ -1137,7 +1067,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
 
   const renderStatusBadge = (doc: FormationConventionDocument | undefined) => {
     if (!doc) return null;
-    const signerEmail = (doc as unknown as Record<string, string>).signer_email;
+    const signerEmail = doc.signer_email;
 
     // État progressif : Signé > En attente signature > Figé > Brouillon
     if (doc.is_signed) {
@@ -1572,14 +1502,22 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
             if (unfrozenCount === 0) { toast({ title: "Tous les documents sont déjà figés" }); return; }
             if (!confirm(`Figer ${unfrozenCount} document(s) ? Les informations ne seront plus modifiables ensuite.`)) return;
             setSaving("confirm-all-learners");
+            // B1 — entity_id ajouté inline (scope "tous les types" non couvert par updateDocsByDocType)
+            // TODO: extraire dans updateAllDocsForSession() quand le helper sera créé
             const { error } = await supabase
               .from("documents")
               .update({ status: "generated", generated_at: new Date().toISOString() })
+              .eq("entity_id", formation.entity_id)
               .eq("source_table", "sessions")
               .eq("source_id", formation.id)
               .eq("status", "draft");
             setSaving(null);
-            if (!error) { toast({ title: `${unfrozenCount} document(s) figé(s)` }); onRefresh(); }
+            if (!error) {
+              toast({ title: `${unfrozenCount} document(s) figé(s)` });
+              await onRefresh();
+            } else {
+              toast({ title: "Erreur", description: error.message, variant: "destructive" });
+            }
           }}
           disabled={saving === "confirm-all-learners"}
         >
@@ -1626,7 +1564,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
                 id: lr.id, name: lr.name,
                 cells: Object.fromEntries(Object.entries(lr.row).map(([k, v]) => [k, { ...v, status: v.status === "signed" ? "completed" : v.status === "confirmed" ? "assigned" : v.status === "none" ? "not_assigned" : v.status }])),
               }))}
-              docTypes={DEFAULT_LEARNER_DOCS as unknown as string[]}
+              docTypes={DEFAULT_LEARNER_DOCS}
               docLabels={DOC_LABELS}
               avatarColorFn={getAvatarColor}
               onCellClick={(_ownerId, _docType, docId) => { if (docId) { const d = docs.find(x => x.id === docId); if (d) handleView(d); } }}
@@ -1640,7 +1578,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
                 id: cr.id, name: cr.name,
                 cells: Object.fromEntries(Object.entries(cr.row).map(([k, v]) => [k, { ...v, status: v.status === "signed" ? "completed" : v.status === "confirmed" ? "assigned" : v.status === "none" ? "not_assigned" : v.status }])),
               }))}
-              docTypes={DEFAULT_COMPANY_DOCS as unknown as string[]}
+              docTypes={DEFAULT_COMPANY_DOCS}
               docLabels={DOC_LABELS}
               avatarColorFn={getAvatarColor}
               onCellClick={(_ownerId, _docType, docId) => { if (docId) { const d = docs.find(x => x.id === docId); if (d) handleView(d); } }}
@@ -1654,7 +1592,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
                 id: tr.id, name: tr.name,
                 cells: Object.fromEntries(Object.entries(tr.row).map(([k, v]) => [k, { ...v, status: v.status === "signed" ? "completed" : v.status === "confirmed" ? "assigned" : v.status === "none" ? "not_assigned" : v.status }])),
               }))}
-              docTypes={DEFAULT_TRAINER_DOCS as unknown as string[]}
+              docTypes={DEFAULT_TRAINER_DOCS}
               docLabels={DOC_LABELS}
               avatarColorFn={getAvatarColor}
               onCellClick={(_ownerId, _docType, docId) => { if (docId) { const d = docs.find(x => x.id === docId); if (d) handleView(d); } }}
@@ -1792,16 +1730,19 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
               className="h-7 text-xs shrink-0"
               onClick={async () => {
                 setSaving("confirm-custom");
-                await supabase
-                  .from("documents")
-                  .update({ status: "generated", generated_at: new Date().toISOString() })
-                  .eq("source_table", "sessions")
-                  .eq("source_id", formation.id)
-                  .eq("doc_type", "custom")
-                  .eq("status", "draft");
+                // B1 — entity_id via updateDocsByDocType
+                const r = await updateDocsByDocType(
+                  supabase, formation.entity_id, formation.id, "custom",
+                  { status: "generated", generated_at: new Date().toISOString() },
+                  { onlyStatus: "draft" },
+                );
                 setSaving(null);
-                toast({ title: "Documents figés" });
-                onRefresh();
+                if (!r.ok) {
+                  toast({ title: "Erreur", description: r.error.message, variant: "destructive" });
+                  return;
+                }
+                toast({ title: `${r.updated} document(s) figé(s)` });
+                await onRefresh();
               }}
               disabled={saving === "confirm-custom"}
             >
