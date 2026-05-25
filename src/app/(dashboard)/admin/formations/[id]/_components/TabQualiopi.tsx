@@ -47,55 +47,73 @@ export function TabQualiopi({ formation }: Props) {
   const supabase = createClient();
   const abortRef = useRef<AbortController | null>(null);
 
-  const evalAssignments = formation.formation_evaluation_assignments || [];
-  const satisAssignments = formation.formation_satisfaction_assignments || [];
-  const enrollments = formation.enrollments || [];
-  const learnerCount = enrollments.length || 1;
-
   useEffect(() => {
     setLoading(false);
   }, []);
 
   // Fetch response counts for evaluation assignments
   const fetchResponseCounts = useCallback(async () => {
-    const counts: Record<string, { total: number; done: number }> = {};
+    const evalAssignments = formation.formation_evaluation_assignments || [];
+    const satisAssignments = formation.formation_satisfaction_assignments || [];
+    const enrollmentsCount = (formation.enrollments || []).length || 1;
 
-    // Evaluation assignments
-    const preFormation = evalAssignments.filter(a => a.evaluation_type === "eval_preformation");
-    const postFormation = evalAssignments.filter(a => a.evaluation_type === "eval_postformation");
+    const preFormationIds = evalAssignments
+      .filter(a => a.evaluation_type === "eval_preformation")
+      .map(a => a.questionnaire_id) as string[];
+    const postFormationIds = evalAssignments
+      .filter(a => a.evaluation_type === "eval_postformation")
+      .map(a => a.questionnaire_id) as string[];
+    const satisfactionIds = satisAssignments
+      .map(a => a.questionnaire_id) as string[];
 
-    for (const [key, assignments] of [
-      ["eval_preformation", preFormation],
-      ["eval_postformation", postFormation],
-    ] as const) {
-      const total = assignments.length > 0 ? learnerCount : 0;
-      let done = 0;
-      for (const a of assignments) {
-        const { count } = await supabase
-          .from("questionnaire_responses")
-          .select("id", { count: "exact", head: true })
-          .eq("questionnaire_id", a.questionnaire_id)
-          .eq("session_id", formation.id);
-        done += count || 0;
-      }
-      counts[key] = { total, done: Math.min(done, total) };
+    const allIds = [...preFormationIds, ...postFormationIds, ...satisfactionIds];
+    if (allIds.length === 0) {
+      setResponseCounts({});
+      return;
     }
 
-    // Satisfaction assignments
-    const satisTotal = satisAssignments.length > 0 ? learnerCount : 0;
-    let satisDone = 0;
-    for (const a of satisAssignments) {
-      const { count } = await supabase
-        .from("questionnaire_responses")
-        .select("id", { count: "exact", head: true })
-        .eq("questionnaire_id", a.questionnaire_id)
-        .eq("session_id", formation.id);
-      satisDone += count || 0;
+    // 1 seul round-trip Supabase via RPC count_responses_by_questionnaire.
+    const { data: grouped, error } = await supabase.rpc("count_responses_by_questionnaire", {
+      p_session_id: formation.id,
+      p_questionnaire_ids: allIds,
+    });
+    if (error) {
+      console.warn("[qualiopi] count_responses_by_questionnaire failed:", error.message);
+      setResponseCounts({});
+      return;
     }
-    counts["satisfaction"] = { total: satisTotal, done: Math.min(satisDone, satisTotal) };
+
+    const countsByQId = new Map<string, number>(
+      (grouped as Array<{ questionnaire_id: string; response_count: number }> | null ?? [])
+        .map(r => [r.questionnaire_id, Number(r.response_count)]),
+    );
+
+    const sumFor = (ids: string[]) =>
+      ids.reduce((s, qid) => s + (countsByQId.get(qid) ?? 0), 0);
+
+    const counts: Record<string, { total: number; done: number }> = {
+      eval_preformation: {
+        total: preFormationIds.length > 0 ? enrollmentsCount : 0,
+        done: Math.min(sumFor(preFormationIds), preFormationIds.length > 0 ? enrollmentsCount : 0),
+      },
+      eval_postformation: {
+        total: postFormationIds.length > 0 ? enrollmentsCount : 0,
+        done: Math.min(sumFor(postFormationIds), postFormationIds.length > 0 ? enrollmentsCount : 0),
+      },
+      satisfaction: {
+        total: satisfactionIds.length > 0 ? enrollmentsCount : 0,
+        done: Math.min(sumFor(satisfactionIds), satisfactionIds.length > 0 ? enrollmentsCount : 0),
+      },
+    };
 
     setResponseCounts(counts);
-  }, [evalAssignments, satisAssignments, formation.id, learnerCount, supabase]);
+  }, [
+    formation.id,
+    formation.formation_evaluation_assignments,
+    formation.formation_satisfaction_assignments,
+    formation.enrollments,
+    supabase,
+  ]);
 
   useEffect(() => {
     fetchResponseCounts();
