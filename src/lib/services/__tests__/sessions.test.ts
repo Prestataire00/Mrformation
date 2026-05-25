@@ -5,6 +5,9 @@ import {
   createSessionWithOptionalCompany,
   updateSession,
   resolveCatalogPrice,
+  updateSessionField,
+  duplicateSession,
+  deleteSession,
 } from "@/lib/services/sessions";
 
 // Type minimal du client Supabase utilisé par les helpers
@@ -323,5 +326,126 @@ describe("resolveCatalogPrice", () => {
     const result = await resolveCatalogPrice(supabase, "t1", "e1");
 
     expect(result).toBeNull();
+  });
+});
+
+describe("updateSessionField", () => {
+  it("filtre par id ET entity_id", async () => {
+    const eqCalls: Array<{ col: string; val: unknown }> = [];
+    const supabase = {
+      from: vi.fn(() => ({
+        update: vi.fn(() => ({
+          eq: vi.fn(function (this: object, col: string, val: unknown) {
+            eqCalls.push({ col, val });
+            return Object.assign(this, {
+              eq: vi.fn(function (col2: string, val2: unknown) {
+                eqCalls.push({ col: col2, val: val2 });
+                return Promise.resolve({ error: null });
+              }),
+            });
+          }),
+        })),
+      })),
+    };
+    const res = await updateSessionField(supabase as never, "SESS-1", "ENT-A", { description: "x" });
+    expect(res.ok).toBe(true);
+    expect(eqCalls).toContainEqual({ col: "id", val: "SESS-1" });
+    expect(eqCalls).toContainEqual({ col: "entity_id", val: "ENT-A" });
+  });
+
+  it("retourne { ok: false, error: { message } } sur erreur Supabase", async () => {
+    const supabase = {
+      from: vi.fn(() => ({
+        update: vi.fn(() => ({
+          eq: vi.fn(() => ({
+            eq: vi.fn(() => Promise.resolve({ error: { message: "DB error", code: "42P01" } })),
+          })),
+        })),
+      })),
+    };
+    const res = await updateSessionField(supabase as never, "SESS-1", "ENT-A", { description: "x" });
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.error.message).toBe("DB error");
+      expect(res.error.code).toBe("42P01");
+    }
+  });
+});
+
+describe("duplicateSession", () => {
+  it("copie les champs source + suffixe (copie) + status='upcoming'", async () => {
+    const source = {
+      training_id: "T1", entity_id: "ENT-A", title: "Formation X",
+      start_date: "2026-01-01", end_date: "2026-01-31", location: "Paris",
+      mode: "presentiel", max_participants: 10, notes: null, type: "intra",
+      domain: null, description: "desc", total_price: 1000, planned_hours: 14,
+      program_id: null,
+    };
+    let inserted: Record<string, unknown> = {};
+    const supabase = {
+      from: vi.fn((table: string) => {
+        if (table === "sessions") {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            single: vi.fn(async () => ({ data: source, error: null })),
+            insert: vi.fn((payload: Record<string, unknown>) => {
+              inserted = payload;
+              return {
+                select: vi.fn().mockReturnThis(),
+                single: vi.fn(async () => ({ data: { id: "NEW-ID" }, error: null })),
+              };
+            }),
+          };
+        }
+        return {};
+      }),
+    };
+    const res = await duplicateSession(supabase as never, "SESS-1", "ENT-A");
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.newId).toBe("NEW-ID");
+    }
+    expect(inserted.title).toBe("Formation X (copie)");
+    expect(inserted.status).toBe("upcoming");
+    expect(inserted.training_id).toBe("T1");
+    expect(inserted.total_price).toBe(1000);
+  });
+
+  it("retourne erreur si session introuvable", async () => {
+    const supabase = {
+      from: vi.fn(() => ({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        single: vi.fn(async () => ({ data: null, error: null })),
+      })),
+    };
+    const res = await duplicateSession(supabase as never, "SESS-UNKNOWN", "ENT-A");
+    expect(res.ok).toBe(false);
+  });
+});
+
+describe("deleteSession", () => {
+  it("exécute un seul DELETE filtré par id + entity_id", async () => {
+    const eqCalls: Array<{ col: string; val: unknown }> = [];
+    const supabase = {
+      from: vi.fn(() => ({
+        delete: vi.fn(() => ({
+          eq: vi.fn(function (this: object, col: string, val: unknown) {
+            eqCalls.push({ col, val });
+            return Object.assign(this, {
+              eq: vi.fn(function (col2: string, val2: unknown) {
+                eqCalls.push({ col: col2, val: val2 });
+                return Promise.resolve({ error: null });
+              }),
+            });
+          }),
+        })),
+      })),
+    };
+    const res = await deleteSession(supabase as never, "SESS-1", "ENT-A");
+    expect(res.ok).toBe(true);
+    expect(eqCalls).toContainEqual({ col: "id", val: "SESS-1" });
+    expect(eqCalls).toContainEqual({ col: "entity_id", val: "ENT-A" });
   });
 });

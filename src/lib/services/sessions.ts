@@ -170,3 +170,89 @@ export async function updateSession(
   }
   return { ok: true };
 }
+
+/**
+ * UPDATE atomique d'un ou plusieurs champs d'une session.
+ * Filtre par id ET entity_id (défense en profondeur, AR20).
+ *
+ * Utilisé par les sous-composants Résumé pour éditer description/location/manager/visio_link.
+ * Renvoie ServiceResult pour que le caller affiche error.message dans le toast.
+ */
+export async function updateSessionField(
+  supabase: SupabaseClient,
+  sessionId: string,
+  entityId: string,
+  patch: Record<string, unknown>,
+): Promise<ServiceResult<Record<never, never>>> {
+  const { error } = await supabase
+    .from("sessions")
+    .update(patch)
+    .eq("id", sessionId)
+    .eq("entity_id", entityId);
+  if (error) return { ok: false, error: { message: error.message, code: error.code } };
+  return { ok: true };
+}
+
+/**
+ * Duplique une session : copie 14 champs métier, suffixe ` (copie)` au titre,
+ * status = "upcoming". Refuse si la session source n'appartient pas à entityId.
+ * Renvoie l'id de la nouvelle session pour redirection.
+ */
+export async function duplicateSession(
+  supabase: SupabaseClient,
+  sessionId: string,
+  entityId: string,
+): Promise<ServiceResult<{ newId: string }>> {
+  const { data: src, error: readErr } = await supabase
+    .from("sessions")
+    .select(
+      "training_id, entity_id, title, start_date, end_date, location, mode, max_participants, notes, type, domain, description, total_price, planned_hours, program_id",
+    )
+    .eq("id", sessionId)
+    .eq("entity_id", entityId)
+    .single();
+  if (readErr || !src) {
+    return { ok: false, error: { message: readErr?.message ?? "Session introuvable" } };
+  }
+
+  const payload = { ...src, title: `${src.title} (copie)`, status: "upcoming" };
+  const { data, error } = await supabase
+    .from("sessions")
+    .insert(payload)
+    .select("id")
+    .single();
+  if (error || !data) {
+    return { ok: false, error: { message: error?.message ?? "Échec duplication" } };
+  }
+  return { ok: true, newId: data.id };
+}
+
+/**
+ * Supprime une session. PostgreSQL gère le cleanup automatique selon les FKs :
+ *   ON DELETE CASCADE → row supprimée :
+ *     formation_trainers, formation_companies, formation_financiers,
+ *     formation_comments, formation_time_slots, enrollments, formation_documents,
+ *     qualiopi_snapshots, formation_invoices, formation_invoice_lines,
+ *     formation_evaluation/satisfaction/elearning_assignments
+ *   ON DELETE SET NULL → row conservée, session_id passé à NULL :
+ *     signatures, documents, email_history,
+ *     qualiopi_mock_audits, qualiopi_proof_checks, questionnaire_responses,
+ *     generated_documents
+ *
+ * Le comportement SET NULL est intentionnel (préserve historique). Identique
+ * au comportement du code avant cette refacto (qui ne supprimait pas non plus
+ * ces tables) — pas de régression, juste atomicité gagnée.
+ */
+export async function deleteSession(
+  supabase: SupabaseClient,
+  sessionId: string,
+  entityId: string,
+): Promise<ServiceResult<Record<never, never>>> {
+  const { error } = await supabase
+    .from("sessions")
+    .delete()
+    .eq("id", sessionId)
+    .eq("entity_id", entityId);
+  if (error) return { ok: false, error: { message: error.message, code: error.code } };
+  return { ok: true };
+}
