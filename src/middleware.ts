@@ -3,6 +3,21 @@ import { NextResponse, type NextRequest } from "next/server";
 import { PAGE_PERMISSIONS, API_PERMISSIONS, type Role } from "@/lib/auth/permissions";
 
 export async function middleware(request: NextRequest) {
+  // Bypass pour les requêtes server-to-server signées avec CRON_SECRET.
+  // Sans ce bypass, le proxy /api/.../trigger-event → /api/.../run-cron et les
+  // Netlify Scheduled Functions (fetch depuis le serveur, donc sans cookies)
+  // sont 401'd par le middleware faute de session Supabase. Les routes cron
+  // valident elles-mêmes le secret (comparaison stricte) → on peut les laisser
+  // passer en toute sécurité ici. Le secret n'est jamais exposé au navigateur,
+  // donc cette voie est inatteignable depuis le front.
+  const cronSecret = process.env.CRON_SECRET;
+  if (cronSecret) {
+    const authHeader = request.headers.get("authorization");
+    if (authHeader === `Bearer ${cronSecret}`) {
+      return NextResponse.next({ request: { headers: request.headers } });
+    }
+  }
+
   let response = NextResponse.next({
     request: {
       headers: request.headers,
