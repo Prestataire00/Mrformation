@@ -17,6 +17,31 @@ export const BATCH_SEND_ENDPOINTS_BY_DOC_TYPE: Partial<Record<string, string>> =
   feuille_emargement: "send-emargements-individuels-batch-email",
   convention_entreprise: "send-conventions-batch-email",
   convention_intervention: "send-conventions-intervention-batch-email",
+  // Nouveaux (Stories F1.x/F2.x)
+  cgv: "send-cgv-batch-email",
+  reglement_interieur: "send-reglement-interieur-batch-email",
+  politique_confidentialite: "send-politique-confidentialite-batch-email",
+  planning_semaine: "send-planning-semaine-batch-email",
+  feuille_emargement_vierge: "send-feuille-emargement-vierge-batch-email",
+  bilan_poe: "send-bilans-poe-batch-email",
+  reponses_evaluations: "send-reponses-evaluations-batch-email",
+  reponses_satisfaction_session: "send-reponses-satisfaction-batch-email",
+  resultats_evaluations: "send-resultats-evaluations-batch-email",
+  attestation_aipr: "send-attestations-aipr-batch-email",
+  attestation_competences: "send-attestations-competences-batch-email",
+  attestation_abandon_formation: "send-attestations-abandon-batch-email",
+  certificat_travail_hauteur: "send-certificats-travail-hauteur-batch-email",
+  certificat_diplome: "send-certificats-diplome-batch-email",
+  // 9 variantes habilitation → même route
+  avis_hab_elec_generique: "send-avis-habilitation-electrique-batch-email",
+  avis_hab_elec_b0_bf_bs: "send-avis-habilitation-electrique-batch-email",
+  avis_hab_elec_b1v_b2v_br: "send-avis-habilitation-electrique-batch-email",
+  avis_hab_elec_bf_hf: "send-avis-habilitation-electrique-batch-email",
+  avis_hab_elec_bt: "send-avis-habilitation-electrique-batch-email",
+  avis_hab_elec_bt_ht: "send-avis-habilitation-electrique-batch-email",
+  avis_hab_elec_h0_b0: "send-avis-habilitation-electrique-batch-email",
+  avis_hab_elec_h0_b0_bf_hf_bs: "send-avis-habilitation-electrique-batch-email",
+  avis_hab_elec_h0_b0_initial: "send-avis-habilitation-electrique-batch-email",
 };
 
 export interface BatchSendResult {
@@ -53,7 +78,7 @@ export async function sendBatchEmail(args: SendArgs): Promise<BatchSendResult> {
   const res = await fetch(`/api/documents/${endpoint}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sessionId: args.sessionId }),
+    body: JSON.stringify({ sessionId: args.sessionId, docType: args.docType }),
   });
 
   if (!res.ok) {
