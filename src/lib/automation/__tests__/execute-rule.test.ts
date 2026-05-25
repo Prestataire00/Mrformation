@@ -15,6 +15,13 @@ const session: SessionInfo = {
 const learner: RecipientInfo = {
   id: "l1", email: "l@x.fr", first_name: "Jean", last_name: "Dupont", type: "learner",
 };
+const trainer: RecipientInfo = {
+  id: "t1", email: "t@x.fr", first_name: "Anne", last_name: "Martin", type: "trainer",
+};
+// Les entreprises sont portées en type "learner" — c'est recipientType qui aiguille.
+const company: RecipientInfo = {
+  id: "c1", email: "c@x.fr", first_name: "Acme SAS", last_name: "", type: "learner",
+};
 
 describe("buildAttachmentsForRecipient", () => {
   it("renvoie [] quand aucun type de document", () => {
@@ -47,6 +54,43 @@ describe("buildAttachmentsForRecipient", () => {
       [tplId]: { id: tplId, name: "X", mode: "editable", source_docx_url: null },
     };
     expect(buildAttachmentsForRecipient([tplId], session, learner, "learners", customById)).toEqual([]);
+  });
+
+  it("mappe convention_intervention vers un descripteur trainer", () => {
+    const res = buildAttachmentsForRecipient(["convention_intervention"], session, trainer, "trainers", {});
+    expect(res).toHaveLength(1);
+    expect(res[0]).toMatchObject({
+      type: "convention_intervention",
+      payload: { session_id: "s1", trainer_id: "t1" },
+    });
+  });
+
+  it("ignore convention_intervention si le destinataire n'est pas un trainer", () => {
+    const res = buildAttachmentsForRecipient(["convention_intervention"], session, learner, "learners", {});
+    expect(res).toEqual([]);
+  });
+
+  it("mappe feuille_emargement vers un descripteur learner", () => {
+    const res = buildAttachmentsForRecipient(["feuille_emargement"], session, learner, "learners", {});
+    expect(res).toHaveLength(1);
+    expect(res[0]).toMatchObject({
+      type: "feuille_emargement",
+      payload: { session_id: "s1", learner_id: "l1" },
+    });
+  });
+
+  it("mappe feuille_emargement_collectif vers un descripteur client quand recipientType=companies", () => {
+    const res = buildAttachmentsForRecipient(["feuille_emargement_collectif"], session, company, "companies", {});
+    expect(res).toHaveLength(1);
+    expect(res[0]).toMatchObject({
+      type: "feuille_emargement_collectif",
+      payload: { session_id: "s1", client_id: "c1" },
+    });
+  });
+
+  it("ignore feuille_emargement_collectif si le recipientType n'est pas companies", () => {
+    const res = buildAttachmentsForRecipient(["feuille_emargement_collectif"], session, learner, "learners", {});
+    expect(res).toEqual([]);
   });
 });
 

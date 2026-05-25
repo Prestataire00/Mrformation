@@ -41,6 +41,10 @@ export type EmailAttachmentDescriptor =
   | { type: "convention_intervention"; payload: { session_id: string; trainer_id: string } }
   | { type: "certificat_realisation"; payload: { session_id: string; learner_id: string } }
   | { type: "programme_formation"; payload: { session_id: string } }
+  // Feuilles d'émargement — registry templates dispo. ownerType="learner" pour
+  // la feuille individuelle, "company" pour la collective.
+  | { type: "feuille_emargement"; payload: { session_id: string; learner_id: string } }
+  | { type: "feuille_emargement_collectif"; payload: { session_id: string; client_id: string } }
   | { type: "facture"; payload: { invoice_id: string } }
   | { type: "devis"; payload: { quote_id: string } }
   | { type: "file_url"; filename: string; url: string }

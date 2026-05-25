@@ -118,6 +118,17 @@ export function buildAttachmentsForRecipient(
       case "programme_formation":
         descriptors.push({ type: "programme_formation", payload: { session_id: session.id } });
         break;
+      case "feuille_emargement":
+        if (recipient.type === "learner") {
+          descriptors.push({ type: docType, payload: { session_id: session.id, learner_id: recipient.id } });
+        }
+        break;
+      case "feuille_emargement_collectif":
+        // ownerType "company" du registry — la collective est portée par le client.
+        if (recipientType === "companies") {
+          descriptors.push({ type: "feuille_emargement_collectif", payload: { session_id: session.id, client_id: recipient.id } });
+        }
+        break;
     }
   }
   return descriptors;
@@ -248,6 +259,22 @@ export async function executeRuleForSession(
       body = fb.body;
     }
 
+    // Source des attachements :
+    //   1. Le template email (s'il a un attachment_doc_types configuré) — priorité haute,
+    //      l'admin a explicitement choisi quoi joindre.
+    //   2. Sinon, on dérive [rule.document_type] — une règle de type sémantique
+    //      (convocation, certificat_realisation, etc.) doit toujours envoyer le doc
+    //      portant ce nom, même sans template. Évite le piège « règle créée par
+    //      défaut → envoie un mail sans PJ ».
+    //   3. Le type "email" est exclu : il désigne un message personnalisé sans doc
+    //      à joindre (cas des règles avec template custom porteur des attachements).
+    const effectiveAttachmentTypes =
+      (template?.attachment_doc_types?.length ?? 0) > 0
+        ? template!.attachment_doc_types
+        : (rule.document_type && rule.document_type !== "email"
+            ? [rule.document_type]
+            : null);
+
     try {
       await enqueueEmail(supabase, {
         to: recipient.email,
@@ -258,7 +285,7 @@ export async function executeRuleForSession(
         recipient_type: recipient.type,
         recipient_id: recipient.id,
         attachments: buildAttachmentsForRecipient(
-          template?.attachment_doc_types,
+          effectiveAttachmentTypes,
           session,
           recipient,
           recipientType,

@@ -32,6 +32,8 @@ const FILENAME_LABELS: Record<string, string> = {
   convention_intervention: "Convention-intervention",
   certificat_realisation: "Certificat-realisation",
   programme_formation: "Programme",
+  feuille_emargement: "Feuille-Emargement",
+  feuille_emargement_collectif: "Feuille-Emargement-Collective",
   facture: "Facture",
   devis: "Devis",
   // h-22 secondaires
