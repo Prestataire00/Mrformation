@@ -445,6 +445,39 @@ export async function getTemplateById(
 }
 
 /**
+ * SELECT la dernière signature pour un document.
+ * Vérifie d'abord que le document appartient à entityId (défense en profondeur)
+ * puis lit la signature depuis document_signatures.
+ *
+ * Résout TabConventionDocs.tsx:472.
+ */
+export async function getLatestSignatureForDoc(
+  supabase: SupabaseClient,
+  entityId: string,
+  documentId: string,
+): Promise<ServiceResult<{ signature: { signer_name: string | null; signed_at: string | null } | null }>> {
+  // 1. Confirmer que le doc appartient à entityId
+  const { data: doc } = await supabase
+    .from("documents")
+    .select("id")
+    .eq("id", documentId)
+    .eq("entity_id", entityId)
+    .maybeSingle();
+  if (!doc) return { ok: true, signature: null };
+
+  // 2. Lire la signature
+  const { data: sig, error } = await supabase
+    .from("document_signatures")
+    .select("signer_name, signed_at")
+    .eq("document_id", documentId)
+    .order("signed_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) return { ok: false, error: { message: error.message, code: error.code } };
+  return { ok: true, signature: sig ?? null };
+}
+
+/**
  * Lookup d'1 doc par id avec les champs nécessaires pour /api/documents/sign.
  */
 export async function getDocById(

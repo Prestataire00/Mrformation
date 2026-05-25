@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { updateDocsByDocType, updateDocsForOwner, getTemplateById } from "@/lib/services/documents-store";
+import { updateDocsByDocType, updateDocsForOwner, getTemplateById, getLatestSignatureForDoc } from "@/lib/services/documents-store";
 
 describe("updateDocsByDocType", () => {
   it("filtre par entity_id + source_table + source_id + doc_type", async () => {
@@ -207,5 +207,77 @@ describe("getTemplateById", () => {
     };
     const res = await getTemplateById(supabase as never, "ENT-A", "T-1");
     expect(res.ok).toBe(false);
+  });
+});
+
+describe("getLatestSignatureForDoc", () => {
+  it("retourne la signature si doc appartient à entityId", async () => {
+    const fromCalls: string[] = [];
+    const supabase = {
+      from: vi.fn((table: string) => {
+        fromCalls.push(table);
+        if (table === "documents") {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            maybeSingle: vi.fn(async () => ({ data: { id: "D-1" }, error: null })),
+          };
+        }
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          order: vi.fn().mockReturnThis(),
+          limit: vi.fn().mockReturnThis(),
+          maybeSingle: vi.fn(async () => ({
+            data: { signer_name: "Jean Dupont", signed_at: "2026-05-25T10:00:00Z" },
+            error: null,
+          })),
+        };
+      }),
+    };
+    const res = await getLatestSignatureForDoc(supabase as never, "ENT-A", "D-1");
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.signature?.signer_name).toBe("Jean Dupont");
+    }
+    expect(fromCalls).toContain("documents");
+    expect(fromCalls).toContain("document_signatures");
+  });
+
+  it("retourne signature: null si doc pas dans entityId", async () => {
+    const supabase = {
+      from: vi.fn(() => ({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+      })),
+    };
+    const res = await getLatestSignatureForDoc(supabase as never, "ENT-A", "D-UNKNOWN");
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.signature).toBeNull();
+  });
+
+  it("retourne signature: null si pas de signature", async () => {
+    const supabase = {
+      from: vi.fn((table: string) => {
+        if (table === "documents") {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            maybeSingle: vi.fn(async () => ({ data: { id: "D-1" }, error: null })),
+          };
+        }
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          order: vi.fn().mockReturnThis(),
+          limit: vi.fn().mockReturnThis(),
+          maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+        };
+      }),
+    };
+    const res = await getLatestSignatureForDoc(supabase as never, "ENT-A", "D-1");
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.signature).toBeNull();
   });
 });
