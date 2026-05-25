@@ -119,7 +119,11 @@ dans Supabase Dashboard.
 
 ### C.2 — P0-4 : Scoring yes_no + text
 
-(Section enrichie par Task 7 du plan.)
+| # | Action | Attendu | OK ? |
+|---|--------|---------|------|
+| C3 | `npx vitest run src/lib/services/__tests__/load-evaluation-results.test.ts` | **6 tests verts** | ☐ |
+| C4 | Spot check manuel : 1 session avec 1 apprenant qui répond "non" à 1 question yes_no dont correct="oui" — vérifier que le résultat affiché dans `loadEvaluationResults` est **incorrect** (vs 100% en bug actuel) | Statut "non acquis" si seuil 70% non atteint | ☐ |
+| C5 | Spot check : "Élève" (avec accent) vs correct="eleve" (sans accent) → marqué **correct** (normalisation accents) | OK | ☐ |
 
 ---
 
@@ -183,19 +187,47 @@ résolu — l'objectif principal du chantier est atteint.**
 
 ---
 
-## E. Résultats de la validation
+## E. Procédure d'exécution
 
-(Section à remplir au moment de l'exécution. Date, dev, observations.)
+### E.1 — Ordre d'exécution des migrations dans Supabase Dashboard
+
+À exécuter **avant** push du code de la branche `feat/questionnaires-solidification-p0` sur `main`.
+
+1. Ouvrir Supabase Dashboard → SQL Editor
+2. Exécuter dans l'ordre :
+   1. **`supabase/migrations/fix_questionnaires_rls_strict.sql`**
+      - Crée 12 policies (4 par table × 3 tables)
+      - Vérification : `SELECT polname FROM pg_policy WHERE polrelid IN ('formation_evaluation_assignments'::regclass, 'formation_satisfaction_assignments'::regclass, 'questionnaire_tokens'::regclass) ORDER BY polrelid, polname;` → 12 lignes
+   2. **`supabase/migrations/sync_assignments_to_questionnaire_sessions.sql`**
+      - Crée la fonction `sync_assignment_to_questionnaire_sessions` + 2 triggers + backfill
+      - Vérification : `SELECT trigger_name FROM information_schema.triggers WHERE event_object_table IN ('formation_evaluation_assignments', 'formation_satisfaction_assignments');` → 2 triggers
+   3. **`supabase/migrations/fix_satisfaction_type_enum.sql`**
+      - DROP + ADD CHECK sur `formation_satisfaction_assignments.satisfaction_type`
+      - Vérification : `SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid = 'formation_satisfaction_assignments'::regclass AND contype = 'c';` → liste contenant 'satisfaction_entreprise'
+
+### E.2 — Exécution des tests
+
+- **Tests A (RLS, 39)** : Section A — durée estimée 30-45 min
+- **Tests B (trigger, 7)** : Section B — durée estimée 20-30 min
+- **Tests C (spot checks)** : Section C — durée estimée 10 min
+- **Test D (end-to-end)** : Section D — durée estimée 15-20 min
+
+**Total** : ~1h15-1h45 de validation manuelle.
+
+### E.3 — Résultats de l'exécution
+
+À remplir au moment de la validation.
 
 - **Date d'exécution** : _________________
 - **Développeur** : _________________
-- **Migrations exécutées dans le Dashboard** :
+- **Migrations exécutées** :
   - [ ] `fix_questionnaires_rls_strict.sql` à _____ (HH:MM)
   - [ ] `sync_assignments_to_questionnaire_sessions.sql` à _____ (HH:MM)
-  - [ ] `fix_satisfaction_type_enum.sql` à _____ (HH:MM) — si applicable
-- **Tests A (RLS, 39 tests)** : __ / 39 verts
-- **Tests B (trigger, 7 tests)** : __ / 7 verts
-- **Tests C (spot checks)** : __ / __ verts
+  - [ ] `fix_satisfaction_type_enum.sql` à _____ (HH:MM)
+- **Tests A (RLS, 39)** : __ / 39 verts
+- **Tests B (trigger, 7)** : __ / 7 verts
+- **Tests C (spot checks, 5)** : __ / 5 verts
 - **Test D (end-to-end)** : ☐ vert
 - **Observations / incidents** : _________________
 - **Décision push prod** : ☐ Go / ☐ No-go
+- **Signé** : _________________
