@@ -136,7 +136,7 @@ export default function FormationDetailPage() {
       enrollments: formation.enrollments?.length || 0,
       docs: formation.formation_convention_documents?.length || 0,
       slots: formation.formation_time_slots?.length || 0,
-      qualiopi: (formation as unknown as { qualiopi_score?: number }).qualiopi_score || 0,
+      qualiopi: formation.qualiopi_score ?? 0,
     };
   }, [formation]);
 
@@ -434,7 +434,7 @@ export default function FormationDetailPage() {
 
         {/* 8. Qualiopi */}
         <TabsContent value="qualiopi" className="mt-6">
-          <TabQualiopi formation={formation} onRefresh={fetchFormation} />
+          <TabQualiopi formation={formation} />
         </TabsContent>
 
         {/* 9. Automatisation */}

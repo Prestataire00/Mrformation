@@ -127,18 +127,23 @@ export function buildQualiopiItems(
   return items;
 }
 
+/**
+ * Score (0-100) à partir d'items déjà construits. Permet aux consumers (TabQualiopi)
+ * qui ont déjà appelé `buildQualiopiItems` d'éviter une seconde construction.
+ */
+export function scoreFromItems(items: QualiopiScoreItem[]): number {
+  if (items.length === 0) return 0;
+  let achieved = 0;
+  for (const item of items) {
+    if (item.type === "auto_percent") achieved += (item.percent || 0) / 100;
+    else if (item.value) achieved += 1;
+  }
+  return Math.round((achieved / items.length) * 100);
+}
+
 export function computeQualiopiScore(
   formation: Session,
   opts: ComputeOptions = {},
 ): number {
-  const items = buildQualiopiItems(formation, opts);
-  if (items.length === 0) return 0;
-  let totalWeight = 0;
-  let achieved = 0;
-  for (const item of items) {
-    totalWeight += 1;
-    if (item.type === "auto_percent") achieved += (item.percent || 0) / 100;
-    else if (item.value) achieved += 1;
-  }
-  return Math.round((achieved / totalWeight) * 100);
+  return scoreFromItems(buildQualiopiItems(formation, opts));
 }
