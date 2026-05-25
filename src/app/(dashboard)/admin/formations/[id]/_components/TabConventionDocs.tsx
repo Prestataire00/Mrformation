@@ -1512,7 +1512,12 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
               .eq("source_id", formation.id)
               .eq("status", "draft");
             setSaving(null);
-            if (!error) { toast({ title: `${unfrozenCount} document(s) figé(s)` }); onRefresh(); }
+            if (!error) {
+              toast({ title: `${unfrozenCount} document(s) figé(s)` });
+              await onRefresh();
+            } else {
+              toast({ title: "Erreur", description: error.message, variant: "destructive" });
+            }
           }}
           disabled={saving === "confirm-all-learners"}
         >

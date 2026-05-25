@@ -75,6 +75,7 @@ export interface BatchSendOutcome {
   successCount: number;
   failureCount: number;
   errors: BatchSendError[];
+  latencyMs?: number;
 }
 
 export interface BatchSendOptions {
@@ -222,6 +223,7 @@ export async function executeBatchEmailSend(
     successCount,
     failureCount: errors.length,
     errors,
+    latencyMs: Date.now() - batchStartedAt,
   };
 }
 
@@ -235,9 +237,11 @@ export async function executeBatchEmailSend(
  */
 export interface BatchSendDocsResult {
   ok: true;
-  sent: number;
-  failed: number;
-  errors: Array<{ recipient: string; reason: string }>;
+  totalRequested: number;
+  successCount: number;
+  failureCount: number;
+  errors: BatchSendError[];
+  latencyMs?: number;
 }
 
 export interface BatchSendDocsError {
@@ -376,7 +380,7 @@ export async function batchSendDocsEmail(
   // 3. Charger les destinataires selon ownerType
   const recipientRows = await loadRecipientsByOwnerType(supabase, sessionId, entityId, ownerType);
   if (recipientRows.length === 0) {
-    return { ok: true, sent: 0, failed: 0, errors: [] };
+    return { ok: true, totalRequested: 0, successCount: 0, failureCount: 0, errors: [] };
   }
 
   // 4. Charger entity settings (branding, logo) pour les templates HTML et docx
@@ -426,7 +430,11 @@ export async function batchSendDocsEmail(
         const ctx: ResolveContext = {
           session: session as unknown as Session,
           entity: entitySettings,
-          learner: ownerType === "learner" ? (recipient.fullRecord as unknown as Learner) : undefined,
+          // ownerType "session" charge des apprenants (cf. loadRecipientsByOwnerType)
+          // → on passe le fullRecord comme Learner pour que les variables
+          //   [%Nom de l'apprenant%] etc. soient résolues correctement.
+          learner: (ownerType === "learner" || ownerType === "session")
+            ? (recipient.fullRecord as unknown as Learner) : undefined,
           client: ownerType === "company" ? (recipient.fullRecord as unknown as Client) : undefined,
           trainer: ownerType === "trainer" ? (recipient.fullRecord as unknown as Trainer) : undefined,
         };
@@ -447,7 +455,8 @@ export async function batchSendDocsEmail(
         //     mais on a déjà vérifié que tpl existe (étape 2), donc safe.
         const html = renderSystemTemplate(docType, {
           formation: session as unknown as Session,
-          learner: ownerType === "learner" ? (recipient.fullRecord as unknown as Learner) : undefined,
+          learner: (ownerType === "learner" || ownerType === "session")
+            ? (recipient.fullRecord as unknown as Learner) : undefined,
           company: ownerType === "company" ? (recipient.fullRecord as unknown as Client) : undefined,
           trainer: ownerType === "trainer" ? (recipient.fullRecord as unknown as Trainer) : undefined,
           entity: entitySettings ?? undefined,
@@ -464,7 +473,7 @@ export async function batchSendDocsEmail(
           cacheInputs: {
             doc_type: docType,
             session_id: sessionId,
-            ...(ownerType === "learner" && { learner_id: recipient.id }),
+            ...((ownerType === "learner" || ownerType === "session") && { learner_id: recipient.id }),
             ...(ownerType === "company" && { client_id: recipient.id }),
             ...(ownerType === "trainer" && { trainer_id: recipient.id }),
             session_updated_at: (session as { updated_at?: string }).updated_at ?? null,
@@ -500,9 +509,11 @@ export async function batchSendDocsEmail(
 
   return {
     ok: true,
-    sent: outcome.successCount,
-    failed: outcome.failureCount,
-    errors: outcome.errors.map((e) => ({ recipient: e.ownerName, reason: e.error })),
+    totalRequested: outcome.totalRequested,
+    successCount: outcome.successCount,
+    failureCount: outcome.failureCount,
+    errors: outcome.errors,
+    latencyMs: outcome.latencyMs,
   };
 }
 
