@@ -60,61 +60,70 @@ export function AdminFillQuestionnaireDialog({
     setLoading(true);
     setBlocked(false);
 
-    // Fetch questionnaire + questions
-    const { data: q } = await supabase
-      .from("questionnaires")
-      .select("id, title")
-      .eq("id", questionnaireId)
-      .single();
+    try {
+      // Fetch questionnaire + questions
+      const { data: q } = await supabase
+        .from("questionnaires")
+        .select("id, title")
+        .eq("id", questionnaireId)
+        .single();
 
-    setQuestionnaireName(q?.title || "Questionnaire");
+      setQuestionnaireName(q?.title || "Questionnaire");
 
-    const { data: qs } = await supabase
-      .from("questions")
-      .select("id, questionnaire_id, text, type, options, is_required, order_index")
-      .eq("questionnaire_id", questionnaireId)
-      .order("order_index");
+      const { data: qs } = await supabase
+        .from("questions")
+        .select("id, questionnaire_id, text, type, options, is_required, order_index")
+        .eq("questionnaire_id", questionnaireId)
+        .order("order_index");
 
-    // Expanse program_objectives → 1 rating par objectif du programme de la session
-    let expanded: QuestionData[] = (qs || []) as QuestionData[];
-    if (expanded.some((q) => q.type === "program_objectives")) {
-      const { data: sessionData } = await supabase
-        .from("sessions")
-        .select("program:programs(objectives), training:trainings(objectives)")
-        .eq("id", sessionId)
-        .maybeSingle();
-      expanded = expandObjectivesQuestions(
-        expanded,
-        sessionData as never
-      ) as QuestionData[];
-    }
-    setQuestions(expanded);
-
-    // Fetch existing response
-    const res = await fetch(
-      `/api/admin/questionnaires/fill-for-learner?questionnaire_id=${questionnaireId}&learner_id=${learnerId}&session_id=${sessionId}`
-    );
-    const { data: existing } = await res.json();
-
-    if (existing) {
-      if (existing.fill_mode === "learner") {
-        setBlocked(true);
-        setResponses(existing.answers || {});
-      } else {
-        setResponses(existing.answers || {});
-        setFillMode(existing.fill_mode || "admin_for_learner");
-        setAdminNotes(existing.admin_notes || "");
-        setExistingId(existing.id);
+      // Expanse program_objectives → 1 rating par objectif du programme de la session
+      let expanded: QuestionData[] = (qs || []) as QuestionData[];
+      if (expanded.some((q) => q.type === "program_objectives")) {
+        const { data: sessionData } = await supabase
+          .from("sessions")
+          .select("program:programs(objectives), training:trainings(objectives)")
+          .eq("id", sessionId)
+          .maybeSingle();
+        expanded = expandObjectivesQuestions(
+          expanded,
+          sessionData as never
+        ) as QuestionData[];
       }
-    } else {
-      setResponses({});
-      setFillMode("admin_for_learner");
-      setAdminNotes("");
-      setExistingId(null);
-    }
+      setQuestions(expanded);
 
-    setLoading(false);
-  }, [open, questionnaireId, learnerId, sessionId, supabase]);
+      // Fetch existing response
+      const res = await fetch(
+        `/api/admin/questionnaires/fill-for-learner?questionnaire_id=${questionnaireId}&learner_id=${learnerId}&session_id=${sessionId}`
+      );
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error((errData as { error?: string }).error ?? `Erreur ${res.status}`);
+      }
+      const { data: existing } = await res.json();
+
+      if (existing) {
+        if (existing.fill_mode === "learner") {
+          setBlocked(true);
+          setResponses(existing.answers || {});
+        } else {
+          setResponses(existing.answers || {});
+          setFillMode(existing.fill_mode || "admin_for_learner");
+          setAdminNotes(existing.admin_notes || "");
+          setExistingId(existing.id);
+        }
+      } else {
+        setResponses({});
+        setFillMode("admin_for_learner");
+        setAdminNotes("");
+        setExistingId(null);
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Erreur de chargement";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  }, [open, questionnaireId, learnerId, sessionId, supabase, toast]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
