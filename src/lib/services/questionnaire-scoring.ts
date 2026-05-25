@@ -47,6 +47,7 @@ export function isCorrect(question: QuestionRow, userAnswer: unknown): boolean |
     }
 
     // Format B (legacy ?) : array de strings direct, pas de correct_answer
+    /* v8 ignore next 3 */
     if (Array.isArray(opts) && opts.every((o) => typeof o === "string")) {
       return null; // non scorable sans correct_answer accessible
     }

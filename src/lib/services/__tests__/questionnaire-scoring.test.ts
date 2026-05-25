@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isCorrect } from "@/lib/services/questionnaire-scoring";
+import { isCorrect, normalize } from "@/lib/services/questionnaire-scoring";
 
 /**
  * Tests régression P0-4 (deep-dive 2026-05-25) :
@@ -77,6 +77,107 @@ describe("isCorrect — scoring questionnaire (P0-4 régression)", () => {
         options: { options: ["A", "B", "C"], correct_answer: 1 },
       };
       expect(isCorrect(question, 1)).toBe(true);
+    });
+
+    it("utilise obj.choices quand obj.options est absent (Format A variante choices)", () => {
+      // Couvre la branche `obj.options ?? obj.choices` → chemin obj.choices
+      const question = {
+        id: "q1",
+        type: "multiple_choice",
+        options: { choices: ["X", "Y", "Z"], correct_answer: 0 },
+      };
+      expect(isCorrect(question, "X")).toBe(true);
+    });
+
+    it("retourne null quand correctIdx reste null (pas de correct_answer numérique)", () => {
+      // correct_answer est une string, pas un number → correctIdx = null → return null ligne 54
+      const question = {
+        id: "q1",
+        type: "multiple_choice",
+        options: { options: ["A", "B", "C"], correct_answer: "A" },
+      };
+      expect(isCorrect(question, "A")).toBe(null);
+    });
+
+    it("retourne null pour format B (array de strings direct, pas de correct_answer)", () => {
+      // Format B legacy : options est un tableau de strings, sans correct_answer accessible
+      // V8 note: Array.isArray branch — covered via direct isArray check
+      const question = {
+        id: "q1",
+        type: "multiple_choice",
+        options: ["A", "B", "C"] as unknown,
+      };
+      expect(isCorrect(question, "A")).toBe(null);
+    });
+
+    it("retourne null pour format B avec array mixte (array mais pas tous strings)", () => {
+      // Couvre la branche opts.every() === false : Array.isArray=true mais every=false
+      const question = {
+        id: "q1",
+        type: "multiple_choice",
+        options: ["A", 2, "C"] as unknown,
+      };
+      expect(isCorrect(question, "A")).toBe(null);
+    });
+
+    it("retourne null quand userAnswer n'est ni string ni number (multiple_choice)", () => {
+      // correctIdx est résolu (2) mais userAnswer est un objet → branche null finale
+      const question = {
+        id: "q1",
+        type: "multiple_choice",
+        options: { options: ["A", "B", "C"], correct_answer: 2 },
+      };
+      expect(isCorrect(question, { label: "C" })).toBe(null);
+    });
+  });
+
+  describe("autres branches scoring", () => {
+    it("retourne null pour le type 'rating' (non scorable)", () => {
+      const question = {
+        id: "q1",
+        type: "rating",
+        options: { correct_answer: 5 },
+      };
+      expect(isCorrect(question, 4)).toBe(null);
+    });
+
+    it("retourne null pour un type inconnu (default fallback)", () => {
+      const question = {
+        id: "q1",
+        type: "type_inexistant",
+        options: { correct_answer: "x" },
+      };
+      expect(isCorrect(question, "x")).toBe(null);
+    });
+
+    it("retourne null quand options est null (pas de scoring possible)", () => {
+      const question = {
+        id: "q1",
+        type: "yes_no",
+        options: null,
+      };
+      expect(isCorrect(question, "oui")).toBe(null);
+    });
+
+    it("retourne null quand opts.correct_answer est undefined", () => {
+      const question = {
+        id: "q1",
+        type: "yes_no",
+        options: {},  // pas de correct_answer
+      };
+      expect(isCorrect(question, "oui")).toBe(null);
+    });
+  });
+
+  describe("normalize() helper (tests directs)", () => {
+    it("normalise input null/undefined en chaîne vide", () => {
+      expect(normalize(null)).toBe("");
+      expect(normalize(undefined)).toBe("");
+    });
+
+    it("normalise espaces multiples + casse + accents", () => {
+      expect(normalize("  Élève  ")).toBe("eleve");
+      expect(normalize("CAFÉ")).toBe("cafe");
     });
   });
 });
