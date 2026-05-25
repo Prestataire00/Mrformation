@@ -1,0 +1,58 @@
+/**
+ * POST /api/documents/send-reglement-interieur-batch-email
+ *
+ * Thin-wrapper Story F1.x — délègue à batchSendDocsEmail.
+ * Génère et envoie le règlement intérieur par email à tous les destinataires de la session.
+ */
+
+import { createClient } from "@/lib/supabase/server";
+import { sanitizeError } from "@/lib/api-error";
+import { NextRequest, NextResponse } from "next/server";
+import { batchSendDocsEmail } from "@/lib/services/batch-email-handler";
+
+export async function POST(request: NextRequest) {
+  const t0 = Date.now();
+  try {
+    const supabase = createClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+    if (authError || !user)
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("id, entity_id, role")
+      .eq("id", user.id)
+      .single();
+    if (!profile?.entity_id)
+      return NextResponse.json({ error: "Profile not found" }, { status: 403 });
+    if (!["admin", "super_admin"].includes(profile.role)) {
+      return NextResponse.json({ error: "Accès non autorisé" }, { status: 403 });
+    }
+
+    const body = (await request.json()) as { sessionId?: string };
+    if (!body.sessionId)
+      return NextResponse.json({ error: "sessionId est obligatoire" }, { status: 400 });
+
+    const result = await batchSendDocsEmail(
+      supabase,
+      profile.entity_id,
+      body.sessionId,
+      "reglement_interieur",
+      profile.id,
+    );
+
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ ...result, totalLatencyMs: Date.now() - t0 });
+  } catch (err) {
+    return NextResponse.json(
+      { error: sanitizeError(err, "sending reglement interieur batch email") },
+      { status: 500 },
+    );
+  }
+}
