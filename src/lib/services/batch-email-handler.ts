@@ -547,7 +547,7 @@ async function loadRecipientsByOwnerType(
   if (ownerType === "learner" || ownerType === "session") {
     const { data } = await supabase
       .from("enrollments")
-      .select("learner:learners(id, email, first_name, last_name)")
+      .select("learner:learners(*)")
       .eq("session_id", sessionId)
       .in("status", ["registered", "confirmed", "completed"]);
 
@@ -558,6 +558,7 @@ async function loadRecipientsByOwnerType(
           email: string | null;
           first_name: string;
           last_name: string;
+          [key: string]: unknown;
         } | null;
         if (!l) return null;
         return {
@@ -611,7 +612,7 @@ async function loadRecipientsByOwnerType(
   if (ownerType === "trainer") {
     const { data } = await supabase
       .from("formation_trainers")
-      .select("trainer:trainers(id, email, first_name, last_name)")
+      .select("trainer:trainers(*)")
       .eq("session_id", sessionId);
 
     return (data ?? [])
@@ -621,6 +622,7 @@ async function loadRecipientsByOwnerType(
           email: string | null;
           first_name: string;
           last_name: string;
+          [key: string]: unknown;
         } | null;
         if (!t) return null;
         return {
