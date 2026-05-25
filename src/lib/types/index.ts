@@ -253,6 +253,10 @@ export interface Session {
   evaluation_methods?: string | null;
   access_modality?: string | null;
   access_delay_days?: number | null;
+  // Solidification Qualiopi (2026-05-25) : score calculé + checks manuels admin.
+  // qualiopi_manual est stocké dans sessions.qualiopi_manual (JSONB).
+  qualiopi_score?: number | null;
+  qualiopi_manual?: Record<string, boolean> | null;
   updated_at: string;
   created_at: string;
   // Relations
