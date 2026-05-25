@@ -61,11 +61,15 @@ export function ResumeCompanies({ formation, onRefresh }: Props) {
     const client = allClients.find((c) => c.id === clientId);
     if (!client) return;
 
-    // Fetch contacts for this client (separate query to avoid RLS issues)
+    // Fetch contacts for this client (separate query to avoid RLS issues).
+    // Filtre entity_id : défense en profondeur (la table contacts a sa propre
+    // colonne entity_id ; sans ce filtre, un client partagé entre entités
+    // ferait fuiter les contacts cross-tenant. Cf deep-dive B1.)
     const { data: contactsData } = await supabase
       .from("contacts")
       .select("id, email, first_name, last_name, is_primary")
-      .eq("client_id", clientId);
+      .eq("client_id", clientId)
+      .eq("entity_id", formation.entity_id);
     const contacts = contactsData || [];
 
     // 1. Compute suggested amount
@@ -79,8 +83,7 @@ export function ResumeCompanies({ formation, onRefresh }: Props) {
     if (clientLearners.length > 0) {
       // Sum individual prices if defined
       const individualSum = clientLearners.reduce((sum, e) => {
-        const ip = (e as unknown as { individual_price?: number }).individual_price;
-        return sum + (ip || 0);
+        return sum + (e.individual_price || 0);
       }, 0);
 
       if (individualSum > 0) {
@@ -114,8 +117,8 @@ export function ResumeCompanies({ formation, onRefresh }: Props) {
       }
     }
     // Priority 3: client email field
-    if (!suggestedEmail && (client as unknown as { email?: string }).email) {
-      suggestedEmail = (client as unknown as { email: string }).email;
+    if (!suggestedEmail && client.email) {
+      suggestedEmail = client.email;
     }
 
     setEmail(suggestedEmail);
