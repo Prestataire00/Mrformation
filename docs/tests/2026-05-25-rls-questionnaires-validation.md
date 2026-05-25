@@ -85,7 +85,24 @@ Bonus de 3 tests :
 
 ## B. Matrice trigger (Volet E) — 7 tests
 
-(Section ajoutée par Task 4 du plan.)
+**Préalable** : exécuter d'abord `sync_assignments_to_questionnaire_sessions.sql`
+dans Supabase Dashboard.
+
+**Setup** : récupérer 1 `<session_id>` (avec entité utilisateur), 1
+`<questionnaire_eval_id>` (de type 'evaluation'), 1 `<questionnaire_satis_id>`
+(de type 'satisfaction').
+
+### B.1 — Tests trigger
+
+| # | Action | Commande | Vérification | OK ? |
+|---|--------|----------|--------------|------|
+| 1 | INSERT 1 attribution éval | `INSERT INTO formation_evaluation_assignments (session_id, questionnaire_id, evaluation_type) VALUES ('<session_id>', '<questionnaire_eval_id>', 'eval_preformation');` | `SELECT COUNT(*) FROM questionnaire_sessions WHERE session_id = '<session_id>' AND questionnaire_id = '<questionnaire_eval_id>';` → **1** | ☐ |
+| 2 | DELETE cette attribution | `DELETE FROM formation_evaluation_assignments WHERE session_id = '<session_id>' AND questionnaire_id = '<questionnaire_eval_id>';` | `SELECT COUNT(*) FROM questionnaire_sessions WHERE session_id = '<session_id>' AND questionnaire_id = '<questionnaire_eval_id>';` → **0** | ☐ |
+| 3 | INSERT satis chaud + satis froid (même q, même s) | 2 INSERT dans `formation_satisfaction_assignments` avec `satisfaction_type` différent | `SELECT COUNT(*) FROM questionnaire_sessions WHERE session_id = '<session_id>' AND questionnaire_id = '<questionnaire_satis_id>';` → **1** (dédupliqué) | ☐ |
+| 4 | DELETE satis chaud (garder froid) | `DELETE FROM formation_satisfaction_assignments WHERE satisfaction_type = 'satisfaction_chaud' AND session_id = '<session_id>';` | (idem #3) → **1** (miroir conservé) | ☐ |
+| 5 | DELETE satis froid | `DELETE FROM formation_satisfaction_assignments WHERE satisfaction_type = 'satisfaction_froid' AND session_id = '<session_id>';` | (idem #3) → **0** | ☐ |
+| 6 | UPDATE evaluation_type sur attribution existante | (créer 1 row puis) `UPDATE formation_evaluation_assignments SET evaluation_type = 'eval_postformation' WHERE id = '<row_id>';` | `SELECT * FROM questionnaire_sessions WHERE session_id = '<session_id>' AND questionnaire_id = '<questionnaire_eval_id>';` → 1 row inchangé (pas de side-effect) | ☐ |
+| 7 | Vérifier backfill | Avant migration : compter les rows dans `formation_evaluation_assignments` + `formation_satisfaction_assignments` (DISTINCT q_id, s_id). Après migration : compter rows dans `questionnaire_sessions` qui ont leur counterpart. | Backfill doit avoir mirroré toutes les paires DISTINCT. | ☐ |
 
 ---
 
@@ -97,7 +114,61 @@ Bonus de 3 tests :
 
 ## D. End-to-end P0-1 (résolution du découplage)
 
-(Section ajoutée par Task 4 du plan.)
+**Le test pivot du Chantier 1.** Si ce flow passe, l'admin peut piloter le
+sous-système questionnaires depuis TabQuestionnaires.
+
+### D.1 — Préparation
+- Créer 1 nouvelle session vierge dans `/admin/formations/<f_id>` (peu importe
+  la formation)
+- Vérifier qu'aucune attribution n'existe pour cette session :
+  ```sql
+  SELECT COUNT(*) FROM formation_evaluation_assignments WHERE session_id = '<session_id>';
+  SELECT COUNT(*) FROM formation_satisfaction_assignments WHERE session_id = '<session_id>';
+  SELECT COUNT(*) FROM questionnaire_sessions WHERE session_id = '<session_id>';
+  ```
+  Tous → 0.
+
+### D.2 — Attribution
+- Ouvrir `/admin/formations/<f_id>` → onglet "Questionnaires"
+- Dans le stage "Avant la formation", cliquer "Attribuer" → choisir un
+  questionnaire d'évaluation pré-formation
+- Dans le stage "Après la formation", cliquer "Attribuer" → choisir un
+  questionnaire de satisfaction chaud
+
+### D.3 — Vérification base de données
+
+```sql
+SELECT * FROM formation_evaluation_assignments WHERE session_id = '<session_id>';
+-- → 1 ligne avec evaluation_type = 'eval_preformation'
+
+SELECT * FROM formation_satisfaction_assignments WHERE session_id = '<session_id>';
+-- → 1 ligne avec satisfaction_type = 'satisfaction_chaud'
+
+SELECT * FROM questionnaire_sessions WHERE session_id = '<session_id>';
+-- → 2 lignes (mirrorées par le trigger)
+```
+
+### D.4 — Vérification UI consommateurs
+
+- **Onglet Qualiopi** : les KPIs doivent compter ces 2 attributions
+  (questionnaires attribués)
+- **Onglet Résumé** : éventuellement un badge ou compteur Qualiopi
+- **Onglet Émargement** : pas d'effet attendu (hors scope questionnaire)
+
+### D.5 — Submission apprenant (optionnel mais utile)
+
+- Générer 1 token pour 1 apprenant : bouton "Générer liens QR" dans
+  TabQuestionnaires
+- Ouvrir le lien public `/questionnaire/<token>` dans un onglet privé
+- Répondre à 1 question
+- Soumettre
+- Retour TabQuestionnaires admin : vérifier que le statut de l'apprenant
+  passe à "Répondu"
+- Cliquer "Générer PDF résultats évaluations" → le PDF s'ouvre et contient
+  bien la réponse de l'apprenant ✅
+
+**✅ Si D.5 passe entièrement, le découplage architectural (P0-1) est
+résolu — l'objectif principal du chantier est atteint.**
 
 ---
 
