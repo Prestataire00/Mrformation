@@ -43,8 +43,9 @@ AS $$
 $$;
 GRANT EXECUTE ON FUNCTION count_responses_by_questionnaire TO authenticated;
 
--- 4. Drop check-proof (À EXÉCUTER MANUELLEMENT APRÈS VÉRIFICATION COUNT = 0)
--- Vérification préalable :
+-- 4. Drop check-proof (à exécuter après vérification manuelle COUNT = 0).
+-- Cette route était orpheline (aucun consumer UI, cf deep-dive 2026-05-25).
+-- Avant de lancer cette migration en prod : vérifier
 --   SELECT count(*) FROM qualiopi_proof_checks;
--- Si 0 → décommenter :
--- DROP TABLE IF EXISTS qualiopi_proof_checks;
+-- Si > 0, escalader avant de DROP (les données seront perdues).
+DROP TABLE IF EXISTS qualiopi_proof_checks;
