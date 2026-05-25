@@ -38,6 +38,11 @@ import {
   markDocConfirmed,
   unmarkDocConfirmed,
   markDocSent,
+  updateDocsByDocType,
+  updateDocsForOwner,
+  getTemplateById,
+  getLatestSignatureForDoc,
+  type OwnerType,
 } from "@/lib/services/documents-store";
 import { cn } from "@/lib/utils";
 import { DocMatrixSection } from "@/components/formations/DocMatrixSection";
@@ -470,17 +475,11 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     const company = companies.find((c) => c.client_id === doc.owner_id)?.client;
     const trainerData = trainers.find((t) => t.trainer_id === doc.owner_id)?.trainer;
 
-    // Charger la signature client si le document est signé
-    let clientSignature: { signature_data: string; signer_name: string; signed_at: string; ip_address: string | null } | null = null;
+    // Charger la signature client si le document est signé (B3 — entity_id check)
+    let clientSignature: { signer_name: string | null; signed_at: string | null } | null = null;
     if (doc.is_signed) {
-      const { data: sig } = await supabase
-        .from("document_signatures")
-        .select("signature_data, signer_name, signed_at, ip_address")
-        .eq("document_id", doc.id)
-        .order("signed_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (sig) clientSignature = sig;
+      const sigResult = await getLatestSignatureForDoc(supabase, formation.entity_id, doc.id);
+      if (sigResult.ok && sigResult.signature) clientSignature = sigResult.signature;
     }
 
     const templateData = {
@@ -491,7 +490,10 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
       entityName,
       entity: entity ?? undefined,
       doc: { document_date: doc.document_date || null, confirmed_at: doc.confirmed_at || null },
-      clientSignature,
+      // signature_data omis intentionnellement (non utilisé par les templates, remplacé par B3)
+      clientSignature: clientSignature
+        ? { signature_data: "", signer_name: clientSignature.signer_name ?? "", signed_at: clientSignature.signed_at ?? "" }
+        : null,
     };
 
     // Bug Story B0 — résolu : `entity` était oublié dans le contexte, ce qui
@@ -509,13 +511,9 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     let htmlContent: string | null = null;
 
     if (doc.template_id) {
-      const { data: template } = await supabase
-        .from("document_templates")
-        .select("content")
-        .eq("id", doc.template_id)
-        .single();
-      if (template?.content?.trim()) {
-        htmlContent = resolveVariables(template.content, resolveCtx);
+      const tplResult = await getTemplateById(supabase, formation.entity_id, doc.template_id);
+      if (tplResult.ok && tplResult.template?.content?.trim()) {
+        htmlContent = resolveVariables(tplResult.template.content, resolveCtx);
       }
     } else {
       const { data: systemTemplate } = await supabase
@@ -959,26 +957,21 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     await onRefresh();
   };
 
-  // Mass confirm all docs of a type
+  // Mass confirm all docs of a type (B1 — entity_id via updateDocsByDocType)
   const handleMassConfirm = async (docType: ConventionDocType) => {
     setSaving(`mass-confirm-${docType}`);
-    try {
-      const { error } = await supabase
-        .from("documents")
-        .update({ status: "generated", generated_at: new Date().toISOString() })
-        .eq("source_table", "sessions")
-        .eq("source_id", formation.id)
-        .eq("doc_type", docType)
-        .eq("status", "draft");
-      if (error) throw error;
-      toast({ title: `Toutes les ${DOC_LABELS_PLURAL[docType] || docType} confirmées` });
-      await onRefresh();
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Erreur";
-      toast({ title: "Erreur", description: message, variant: "destructive" });
-    } finally {
-      setSaving(null);
+    const result = await updateDocsByDocType(
+      supabase, formation.entity_id, formation.id, docType,
+      { status: "generated", generated_at: new Date().toISOString() },
+      { onlyStatus: "draft" },
+    );
+    setSaving(null);
+    if (!result.ok) {
+      toast({ title: "Erreur", description: result.error.message, variant: "destructive" });
+      return;
     }
+    toast({ title: `${result.updated} document(s) confirmé(s)` });
+    await onRefresh();
   };
 
   // Mass send all confirmed docs of a type
@@ -1017,27 +1010,20 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     await onRefresh();
   };
 
-  // Mass confirm all docs for a specific owner
+  // Mass confirm all docs for a specific owner (B1 — entity_id via updateDocsForOwner)
   const handleConfirmAllForOwner = async (ownerType: ConventionOwnerType, ownerId: string) => {
-    setSaving(`confirm-all-${ownerId}`);
-    try {
-      const { error } = await supabase
-        .from("documents")
-        .update({ status: "generated", generated_at: new Date().toISOString() })
-        .eq("source_table", "sessions")
-        .eq("source_id", formation.id)
-        .eq("owner_type", ownerType)
-        .eq("owner_id", ownerId)
-        .eq("status", "draft");
-      if (error) throw error;
-      toast({ title: "Tous les documents figés" });
-      await onRefresh();
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Erreur";
-      toast({ title: "Erreur", description: message, variant: "destructive" });
-    } finally {
-      setSaving(null);
+    setSaving(`confirm-all-owner-${ownerId}`);
+    const result = await updateDocsForOwner(
+      supabase, formation.entity_id, formation.id, ownerType as OwnerType, ownerId,
+      { status: "generated", generated_at: new Date().toISOString() },
+    );
+    setSaving(null);
+    if (!result.ok) {
+      toast({ title: "Erreur", description: result.error.message, variant: "destructive" });
+      return;
     }
+    toast({ title: `${result.updated} document(s) figé(s)` });
+    await onRefresh();
   };
 
   // Add custom doc for a specific owner
@@ -1585,9 +1571,12 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
             if (unfrozenCount === 0) { toast({ title: "Tous les documents sont déjà figés" }); return; }
             if (!confirm(`Figer ${unfrozenCount} document(s) ? Les informations ne seront plus modifiables ensuite.`)) return;
             setSaving("confirm-all-learners");
+            // B1 — entity_id ajouté inline (scope "tous les types" non couvert par updateDocsByDocType)
+            // TODO: extraire dans updateAllDocsForSession() quand le helper sera créé
             const { error } = await supabase
               .from("documents")
               .update({ status: "generated", generated_at: new Date().toISOString() })
+              .eq("entity_id", formation.entity_id)
               .eq("source_table", "sessions")
               .eq("source_id", formation.id)
               .eq("status", "draft");
@@ -1805,15 +1794,18 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
               className="h-7 text-xs shrink-0"
               onClick={async () => {
                 setSaving("confirm-custom");
-                await supabase
-                  .from("documents")
-                  .update({ status: "generated", generated_at: new Date().toISOString() })
-                  .eq("source_table", "sessions")
-                  .eq("source_id", formation.id)
-                  .eq("doc_type", "custom")
-                  .eq("status", "draft");
+                // B1 — entity_id via updateDocsByDocType
+                const r = await updateDocsByDocType(
+                  supabase, formation.entity_id, formation.id, "custom",
+                  { status: "generated", generated_at: new Date().toISOString() },
+                  { onlyStatus: "draft" },
+                );
                 setSaving(null);
-                toast({ title: "Documents figés" });
+                if (!r.ok) {
+                  toast({ title: "Erreur", description: r.error.message, variant: "destructive" });
+                  return;
+                }
+                toast({ title: `${r.updated} document(s) figé(s)` });
                 await onRefresh();
               }}
               disabled={saving === "confirm-custom"}
