@@ -1,12 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { z } from "zod";
 import { createClient } from "@/lib/supabase/client";
 import { Save, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/use-toast";
+import { updateSessionField } from "@/lib/services/sessions";
 import type { Session } from "@/lib/types";
+
+const VisioUrlSchema = z.union([
+  z.literal(""),
+  z.string().url({ message: "URL invalide (https://meet.google.com/... ou https://zoom.us/...)" }),
+]);
 
 interface Props {
   formation: Session;
@@ -19,23 +26,33 @@ export function ResumeVisioLink({ formation, onRefresh }: Props) {
   const [visioLink, setVisioLink] = useState(formation.visio_link || "");
   const [saving, setSaving] = useState(false);
 
+  // Re-sync depuis la prop si elle change (au mount + après save réussi).
+  useEffect(() => {
+    setVisioLink(formation.visio_link || "");
+  }, [formation.visio_link]);
+
   const handleSave = async () => {
-    setSaving(true);
-    try {
-      const { error } = await supabase
-        .from("sessions")
-        .update({ visio_link: visioLink || null })
-        .eq("id", formation.id)
-        .eq("entity_id", formation.entity_id);
-      if (error) throw error;
-      toast({ title: "Lien de visio mis à jour" });
-      await onRefresh();
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Impossible de sauvegarder";
-      toast({ title: "Erreur", description: message, variant: "destructive" });
-    } finally {
-      setSaving(false);
+    const parsed = VisioUrlSchema.safeParse(visioLink);
+    if (!parsed.success) {
+      toast({
+        title: "URL invalide",
+        description: parsed.error.issues[0]?.message,
+        variant: "destructive",
+      });
+      return;
     }
+    setSaving(true);
+    const result = await updateSessionField(
+      supabase, formation.id, formation.entity_id,
+      { visio_link: parsed.data || null },
+    );
+    setSaving(false);
+    if (!result.ok) {
+      toast({ title: "Erreur", description: result.error.message, variant: "destructive" });
+      return;
+    }
+    toast({ title: "Lien de visio mis à jour" });
+    await onRefresh();
   };
 
   return (
@@ -55,9 +72,7 @@ export function ResumeVisioLink({ formation, onRefresh }: Props) {
           <Save className="h-4 w-4 mr-1" /> Ajouter / Modifier
         </Button>
         {formation.visio_link && (
-          <Button size="sm" variant="outline" onClick={() => {
-            toast({ title: "Envoi par email", description: "Fonctionnalité à venir" });
-          }}>
+          <Button size="sm" variant="outline" disabled title="Implémentation en Tâche 14">
             <Send className="h-4 w-4 mr-1" /> Envoyer
           </Button>
         )}
