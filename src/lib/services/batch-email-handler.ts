@@ -10,12 +10,33 @@
  * enrollments, clients, trainers, etc.). Il fournit une liste de
  * `RecipientGenerationTask` au helper qui génère le PDF lazy (skip
  * si email absent) puis envoie.
+ *
+ * Également exporté : `batchSendDocsEmail` — orchestrateur générique
+ * qui charge les destinataires depuis le registry et délègue à
+ * `executeBatchEmailSend`. Consommé par les routes thin-wrapper F1.x/F2.x.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { logEvent } from "@/lib/logger";
+import {
+  SYSTEM_TEMPLATES_BY_DOC_TYPE,
+  renderSystemTemplate,
+} from "@/lib/templates/registry";
+import {
+  getResolvedVariablesMap,
+  resolveDocumentVariables,
+  loadEntitySettings,
+  type ResolveContext,
+} from "@/lib/utils/resolve-variables";
+import {
+  DocumentGenerationService,
+  createDefaultEngine,
+} from "@/lib/services/document-generation";
+import { convertDocxToPdfWithVariables } from "@/lib/services/docx-converter";
+import { loadClientsWithContacts } from "@/lib/services/load-client";
+import type { Session, Learner, Client, Trainer, Contact } from "@/lib/types";
 
 const isResendConfigured =
   !!process.env.RESEND_API_KEY && process.env.RESEND_API_KEY !== "votre-cle-resend";
@@ -202,4 +223,432 @@ export async function executeBatchEmailSend(
     failureCount: errors.length,
     errors,
   };
+}
+
+// ============================================================================
+// Orchestrateur générique batchSendDocsEmail (Stories F1.x / F2.x)
+// ============================================================================
+
+/**
+ * Résultat retourné par `batchSendDocsEmail`. Enveloppe `BatchSendOutcome`
+ * avec un discriminant `ok` pour faciliter le traitement côté routes API.
+ */
+export interface BatchSendDocsResult {
+  ok: true;
+  sent: number;
+  failed: number;
+  errors: Array<{ recipient: string; reason: string }>;
+}
+
+export interface BatchSendDocsError {
+  ok: false;
+  error: { message: string; code?: string };
+}
+
+/** Labels pour le sujet email par doc_type. */
+const EMAIL_SUBJECT_LABELS: Record<string, string> = {
+  convocation: "Convocation",
+  certificat_realisation: "Certificat de réalisation",
+  attestation_assiduite: "Attestation d'assiduité",
+  feuille_emargement: "Feuille d'émargement",
+  feuille_emargement_collectif: "Feuille d'émargement collective",
+  convention_entreprise: "Convention de formation",
+  convention_intervention: "Convention d'intervention",
+  programme_formation: "Programme de formation",
+  cgv: "Conditions Générales de Vente",
+  reglement_interieur: "Règlement intérieur",
+  politique_confidentialite: "Politique de confidentialité",
+  feuille_emargement_vierge: "Feuille d'émargement vierge",
+  planning_hebdo_signe: "Planning hebdomadaire signé",
+  avis_hab_elec_generique: "Avis d'habilitation électrique",
+  avis_hab_elec_b0_bf_bs: "Avis d'habilitation électrique B0/BF/BS",
+  avis_hab_elec_b1v_b2v_br: "Avis d'habilitation électrique B1V/B2V/BR",
+  avis_hab_elec_bf_hf: "Avis d'habilitation électrique BF/HF",
+  avis_hab_elec_bt: "Avis d'habilitation électrique BT",
+  avis_hab_elec_bt_ht: "Avis d'habilitation électrique BT/HT",
+  avis_hab_elec_h0_b0: "Avis d'habilitation électrique H0/B0",
+  avis_hab_elec_h0_b0_bf_hf_bs: "Avis d'habilitation électrique H0/B0/BF/HF/BS",
+  avis_hab_elec_h0_b0_initial: "Avis d'habilitation électrique H0/B0 Initial",
+  attestation_aipr: "Attestation AIPR",
+  attestation_competences: "Attestation de compétences",
+  attestation_abandon_formation: "Attestation d'abandon de formation",
+  certificat_travail_hauteur: "Certificat de travail en hauteur",
+  certificat_diplome: "Certificat / Diplôme",
+  autorisation_image: "Autorisation droit à l'image",
+  decharge_responsabilite: "Décharge de responsabilité",
+  lettre_decharge_responsabilite: "Lettre de décharge de responsabilité",
+  charte_formateur: "Charte formateur",
+  contrat_engagement_stagiaire: "Contrat d'engagement stagiaire",
+  bilan_poe: "Bilan POE",
+  reponses_evaluations: "Réponses aux évaluations",
+  reponses_satisfaction_session: "Réponses satisfaction",
+  resultats_evaluations: "Résultats des évaluations",
+};
+
+/** Labels pour le nom du fichier PDF attaché. */
+const FILENAME_LABELS: Record<string, string> = {
+  convocation: "Convocation",
+  certificat_realisation: "Certificat-realisation",
+  attestation_assiduite: "Attestation-assiduite",
+  feuille_emargement: "Feuille-Emargement",
+  feuille_emargement_collectif: "Feuille-Emargement-Collective",
+  convention_entreprise: "Convention",
+  convention_intervention: "Convention-intervention",
+  programme_formation: "Programme",
+  cgv: "CGV",
+  reglement_interieur: "Reglement-interieur",
+  politique_confidentialite: "Politique-confidentialite",
+  feuille_emargement_vierge: "Feuille-Emargement-vierge",
+  planning_hebdo_signe: "Planning-hebdo-signe",
+  avis_hab_elec_generique: "Avis-Habilitation-Electrique",
+  avis_hab_elec_b0_bf_bs: "Avis-Hab-Elec-B0-BF-BS",
+  avis_hab_elec_b1v_b2v_br: "Avis-Hab-Elec-B1V-B2V-BR",
+  avis_hab_elec_bf_hf: "Avis-Hab-Elec-BF-HF",
+  avis_hab_elec_bt: "Avis-Hab-Elec-BT",
+  avis_hab_elec_bt_ht: "Avis-Hab-Elec-BT-HT",
+  avis_hab_elec_h0_b0: "Avis-Hab-Elec-H0-B0",
+  avis_hab_elec_h0_b0_bf_hf_bs: "Avis-Hab-Elec-H0-B0-BF-HF-BS",
+  avis_hab_elec_h0_b0_initial: "Avis-Hab-Elec-H0-B0-Initial",
+  attestation_aipr: "Attestation-AIPR",
+  attestation_competences: "Attestation-Competences",
+  attestation_abandon_formation: "Attestation-Abandon-Formation",
+  certificat_travail_hauteur: "Certificat-Travail-Hauteur",
+  certificat_diplome: "Certificat-Diplome",
+  autorisation_image: "Autorisation-Droit-Image",
+  decharge_responsabilite: "Decharge-Responsabilite",
+  lettre_decharge_responsabilite: "Lettre-Decharge-Responsabilite",
+  charte_formateur: "Charte-Formateur",
+  contrat_engagement_stagiaire: "Contrat-Engagement-Stagiaire",
+  bilan_poe: "Bilan-POE",
+  reponses_evaluations: "Reponses-Evaluations",
+  reponses_satisfaction_session: "Reponses-Satisfaction",
+  resultats_evaluations: "Resultats-Evaluations",
+};
+
+/**
+ * Orchestrateur générique pour les routes /api/documents/send-{type}-batch-email
+ * (Stories F1.x/F2.x).
+ *
+ * Pour un docType donné :
+ *  1. Charge la session avec entity_id filter (multi-tenant sécurisé)
+ *  2. Résout ownerType depuis `SYSTEM_TEMPLATES_BY_DOC_TYPE` (source de vérité unique)
+ *  3. Charge les destinataires selon ownerType (learner / company / trainer / session)
+ *  4. Pour chaque destinataire, construit un `RecipientGenerationTask` qui :
+ *     a. ⚠ CRITIQUE — Vérifie si un template Word custom (mode=docx_fidelity,
+ *        default_for_doc_type=docType) existe → utilise convertDocxToPdfWithVariables
+ *        (reproduit fidèlement email-attachments-resolver.ts:findDefaultOverride)
+ *     b. Sinon → génère depuis le template HTML système via DocumentGenerationService
+ *  5. Délègue à `executeBatchEmailSend` pour envoi Resend + log email_history + is_sent
+ *
+ * @param profileId  UUID du profil admin qui déclenche l'envoi (utilisé pour email_history.sent_by).
+ */
+export async function batchSendDocsEmail(
+  supabase: SupabaseClient,
+  entityId: string,
+  sessionId: string,
+  docType: string,
+  profileId: string,
+): Promise<BatchSendDocsResult | BatchSendDocsError> {
+  // 1. Charger session + check entity_id (sécurité multi-tenant)
+  const { data: session, error: sessErr } = await supabase
+    .from("sessions")
+    .select("*, training:trainings(*)")
+    .eq("id", sessionId)
+    .eq("entity_id", entityId)
+    .single();
+  if (sessErr || !session) {
+    return {
+      ok: false,
+      error: { message: sessErr?.message ?? "Session introuvable", code: "SESSION_NOT_FOUND" },
+    };
+  }
+
+  // 2. Résoudre ownerType depuis le registry (source de vérité unique)
+  const tpl = SYSTEM_TEMPLATES_BY_DOC_TYPE[docType];
+  if (!tpl) {
+    return {
+      ok: false,
+      error: { message: `Doc_type inconnu : ${docType}`, code: "UNKNOWN_DOC_TYPE" },
+    };
+  }
+  const ownerType = tpl.ownerType;
+
+  // 3. Charger les destinataires selon ownerType
+  const recipientRows = await loadRecipientsByOwnerType(supabase, sessionId, entityId, ownerType);
+  if (recipientRows.length === 0) {
+    return { ok: true, sent: 0, failed: 0, errors: [] };
+  }
+
+  // 4. Charger entity settings (branding, logo) pour les templates HTML et docx
+  const entitySettings = await loadEntitySettings(supabase, entityId);
+
+  // 5. ⚠ CRITIQUE — Vérifier template Word custom (docx_fidelity)
+  //    Reproduit exactement la logique de findDefaultOverride() dans
+  //    email-attachments-resolver.ts : même table, mêmes filtres
+  //    (entity_id + default_for_doc_type + mode='docx_fidelity').
+  const { data: customTpl } = await supabase
+    .from("document_templates")
+    .select("source_docx_url")
+    .eq("entity_id", entityId)
+    .eq("default_for_doc_type", docType)
+    .eq("mode", "docx_fidelity")
+    .maybeSingle();
+  const customDocxUrl = customTpl?.source_docx_url ?? null;
+
+  // Prépare les services partagés (1 instance par batch, pas par tâche)
+  const engine = createDefaultEngine();
+  const service = new DocumentGenerationService({ engine, supabase });
+  const sessionTitle = (session as { title?: string }).title ?? "Formation";
+  const subjectLabel = EMAIL_SUBJECT_LABELS[docType] ?? docType;
+  const filenameLabel = FILENAME_LABELS[docType] ?? docType;
+
+  // 6. Construire les RecipientGenerationTask
+  const tasks: RecipientGenerationTask[] = recipientRows.map((recipient) => {
+    const slugName = recipient.name
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-zA-Z0-9-]+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "")
+      .toLowerCase()
+      .slice(0, 60) || "destinataire";
+
+    return {
+      ownerId: recipient.id,
+      ownerName: recipient.name,
+      ownerEmail: recipient.email,
+      emailSubject: `${subjectLabel} — ${sessionTitle}`,
+      emailHtmlBody: buildEmailHtmlBody(docType, sessionTitle, recipient.name),
+      emailTextBody: buildEmailTextBody(docType, sessionTitle, recipient.name),
+      attachmentFilename: `${filenameLabel.toLowerCase()}-${slugName}.pdf`,
+      generatePdf: async (): Promise<Buffer> => {
+        // Construit le contexte de résolution de variables
+        const ctx: ResolveContext = {
+          session: session as unknown as Session,
+          entity: entitySettings,
+          learner: ownerType === "learner" ? (recipient.fullRecord as unknown as Learner) : undefined,
+          client: ownerType === "company" ? (recipient.fullRecord as unknown as Client) : undefined,
+          trainer: ownerType === "trainer" ? (recipient.fullRecord as unknown as Trainer) : undefined,
+        };
+
+        // 6a. ⚠ CRITIQUE — Branchement docx_fidelity PRIORITAIRE
+        //     Si le client a uploadé un template Word personnalisé pour ce doc_type,
+        //     on l'utilise à la place du template HTML système.
+        //     → getResolvedVariablesMap() → Record<string,string> pour docxtemplater
+        //     C'est exactement ce que fait email-attachments-resolver.ts:buildAutoVariables()
+        if (customDocxUrl) {
+          const variables = getResolvedVariablesMap(ctx);
+          const pdf = await convertDocxToPdfWithVariables(customDocxUrl, variables);
+          return pdf.buffer;
+        }
+
+        // 6b. Template HTML système (fallback)
+        //     renderSystemTemplate retourne null si doc_type absent du registry —
+        //     mais on a déjà vérifié que tpl existe (étape 2), donc safe.
+        const html = renderSystemTemplate(docType, {
+          formation: session as unknown as Session,
+          learner: ownerType === "learner" ? (recipient.fullRecord as unknown as Learner) : undefined,
+          company: ownerType === "company" ? (recipient.fullRecord as unknown as Client) : undefined,
+          trainer: ownerType === "trainer" ? (recipient.fullRecord as unknown as Trainer) : undefined,
+          entity: entitySettings ?? undefined,
+        });
+        if (!html) {
+          throw new Error(`Template HTML système introuvable pour doc_type="${docType}"`);
+        }
+
+        const footer = resolveDocumentVariables(tpl.footer, ctx);
+        const result = await service.generate({
+          entityId,
+          docType,
+          html,
+          cacheInputs: {
+            doc_type: docType,
+            session_id: sessionId,
+            ...(ownerType === "learner" && { learner_id: recipient.id }),
+            ...(ownerType === "company" && { client_id: recipient.id }),
+            ...(ownerType === "trainer" && { trainer_id: recipient.id }),
+            session_updated_at: (session as { updated_at?: string }).updated_at ?? null,
+          },
+          options: {
+            format: "A4",
+            margins: { top: "18mm", right: "16mm", bottom: "22mm", left: "16mm" },
+            printBackground: true,
+            displayHeaderFooter: true,
+            headerTemplate: "<span></span>",
+            footerTemplate: footer,
+          },
+        });
+        return result.buffer;
+      },
+    };
+  });
+
+  // 7. Déléguer à executeBatchEmailSend pour l'envoi + log email_history + is_sent
+  //    ownerType "session" mappe sur "learner" pour les logs (les docs de session
+  //    sont envoyés aux apprenants inscrits).
+  const sendOwnerType: "learner" | "company" | "trainer" =
+    ownerType === "session" ? "learner" : ownerType;
+
+  const outcome = await executeBatchEmailSend(tasks, {
+    supabase,
+    entityId,
+    profileId,
+    sessionId,
+    docType,
+    ownerType: sendOwnerType,
+  });
+
+  return {
+    ok: true,
+    sent: outcome.successCount,
+    failed: outcome.failureCount,
+    errors: outcome.errors.map((e) => ({ recipient: e.ownerName, reason: e.error })),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Helpers internes
+// ---------------------------------------------------------------------------
+
+interface RecipientRow {
+  id: string;
+  name: string;
+  email: string | null;
+  /** Enregistrement complet (Learner | Client | Trainer) pour le contexte de template. */
+  fullRecord: unknown;
+}
+
+/**
+ * Charge les destinataires d'une session selon ownerType.
+ *
+ * - learner  : apprenants inscrits (enrollments, status in registered/confirmed/completed)
+ * - company  : clients rattachés via formation_companies, email = override de la table
+ *              OU email du contact primary (loadClientsWithContacts pour éviter PGRST201)
+ * - trainer  : formateurs rattachés via formation_trainers
+ * - session  : même que learner (les docs "session" sont envoyés à tous les apprenants)
+ */
+async function loadRecipientsByOwnerType(
+  supabase: SupabaseClient,
+  sessionId: string,
+  _entityId: string,
+  ownerType: "learner" | "company" | "trainer" | "session",
+): Promise<RecipientRow[]> {
+  if (ownerType === "learner" || ownerType === "session") {
+    const { data } = await supabase
+      .from("enrollments")
+      .select("learner:learners(id, email, first_name, last_name)")
+      .eq("session_id", sessionId)
+      .in("status", ["registered", "confirmed", "completed"]);
+
+    return (data ?? [])
+      .map((row): RecipientRow | null => {
+        const l = row.learner as unknown as {
+          id: string;
+          email: string | null;
+          first_name: string;
+          last_name: string;
+        } | null;
+        if (!l) return null;
+        return {
+          id: l.id,
+          name: `${l.first_name} ${l.last_name}`,
+          email: l.email,
+          fullRecord: l as unknown,
+        };
+      })
+      .filter((x): x is RecipientRow => x !== null);
+  }
+
+  if (ownerType === "company") {
+    // Charge les liens formation_companies (avec email override si renseigné)
+    const { data: links } = await supabase
+      .from("formation_companies")
+      .select("client_id, email")
+      .eq("session_id", sessionId);
+    if (!links || links.length === 0) return [];
+
+    const rows = links as unknown as Array<{ client_id: string | null; email: string | null }>;
+    const clientIds = rows
+      .map((r) => r.client_id)
+      .filter((id): id is string => Boolean(id));
+    if (clientIds.length === 0) return [];
+
+    // loadClientsWithContacts — 2 queries séparées pour éviter PGRST201
+    const clientsMap = await loadClientsWithContacts(supabase, clientIds);
+
+    return rows
+      .map((row): RecipientRow | null => {
+        if (!row.client_id) return null;
+        const client = clientsMap.get(row.client_id);
+        if (!client) return null;
+
+        // Email : override de formation_companies en priorité, sinon contact primary
+        const email: string | null =
+          row.email ??
+          pickClientEmail(client);
+
+        return {
+          id: client.id,
+          name: client.company_name ?? client.id,
+          email,
+          fullRecord: client as unknown,
+        };
+      })
+      .filter((x): x is RecipientRow => x !== null);
+  }
+
+  if (ownerType === "trainer") {
+    const { data } = await supabase
+      .from("formation_trainers")
+      .select("trainer:trainers(id, email, first_name, last_name)")
+      .eq("session_id", sessionId);
+
+    return (data ?? [])
+      .map((row): RecipientRow | null => {
+        const t = row.trainer as unknown as {
+          id: string;
+          email: string | null;
+          first_name: string;
+          last_name: string;
+        } | null;
+        if (!t) return null;
+        return {
+          id: t.id,
+          name: `${t.first_name} ${t.last_name}`,
+          email: t.email,
+          fullRecord: t as unknown,
+        };
+      })
+      .filter((x): x is RecipientRow => x !== null);
+  }
+
+  return [];
+}
+
+/** Email primaire = contact `is_primary=true` avec email, sinon 1er contact avec email. */
+function pickClientEmail(client: Client): string | null {
+  const contacts = (client.contacts ?? []) as Contact[];
+  const withEmail = contacts.filter((c) => c.email);
+  const primary = withEmail.find((c) => c.is_primary);
+  return primary?.email ?? withEmail[0]?.email ?? null;
+}
+
+function buildEmailHtmlBody(docType: string, sessionTitle: string, recipientName: string): string {
+  const label = EMAIL_SUBJECT_LABELS[docType] ?? docType;
+  return (
+    `<p>Bonjour,</p>\n` +
+    `<p>Veuillez trouver ci-joint votre <strong>${label}</strong> pour la formation <strong>${sessionTitle}</strong>.</p>\n` +
+    `<p>Cordialement,<br/>L'équipe formation</p>`
+  );
+  void recipientName; // disponible pour personnalisation future
+}
+
+function buildEmailTextBody(docType: string, sessionTitle: string, recipientName: string): string {
+  const label = EMAIL_SUBJECT_LABELS[docType] ?? docType;
+  return (
+    `Bonjour,\n\n` +
+    `Veuillez trouver ci-joint votre ${label} pour la formation ${sessionTitle}.\n\n` +
+    `Cordialement,\nL'équipe formation`
+  );
+  void recipientName;
 }
