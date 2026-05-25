@@ -777,9 +777,10 @@ export function resolveVariables(content: string, data: ResolveContext): string 
     })(),
     // URL de connexion à l'espace apprenant — utilisée dans la convocation
     // (remplace l'ancien QR code magic link, cf spec convocation-credentials)
-    "{{url_connexion}}": process.env.NEXT_PUBLIC_APP_URL
-      ? `${process.env.NEXT_PUBLIC_APP_URL}/login`
-      : "[URL de connexion]",
+    // Pattern de fallback aligné sur le reste de la codebase : si la variable
+    // d'env est absente (oubli en local), on utilise l'URL de prod plutôt qu'un
+    // placeholder littéral qui se retrouverait dans le PDF envoyé à l'apprenant.
+    "{{url_connexion}}": `${(process.env.NEXT_PUBLIC_APP_URL || process.env.URL || "https://mrformationcrm.netlify.app").replace(/\/+$/, "")}/login`,
 
     // Mot de passe temporaire de l'apprenant — injecté par /api/documents/
     // generate-from-template via ensureLearnerAccount pour doc_type=convocation

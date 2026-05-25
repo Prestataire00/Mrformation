@@ -917,7 +917,7 @@ exports[`Templates snapshots — couvre F1/F2.x/F3 > convocation-apprenant : HTM
     <table style="width: 100%; margin: 8px 0; border-collapse: collapse;">
       <tr>
         <td style="padding: 4px 8px; font-weight: 700; width: 30%;">URL :</td>
-        <td style="padding: 4px 8px;">[URL de connexion]</td>
+        <td style="padding: 4px 8px;">https://mrformationcrm.netlify.app/login</td>
       </tr>
       <tr>
         <td style="padding: 4px 8px; font-weight: 700;">Email :</td>
