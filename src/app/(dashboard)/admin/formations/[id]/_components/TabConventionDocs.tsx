@@ -24,9 +24,9 @@ import { useEntity } from "@/contexts/EntityContext";
 import { renderSystemTemplate } from "@/lib/templates/registry";
 import { resolveVariables } from "@/lib/utils/resolve-variables";
 import { validateCompanyExport, findUncoveredLearners } from "@/lib/utils/formation-companies";
-import { exportHtmlToPDF, exportHtmlToPDFBase64 } from "@/lib/pdf-export";
+import { exportHtmlToPDF } from "@/lib/pdf-export";
 import { hasBatchEndpoint, downloadBatchZip } from "@/lib/utils/batch-doc-download";
-import { hasBatchSendEndpoint, sendBatchEmail } from "@/lib/utils/batch-doc-send";
+import { sendBatchEmail } from "@/lib/utils/batch-doc-send";
 import {
   hasBatchSignatureRequestEndpoint,
   requestBatchSignatures,
@@ -727,19 +727,6 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
 
   // ===== MASS SEND WITH PDF =====
 
-  const getRecipientEmail = (doc: FormationConventionDocument): string | null => {
-    if (doc.owner_type === "learner") {
-      return enrollments.find((e) => e.learner?.id === doc.owner_id)?.learner?.email || null;
-    }
-    if (doc.owner_type === "company") {
-      return companies.find((c) => c.client_id === doc.owner_id)?.email || null;
-    }
-    if (doc.owner_type === "trainer") {
-      return trainers.find((t) => t.trainer_id === doc.owner_id)?.trainer?.email || null;
-    }
-    return null;
-  };
-
   // h-22 — nom + email d'affichage selon l'owner_type d'un doc. Sert à
   // regrouper les documents secondaires par destinataire dans leur section.
   const getOwnerInfo = (
@@ -773,88 +760,30 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     const key = `${ownerType}-${docType}`;
     setMassSending(key);
 
-    // ─── PATH SERVER-SIDE (Story F2) ──────────────────────────────────
-    // Si un endpoint batch-send server-side existe pour ce doc_type, on
-    // l'utilise : DGS + Promise.allSettled + Resend en parallèle + update
-    // is_sent côté serveur. Pas de loop client-side avec jsPDF.
-    if (hasBatchSendEndpoint(docType)) {
-      try {
-        const res = await sendBatchEmail({ docType, sessionId: formation.id });
-        if (res.failureCount > 0) {
-          const sample = res.errors.slice(0, 3).map((e) => `${e.learnerName} (${e.error})`).join(", ");
-          toast({
-            title: `${res.successCount}/${res.totalRequested} ${DOC_LABELS_PLURAL[docType] ?? docType} envoyés`,
-            description: `${res.failureCount} échec(s) : ${sample}${res.errors.length > 3 ? "…" : ""}`,
-          });
-        } else {
-          toast({
-            title: `${res.successCount} ${DOC_LABELS_PLURAL[docType] ?? docType} envoyés`,
-            description: `Envoyé en ${(res.latencyMs / 1000).toFixed(1)}s`,
-          });
-        }
-      } catch (err) {
+    // Toutes les routes batch sont server-side après Stories F1.x/F2.x.
+    // BATCH_SEND_ENDPOINTS_BY_DOC_TYPE couvre les 21+ doc_types — la boucle
+    // client-side (800 ms × N) a été retirée.
+    try {
+      const res = await sendBatchEmail({ docType, sessionId: formation.id });
+      if (res.failureCount > 0) {
+        const sample = res.errors.slice(0, 3).map((e) => `${e.learnerName} (${e.error})`).join(", ");
         toast({
-          title: "Erreur envoi batch",
-          description: err instanceof Error ? err.message : String(err),
-          variant: "destructive",
+          title: `${res.successCount}/${res.totalRequested} ${DOC_LABELS_PLURAL[docType] ?? docType} envoyés`,
+          description: `${res.failureCount} échec(s) : ${sample}${res.errors.length > 3 ? "…" : ""}`,
+        });
+      } else {
+        toast({
+          title: `${res.successCount} ${DOC_LABELS_PLURAL[docType] ?? docType} envoyés`,
+          description: `Envoyé en ${(res.latencyMs / 1000).toFixed(1)}s`,
         });
       }
-      setMassSending(null);
-      await onRefresh();
-      return;
+    } catch (err) {
+      toast({
+        title: "Erreur envoi batch",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
     }
-
-    // ─── FALLBACK LEGACY CLIENT-SIDE ──────────────────────────────────
-    // TODO Story F2.x : migrer les doc_types restants vers leurs endpoints
-    // send-X-batch-email server-side.
-    const targetDocs = docs.filter((d) => d.doc_type === docType && d.owner_type === ownerType);
-    let sent = 0;
-    let failed = 0;
-
-    for (const doc of targetDocs) {
-      const email = getRecipientEmail(doc);
-      if (!email) { failed++; continue; }
-      if (!canExportCompanyDoc(doc)) { failed++; continue; }
-
-      try {
-        const html = await generateDocHtml(doc);
-        const base64 = await exportHtmlToPDFBase64(
-          DOC_LABELS[doc.doc_type] || doc.doc_type, html, entityName
-        );
-
-        const res = await fetch("/api/emails/send", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            to: email,
-            subject: `${DOC_LABELS[doc.doc_type] || doc.doc_type} — ${formation.title}`,
-            body: `Bonjour,\n\nVeuillez trouver ci-joint votre document pour la formation "${formation.title}".\n\nCordialement,\nL'équipe formation`,
-            session_id: formation.id,
-            attachments: [{
-              filename: `${doc.doc_type.replace(/_/g, "-")}.pdf`,
-              content: base64,
-              type: "application/pdf",
-            }],
-          }),
-        });
-
-        if (res.ok) {
-          await markDocSent(supabase, doc.id);
-          sent++;
-        } else {
-          failed++;
-        }
-      } catch {
-        failed++;
-      }
-
-      // Anti-spam delay
-      await new Promise((r) => setTimeout(r, 800));
-    }
-
-    toast({
-      title: `${sent} envoyé${sent > 1 ? "s" : ""}${failed > 0 ? `, ${failed} échec${failed > 1 ? "s" : ""}` : ""}`,
-    });
     setMassSending(null);
     await onRefresh();
   };
@@ -899,8 +828,10 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     }
 
     // ─── FALLBACK LEGACY CLIENT-SIDE ──────────────────────────────────
-    // TODO Story F1.x : migrer ces doc_types (cgv, planning_semaine, etc.)
-    // vers leurs propres endpoints batch server-side.
+    // BATCH_ENDPOINTS_BY_DOC_TYPE (ZIP) couvre 6 doc_types originaux.
+    // Les 15 nouveaux doc_types (cgv, planning_semaine, bilan_poe, etc.)
+    // n'ont pas encore d'endpoint generate-*-batch → on garde le fallback
+    // client-side pour eux. Audit séparé requis pour les migrer.
     const targetDocs = docs.filter((d) => d.doc_type === docType && d.owner_type === ownerType);
     toast({ title: `Génération de ${targetDocs.length} PDF...` });
 
