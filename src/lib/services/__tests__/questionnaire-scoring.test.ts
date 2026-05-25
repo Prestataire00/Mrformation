@@ -1,10 +1,15 @@
 import { describe, it, expect } from "vitest";
-import { isCorrect } from "@/lib/services/load-evaluation-results";
+import { isCorrect } from "@/lib/services/questionnaire-scoring";
 
 /**
  * Tests régression P0-4 (deep-dive 2026-05-25) :
  * - yes_no : Boolean("non") === Boolean("oui") === true (faux positif 100% scoring)
  * - text : pas de normalisation accents + pas de guard null/undefined
+ *
+ * Fichier renommé depuis load-evaluation-results.test.ts suite au refactor
+ * DRY (final code review Chantier 1 issue #1) : isCorrect vit maintenant dans
+ * questionnaire-scoring.ts, partagé entre load-evaluation-results et
+ * load-session-aggregates.
  */
 describe("isCorrect — scoring questionnaire (P0-4 régression)", () => {
   describe("yes_no / true_false", () => {
