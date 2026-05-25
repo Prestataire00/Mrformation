@@ -14,6 +14,8 @@ import {
   scoreFromItems,
   type QualiopiScoreItem,
 } from "@/lib/services/qualiopi-score";
+import { QualiopiSparkline } from "./QualiopiSparkline";
+import { QualiopiHistoryDetail } from "./QualiopiHistoryDetail";
 
 interface Props {
   formation: Session;
@@ -33,6 +35,8 @@ export function TabQualiopi({ formation }: Props) {
   );
   const [loading, setLoading] = useState(true);
   const [responseCounts, setResponseCounts] = useState<Record<string, { total: number; done: number }>>({});
+
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   // Audit blanc IA
   const [auditRunning, setAuditRunning] = useState(false);
@@ -242,9 +246,16 @@ export function TabQualiopi({ formation }: Props) {
             <p className="text-xs text-muted-foreground">{items.filter(i => i.value).length}/{items.length} critères validés</p>
           </div>
         </div>
-        <Badge className={`text-lg font-bold px-4 py-1.5 ${scoreColor}`}>
-          {score}%
-        </Badge>
+        <div className="flex items-center gap-3">
+          <QualiopiSparkline sessionId={formation.id} />
+          <button
+            onClick={() => setHistoryOpen(true)}
+            className="text-[11px] text-blue-600 hover:underline"
+          >
+            Voir l&apos;historique
+          </button>
+          <Badge className={`text-lg font-bold px-4 py-1.5 ${scoreColor}`}>{score}%</Badge>
+        </div>
       </div>
 
       {/* Progress bar */}
@@ -392,6 +403,14 @@ export function TabQualiopi({ formation }: Props) {
           </div>
         </div>
       )}
+
+      <QualiopiHistoryDetail
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+        sessionId={formation.id}
+        formationTitle={formation.title ?? "Formation"}
+        currentScore={score}
+      />
     </div>
   );
 }
