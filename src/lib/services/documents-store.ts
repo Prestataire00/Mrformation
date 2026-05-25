@@ -394,6 +394,35 @@ export async function updateDocsByDocType(
   return { ok: true, updated: (data ?? []).length };
 }
 
+export type OwnerType = "session" | "learner" | "company" | "trainer" | "client" | "financier";
+
+/**
+ * UPDATE en masse de documents pour un destinataire (owner) précis.
+ * Filtre par entity_id + source_table='sessions' + source_id (session) + owner_type + owner_id.
+ *
+ * Résout TabConventionDocs.tsx:1016, 1796.
+ */
+export async function updateDocsForOwner(
+  supabase: SupabaseClient,
+  entityId: string,
+  sessionId: string,
+  ownerType: OwnerType,
+  ownerId: string,
+  patch: Record<string, unknown>,
+): Promise<ServiceResult<{ updated: number }>> {
+  const { data, error } = await supabase
+    .from("documents")
+    .update(patch)
+    .eq("entity_id", entityId)
+    .eq("source_table", "sessions")
+    .eq("source_id", sessionId)
+    .eq("owner_type", ownerType)
+    .eq("owner_id", ownerId)
+    .select("id");
+  if (error) return { ok: false, error: { message: error.message, code: error.code } };
+  return { ok: true, updated: (data ?? []).length };
+}
+
 /**
  * Lookup d'1 doc par id avec les champs nécessaires pour /api/documents/sign.
  */

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { updateDocsByDocType } from "@/lib/services/documents-store";
+import { updateDocsByDocType, updateDocsForOwner } from "@/lib/services/documents-store";
 
 describe("updateDocsByDocType", () => {
   it("filtre par entity_id + source_table + source_id + doc_type", async () => {
@@ -102,5 +102,64 @@ describe("updateDocsByDocType", () => {
     );
     expect(res.ok).toBe(true);
     if (res.ok) expect(res.updated).toBe(0);
+  });
+});
+
+describe("updateDocsForOwner", () => {
+  it("filtre par entity_id + source_table + source_id + owner_type + owner_id", async () => {
+    const eqCalls: Array<{ col: string; val: unknown }> = [];
+    function makeChain(): object {
+      return {
+        eq: vi.fn(function (col: string, val: unknown) {
+          eqCalls.push({ col, val });
+          return makeChain();
+        }),
+        select: vi.fn(() => Promise.resolve({ error: null, data: [{}, {}] })),
+      };
+    }
+    const supabase = {
+      from: vi.fn(() => ({ update: vi.fn(() => makeChain()) })),
+    };
+    const res = await updateDocsForOwner(
+      supabase as never, "ENT-A", "SESS-1", "learner", "L-1",
+      { is_confirmed: true },
+    );
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.updated).toBe(2);
+    expect(eqCalls).toContainEqual({ col: "entity_id", val: "ENT-A" });
+    expect(eqCalls).toContainEqual({ col: "source_table", val: "sessions" });
+    expect(eqCalls).toContainEqual({ col: "source_id", val: "SESS-1" });
+    expect(eqCalls).toContainEqual({ col: "owner_type", val: "learner" });
+    expect(eqCalls).toContainEqual({ col: "owner_id", val: "L-1" });
+  });
+
+  it("retourne erreur sur erreur Supabase", async () => {
+    function makeChain(): object {
+      return {
+        eq: vi.fn(function () { return makeChain(); }),
+        select: vi.fn(() => Promise.resolve({ error: { message: "err", code: "X" }, data: null })),
+      };
+    }
+    const supabase = {
+      from: vi.fn(() => ({ update: vi.fn(() => makeChain()) })),
+    };
+    const res = await updateDocsForOwner(
+      supabase as never, "ENT-A", "SESS-1", "company", "C-1", { is_sent: true },
+    );
+    expect(res.ok).toBe(false);
+  });
+
+  it("supporte les 6 owner types", async () => {
+    function makeChain(): object {
+      return {
+        eq: vi.fn(function () { return makeChain(); }),
+        select: vi.fn(() => Promise.resolve({ error: null, data: [{}] })),
+      };
+    }
+    const supabase = { from: vi.fn(() => ({ update: vi.fn(() => makeChain()) })) };
+    for (const ownerType of ["learner", "company", "trainer", "session", "client", "financier"] as const) {
+      const res = await updateDocsForOwner(supabase as never, "ENT", "SESS", ownerType, "ID", {});
+      expect(res.ok).toBe(true);
+    }
   });
 });
