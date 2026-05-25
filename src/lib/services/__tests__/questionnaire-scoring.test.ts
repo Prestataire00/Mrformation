@@ -99,9 +99,9 @@ describe("isCorrect — scoring questionnaire (P0-4 régression)", () => {
       expect(isCorrect(question, "A")).toBe(null);
     });
 
-    it("retourne null pour format B (array de strings direct, pas de correct_answer)", () => {
-      // Format B legacy : options est un tableau de strings, sans correct_answer accessible
-      // V8 note: Array.isArray branch — covered via direct isArray check
+    it("retourne null quand options est un array sans correct_answer (early guard)", () => {
+      // Couvre l'early guard ligne ~26 : opts.correct_answer === undefined
+      // (["A","B","C"] as {correct_answer?}).correct_answer === undefined → return null immédiatement)
       const question = {
         id: "q1",
         type: "multiple_choice",
@@ -110,8 +110,9 @@ describe("isCorrect — scoring questionnaire (P0-4 régression)", () => {
       expect(isCorrect(question, "A")).toBe(null);
     });
 
-    it("retourne null pour format B avec array mixte (array mais pas tous strings)", () => {
-      // Couvre la branche opts.every() === false : Array.isArray=true mais every=false
+    it("retourne null quand options est un array mixte sans correct_answer (early guard)", () => {
+      // Couvre l'early guard ligne ~26 : opts.correct_answer === undefined
+      // La branche Format B Array.isArray n'existe plus — ce test valide uniquement le guard.
       const question = {
         id: "q1",
         type: "multiple_choice",
