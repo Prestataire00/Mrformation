@@ -16,6 +16,7 @@ import {
 } from "@/lib/services/qualiopi-score";
 import { QualiopiSparkline } from "./QualiopiSparkline";
 import { QualiopiHistoryDetail } from "./QualiopiHistoryDetail";
+import { QualiopiAuditDetail, type AuditResult } from "./QualiopiAuditDetail";
 
 interface Props {
   formation: Session;
@@ -37,14 +38,11 @@ export function TabQualiopi({ formation }: Props) {
   const [responseCounts, setResponseCounts] = useState<Record<string, { total: number; done: number }>>({});
 
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [auditOpen, setAuditOpen] = useState(false);
 
   // Audit blanc IA
   const [auditRunning, setAuditRunning] = useState(false);
-  const [auditResult, setAuditResult] = useState<{
-    overall_verdict: string;
-    findings: Array<{ critere: number; status: string; question: string; recommendation: string }>;
-    action_plan: Array<{ title: string; priority: string; estimated_effort?: string }>;
-  } | null>(null);
+  const [auditResult, setAuditResult] = useState<AuditResult | null>(null);
 
   const router = useRouter();
   const { toast } = useToast();
@@ -313,20 +311,20 @@ export function TabQualiopi({ formation }: Props) {
         </div>
         {auditResult && (
           <div className="bg-white/10 rounded-lg p-4 space-y-3">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <Badge className={auditResult.overall_verdict === "conforme" ? "bg-green-500" : auditResult.overall_verdict === "ecarts_majeurs" ? "bg-red-500" : "bg-amber-500"}>
                 {auditResult.overall_verdict === "conforme" ? "Conforme" : auditResult.overall_verdict === "ecarts_majeurs" ? "Écarts majeurs" : "À améliorer"}
               </Badge>
               <span className="text-xs text-white/60">
-                {auditResult.findings.filter(f => f.status !== "conforme").length} point(s) d&apos;attention
+                {auditResult.findings.filter(f => f.status !== "conforme").length} point(s) d&apos;attention sur {auditResult.findings.length} constat(s)
               </span>
+              <button
+                onClick={() => setAuditOpen(true)}
+                className="ml-auto text-xs text-white/90 hover:text-white underline underline-offset-2"
+              >
+                Voir l&apos;audit détaillé →
+              </button>
             </div>
-            {auditResult.findings.filter(f => f.status !== "conforme").slice(0, 3).map((f, i) => (
-              <div key={i} className="text-xs text-white/80">
-                <span className="font-medium">C{f.critere}</span> — {f.question}
-                {f.recommendation && <p className="text-white/60 mt-0.5">💡 {f.recommendation}</p>}
-              </div>
-            ))}
             {auditResult.action_plan.length > 0 && (
               <p className="text-xs text-white/60">{auditResult.action_plan.length} action(s) recommandée(s)</p>
             )}
@@ -410,6 +408,12 @@ export function TabQualiopi({ formation }: Props) {
         sessionId={formation.id}
         formationTitle={formation.title ?? "Formation"}
         currentScore={score}
+      />
+
+      <QualiopiAuditDetail
+        open={auditOpen}
+        onOpenChange={setAuditOpen}
+        result={auditResult}
       />
     </div>
   );
