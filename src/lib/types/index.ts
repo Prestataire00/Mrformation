@@ -502,6 +502,10 @@ export interface FormationConventionDocument {
   custom_label: string | null;
   requires_signature: boolean;
   created_at: string;
+  /** Injecté par `mapDocumentToLegacyShape()` depuis metadata.signer_email. */
+  signer_email?: string | null;
+  /** Injecté par `mapDocumentToLegacyShape()` depuis metadata.signer_name. */
+  signer_name?: string | null;
   template?: DocumentTemplate;
 }
 
