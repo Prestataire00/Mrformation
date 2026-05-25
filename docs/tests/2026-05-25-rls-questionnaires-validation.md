@@ -108,7 +108,18 @@ dans Supabase Dashboard.
 
 ## C. Spot checks P0-3 + P0-4
 
-(Section ajoutée par Tasks 5 et 7 du plan.)
+### C.1 — P0-3 : Alignement enum satisfaction_type
+
+**(Si migration `fix_satisfaction_type_enum.sql` exécutée)**
+
+| # | Action | Attendu | OK ? |
+|---|--------|---------|------|
+| C1 | Dans Supabase Dashboard SQL Editor : `INSERT INTO formation_satisfaction_assignments (session_id, questionnaire_id, satisfaction_type, target_type, target_id) VALUES ('<sess>', '<q>', 'satisfaction_entreprise', 'company', '<client_id>');` | **1 row inserted** (sans erreur CHECK) | ☐ |
+| C2 | Depuis UI TabQuestionnaires, attribuer un questionnaire "Satisfaction entreprise" | UI affiche succès (toast vert), 1 row apparaît dans formation_satisfaction_assignments + 1 row mirrorée dans questionnaire_sessions | ☐ |
+
+### C.2 — P0-4 : Scoring yes_no + text
+
+(Section enrichie par Task 7 du plan.)
 
 ---
 
