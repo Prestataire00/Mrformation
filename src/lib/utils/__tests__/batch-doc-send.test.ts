@@ -13,10 +13,17 @@ describe("hasBatchSendEndpoint", () => {
   });
 
   it("retourne false pour un doc_type non listé (statiques 1-par-session)", () => {
-    expect(hasBatchSendEndpoint("cgv")).toBe(false);
-    expect(hasBatchSendEndpoint("planning_semaine")).toBe(false);
     expect(hasBatchSendEndpoint("programme_formation")).toBe(false);
     expect(hasBatchSendEndpoint("doc_inexistant")).toBe(false);
+  });
+
+  it("retourne true pour les nouveaux doc_types F1.x/F2.x ajoutés", () => {
+    expect(hasBatchSendEndpoint("cgv")).toBe(true);
+    expect(hasBatchSendEndpoint("planning_semaine")).toBe(true);
+    expect(hasBatchSendEndpoint("bilan_poe")).toBe(true);
+    expect(hasBatchSendEndpoint("attestation_aipr")).toBe(true);
+    expect(hasBatchSendEndpoint("avis_hab_elec_generique")).toBe(true);
+    expect(hasBatchSendEndpoint("avis_hab_elec_h0_b0_initial")).toBe(true);
   });
 
   it("supporte tous les doc_types couverts par F2 (MVP + extensions F2.1-F2.5)", () => {
@@ -64,7 +71,7 @@ describe("sendBatchEmail", () => {
     expect(init).toMatchObject({
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId: "session-uuid-123" }),
+      body: JSON.stringify({ sessionId: "session-uuid-123", docType: "convocation" }),
     });
 
     expect(result).toEqual({

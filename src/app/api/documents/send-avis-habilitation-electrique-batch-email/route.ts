@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
     const parsed = Body.safeParse(await request.json());
     if (!parsed.success) {
       return NextResponse.json(
-        { error: parsed.error.errors.map((e) => e.message).join(", ") },
+        { error: parsed.error.issues.map((i) => i.message).join(", ") },
         { status: 400 },
       );
     }
