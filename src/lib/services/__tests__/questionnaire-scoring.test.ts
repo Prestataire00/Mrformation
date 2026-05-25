@@ -49,4 +49,34 @@ describe("isCorrect — scoring questionnaire (P0-4 régression)", () => {
       expect(isCorrect(question, "  Hello  ")).toBe(true);
     });
   });
+
+  describe("multiple_choice (régression bug label vs index)", () => {
+    it("retourne true quand userAnswer label match l'option à correct_answer index", () => {
+      // Format Task 0 Investigation : { options: [...], correct_answer: N } (généré par OpenAI)
+      const question = {
+        id: "q1",
+        type: "multiple_choice",
+        options: { options: ["Lyon", "Marseille", "Paris", "Nice"], correct_answer: 2 },
+      };
+      expect(isCorrect(question, "Paris")).toBe(true);
+    });
+
+    it("retourne false quand userAnswer label ne match aucune option", () => {
+      const question = {
+        id: "q1",
+        type: "multiple_choice",
+        options: { options: ["Lyon", "Marseille", "Paris"], correct_answer: 2 },
+      };
+      expect(isCorrect(question, "Bordeaux")).toBe(false);
+    });
+
+    it("retourne true en mode legacy quand userAnswer est l'index numérique", () => {
+      const question = {
+        id: "q1",
+        type: "multiple_choice",
+        options: { options: ["A", "B", "C"], correct_answer: 1 },
+      };
+      expect(isCorrect(question, 1)).toBe(true);
+    });
+  });
 });
