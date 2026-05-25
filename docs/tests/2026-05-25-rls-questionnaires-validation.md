@@ -10,7 +10,7 @@
 
 ---
 
-## A. Matrice RLS (36 tests)
+## A. Matrice RLS (39 tests)
 
 Pour chaque test, ouvrir Supabase Dashboard → SQL Editor et exécuter le
 bloc indiqué. Pour simuler un utilisateur authentifié, utiliser :
@@ -73,17 +73,18 @@ adapter les colonnes : `satisfaction_type` au lieu de `evaluation_type`,
 
 ### A.4 — Isolation cross-tenant
 
-Bonus de 3 tests :
+Bonus de 3 tests (utilisent le JOIN sessions car `formation_*_assignments` n'ont
+pas de colonne `entity_id` directe — isolation via FK session) :
 
 | # | Rôle | Requête | Attendu | OK ? |
 |---|------|---------|---------|------|
-| 37 | admin entité A | SELECT * FROM formation_evaluation_assignments WHERE entity_id = '<entity_B>' | **0 rows** (RLS bloque) | ☐ |
-| 38 | admin entité A | INSERT dans formation_evaluation_assignments d'une session de l'entité B | **ERROR — RLS** | ☐ |
-| 39 | admin entité A | UPDATE row d'entité B | **0 rows updated** | ☐ |
+| 37 | admin entité A | `SELECT * FROM formation_evaluation_assignments WHERE session_id IN (SELECT id FROM sessions WHERE entity_id = '<entity_B>');` | **0 rows** (RLS bloque par join profile) | ☐ |
+| 38 | admin entité A | INSERT dans `formation_evaluation_assignments` avec un `session_id` appartenant à entité B | **ERROR — new row violates row-level security policy** | ☐ |
+| 39 | admin entité A | UPDATE row d'entité B (id récupéré via SELECT depuis sessions entité B) | **0 rows updated** | ☐ |
 
 ---
 
-## B. Matrice trigger (Volet E) — 7 tests
+## B. Matrice trigger (Volet E) — 8 tests
 
 **Préalable** : exécuter d'abord `sync_assignments_to_questionnaire_sessions.sql`
 dans Supabase Dashboard.
@@ -103,6 +104,7 @@ dans Supabase Dashboard.
 | 5 | DELETE satis froid | `DELETE FROM formation_satisfaction_assignments WHERE satisfaction_type = 'satisfaction_froid' AND session_id = '<session_id>';` | (idem #3) → **0** | ☐ |
 | 6 | UPDATE evaluation_type sur attribution existante | (créer 1 row puis) `UPDATE formation_evaluation_assignments SET evaluation_type = 'eval_postformation' WHERE id = '<row_id>';` | `SELECT * FROM questionnaire_sessions WHERE session_id = '<session_id>' AND questionnaire_id = '<questionnaire_eval_id>';` → 1 row inchangé (pas de side-effect) | ☐ |
 | 7 | Vérifier backfill | Avant migration : compter les rows dans `formation_evaluation_assignments` + `formation_satisfaction_assignments` (DISTINCT q_id, s_id). Après migration : compter rows dans `questionnaire_sessions` qui ont leur counterpart. | Backfill doit avoir mirroré toutes les paires DISTINCT. | ☐ |
+| 8 | INSERT FEA + FSA avec même `(q_id, s_id)` puis DELETE FEA | INSERT 1 row éval + 1 row satis (même questionnaire_id et session_id) puis `DELETE FROM formation_evaluation_assignments WHERE session_id = '<session_id>' AND questionnaire_id = '<questionnaire_id>';` | `SELECT COUNT(*) FROM questionnaire_sessions WHERE session_id = '<session_id>' AND questionnaire_id = '<questionnaire_id>';` → **1** (miroir préservé car FSA existe encore) | ☐ |
 
 ---
 
@@ -121,7 +123,7 @@ dans Supabase Dashboard.
 
 | # | Action | Attendu | OK ? |
 |---|--------|---------|------|
-| C3 | `npx vitest run src/lib/services/__tests__/load-evaluation-results.test.ts` | **6 tests verts** | ☐ |
+| C3 | `npx vitest run src/lib/services/__tests__/questionnaire-scoring.test.ts` | **6 tests verts** | ☐ |
 | C4 | Spot check manuel : 1 session avec 1 apprenant qui répond "non" à 1 question yes_no dont correct="oui" — vérifier que le résultat affiché dans `loadEvaluationResults` est **incorrect** (vs 100% en bug actuel) | Statut "non acquis" si seuil 70% non atteint | ☐ |
 | C5 | Spot check : "Élève" (avec accent) vs correct="eleve" (sans accent) → marqué **correct** (normalisation accents) | OK | ☐ |
 
@@ -208,7 +210,7 @@ résolu — l'objectif principal du chantier est atteint.**
 ### E.2 — Exécution des tests
 
 - **Tests A (RLS, 39)** : Section A — durée estimée 30-45 min
-- **Tests B (trigger, 7)** : Section B — durée estimée 20-30 min
+- **Tests B (trigger, 8)** : Section B — durée estimée 20-30 min
 - **Tests C (spot checks)** : Section C — durée estimée 10 min
 - **Test D (end-to-end)** : Section D — durée estimée 15-20 min
 
@@ -225,7 +227,7 @@ résolu — l'objectif principal du chantier est atteint.**
   - [ ] `sync_assignments_to_questionnaire_sessions.sql` à _____ (HH:MM)
   - [ ] `fix_satisfaction_type_enum.sql` à _____ (HH:MM)
 - **Tests A (RLS, 39)** : __ / 39 verts
-- **Tests B (trigger, 7)** : __ / 7 verts
+- **Tests B (trigger, 8)** : __ / 8 verts
 - **Tests C (spot checks, 5)** : __ / 5 verts
 - **Test D (end-to-end)** : ☐ vert
 - **Observations / incidents** : _________________
