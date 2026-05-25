@@ -16,6 +16,10 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { isCorrect, type QuestionRow } from "@/lib/services/questionnaire-scoring";
+
+// Re-export isCorrect so existing callers of load-evaluation-results can keep their import.
+export { isCorrect } from "@/lib/services/questionnaire-scoring";
 
 const PASSING_SCORE_PCT = 70;
 
@@ -28,12 +32,6 @@ export interface EvaluationResult {
   status: "acquis" | "non_acquis" | "complete" | "non_complete";
 }
 
-interface QuestionRow {
-  id: string;
-  type: string;
-  options: unknown;
-}
-
 interface ResponseRow {
   questionnaire_id: string;
   submitted_at: string | null;
@@ -43,30 +41,6 @@ interface ResponseRow {
 interface QuestionnaireRow {
   id: string;
   title: string;
-}
-
-/** Détermine si la réponse de l'apprenant matche la correct_answer de la question. */
-function isCorrect(question: QuestionRow, userAnswer: unknown): boolean | null {
-  const opts = question.options as { correct_answer?: unknown } | null;
-  if (!opts || opts.correct_answer === undefined) return null; // pas scorable
-  const correct = opts.correct_answer;
-
-  if (question.type === "multiple_choice") {
-    // correct_answer = index 0-3, user response = index ou label
-    return Number(userAnswer) === Number(correct);
-  }
-  if (question.type === "yes_no" || question.type === "true_false") {
-    return Boolean(userAnswer) === Boolean(correct);
-  }
-  if (question.type === "text" || question.type === "short_answer") {
-    return String(userAnswer ?? "").trim().toLowerCase() === String(correct).trim().toLowerCase();
-  }
-  if (question.type === "rating") {
-    // rating n'est pas vraiment scorable au sens "bonne/mauvaise réponse" ;
-    // on l'exclut du calcul.
-    return null;
-  }
-  return null;
 }
 
 export async function loadEvaluationResults(

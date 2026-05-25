@@ -8,6 +8,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { isCorrect } from "@/lib/services/questionnaire-scoring";
 
 export interface SatisfactionQuestionAggregate {
   questionText: string;
@@ -35,6 +36,9 @@ export interface EvaluationAggregate {
   acquisRate: number | null; // % d'apprenants ayant ACQUIS (≥70%)
 }
 
+// Local extension of the shared QuestionRow that adds the `text` field
+// used by satisfaction aggregates (question label display).
+// The shared base (id, type, options) is imported from questionnaire-scoring.ts.
 interface QuestionRow {
   id: string;
   text: string;
@@ -48,23 +52,6 @@ interface ResponseRow {
 }
 
 const PASSING_SCORE_PCT = 70;
-
-function isCorrect(question: QuestionRow, userAnswer: unknown): boolean | null {
-  const opts = question.options as { correct_answer?: unknown } | null;
-  if (!opts || opts.correct_answer === undefined) return null;
-  const correct = opts.correct_answer;
-
-  if (question.type === "multiple_choice") {
-    return Number(userAnswer) === Number(correct);
-  }
-  if (question.type === "yes_no" || question.type === "true_false") {
-    return Boolean(userAnswer) === Boolean(correct);
-  }
-  if (question.type === "text" || question.type === "short_answer") {
-    return String(userAnswer ?? "").trim().toLowerCase() === String(correct).trim().toLowerCase();
-  }
-  return null;
-}
 
 /**
  * Calcule les agrégats satisfaction par question. Format :

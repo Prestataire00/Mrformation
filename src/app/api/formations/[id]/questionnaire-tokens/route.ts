@@ -4,7 +4,7 @@ import { requireRole } from "@/lib/auth/require-role";
 interface RouteContext { params: { id: string } }
 
 export async function POST(request: NextRequest, context: RouteContext) {
-  const auth = await requireRole(["super_admin", "admin", "trainer"]);
+  const auth = await requireRole(["super_admin", "admin"]);
   if (auth.error) return auth.error;
 
   const sessionId = context.params.id;
