@@ -27,9 +27,40 @@ export function isCorrect(question: QuestionRow, userAnswer: unknown): boolean |
   const correct = opts.correct_answer;
 
   if (question.type === "multiple_choice") {
-    // correct_answer = index 0-3, user response = index ou label
-    // Note : bug latent (label non géré) reporté à Chantier 2 — voir deep-dive §3.6
-    return Number(userAnswer) === Number(correct);
+    // Fix bug label vs index : le frontend submit la label string mais
+    // correct_answer est stocké comme index numérique (format OpenAI).
+    // → résoudre l'index via question.options.options.findIndex(label).
+    const opts = question.options as unknown;
+    let choices: string[] = [];
+    let correctIdx: number | null = null;
+
+    // Format A (généré OpenAI) : { options: [...], correct_answer: N }
+    if (typeof opts === "object" && opts !== null && !Array.isArray(opts)) {
+      const obj = opts as { options?: unknown; choices?: unknown; correct_answer?: unknown };
+      const rawChoices = obj.options ?? obj.choices;
+      if (Array.isArray(rawChoices) && rawChoices.every((o) => typeof o === "string")) {
+        choices = rawChoices as string[];
+      }
+      if (typeof obj.correct_answer === "number") {
+        correctIdx = obj.correct_answer;
+      }
+    }
+
+    if (correctIdx === null) return null;
+
+    // userAnswer = label string → résoudre l'index via choices
+    if (typeof userAnswer === "string" && choices.length > 0) {
+      const userIdx = choices.findIndex((o) => normalize(o) === normalize(userAnswer));
+      if (userIdx < 0) return false;
+      return userIdx === correctIdx;
+    }
+
+    // userAnswer = index numérique (legacy ou test)
+    if (typeof userAnswer === "number") {
+      return userAnswer === correctIdx;
+    }
+
+    return null;
   }
   if (question.type === "yes_no" || question.type === "true_false") {
     // Fix P0-4 : comparaison string normalisée (avant : Boolean(userAnswer) === Boolean(correct)

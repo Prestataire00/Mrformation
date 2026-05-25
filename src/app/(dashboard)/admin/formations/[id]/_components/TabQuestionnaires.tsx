@@ -70,17 +70,23 @@ export function TabQuestionnaires({ formation, onRefresh }: Props) {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const [qR, eR, sR, rR] = await Promise.all([
-      supabase.from("questionnaires").select("id, title, type").eq("entity_id", formation.entity_id).eq("is_active", true).order("title"),
-      supabase.from("formation_evaluation_assignments").select("*, questionnaire:questionnaires(title)").eq("session_id", formation.id),
-      supabase.from("formation_satisfaction_assignments").select("*, questionnaire:questionnaires(title)").eq("session_id", formation.id),
-      supabase.from("questionnaire_responses").select("id, questionnaire_id, learner_id").eq("session_id", formation.id),
-    ]);
-    if (qR.data) setQuestionnaires(qR.data);
-    if (eR.data) setEvalAssignments(eR.data);
-    if (sR.data) setSatisAssignments(sR.data);
-    if (rR.data) setResponses(rR.data);
-    setLoading(false);
+    try {
+      const [qR, eR, sR, rR] = await Promise.all([
+        supabase.from("questionnaires").select("id, title, type").eq("entity_id", formation.entity_id).eq("is_active", true).order("title"),
+        supabase.from("formation_evaluation_assignments").select("*, questionnaire:questionnaires(title)").eq("session_id", formation.id),
+        supabase.from("formation_satisfaction_assignments").select("*, questionnaire:questionnaires(title)").eq("session_id", formation.id),
+        supabase.from("questionnaire_responses").select("id, questionnaire_id, learner_id").eq("session_id", formation.id),
+      ]);
+      if (qR.data) setQuestionnaires(qR.data);
+      if (eR.data) setEvalAssignments(eR.data);
+      if (sR.data) setSatisAssignments(sR.data);
+      if (rR.data) setResponses(rR.data);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Erreur de chargement";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
   }, [formation.id, formation.entity_id, supabase]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
@@ -219,11 +225,18 @@ function ItemDetail({ stage, item, formation, questionnaires, assignments, enrol
   const handleRemove = async () => {
     if (!current) return;
     setSaving(true);
-    const table = item.category === "evaluation" ? "formation_evaluation_assignments" : "formation_satisfaction_assignments";
-    await sb.from(table).delete().eq("id", current.id);
-    t({ title: "Questionnaire retiré" });
-    await (onRefresh as () => Promise<void>)();
-    setSaving(false);
+    try {
+      const table = item.category === "evaluation" ? "formation_evaluation_assignments" : "formation_satisfaction_assignments";
+      const { error } = await sb.from(table).delete().eq("id", current.id);
+      if (error) throw error;
+      t({ title: "Questionnaire retiré" });
+      await (onRefresh as () => Promise<void>)();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Erreur de retrait";
+      t({ title: "Erreur", description: message, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
