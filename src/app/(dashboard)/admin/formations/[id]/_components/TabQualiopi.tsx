@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { CheckCircle, XCircle, Loader2, Shield, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -8,269 +9,169 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/components/ui/use-toast";
 import type { Session } from "@/lib/types";
+import {
+  buildQualiopiItems,
+  scoreFromItems,
+  type QualiopiScoreItem,
+} from "@/lib/services/qualiopi-score";
+import { QualiopiSparkline } from "./QualiopiSparkline";
+import { QualiopiHistoryDetail } from "./QualiopiHistoryDetail";
+import { QualiopiAuditDetail, type AuditResult } from "./QualiopiAuditDetail";
 
 interface Props {
   formation: Session;
-  onRefresh: () => Promise<void>;
 }
 
-interface QualiopiItem {
-  id: string;
-  label: string;
-  category: "documents" | "evaluations" | "sous_traitance";
-  type: "auto" | "auto_percent" | "manual";
-  value: boolean;
-  percent?: number;
-  subLabel?: string;
-}
-
-export function TabQualiopi({ formation, onRefresh }: Props) {
-  const { toast } = useToast();
-  const supabase = createClient();
-  const [manualChecks, setManualChecks] = useState<Record<string, boolean>>({});
+export function TabQualiopi({ formation }: Props) {
+  // Manual checks : lus depuis formation.qualiopi_manual (nouvelle colonne BDD).
+  // Plus de lecture/parsing de sessions.notes (champ partagé avec d'autres features).
+  // Note de design : l'init lit la prop UNE fois (useState n'observe pas les
+  // changements). C'est volontaire — le parent ne re-fetch pas la formation
+  // après un toggle local, et utiliser useEffect pour synchroniser créerait
+  // une race condition avec les updates optimistes. Si un jour le parent
+  // se met à re-fetch sur fenêtre revisible/etc., voir le rollback dans
+  // handleManualToggle pour ajuster.
+  const [manualChecks, setManualChecks] = useState<Record<string, boolean>>(
+    formation.qualiopi_manual ?? {},
+  );
   const [loading, setLoading] = useState(true);
   const [responseCounts, setResponseCounts] = useState<Record<string, { total: number; done: number }>>({});
 
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [auditOpen, setAuditOpen] = useState(false);
+
   // Audit blanc IA
   const [auditRunning, setAuditRunning] = useState(false);
-  const [auditResult, setAuditResult] = useState<{ overall_verdict: string; findings: Array<{ critere: number; status: string; question: string; recommendation: string }>; action_plan: Array<{ title: string; priority: string; estimated_effort?: string }> } | null>(null);
+  const [auditResult, setAuditResult] = useState<AuditResult | null>(null);
 
-  const docs = formation.formation_convention_documents || [];
-  const evalAssignments = formation.formation_evaluation_assignments || [];
-  const satisAssignments = formation.formation_satisfaction_assignments || [];
-  const elearningAssignments = formation.formation_elearning_assignments || [];
-  const enrollments = formation.enrollments || [];
-  const isSubcontracted = formation.is_subcontracted === true;
-  const learnerCount = enrollments.length || 1;
+  const router = useRouter();
+  const { toast } = useToast();
+  const supabase = createClient();
+  const abortRef = useRef<AbortController | null>(null);
 
-  // Load manual checks from formation notes/metadata
   useEffect(() => {
-    (async () => {
-      const { data } = await supabase
-        .from("sessions")
-        .select("notes")
-        .eq("id", formation.id)
-        .single();
-      if (data?.notes) {
-        try {
-          const parsed = JSON.parse(data.notes);
-          if (parsed.qualiopi_manual) {
-            setManualChecks(parsed.qualiopi_manual);
-          }
-        } catch { /* notes is not JSON, ignore */ }
-      }
-      setLoading(false);
-    })();
-  }, [formation.id, supabase]);
+    setLoading(false);
+  }, []);
 
   // Fetch response counts for evaluation assignments
   const fetchResponseCounts = useCallback(async () => {
-    const counts: Record<string, { total: number; done: number }> = {};
+    const evalAssignments = formation.formation_evaluation_assignments || [];
+    const satisAssignments = formation.formation_satisfaction_assignments || [];
+    const enrollmentsCount = (formation.enrollments || []).length || 1;
 
-    // Evaluation assignments
-    const preFormation = evalAssignments.filter(a => a.evaluation_type === "eval_preformation");
-    const postFormation = evalAssignments.filter(a => a.evaluation_type === "eval_postformation");
+    const preFormationIds = evalAssignments
+      .filter(a => a.evaluation_type === "eval_preformation")
+      .map(a => a.questionnaire_id) as string[];
+    const postFormationIds = evalAssignments
+      .filter(a => a.evaluation_type === "eval_postformation")
+      .map(a => a.questionnaire_id) as string[];
+    const satisfactionIds = satisAssignments
+      .map(a => a.questionnaire_id) as string[];
 
-    for (const [key, assignments] of [
-      ["eval_preformation", preFormation],
-      ["eval_postformation", postFormation],
-    ] as const) {
-      const total = assignments.length > 0 ? learnerCount : 0;
-      let done = 0;
-      for (const a of assignments) {
-        const { count } = await supabase
-          .from("questionnaire_responses")
-          .select("id", { count: "exact", head: true })
-          .eq("questionnaire_id", a.questionnaire_id)
-          .eq("session_id", formation.id);
-        done += count || 0;
-      }
-      counts[key] = { total, done: Math.min(done, total) };
+    const allIds = [...preFormationIds, ...postFormationIds, ...satisfactionIds];
+    if (allIds.length === 0) {
+      setResponseCounts({});
+      return;
     }
 
-    // Satisfaction assignments
-    const satisTotal = satisAssignments.length > 0 ? learnerCount : 0;
-    let satisDone = 0;
-    for (const a of satisAssignments) {
-      const { count } = await supabase
-        .from("questionnaire_responses")
-        .select("id", { count: "exact", head: true })
-        .eq("questionnaire_id", a.questionnaire_id)
-        .eq("session_id", formation.id);
-      satisDone += count || 0;
+    // 1 seul round-trip Supabase via RPC count_responses_by_questionnaire.
+    const { data: grouped, error } = await supabase.rpc("count_responses_by_questionnaire", {
+      p_session_id: formation.id,
+      p_questionnaire_ids: allIds,
+    });
+    if (error) {
+      console.warn("[qualiopi] count_responses_by_questionnaire failed:", error.message);
+      setResponseCounts({});
+      return;
     }
-    counts["satisfaction"] = { total: satisTotal, done: Math.min(satisDone, satisTotal) };
+
+    const countsByQId = new Map<string, number>(
+      (grouped as Array<{ questionnaire_id: string; response_count: number }> | null ?? [])
+        .map(r => [r.questionnaire_id, Number(r.response_count)]),
+    );
+
+    const sumFor = (ids: string[]) =>
+      ids.reduce((s, qid) => s + (countsByQId.get(qid) ?? 0), 0);
+
+    const counts: Record<string, { total: number; done: number }> = {
+      eval_preformation: {
+        total: preFormationIds.length > 0 ? enrollmentsCount : 0,
+        done: Math.min(sumFor(preFormationIds), preFormationIds.length > 0 ? enrollmentsCount : 0),
+      },
+      eval_postformation: {
+        total: postFormationIds.length > 0 ? enrollmentsCount : 0,
+        done: Math.min(sumFor(postFormationIds), postFormationIds.length > 0 ? enrollmentsCount : 0),
+      },
+      satisfaction: {
+        total: satisfactionIds.length > 0 ? enrollmentsCount : 0,
+        done: Math.min(sumFor(satisfactionIds), satisfactionIds.length > 0 ? enrollmentsCount : 0),
+      },
+    };
 
     setResponseCounts(counts);
-  }, [evalAssignments, satisAssignments, formation.id, learnerCount, supabase]);
+  }, [
+    formation.id,
+    formation.formation_evaluation_assignments,
+    formation.formation_satisfaction_assignments,
+    formation.enrollments,
+    supabase,
+  ]);
 
   useEffect(() => {
     fetchResponseCounts();
   }, [fetchResponseCounts]);
 
-  // Helper: check if any doc of a type matches a condition
-  const hasDoc = (docType: string, condition: (d: typeof docs[0]) => boolean) =>
-    docs.some(d => d.doc_type === docType && condition(d));
+  // Délégation à la lib unique src/lib/services/qualiopi-score.ts
+  const items: QualiopiScoreItem[] = useMemo(
+    () => buildQualiopiItems(formation, { responseCounts, manualChecks }),
+    [formation, responseCounts, manualChecks],
+  );
 
-  const hasAnySigned = (docType: string) => hasDoc(docType, d => d.is_signed === true);
-  const hasAnySent = (docType: string) => hasDoc(docType, d => d.is_sent === true);
-  const allSent = (docType: string) => {
-    const typeDocs = docs.filter(d => d.doc_type === docType);
-    return typeDocs.length > 0 && typeDocs.every(d => d.is_sent === true);
-  };
-
-  const getPercent = (key: string): number => {
-    const c = responseCounts[key];
-    if (!c || c.total === 0) return 0;
-    return Math.round((c.done / c.total) * 100);
-  };
-
-  // Build checklist items
-  const items = useMemo<QualiopiItem[]>(() => {
-    const list: QualiopiItem[] = [
-      {
-        id: "convention_signed",
-        label: "Convention signée",
-        category: "documents",
-        type: "auto",
-        value: hasAnySigned("convention_entreprise"),
-      },
-      {
-        id: "convocation_sent",
-        label: "Convocation envoyée",
-        category: "documents",
-        type: "auto",
-        value: allSent("convocation"),
-        subLabel: `${docs.filter(d => d.doc_type === "convocation" && d.is_sent).length}/${docs.filter(d => d.doc_type === "convocation").length}`,
-      },
-      {
-        id: "convention_intervention_signed",
-        label: "Contrat intervention formateur signé",
-        category: "documents",
-        type: "auto",
-        value: hasAnySigned("convention_intervention"),
-      },
-      {
-        id: "eval_preformation",
-        label: "Questionnaire positionnement rempli",
-        category: "evaluations",
-        type: "auto_percent",
-        value: getPercent("eval_preformation") === 100,
-        percent: getPercent("eval_preformation"),
-      },
-      {
-        id: "eval_postformation",
-        label: "Questionnaire fin de formation rempli",
-        category: "evaluations",
-        type: "auto_percent",
-        value: getPercent("eval_postformation") === 100,
-        percent: getPercent("eval_postformation"),
-      },
-      {
-        id: "satisfaction_learner",
-        label: "Questionnaire satisfaction apprenant rempli",
-        category: "evaluations",
-        type: "auto_percent",
-        value: getPercent("satisfaction") === 100,
-        percent: getPercent("satisfaction"),
-      },
-      {
-        id: "certificat_sent",
-        label: "Certificat de réalisation envoyé",
-        category: "documents",
-        type: "auto",
-        value: allSent("certificat_realisation"),
-        subLabel: `${docs.filter(d => d.doc_type === "certificat_realisation" && d.is_sent).length}/${docs.filter(d => d.doc_type === "certificat_realisation").length}`,
-      },
-      {
-        id: "support_cours",
-        label: "Support de cours déposé",
-        category: "documents",
-        type: "auto",
-        value: elearningAssignments.length > 0,
-      },
-    ];
-
-    // Sous-traitance items
-    // Note (2026-05-18) : item "contrat_sous_traitance_sent" retiré (le type
-    // contrat_sous_traitance était un doublon de convention_intervention,
-    // supprimé en même temps). Le check "convention_intervention_signed"
-    // (ligne ~147) couvre déjà le signed côté formateur.
-    if (isSubcontracted) {
-      list.push(
-        {
-          id: "docs_formation_sent",
-          label: "Documents formation envoyés au formateur",
-          category: "sous_traitance",
-          type: "auto",
-          value: docs.filter(d => d.owner_type === "trainer" && d.is_sent).length > 0,
-        },
-        {
-          id: "docs_post_formation_received",
-          label: "Documents post-formation reçus",
-          category: "sous_traitance",
-          type: "manual",
-          value: manualChecks["docs_post_formation_received"] || false,
-        }
-      );
-    }
-
-    return list;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [docs, evalAssignments, satisAssignments, elearningAssignments, responseCounts, manualChecks, isSubcontracted]);
-
-  // Calculate global score
-  const score = useMemo(() => {
-    if (items.length === 0) return 0;
-    let totalWeight = 0;
-    let achieved = 0;
-    for (const item of items) {
-      totalWeight += 1;
-      if (item.type === "auto_percent") {
-        achieved += (item.percent || 0) / 100;
-      } else if (item.value) {
-        achieved += 1;
-      }
-    }
-    return Math.round((achieved / totalWeight) * 100);
-  }, [items]);
+  // Évite une seconde construction des items côté lib — on dérive du tableau déjà mémoïsé.
+  const score: number = useMemo(
+    () => scoreFromItems(items),
+    [items],
+  );
 
   const scoreColor = score >= 67 ? "text-green-700 bg-green-100" : score >= 34 ? "text-amber-700 bg-amber-100" : "text-red-700 bg-red-100";
   const scoreBarColor = score >= 67 ? "bg-green-500" : score >= 34 ? "bg-amber-500" : "bg-red-500";
 
-  // Persist score to DB for listing views
+  // Persiste qualiopi_score pour les listes formations. Awaited + error handling.
+  // 0 est une valeur légitime (formation totalement vide) — on persiste aussi.
   useEffect(() => {
-    if (loading || score === 0) return;
-    supabase.from("sessions").update({ qualiopi_score: score }).eq("id", formation.id);
+    if (loading) return;
+    (async () => {
+      const { error } = await supabase
+        .from("sessions")
+        .update({ qualiopi_score: score })
+        .eq("id", formation.id);
+      if (error) console.warn("[qualiopi] persist score failed:", error.message);
+    })();
   }, [score, loading, formation.id, supabase]);
 
-  // Toggle manual check
+  useEffect(() => () => abortRef.current?.abort(), []);
+
   const handleManualToggle = async (itemId: string, checked: boolean) => {
-    const newChecks = { ...manualChecks, [itemId]: checked };
-    setManualChecks(newChecks);
-
-    try {
-      // Read current notes, merge qualiopi_manual
-      const { data: current } = await supabase
-        .from("sessions")
-        .select("notes")
-        .eq("id", formation.id)
-        .single();
-
-      let notesObj: Record<string, unknown> = {};
-      try { notesObj = JSON.parse(current?.notes || "{}"); } catch { /* ignore */ }
-      notesObj.qualiopi_manual = newChecks;
-
-      await supabase
-        .from("sessions")
-        .update({ notes: JSON.stringify(notesObj) })
-        .eq("id", formation.id);
-    } catch {
-      toast({ title: "Erreur lors de la sauvegarde", variant: "destructive" });
+    // On capture la valeur précédente DE CE seul item pour pouvoir rollback
+    // l'item concerné sans écraser d'autres toggles concurrents en vol.
+    const previousValueForItem = manualChecks[itemId] ?? false;
+    setManualChecks(curr => ({ ...curr, [itemId]: checked }));
+    const { error } = await supabase
+      .from("sessions")
+      .update({ qualiopi_manual: { ...manualChecks, [itemId]: checked } })
+      .eq("id", formation.id);
+    if (error) {
+      // Rollback fonctionnel : ne touche que l'item échoué, préserve les autres.
+      setManualChecks(curr => ({ ...curr, [itemId]: previousValueForItem }));
+      toast({
+        title: "Échec de la sauvegarde",
+        description: error.message,
+        variant: "destructive",
+      });
     }
   };
 
-  const renderDot = (item: QualiopiItem) => {
+  const renderDot = (item: QualiopiScoreItem) => {
     if (item.type === "auto_percent") {
       const p = item.percent || 0;
       const color = p === 0 ? "bg-red-500" : p < 100 ? "bg-amber-500" : "bg-green-500";
@@ -281,7 +182,7 @@ export function TabQualiopi({ formation, onRefresh }: Props) {
     );
   };
 
-  const renderBadge = (item: QualiopiItem) => {
+  const renderBadge = (item: QualiopiScoreItem) => {
     if (item.type === "auto_percent") {
       const p = item.percent || 0;
       const color = p === 0 ? "bg-red-50 text-red-700" : p < 100 ? "bg-amber-50 text-amber-700" : "bg-green-50 text-green-700";
@@ -315,9 +216,9 @@ export function TabQualiopi({ formation, onRefresh }: Props) {
   };
 
   const goToTab = (tab: string) => {
-    const url = new URL(window.location.href);
-    url.searchParams.set("tab", tab);
-    window.location.href = url.toString();
+    const params = new URLSearchParams(window.location.search);
+    params.set("tab", tab);
+    router.replace(`${window.location.pathname}?${params.toString()}`);
   };
 
   if (loading) {
@@ -343,9 +244,16 @@ export function TabQualiopi({ formation, onRefresh }: Props) {
             <p className="text-xs text-muted-foreground">{items.filter(i => i.value).length}/{items.length} critères validés</p>
           </div>
         </div>
-        <Badge className={`text-lg font-bold px-4 py-1.5 ${scoreColor}`}>
-          {score}%
-        </Badge>
+        <div className="flex items-center gap-3">
+          <QualiopiSparkline sessionId={formation.id} />
+          <button
+            onClick={() => setHistoryOpen(true)}
+            className="text-[11px] text-blue-600 hover:underline"
+          >
+            Voir l&apos;historique
+          </button>
+          <Badge className={`text-lg font-bold px-4 py-1.5 ${scoreColor}`}>{score}%</Badge>
+        </div>
       </div>
 
       {/* Progress bar */}
@@ -369,18 +277,25 @@ export function TabQualiopi({ formation, onRefresh }: Props) {
           </div>
           <Button
             onClick={async () => {
+              // Annule un audit en cours si l'utilisateur reclique avant la fin
+              abortRef.current?.abort();
+              const ctrl = new AbortController();
+              abortRef.current = ctrl;
+
               setAuditRunning(true);
               try {
                 const res = await fetch("/api/ai/qualiopi-mock-audit", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({ mode: "formation", session_id: formation.id }),
+                  signal: ctrl.signal,
                 });
                 if (!res.ok) throw new Error("Audit échoué");
                 const data = await res.json();
                 setAuditResult(data);
                 toast({ title: "Audit blanc terminé" });
-              } catch {
+              } catch (err) {
+                if ((err as Error).name === "AbortError") return; // annulation volontaire, pas d'erreur
                 toast({ title: "Erreur", description: "Audit IA échoué", variant: "destructive" });
               } finally {
                 setAuditRunning(false);
@@ -396,20 +311,20 @@ export function TabQualiopi({ formation, onRefresh }: Props) {
         </div>
         {auditResult && (
           <div className="bg-white/10 rounded-lg p-4 space-y-3">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <Badge className={auditResult.overall_verdict === "conforme" ? "bg-green-500" : auditResult.overall_verdict === "ecarts_majeurs" ? "bg-red-500" : "bg-amber-500"}>
                 {auditResult.overall_verdict === "conforme" ? "Conforme" : auditResult.overall_verdict === "ecarts_majeurs" ? "Écarts majeurs" : "À améliorer"}
               </Badge>
               <span className="text-xs text-white/60">
-                {auditResult.findings.filter(f => f.status !== "conforme").length} point(s) d&apos;attention
+                {auditResult.findings.filter(f => f.status !== "conforme").length} point(s) d&apos;attention sur {auditResult.findings.length} constat(s)
               </span>
+              <button
+                onClick={() => setAuditOpen(true)}
+                className="ml-auto text-xs text-white/90 hover:text-white underline underline-offset-2"
+              >
+                Voir l&apos;audit détaillé →
+              </button>
             </div>
-            {auditResult.findings.filter(f => f.status !== "conforme").slice(0, 3).map((f, i) => (
-              <div key={i} className="text-xs text-white/80">
-                <span className="font-medium">C{f.critere}</span> — {f.question}
-                {f.recommendation && <p className="text-white/60 mt-0.5">💡 {f.recommendation}</p>}
-              </div>
-            ))}
             {auditResult.action_plan.length > 0 && (
               <p className="text-xs text-white/60">{auditResult.action_plan.length} action(s) recommandée(s)</p>
             )}
@@ -486,41 +401,21 @@ export function TabQualiopi({ formation, onRefresh }: Props) {
           </div>
         </div>
       )}
+
+      <QualiopiHistoryDetail
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+        sessionId={formation.id}
+        formationTitle={formation.title ?? "Formation"}
+        currentScore={score}
+      />
+
+      <QualiopiAuditDetail
+        open={auditOpen}
+        onOpenChange={setAuditOpen}
+        result={auditResult}
+      />
     </div>
   );
 }
 
-/**
- * Utility: compute Qualiopi score from formation data (for list views).
- * Returns 0-100.
- */
-export function computeQualiopiScore(formation: Session): number {
-  const docs = formation.formation_convention_documents || [];
-  const evalAssignments = formation.formation_evaluation_assignments || [];
-  const satisAssignments = formation.formation_satisfaction_assignments || [];
-  const elearningAssignments = formation.formation_elearning_assignments || [];
-
-  let total = 8; // base items count
-  let achieved = 0;
-
-  // Convention signed
-  if (docs.some(d => d.doc_type === "convention_entreprise" && d.is_signed)) achieved++;
-  // Convocations sent
-  const convocs = docs.filter(d => d.doc_type === "convocation");
-  if (convocs.length > 0 && convocs.every(d => d.is_sent)) achieved++;
-  // Convention intervention signed
-  if (docs.some(d => d.doc_type === "convention_intervention" && d.is_signed)) achieved++;
-  // Eval preformation assigned
-  if (evalAssignments.some(a => a.evaluation_type === "eval_preformation")) achieved += 0.5;
-  // Eval postformation assigned
-  if (evalAssignments.some(a => a.evaluation_type === "eval_postformation")) achieved += 0.5;
-  // Satisfaction assigned
-  if (satisAssignments.length > 0) achieved += 0.5;
-  // Certificat sent
-  const certs = docs.filter(d => d.doc_type === "certificat_realisation");
-  if (certs.length > 0 && certs.every(d => d.is_sent)) achieved++;
-  // Support cours
-  if (elearningAssignments.length > 0) achieved++;
-
-  return Math.round((achieved / total) * 100);
-}

@@ -2,8 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/require-role";
 import { claudeChat } from "@/lib/ai/claude-client";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
+import { z } from "zod";
+import { mapStatusToFlags } from "@/lib/utils/document-status";
 
 const SYSTEM = `Tu es un auditeur Qualiopi certifié COFRAC. Tu simules un audit blanc sur un organisme de formation français. Tu connais les 7 critères, 32 indicateurs, le guide de lecture V9. Réponds TOUJOURS en JSON strict, SANS markdown.`;
+
+const Body = z.discriminatedUnion("mode", [
+  z.object({ mode: z.literal("formation"), session_id: z.string().uuid() }),
+  z.object({ mode: z.literal("global") }),
+]);
 
 export async function POST(req: NextRequest) {
   const auth = await requireRole(["super_admin", "admin"]);
@@ -12,10 +19,16 @@ export async function POST(req: NextRequest) {
   const { allowed, resetAt } = checkRateLimit(`qualiopi-audit-${auth.user.id}`, { limit: 10, windowSeconds: 3600 });
   if (!allowed) return rateLimitResponse(resetAt);
 
+  let body: z.infer<typeof Body>;
   try {
-    const { mode, session_id } = await req.json();
+    body = Body.parse(await req.json());
+  } catch (err) {
+    return NextResponse.json({ error: "Requête invalide", details: (err as Error).message }, { status: 400 });
+  }
 
-    if (mode === "formation" && session_id) {
+  try {
+    if (body.mode === "formation") {
+      const session_id = body.session_id;
       const [{ data: session }, { data: documentsRows }] = await Promise.all([
         auth.supabase
           .from("sessions")
@@ -31,12 +44,9 @@ export async function POST(req: NextRequest) {
 
       if (!session) return NextResponse.json({ error: "Session introuvable" }, { status: 404 });
 
-      // Adapter shape pour le reste du code (legacy-compatible : is_signed/is_sent dérivés du status)
       const docs = (documentsRows ?? []).map((d) => ({
         doc_type: d.doc_type,
-        is_confirmed: d.status !== "draft",
-        is_signed: d.status === "signed",
-        is_sent: d.status === "sent" || d.status === "signed",
+        ...mapStatusToFlags(d.status as string),
       }));
       const evals = session.formation_evaluation_assignments || [];
       const context = {
@@ -70,7 +80,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(result);
     }
 
-    if (mode === "global") {
+    if (body.mode === "global") {
       const entityId = auth.profile.entity_id;
       const { data: sessions } = await auth.supabase
         .from("sessions")
@@ -100,8 +110,6 @@ export async function POST(req: NextRequest) {
 
       return NextResponse.json(result);
     }
-
-    return NextResponse.json({ error: "Mode invalide (formation ou global)" }, { status: 400 });
   } catch (err) {
     console.error("[qualiopi-mock-audit]", err);
     return NextResponse.json({ error: "Audit IA échoué" }, { status: 500 });

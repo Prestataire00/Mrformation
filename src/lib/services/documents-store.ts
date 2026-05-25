@@ -20,6 +20,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { FormationConventionDocument } from "@/lib/types";
+import { mapStatusToFlags } from "@/lib/utils/document-status";
 
 // ─── Types internes ─────────────────────────────────────────────────────
 
@@ -59,6 +60,7 @@ interface DocumentsRowWithTemplate extends DocumentsRow {
 
 export function mapDocumentToLegacyShape(row: DocumentsRowWithTemplate): FormationConventionDocument {
   const meta = row.metadata ?? {};
+  const flags = mapStatusToFlags(row.status);
   return {
     id: row.id,
     session_id: row.source_id,
@@ -66,11 +68,11 @@ export function mapDocumentToLegacyShape(row: DocumentsRowWithTemplate): Formati
     owner_type: (row.owner_type ?? "learner") as FormationConventionDocument["owner_type"],
     owner_id: row.owner_id ?? "",
     template_id: row.template_id,
-    is_confirmed: row.status !== "draft",
+    is_confirmed: flags.is_confirmed,
     confirmed_at: row.generated_at,
-    is_sent: row.status === "sent" || row.status === "signed",
+    is_sent: flags.is_sent,
     sent_at: row.sent_at,
-    is_signed: row.status === "signed",
+    is_signed: flags.is_signed,
     signed_at: row.signed_at,
     document_date: meta.document_date ?? null,
     custom_label: meta.custom_label ?? null,

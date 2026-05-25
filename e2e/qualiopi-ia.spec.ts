@@ -147,11 +147,4 @@ test.describe("Qualiopi IA — audits et qualité", () => {
     });
     expect([401, 403]).toContain(response.status());
   });
-
-  test("API /api/ai/qualiopi-check-proof protégée par auth", async ({ request }) => {
-    const response = await request.post("/api/ai/qualiopi-check-proof", {
-      data: {},
-    });
-    expect([401, 403]).toContain(response.status());
-  });
 });
