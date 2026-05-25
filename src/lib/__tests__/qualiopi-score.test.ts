@@ -1,8 +1,9 @@
 import { describe, it, expect } from "vitest";
 import type { Session } from "@/lib/types";
-
-// Import the exported utility function
-import { computeQualiopiScore } from "@/app/(dashboard)/admin/formations/[id]/_components/TabQualiopi";
+import {
+  buildQualiopiItems,
+  computeQualiopiScore,
+} from "@/lib/services/qualiopi-score";
 
 function makeFormation(overrides: Partial<Session> = {}): Session {
   return {
@@ -42,23 +43,71 @@ function makeFormation(overrides: Partial<Session> = {}): Session {
   } as Session;
 }
 
-describe("computeQualiopiScore", () => {
-  it("formation sans rien → 0%", () => {
-    const score = computeQualiopiScore(makeFormation());
-    expect(score).toBe(0);
+describe("buildQualiopiItems", () => {
+  it("formation vide → 8 items, tous à false ou 0%", () => {
+    const items = buildQualiopiItems(makeFormation());
+    expect(items).toHaveLength(8);
+    expect(items.filter(i => i.value === false)).toHaveLength(8);
   });
 
-  it("convention signee seule → score partiel", () => {
+  it("formation sous-traitée → 10 items (8 + 2 sous-traitance)", () => {
+    const items = buildQualiopiItems(makeFormation({ is_subcontracted: true }));
+    expect(items).toHaveLength(10);
+    expect(items.filter(i => i.category === "sous_traitance")).toHaveLength(2);
+  });
+
+  it("manualChecks fournis → l'item manuel adopte la valeur", () => {
+    const items = buildQualiopiItems(
+      makeFormation({ is_subcontracted: true }),
+      { manualChecks: { docs_post_formation_received: true } },
+    );
+    const manual = items.find(i => i.id === "docs_post_formation_received");
+    expect(manual?.value).toBe(true);
+  });
+
+  it("responseCounts à 0/N → auto_percent à 0%", () => {
+    const items = buildQualiopiItems(makeFormation({
+      formation_evaluation_assignments: [
+        { id: "e1", evaluation_type: "eval_preformation", questionnaire_id: "q1" } as never,
+      ],
+      enrollments: [{ learner_id: "l1" } as never],
+    }), {
+      responseCounts: { eval_preformation: { total: 1, done: 0 } },
+    });
+    const item = items.find(i => i.id === "eval_preformation");
+    expect(item?.type).toBe("auto_percent");
+    expect(item?.percent).toBe(0);
+  });
+
+  it("responseCounts à 100% → auto_percent à 100%", () => {
+    const items = buildQualiopiItems(makeFormation({
+      formation_evaluation_assignments: [
+        { id: "e1", evaluation_type: "eval_preformation", questionnaire_id: "q1" } as never,
+      ],
+      enrollments: [{ learner_id: "l1" } as never],
+    }), {
+      responseCounts: { eval_preformation: { total: 1, done: 1 } },
+    });
+    const item = items.find(i => i.id === "eval_preformation");
+    expect(item?.percent).toBe(100);
+  });
+});
+
+describe("computeQualiopiScore", () => {
+  it("formation vide → 0%", () => {
+    expect(computeQualiopiScore(makeFormation())).toBe(0);
+  });
+
+  it("convention signée seule → 1/8 ≈ 13%", () => {
     const score = computeQualiopiScore(makeFormation({
       formation_convention_documents: [
-        { id: "1", session_id: "test-id", doc_type: "convention_entreprise", owner_type: "company", owner_id: "c1", is_confirmed: true, is_sent: false, is_signed: true, requires_signature: true, created_at: "", updated_at: "" } as never,
+        { id: "1", doc_type: "convention_entreprise", is_signed: true } as never,
       ],
     }));
-    expect(score).toBeGreaterThan(0);
-    expect(score).toBeLessThan(100);
+    expect(score).toBe(13);
   });
 
-  it("tous les items coches → score eleve", () => {
+  it("tous documents OK + questionnaires 100% → 100%", () => {
     const score = computeQualiopiScore(makeFormation({
       formation_convention_documents: [
         { id: "1", doc_type: "convention_entreprise", is_signed: true } as never,
@@ -73,16 +122,21 @@ describe("computeQualiopiScore", () => {
       formation_satisfaction_assignments: [
         { id: "s1", questionnaire_id: "q3" } as never,
       ],
-      formation_elearning_assignments: [
-        { id: "el1" } as never,
-      ],
-    }));
-    expect(score).toBeGreaterThanOrEqual(75);
+      formation_elearning_assignments: [{ id: "el1" } as never],
+      enrollments: [{ learner_id: "l1" } as never],
+    }), {
+      responseCounts: {
+        eval_preformation: { total: 1, done: 1 },
+        eval_postformation: { total: 1, done: 1 },
+        satisfaction: { total: 1, done: 1 },
+      },
+    });
+    expect(score).toBe(100);
   });
 
   it("le score est toujours entre 0 et 100", () => {
-    const score = computeQualiopiScore(makeFormation());
-    expect(score).toBeGreaterThanOrEqual(0);
-    expect(score).toBeLessThanOrEqual(100);
+    const s = computeQualiopiScore(makeFormation());
+    expect(s).toBeGreaterThanOrEqual(0);
+    expect(s).toBeLessThanOrEqual(100);
   });
 });
