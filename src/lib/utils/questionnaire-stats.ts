@@ -104,3 +104,83 @@ export function computeStageStats(
 
   return { attributed, sent, expectedSent, answered, rate };
 }
+
+export type LearnerStatus = "answered" | "sent" | "not_sent" | "not_assigned" | "expired";
+
+export interface LearnerStatusCell {
+  learnerId: string;
+  learnerName: string;
+  questionnaireId: string;
+  questionnaireTitle: string;
+  status: LearnerStatus;
+  responseId?: string;
+  tokenExpiresAt?: string;
+}
+
+interface EnrollmentWithLearner {
+  learner?: {
+    id?: string;
+    first_name?: string;
+    last_name?: string;
+  };
+  [key: string]: unknown;
+}
+
+interface AssignmentWithQuestionnaire extends AssignmentRow {
+  questionnaire?: { title?: string };
+}
+
+export function computeLearnerStatuses(
+  enrollments: EnrollmentWithLearner[],
+  evalAssignments: AssignmentWithQuestionnaire[],
+  satisAssignments: AssignmentWithQuestionnaire[],
+  tokens: Array<{ questionnaire_id?: string; learner_id?: string; expires_at?: string; id?: string }>,
+  responses: Array<{ questionnaire_id?: string; learner_id?: string; id?: string }>,
+): LearnerStatusCell[] {
+  const now = Date.now();
+  const result: LearnerStatusCell[] = [];
+
+  // Construire la liste des couples (questionnaire_id, title) attribués (eval + satis)
+  const allAssignments = [...evalAssignments, ...satisAssignments];
+  const questionnaireMap = new Map<string, string>();
+  for (const a of allAssignments) {
+    if (typeof a.questionnaire_id === "string") {
+      const title = a.questionnaire?.title ?? "(sans titre)";
+      questionnaireMap.set(a.questionnaire_id, title);
+    }
+  }
+
+  // Pour chaque apprenant × chaque questionnaire attribué, déterminer le statut
+  for (const enr of enrollments) {
+    const lId = enr.learner?.id;
+    if (typeof lId !== "string") continue;
+    const lName = `${enr.learner?.first_name ?? ""} ${enr.learner?.last_name ?? ""}`.trim() || lId;
+
+    for (const [qId, qTitle] of questionnaireMap.entries()) {
+      const response = responses.find((r) => r.questionnaire_id === qId && r.learner_id === lId);
+      const token = tokens.find((t) => t.questionnaire_id === qId && t.learner_id === lId);
+
+      let status: LearnerStatus;
+      if (response) {
+        status = "answered";
+      } else if (token) {
+        const expiresMs = token.expires_at ? Date.parse(token.expires_at) : NaN;
+        status = !isNaN(expiresMs) && expiresMs < now ? "expired" : "sent";
+      } else {
+        status = "not_sent";
+      }
+
+      result.push({
+        learnerId: lId,
+        learnerName: lName,
+        questionnaireId: qId,
+        questionnaireTitle: qTitle,
+        status,
+        responseId: response?.id,
+        tokenExpiresAt: token?.expires_at,
+      });
+    }
+  }
+
+  return result;
+}
