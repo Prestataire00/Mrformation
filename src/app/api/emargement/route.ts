@@ -3,6 +3,7 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { requireRole } from "@/lib/auth/require-role";
 import { sanitizeDbError } from "@/lib/api-error";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
+import { resolveActiveEntityId } from "@/lib/crm/active-entity";
 
 function createServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -280,7 +281,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Session introuvable" }, { status: 404 });
   }
 
-  if (sessionCheck.entity_id !== auth.profile.entity_id) {
+  const activeEntityId = resolveActiveEntityId(auth.profile);
+  if (sessionCheck.entity_id !== activeEntityId) {
     return NextResponse.json(
       { error: "Accès non autorisé à cette session" },
       { status: 403 }

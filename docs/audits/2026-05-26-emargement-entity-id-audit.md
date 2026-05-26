@@ -241,11 +241,17 @@ C'est le pattern le plus robuste des 7 routes auditées.
 **Statut :** ⚠️ Fixed — commit `47e3457`  
 **Impact :** Même que Finding 1, amplifié : 4× INSERT + 2× UPDATE possibles cross-entity. Admin entité A pouvait générer et refresher les tokens QR d'une session d'entité B.
 
-### ℹ️ OBSERVATION — `/api/emargement/post-session-eval` POST : session ownership non validée
+### ℹ️ OBSERVATION 1 — `/api/emargement/post-session-eval` POST : session ownership non validée
 
 **Criticité :** LOW (hors scope écritures DB)  
 **Statut :** Non fixé dans ce sprint (hors scope Task 7)  
 **Impact :** Admin entité A pourrait envoyer des emails aux apprenants d'une session d'entité B. Pas d'écriture DB cross-entity. À adresser dans un futur audit "information disclosure".
+
+### ℹ️ OBSERVATION 2 — `/api/emargement/slots` GET : session ownership non validée (information disclosure)
+
+**Criticité :** LOW (lecture seule)  
+**Statut :** Non fixé dans ce sprint (hors scope Task 7 — Sous-chantier 2 candidate)  
+**Impact :** `/api/emargement/slots` **GET** utilise aussi `createServiceClient()` et accepte un `session_id` sans validation d'ownership. Permet à un admin entité A de lire les tokens et learner_ids d'une session entité B. Lecture seule, criticité LOW (pas d'écriture cross-entity). À adresser dans un futur Sous-chantier 2 ou audit "information disclosure".
 
 ---
 
