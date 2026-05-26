@@ -73,8 +73,22 @@ export async function POST(request: NextRequest) {
     } else if (role === "trainer") {
       signerType = "trainer";
     } else if (["admin", "super_admin"].includes(role)) {
-      // Admin can sign on behalf — use signer_type from body
-      signerType = bodySignerType || "learner";
+      // Admin signe pour quelqu'un d'autre : DOIT fournir bodySignerId + bodySignerType
+      // explicitement (pas de fallback silencieux vers admin's userId/'learner' qui
+      // créerait des signatures orphelines incohérentes — voir spec § 4.4).
+      if (!bodySignerId || !bodySignerType) {
+        return NextResponse.json(
+          { error: "Pour signer en tant qu'administrateur, signer_id et signer_type sont obligatoires." },
+          { status: 400 },
+        );
+      }
+      if (bodySignerType !== "learner" && bodySignerType !== "trainer") {
+        return NextResponse.json(
+          { error: "signer_type doit être 'learner' ou 'trainer'." },
+          { status: 400 },
+        );
+      }
+      signerType = bodySignerType;
     } else {
       return NextResponse.json({ error: "Rôle non autorisé" }, { status: 403 });
     }
@@ -111,10 +125,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Admin can sign on behalf of a specific person
-    const effectiveSignerId = (["admin", "super_admin"].includes(role) && bodySignerId)
-      ? bodySignerId
-      : userId;
+    // bodySignerId est garanti non-null pour les admin (validé plus haut).
+    // Pour learner/trainer, on utilise userId (ils signent pour eux-mêmes).
+    const effectiveSignerId = ["admin", "super_admin"].includes(role) ? bodySignerId : userId;
 
     // Check if already signed (slot-aware)
     let existingQuery = auth.supabase
