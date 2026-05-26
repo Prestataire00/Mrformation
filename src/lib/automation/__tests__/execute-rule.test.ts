@@ -157,3 +157,21 @@ describe("QUESTIONNAIRE_DOCUMENT_TYPES", () => {
     expect(QUESTIONNAIRE_DOCUMENT_TYPES.has("convocation")).toBe(false);
   });
 });
+
+describe("executeRuleForSession — injection lien token (Chantier 2c)", () => {
+  it("remplace {{questionnaire_link}} dans body custom si présent", () => {
+    const body = "Bonjour, voici votre questionnaire : {{questionnaire_link}}\n\nMerci";
+    const link = "https://example.com/questionnaire/abc-123";
+    const result = body.replaceAll("{{questionnaire_link}}", link);
+    expect(result).toBe("Bonjour, voici votre questionnaire : https://example.com/questionnaire/abc-123\n\nMerci");
+    expect(result.includes("{{questionnaire_link}}")).toBe(false);
+  });
+
+  it("auto-append le lien en fin de body si {{questionnaire_link}} absent", () => {
+    const body = "Bonjour,\nVeuillez répondre au questionnaire de satisfaction.\nCordialement";
+    const link = "https://example.com/questionnaire/abc-123";
+    const result = body + `\n\n📝 Lien direct vers le questionnaire :\n${link}`;
+    expect(result.endsWith(`📝 Lien direct vers le questionnaire :\n${link}`)).toBe(true);
+    expect(result.includes("Bonjour,")).toBe(true);
+  });
+});

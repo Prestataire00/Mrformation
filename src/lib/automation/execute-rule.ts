@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveVariables } from "@/lib/utils/resolve-variables";
 import { enqueueEmail, type EmailAttachmentDescriptor } from "@/lib/services/email-queue";
 import type { Session, Learner, Trainer } from "@/lib/types";
+import { ensureQuestionnaireToken, buildPublicQuestionnaireUrl } from "@/lib/automation/questionnaire-token-helper";
 
 /**
  * Cœur d'exécution du moteur d'automatisation, partagé par les 3 modes de
@@ -331,6 +332,31 @@ export async function executeRuleForSession(
       const fb = buildFallbackEmail(rule, session, recipient);
       subject = fb.subject;
       body = fb.body;
+    }
+
+    // NEW : Injection token questionnaire (Chantier 2c P0-5)
+    if (isQuestionnaireRule(rule) && recipient.type === "learner") {
+      const questionnaireId = await resolveQuestionnaireIdForRule(supabase, rule, session.id);
+      if (questionnaireId) {
+        try {
+          const tokenResult = await ensureQuestionnaireToken(
+            supabase, session.id, questionnaireId, recipient.id, session.entity_id,
+          );
+          const questionnaireLink = buildPublicQuestionnaireUrl(tokenResult.token);
+
+          // Si {{questionnaire_link}} présent dans le body, remplacer (templates customs avancés)
+          if (body.includes("{{questionnaire_link}}")) {
+            body = body.replaceAll("{{questionnaire_link}}", questionnaireLink);
+          } else {
+            // Sinon auto-append en fin de body (templates customs basiques + fallback)
+            body += `\n\n📝 Lien direct vers le questionnaire :\n${questionnaireLink}`;
+          }
+        } catch (err) {
+          // En cas d'erreur (token impossible à générer), on log mais on envoie
+          // l'email quand même (sans lien). Pas de régression par rapport à l'existant.
+          console.error("[execute-rule] questionnaire token generation failed:", err);
+        }
+      }
     }
 
     // Source des attachements :
