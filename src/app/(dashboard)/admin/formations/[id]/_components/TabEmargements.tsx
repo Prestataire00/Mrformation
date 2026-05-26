@@ -1093,7 +1093,7 @@ export function TabEmargements({ formation, onRefresh }: Props) {
               {qrSlotTokens.slots.every((s) => (s.learner_tokens?.length ?? 0) === 0 && (s.trainer_tokens?.length ?? 0) === 0) && (
                 <div className="text-left py-6 px-4 bg-amber-50 border border-amber-200 rounded-lg space-y-2">
                   <p className="text-sm text-amber-900 font-medium">Aucun apprenant ni formateur inscrit dans cette session.</p>
-                  {qrSlotTokens.debug && (
+                  {process.env.NODE_ENV !== "production" && qrSlotTokens.debug && (
                     <div className="text-xs font-mono bg-white/70 border border-amber-200 rounded p-2 text-amber-900 space-y-0.5">
                       <div>session_id : <span className="font-semibold">{qrSlotTokens.debug.session_id}</span></div>
                       <div>profile.entity_id : <span className="font-semibold">{qrSlotTokens.debug.profile_entity_id}</span></div>
