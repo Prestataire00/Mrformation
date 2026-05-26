@@ -11,6 +11,7 @@ describe("ensureQuestionnaireToken", () => {
       from: vi.fn(() => ({
         select: vi.fn().mockReturnThis(),
         eq: vi.fn().mockReturnThis(),
+        is: vi.fn().mockReturnThis(),
         gt: vi.fn().mockReturnThis(),
         order: vi.fn().mockReturnThis(),
         maybeSingle: vi.fn(async () => ({ data: existingToken, error: null })),
@@ -35,6 +36,7 @@ describe("ensureQuestionnaireToken", () => {
           return {
             select: vi.fn().mockReturnThis(),
             eq: vi.fn().mockReturnThis(),
+            is: vi.fn().mockReturnThis(),
             gt: vi.fn().mockReturnThis(),
             order: vi.fn().mockReturnThis(),
             maybeSingle: vi.fn(async () => ({ data: null, error: null })),
@@ -65,6 +67,7 @@ describe("ensureQuestionnaireToken", () => {
           return {
             select: vi.fn().mockReturnThis(),
             eq: vi.fn().mockReturnThis(),
+            is: vi.fn().mockReturnThis(),
             gt: vi.fn().mockReturnThis(),
             order: vi.fn().mockReturnThis(),
             maybeSingle: vi.fn(async () => ({ data: null, error: null })),

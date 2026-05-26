@@ -38,6 +38,7 @@ export async function ensureQuestionnaireToken(
     .eq("session_id", sessionId)
     .eq("questionnaire_id", questionnaireId)
     .eq("learner_id", learnerId)
+    .is("used_at", null)
     .gt("expires_at", new Date().toISOString())
     .order("created_at", { ascending: false })
     .maybeSingle();
@@ -80,6 +81,7 @@ export async function ensureQuestionnaireToken(
       .eq("session_id", sessionId)
       .eq("questionnaire_id", questionnaireId)
       .eq("learner_id", learnerId)
+      .is("used_at", null)
       .gt("expires_at", new Date().toISOString())
       .order("created_at", { ascending: false })
       .maybeSingle();

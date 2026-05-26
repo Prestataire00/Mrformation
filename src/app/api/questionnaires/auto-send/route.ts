@@ -111,24 +111,29 @@ export async function POST(request: NextRequest) {
         if (respondedIds.has(learner.id)) continue; // Already answered
         if (alreadySentIds.has(learner.id)) continue; // Already sent
 
-        // Générer ou réutiliser un token public pour cet apprenant (Chantier 2c P0-5)
-        const tokenResult = await ensureQuestionnaireToken(
-          supabase, session.id, questionnaire.id, learner.id, session.entity_id,
-        );
-        const link_url = buildPublicQuestionnaireUrl(tokenResult.token);
+        try {
+          // Générer ou réutiliser un token public pour cet apprenant (Chantier 2c P0-5)
+          const tokenResult = await ensureQuestionnaireToken(
+            supabase, session.id, questionnaire.id, learner.id, session.entity_id,
+          );
+          const link_url = buildPublicQuestionnaireUrl(tokenResult.token);
 
-        const emailBody = `Bonjour ${learner.first_name},\n\nLa formation "${session.title}" est terminée. Nous vous invitons à remplir le questionnaire de satisfaction :\n\n${link_url}\n\nMerci pour vos retours,\nL'équipe formation`;
+          const emailBody = `Bonjour ${learner.first_name},\n\nLa formation "${session.title}" est terminée. Nous vous invitons à remplir le questionnaire de satisfaction :\n\n${link_url}\n\nMerci pour vos retours,\nL'équipe formation`;
 
-        await enqueueEmail(supabase, {
-          to: learner.email,
-          subject: `Questionnaire — ${questionnaire.title}`,
-          body: emailBody,
-          entity_id: session.entity_id,
-          session_id: session.id,
-          recipient_type: "learner",
-          recipient_id: learner.id,
-        });
-        sent++;
+          await enqueueEmail(supabase, {
+            to: learner.email,
+            subject: `Questionnaire — ${questionnaire.title}`,
+            body: emailBody,
+            entity_id: session.entity_id,
+            session_id: session.id,
+            recipient_type: "learner",
+            recipient_id: learner.id,
+          });
+          sent++;
+        } catch (err) {
+          console.error("[questionnaires/auto-send] failed for learner", learner.id, err);
+          // Continue le batch — ne pas aborter sur 1 token foireux
+        }
       }
 
       if (sent > 0) {
