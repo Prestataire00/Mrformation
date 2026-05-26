@@ -217,20 +217,29 @@ const handleBulkSign = async () => {
 };
 ```
 
-**Défense en profondeur côté route API** : ajouter dans `/api/signatures` POST une rejection 400 si `signature_data === "admin_bulk"`. C'est défensif et zero-risk côté flow client (qui n'envoie plus jamais cette valeur).
+**Défense en profondeur côté route API** : ajouter dans `/api/signatures` POST une rejection 400 utilisant le même helper `isValidAdminBulkSignature` (côté serveur cette fois). Cela couvre 3 cas :
+
+1. La string littérale `"admin_bulk"` (régression future éventuelle)
+2. Toute string non-image qui passe par erreur (e.g. texte brut)
+3. Les data URL non-image valides au sens du sanitizer mais non utilisables pour Qualiopi
+
+C'est défensif et zero-risk côté flow client actuel (qui n'enverra plus jamais ces valeurs après le fix UI).
+
+**Note** : la vérification serveur appelle le helper **après** `sanitizeSignatureSvg` mais **avant** l'INSERT, pour ne rejeter que ce qui est vraiment inutilisable (le sanitizer peut transformer le contenu).
 
 ### 4.3 Livrable 3 — Audit entity_id ciblé
 
-**6 routes auditées** :
+**7 routes auditées** (liste vérifiée par `grep` sur le code actuel) :
 
-| # | Route | Méthode | Table cible | Type op |
-|---|-------|---------|-------------|---------|
-| 1 | `/api/signatures` | POST | `signatures` | INSERT |
-| 2 | `/api/emargement/slots` | POST | `session_time_slots` (ou équivalent) | INSERT |
-| 3 | `/api/emargement/sign-canvas` | POST | `signatures` | INSERT (token public) |
-| 4 | `/api/emargement/justify-absence` | POST/PATCH | `enrollment_absences` (à confirmer) | INSERT/UPDATE |
-| 5 | `/api/emargement/marquer-absent` | POST | `enrollments` | UPDATE |
-| 6 | `/api/signatures/[id]` | DELETE | `signatures` | DELETE |
+| # | Route | Méthode | Opérations relevées | Référence |
+|---|-------|---------|----------------------|-----------|
+| 1 | `/api/signatures` | POST | INSERT `signatures` | [route.ts:132](../../../src/app/api/signatures/route.ts) |
+| 2 | `/api/signatures/[id]` | DELETE | DELETE `signatures` | (à lire dans la route) |
+| 3 | `/api/emargement` | POST | 2× INSERT (route.ts:295 + :354) | [route.ts:254](../../../src/app/api/emargement/route.ts) |
+| 4 | `/api/emargement/slots` | POST | 4× INSERT (:152, :287, :361) + 2× UPDATE (:264, :346) | [slots/route.ts:79](../../../src/app/api/emargement/slots/route.ts) |
+| 5 | `/api/emargement/sign` | POST | INSERT `signatures` (:119) + INSERT `signature_evidence` (:169) + UPDATE used_at (:182) | [sign/route.ts:17](../../../src/app/api/emargement/sign/route.ts) |
+| 6 | `/api/emargement/post-session-eval` | POST | INSERT (à confirmer table cible) | [post-session-eval/route.ts:16](../../../src/app/api/emargement/post-session-eval/route.ts) |
+| 7 | `/api/sessions/[id]/auto-absences` | POST | INSERT `absences` (:160) | [auto-absences/route.ts:10](../../../src/app/api/sessions/[id]/auto-absences/route.ts) |
 
 **Procédure d'audit pour chaque route** :
 
@@ -321,7 +330,7 @@ La suite complète (baseline ≥ 526 tests) doit rester verte après les modific
 
 **Branche** : `feat/emargement-volet-a-securite` (depuis `main` à `4676b65`)
 
-**Découpage suggéré** (~8-10 tâches bite-sized 2-5 min) :
+**Découpage suggéré** (~10-11 tâches bite-sized 2-5 min) :
 
 1. **Task 0** — Baseline + branche + grep recap (tests verts, TS clean, 2 P0 listés)
 2. **Task 1** — Helper `isValidAdminBulkSignature` + 5 tests TDD failing-first
