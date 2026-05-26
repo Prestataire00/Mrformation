@@ -17,7 +17,9 @@ import type { Session } from "@/lib/types";
 import { AdminFillQuestionnaireDialog } from "@/components/questionnaires/AdminFillQuestionnaireDialog";
 import { QuestionnaireOverview } from "./questionnaires/QuestionnaireOverview";
 import { StageStatsBar } from "./questionnaires/StageStatsBar";
-import { computeStageStats } from "@/lib/utils/questionnaire-stats";
+import { LearnerStatusGrid } from "./questionnaires/LearnerStatusGrid";
+import { computeStageStats, computeLearnerStatuses } from "@/lib/utils/questionnaire-stats";
+import type { LearnerStatusCell } from "@/lib/utils/questionnaire-stats";
 
 interface Props { formation: Session; onRefresh: () => Promise<void>; }
 
@@ -75,6 +77,7 @@ export function TabQuestionnaires({ formation, onRefresh }: Props) {
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [detailItem, setDetailItem] = useState<{ stage: Stage; item: ItemType } | null>(null);
+  const [responseDialogCell, setResponseDialogCell] = useState<LearnerStatusCell | null>(null);
 
   const enrollments = (formation.enrollments || []).filter(e => e.learner);
   const companies = formation.formation_companies || [];
@@ -136,6 +139,14 @@ export function TabQuestionnaires({ formation, onRefresh }: Props) {
     { attributed: 0, sent: 0, expectedSent: 0, answered: 0 },
   );
   const pending = Math.max(globalStats.sent - globalStats.answered, 0);
+
+  const learnerStatusCells = computeLearnerStatuses(
+    enrollments as unknown as Parameters<typeof computeLearnerStatuses>[0],
+    evalAssignments as unknown as Parameters<typeof computeLearnerStatuses>[1],
+    satisAssignments as unknown as Parameters<typeof computeLearnerStatuses>[2],
+    tokens as unknown as Parameters<typeof computeLearnerStatuses>[3],
+    responses as unknown as Parameters<typeof computeLearnerStatuses>[4],
+  );
 
   const learnerGridRef = useRef<HTMLDivElement>(null);
   const handleScrollToPending = () => {
@@ -233,6 +244,15 @@ export function TabQuestionnaires({ formation, onRefresh }: Props) {
           {detailItem && <ItemDetail stage={detailItem.stage} item={detailItem.item} formation={formation} questionnaires={questionnaires} assignments={getAssignments(detailItem.item)} enrollments={enrollments} companies={companies} responses={responses} supabase={supabase} toast={toast} onRefresh={async () => { await fetchData(); await onRefresh(); }} />}
         </DialogContent>
       </Dialog>
+
+      <div ref={learnerGridRef}>
+        <LearnerStatusGrid
+          sessionId={formation.id}
+          cells={learnerStatusCells}
+          onSelectAnswered={(cell) => setResponseDialogCell(cell)}
+          onRefresh={async () => { await fetchData(); await onRefresh(); }}
+        />
+      </div>
     </div>
   );
 }
