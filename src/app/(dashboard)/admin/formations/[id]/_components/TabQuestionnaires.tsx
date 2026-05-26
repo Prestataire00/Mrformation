@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import type { Session } from "@/lib/types";
 import { AdminFillQuestionnaireDialog } from "@/components/questionnaires/AdminFillQuestionnaireDialog";
 import { QuestionnaireOverview } from "./questionnaires/QuestionnaireOverview";
+import { StageStatsBar } from "./questionnaires/StageStatsBar";
 import { computeStageStats } from "@/lib/utils/questionnaire-stats";
 
 interface Props { formation: Session; onRefresh: () => Promise<void>; }
@@ -160,6 +161,15 @@ export function TabQuestionnaires({ formation, onRefresh }: Props) {
         {STAGES.map((stage, idx) => {
           const c = SC[stage.color];
           const Icon = stage.icon;
+          const stageStats = computeStageStats(
+            stage,
+            evalAssignments,
+            satisAssignments,
+            tokens,
+            responses,
+            enrollments as unknown as Parameters<typeof computeStageStats>[5],
+            companies as unknown as Parameters<typeof computeStageStats>[6],
+          );
           return (
             <div key={stage.id} className="relative">
               {idx < STAGES.length - 1 && <div className={cn("absolute left-[22px] top-14 bottom-0 w-0.5 -mb-4", c.bg)} />}
@@ -172,6 +182,13 @@ export function TabQuestionnaires({ formation, onRefresh }: Props) {
                       <Badge variant="outline" className={cn("text-[10px]", c.bg, c.text, c.border)}><Clock className="h-2.5 w-2.5 mr-1" />{stage.timing}</Badge>
                     </div>
                     <p className="text-xs text-gray-600"><Target className="h-3 w-3 inline mr-1 text-gray-400" /><strong>Objectif :</strong> {stage.objective}</p>
+                    <StageStatsBar
+                      attributed={stageStats.attributed}
+                      sent={stageStats.sent}
+                      expectedSent={stageStats.expectedSent}
+                      answered={stageStats.answered}
+                      rate={stageStats.rate}
+                    />
                   </div>
                 </div>
                 <div className="border-t bg-gray-50/50 divide-y">
