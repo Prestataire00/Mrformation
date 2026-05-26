@@ -243,15 +243,19 @@ C'est le pattern le plus robuste des 7 routes auditées.
 
 ### ℹ️ OBSERVATION 1 — `/api/emargement/post-session-eval` POST : session ownership non validée
 
+**Status : ✅ RÉSOLU le 2026-05-26 dans le Sous-chantier 2 (commit ownership check post-session-eval).**
+
 **Criticité :** LOW (hors scope écritures DB)  
-**Statut :** Non fixé dans ce sprint (hors scope Task 7)  
+**Statut :** ✅ Résolu — Sous-chantier 2 (voir commit `0fc46ed`)  
 **Impact :** Admin entité A pourrait envoyer des emails aux apprenants d'une session d'entité B. Pas d'écriture DB cross-entity. À adresser dans un futur audit "information disclosure".
 
 ### ℹ️ OBSERVATION 2 — `/api/emargement/slots` GET : session ownership non validée (information disclosure)
 
+**Status : ✅ RÉSOLU le 2026-05-26 dans le Sous-chantier 2 (commit ownership check slots GET).**
+
 **Criticité :** LOW (lecture seule)  
-**Statut :** Non fixé dans ce sprint (hors scope Task 7 — Sous-chantier 2 candidate)  
-**Impact :** `/api/emargement/slots` **GET** utilise aussi `createServiceClient()` et accepte un `session_id` sans validation d'ownership. Permet à un admin entité A de lire les tokens et learner_ids d'une session entité B. Lecture seule, criticité LOW (pas d'écriture cross-entity). À adresser dans un futur Sous-chantier 2 ou audit "information disclosure".
+**Statut :** ✅ Résolu — Sous-chantier 2 (voir commit ownership check slots GET)  
+**Impact :** `/api/emargement/slots` **GET** utilise aussi `createServiceClient()` et accepte un `session_id` sans validation d'ownership. Permet à un admin entité A de lire les tokens et learner_ids d'une session entité B. Lecture seule, criticité LOW (pas d'écriture cross-entity). Résolu : même pattern que Volet A — ownership check `session.entity_id !== resolveActiveEntityId(auth.profile)` ajouté avant le fetch des slots.
 
 ---
 

@@ -85,7 +85,7 @@ export function TabAbsences({ formation, onRefresh }: Props) {
       toast({ title: "Absence ajoutée" });
       resetForm();
       setShowAdd(false);
-      onRefresh();
+      await onRefresh();
     }
   };
 
@@ -125,7 +125,7 @@ export function TabAbsences({ formation, onRefresh }: Props) {
         title: "Détection terminée",
         description: `${data.created} nouvelle${data.created !== 1 ? "s" : ""} absence${data.created !== 1 ? "s" : ""} créée${data.created !== 1 ? "s" : ""}, ${data.skipped} déjà existante${data.skipped !== 1 ? "s" : ""} ignorée${data.skipped !== 1 ? "s" : ""}`,
       });
-      onRefresh();
+      await onRefresh();
     } catch {
       toast({
         title: "Erreur",
@@ -146,7 +146,7 @@ export function TabAbsences({ formation, onRefresh }: Props) {
     if (error) {
       toast({ title: "Erreur", variant: "destructive" });
     } else {
-      onRefresh();
+      await onRefresh();
     }
   };
 

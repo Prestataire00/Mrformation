@@ -25,6 +25,28 @@ export async function GET(request: NextRequest) {
 
   const supabase = createServiceClient();
 
+  // Ownership check : refuser cross-entity (pattern Volet A — résout obs A.2
+  // documentée dans docs/audits/2026-05-26-emargement-entity-id-audit.md).
+  // Sans ce check, un admin entité A pouvait lire les tokens et learner_ids
+  // d'une session entité B (info disclosure cross-entity, lecture seule).
+  const { data: sessionCheck, error: sessionCheckError } = await supabase
+    .from("sessions")
+    .select("entity_id")
+    .eq("id", sessionId)
+    .single();
+
+  if (sessionCheckError || !sessionCheck) {
+    return NextResponse.json({ error: "Session introuvable" }, { status: 404 });
+  }
+
+  const activeEntityId = resolveActiveEntityId(auth.profile);
+  if (sessionCheck.entity_id !== activeEntityId) {
+    return NextResponse.json(
+      { error: "Accès non autorisé à cette session" },
+      { status: 403 },
+    );
+  }
+
   // Fetch time slots for this session
   const { data: slots } = await supabase
     .from("formation_time_slots")

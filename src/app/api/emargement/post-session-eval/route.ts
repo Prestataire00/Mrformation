@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { requireRole } from "@/lib/auth/require-role";
 import { sanitizeError } from "@/lib/api-error";
+import { resolveActiveEntityId } from "@/lib/crm/active-entity";
 
 function createServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -25,6 +26,28 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = createServiceClient();
+
+    // Ownership check : refuser cross-entity (pattern Volet A — résout obs A.1
+    // documentée dans docs/audits/2026-05-26-emargement-entity-id-audit.md).
+    // Sans ce check, un admin entité A pouvait spam les apprenants d'une
+    // session entité B via cette route.
+    const { data: sessionCheck, error: sessionCheckError } = await supabase
+      .from("sessions")
+      .select("entity_id")
+      .eq("id", session_id)
+      .single();
+
+    if (sessionCheckError || !sessionCheck) {
+      return NextResponse.json({ error: "Session introuvable" }, { status: 404 });
+    }
+
+    const activeEntityId = resolveActiveEntityId(auth.profile);
+    if (sessionCheck.entity_id !== activeEntityId) {
+      return NextResponse.json(
+        { error: "Accès non autorisé à cette session" },
+        { status: 403 },
+      );
+    }
 
     // 1. Check if session has an auto_eval_post assignment
     const { data: evalAssignment } = await supabase

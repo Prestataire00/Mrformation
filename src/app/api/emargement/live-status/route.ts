@@ -35,6 +35,24 @@ interface PersonStatus {
   signed_at?: string;
 }
 
+interface EnrollmentWithLearner {
+  learner: {
+    id: string;
+    first_name: string;
+    last_name: string;
+    email: string | null;
+  } | null;
+}
+
+interface FormationTrainerWithTrainer {
+  trainer: {
+    id: string;
+    first_name: string;
+    last_name: string;
+    email: string | null;
+  } | null;
+}
+
 export async function GET(request: NextRequest) {
   const auth = await requireRole(["super_admin", "admin", "trainer"]);
   if (auth.error) return auth.error;
@@ -62,9 +80,10 @@ export async function GET(request: NextRequest) {
     .from("enrollments")
     .select("learner:learners(id, first_name, last_name, email)")
     .eq("session_id", sessionId)
-    .neq("status", "cancelled");
+    .neq("status", "cancelled")
+    .returns<EnrollmentWithLearner[]>();
 
-  const learners: PersonStatus[] = ((enrollments ?? []) as unknown as Array<{ learner: { id: string; first_name: string; last_name: string; email: string | null } | null }>)
+  const learners: PersonStatus[] = (enrollments ?? [])
     .filter((e) => e.learner)
     .map((e) => ({
       id: e.learner!.id,
@@ -78,9 +97,10 @@ export async function GET(request: NextRequest) {
   const { data: formationTrainers } = await supabase
     .from("formation_trainers")
     .select("trainer:trainers(id, first_name, last_name, email)")
-    .eq("session_id", sessionId);
+    .eq("session_id", sessionId)
+    .returns<FormationTrainerWithTrainer[]>();
 
-  const trainers: PersonStatus[] = ((formationTrainers ?? []) as unknown as Array<{ trainer: { id: string; first_name: string; last_name: string; email: string | null } | null }>)
+  const trainers: PersonStatus[] = (formationTrainers ?? [])
     .filter((ft) => ft.trainer)
     .map((ft) => ({
       id: ft.trainer!.id,
