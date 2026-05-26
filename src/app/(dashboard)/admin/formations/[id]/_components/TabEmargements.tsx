@@ -26,6 +26,7 @@ import type { Session, FormationTimeSlot, Signature, Enrollment, FormationTraine
 import { SignaturePad } from "@/components/signatures/SignaturePad";
 import { useDocumentGeneration } from "@/hooks/useDocumentGeneration";
 import { downloadBase64Pdf } from "@/lib/utils/download-blob";
+import { isValidAdminBulkSignature } from "@/lib/utils/validate-bulk-signature";
 
 // ──────────────────────────────────────────────
 // Types
@@ -415,6 +416,19 @@ export function TabEmargements({ formation, onRefresh }: Props) {
   };
 
   const handleBulkSign = async () => {
+    // Garde de sécurité : refuse si la signature admin n'est pas valide.
+    // En pratique le bouton est disabled tant que adminSignature est null,
+    // mais on garde la vérif en défense en profondeur (couvre une régression
+    // future éventuelle du gate UI).
+    if (!isValidAdminBulkSignature(bulkSignSlot.adminSignature)) {
+      toast({
+        title: "Signature manquante",
+        description: "Dessinez votre signature avant de confirmer.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setBulkSigning(true);
     let signed = 0;
     const all = [
@@ -429,7 +443,7 @@ export function TabEmargements({ formation, onRefresh }: Props) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             session_id: formation.id,
-            signature_data: "admin_bulk",
+            signature_data: bulkSignSlot.adminSignature,
             time_slot_id: bulkSignSlot.slotId,
             signer_id: person.id,
             signer_type: person.type,
@@ -446,7 +460,7 @@ export function TabEmargements({ formation, onRefresh }: Props) {
     } else {
       toast({ title: "Tous déjà signés" });
     }
-    setBulkSignSlot(prev => ({ ...prev, open: false }));
+    setBulkSignSlot(initialBulkSignState);
     setBulkSigning(false);
     await onRefresh();
   };
