@@ -16,7 +16,14 @@
 export function isValidAdminBulkSignature(signatureData: string | null): boolean {
   if (!signatureData || typeof signatureData !== "string") return false;
   if (signatureData === "admin_bulk") return false;
-  if (signatureData.startsWith("data:image/")) return true;
+  // Exclut volontairement data:image/svg+xml : un SVG encodé en base64
+  // peut contenir du XSS. Aligné sur sanitizeSignatureSvg qui ne le
+  // bypass pas non plus (src/lib/utils/sanitize-svg.ts).
+  if (signatureData.startsWith("data:image/") && !signatureData.startsWith("data:image/svg")) {
+    return true;
+  }
+  // Case-sensitive intentionnel : <SignaturePad> émet toujours en minuscules,
+  // et sanitizeSignatureSvg normalise via xmlMode:true côté serveur.
   if (signatureData.trim().startsWith("<svg")) return true;
   return false;
 }
