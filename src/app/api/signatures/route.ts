@@ -3,6 +3,7 @@ import { requireRole } from "@/lib/auth/require-role";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 import { logAudit } from "@/lib/audit-log";
 import { sanitizeSignatureSvg } from "@/lib/utils/sanitize-svg";
+import { isValidAdminBulkSignature } from "@/lib/utils/validate-bulk-signature";
 
 export async function GET(request: NextRequest) {
   const auth = await requireRole(["super_admin", "admin", "trainer", "learner"]);
@@ -50,6 +51,16 @@ export async function POST(request: NextRequest) {
     const sanitized_signature = sanitizeSignatureSvg(signature_data);
     if (!sanitized_signature || typeof sanitized_signature !== "string") {
       return NextResponse.json({ error: "Signature invalide" }, { status: 400 });
+    }
+
+    // Défense en profondeur : refuser toute signature non-image (e.g. string
+    // littérale "admin_bulk" du bug historique pré-fix Volet A Émargement).
+    // Voir docs/deep-dive-tab-emargements.md § P0-2.
+    if (!isValidAdminBulkSignature(sanitized_signature)) {
+      return NextResponse.json(
+        { error: "Signature invalide : format non utilisable pour Qualiopi." },
+        { status: 400 },
+      );
     }
 
     const role = auth.profile.role;

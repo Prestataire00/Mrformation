@@ -26,6 +26,7 @@ import type { Session, FormationTimeSlot, Signature, Enrollment, FormationTraine
 import { SignaturePad } from "@/components/signatures/SignaturePad";
 import { useDocumentGeneration } from "@/hooks/useDocumentGeneration";
 import { downloadBase64Pdf } from "@/lib/utils/download-blob";
+import { isValidAdminBulkSignature } from "@/lib/utils/validate-bulk-signature";
 
 // ──────────────────────────────────────────────
 // Types
@@ -375,12 +376,25 @@ export function TabEmargements({ formation, onRefresh }: Props) {
 
   // ── Bulk sign all unsigned on a slot ──
 
-  const [bulkSignSlot, setBulkSignSlot] = useState<{
+  interface BulkSignDialogState {
     open: boolean;
+    step: "confirm" | "sign";
     slotId: string;
     unsignedLearners: { id: string; name: string }[];
     unsignedTrainers: { id: string; name: string }[];
-  }>({ open: false, slotId: "", unsignedLearners: [], unsignedTrainers: [] });
+    adminSignature: string | null;
+  }
+
+  const initialBulkSignState: BulkSignDialogState = {
+    open: false,
+    step: "confirm",
+    slotId: "",
+    unsignedLearners: [],
+    unsignedTrainers: [],
+    adminSignature: null,
+  };
+
+  const [bulkSignSlot, setBulkSignSlot] = useState<BulkSignDialogState>(initialBulkSignState);
   const [bulkSigning, setBulkSigning] = useState(false);
 
   const openBulkSign = (slot: FormationTimeSlot) => {
@@ -391,10 +405,30 @@ export function TabEmargements({ formation, onRefresh }: Props) {
     const unsignedTrainers = trainers
       .filter(ft => ft.trainer && !slotSigs.find(s => s.signer_id === ft.trainer!.id && s.signer_type === "trainer"))
       .map(ft => ({ id: ft.trainer!.id, name: `${ft.trainer!.first_name} ${ft.trainer!.last_name}` }));
-    setBulkSignSlot({ open: true, slotId: slot.id, unsignedLearners, unsignedTrainers });
+    setBulkSignSlot({
+      open: true,
+      step: "confirm",
+      slotId: slot.id,
+      unsignedLearners,
+      unsignedTrainers,
+      adminSignature: null,
+    });
   };
 
   const handleBulkSign = async () => {
+    // Garde de sécurité : refuse si la signature admin n'est pas valide.
+    // En pratique le bouton est disabled tant que adminSignature est null,
+    // mais on garde la vérif en défense en profondeur (couvre une régression
+    // future éventuelle du gate UI).
+    if (!isValidAdminBulkSignature(bulkSignSlot.adminSignature)) {
+      toast({
+        title: "Signature manquante",
+        description: "Dessinez votre signature avant de confirmer.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setBulkSigning(true);
     let signed = 0;
     const all = [
@@ -409,7 +443,7 @@ export function TabEmargements({ formation, onRefresh }: Props) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             session_id: formation.id,
-            signature_data: "admin_bulk",
+            signature_data: bulkSignSlot.adminSignature,
             time_slot_id: bulkSignSlot.slotId,
             signer_id: person.id,
             signer_type: person.type,
@@ -426,7 +460,7 @@ export function TabEmargements({ formation, onRefresh }: Props) {
     } else {
       toast({ title: "Tous déjà signés" });
     }
-    setBulkSignSlot(prev => ({ ...prev, open: false }));
+    setBulkSignSlot(initialBulkSignState);
     setBulkSigning(false);
     await onRefresh();
   };
@@ -923,27 +957,81 @@ export function TabEmargements({ formation, onRefresh }: Props) {
         </div>
       )}
 
-      {/* ── Dialog: Bulk sign ── */}
-      <Dialog open={bulkSignSlot.open} onOpenChange={(open) => setBulkSignSlot(prev => ({ ...prev, open }))}>
+      {/* ── Dialog: Bulk sign (2 étapes : confirm → sign) ── */}
+      <Dialog
+        open={bulkSignSlot.open}
+        onOpenChange={(open) => {
+          if (!open) {
+            // Reset au close pour éviter la fuite d'état entre 2 ouvertures
+            setBulkSignSlot(initialBulkSignState);
+          } else {
+            setBulkSignSlot(prev => ({ ...prev, open: true }));
+          }
+        }}
+      >
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Cocher les présences en masse</DialogTitle>
+            <DialogTitle>
+              {bulkSignSlot.step === "confirm"
+                ? "Cocher les présences en masse"
+                : "Votre signature (appliquée à tous)"}
+            </DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            Marquer {bulkSignSlot.unsignedLearners.length} apprenant{bulkSignSlot.unsignedLearners.length !== 1 ? "s" : ""} et{" "}
-            {bulkSignSlot.unsignedTrainers.length} formateur{bulkSignSlot.unsignedTrainers.length !== 1 ? "s" : ""} non
-            encore signé{(bulkSignSlot.unsignedLearners.length + bulkSignSlot.unsignedTrainers.length) !== 1 ? "s" : ""} comme
-            présent{(bulkSignSlot.unsignedLearners.length + bulkSignSlot.unsignedTrainers.length) !== 1 ? "s" : ""} sur ce créneau ?
-          </p>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setBulkSignSlot(prev => ({ ...prev, open: false }))}>
-              Annuler
-            </Button>
-            <Button onClick={handleBulkSign} disabled={bulkSigning}>
-              {bulkSigning && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Confirmer
-            </Button>
-          </DialogFooter>
+
+          {bulkSignSlot.step === "confirm" ? (
+            <>
+              <p className="text-sm text-muted-foreground">
+                Marquer {bulkSignSlot.unsignedLearners.length} apprenant{bulkSignSlot.unsignedLearners.length !== 1 ? "s" : ""} et{" "}
+                {bulkSignSlot.unsignedTrainers.length} formateur{bulkSignSlot.unsignedTrainers.length !== 1 ? "s" : ""} non
+                encore signé{(bulkSignSlot.unsignedLearners.length + bulkSignSlot.unsignedTrainers.length) !== 1 ? "s" : ""} comme
+                présent{(bulkSignSlot.unsignedLearners.length + bulkSignSlot.unsignedTrainers.length) !== 1 ? "s" : ""} sur ce créneau ?
+              </p>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setBulkSignSlot(initialBulkSignState)}>
+                  Annuler
+                </Button>
+                <Button onClick={() => setBulkSignSlot(prev => ({ ...prev, step: "sign" }))}>
+                  Suivant →
+                </Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-muted-foreground mb-2">
+                Dessinez votre signature. Elle sera enregistrée pour les{" "}
+                {bulkSignSlot.unsignedLearners.length + bulkSignSlot.unsignedTrainers.length}{" "}
+                personnes sélectionnées.
+              </p>
+              <SignaturePad
+                label="Signature de l'administrateur"
+                isSigned={!!bulkSignSlot.adminSignature}
+                onSign={(svgData) => setBulkSignSlot(prev => ({ ...prev, adminSignature: svgData }))}
+                onClear={() => setBulkSignSlot(prev => ({ ...prev, adminSignature: null }))}
+                disabled={bulkSigning}
+              />
+              {bulkSigning && (
+                <div className="flex items-center gap-2 text-sm text-blue-600 mt-2">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Enregistrement...
+                </div>
+              )}
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setBulkSignSlot(prev => ({ ...prev, step: "confirm", adminSignature: null }))}
+                  disabled={bulkSigning}
+                >
+                  ← Retour
+                </Button>
+                <Button
+                  onClick={handleBulkSign}
+                  disabled={bulkSigning || !bulkSignSlot.adminSignature}
+                >
+                  {bulkSigning && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  Confirmer
+                </Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
 

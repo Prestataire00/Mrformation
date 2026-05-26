@@ -3,6 +3,7 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { requireRole } from "@/lib/auth/require-role";
 import { sanitizeDbError } from "@/lib/api-error";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
+import { resolveActiveEntityId } from "@/lib/crm/active-entity";
 
 function createServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -267,6 +268,26 @@ export async function POST(request: NextRequest) {
 
   const supabase = createServiceClient();
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24h
+
+  // SÉCURITÉ : vérifier que la session appartient à l'entité du demandeur.
+  // La route utilise service_role (bypass RLS) → validation obligatoire côté app.
+  const { data: sessionCheck, error: sessionCheckError } = await supabase
+    .from("sessions")
+    .select("id, entity_id")
+    .eq("id", session_id)
+    .single();
+
+  if (sessionCheckError || !sessionCheck) {
+    return NextResponse.json({ error: "Session introuvable" }, { status: 404 });
+  }
+
+  const activeEntityId = resolveActiveEntityId(auth.profile);
+  if (sessionCheck.entity_id !== activeEntityId) {
+    return NextResponse.json(
+      { error: "Accès non autorisé à cette session" },
+      { status: 403 }
+    );
+  }
 
   if (type === "session") {
     // Check if a non-expired session token already exists
