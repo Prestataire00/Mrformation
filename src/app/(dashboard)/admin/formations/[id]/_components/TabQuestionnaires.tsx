@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { loadQualiopiIndicators } from "@/lib/services/load-session-aggregates";
 import {
   ClipboardList, Target, Clock, TrendingUp, CheckCircle2,
   AlertCircle, Plus, ChevronRight, Mail, Eye, X, Loader2, BarChart3, Pencil, QrCode, Copy,
@@ -62,6 +63,13 @@ export function TabQuestionnaires({ formation, onRefresh }: Props) {
   const [evalAssignments, setEvalAssignments] = useState<Array<Record<string, unknown>>>([]);
   const [satisAssignments, setSatisAssignments] = useState<Array<Record<string, unknown>>>([]);
   const [responses, setResponses] = useState<Array<Record<string, unknown>>>([]);
+  const [tokens, setTokens] = useState<Array<Record<string, unknown>>>([]);
+  const [qualiopiIndicators, setQualiopiIndicators] = useState<{
+    satisfactionRate: number | null;
+    satisfactionResponses: number;
+    acquisitionRate: number | null;
+    evaluationCount: number;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [detailItem, setDetailItem] = useState<{ stage: Stage; item: ItemType } | null>(null);
 
@@ -71,23 +79,32 @@ export function TabQuestionnaires({ formation, onRefresh }: Props) {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [qR, eR, sR, rR] = await Promise.all([
+      const [qR, eR, sR, rR, tR, qiR] = await Promise.all([
         supabase.from("questionnaires").select("id, title, type").eq("entity_id", formation.entity_id).eq("is_active", true).order("title"),
         supabase.from("formation_evaluation_assignments").select("*, questionnaire:questionnaires(title)").eq("session_id", formation.id),
         supabase.from("formation_satisfaction_assignments").select("*, questionnaire:questionnaires(title)").eq("session_id", formation.id),
         supabase.from("questionnaire_responses").select("id, questionnaire_id, learner_id").eq("session_id", formation.id),
+        supabase.from("questionnaire_tokens").select("id, questionnaire_id, learner_id, expires_at").eq("session_id", formation.id),
+        loadQualiopiIndicators(supabase, formation.id),
       ]);
       if (qR.data) setQuestionnaires(qR.data);
       if (eR.data) setEvalAssignments(eR.data);
       if (sR.data) setSatisAssignments(sR.data);
       if (rR.data) setResponses(rR.data);
+      if (tR.data) setTokens(tR.data);
+      setQualiopiIndicators({
+        satisfactionRate: qiR.satisfactionRate,
+        satisfactionResponses: qiR.satisfactionResponses,
+        acquisitionRate: qiR.acquisitionRate,
+        evaluationCount: qiR.evaluationCount,
+      });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Erreur de chargement";
       toast({ title: "Erreur", description: message, variant: "destructive" });
     } finally {
       setLoading(false);
     }
-  }, [formation.id, formation.entity_id, supabase]);
+  }, [formation.id, formation.entity_id, supabase, toast]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
