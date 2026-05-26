@@ -4,6 +4,7 @@
  * Reject :
  *  - null / vide
  *  - La string littérale "admin_bulk" (bug historique pré-fix Volet A Émargement)
+ *  - data:image/svg+xml (vecteur XSS — base64 SVG peut contenir du JS, non bypassé par sanitizeSignatureSvg)
  *  - Toute string sans préfixe data:image/ ni structure SVG raw
  *
  * Accept :
@@ -13,7 +14,7 @@
  * Utilisé côté client (gate UI du bouton "Confirmer") et côté serveur (route
  * /api/signatures POST en défense en profondeur).
  */
-export function isValidAdminBulkSignature(signatureData: string | null): boolean {
+export function isValidAdminBulkSignature(signatureData: string | null): signatureData is string {
   if (!signatureData || typeof signatureData !== "string") return false;
   if (signatureData === "admin_bulk") return false;
   // Exclut volontairement data:image/svg+xml : un SVG encodé en base64

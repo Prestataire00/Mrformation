@@ -24,6 +24,7 @@ describe("isValidAdminBulkSignature", () => {
     expect(
       isValidAdminBulkSignature("data:image/svg+xml;utf8,<svg></svg>"),
     ).toBe(false);
+    expect(isValidAdminBulkSignature("data:image/svg;base64,abc")).toBe(false);
   });
 
   it("accepte un SVG raw (format émis par SignaturePad)", () => {
