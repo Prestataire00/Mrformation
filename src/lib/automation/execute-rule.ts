@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveVariables } from "@/lib/utils/resolve-variables";
 import { enqueueEmail, type EmailAttachmentDescriptor } from "@/lib/services/email-queue";
 import type { Session, Learner, Trainer } from "@/lib/types";
+import { ensureQuestionnaireToken, buildPublicQuestionnaireUrl } from "@/lib/automation/questionnaire-token-helper";
 
 /**
  * Cœur d'exécution du moteur d'automatisation, partagé par les 3 modes de
@@ -57,6 +58,80 @@ export interface TemplateInfo {
   subject: string;
   body: string;
   attachment_doc_types: string[] | null;
+}
+
+/**
+ * Document types correspondant à des questionnaires Qualiopi.
+ * Pour ces règles, executeRuleForSession injecte un lien token public
+ * (via ensureQuestionnaireToken) dans le body de l'email.
+ *
+ * Liste confirmée par Task 0 du Chantier 2c (grep default-packs.ts).
+ *
+ * Source : docs/superpowers/specs/2026-05-26-questionnaires-p0-5-auto-qualiopi-design.md §6.2
+ */
+export const QUESTIONNAIRE_DOCUMENT_TYPES = new Set<string>([
+  "questionnaire_positionnement",
+  "questionnaire_satisfaction",
+  "questionnaire_satisfaction_froid",
+  "questionnaire_satisfaction_client", // companies — pas dans mapping ci-dessous (learner_id NOT NULL)
+]);
+
+export function isQuestionnaireRule(rule: RuleInfo): boolean {
+  return QUESTIONNAIRE_DOCUMENT_TYPES.has(rule.document_type);
+}
+
+/**
+ * Mapping document_type → (table, colonne, valeur) pour résoudre
+ * le questionnaire concret attribué à la session pour une règle donnée.
+ *
+ * Note : ne couvre que les 3 types `recipient_type: "learners"`. Le type
+ * `questionnaire_satisfaction_client` (recipient_type: "companies") n'a pas
+ * d'entry car la table questionnaire_tokens.learner_id est NOT NULL — donc
+ * pas de token généré pour les destinataires entreprise. Limitation
+ * documentée en spec §3.1.
+ *
+ * Limitation : si plusieurs questionnaires de même type sont attribués
+ * à la session (rare), on prend le premier (LIMIT 1).
+ */
+const QUESTIONNAIRE_TYPE_TO_ASSIGNMENT: Record<string, {
+  table: "formation_evaluation_assignments" | "formation_satisfaction_assignments";
+  typeColumn: "evaluation_type" | "satisfaction_type";
+  typeValue: string;
+}> = {
+  questionnaire_positionnement: {
+    table: "formation_evaluation_assignments",
+    typeColumn: "evaluation_type",
+    typeValue: "eval_preformation",
+  },
+  questionnaire_satisfaction: {
+    table: "formation_satisfaction_assignments",
+    typeColumn: "satisfaction_type",
+    typeValue: "satisfaction_chaud",
+  },
+  questionnaire_satisfaction_froid: {
+    table: "formation_satisfaction_assignments",
+    typeColumn: "satisfaction_type",
+    typeValue: "satisfaction_froid",
+  },
+};
+
+export async function resolveQuestionnaireIdForRule(
+  supabase: SupabaseClient,
+  rule: RuleInfo,
+  sessionId: string,
+): Promise<string | null> {
+  const config = QUESTIONNAIRE_TYPE_TO_ASSIGNMENT[rule.document_type];
+  if (!config) return null;
+
+  const { data } = await supabase
+    .from(config.table)
+    .select("questionnaire_id")
+    .eq("session_id", sessionId)
+    .eq(config.typeColumn, config.typeValue)
+    .limit(1)
+    .maybeSingle();
+
+  return (data?.questionnaire_id as string | undefined) ?? null;
 }
 
 /**
@@ -257,6 +332,31 @@ export async function executeRuleForSession(
       const fb = buildFallbackEmail(rule, session, recipient);
       subject = fb.subject;
       body = fb.body;
+    }
+
+    // NEW : Injection token questionnaire (Chantier 2c P0-5)
+    if (isQuestionnaireRule(rule) && recipient.type === "learner") {
+      const questionnaireId = await resolveQuestionnaireIdForRule(supabase, rule, session.id);
+      if (questionnaireId) {
+        try {
+          const tokenResult = await ensureQuestionnaireToken(
+            supabase, session.id, questionnaireId, recipient.id, session.entity_id,
+          );
+          const questionnaireLink = buildPublicQuestionnaireUrl(tokenResult.token);
+
+          // Si {{questionnaire_link}} présent dans le body, remplacer (templates customs avancés)
+          if (body.includes("{{questionnaire_link}}")) {
+            body = body.replaceAll("{{questionnaire_link}}", questionnaireLink);
+          } else {
+            // Sinon auto-append en fin de body (templates customs basiques + fallback)
+            body += `\n\n📝 Lien direct vers le questionnaire :\n${questionnaireLink}`;
+          }
+        } catch (err) {
+          // En cas d'erreur (token impossible à générer), on log mais on envoie
+          // l'email quand même (sans lien). Pas de régression par rapport à l'existant.
+          console.error("[execute-rule] questionnaire token generation failed:", err);
+        }
+      }
     }
 
     // Source des attachements :

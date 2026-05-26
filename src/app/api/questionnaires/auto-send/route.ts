@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { enqueueEmail } from "@/lib/services/email-queue";
+import { ensureQuestionnaireToken, buildPublicQuestionnaireUrl } from "@/lib/automation/questionnaire-token-helper";
 
 function createServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -110,21 +111,29 @@ export async function POST(request: NextRequest) {
         if (respondedIds.has(learner.id)) continue; // Already answered
         if (alreadySentIds.has(learner.id)) continue; // Already sent
 
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://mrformationcrm.netlify.app";
-        const link_url = `${baseUrl}/learner/questionnaires/${questionnaire.id}?session_id=${session.id}`;
+        try {
+          // Générer ou réutiliser un token public pour cet apprenant (Chantier 2c P0-5)
+          const tokenResult = await ensureQuestionnaireToken(
+            supabase, session.id, questionnaire.id, learner.id, session.entity_id,
+          );
+          const link_url = buildPublicQuestionnaireUrl(tokenResult.token);
 
-        const emailBody = `Bonjour ${learner.first_name},\n\nLa formation "${session.title}" est terminée. Nous vous invitons à remplir le questionnaire de satisfaction :\n\n${link_url}\n\nMerci pour vos retours,\nL'équipe formation`;
+          const emailBody = `Bonjour ${learner.first_name},\n\nLa formation "${session.title}" est terminée. Nous vous invitons à remplir le questionnaire de satisfaction :\n\n${link_url}\n\nMerci pour vos retours,\nL'équipe formation`;
 
-        await enqueueEmail(supabase, {
-          to: learner.email,
-          subject: `Questionnaire — ${questionnaire.title}`,
-          body: emailBody,
-          entity_id: session.entity_id,
-          session_id: session.id,
-          recipient_type: "learner",
-          recipient_id: learner.id,
-        });
-        sent++;
+          await enqueueEmail(supabase, {
+            to: learner.email,
+            subject: `Questionnaire — ${questionnaire.title}`,
+            body: emailBody,
+            entity_id: session.entity_id,
+            session_id: session.id,
+            recipient_type: "learner",
+            recipient_id: learner.id,
+          });
+          sent++;
+        } catch (err) {
+          console.error("[questionnaires/auto-send] failed for learner", learner.id, err);
+          // Continue le batch — ne pas aborter sur 1 token foireux
+        }
       }
 
       if (sent > 0) {
