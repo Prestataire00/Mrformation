@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { loadQualiopiIndicators } from "@/lib/services/load-session-aggregates";
 import {
-  ClipboardList, Target, Clock, TrendingUp, CheckCircle2,
+  Target, Clock, TrendingUp, CheckCircle2,
   AlertCircle, Plus, ChevronRight, Mail, Eye, X, Loader2, BarChart3, Pencil, QrCode, Copy,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,8 @@ import { useToast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
 import type { Session } from "@/lib/types";
 import { AdminFillQuestionnaireDialog } from "@/components/questionnaires/AdminFillQuestionnaireDialog";
+import { QuestionnaireOverview } from "./questionnaires/QuestionnaireOverview";
+import { computeStageStats } from "@/lib/utils/questionnaire-stats";
 
 interface Props { formation: Session; onRefresh: () => Promise<void>; }
 
@@ -121,23 +123,37 @@ export function TabQuestionnaires({ formation, onRefresh }: Props) {
     return { configured: true, responded: Math.min(responded, total), total };
   };
 
-  const totalSlots = STAGES.reduce((s, st) => s + st.itemTypes.length, 0);
-  const totalConfigured = STAGES.reduce((s, st) => s + st.itemTypes.filter(it => getStats(it).configured).length, 0);
+  const globalStats = STAGES.reduce(
+    (acc, stage) => {
+      const s = computeStageStats(stage, evalAssignments, satisAssignments, tokens, responses, enrollments as unknown as Array<{ learner?: { id?: string }; [key: string]: unknown }>, companies as unknown as Array<{ [key: string]: unknown }>);
+      acc.attributed += s.attributed;
+      acc.sent += s.sent;
+      acc.expectedSent += s.expectedSent;
+      acc.answered += s.answered;
+      return acc;
+    },
+    { attributed: 0, sent: 0, expectedSent: 0, answered: 0 },
+  );
+  const pending = Math.max(globalStats.sent - globalStats.answered, 0);
+
+  const learnerGridRef = useRef<HTMLDivElement>(null);
+  const handleScrollToPending = () => {
+    learnerGridRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   if (loading) return <div className="py-12 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" /></div>;
 
   return (
     <div className="space-y-5">
-      {/* Hero */}
-      <div className="rounded-2xl bg-gradient-to-br from-[#374151] to-[#1f2937] text-white p-6">
-        <h2 className="text-xl font-bold mb-1 flex items-center gap-2"><ClipboardList className="h-5 w-5" /> Parcours questionnaires</h2>
-        <p className="text-sm text-white/80 max-w-2xl">Tous les questionnaires organisés dans l&apos;ordre chronologique. Configurez une fois, les envois sont automatiques.</p>
-        <div className="grid grid-cols-3 gap-3 mt-4">
-          <div className="bg-white/10 rounded-lg p-3"><p className="text-[11px] text-white/60 uppercase">Configurés</p><p className="text-2xl font-bold mt-1">{totalConfigured}<span className="text-sm text-white/60">/{totalSlots}</span></p></div>
-          <div className="bg-white/10 rounded-lg p-3"><p className="text-[11px] text-white/60 uppercase">Réponses</p><p className="text-2xl font-bold mt-1">{responses.length}</p></div>
-          <div className="bg-white/10 rounded-lg p-3"><p className="text-[11px] text-white/60 uppercase">Complétion</p><p className="text-2xl font-bold mt-1">{totalSlots > 0 ? Math.round((totalConfigured / totalSlots) * 100) : 0}%</p></div>
-        </div>
-      </div>
+      <QuestionnaireOverview
+        attributed={globalStats.attributed}
+        sent={globalStats.sent}
+        expectedSent={globalStats.expectedSent}
+        answered={globalStats.answered}
+        pending={pending}
+        qualiopi={qualiopiIndicators}
+        onScrollToPending={handleScrollToPending}
+      />
 
       {/* Timeline */}
       <div className="space-y-4">
