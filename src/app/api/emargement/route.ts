@@ -268,6 +268,25 @@ export async function POST(request: NextRequest) {
   const supabase = createServiceClient();
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24h
 
+  // SÉCURITÉ : vérifier que la session appartient à l'entité du demandeur.
+  // La route utilise service_role (bypass RLS) → validation obligatoire côté app.
+  const { data: sessionCheck, error: sessionCheckError } = await supabase
+    .from("sessions")
+    .select("id, entity_id")
+    .eq("id", session_id)
+    .single();
+
+  if (sessionCheckError || !sessionCheck) {
+    return NextResponse.json({ error: "Session introuvable" }, { status: 404 });
+  }
+
+  if (sessionCheck.entity_id !== auth.profile.entity_id) {
+    return NextResponse.json(
+      { error: "Accès non autorisé à cette session" },
+      { status: 403 }
+    );
+  }
+
   if (type === "session") {
     // Check if a non-expired session token already exists
     let existingQuery = supabase
