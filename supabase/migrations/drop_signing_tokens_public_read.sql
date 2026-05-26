@@ -1,0 +1,35 @@
+-- ============================================================
+-- Migration : Suppression de la policy RLS publique sur signing_tokens
+-- ============================================================
+-- Date : 2026-05-26
+-- Source : Deep-dive TabEmargements (docs/deep-dive-tab-emargements.md)
+-- Sous-chantier : Volet A Sécurité, P0-1
+--
+-- PROBLÈME :
+-- La policy `signing_tokens_public_read TO anon USING (true)`
+-- (introduite par add_missing_rls_policies.sql) permettait à n'importe
+-- qui avec la clé anon de faire `GET /rest/v1/signing_tokens` et
+-- d'énumérer la totalité des tokens de signature en base.
+--
+-- ANALYSE :
+-- En pratique, aucun code applicatif ne s'appuie sur cette policy :
+--  - Les pages publiques /sign/[token] passent par /api/documents/sign-status
+--    et /api/documents/sign qui utilisent SUPABASE_SERVICE_ROLE_KEY
+--    (bypass RLS complet).
+--  - Aucun composant client n'interroge `signing_tokens` directement
+--    (vérifié par grep avant cette migration).
+--
+-- FIX :
+-- DROP de la policy publique. La policy `signing_tokens_authenticated_all`
+-- (existante, avec filtrage entity_id strict) reste en place pour les
+-- rôles authenticated.
+-- ============================================================
+
+DROP POLICY IF EXISTS "signing_tokens_public_read" ON signing_tokens;
+
+-- ============================================================
+-- ROLLBACK (en cas de besoin, à exécuter manuellement) :
+-- CREATE POLICY "signing_tokens_public_read" ON signing_tokens
+--   FOR SELECT TO anon
+--   USING (true);
+-- ============================================================
