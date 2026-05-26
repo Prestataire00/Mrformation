@@ -18,6 +18,7 @@ import { AdminFillQuestionnaireDialog } from "@/components/questionnaires/AdminF
 import { QuestionnaireOverview } from "./questionnaires/QuestionnaireOverview";
 import { StageStatsBar } from "./questionnaires/StageStatsBar";
 import { LearnerStatusGrid } from "./questionnaires/LearnerStatusGrid";
+import { LearnerResponsesDialog } from "./questionnaires/LearnerResponsesDialog";
 import { computeStageStats, computeLearnerStatuses } from "@/lib/utils/questionnaire-stats";
 import type { LearnerStatusCell } from "@/lib/utils/questionnaire-stats";
 
@@ -253,6 +254,12 @@ export function TabQuestionnaires({ formation, onRefresh }: Props) {
           onRefresh={async () => { await fetchData(); await onRefresh(); }}
         />
       </div>
+
+      <LearnerResponsesDialog
+        cell={responseDialogCell}
+        sessionId={formation.id}
+        onClose={() => setResponseDialogCell(null)}
+      />
     </div>
   );
 }
