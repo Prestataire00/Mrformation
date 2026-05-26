@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { loadQualiopiIndicators } from "@/lib/services/load-session-aggregates";
 import {
-  ClipboardList, Target, Clock, TrendingUp, CheckCircle2,
-  AlertCircle, Plus, ChevronRight, Mail, Eye, X, Loader2, BarChart3, Pencil, QrCode, Copy,
+  Target, Clock, TrendingUp, CheckCircle2,
+  AlertCircle, Plus, ChevronRight, Mail, X, Loader2, Pencil, QrCode, Copy,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +15,12 @@ import { useToast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
 import type { Session } from "@/lib/types";
 import { AdminFillQuestionnaireDialog } from "@/components/questionnaires/AdminFillQuestionnaireDialog";
+import { QuestionnaireOverview } from "./questionnaires/QuestionnaireOverview";
+import { StageStatsBar } from "./questionnaires/StageStatsBar";
+import { LearnerStatusGrid } from "./questionnaires/LearnerStatusGrid";
+import { LearnerResponsesDialog } from "./questionnaires/LearnerResponsesDialog";
+import { computeStageStats, computeLearnerStatuses } from "@/lib/utils/questionnaire-stats";
+import type { LearnerStatusCell } from "@/lib/utils/questionnaire-stats";
 
 interface Props { formation: Session; onRefresh: () => Promise<void>; }
 
@@ -62,8 +69,16 @@ export function TabQuestionnaires({ formation, onRefresh }: Props) {
   const [evalAssignments, setEvalAssignments] = useState<Array<Record<string, unknown>>>([]);
   const [satisAssignments, setSatisAssignments] = useState<Array<Record<string, unknown>>>([]);
   const [responses, setResponses] = useState<Array<Record<string, unknown>>>([]);
+  const [tokens, setTokens] = useState<Array<Record<string, unknown>>>([]);
+  const [qualiopiIndicators, setQualiopiIndicators] = useState<{
+    satisfactionRate: number | null;
+    satisfactionResponses: number;
+    acquisitionRate: number | null;
+    evaluationCount: number;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [detailItem, setDetailItem] = useState<{ stage: Stage; item: ItemType } | null>(null);
+  const [responseDialogCell, setResponseDialogCell] = useState<LearnerStatusCell | null>(null);
 
   const enrollments = (formation.enrollments || []).filter(e => e.learner);
   const companies = formation.formation_companies || [];
@@ -71,23 +86,32 @@ export function TabQuestionnaires({ formation, onRefresh }: Props) {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [qR, eR, sR, rR] = await Promise.all([
+      const [qR, eR, sR, rR, tR, qiR] = await Promise.all([
         supabase.from("questionnaires").select("id, title, type").eq("entity_id", formation.entity_id).eq("is_active", true).order("title"),
         supabase.from("formation_evaluation_assignments").select("*, questionnaire:questionnaires(title)").eq("session_id", formation.id),
         supabase.from("formation_satisfaction_assignments").select("*, questionnaire:questionnaires(title)").eq("session_id", formation.id),
         supabase.from("questionnaire_responses").select("id, questionnaire_id, learner_id").eq("session_id", formation.id),
+        supabase.from("questionnaire_tokens").select("id, questionnaire_id, learner_id, expires_at").eq("session_id", formation.id),
+        loadQualiopiIndicators(supabase, formation.id),
       ]);
       if (qR.data) setQuestionnaires(qR.data);
       if (eR.data) setEvalAssignments(eR.data);
       if (sR.data) setSatisAssignments(sR.data);
       if (rR.data) setResponses(rR.data);
+      if (tR.data) setTokens(tR.data);
+      setQualiopiIndicators({
+        satisfactionRate: qiR.satisfactionRate,
+        satisfactionResponses: qiR.satisfactionResponses,
+        acquisitionRate: qiR.acquisitionRate,
+        evaluationCount: qiR.evaluationCount,
+      });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Erreur de chargement";
       toast({ title: "Erreur", description: message, variant: "destructive" });
     } finally {
       setLoading(false);
     }
-  }, [formation.id, formation.entity_id, supabase]);
+  }, [formation.id, formation.entity_id, supabase, toast]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -104,29 +128,60 @@ export function TabQuestionnaires({ formation, onRefresh }: Props) {
     return { configured: true, responded: Math.min(responded, total), total };
   };
 
-  const totalSlots = STAGES.reduce((s, st) => s + st.itemTypes.length, 0);
-  const totalConfigured = STAGES.reduce((s, st) => s + st.itemTypes.filter(it => getStats(it).configured).length, 0);
+  const globalStats = STAGES.reduce(
+    (acc, stage) => {
+      const s = computeStageStats(stage, evalAssignments, satisAssignments, tokens, responses, enrollments as unknown as Array<{ learner?: { id?: string }; [key: string]: unknown }>, companies as unknown as Array<{ [key: string]: unknown }>);
+      acc.attributed += s.attributed;
+      acc.sent += s.sent;
+      acc.expectedSent += s.expectedSent;
+      acc.answered += s.answered;
+      return acc;
+    },
+    { attributed: 0, sent: 0, expectedSent: 0, answered: 0 },
+  );
+  const pending = Math.max(globalStats.sent - globalStats.answered, 0);
+
+  const learnerStatusCells = computeLearnerStatuses(
+    enrollments as unknown as Parameters<typeof computeLearnerStatuses>[0],
+    evalAssignments as unknown as Parameters<typeof computeLearnerStatuses>[1],
+    satisAssignments as unknown as Parameters<typeof computeLearnerStatuses>[2],
+    tokens as unknown as Parameters<typeof computeLearnerStatuses>[3],
+    responses as unknown as Parameters<typeof computeLearnerStatuses>[4],
+  );
+
+  const learnerGridRef = useRef<HTMLDivElement>(null);
+  const handleScrollToPending = () => {
+    learnerGridRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   if (loading) return <div className="py-12 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" /></div>;
 
   return (
     <div className="space-y-5">
-      {/* Hero */}
-      <div className="rounded-2xl bg-gradient-to-br from-[#374151] to-[#1f2937] text-white p-6">
-        <h2 className="text-xl font-bold mb-1 flex items-center gap-2"><ClipboardList className="h-5 w-5" /> Parcours questionnaires</h2>
-        <p className="text-sm text-white/80 max-w-2xl">Tous les questionnaires organisés dans l&apos;ordre chronologique. Configurez une fois, les envois sont automatiques.</p>
-        <div className="grid grid-cols-3 gap-3 mt-4">
-          <div className="bg-white/10 rounded-lg p-3"><p className="text-[11px] text-white/60 uppercase">Configurés</p><p className="text-2xl font-bold mt-1">{totalConfigured}<span className="text-sm text-white/60">/{totalSlots}</span></p></div>
-          <div className="bg-white/10 rounded-lg p-3"><p className="text-[11px] text-white/60 uppercase">Réponses</p><p className="text-2xl font-bold mt-1">{responses.length}</p></div>
-          <div className="bg-white/10 rounded-lg p-3"><p className="text-[11px] text-white/60 uppercase">Complétion</p><p className="text-2xl font-bold mt-1">{totalSlots > 0 ? Math.round((totalConfigured / totalSlots) * 100) : 0}%</p></div>
-        </div>
-      </div>
+      <QuestionnaireOverview
+        attributed={globalStats.attributed}
+        sent={globalStats.sent}
+        expectedSent={globalStats.expectedSent}
+        answered={globalStats.answered}
+        pending={pending}
+        qualiopi={qualiopiIndicators}
+        onScrollToPending={handleScrollToPending}
+      />
 
       {/* Timeline */}
       <div className="space-y-4">
         {STAGES.map((stage, idx) => {
           const c = SC[stage.color];
           const Icon = stage.icon;
+          const stageStats = computeStageStats(
+            stage,
+            evalAssignments,
+            satisAssignments,
+            tokens,
+            responses,
+            enrollments as unknown as Parameters<typeof computeStageStats>[5],
+            companies as unknown as Parameters<typeof computeStageStats>[6],
+          );
           return (
             <div key={stage.id} className="relative">
               {idx < STAGES.length - 1 && <div className={cn("absolute left-[22px] top-14 bottom-0 w-0.5 -mb-4", c.bg)} />}
@@ -139,6 +194,13 @@ export function TabQuestionnaires({ formation, onRefresh }: Props) {
                       <Badge variant="outline" className={cn("text-[10px]", c.bg, c.text, c.border)}><Clock className="h-2.5 w-2.5 mr-1" />{stage.timing}</Badge>
                     </div>
                     <p className="text-xs text-gray-600"><Target className="h-3 w-3 inline mr-1 text-gray-400" /><strong>Objectif :</strong> {stage.objective}</p>
+                    <StageStatsBar
+                      attributed={stageStats.attributed}
+                      sent={stageStats.sent}
+                      expectedSent={stageStats.expectedSent}
+                      answered={stageStats.answered}
+                      rate={stageStats.rate}
+                    />
                   </div>
                 </div>
                 <div className="border-t bg-gray-50/50 divide-y">
@@ -183,6 +245,21 @@ export function TabQuestionnaires({ formation, onRefresh }: Props) {
           {detailItem && <ItemDetail stage={detailItem.stage} item={detailItem.item} formation={formation} questionnaires={questionnaires} assignments={getAssignments(detailItem.item)} enrollments={enrollments} companies={companies} responses={responses} supabase={supabase} toast={toast} onRefresh={async () => { await fetchData(); await onRefresh(); }} />}
         </DialogContent>
       </Dialog>
+
+      <div ref={learnerGridRef}>
+        <LearnerStatusGrid
+          sessionId={formation.id}
+          cells={learnerStatusCells}
+          onSelectAnswered={(cell) => setResponseDialogCell(cell)}
+          onRefresh={async () => { await fetchData(); await onRefresh(); }}
+        />
+      </div>
+
+      <LearnerResponsesDialog
+        cell={responseDialogCell}
+        sessionId={formation.id}
+        onClose={() => setResponseDialogCell(null)}
+      />
     </div>
   );
 }
