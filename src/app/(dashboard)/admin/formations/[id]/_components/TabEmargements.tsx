@@ -375,12 +375,25 @@ export function TabEmargements({ formation, onRefresh }: Props) {
 
   // ── Bulk sign all unsigned on a slot ──
 
-  const [bulkSignSlot, setBulkSignSlot] = useState<{
+  interface BulkSignDialogState {
     open: boolean;
+    step: "confirm" | "sign";
     slotId: string;
     unsignedLearners: { id: string; name: string }[];
     unsignedTrainers: { id: string; name: string }[];
-  }>({ open: false, slotId: "", unsignedLearners: [], unsignedTrainers: [] });
+    adminSignature: string | null;
+  }
+
+  const initialBulkSignState: BulkSignDialogState = {
+    open: false,
+    step: "confirm",
+    slotId: "",
+    unsignedLearners: [],
+    unsignedTrainers: [],
+    adminSignature: null,
+  };
+
+  const [bulkSignSlot, setBulkSignSlot] = useState<BulkSignDialogState>(initialBulkSignState);
   const [bulkSigning, setBulkSigning] = useState(false);
 
   const openBulkSign = (slot: FormationTimeSlot) => {
@@ -391,7 +404,14 @@ export function TabEmargements({ formation, onRefresh }: Props) {
     const unsignedTrainers = trainers
       .filter(ft => ft.trainer && !slotSigs.find(s => s.signer_id === ft.trainer!.id && s.signer_type === "trainer"))
       .map(ft => ({ id: ft.trainer!.id, name: `${ft.trainer!.first_name} ${ft.trainer!.last_name}` }));
-    setBulkSignSlot({ open: true, slotId: slot.id, unsignedLearners, unsignedTrainers });
+    setBulkSignSlot({
+      open: true,
+      step: "confirm",
+      slotId: slot.id,
+      unsignedLearners,
+      unsignedTrainers,
+      adminSignature: null,
+    });
   };
 
   const handleBulkSign = async () => {
