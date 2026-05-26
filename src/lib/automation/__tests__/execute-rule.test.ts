@@ -1,7 +1,10 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   buildAttachmentsForRecipient,
   buildFallbackEmail,
+  resolveQuestionnaireIdForRule,
+  isQuestionnaireRule,
+  QUESTIONNAIRE_DOCUMENT_TYPES,
   type SessionInfo,
   type RecipientInfo,
   type RuleInfo,
@@ -106,5 +109,51 @@ describe("buildFallbackEmail", () => {
     expect(body).toContain("Jean Dupont");
     expect(body).toContain("Convocation à la formation");
     expect(body).toContain("Formation X");
+  });
+});
+
+describe("isQuestionnaireRule", () => {
+  it("retourne true pour document_type questionnaire_positionnement", () => {
+    const rule: RuleInfo = { id: "r1", trigger_type: "session_start_minus_days", document_type: "questionnaire_positionnement", days_offset: 3, recipient_type: "learners", template_id: null, condition_subcontracted: null, name: null };
+    expect(isQuestionnaireRule(rule)).toBe(true);
+  });
+
+  it("retourne false pour document_type convocation", () => {
+    const rule: RuleInfo = { id: "r1", trigger_type: "session_start_minus_days", document_type: "convocation", days_offset: 5, recipient_type: "learners", template_id: null, condition_subcontracted: null, name: null };
+    expect(isQuestionnaireRule(rule)).toBe(false);
+  });
+});
+
+describe("resolveQuestionnaireIdForRule", () => {
+  it("retourne questionnaire_id pour règle 'questionnaire_positionnement' avec assignment eval_preformation", async () => {
+    const supabase = {
+      from: vi.fn(() => ({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        maybeSingle: vi.fn(async () => ({ data: { questionnaire_id: "QUEST-1" }, error: null })),
+      })),
+    };
+    const rule: RuleInfo = { id: "r1", trigger_type: "session_start_minus_days", document_type: "questionnaire_positionnement", days_offset: 3, recipient_type: "learners", template_id: null, condition_subcontracted: null, name: null };
+    const result = await resolveQuestionnaireIdForRule(supabase as never, rule, "S1");
+    expect(result).toBe("QUEST-1");
+  });
+
+  it("retourne null si document_type n'est pas dans le mapping", async () => {
+    const supabase = { from: vi.fn() };
+    const rule: RuleInfo = { id: "r1", trigger_type: "session_start_minus_days", document_type: "convocation", days_offset: 5, recipient_type: "learners", template_id: null, condition_subcontracted: null, name: null };
+    const result = await resolveQuestionnaireIdForRule(supabase as never, rule, "S1");
+    expect(result).toBe(null);
+  });
+});
+
+// Vérifie que QUESTIONNAIRE_DOCUMENT_TYPES exporte les 4 valeurs attendues.
+describe("QUESTIONNAIRE_DOCUMENT_TYPES", () => {
+  it("contient les 4 document_type questionnaire confirmés par Task 0", () => {
+    expect(QUESTIONNAIRE_DOCUMENT_TYPES.has("questionnaire_positionnement")).toBe(true);
+    expect(QUESTIONNAIRE_DOCUMENT_TYPES.has("questionnaire_satisfaction")).toBe(true);
+    expect(QUESTIONNAIRE_DOCUMENT_TYPES.has("questionnaire_satisfaction_froid")).toBe(true);
+    expect(QUESTIONNAIRE_DOCUMENT_TYPES.has("questionnaire_satisfaction_client")).toBe(true);
+    expect(QUESTIONNAIRE_DOCUMENT_TYPES.has("convocation")).toBe(false);
   });
 });
