@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { loadQualiopiIndicators } from "@/lib/services/load-session-aggregates";
 import {
   Target, Clock, TrendingUp, CheckCircle2,
-  AlertCircle, Plus, ChevronRight, Mail, Eye, X, Loader2, BarChart3, Pencil, QrCode, Copy,
+  AlertCircle, Plus, ChevronRight, Mail, X, Loader2, Pencil, QrCode, Copy,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";

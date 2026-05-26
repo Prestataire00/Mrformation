@@ -83,7 +83,7 @@ describe("computeLearnerStatuses", () => {
     const enrollments = [{ learner: { id: "L1", first_name: "Bob", last_name: "Dupont" } }];
     const evalAssignments = [{ questionnaire_id: "q1", evaluation_type: "eval_preformation", questionnaire: { title: "Q" } }];
     const tokens = [{ questionnaire_id: "q1", learner_id: "L1", expires_at: new Date(Date.now() + 86400000).toISOString() }];
-    const responses: Array<Record<string, unknown>> = [];
+    const responses: Array<{ questionnaire_id?: string; learner_id?: string; id: string }> = [];
 
     const result = computeLearnerStatuses(enrollments, evalAssignments, [], tokens, responses);
     expect(result[0].status).toBe("sent");
@@ -93,7 +93,7 @@ describe("computeLearnerStatuses", () => {
     const enrollments = [{ learner: { id: "L1", first_name: "Carl", last_name: "X" } }];
     const evalAssignments = [{ questionnaire_id: "q1", evaluation_type: "eval_preformation", questionnaire: { title: "Q" } }];
     const tokens = [{ questionnaire_id: "q1", learner_id: "L1", expires_at: new Date(Date.now() - 86400000).toISOString() }];
-    const responses: Array<Record<string, unknown>> = [];
+    const responses: Array<{ questionnaire_id?: string; learner_id?: string; id: string }> = [];
 
     const result = computeLearnerStatuses(enrollments, evalAssignments, [], tokens, responses);
     expect(result[0].status).toBe("expired");
@@ -102,8 +102,8 @@ describe("computeLearnerStatuses", () => {
   it("retourne 'not_sent' pour attribution sans token", () => {
     const enrollments = [{ learner: { id: "L1", first_name: "Diana", last_name: "Y" } }];
     const evalAssignments = [{ questionnaire_id: "q1", evaluation_type: "eval_preformation", questionnaire: { title: "Q" } }];
-    const tokens: Array<Record<string, unknown>> = [];
-    const responses: Array<Record<string, unknown>> = [];
+    const tokens: Array<{ questionnaire_id?: string; learner_id?: string; expires_at?: string; id?: string }> = [];
+    const responses: Array<{ questionnaire_id?: string; learner_id?: string; id: string }> = [];
 
     const result = computeLearnerStatuses(enrollments, evalAssignments, [], tokens, responses);
     expect(result[0].status).toBe("not_sent");

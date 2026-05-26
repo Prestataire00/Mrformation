@@ -135,7 +135,7 @@ export function computeLearnerStatuses(
   evalAssignments: AssignmentWithQuestionnaire[],
   satisAssignments: AssignmentWithQuestionnaire[],
   tokens: Array<{ questionnaire_id?: string; learner_id?: string; expires_at?: string; id?: string }>,
-  responses: Array<{ questionnaire_id?: string; learner_id?: string; id?: string }>,
+  responses: Array<{ questionnaire_id?: string; learner_id?: string; id: string }>,
 ): LearnerStatusCell[] {
   const now = Date.now();
   const result: LearnerStatusCell[] = [];
