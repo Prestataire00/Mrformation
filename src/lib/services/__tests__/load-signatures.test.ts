@@ -18,6 +18,20 @@ type Row = {
   time_slot_id: string | null;
 };
 
+function makeNullDataMock() {
+  const query: Record<string, unknown> = {};
+  const chainable = () => query;
+  query.select = vi.fn(chainable);
+  query.eq = vi.fn(chainable);
+  // Supabase retourne data: null quand une erreur réseau ou RLS bloque la query
+  query.then = (resolve: (v: unknown) => void) =>
+    resolve({ data: null, error: { message: "network error" } });
+
+  return {
+    from: vi.fn(() => query),
+  };
+}
+
 function makeSupabaseMock(rows: Row[]) {
   const fromCalls: string[] = [];
   const eqCalls: Array<{ column: string; value: unknown }> = [];
@@ -252,5 +266,17 @@ describe("loadSignaturesBySessionId", () => {
 
     // totalCount inclut TOUTES les rows (5 incluant l'orpheline skipped)
     expect(result.totalCount).toBe(5);
+  });
+
+  it("data=null (erreur réseau/RLS) → rows ?? [] fallback → empty structures", async () => {
+    const mock = makeNullDataMock();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await loadSignaturesBySessionId(mock as any, "SESS-1");
+
+    // Le ?? [] s'applique : typed est un tableau vide, aucune itération
+    expect(result.signaturesById.size).toBe(0);
+    expect(result.signaturesBySlotPerson.size).toBe(0);
+    expect(result.signedLearnerIds.size).toBe(0);
+    expect(result.totalCount).toBe(0);
   });
 });
