@@ -103,6 +103,25 @@ export async function POST(request: NextRequest) {
   // quand l'admin génère les QR la veille de la formation.
   const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(); // 30 jours
 
+  // SÉCURITÉ : vérifier que la session appartient à l'entité du demandeur.
+  // La route utilise service_role (bypass RLS) → validation obligatoire côté app.
+  const { data: sessionCheck, error: sessionCheckError } = await supabase
+    .from("sessions")
+    .select("id, entity_id")
+    .eq("id", session_id)
+    .single();
+
+  if (sessionCheckError || !sessionCheck) {
+    return NextResponse.json({ error: "Session introuvable" }, { status: 404 });
+  }
+
+  if (sessionCheck.entity_id !== auth.profile.entity_id) {
+    return NextResponse.json(
+      { error: "Accès non autorisé à cette session" },
+      { status: 403 }
+    );
+  }
+
   // 1. Fetch time slots
   let slotsQuery = supabase
     .from("formation_time_slots")
