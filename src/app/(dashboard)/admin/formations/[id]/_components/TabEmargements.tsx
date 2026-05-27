@@ -30,6 +30,7 @@ import { isValidAdminBulkSignature } from "@/lib/utils/validate-bulk-signature";
 import { HeroStatsAndWorkflow } from "./emargements/HeroStatsAndWorkflow";
 import { CompanyFilter } from "./emargements/CompanyFilter";
 import { QrCodesDialog, type SlotTokensResponse } from "./emargements/QrCodesDialog";
+import { SingleSignDialog, type SignDialogState } from "./emargements/SingleSignDialog";
 
 // ──────────────────────────────────────────────
 // Types
@@ -67,13 +68,9 @@ export function TabEmargements({ formation, onRefresh }: Props) {
   const companies = formation.formation_companies || [];
 
   // Sign-on-behalf dialog state
-  const [signDialog, setSignDialog] = useState<{
-    open: boolean;
-    slotId: string;
-    signerId: string;
-    signerType: "learner" | "trainer";
-    signerName: string;
-  }>({ open: false, slotId: "", signerId: "", signerType: "learner", signerName: "" });
+  const [signDialog, setSignDialog] = useState<SignDialogState>({
+    open: false, slotId: "", signerId: "", signerType: "learner", signerName: "",
+  });
   const [signing, setSigning] = useState(false);
 
   // QR dialog state
@@ -882,44 +879,14 @@ export function TabEmargements({ formation, onRefresh }: Props) {
         </DialogContent>
       </Dialog>
 
-      {/* ── Dialog: Sign on behalf ── */}
-      <Dialog open={signDialog.open} onOpenChange={(open) => setSignDialog(prev => ({ ...prev, open }))}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>
-              Signer pour {signDialog.signerName}
-              {(() => {
-                const slot = timeSlots.find(s => s.id === signDialog.slotId);
-                return slot ? (
-                  <span className="block text-sm font-normal text-muted-foreground mt-1">
-                    Créneau : {formatSlotLabel(slot)}
-                  </span>
-                ) : null;
-              })()}
-            </DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground mb-2">
-            Dessinez la signature pour valider la présence de {signDialog.signerName}.
-          </p>
-          <SignaturePad
-            label={`Signature pour ${signDialog.signerName}`}
-            isSigned={false}
-            onSign={handleAdminSign}
-            onClear={() => { /* no-op : le dialog se ferme après onSign */ }}
-            disabled={signing}
-          />
-          {signing && (
-            <div className="flex items-center gap-2 text-sm text-blue-600">
-              <Loader2 className="h-4 w-4 animate-spin" /> Enregistrement...
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setSignDialog(prev => ({ ...prev, open: false }))}>
-              Annuler
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <SingleSignDialog
+        signDialog={signDialog}
+        setSignDialog={setSignDialog}
+        timeSlots={timeSlots}
+        signing={signing}
+        onAdminSign={handleAdminSign}
+        formatSlotLabel={formatSlotLabel}
+      />
 
       <QrCodesDialog
         open={qrDialog}
