@@ -15,19 +15,16 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { TEMPLATE_VARIABLES } from "@/lib/template-variables";
+import { DocumentsTabsNav } from "../_components/DocumentsTabsNav";
 
 const VARIABLE_COUNT = TEMPLATE_VARIABLES.length;
 
 export default function HowToPage() {
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
+      <DocumentsTabsNav />
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Link href="/admin/documents">
-          <Button variant="ghost" size="sm">
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-        </Link>
         <div>
           <h1 className="text-lg font-bold text-gray-900">Comment créer un nouveau type de document</h1>
           <p className="text-sm text-muted-foreground">

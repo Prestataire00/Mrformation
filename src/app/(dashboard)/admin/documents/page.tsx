@@ -19,6 +19,7 @@ import { plainTextToHtml, isHtmlContent } from "@/lib/migrate-templates";
 import { exportHtmlToPDF, exportToPDF } from "@/lib/pdf-export";
 import { renderSystemTemplate } from "@/lib/templates/registry";
 import { BackToFormationLink } from "@/components/ui/back-to-formation-link";
+import { DocumentsTabsNav } from "./_components/DocumentsTabsNav";
 import DOMPurifyLib from "dompurify";
 
 // Safe sanitize — avoid hydration mismatch by always using the same function reference
@@ -953,6 +954,7 @@ export default function DocumentsPage() {
 
   return (
     <div className="p-6 space-y-6">
+      <DocumentsTabsNav />
       {/* Breadcrumb retour à la formation source (si arrivé depuis TabConventionDocs) */}
       <BackToFormationLink defaultTab="documents" />
 

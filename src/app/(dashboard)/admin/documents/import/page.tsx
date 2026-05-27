@@ -27,6 +27,7 @@ import {
 import { cn } from "@/lib/utils";
 
 import { DOC_TYPE_OPTIONS } from "@/lib/templates/doc-type-options";
+import { DocumentsTabsNav } from "../_components/DocumentsTabsNav";
 
 interface TemplateUpload {
   file: File;
@@ -165,6 +166,7 @@ export default function DocumentsImportPage() {
 
   return (
     <div className="max-w-5xl mx-auto py-8 px-4 space-y-6">
+      <DocumentsTabsNav />
       <div className="space-y-1">
         <h1 className="text-2xl font-semibold">Import de templates de documents</h1>
         <p className="text-sm text-muted-foreground">
