@@ -4,18 +4,11 @@ import { useState, useCallback } from "react";
 import QRCode from "qrcode";
 import { createClient } from "@/lib/supabase/client";
 import {
-  QrCode, Send, Printer, CheckSquare, Loader2, Copy, Download,
-  FileDown, UserCheck, AlertTriangle, PenLine, CheckCircle2,
+  QrCode, Send, Printer, Loader2, Download,
+  FileDown, PenLine, CheckCircle2,
   XCircle, Mail, CheckCheck, CalendarDays,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-} from "@/components/ui/dialog";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/components/ui/use-toast";
 import { downloadQRCodesPDF, type QRSlotData } from "@/lib/qr-pdf-export";
@@ -23,10 +16,14 @@ import { useEntity } from "@/contexts/EntityContext";
 import { sortSlotsByStart } from "@/lib/utils/sort-time-slots";
 import { getFormationKind, getLearnersForCompany } from "@/lib/utils/formation-companies";
 import type { Session, FormationTimeSlot, Signature, Enrollment, FormationTrainer } from "@/lib/types";
-import { SignaturePad } from "@/components/signatures/SignaturePad";
 import { useDocumentGeneration } from "@/hooks/useDocumentGeneration";
 import { downloadBase64Pdf } from "@/lib/utils/download-blob";
 import { isValidAdminBulkSignature } from "@/lib/utils/validate-bulk-signature";
+import { HeroStatsAndWorkflow } from "./emargements/HeroStatsAndWorkflow";
+import { CompanyFilter } from "./emargements/CompanyFilter";
+import { QrCodesDialog, type SlotTokensResponse } from "./emargements/QrCodesDialog";
+import { SingleSignDialog, type SignDialogState } from "./emargements/SingleSignDialog";
+import { BulkSignDialog, type BulkSignDialogState, initialBulkSignState } from "./emargements/BulkSignDialog";
 
 // ──────────────────────────────────────────────
 // Types
@@ -37,27 +34,6 @@ interface Props {
   onRefresh: () => Promise<void>;
 }
 
-interface SlotTokensResponse {
-  slots: {
-    slot: { id: string; title: string | null; start_time: string; end_time: string; slot_order: number };
-    learner_tokens: { token: string; person: { id: string; first_name: string; last_name: string; email: string | null } }[];
-    trainer_tokens: { token: string; person: { id: string; first_name: string; last_name: string; email: string | null } }[];
-  }[];
-  total_tokens: number;
-  debug?: {
-    session_id: string;
-    slots_count: number;
-    enrollments_count: number;
-    enrollment_statuses: string[];
-    enrollments_with_learner: number;
-    trainers_count: number;
-    trainers_with_data: number;
-    enrollments_error: string | null;
-    profile_entity_id: string;
-    insert_errors: { type: string; phase?: string; code: string | undefined; message: string; details?: string; hint?: string }[];
-    first_iteration_trace: { existing_data: boolean; existing_error: string | null; insert_data: boolean; insert_error: string | null } | null;
-  };
-}
 
 // InlineSignaturePad inline supprimé (story e-1.1) : remplacé par
 // `SignaturePad` partagé (src/components/signatures/SignaturePad.tsx).
@@ -85,13 +61,9 @@ export function TabEmargements({ formation, onRefresh }: Props) {
   const companies = formation.formation_companies || [];
 
   // Sign-on-behalf dialog state
-  const [signDialog, setSignDialog] = useState<{
-    open: boolean;
-    slotId: string;
-    signerId: string;
-    signerType: "learner" | "trainer";
-    signerName: string;
-  }>({ open: false, slotId: "", signerId: "", signerType: "learner", signerName: "" });
+  const [signDialog, setSignDialog] = useState<SignDialogState>({
+    open: false, slotId: "", signerId: "", signerType: "learner", signerName: "",
+  });
   const [signing, setSigning] = useState(false);
 
   // QR dialog state
@@ -376,24 +348,6 @@ export function TabEmargements({ formation, onRefresh }: Props) {
 
   // ── Bulk sign all unsigned on a slot ──
 
-  interface BulkSignDialogState {
-    open: boolean;
-    step: "confirm" | "sign";
-    slotId: string;
-    unsignedLearners: { id: string; name: string }[];
-    unsignedTrainers: { id: string; name: string }[];
-    adminSignature: string | null;
-  }
-
-  const initialBulkSignState: BulkSignDialogState = {
-    open: false,
-    step: "confirm",
-    slotId: "",
-    unsignedLearners: [],
-    unsignedTrainers: [],
-    adminSignature: null,
-  };
-
   const [bulkSignSlot, setBulkSignSlot] = useState<BulkSignDialogState>(initialBulkSignState);
   const [bulkSigning, setBulkSigning] = useState(false);
 
@@ -629,172 +583,37 @@ export function TabEmargements({ formation, onRefresh }: Props) {
   return (
     <div className="space-y-6">
       {/* Story 3.4 — Filtre par entreprise (visible uniquement en INTER) */}
-      {formationKind === "inter" && companies.length > 0 && (
-        <div className="flex items-center gap-2 text-sm border rounded-md px-3 py-2 bg-blue-50">
-          <span className="text-muted-foreground">Filtrer par entreprise :</span>
-          <Select
-            value={filterClientId ?? "all"}
-            onValueChange={(v) => setFilterClientId(v === "all" ? null : v)}
-          >
-            <SelectTrigger className="h-8 w-[240px]">
-              <SelectValue placeholder="Toutes les entreprises" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Toutes les entreprises</SelectItem>
-              {companies.map((c) => (
-                <SelectItem key={c.client_id} value={c.client_id}>
-                  {c.client?.company_name || `Client ${c.client_id.slice(0, 8)}`}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <span className="text-xs text-muted-foreground">
-            {enrollments.length}/{allEnrollments.length} apprenant{allEnrollments.length !== 1 ? "s" : ""}
-          </span>
-          {filterClientId && (
-            <Button variant="ghost" size="sm" onClick={() => setFilterClientId(null)}>
-              × Effacer
-            </Button>
-          )}
-        </div>
-      )}
+      <CompanyFilter
+        isInter={formationKind === "inter"}
+        companies={companies}
+        filterClientId={filterClientId}
+        onChange={setFilterClientId}
+        enrollmentsCount={enrollments.length}
+        allEnrollmentsCount={allEnrollments.length}
+      />
 
-      {/* ═══ HERO ROW ═══ */}
-      {timeSlots.length > 0 && (
-        <div className="grid grid-cols-3 gap-3">
-          <div className="border rounded-lg p-3">
-            <p className="text-xs text-muted-foreground">Signatures</p>
-            <p className="text-xl font-bold">{totalSigned}<span className="text-sm font-normal text-muted-foreground">/{totalExpected}</span></p>
-            <div className="mt-1.5 bg-gray-100 rounded-full h-1.5">
-              <div className={`h-1.5 rounded-full transition-all ${completionPct === 100 ? "bg-green-500" : completionPct > 0 ? "bg-amber-400" : "bg-gray-200"}`} style={{ width: `${completionPct}%` }} />
-            </div>
-          </div>
-          <div className="border rounded-lg p-3">
-            <p className="text-xs text-muted-foreground">Taux de présence</p>
-            <p className="text-xl font-bold">{completionPct}%</p>
-          </div>
-          <div className="border rounded-lg p-3">
-            <p className="text-xs text-muted-foreground">Créneaux</p>
-            <p className="text-xl font-bold">{timeSlots.length}</p>
-          </div>
-        </div>
-      )}
-
-      {/* ═══ 3 CARDS WORKFLOW ═══ */}
-      {timeSlots.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Card 1 — PRÉPARER */}
-          <div className="border rounded-xl p-4 bg-blue-50/50 border-blue-200">
-            <div className="flex items-center gap-2 mb-3">
-              <div className="p-2 rounded-lg bg-blue-100">
-                <QrCode className="h-4 w-4 text-blue-700" />
-              </div>
-              <h3 className="font-semibold text-gray-900">📤 Préparer</h3>
-            </div>
-            <p className="text-xs text-gray-600 mb-3">Distribuer la signature aux apprenants</p>
-            <a
-              href={`/admin/formations/${formation.id}/emargement-live`}
-              className="block w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-3 py-2 rounded-lg text-center transition-colors mb-2"
-              title="1 QR projeté pour toute la session — apprenants scannent et choisissent leur nom"
-            >
-              📱 Mode présentation
-            </a>
-            <div className="text-[11px] text-gray-500 space-y-1">
-              <button
-                type="button"
-                onClick={handleGenerateAllTokens}
-                disabled={generatingTokens}
-                className="block w-full text-left hover:text-blue-700"
-              >
-                → Générer QR individuels (1 par apprenant)
-              </button>
-              <button
-                type="button"
-                onClick={handleSendToTrainer}
-                disabled={sendingToTrainer || trainers.length === 0}
-                className="block w-full text-left hover:text-blue-700"
-              >
-                → Envoyer les QR par email au formateur
-              </button>
-              <button
-                type="button"
-                onClick={handleExportPdf}
-                disabled={exportingPdf}
-                className="block w-full text-left hover:text-blue-700"
-              >
-                → Télécharger PDF des QR à imprimer
-              </button>
-            </div>
-          </div>
-
-          {/* Card 2 — SUIVRE */}
-          <div className="border rounded-xl p-4 bg-emerald-50/50 border-emerald-200">
-            <div className="flex items-center gap-2 mb-3">
-              <div className="p-2 rounded-lg bg-emerald-100">
-                <UserCheck className="h-4 w-4 text-emerald-700" />
-              </div>
-              <h3 className="font-semibold text-gray-900">✅ Suivre</h3>
-            </div>
-            <p className="text-xs text-gray-600 mb-3">Pendant la formation : vérifier les présences</p>
-            <a
-              href={`/admin/formations/${formation.id}/emargement-live`}
-              className="block w-full bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-3 py-2 rounded-lg text-center transition-colors mb-2"
-              title="Page live avec liste apprenants signés/en attente, mise à jour toutes les 3 sec"
-            >
-              👁 Voir les présences en direct
-            </a>
-            <div className="text-[11px] text-gray-500">
-              Vous pouvez également faire signer manuellement chaque apprenant ci-dessous (mode &laquo; appel &raquo;).
-            </div>
-          </div>
-
-          {/* Card 3 — EXPORTER */}
-          <div className="border rounded-xl p-4 bg-purple-50/50 border-purple-200">
-            <div className="flex items-center gap-2 mb-3">
-              <div className="p-2 rounded-lg bg-purple-100">
-                <Download className="h-4 w-4 text-purple-700" />
-              </div>
-              <h3 className="font-semibold text-gray-900">📄 Exporter</h3>
-            </div>
-            <p className="text-xs text-gray-600 mb-3">Justificatifs Qualiopi après formation</p>
-            <button
-              type="button"
-              onClick={handleExportEmargementPdf}
-              className="block w-full bg-purple-600 hover:bg-purple-700 disabled:bg-purple-300 text-white text-sm font-medium px-3 py-2 rounded-lg text-center transition-colors mb-2"
-              title="PDF complet avec toutes les signatures collectées"
-            >
-              📥 Feuille d&apos;émargement signée
-            </button>
-            {/* Story 3.4 — Export 1 PDF par entreprise (INTER uniquement, sans filtre actif) */}
-            {formationKind === "inter" && !filterClientId && companies.length > 0 && (
-              <button
-                type="button"
-                onClick={handleExportEmargementPerCompany}
-                className="block w-full border border-purple-300 text-purple-700 hover:bg-purple-100 disabled:opacity-50 text-sm font-medium px-3 py-2 rounded-lg text-center transition-colors mb-2"
-                title="Génère 1 feuille d'émargement par entreprise rattachée"
-              >
-                📥 1 PDF par entreprise ({companies.length})
-              </button>
-            )}
-            <div className="text-[11px] text-gray-500 space-y-1">
-              <button
-                type="button"
-                onClick={handleDownloadPlanningHebdo}
-                className="block w-full text-left hover:text-purple-700"
-              >
-                → Planning hebdo signé (paysage)
-              </button>
-              <button
-                type="button"
-                onClick={handlePrintEmpty}
-                className="block w-full text-left hover:text-purple-700"
-              >
-                → Imprimer une feuille vide
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <HeroStatsAndWorkflow
+        formationId={formation.id}
+        hasTimeSlots={timeSlots.length > 0}
+        totalSigned={totalSigned}
+        totalExpected={totalExpected}
+        completionPct={completionPct}
+        timeSlotsCount={timeSlots.length}
+        generatingTokens={generatingTokens}
+        exportingPdf={exportingPdf}
+        sendingToTrainer={sendingToTrainer}
+        pdfProgress={pdfProgress}
+        onGenerateAllTokens={handleGenerateAllTokens}
+        onExportPdf={handleExportPdf}
+        onSendToTrainer={handleSendToTrainer}
+        onDownloadPlanningHebdo={handleDownloadPlanningHebdo}
+        onExportEmargementPdf={handleExportEmargementPdf}
+        onExportEmargementPerCompany={handleExportEmargementPerCompany}
+        onPrintEmpty={handlePrintEmpty}
+        hasMultipleCompanies={formationKind === "inter" && !filterClientId && companies.length > 0}
+        companiesCount={companies.length}
+        hasTrainers={trainers.length > 0}
+      />
 
       {/* Quick actions (legacy — gardés pour compatibilité, accessibles aux power users) */}
       <details className="text-sm">
@@ -957,274 +776,30 @@ export function TabEmargements({ formation, onRefresh }: Props) {
         </div>
       )}
 
-      {/* ── Dialog: Bulk sign (2 étapes : confirm → sign) ── */}
-      <Dialog
-        open={bulkSignSlot.open}
-        onOpenChange={(open) => {
-          if (!open) {
-            // Reset au close pour éviter la fuite d'état entre 2 ouvertures
-            setBulkSignSlot(initialBulkSignState);
-          } else {
-            setBulkSignSlot(prev => ({ ...prev, open: true }));
-          }
-        }}
-      >
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>
-              {bulkSignSlot.step === "confirm"
-                ? "Cocher les présences en masse"
-                : "Votre signature (appliquée à tous)"}
-            </DialogTitle>
-          </DialogHeader>
+      <BulkSignDialog
+        bulkSignSlot={bulkSignSlot}
+        setBulkSignSlot={setBulkSignSlot}
+        bulkSigning={bulkSigning}
+        onBulkSign={handleBulkSign}
+      />
 
-          {bulkSignSlot.step === "confirm" ? (
-            <>
-              <p className="text-sm text-muted-foreground">
-                Marquer {bulkSignSlot.unsignedLearners.length} apprenant{bulkSignSlot.unsignedLearners.length !== 1 ? "s" : ""} et{" "}
-                {bulkSignSlot.unsignedTrainers.length} formateur{bulkSignSlot.unsignedTrainers.length !== 1 ? "s" : ""} non
-                encore signé{(bulkSignSlot.unsignedLearners.length + bulkSignSlot.unsignedTrainers.length) !== 1 ? "s" : ""} comme
-                présent{(bulkSignSlot.unsignedLearners.length + bulkSignSlot.unsignedTrainers.length) !== 1 ? "s" : ""} sur ce créneau ?
-              </p>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setBulkSignSlot(initialBulkSignState)}>
-                  Annuler
-                </Button>
-                <Button onClick={() => setBulkSignSlot(prev => ({ ...prev, step: "sign" }))}>
-                  Suivant →
-                </Button>
-              </DialogFooter>
-            </>
-          ) : (
-            <>
-              <p className="text-sm text-muted-foreground mb-2">
-                Dessinez votre signature. Elle sera enregistrée pour les{" "}
-                {bulkSignSlot.unsignedLearners.length + bulkSignSlot.unsignedTrainers.length}{" "}
-                personnes sélectionnées.
-              </p>
-              <SignaturePad
-                label="Signature de l'administrateur"
-                isSigned={!!bulkSignSlot.adminSignature}
-                onSign={(svgData) => setBulkSignSlot(prev => ({ ...prev, adminSignature: svgData }))}
-                onClear={() => setBulkSignSlot(prev => ({ ...prev, adminSignature: null }))}
-                disabled={bulkSigning}
-              />
-              {bulkSigning && (
-                <div className="flex items-center gap-2 text-sm text-blue-600 mt-2">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Enregistrement...
-                </div>
-              )}
-              <DialogFooter>
-                <Button
-                  variant="outline"
-                  onClick={() => setBulkSignSlot(prev => ({ ...prev, step: "confirm", adminSignature: null }))}
-                  disabled={bulkSigning}
-                >
-                  ← Retour
-                </Button>
-                <Button
-                  onClick={handleBulkSign}
-                  disabled={bulkSigning || !bulkSignSlot.adminSignature}
-                >
-                  {bulkSigning && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                  Confirmer
-                </Button>
-              </DialogFooter>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
+      <SingleSignDialog
+        signDialog={signDialog}
+        setSignDialog={setSignDialog}
+        timeSlots={timeSlots}
+        signing={signing}
+        onAdminSign={handleAdminSign}
+        formatSlotLabel={formatSlotLabel}
+      />
 
-      {/* ── Dialog: Sign on behalf ── */}
-      <Dialog open={signDialog.open} onOpenChange={(open) => setSignDialog(prev => ({ ...prev, open }))}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>
-              Signer pour {signDialog.signerName}
-              {(() => {
-                const slot = timeSlots.find(s => s.id === signDialog.slotId);
-                return slot ? (
-                  <span className="block text-sm font-normal text-muted-foreground mt-1">
-                    Créneau : {formatSlotLabel(slot)}
-                  </span>
-                ) : null;
-              })()}
-            </DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground mb-2">
-            Dessinez la signature pour valider la présence de {signDialog.signerName}.
-          </p>
-          <SignaturePad
-            label={`Signature pour ${signDialog.signerName}`}
-            isSigned={false}
-            onSign={handleAdminSign}
-            onClear={() => { /* no-op : le dialog se ferme après onSign */ }}
-            disabled={signing}
-          />
-          {signing && (
-            <div className="flex items-center gap-2 text-sm text-blue-600">
-              <Loader2 className="h-4 w-4 animate-spin" /> Enregistrement...
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setSignDialog(prev => ({ ...prev, open: false }))}>
-              Annuler
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ── Dialog: QR codes view ── */}
-      <Dialog open={qrDialog} onOpenChange={setQrDialog}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              QR Codes générés
-              {qrSlotTokens && (
-                <span className="text-sm font-normal text-gray-500 ml-2">
-                  — {qrSlotTokens.slots.reduce((sum, s) => sum + (s.learner_tokens?.length ?? 0) + (s.trainer_tokens?.length ?? 0), 0)} QR
-                </span>
-              )}
-            </DialogTitle>
-          </DialogHeader>
-          {qrSlotTokens && (
-            <div className="space-y-6">
-              {/* Empty state global : aucun apprenant inscrit */}
-              {qrSlotTokens.slots.every((s) => (s.learner_tokens?.length ?? 0) === 0 && (s.trainer_tokens?.length ?? 0) === 0) && (
-                <div className="text-left py-6 px-4 bg-amber-50 border border-amber-200 rounded-lg space-y-2">
-                  <p className="text-sm text-amber-900 font-medium">Aucun apprenant ni formateur inscrit dans cette session.</p>
-                  {process.env.NODE_ENV !== "production" && qrSlotTokens.debug && (
-                    <div className="text-xs font-mono bg-white/70 border border-amber-200 rounded p-2 text-amber-900 space-y-0.5">
-                      <div>session_id : <span className="font-semibold">{qrSlotTokens.debug.session_id}</span></div>
-                      <div>profile.entity_id : <span className="font-semibold">{qrSlotTokens.debug.profile_entity_id}</span></div>
-                      <div>slots trouvés : <span className="font-semibold">{qrSlotTokens.debug.slots_count}</span></div>
-                      <div>enrollments trouvés : <span className="font-semibold">{qrSlotTokens.debug.enrollments_count}</span> (statuts : {qrSlotTokens.debug.enrollment_statuses.join(", ") || "aucun"})</div>
-                      <div>enrollments avec learner lié : <span className="font-semibold">{qrSlotTokens.debug.enrollments_with_learner}</span></div>
-                      <div>formation_trainers trouvés : <span className="font-semibold">{qrSlotTokens.debug.trainers_count}</span> (avec data : {qrSlotTokens.debug.trainers_with_data})</div>
-                      {qrSlotTokens.debug.enrollments_error && (
-                        <div className="text-red-700">erreur SQL enrollments : {qrSlotTokens.debug.enrollments_error}</div>
-                      )}
-                      {qrSlotTokens.debug.first_iteration_trace && (
-                        <div className="mt-2 pt-2 border-t border-amber-300 text-amber-900">
-                          <div className="font-semibold mb-1">1ère itération (slot 1 × learner 1) :</div>
-                          <div className="ml-2">existing trouvé : <span className="font-semibold">{qrSlotTokens.debug.first_iteration_trace.existing_data ? "oui" : "non"}</span></div>
-                          {qrSlotTokens.debug.first_iteration_trace.existing_error && <div className="ml-2 text-red-700">existing error : {qrSlotTokens.debug.first_iteration_trace.existing_error}</div>}
-                          <div className="ml-2">INSERT data retourné : <span className="font-semibold">{qrSlotTokens.debug.first_iteration_trace.insert_data ? "oui" : "non"}</span></div>
-                          {qrSlotTokens.debug.first_iteration_trace.insert_error && <div className="ml-2 text-red-700">INSERT error : {qrSlotTokens.debug.first_iteration_trace.insert_error}</div>}
-                        </div>
-                      )}
-                      {qrSlotTokens.debug.insert_errors.length > 0 && (
-                        <div className="mt-2 pt-2 border-t border-amber-300">
-                          <div className="font-semibold text-red-700 mb-1">Erreurs INSERT signing_tokens ({qrSlotTokens.debug.insert_errors.length}) :</div>
-                          {qrSlotTokens.debug.insert_errors.map((err, i) => (
-                            <div key={i} className="text-red-700 ml-2 mt-1">
-                              <div>· [{err.type}] phase={err.phase ?? "?"} code={err.code ?? "?"} — {err.message}</div>
-                              {err.details && <div className="ml-3 text-red-600">details : {err.details}</div>}
-                              {err.hint && <div className="ml-3 text-red-600">hint : {err.hint}</div>}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  <p className="text-xs text-amber-700">
-                    Si <code>enrollments_count = 0</code> mais que vous voyez l&apos;apprenant en bas de la page, c&apos;est un problème de session_id ou de RLS service_role. Si <code>enrollments_with_learner</code> est inférieur à <code>enrollments_count</code>, la jointure FK <code>learners</code> est cassée.
-                  </p>
-                </div>
-              )}
-
-              {qrSlotTokens.slots.map(slotData => {
-                const hasLearners = (slotData.learner_tokens?.length ?? 0) > 0;
-                const hasTrainers = (slotData.trainer_tokens?.length ?? 0) > 0;
-                if (!hasLearners && !hasTrainers) return null;
-                return (
-                <div key={slotData.slot.id} className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline">
-                      {new Date(slotData.slot.start_time).toLocaleDateString("fr-FR")}{" "}
-                      {formatTime(slotData.slot.start_time)} - {formatTime(slotData.slot.end_time)}
-                    </Badge>
-                  </div>
-
-                  {hasTrainers && (
-                    <>
-                      <p className="text-xs font-semibold text-purple-700">Formateurs</p>
-                      <div className="grid grid-cols-3 gap-2">
-                        {slotData.trainer_tokens.map(t => {
-                          if (!t.person) {
-                            console.warn("[QR modal] trainer token sans person:", t);
-                            return (
-                              <div key={t.token} className="text-center p-2 border border-red-200 rounded-lg bg-red-50">
-                                <p className="text-xs text-red-700">Formateur introuvable</p>
-                                <p className="text-[10px] text-red-500 break-all">{t.token.slice(0, 8)}…</p>
-                              </div>
-                            );
-                          }
-                          return (
-                            <div key={t.token} className="text-center p-2 border rounded-lg bg-purple-50/50">
-                              <p className="text-xs font-medium mb-1 truncate">
-                                {t.person.last_name} {t.person.first_name}
-                              </p>
-                              {qrImages[t.token] ? (
-                                <img src={qrImages[t.token]} alt={`QR ${t.person.last_name}`} className="w-32 h-32 mx-auto" />
-                              ) : (
-                                <div className="w-32 h-32 mx-auto bg-gray-100 animate-pulse rounded flex items-center justify-center">
-                                  <Loader2 className="h-6 w-6 text-gray-400 animate-spin" />
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </>
-                  )}
-
-                  {hasLearners && (
-                    <>
-                      <p className="text-xs font-semibold text-blue-700">Apprenants</p>
-                      <div className="grid grid-cols-3 gap-2">
-                        {slotData.learner_tokens.map(t => {
-                          if (!t.person) {
-                            console.warn("[QR modal] learner token sans person:", t);
-                            return (
-                              <div key={t.token} className="text-center p-2 border border-red-200 rounded-lg bg-red-50">
-                                <p className="text-xs text-red-700">Apprenant introuvable</p>
-                                <p className="text-[10px] text-red-500 break-all">{t.token.slice(0, 8)}…</p>
-                              </div>
-                            );
-                          }
-                          return (
-                            <div key={t.token} className="text-center p-2 border rounded-lg">
-                              <p className="text-xs font-medium mb-1 truncate">
-                                {t.person.last_name} {t.person.first_name}
-                              </p>
-                              {qrImages[t.token] ? (
-                                <img src={qrImages[t.token]} alt={`QR ${t.person.last_name}`} className="w-32 h-32 mx-auto" />
-                              ) : (
-                                <div className="w-32 h-32 mx-auto bg-gray-100 animate-pulse rounded flex items-center justify-center">
-                                  <Loader2 className="h-6 w-6 text-gray-400 animate-spin" />
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </>
-                  )}
-                </div>
-                );
-              })}
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={handleExportPdf} disabled={exportingPdf}>
-              {exportingPdf ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
-              Exporter en PDF
-            </Button>
-            <Button variant="outline" onClick={() => setQrDialog(false)}>Fermer</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <QrCodesDialog
+        open={qrDialog}
+        onOpenChange={setQrDialog}
+        qrSlotTokens={qrSlotTokens}
+        qrImages={qrImages}
+        exportingPdf={exportingPdf}
+        onExportPdf={handleExportPdf}
+      />
 
       {incompleteDialog}
     </div>
