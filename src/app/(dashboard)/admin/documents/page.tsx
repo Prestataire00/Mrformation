@@ -82,8 +82,7 @@ import {
   Send,
 } from "lucide-react";
 // exportToPDF already imported above
-
-type DocumentType = "agreement" | "certificate" | "attendance" | "invoice" | "other";
+import type { DocumentType } from "@/lib/templates/types";
 
 const TYPE_LABELS: Record<DocumentType, string> = {
   agreement: "Contrat",
