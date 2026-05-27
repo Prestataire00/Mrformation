@@ -4,15 +4,11 @@ import { useState, useCallback } from "react";
 import QRCode from "qrcode";
 import { createClient } from "@/lib/supabase/client";
 import {
-  QrCode, Send, Printer, CheckSquare, Loader2, Copy, Download,
-  FileDown, AlertTriangle, PenLine, CheckCircle2,
+  QrCode, Send, Printer, Loader2, Download,
+  FileDown, PenLine, CheckCircle2,
   XCircle, Mail, CheckCheck, CalendarDays,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/components/ui/use-toast";
 import { downloadQRCodesPDF, type QRSlotData } from "@/lib/qr-pdf-export";
