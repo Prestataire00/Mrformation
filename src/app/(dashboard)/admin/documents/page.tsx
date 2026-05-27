@@ -83,6 +83,7 @@ import {
 } from "lucide-react";
 // exportToPDF already imported above
 import type { DocumentType } from "@/lib/templates/types";
+import { OFFICIAL_TEMPLATES, type OfficialTemplate } from "@/lib/templates/official-templates";
 
 const TYPE_LABELS: Record<DocumentType, string> = {
   agreement: "Contrat",
@@ -161,35 +162,8 @@ function getTemplatePreview(html: string): string {
   return preview;
 }
 
-// ── Official document types — matches exactly what TabConventionDocs uses ──
-
-interface OfficialTemplate {
-  id: string;
-  name: string;
-  category: "learner" | "company" | "trainer" | "common";
-  categoryLabel: string;
-  type: DocumentType;
-  autoConfirmed: boolean;
-}
-
-const OFFICIAL_TEMPLATES: OfficialTemplate[] = [
-  // Apprenant
-  { id: "convocation", name: "CONVOCATION À LA FORMATION", category: "learner", categoryLabel: "Apprenant", type: "certificate", autoConfirmed: false },
-  { id: "certificat_realisation", name: "CERTIFICAT DE RÉALISATION", category: "learner", categoryLabel: "Apprenant", type: "certificate", autoConfirmed: false },
-  { id: "attestation_assiduite", name: "ATTESTATION D'ASSIDUITÉ", category: "learner", categoryLabel: "Apprenant", type: "attendance", autoConfirmed: false },
-  { id: "feuille_emargement", name: "FEUILLE D'ÉMARGEMENT", category: "learner", categoryLabel: "Apprenant", type: "attendance", autoConfirmed: false },
-  // Entreprise
-  { id: "convention_entreprise", name: "CONVENTION ENTREPRISE", category: "company", categoryLabel: "Entreprise", type: "agreement", autoConfirmed: false },
-  { id: "feuille_emargement_collectif", name: "FEUILLE D'ÉMARGEMENT COLLECTIF", category: "company", categoryLabel: "Entreprise", type: "attendance", autoConfirmed: false },
-  { id: "planning_semaine", name: "PLANNING DE LA SEMAINE", category: "company", categoryLabel: "Entreprise", type: "attendance", autoConfirmed: false },
-  // Formateur
-  { id: "convention_intervention", name: "CONVENTION D'INTERVENTION", category: "trainer", categoryLabel: "Formateur", type: "agreement", autoConfirmed: false },
-  // Communs (auto-confirmés)
-  { id: "cgv", name: "CGV", category: "common", categoryLabel: "Commun", type: "other", autoConfirmed: true },
-  { id: "politique_confidentialite", name: "POLITIQUE DE CONFIDENTIALITÉ", category: "common", categoryLabel: "Commun", type: "other", autoConfirmed: true },
-  { id: "reglement_interieur", name: "RÈGLEMENT INTÉRIEUR", category: "common", categoryLabel: "Commun", type: "other", autoConfirmed: true },
-  { id: "programme_formation", name: "PROGRAMME DE LA FORMATION", category: "common", categoryLabel: "Commun", type: "other", autoConfirmed: true },
-];
+// ── Official document types — imported from official-templates catalogue ──
+// See src/lib/templates/official-templates.ts (derived from registry)
 
 const CATEGORY_COLORS: Record<string, string> = {
   learner: "bg-blue-100 text-blue-700",
