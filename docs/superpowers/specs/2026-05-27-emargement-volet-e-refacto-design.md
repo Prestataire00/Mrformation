@@ -36,19 +36,19 @@ Découper TabEmargements.tsx (1232 LOC) en 7 sous-composants logiques dans `_com
 
 ## 3. Périmètre
 
-### 3.1 In-scope — 7 extractions
+### 3.1 In-scope — 5 extractions
+
+> **Ajustement post-planning** : DocumentExportActions et SignatureManagement initialement listés mais retirés. Raison : ces "composants" seraient juste des fonctions handlers sans JSX propre (les boutons d'export vivent dans HeroStatsAndWorkflow, `handleDeleteSignature` est utilisé inline dans `renderPersonRow` qui reste dans le parent). Extraction artificielle. Voir le plan d'implémentation pour le détail.
 
 | # | Composant extrait | LOC approximative | Coupling | État local |
 |---|-------------------|-------------------|----------|-----------|
 | 1 | `HeroStatsAndWorkflow.tsx` | ~140 | Très faible | Aucun (UI pure) |
 | 2 | `CompanyFilter.tsx` | ~30 | Faible | `filterClientId` (passé en prop + setter) |
-| 3 | `DocumentExportActions.tsx` | ~90 | Très faible | Hook `useDocumentGeneration` (déjà partagé) |
-| 4 | `SignatureManagement.tsx` | ~50 | Très faible | `signing` |
-| 5 | `QrCodesDialog.tsx` | ~150 | Faible | `qrDialog`, `qrSlotTokens`, `qrImages` |
-| 6 | `SingleSignDialog.tsx` | ~40 | Faible | `signDialog`, `signing` |
-| 7 | `BulkSignDialog.tsx` | ~80 | Moyen | `bulkSignSlot`, `bulkSigning` (Volet A) |
+| 3 | `QrCodesDialog.tsx` | ~150 | Faible | `qrDialog`, `qrSlotTokens`, `qrImages` |
+| 4 | `SingleSignDialog.tsx` | ~40 | Faible | `signDialog`, `signing` |
+| 5 | `BulkSignDialog.tsx` | ~80 | Moyen | `bulkSignSlot`, `bulkSigning` (Volet A) |
 
-**Total extrait** : ~580 LOC. **Parent post-refacto** : ~650 LOC (vs 1232 actuel).
+**Total extrait** : ~440 LOC. **Parent post-refacto** : ~740 LOC (vs 1232 actuel — réduction significative tout de même).
 
 ### 3.2 Out-of-scope (volontairement)
 
@@ -67,12 +67,10 @@ Découper TabEmargements.tsx (1232 LOC) en 7 sous-composants logiques dans `_com
 
 ```
 src/app/(dashboard)/admin/formations/[id]/_components/
-  TabEmargements.tsx                    # 1232 → ~650 LOC (orchestrateur)
+  TabEmargements.tsx                    # 1232 → ~740 LOC (orchestrateur)
   emargements/                          # NOUVEAU dossier (pattern TabQuestionnaires)
     HeroStatsAndWorkflow.tsx            # ~140 LOC
     CompanyFilter.tsx                   # ~30 LOC
-    DocumentExportActions.tsx           # ~90 LOC
-    SignatureManagement.tsx             # ~50 LOC
     QrCodesDialog.tsx                   # ~150 LOC
     SingleSignDialog.tsx                # ~40 LOC
     BulkSignDialog.tsx                  # ~80 LOC
@@ -103,11 +101,9 @@ L'ordre est conçu pour gagner en confiance progressivement :
 
 1. **HeroStatsAndWorkflow** — UI pure, 0 état local, 0 callback critique → pratique pour rôder le pattern
 2. **CompanyFilter** — 1 state simple, isolé
-3. **DocumentExportActions** — Hook déjà partagé, pas de state
-4. **SignatureManagement** — 1 state, callbacks simples
-5. **QrCodesDialog** — Le plus gros (~150 LOC) mais coupling faible
-6. **SingleSignDialog** — Standard pattern Dialog
-7. **BulkSignDialog** — **EN DERNIER** : modifié récemment par Volet A (canvas 2-étapes), critique pour Qualiopi. Toute régression doit être attrapée par le smoke check final.
+3. **QrCodesDialog** — Le plus gros (~150 LOC) mais coupling faible
+4. **SingleSignDialog** — Standard pattern Dialog
+5. **BulkSignDialog** — **EN DERNIER** : modifié récemment par Volet A (canvas 2-étapes), critique pour Qualiopi. Toute régression doit être attrapée par le smoke check final.
 
 ---
 
@@ -152,8 +148,8 @@ Checklist exhaustive à faire par Wissam à Task 9 (avant merge prod) :
 ## 6. Critères d'acceptance
 
 **Technique** :
-- [ ] TabEmargements.tsx passe de 1232 LOC à ~650 LOC (±100)
-- [ ] 7 fichiers créés dans `src/app/(dashboard)/admin/formations/[id]/_components/emargements/`
+- [ ] TabEmargements.tsx passe de 1232 LOC à ~740 LOC (±100)
+- [ ] 5 fichiers créés dans `src/app/(dashboard)/admin/formations/[id]/_components/emargements/`
 - [ ] Aucun import orphelin dans TabEmargements parent (verifié `npx tsc --noEmit`)
 - [ ] Vitest : 550/550 maintenu
 - [ ] `npx tsc --noEmit` clean
@@ -171,21 +167,19 @@ Checklist exhaustive à faire par Wissam à Task 9 (avant merge prod) :
 
 **Stratégie** : **1 chantier, 1 commit par extraction** (bisect-friendly si régression).
 
-**~11 tasks bite-sized** :
+**~9 tasks bite-sized** :
 
 | Task | Livrable | Estimation |
 |------|----------|-----------|
 | 0 | Baseline + branche + créer dossier `emargements/` | 10 min |
 | 1 | Extract HeroStatsAndWorkflow (~140 LOC) | 1h |
 | 2 | Extract CompanyFilter (~30 LOC) | 30 min |
-| 3 | Extract DocumentExportActions (~90 LOC) | 1h |
-| 4 | Extract SignatureManagement (~50 LOC) | 30 min |
-| 5 | Extract QrCodesDialog (~150 LOC, le plus gros) | 1.5h |
-| 6 | Extract SingleSignDialog (~40 LOC) | 45 min |
-| 7 | Extract BulkSignDialog (~80 LOC, **EN DERNIER**, Volet A critique) | 1h |
-| 8 | Cleanup final (imports orphelins, types orphelins) + vérifs | 30 min |
-| 9 | STOP smoke check Wissam (~20 min) | manuel |
-| 10 | Finishing après Go (merge + push prod) | 10 min |
+| 3 | Extract QrCodesDialog (~150 LOC, le plus gros) | 1.5h |
+| 4 | Extract SingleSignDialog (~40 LOC) | 45 min |
+| 5 | Extract BulkSignDialog (~80 LOC, **EN DERNIER**, Volet A critique) | 1h |
+| 6 | Cleanup final (imports orphelins, types orphelins) + vérifs | 30 min |
+| 7 | STOP smoke check Wissam (~20 min) | manuel |
+| 8 | Finishing après Go (merge + push prod) | 10 min |
 
 **Validation Vitest + tsc + build après CHAQUE extraction** : si une extraction casse le build/tests, le commit isolé permet un rollback ciblé sans perdre les extracts précédents.
 
@@ -208,10 +202,10 @@ Checklist exhaustive à faire par Wissam à Task 9 (avant merge prod) :
 
 | Tâche | Estimation |
 |-------|-----------|
-| Tasks 0-8 (extractions + cleanup) | ~7h |
-| Task 9 (smoke check manuel Wissam) | ~20 min |
-| Task 10 (finishing) | ~10 min |
-| **Total Sous-chantier 4** | **~8h** |
+| Tasks 0-6 (5 extractions + cleanup) | ~5h |
+| Task 7 (smoke check manuel Wissam) | ~20 min |
+| Task 8 (finishing) | ~10 min |
+| **Total Sous-chantier 4** | **~5-6h** |
 
 ---
 
