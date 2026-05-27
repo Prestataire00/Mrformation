@@ -28,6 +28,7 @@ import { useDocumentGeneration } from "@/hooks/useDocumentGeneration";
 import { downloadBase64Pdf } from "@/lib/utils/download-blob";
 import { isValidAdminBulkSignature } from "@/lib/utils/validate-bulk-signature";
 import { HeroStatsAndWorkflow } from "./emargements/HeroStatsAndWorkflow";
+import { CompanyFilter } from "./emargements/CompanyFilter";
 
 // ──────────────────────────────────────────────
 // Types
@@ -630,35 +631,14 @@ export function TabEmargements({ formation, onRefresh }: Props) {
   return (
     <div className="space-y-6">
       {/* Story 3.4 — Filtre par entreprise (visible uniquement en INTER) */}
-      {formationKind === "inter" && companies.length > 0 && (
-        <div className="flex items-center gap-2 text-sm border rounded-md px-3 py-2 bg-blue-50">
-          <span className="text-muted-foreground">Filtrer par entreprise :</span>
-          <Select
-            value={filterClientId ?? "all"}
-            onValueChange={(v) => setFilterClientId(v === "all" ? null : v)}
-          >
-            <SelectTrigger className="h-8 w-[240px]">
-              <SelectValue placeholder="Toutes les entreprises" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Toutes les entreprises</SelectItem>
-              {companies.map((c) => (
-                <SelectItem key={c.client_id} value={c.client_id}>
-                  {c.client?.company_name || `Client ${c.client_id.slice(0, 8)}`}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <span className="text-xs text-muted-foreground">
-            {enrollments.length}/{allEnrollments.length} apprenant{allEnrollments.length !== 1 ? "s" : ""}
-          </span>
-          {filterClientId && (
-            <Button variant="ghost" size="sm" onClick={() => setFilterClientId(null)}>
-              × Effacer
-            </Button>
-          )}
-        </div>
-      )}
+      <CompanyFilter
+        isInter={formationKind === "inter"}
+        companies={companies}
+        filterClientId={filterClientId}
+        onChange={setFilterClientId}
+        enrollmentsCount={enrollments.length}
+        allEnrollmentsCount={allEnrollments.length}
+      />
 
       <HeroStatsAndWorkflow
         formationId={formation.id}
