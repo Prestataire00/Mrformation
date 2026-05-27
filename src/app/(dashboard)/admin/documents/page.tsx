@@ -448,6 +448,76 @@ export default function DocumentsPage() {
     }
   };
 
+  /**
+   * Trouve une copie DB existante du template Official (via system_key) ou en
+   * crée une silencieusement. Réutilise le pattern de "Utiliser comme base"
+   * sans bascule UI vers l'éditeur.
+   *
+   * Returns le `DocumentTemplate` (existant ou nouvellement créé).
+   */
+  const findOrCreateCustomFromOfficial = async (
+    ot: OfficialTemplate,
+  ): Promise<DocumentTemplate | null> => {
+    if (!entityId) return null;
+
+    // 1. Cherche une copie existante (system_key match ou name partial match)
+    const existing = templates.find((t) =>
+      (t as unknown as { system_key?: string }).system_key === ot.id ||
+      t.name.toLowerCase().includes(ot.name.toLowerCase().slice(0, 15)),
+    );
+    if (existing) return existing;
+
+    // 2. Sinon, crée une copie (pattern identique à "Utiliser comme base")
+    try {
+      const demoData = {
+        formation: {
+          id: "demo",
+          title: "Formation",
+          start_date: "2026-01-01",
+          end_date: "2026-01-03",
+          planned_hours: 21,
+          mode: "presentiel",
+          location: "Marseille",
+          enrollments: [],
+          formation_trainers: [],
+          formation_time_slots: [],
+          signatures: [],
+        },
+        entityName: entity?.name || "MR FORMATION",
+        entity: entity ?? undefined,
+      };
+      const html = renderSystemTemplate(ot.id, demoData as unknown as Parameters<typeof renderSystemTemplate>[1]) || "";
+      const { data: newTpl, error } = await supabase
+        .from("document_templates")
+        .insert({
+          name: `${ot.name} (personnalisé)`,
+          type: ot.type,
+          content: html,
+          entity_id: entityId,
+          system_key: ot.id,
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      await fetchTemplates();
+      return newTpl as DocumentTemplate;
+    } catch (err) {
+      toast({
+        title: "Erreur création copie",
+        description: err instanceof Error ? err.message : "Erreur inconnue",
+        variant: "destructive",
+      });
+      return null;
+    }
+  };
+
+  const handleSendOfficial = async (ot: OfficialTemplate) => {
+    const tpl = await findOrCreateCustomFromOfficial(ot);
+    if (tpl) {
+      openSendDialog(tpl);
+    }
+  };
+
   // Delete template
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [templateToDelete, setTemplateToDelete] = useState<DocumentTemplate | null>(null);
@@ -1090,6 +1160,14 @@ export default function DocumentsPage() {
                         </CardHeader>
                         <CardContent>
                           <div className="flex items-center gap-2">
+                            <Button
+                              variant="default"
+                              size="sm"
+                              className="h-7 text-xs gap-1"
+                              onClick={() => handleSendOfficial(ot)}
+                            >
+                              <Send className="h-3 w-3" /> Envoyer
+                            </Button>
                             <Button
                               size="sm"
                               variant="ghost"
