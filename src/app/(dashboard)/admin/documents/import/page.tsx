@@ -26,23 +26,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-// Liste des types Sellsy/MR pour le dropdown. Free-text "autre" autorisé.
-const DOC_TYPE_OPTIONS = [
-  { value: "convention_entreprise", label: "Convention entreprise" },
-  { value: "convention_apprenant", label: "Convention apprenant" },
-  { value: "convention_intervention", label: "Convention intervention (formateur)" },
-  { value: "convocation", label: "Convocation" },
-  { value: "programme", label: "Programme de formation" },
-  { value: "attestation", label: "Attestation d'assiduité" },
-  { value: "certificat", label: "Certificat de réalisation" },
-  { value: "emargement_collectif", label: "Émargement collectif" },
-  { value: "emargement_individuel", label: "Émargement individuel" },
-  { value: "facture", label: "Facture" },
-  { value: "devis", label: "Devis" },
-  { value: "cgv", label: "CGV" },
-  { value: "reglement", label: "Règlement intérieur" },
-  { value: "autre", label: "Autre" },
-];
+import { DOC_TYPE_OPTIONS } from "@/lib/templates/doc-type-options";
+import { DocumentsTabsNav } from "../_components/DocumentsTabsNav";
 
 interface TemplateUpload {
   file: File;
@@ -181,6 +166,7 @@ export default function DocumentsImportPage() {
 
   return (
     <div className="max-w-5xl mx-auto py-8 px-4 space-y-6">
+      <DocumentsTabsNav />
       <div className="space-y-1">
         <h1 className="text-2xl font-semibold">Import de templates de documents</h1>
         <p className="text-sm text-muted-foreground">

@@ -18,7 +18,7 @@ export const LETTRE_DECHARGE_RESPONSABILITE_HTML = `<!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="utf-8">
-<title>Lettre de décharge de responsabilité</title>
+<title>Lettre de décharge — Départ anticipé</title>
 <style>
   @page { size: A4; margin: 18mm 16mm 22mm 16mm; }
   body {

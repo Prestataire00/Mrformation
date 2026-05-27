@@ -5,8 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
-import { Search, Copy, ArrowLeft } from "lucide-react";
-import Link from "next/link";
+import { Search, Copy } from "lucide-react";
+import { DocumentsTabsNav } from "../_components/DocumentsTabsNav";
 import {
   TEMPLATE_VARIABLES,
   CATEGORY_LABELS,
@@ -44,13 +44,9 @@ export default function VariablesPage() {
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
+      <DocumentsTabsNav />
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Link href="/admin/documents">
-          <Button variant="ghost" size="sm">
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-        </Link>
         <div>
           <h1 className="text-lg font-bold text-gray-900">Catalogue des balises de documents</h1>
           <p className="text-sm text-muted-foreground">

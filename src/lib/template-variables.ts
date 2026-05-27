@@ -165,3 +165,20 @@ export function getCategoryCounts(): Record<VariableCategory, number> {
   }
   return counts;
 }
+
+/**
+ * Variables disponibles pour les documents (UI helper).
+ * Dérivé de TEMPLATE_VARIABLES, filtré par `availableIn.includes("document")`.
+ *
+ * Format : { key (sans braces), label } — utilisé par
+ * admin/documents/page.tsx pour afficher la liste des variables
+ * connues + détecter les variables inconnues dans les templates custom.
+ *
+ * Note : `EMAIL_VARIABLES` n'a pas été ajouté car le dead code
+ * `AVAILABLE_VARIABLES` dans admin/emails/page.tsx a été supprimé
+ * (le composant `InsertVariableButton` utilise déjà directement
+ * TEMPLATE_VARIABLES filtré par `availableIn: "email"`).
+ */
+export const DOCUMENT_VARIABLES: { key: string; label: string }[] = TEMPLATE_VARIABLES
+  .filter((v) => v.availableIn.includes("document"))
+  .map((v) => ({ key: v.key, label: v.label }));
