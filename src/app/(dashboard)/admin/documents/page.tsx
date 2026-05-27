@@ -109,25 +109,7 @@ const TypeIcon = ({ type }: { type: DocumentType }) => {
   return <File className="h-4 w-4" />;
 };
 
-const AVAILABLE_VARIABLES = [
-  { key: "nom_client", label: "Nom de l'entreprise" },
-  { key: "nom_apprenant", label: "Nom complet de l'apprenant" },
-  { key: "prenom_apprenant", label: "Prénom de l'apprenant" },
-  { key: "nom_formateur", label: "Nom du formateur" },
-  { key: "titre_formation", label: "Titre de la formation" },
-  { key: "date_formation", label: "Date de la formation" },
-  { key: "date_debut", label: "Date de début" },
-  { key: "date_fin", label: "Date de fin" },
-  { key: "lieu", label: "Lieu de la formation" },
-  { key: "duree_heures", label: "Durée en heures" },
-  { key: "date_today", label: "Date du jour" },
-  { key: "numero_facture", label: "Numéro de facture" },
-  { key: "montant", label: "Montant HT" },
-  { key: "signature_apprenant", label: "Signature de l'apprenant" },
-  { key: "signature_formateur", label: "Signature du formateur" },
-  { key: "email_apprenant", label: "Email de l'apprenant" },
-  { key: "telephone_apprenant", label: "Téléphone de l'apprenant" },
-];
+import { DOCUMENT_VARIABLES as AVAILABLE_VARIABLES } from "@/lib/template-variables";
 
 const PREVIEW_VALUES: Record<string, string> = {
   "{{nom_client}}": "Entreprise DUPONT SAS",

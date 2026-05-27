@@ -116,23 +116,8 @@ const STATUS_BADGE: Record<EmailStatus, { label: string; className: string; icon
   },
 };
 
-const AVAILABLE_VARIABLES = [
-  { key: "{{nom_apprenant}}", label: "Nom complet de l'apprenant" },
-  { key: "{{prenom_apprenant}}", label: "Prénom de l'apprenant" },
-  { key: "{{nom_client}}", label: "Nom de l'entreprise" },
-  { key: "{{titre_formation}}", label: "Titre de la formation" },
-  { key: "{{date_formation}}", label: "Date de la formation" },
-  { key: "{{date_debut}}", label: "Date de début" },
-  { key: "{{date_fin}}", label: "Date de fin" },
-  { key: "{{lieu}}", label: "Lieu de la formation" },
-  { key: "{{duree_heures}}", label: "Durée en heures" },
-  { key: "{{nom_formateur}}", label: "Nom du formateur" },
-  { key: "{{email_apprenant}}", label: "Email de l'apprenant" },
-  { key: "{{telephone_apprenant}}", label: "Téléphone de l'apprenant" },
-  { key: "{{date_today}}", label: "Date du jour" },
-  { key: "{{lien_connexion}}", label: "Lien de connexion" },
-  { key: "{{date_limite}}", label: "Date limite de réponse" },
-];
+// AVAILABLE_VARIABLES inline removed (dead code) — InsertVariableButton
+// imports TEMPLATE_VARIABLES directly with availableIn:"email" filter.
 
 const PREVIEW_VARS: Record<string, string> = {
   "{{nom_apprenant}}": "DUPONT Jean",
