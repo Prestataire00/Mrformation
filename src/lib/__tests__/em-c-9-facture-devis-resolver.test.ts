@@ -15,7 +15,11 @@ const resolverSource = readFileSync(RESOLVER_PATH, "utf-8");
 const invoicesReminders = readFileSync(INVOICES_REMINDERS_PATH, "utf-8");
 
 describe("em-c-9 — Scaffold facture/devis (resolver + wiring invoices/process-reminders)", () => {
-  describe("Resolver email-attachments-resolver.ts", () => {
+  // Note : em-c-10 a remplacé les stubs (return null + pending_implementation)
+  // par l'implémentation complète Puppeteer. Les tests stub correspondants
+  // ont été supprimés — voir em-c-10-pdf-server-facture-devis.test.ts pour
+  // les guardrails de l'implémentation finale.
+  describe("Resolver email-attachments-resolver.ts (dispatch)", () => {
     it("dispatch facture vers resolveFacture(supabase, desc.payload.invoice_id)", () => {
       expect(resolverSource).toMatch(
         /if \(desc\.type === "facture"\)[\s\S]{0,200}?resolveFacture\(supabase, desc\.payload\.invoice_id\)/,
@@ -25,35 +29,6 @@ describe("em-c-9 — Scaffold facture/devis (resolver + wiring invoices/process-
     it("dispatch devis vers resolveDevis(supabase, desc.payload.quote_id)", () => {
       expect(resolverSource).toMatch(
         /if \(desc\.type === "devis"\)[\s\S]{0,200}?resolveDevis\(supabase, desc\.payload\.quote_id\)/,
-      );
-    });
-
-    it("resolveFacture retourne null + log critical (gen PDF différée em-c-10)", () => {
-      expect(resolverSource).toMatch(/async function resolveFacture/);
-      expect(resolverSource).toMatch(
-        /email_attachment_facture_pending_implementation/,
-      );
-      // Retourne null pour l'instant
-      expect(resolverSource).toMatch(
-        /resolveFacture[\s\S]{0,800}?return null;/,
-      );
-    });
-
-    it("resolveDevis retourne null + log critical (gen PDF différée em-c-10)", () => {
-      expect(resolverSource).toMatch(/async function resolveDevis/);
-      expect(resolverSource).toMatch(
-        /email_attachment_devis_pending_implementation/,
-      );
-      expect(resolverSource).toMatch(
-        /resolveDevis[\s\S]{0,800}?return null;/,
-      );
-    });
-
-    it("documente le scope em-c-9 vs em-c-10 (gen PDF non encore implémentée)", () => {
-      expect(resolverSource).toMatch(/em-c-9/);
-      expect(resolverSource).toMatch(/em-c-10/);
-      expect(resolverSource).toMatch(
-        /génération PDF[\s\S]{0,80}?non encore implémentée/i,
       );
     });
   });

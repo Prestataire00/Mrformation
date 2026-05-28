@@ -338,56 +338,387 @@ async function renderTemplateHtml(
 }
 
 // ============================================================
-// em-c-9 — Scaffold facture/devis (gen PDF différée à em-c-10)
+// em-c-10 — Génération PDF facture/devis via Puppeteer + templates HTML
 // ============================================================
-// La chaîne est désormais BRANCHÉE (descriptor → resolver) mais la génération
-// PDF côté serveur n'est PAS encore implémentée. Le resolver retourne null
-// + log critical structuré pour que Loris/Wissam soient prévenus en prod.
+// Approche validée par Wissam (cadrage 2026-05-28) :
+//   - Templates HTML dédiés (facture-email.ts, devis-email.ts) avec
+//     placeholders Mustache simples `{{var}}` (pas Sellsy `[%xxx%]`).
+//   - Builders Supabase chargent invoice/quote + lines + entity + session,
+//     construisent un Record<string,string> de variables, substituent dans
+//     le template, puis génèrent le PDF via Puppeteer (generatePdfFromFragment).
+//   - Defaults safe : champs entity manquants → chaines vides, jamais crash.
 //
-// Pourquoi pas implémenté maintenant :
-//   - InvoicePdfData/DevisData ont une structure complexe (entity + session +
-//     lines + signature) qui demande un build serveur dédié
-//   - jsPDF en Node serverless est risqué (canvas, polices custom)
-//   - Vrai test prod nécessaire → mieux fait en session dédiée em-c-10
-//
-// État actuel : l'email part SANS la PJ facture/devis. Loris coche "Facture"
-// → email envoyé avec subject/body resolver, mais le PDF facture n'est pas
-// attaché. Limitation explicite documentée dans docs/emails.md.
+// Visuellement proche du PDF jsPDF de TabFinances mais pas pixel-perfect.
+// Story em-c-12 future pour unifier les 2 versions (preview client / email serveur).
 
 async function resolveFacture(
-  _supabase: SupabaseClient,
+  supabase: SupabaseClient,
   invoiceId: string,
 ): Promise<ResolvedAttachment | null> {
-  console.error(
-    `[attachments-resolver] facture ${invoiceId} : génération PDF serveur non encore implémentée (em-c-10 à venir). Email part sans la PJ.`,
-  );
-  console.log(
-    JSON.stringify({
-      event: "email_attachment_facture_pending_implementation",
-      ts: new Date().toISOString(),
-      invoice_id: invoiceId,
-      level: "warn",
-      note: "em-c-10 — PDF generation côté serveur à implémenter",
-    }),
-  );
-  return null;
+  try {
+    const start = Date.now();
+    const html = await renderFactureHtml(supabase, invoiceId);
+    if (!html) {
+      console.error(
+        `[attachments-resolver] facture ${invoiceId} : invoice introuvable ou contexte incomplet`,
+      );
+      return null;
+    }
+    const pdf = await generatePdfFromFragment(html, "Facture");
+    const filename = `facture-${invoiceId.slice(0, 8)}.pdf`;
+    console.log(
+      JSON.stringify({
+        event: "email_attachment_facture_generated",
+        ts: new Date().toISOString(),
+        invoice_id: invoiceId,
+        latency_ms: Date.now() - start,
+        size_bytes: pdf.buffer.length,
+      }),
+    );
+    return { filename, content: pdf.buffer };
+  } catch (err) {
+    console.error(
+      `[attachments-resolver] facture ${invoiceId} génération échouée :`,
+      err instanceof Error ? err.message : err,
+    );
+    console.log(
+      JSON.stringify({
+        event: "email_attachment_facture_generation_failed",
+        ts: new Date().toISOString(),
+        invoice_id: invoiceId,
+        error: err instanceof Error ? err.message : String(err),
+        level: "critical",
+      }),
+    );
+    return null;
+  }
 }
 
 async function resolveDevis(
-  _supabase: SupabaseClient,
+  supabase: SupabaseClient,
   quoteId: string,
 ): Promise<ResolvedAttachment | null> {
-  console.error(
-    `[attachments-resolver] devis ${quoteId} : génération PDF serveur non encore implémentée (em-c-10 à venir). Email part sans la PJ.`,
+  try {
+    const start = Date.now();
+    const html = await renderDevisHtml(supabase, quoteId);
+    if (!html) {
+      console.error(
+        `[attachments-resolver] devis ${quoteId} : quote introuvable ou contexte incomplet`,
+      );
+      return null;
+    }
+    const pdf = await generatePdfFromFragment(html, "Devis");
+    const filename = `devis-${quoteId.slice(0, 8)}.pdf`;
+    console.log(
+      JSON.stringify({
+        event: "email_attachment_devis_generated",
+        ts: new Date().toISOString(),
+        quote_id: quoteId,
+        latency_ms: Date.now() - start,
+        size_bytes: pdf.buffer.length,
+      }),
+    );
+    return { filename, content: pdf.buffer };
+  } catch (err) {
+    console.error(
+      `[attachments-resolver] devis ${quoteId} génération échouée :`,
+      err instanceof Error ? err.message : err,
+    );
+    console.log(
+      JSON.stringify({
+        event: "email_attachment_devis_generation_failed",
+        ts: new Date().toISOString(),
+        quote_id: quoteId,
+        error: err instanceof Error ? err.message : String(err),
+        level: "critical",
+      }),
+    );
+    return null;
+  }
+}
+
+// ── Helpers em-c-10 : builders HTML facture + devis ─────────────────────
+
+function fmtMoney(n: number): string {
+  return new Intl.NumberFormat("fr-FR", {
+    style: "currency",
+    currency: "EUR",
+  }).format(n);
+}
+
+function fmtDate(d: string | null | undefined): string {
+  if (!d) return "—";
+  const dt = new Date(d);
+  if (Number.isNaN(dt.getTime())) return "—";
+  return dt.toLocaleDateString("fr-FR");
+}
+
+const INVOICE_STATUS_LABELS: Record<string, string> = {
+  pending: "En attente",
+  sent: "Envoyée",
+  paid: "Payée",
+  late: "En retard",
+  cancelled: "Annulée",
+};
+
+const QUOTE_STATUS_LABELS: Record<string, string> = {
+  draft: "Brouillon",
+  sent: "Envoyé",
+  accepted: "Accepté",
+  rejected: "Refusé",
+  expired: "Expiré",
+};
+
+function safeStr(v: unknown): string {
+  return typeof v === "string" && v.length > 0 ? v : "";
+}
+
+function htmlEscape(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+async function renderFactureHtml(
+  supabase: SupabaseClient,
+  invoiceId: string,
+): Promise<string | null> {
+  const { FACTURE_HTML } = await import("@/lib/templates/facture-email");
+
+  const { data: invoice } = await supabase
+    .from("formation_invoices")
+    .select("*")
+    .eq("id", invoiceId)
+    .maybeSingle();
+  if (!invoice) return null;
+
+  const { data: entity } = await supabase
+    .from("entities")
+    .select("*")
+    .eq("id", invoice.entity_id)
+    .maybeSingle();
+  if (!entity) return null;
+
+  const { data: session } = await supabase
+    .from("sessions")
+    .select("id, title, start_date, end_date, planned_hours, mode, location")
+    .eq("id", invoice.session_id)
+    .maybeSingle();
+
+  const { data: lines } = await supabase
+    .from("formation_invoice_lines")
+    .select("*")
+    .eq("invoice_id", invoiceId)
+    .order("created_at", { ascending: true });
+
+  const e = entity as Record<string, unknown>;
+  const totalHT = (lines ?? []).reduce(
+    (acc: number, l: Record<string, unknown>) =>
+      acc + Number(l.quantity ?? 1) * Number(l.unit_price ?? 0),
+    0,
   );
-  console.log(
-    JSON.stringify({
-      event: "email_attachment_devis_pending_implementation",
-      ts: new Date().toISOString(),
-      quote_id: quoteId,
-      level: "warn",
-      note: "em-c-10 — PDF generation côté serveur à implémenter",
-    }),
+  const tvaExempt = e.tva_exempt === true;
+  const tvaRate = Number(e.tva_rate) || 20;
+  const tvaAmount = tvaExempt ? 0 : (totalHT * tvaRate) / 100;
+  const totalTTC = totalHT + tvaAmount;
+
+  const linesRowsHtml = (lines ?? [])
+    .map((l: Record<string, unknown>) => {
+      const qty = Number(l.quantity ?? 1);
+      const pu = Number(l.unit_price ?? 0);
+      return `<tr>
+        <td>${htmlEscape(String(l.description ?? ""))}</td>
+        <td class="num">${qty}</td>
+        <td class="num">${fmtMoney(pu)}</td>
+        <td class="num">${fmtMoney(qty * pu)}</td>
+      </tr>`;
+    })
+    .join("");
+
+  const logoUrl = safeStr(e.logo_url);
+  const stampUrl = safeStr(e.stamp_url);
+  const notes = safeStr(invoice.notes);
+  const bankIban = safeStr(e.bank_iban);
+  const bankName = safeStr(e.bank_name);
+
+  const vars: Record<string, string> = {
+    entity_name: safeStr(entity.name) || "MR FORMATION",
+    entity_address: safeStr(e.address),
+    entity_postal_code: safeStr(e.postal_code),
+    entity_city: safeStr(e.city),
+    entity_siret: safeStr(e.siret),
+    entity_nda: safeStr(e.nda),
+    entity_phone: safeStr(e.phone),
+    entity_email: safeStr(e.email),
+    entity_website: safeStr(e.website),
+    entity_logo_html: logoUrl
+      ? `<img class="logo" src="${htmlEscape(logoUrl)}" alt="Logo">`
+      : "",
+    entity_stamp_html: stampUrl
+      ? `<img class="stamp" src="${htmlEscape(stampUrl)}" alt="Cachet">`
+      : "",
+    doc_title: invoice.is_avoir ? "AVOIR" : "FACTURE",
+    reference: safeStr(invoice.reference),
+    created_at_fr: fmtDate(invoice.created_at as string),
+    due_date_fr: fmtDate(invoice.due_date as string),
+    status_label:
+      INVOICE_STATUS_LABELS[safeStr(invoice.status)] ?? safeStr(invoice.status),
+    recipient_name: htmlEscape(safeStr(invoice.recipient_name)),
+    recipient_address_block: "",
+    session_block_html: session
+      ? `<div class="session-info">
+          <strong>Formation :</strong> ${htmlEscape(safeStr(session.title))}<br>
+          ${
+            session.start_date && session.end_date
+              ? `<strong>Période :</strong> du ${fmtDate(session.start_date as string)} au ${fmtDate(session.end_date as string)}`
+              : ""
+          }
+        </div>`
+      : "",
+    lines_rows_html: linesRowsHtml || "<tr><td colspan='4'>Aucune ligne</td></tr>",
+    total_ht_fr: fmtMoney(totalHT),
+    tva_label: tvaExempt
+      ? "TVA non applicable (art. 261 du CGI)"
+      : `TVA (${tvaRate}%)`,
+    tva_amount_fr: fmtMoney(tvaAmount),
+    total_ttc_fr: fmtMoney(totalTTC),
+    notes_block_html: notes
+      ? `<div class="notes"><strong>Notes :</strong> ${htmlEscape(notes)}</div>`
+      : "",
+    bank_block_html:
+      bankIban && bankName
+        ? `<div class="bank-block">
+            <strong>Coordonnées bancaires :</strong><br>
+            ${htmlEscape(bankName)}<br>
+            IBAN : ${htmlEscape(bankIban)}
+          </div>`
+        : "",
+    mentions_legales_html: safeStr(e.invoice_footer_text)
+      ? htmlEscape(safeStr(e.invoice_footer_text))
+      : "Document généré électroniquement. En cas de retard de paiement, des pénalités pourront s'appliquer conformément à la réglementation.",
+  };
+
+  return substituteVars(FACTURE_HTML, vars);
+}
+
+async function renderDevisHtml(
+  supabase: SupabaseClient,
+  quoteId: string,
+): Promise<string | null> {
+  const { DEVIS_HTML } = await import("@/lib/templates/devis-email");
+
+  const { data: quote } = await supabase
+    .from("crm_quotes")
+    .select("*")
+    .eq("id", quoteId)
+    .maybeSingle();
+  if (!quote) return null;
+
+  const { data: entity } = await supabase
+    .from("entities")
+    .select("*")
+    .eq("id", quote.entity_id)
+    .maybeSingle();
+  if (!entity) return null;
+
+  // Recipient = client ou prospect
+  let recipientName = "Destinataire";
+  if (quote.client_id) {
+    const { data: client } = await supabase
+      .from("clients")
+      .select("company_name")
+      .eq("id", quote.client_id)
+      .maybeSingle();
+    recipientName = safeStr(client?.company_name) || recipientName;
+  } else if (quote.prospect_id) {
+    const { data: prospect } = await supabase
+      .from("crm_prospects")
+      .select("company_name")
+      .eq("id", quote.prospect_id)
+      .maybeSingle();
+    recipientName = safeStr(prospect?.company_name) || recipientName;
+  }
+
+  const { data: lines } = await supabase
+    .from("crm_quote_lines")
+    .select("*")
+    .eq("quote_id", quoteId)
+    .order("created_at", { ascending: true });
+
+  const e = entity as Record<string, unknown>;
+  const totalHT = (lines ?? []).reduce(
+    (acc: number, l: Record<string, unknown>) =>
+      acc + Number(l.quantity ?? 1) * Number(l.unit_price ?? 0),
+    0,
   );
-  return null;
+  const tvaExempt = e.tva_exempt === true;
+  const tvaRate = Number(e.tva_rate) || 20;
+  const tvaAmount = tvaExempt ? 0 : (totalHT * tvaRate) / 100;
+  const totalTTC = totalHT + tvaAmount;
+
+  const linesRowsHtml = (lines ?? [])
+    .map((l: Record<string, unknown>) => {
+      const qty = Number(l.quantity ?? 1);
+      const pu = Number(l.unit_price ?? 0);
+      return `<tr>
+        <td>${htmlEscape(String(l.description ?? ""))}</td>
+        <td class="num">${qty}</td>
+        <td class="num">${fmtMoney(pu)}</td>
+        <td class="num">${fmtMoney(qty * pu)}</td>
+      </tr>`;
+    })
+    .join("");
+
+  const logoUrl = safeStr(e.logo_url);
+  const stampUrl = safeStr(e.stamp_url);
+  const notes = safeStr(quote.notes);
+
+  const vars: Record<string, string> = {
+    entity_name: safeStr(entity.name) || "MR FORMATION",
+    entity_address: safeStr(e.address),
+    entity_postal_code: safeStr(e.postal_code),
+    entity_city: safeStr(e.city),
+    entity_siret: safeStr(e.siret),
+    entity_nda: safeStr(e.nda),
+    entity_phone: safeStr(e.phone),
+    entity_email: safeStr(e.email),
+    entity_website: safeStr(e.website),
+    entity_logo_html: logoUrl
+      ? `<img class="logo" src="${htmlEscape(logoUrl)}" alt="Logo">`
+      : "",
+    entity_stamp_html: stampUrl
+      ? `<img class="stamp" src="${htmlEscape(stampUrl)}" alt="Cachet">`
+      : "",
+    reference: safeStr(quote.reference),
+    created_at_fr: fmtDate(quote.created_at as string),
+    valid_until_fr: fmtDate(quote.valid_until as string),
+    status_label:
+      QUOTE_STATUS_LABELS[safeStr(quote.status)] ?? safeStr(quote.status),
+    recipient_name: htmlEscape(recipientName),
+    lines_rows_html: linesRowsHtml || "<tr><td colspan='4'>Aucune ligne</td></tr>",
+    total_ht_fr: fmtMoney(totalHT),
+    tva_label: tvaExempt
+      ? "TVA non applicable (art. 261 du CGI)"
+      : `TVA (${tvaRate}%)`,
+    tva_amount_fr: fmtMoney(tvaAmount),
+    total_ttc_fr: fmtMoney(totalTTC),
+    notes_block_html: notes
+      ? `<div class="notes"><strong>Notes :</strong> ${htmlEscape(notes)}</div>`
+      : "",
+    signature_block_html: "",
+    mentions_legales_html:
+      "Cette proposition commerciale est valable selon les conditions ci-dessus. Document généré électroniquement.",
+  };
+
+  return substituteVars(DEVIS_HTML, vars);
+}
+
+function substituteVars(template: string, vars: Record<string, string>): string {
+  let out = template;
+  for (const [k, v] of Object.entries(vars)) {
+    out = out.replaceAll(`{{${k}}}`, v);
+  }
+  return out;
 }
