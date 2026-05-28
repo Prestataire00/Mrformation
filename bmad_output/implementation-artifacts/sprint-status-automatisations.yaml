@@ -74,7 +74,7 @@ development_status:
   # aut-b-1 = story de tête P1 frontend (bloque b-2, b-3, b-4, c-3)
   # Toutes les stories UI incluent mitigation DoD #2 : vérification a11y WCAG AA
   automatisations-epic-b: backlog
-  aut-b-1-dry-run-dialog-universel: backlog                 # P1, dépend a-6, bloque b-2/b-3/b-4/c-3
+  aut-b-1-dry-run-dialog-universel: done                    # ✅ Cette PR — composant pivot UI (Dialog max-w-4xl + bannière indélébile + 3 onglets + empty states)
   aut-b-2-ui-admin-automation-enrichie: backlog             # P1, dépend b-1 + a-6 (+ mitigation DoD #2 a11y)
   aut-b-3-refonte-tab-automation: backlog                   # P1, dépend b-1 + a-3 (+ mitigation DoD #2 a11y)
   aut-b-4-rule-wizard-etape-5-enrichi: backlog              # P2, dépend b-1 + a-6
