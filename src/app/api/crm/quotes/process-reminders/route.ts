@@ -3,11 +3,8 @@ import { Resend } from "resend";
 import { createClient } from "@supabase/supabase-js";
 import { resolveEmailTemplate } from "@/lib/services/email-template-resolver";
 
-// Story em-b-2 — Migration vers email-template-resolver via feature flag :
-//   - USE_TEMPLATE_RESOLVER_QUOTES=true  → resolver (key = reminder_quote_*)
-//   - USE_TEMPLATE_RESOLVER_QUOTES=false → legacy (DB par `type` + fallback TEMPLATES)
-// La constante TEMPLATES + le lookup `type` seront supprimés en em-b-6.
-const USE_RESOLVER = process.env.USE_TEMPLATE_RESOLVER_QUOTES === "true";
+// Story em-b-6 cleanup — Suppression branche legacy + constante TEMPLATES.
+// Resolver = chemin unique. Si null → skip + log critical.
 
 const isResendConfigured =
   !!process.env.RESEND_API_KEY &&
@@ -36,24 +33,6 @@ function toHtml(text: string): string {
 function formatDate(d: string): string {
   return new Date(d).toLocaleDateString("fr-FR");
 }
-
-const TEMPLATES = {
-  first: {
-    subject: (ref: string) => `Suite à notre proposition ${ref}`,
-    body: (data: { reference: string; prospect: string; validUntil: string }) =>
-      `Bonjour,\n\nAvez-vous eu le temps de consulter notre proposition ${data.reference} ?\n\nNous restons à votre disposition pour toute question ou adaptation de notre offre.\n\nCordialement,\nL'équipe formation`,
-  },
-  second: {
-    subject: (ref: string) => `Relance — Proposition ${ref}`,
-    body: (data: { reference: string; prospect: string; validUntil: string }) =>
-      `Bonjour,\n\nNous revenons vers vous concernant notre proposition ${data.reference}.\n\nNous restons à disposition pour adapter notre offre à vos besoins. N'hésitez pas à nous contacter.\n\nCordialement,\nL'équipe formation`,
-  },
-  final: {
-    subject: (ref: string) => `Dernière relance — Proposition ${ref}`,
-    body: (data: { reference: string; prospect: string; validUntil: string }) =>
-      `Bonjour,\n\nNotre proposition ${data.reference} arrive à expiration${data.validUntil ? ` le ${data.validUntil}` : " prochainement"}.\n\nSouhaitez-vous donner suite ? Nous serions ravis de finaliser ce projet avec vous.\n\nCordialement,\nL'équipe formation`,
-  },
-};
 
 export async function POST(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
@@ -140,10 +119,7 @@ export async function POST(request: NextRequest) {
 
       const entityName = entityMap[quote.entity_id] || "MR FORMATION";
 
-      // em-b-2 : resolver (flag ON) ou legacy (flag OFF)
-      let subject: string;
-      let textBody: string;
-
+      // Build email via resolver unifié (post em-b-6 cleanup)
       const vars: Record<string, string> = {
         "{{reference}}": quote.reference,
         "{{entreprise}}": prospectName,
@@ -157,37 +133,13 @@ export async function POST(request: NextRequest) {
         return out;
       };
 
-      if (USE_RESOLVER) {
-        // ── Path em-b-2 : resolver unifié ──
-        const resolved = await resolveEmailTemplate(supabase, reminderTemplateKey, quote.entity_id);
-        if (!resolved) {
-          console.warn(`[quote-reminders] Template ${reminderTemplateKey} introuvable pour entité ${quote.entity_id}, skip ${quote.reference}`);
-          continue;
-        }
-        subject = applyVars(resolved.subject);
-        textBody = applyVars(resolved.body);
-      } else {
-        // ── Path legacy (sera supprimé en em-b-6 cleanup) ──
-        const { data: dbTpl } = await supabase
-          .from("email_templates")
-          .select("subject, body")
-          .eq("entity_id", quote.entity_id)
-          .eq("type", reminderTemplateKey)
-          .maybeSingle();
-
-        if (dbTpl?.subject && dbTpl?.body) {
-          subject = applyVars(dbTpl.subject);
-          textBody = applyVars(dbTpl.body);
-        } else {
-          const fallback = TEMPLATES[reminderType];
-          subject = fallback.subject(quote.reference);
-          textBody = fallback.body({
-            reference: quote.reference,
-            prospect: prospectName,
-            validUntil: quote.valid_until ? formatDate(quote.valid_until) : "",
-          });
-        }
+      const resolved = await resolveEmailTemplate(supabase, reminderTemplateKey, quote.entity_id);
+      if (!resolved) {
+        console.warn(`[quote-reminders] Template ${reminderTemplateKey} introuvable pour entité ${quote.entity_id}, skip ${quote.reference}`);
+        continue;
       }
+      const subject = applyVars(resolved.subject);
+      const textBody = applyVars(resolved.body);
 
       let emailSent = false;
       if (resend) {

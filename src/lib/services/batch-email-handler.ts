@@ -22,14 +22,11 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { logEvent } from "@/lib/logger";
 import { resolveEmailTemplate } from "@/lib/services/email-template-resolver";
 
-// Story em-b-5 — Migration des subject/body batch vers email-template-resolver
-// via feature flag USE_TEMPLATE_RESOLVER_BATCH (default OFF).
-//   - true  → resolver (key='batch_<docType>')
-//   - false → legacy hardcoded (EMAIL_SUBJECT_LABELS + buildEmailHtmlBody)
-// Les constantes EMAIL_SUBJECT_LABELS et FILENAME_LABELS sont conservées
-// (utilisées par d'autres fonctions du fichier) et serviront aussi de
-// fallback hardcoded si le resolver retourne null. Cleanup em-b-6.
-const USE_RESOLVER_BATCH = process.env.USE_TEMPLATE_RESOLVER_BATCH === "true";
+// Story em-b-6 cleanup — Resolver email-template-resolver = chemin unique
+// pour subject + body batch. Fallback hardcoded conservé
+// (EMAIL_SUBJECT_LABELS + buildEmailHtmlBody/TextBody) en cas de seed
+// manquant — contexte user-triggered (routes batch), fail-soft pour ne
+// pas casser un envoi déclenché par admin.
 import {
   SYSTEM_TEMPLATES_BY_DOC_TYPE,
   renderSystemTemplate,
@@ -417,19 +414,17 @@ export async function batchSendDocsEmail(
   const filenameLabel = FILENAME_LABELS[docType] ?? docType;
   const entityName = (entitySettings as unknown as { name?: string })?.name ?? "Formation";
 
-  // em-b-5 : lookup 1× du template batch_<docType> si flag ON
+  // em-b-6 cleanup : resolver = chemin unique, lookup 1× par batch
   let resolvedSubjectTpl: string | null = null;
   let resolvedBodyTpl: string | null = null;
-  if (USE_RESOLVER_BATCH) {
-    const resolved = await resolveEmailTemplate(supabase, `batch_${docType}`, entityId);
-    if (resolved) {
-      resolvedSubjectTpl = resolved.subject;
-      resolvedBodyTpl = resolved.body;
-    } else {
-      console.warn(
-        `[batch-email] resolveEmailTemplate('batch_${docType}') retourne null pour entité ${entityId}, fallback hardcoded EMAIL_SUBJECT_LABELS`,
-      );
-    }
+  const resolvedBatch = await resolveEmailTemplate(supabase, `batch_${docType}`, entityId);
+  if (resolvedBatch) {
+    resolvedSubjectTpl = resolvedBatch.subject;
+    resolvedBodyTpl = resolvedBatch.body;
+  } else {
+    console.warn(
+      `[batch-email] resolveEmailTemplate('batch_${docType}') retourne null pour entité ${entityId}, fallback hardcoded EMAIL_SUBJECT_LABELS`,
+    );
   }
 
   // 6. Construire les RecipientGenerationTask

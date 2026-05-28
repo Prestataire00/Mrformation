@@ -11,13 +11,10 @@ import {
   type CustomTemplateInfo,
 } from "@/lib/automation/execute-rule";
 
-// Story em-b-4 — Migration de la branche OPCO deposit reminder vers
-// le service email-template-resolver via feature flag :
-//   - USE_TEMPLATE_RESOLVER_OPCO=true  → resolver (key='opco_deposit')
-//   - false → legacy hardcoded inline ligne ~365
-// La branche OPCO était à 100% hardcoded — aucune autre source. Le
-// hardcoded sera supprimé en em-b-6 cleanup.
-const USE_RESOLVER_OPCO = process.env.USE_TEMPLATE_RESOLVER_OPCO === "true";
+// Story em-b-6 cleanup — Resolver email-template-resolver = chemin unique
+// pour la branche OPCO. Fallback hardcoded inline conservé en cas de seed
+// manquant (cohérent avec contexte cron critique business OPCO :
+// pénalités URSSAF si demande non déposée).
 
 // Note : ce cron n'envoie plus d'email synchronously. Il enqueue dans email_history
 // (status='pending') ; le worker /api/emails/process-scheduled (toutes les 5 min)
@@ -361,17 +358,16 @@ export async function POST(request: NextRequest) {
           if (!session) continue;
           const sessionTitle = (session as Record<string, string>).title || "Formation";
 
-          // em-b-4 : resolver (flag ON) ou hardcoded inline (flag OFF)
+          // em-b-6 cleanup : resolver = chemin unique, fallback hardcoded
+          // conservé en cas de seed manquant (contexte critique OPCO)
           let opcoSubjectTpl: string | null = null;
           let opcoBodyTpl: string | null = null;
-          if (USE_RESOLVER_OPCO) {
-            const resolved = await resolveEmailTemplate(supabase, "opco_deposit", entity.id);
-            if (resolved) {
-              opcoSubjectTpl = resolved.subject;
-              opcoBodyTpl = resolved.body;
-            } else {
-              console.error(`[automation OPCO] resolveEmailTemplate('opco_deposit') retourne null pour entité ${entity.id}, fallback hardcoded`);
-            }
+          const resolvedOpco = await resolveEmailTemplate(supabase, "opco_deposit", entity.id);
+          if (resolvedOpco) {
+            opcoSubjectTpl = resolvedOpco.subject;
+            opcoBodyTpl = resolvedOpco.body;
+          } else {
+            console.error(`[automation OPCO] resolveEmailTemplate('opco_deposit') retourne null pour entité ${entity.id}, fallback hardcoded`);
           }
 
           for (const admin of admins ?? []) {
