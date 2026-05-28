@@ -1,0 +1,196 @@
+# generated: 2026-05-28
+# last_updated: 2026-05-28 (création initiale post-readiness-check, score 30/30, 0 blocker)
+# project: lms-platform
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: /Users/wissam/Desktop/lms-platform/bmad_output/implementation-artifacts
+# module: emails
+# scope: Refonte big bang module Emails (Lots A-F cadrage Mary 2026-05-28)
+# epics_source: bmad_output/planning-artifacts/epics-emails.md
+#
+# Note de convention :
+# Ce fichier est SÉPARÉ de bmad_output/implementation-artifacts/sprint-status.yaml
+# (qui couvre le module Documents + portail apprenant + admin/PDFs stabilisation).
+# Les letters A-F sont réutilisées localement pour ce module (cohérence avec le cadrage).
+# Préfixe `em-` ajouté aux clés de stories pour éviter toute collision si fusion future.
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working
+#   - review: Ready for code review
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Persona dev : Wissam solo, ~1-2 j-h/jour de capacité (pas full-time)
+# - Calendaire estimé : ~3-4 semaines réelles
+# - 22 stories, ~17.75 j-h cumulés (architecture 14.5 j + 3.25 j buffer review/debug)
+# - Priorités : P0 (sécurité bloquante = a-4) / P1 (core feature) / P2 (UX raffiné + hygiène)
+# - 5 feature flags `USE_TEMPLATE_RESOLVER_*` actifs pendant Lot B, supprimés en b-6 (T+7j stabilité)
+# - 3 mitigations DoD readiness intégrées : a11y dans C, bundle size dans c-3, cleanup env vars dans b-6
+
+generated: 2026-05-28
+last_updated: 2026-05-28
+project: lms-platform
+project_key: NOKEY
+tracking_system: file-system
+story_location: /Users/wissam/Desktop/lms-platform/bmad_output/implementation-artifacts
+module: emails
+
+development_status:
+  # ── Epic A : Infrastructure (schéma + resolver + seed + RLS fix + vue usage) ──
+  # 5 stories | 4.5 j-h | P0-P1
+  # a-4 = HOTFIX RLS P0 standalone, déployable EN PREMIER avant tout le reste
+  # a-1 = story de tête P1 (bloque a-2 + a-3 + a-5)
+  email-epic-a: backlog
+  em-a-1-migration-schema-email-templates: backlog
+  em-a-2-service-email-template-resolver: backlog
+  em-a-3-seed-templates-par-defaut: backlog
+  em-a-4-fix-rls-crm-automation-rules: backlog  # P0 hotfix standalone — première à shipper
+  em-a-5-vue-sql-email-template-usage: backlog
+  email-epic-a-retrospective: optional
+
+  # ── Epic B : Migration des 5 pipelines vers le resolver ──
+  # 6 stories | 4 j-h | P1
+  # b-1 à b-5 parallèles après a-2 + a-3 mergés
+  # b-6 cleanup APRÈS stabilisation T+7 jours de b-1..b-5 en flag ON prod
+  email-epic-b: backlog
+  em-b-1-migration-invoices-process-reminders: backlog
+  em-b-2-migration-quotes-process-reminders: backlog
+  em-b-3-migration-quotes-sign-request: backlog
+  em-b-4-migration-opco-run-cron: backlog
+  em-b-5-migration-batch-email-handler: backlog
+  em-b-6-cleanup-hardcoded-fallbacks: backlog  # T+7j post-b1..b5 stables (mitigation DoD #3 : retrait env vars Netlify)
+  email-epic-b-retrospective: optional
+
+  # ── Epic C : UI /admin/emails refondue (4 tabs + dialog 3-col + soft-archive) ──
+  # 6 stories | 6.5 j-h | P1-P2
+  # c-1 = story de tête P1 frontend (bloque c-2 à c-6)
+  # c-3 = cœur fonctionnel, dépend de a-2 (resolver) + a-5 (vue usage)
+  # Toutes les stories C incluent mitigation DoD #1 : vérification a11y WCAG AA
+  email-epic-c: backlog
+  em-c-1-split-page-scaffolding-tabsnav: backlog
+  em-c-2-tab-modeles-cards-liste-filtres: backlog
+  em-c-3-dialog-edition-3-colonnes: backlog  # + mitigation DoD #2 : bundle size dialog mesuré post-build
+  em-c-4-tab-archives-restore-delete: backlog
+  em-c-5-tab-automatisations-3-soustabs: backlog
+  em-c-6-tab-historique-sheet-slidein: backlog
+  email-epic-c-retrospective: optional
+
+  # ── Epic D : Cross-entity duplication super_admin ──
+  # 1 story | 1 j-h | P2
+  # d-1 dépend de c-3 (dialog d'édition fonctionnel)
+  email-epic-d: backlog
+  em-d-1-cross-entity-duplication-superadmin: backlog
+  email-epic-d-retrospective: optional
+
+  # ── Epic E : CRM campaigns template-driven (V2 — DIFFÉRÉ) ──
+  # 0 story V1 | reporté V2 selon décision cadrage Q3
+  # Trigger pour réactivation : Loris confirme utiliser activement les CRM campaigns
+  email-epic-e: backlog  # statut backlog mais hors scope V1 explicite
+  # em-e-1-crm-campaigns-template-id-fk: backlog  # V2 placeholder
+  # em-e-2-ui-campaign-template-selector: backlog  # V2 placeholder
+  email-epic-e-retrospective: optional
+
+  # ── Epic F : Hygiène (logs + tests + doc + E2E) ──
+  # 4 stories | 2.25 j-h | P2
+  # F = cross-cutting, peut commencer dès c-1 et continuer en parallèle de tout
+  email-epic-f: backlog
+  em-f-1-logs-structures-10-events: backlog
+  em-f-2-tests-vitest-resolver-rls: backlog
+  em-f-3-doc-emails-md: backlog
+  em-f-4-smoke-test-e2e-playwright: backlog
+  email-epic-f-retrospective: optional
+
+# ──────────────────────────────────────────────────────────────────────────
+# SPRINT PLAN STRUCTURÉ (séquencement architecture Winston §Decision Impact Analysis)
+# ──────────────────────────────────────────────────────────────────────────
+#
+# Calendaire cible : 3-4 semaines réelles | Capacité Wissam : 1-2 j-h/jour
+#
+# Wave 1 — Sécurité P0 (immédiat, démarre dès maintenant)
+#   - em-a-4-fix-rls-crm-automation-rules : PR hotfix standalone, mergeable en 1h
+#     ↳ déployable AVANT tout le reste, ne bloque rien d'autre
+#
+# Wave 2 — Story de tête infra (semaine 1, après a-4 mergé)
+#   - em-a-1-migration-schema-email-templates : bloque a-2 + a-3 + a-5
+#
+# Wave 3 — Parallèles infra + UI base (semaine 1-2, après a-1 mergé)
+#   - em-a-2-service-email-template-resolver       (1 j, dépend a-1)
+#   - em-a-3-seed-templates-par-defaut             (1 j, dépend a-1)
+#   - em-a-5-vue-sql-email-template-usage          (0.5 j, dépend a-1 + a-4)
+#   - em-c-1-split-page-scaffolding-tabsnav        (1 j, indépendant — peut démarrer en parallèle)
+#   - em-f-3-doc-emails-md                         (0.25 j, démarrable, mis à jour au fil)
+#
+# Wave 4 — Migration pipelines (semaine 2, après a-2 + a-3 mergés)
+#   - em-b-1-migration-invoices-process-reminders  (0.75 j, parallèle)
+#   - em-b-2-migration-quotes-process-reminders    (0.75 j, parallèle)
+#   - em-b-3-migration-quotes-sign-request         (0.5 j, parallèle)
+#   - em-b-4-migration-opco-run-cron               (0.5 j, parallèle)
+#   - em-b-5-migration-batch-email-handler         (1 j, parallèle)
+#     ↳ Activation progressive des 5 feature flags USE_TEMPLATE_RESOLVER_*
+#     ↳ Monitoring email_history.failed > 5% → rollback flag automatique
+#
+# Wave 5 — UI refondue (semaine 2-3, parallèle Wave 4, après c-1 mergé)
+#   - em-c-2-tab-modeles-cards-liste-filtres       (1.5 j, dépend c-1 + a-5)
+#   - em-c-3-dialog-edition-3-colonnes             (2 j, dépend c-1 + a-2 + a-5)
+#   - em-c-4-tab-archives-restore-delete           (0.5 j, dépend c-1)
+#   - em-c-5-tab-automatisations-3-soustabs        (1 j, dépend c-1 + a-4)
+#   - em-c-6-tab-historique-sheet-slidein          (0.5 j, dépend c-1)
+#
+# Wave 6 — Cross-entity (semaine 3, après c-3)
+#   - em-d-1-cross-entity-duplication-superadmin   (1 j, dépend c-3)
+#
+# Wave 7 — Hygiène cross-cutting (continu dès Wave 3, consolidé semaine 3)
+#   - em-f-1-logs-structures-10-events             (0.5 j, à mesure que les events apparaissent)
+#   - em-f-2-tests-vitest-resolver-rls             (1 j, consolidation)
+#   - em-f-4-smoke-test-e2e-playwright             (0.5 j, après Wave 5)
+#
+# Wave 8 — Cleanup (semaine 4, T+7j stabilité Wave 4)
+#   - em-b-6-cleanup-hardcoded-fallbacks           (0.5 j)
+#     ↳ Suppression définitive des constantes hardcoded
+#     ↳ Suppression des 5 feature flags du code
+#     ↳ Retrait des variables d'env USE_TEMPLATE_RESOLVER_* du dashboard Netlify
+#
+# ──────────────────────────────────────────────────────────────────────────
+# OPEN QUESTIONS WINSTON (à trancher en début de story concernée)
+# ──────────────────────────────────────────────────────────────────────────
+#   - Wave 2 a-1 : location migration SQL (supabase/migrations/ vs migrations/) ?
+#   - Wave 7 f-1 : logEvent() existant ou wrapper à écrire ?
+#   - Wave 7 f-4 : Playwright configuré ou smoke check manuel ?
+#   - V1.5 (post-livraison) : DNS verify Resend per-entity (Loris ou Wissam) ?
+#   - V1.5 (post-livraison) : approbation Resend $20/mois si dépassement free tier ?
+#
+# ──────────────────────────────────────────────────────────────────────────
+# RISQUES SOUS SURVEILLANCE
+# ──────────────────────────────────────────────────────────────────────────
+#   - Wave 4 : monitoring email_history.failed après activation chaque flag
+#     ↳ Si > 5% sur 1h → rollback flag automatique (NFR-EML-REL-2)
+#   - Wave 4 : assertSeedComplete() au boot cron (FR-EML-5)
+#     ↳ Si log critical seed incomplet → fix immédiat avant déploiement prod
+#   - Wave 5 c-3 : bundle size dialog 3-col > 200KB → next/dynamic (DoD)
+#   - Wave 6 : super_admin check côté serveur dans d-1 (NFR-EML-SEC-5)
+#
+# ──────────────────────────────────────────────────────────────────────────
+# COMMANDES BMAD POUR EXÉCUTION
+# ──────────────────────────────────────────────────────────────────────────
+# Prochaine action :
+#   bmad-create-story em-a-4   (créer story file détaillée pour le hotfix P0)
+# Puis :
+#   bmad-dev-story (Amelia)    (implémenter et tester)
+# Puis :
+#   bmad-code-review           (review en context frais)
+# Puis :
+#   itérer sur em-a-1, em-a-2, em-a-3, em-a-5, etc.
