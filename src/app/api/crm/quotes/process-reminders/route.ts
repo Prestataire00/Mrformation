@@ -1,33 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Resend } from "resend";
 import { createClient } from "@supabase/supabase-js";
 import { resolveEmailTemplate } from "@/lib/services/email-template-resolver";
+import { enqueueEmail } from "@/lib/services/email-queue";
 
-// Story em-b-6 cleanup — Suppression branche legacy + constante TEMPLATES.
-// Resolver = chemin unique. Si null → skip + log critical.
-
-const isResendConfigured =
-  !!process.env.RESEND_API_KEY &&
-  process.env.RESEND_API_KEY !== "votre-cle-resend";
-
-const resend = isResendConfigured ? new Resend(process.env.RESEND_API_KEY) : null;
+// em-c-10 — Refactor : passage de l'envoi Resend synchrone vers enqueueEmail.
+// Cohérence pipeline avec invoices/process-reminders (em-b-1) :
+// - support attachments (em-c-10 ajoute le descriptor devis)
+// - retry/backoff via worker process-scheduled
+// - 1 seule insert email_history (status='pending') au lieu de send + insert
+//
+// em-b-6 cleanup déjà fait : pas de branche legacy/TEMPLATES, resolver unique.
 
 function createServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) throw new Error("Missing Supabase service role configuration");
   return createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
-}
-
-function getFromAddress(entityName: string): string {
-  return entityName.toLowerCase().includes("c3v")
-    ? "C3V Formation <noreply@c3vformation.fr>"
-    : "MR Formation <noreply@mrformation.fr>";
-}
-
-function toHtml(text: string): string {
-  return `<div style="font-family:sans-serif;font-size:14px;line-height:1.6;color:#374151;white-space:pre-wrap;">${text
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br/>")}</div>`;
 }
 
 function formatDate(d: string): string {
@@ -47,6 +35,7 @@ export async function POST(request: NextRequest) {
   const today = now.toISOString().split("T")[0];
   let totalReminders = 0;
   let totalExpired = 0;
+  const errors: string[] = [];
 
   try {
     // 1. Auto-expire overdue quotes
@@ -68,11 +57,6 @@ export async function POST(request: NextRequest) {
     if (!sentQuotes || sentQuotes.length === 0) {
       return NextResponse.json({ success: true, totalReminders: 0, totalExpired, message: "No quotes to remind" });
     }
-
-    // Get entity names
-    const entityIds = [...new Set(sentQuotes.map((q) => q.entity_id))];
-    const { data: entities } = await supabase.from("entities").select("id, name").in("id", entityIds);
-    const entityMap = Object.fromEntries((entities || []).map((e) => [e.id, e.name]));
 
     for (const quote of sentQuotes) {
       const sentDate = new Date(quote.sent_at || quote.updated_at || quote.created_at);
@@ -117,8 +101,6 @@ export async function POST(request: NextRequest) {
 
       if (!recipientEmail) continue;
 
-      const entityName = entityMap[quote.entity_id] || "MR FORMATION";
-
       // Build email via resolver unifié (post em-b-6 cleanup)
       const vars: Record<string, string> = {
         "{{reference}}": quote.reference,
@@ -135,32 +117,36 @@ export async function POST(request: NextRequest) {
 
       const resolved = await resolveEmailTemplate(supabase, reminderTemplateKey, quote.entity_id);
       if (!resolved) {
-        console.warn(`[quote-reminders] Template ${reminderTemplateKey} introuvable pour entité ${quote.entity_id}, skip ${quote.reference}`);
+        errors.push(`${quote.reference}: template ${reminderTemplateKey} introuvable pour entité ${quote.entity_id}`);
         continue;
       }
       const subject = applyVars(resolved.subject);
       const textBody = applyVars(resolved.body);
 
-      let emailSent = false;
-      if (resend) {
-        try {
-          const result = await resend.emails.send({
-            from: getFromAddress(entityName),
-            to: [recipientEmail],
-            subject,
-            html: toHtml(textBody),
-            text: textBody,
-          });
-          emailSent = !result.error;
-        } catch {
-          emailSent = false;
-        }
-      } else {
-        console.log(`[quote-reminders] Simulated ${reminderType} to ${recipientEmail}: ${subject}`);
-        emailSent = true;
+      // em-c-10 — Construit les attachments depuis le template résolu.
+      // Si le template "Relance devis" a `devis` dans ses attachment_doc_types,
+      // on joint un descriptor type:'devis' qui sera résolu par
+      // email-attachments-resolver vers le PDF devis (Puppeteer + template HTML).
+      const attachments: Array<{ type: "devis"; payload: { quote_id: string } }> = [];
+      const docTypes = (resolved as { attachment_doc_types?: string[] | null })
+        .attachment_doc_types ?? [];
+      if (docTypes.includes("devis")) {
+        attachments.push({ type: "devis", payload: { quote_id: quote.id } });
       }
 
-      if (emailSent) {
+      // H6 (cf. invoices/process-reminders) — la mise en file et l'incrément du
+      // compteur sont enveloppés dans un try/catch PAR devis : un échec de
+      // mise en file n'incrémente PAS le compteur (sinon la relance serait
+      // définitivement perdue) et n'interrompt PAS le traitement des autres.
+      try {
+        await enqueueEmail(supabase, {
+          to: recipientEmail,
+          subject,
+          body: textBody,
+          entity_id: quote.entity_id,
+          attachments: attachments.length > 0 ? attachments : undefined,
+        });
+
         await supabase.from("crm_quotes").update({
           reminder_count: reminderCount + 1,
           last_reminder_at: now.toISOString(),
@@ -174,17 +160,12 @@ export async function POST(request: NextRequest) {
           email_to: recipientEmail,
         });
 
-        await supabase.from("email_history").insert({
-          entity_id: quote.entity_id,
-          recipient_email: recipientEmail,
-          subject,
-          body: textBody,
-          status: "sent",
-          sent_at: now.toISOString(),
-          sent_via: "resend",
-        });
-
         totalReminders++;
+      } catch (enqueueErr) {
+        const msg = enqueueErr instanceof Error ? enqueueErr.message : String(enqueueErr);
+        console.error(`[quote-reminders] enqueue échoué pour ${quote.reference}:`, msg);
+        errors.push(`${quote.reference}: enqueue échoué — ${msg}`);
+        // Pas d'incrément reminder_count — la relance sera retentée au prochain run.
       }
     }
 
@@ -192,6 +173,7 @@ export async function POST(request: NextRequest) {
       success: true,
       totalReminders,
       totalExpired,
+      errors: errors.length > 0 ? errors : undefined,
       executedAt: now.toISOString(),
     });
   } catch (err) {

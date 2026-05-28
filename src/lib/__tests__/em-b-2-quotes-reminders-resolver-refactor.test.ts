@@ -35,9 +35,9 @@ describe("em-b-2 / em-b-6 — crm/quotes/process-reminders sur resolver unifié"
     );
   });
 
-  it("skip + console.warn sur null", () => {
+  it("skip + push errors[] sur null (em-c-10 — aligné sur invoices)", () => {
     expect(routeSource).toMatch(/if \(!resolved\)/);
-    expect(routeSource).toMatch(/console\.warn[\s\S]{0,200}quote-reminders[\s\S]{0,80}introuvable/);
+    expect(routeSource).toMatch(/errors\.push\([\s\S]{0,200}introuvable/);
     expect(routeSource).toMatch(/continue/);
   });
 
