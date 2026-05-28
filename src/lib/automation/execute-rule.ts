@@ -172,42 +172,120 @@ export function buildAttachmentsForRecipient(
       continue;
     }
 
-    // Cas 2 : type système
-    switch (docType) {
-      case "convocation":
-      case "certificat_realisation":
-        if (recipient.type === "learner") {
-          descriptors.push({ type: docType, payload: { session_id: session.id, learner_id: recipient.id } });
-        }
-        break;
-      case "convention_entreprise":
-        if (recipientType === "companies") {
-          descriptors.push({ type: "convention_entreprise", payload: { session_id: session.id, client_id: recipient.id } });
-        }
-        break;
-      case "convention_intervention":
-        if (recipient.type === "trainer") {
-          descriptors.push({ type: docType, payload: { session_id: session.id, trainer_id: recipient.id } });
-        }
-        break;
-      case "programme_formation":
-        descriptors.push({ type: "programme_formation", payload: { session_id: session.id } });
-        break;
-      case "feuille_emargement":
-        if (recipient.type === "learner") {
-          descriptors.push({ type: docType, payload: { session_id: session.id, learner_id: recipient.id } });
-        }
-        break;
-      case "feuille_emargement_collectif":
-        // ownerType "company" du registry — la collective est portée par le client.
-        if (recipientType === "companies") {
-          descriptors.push({ type: "feuille_emargement_collectif", payload: { session_id: session.id, client_id: recipient.id } });
-        }
-        break;
+    // Cas 2 : type système — routing par recipient scope
+    // em-c-8 — Extension à ~22 doc_types présents dans SYSTEM_TEMPLATES_BY_DOC_TYPE
+    // (registry.ts). Classification par scope du destinataire :
+
+    if (LEARNER_DOC_TYPES.has(docType)) {
+      if (recipient.type === "learner") {
+        descriptors.push({
+          type: docType,
+          payload: { session_id: session.id, learner_id: recipient.id },
+        } as EmailAttachmentDescriptor);
+      }
+      continue;
     }
+
+    if (COMPANY_DOC_TYPES.has(docType)) {
+      if (recipientType === "companies") {
+        descriptors.push({
+          type: docType,
+          payload: { session_id: session.id, client_id: recipient.id },
+        } as EmailAttachmentDescriptor);
+      }
+      continue;
+    }
+
+    if (TRAINER_DOC_TYPES.has(docType)) {
+      if (recipient.type === "trainer") {
+        descriptors.push({
+          type: docType,
+          payload: { session_id: session.id, trainer_id: recipient.id },
+        } as EmailAttachmentDescriptor);
+      }
+      continue;
+    }
+
+    if (SESSION_DOC_TYPES.has(docType)) {
+      descriptors.push({
+        type: docType,
+        payload: { session_id: session.id },
+      } as EmailAttachmentDescriptor);
+      continue;
+    }
+
+    // Doc type non classifié = silencieusement skip (n'attache rien).
+    // Concerne notamment : attestation_assiduite, cgv, politique_confidentialite,
+    // reglement_interieur, feuille_emargement_vierge, planning_hebdo_signe
+    // (présents dans registry mais ABSENTS du UNION EmailAttachmentDescriptor
+    // — ne peuvent pas être routés depuis ce helper). Cleanup futur si besoin.
   }
   return descriptors;
 }
+
+// em-c-8 — Classification des doc_types par scope destinataire.
+// Source : SYSTEM_TEMPLATES_BY_DOC_TYPE dans src/lib/templates/registry.ts.
+// Seuls les doc_types présents dans le registry sont listés ici (ceux absents
+// retourneraient null à la génération côté resolver → cleanup UI dans page.tsx).
+
+// Source de vérité : union EmailAttachmentDescriptor dans email-queue.ts.
+// Tout doc_type listé ici DOIT exister dans ce union, sinon le push descriptor
+// échoue runtime (le cast `as EmailAttachmentDescriptor` masque le bug TS).
+
+/** Documents personnels d'apprenant : convocation, certificats, attestations, etc. */
+const LEARNER_DOC_TYPES = new Set<string>([
+  "convocation",
+  "certificat_realisation",
+  "feuille_emargement",
+  "attestation_aipr",
+  "attestation_competences",
+  "attestation_abandon_formation",
+  "certificat_travail_hauteur",
+  "certificat_diplome",
+  "autorisation_image",
+  "decharge_responsabilite",
+  "lettre_decharge_responsabilite",
+  "contrat_engagement_stagiaire",
+  // 9 variants avis_hab_elec_* (tous présents dans EmailAttachmentDescriptor)
+  "avis_hab_elec_generique",
+  "avis_hab_elec_b0_bf_bs",
+  "avis_hab_elec_b1v_b2v_br",
+  "avis_hab_elec_bf_hf",
+  "avis_hab_elec_bt",
+  "avis_hab_elec_bt_ht",
+  "avis_hab_elec_h0_b0",
+  "avis_hab_elec_h0_b0_bf_hf_bs",
+  "avis_hab_elec_h0_b0_initial",
+]);
+
+/** Documents adressés à l'entreprise cliente. */
+const COMPANY_DOC_TYPES = new Set<string>([
+  "convention_entreprise",
+  "feuille_emargement_collectif",
+]);
+
+/** Documents adressés au formateur. */
+const TRAINER_DOC_TYPES = new Set<string>([
+  "convention_intervention",
+  "charte_formateur",
+]);
+
+/** Documents session-only (sans recipient_id). */
+const SESSION_DOC_TYPES = new Set<string>([
+  "programme_formation",
+  "bilan_poe",
+  "reponses_evaluations",
+  "reponses_satisfaction_session",
+  "resultats_evaluations",
+]);
+
+/** Exporté pour tests guardrail. */
+export const ATTACHMENT_DOC_TYPE_SETS = {
+  LEARNER: LEARNER_DOC_TYPES,
+  COMPANY: COMPANY_DOC_TYPES,
+  TRAINER: TRAINER_DOC_TYPES,
+  SESSION: SESSION_DOC_TYPES,
+} as const;
 
 /** Pure — sujet + corps de repli quand la règle n'a pas de template email. */
 export function buildFallbackEmail(

@@ -198,6 +198,8 @@ const ATTACHMENT_OPTION_GROUPS: Array<{
     ],
   },
   {
+    // em-c-8 — 9 variants présents dans EmailAttachmentDescriptor union
+    // (email-queue.ts). Tous routés vers `{ session_id, learner_id }`.
     groupLabel: "Habilitations électriques",
     options: [
       { value: "avis_hab_elec_generique", label: "Avis habilitation électrique (générique)" },
