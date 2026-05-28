@@ -19,6 +19,7 @@ import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { EmailsTabsNav } from "./_components/EmailsTabsNav";
 import { QuickActions } from "./_components/QuickActions";
 import { ArchivedTab } from "./_components/ArchivedTab";
+import { saveTemplate } from "./_actions/save-template";
 import {
   Dialog,
   DialogContent,
@@ -440,25 +441,59 @@ export default function EmailsPage() {
     ];
     const uniqueVars = [...new Set(allVars)];
 
-    const payload = {
+    if (editingTemplate) {
+      // em-c-3b — UPDATE via Server Action saveTemplate (optimistic lock + log audit)
+      const initialUpdatedAt =
+        (editingTemplate as EmailTemplate).updated_at ?? editingTemplate.created_at;
+      const result = await saveTemplate({
+        id: editingTemplate.id,
+        initialUpdatedAt: initialUpdatedAt ?? "",
+        name: templateForm.name.trim(),
+        subject: templateForm.subject.trim(),
+        body: templateForm.body.trim(),
+        attachment_doc_types: templateForm.attachment_doc_types,
+      });
+      setSaving(false);
+      if (result.ok) {
+        toast({ title: "Modèle mis à jour" });
+        setTemplateDialogOpen(false);
+        await fetchTemplates();
+      } else if (result.error === "concurrent_edit") {
+        toast({
+          title: "Modification concurrente détectée",
+          description:
+            "Quelqu'un a modifié ce template entre-temps. Recharge la page pour voir la version à jour.",
+          variant: "destructive",
+        });
+      } else if (result.error === "validation_failed") {
+        toast({ title: "Validation échouée", description: "Vérifie les champs obligatoires", variant: "destructive" });
+      } else if (result.error === "unauthorized") {
+        toast({ title: "Non autorisé", description: "Reconnecte-toi", variant: "destructive" });
+      } else if (result.error === "not_found") {
+        toast({ title: "Template introuvable", description: "Il a peut-être été supprimé", variant: "destructive" });
+      } else {
+        toast({ title: "Erreur", description: result.error, variant: "destructive" });
+      }
+      return;
+    }
+
+    // INSERT inline (Server Action createTemplate viendra dans une story dédiée)
+    const insertPayload = {
       name: templateForm.name.trim(),
       type: templateForm.type,
       subject: templateForm.subject.trim(),
       body: templateForm.body.trim(),
       variables: uniqueVars,
       attachment_doc_types: templateForm.attachment_doc_types,
+      entity_id: entityId,
     };
-
-    if (editingTemplate) {
-      const { error } = await supabase.from("email_templates").update(payload).eq("id", editingTemplate.id);
-      if (error) { toast({ title: "Erreur", description: error.message, variant: "destructive" }); setSaving(false); return; }
-      toast({ title: "Modèle mis à jour" });
-    } else {
-      const { error } = await supabase.from("email_templates").insert({ ...payload, entity_id: entityId });
-      if (error) { toast({ title: "Erreur", description: error.message, variant: "destructive" }); setSaving(false); return; }
-      toast({ title: "Modèle créé" });
-    }
+    const { error } = await supabase.from("email_templates").insert(insertPayload);
     setSaving(false);
+    if (error) {
+      toast({ title: "Erreur", description: error.message, variant: "destructive" });
+      return;
+    }
+    toast({ title: "Modèle créé" });
     setTemplateDialogOpen(false);
     await fetchTemplates();
   };

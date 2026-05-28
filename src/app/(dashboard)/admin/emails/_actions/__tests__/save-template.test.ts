@@ -80,11 +80,11 @@ describe("saveTemplate Server Action", () => {
 
     const result = await saveTemplate(VALID_INPUT);
     expect(result.ok).toBe(false);
-    if (!result.ok) {
+    if (!result.ok && "currentUpdatedAt" in result) {
       expect(result.error).toBe("concurrent_edit");
-      if (result.error === "concurrent_edit") {
-        expect(result.currentUpdatedAt).toBe("2026-05-28T13:00:00Z");
-      }
+      expect(result.currentUpdatedAt).toBe("2026-05-28T13:00:00Z");
+    } else {
+      expect.fail("Expected concurrent_edit error with currentUpdatedAt");
     }
   });
 
