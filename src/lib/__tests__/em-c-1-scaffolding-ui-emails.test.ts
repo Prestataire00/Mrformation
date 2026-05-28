@@ -45,12 +45,12 @@ describe("em-c-1 — Scaffolding UI /admin/emails (non destructif)", () => {
       expect(src).toMatch(/Envoyer un mail maintenant/);
     });
 
-    it("TemplateListView, HistoryTab, AutomationsTab, ArchivedTab scaffolds existent (return null pour l'instant)", () => {
+    it("TemplateListView, HistoryTab, AutomationsTab scaffolds existent (return null en attendant em-c-X)", () => {
+      // ArchivedTab retiré de cette liste : implémenté en em-c-4.
       const stubs = [
         "_components/TemplateListView.tsx",
         "_components/HistoryTab.tsx",
         "_components/AutomationsTab.tsx",
-        "_components/ArchivedTab.tsx",
       ];
       for (const s of stubs) {
         expect(exists(s), `${s} doit exister`).toBe(true);
@@ -58,6 +58,15 @@ describe("em-c-1 — Scaffolding UI /admin/emails (non destructif)", () => {
         expect(src).toMatch(/Scaffold em-c-1/);
         expect(src).toMatch(/return null;/);
       }
+    });
+
+    it("ArchivedTab existe et est désormais implémenté (em-c-4)", () => {
+      expect(exists("_components/ArchivedTab.tsx")).toBe(true);
+      const src = read("_components/ArchivedTab.tsx");
+      expect(src).toMatch(/Story em-c-4/);
+      // Pas de return null — c'est désormais une vraie implémentation
+      expect(src).toMatch(/restoreTemplate/);
+      expect(src).toMatch(/deleteTemplatePermanent/);
     });
   });
 
