@@ -20,6 +20,7 @@ import { QuickActions } from "./_components/QuickActions";
 import { ArchivedTab } from "./_components/ArchivedTab";
 import { AutomationsTab } from "./_components/AutomationsTab";
 import { saveTemplate } from "./_actions/save-template";
+import { duplicateTemplateToEntity } from "./_actions/duplicate-to-entity";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import {
   Dialog,
@@ -58,6 +59,7 @@ import {
   Filter,
   AlertTriangle,
   User,
+  Copy,
 } from "lucide-react";
 
 type EmailStatus = "sent" | "failed" | "pending";
@@ -192,7 +194,7 @@ type EmailHistoryWithTemplate = EmailHistory & {
 export default function EmailsPage() {
   const supabase = createClient();
   const { toast } = useToast();
-  const { entityId } = useEntity();
+  const { entityId, entity: currentEntity, entities: availableEntities, setEntity } = useEntity();
 
   // Templates state
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
@@ -415,6 +417,44 @@ export default function EmailsPage() {
     setTemplateForm(emptyTemplateForm);
     setActiveField("body");
     setTemplateDialogOpen(true);
+  };
+
+  // em-d-1 — Cross-entity duplication super_admin
+  // Heuristique UI : si l'utilisateur a accès à plusieurs entités, on suppose
+  // qu'il est super_admin et on affiche les options "Dupliquer vers X". Le
+  // check côté serveur dans la Server Action confirme le rôle réel (jamais
+  // de faille sécurité même si UI affiche le bouton à tort).
+  const handleDuplicateToEntity = async (template: EmailTemplate, targetEntityId: string, targetName: string) => {
+    const result = await duplicateTemplateToEntity({
+      templateId: template.id,
+      targetEntityId,
+    });
+    if (result.ok) {
+      const target = availableEntities.find((e) => e.id === targetEntityId);
+      toast({
+        title: `Template dupliqué vers ${targetName}`,
+        description: `Une copie a été créée. Bascule sur ${targetName} pour la modifier.`,
+        action: target ? (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setEntity(target)}
+          >
+            Voir →
+          </Button>
+        ) : undefined,
+      });
+    } else if (result.error === "forbidden") {
+      toast({ title: "Action réservée aux super_admin", variant: "destructive" });
+    } else if (result.error === "same_entity") {
+      toast({ title: "Action invalide", description: "Ce template appartient déjà à cette entité", variant: "destructive" });
+    } else if (result.error === "unauthorized") {
+      toast({ title: "Non autorisé", description: "Reconnecte-toi", variant: "destructive" });
+    } else if (result.error === "not_found") {
+      toast({ title: "Template introuvable", variant: "destructive" });
+    } else {
+      toast({ title: "Erreur duplication", description: result.error, variant: "destructive" });
+    }
   };
 
   const openEditTemplate = (t: EmailTemplate) => {
@@ -847,6 +887,28 @@ export default function EmailsPage() {
                             <Send className="h-4 w-4" />
                             Utiliser ce modèle
                           </DropdownMenuItem>
+
+                          {/* em-d-1 — Cross-entity duplication (super_admin only).
+                              Heuristique UI : availableEntities > 1 = probable super_admin.
+                              Le check définitif est côté serveur dans la Server Action. */}
+                          {availableEntities.length > 1 && (
+                            <>
+                              <DropdownMenuSeparator />
+                              {availableEntities
+                                .filter((e) => e.id !== currentEntity?.id)
+                                .map((targetEntity) => (
+                                  <DropdownMenuItem
+                                    key={targetEntity.id}
+                                    onClick={() => handleDuplicateToEntity(template, targetEntity.id, targetEntity.name)}
+                                    className="gap-2"
+                                  >
+                                    <Copy className="h-4 w-4" />
+                                    Dupliquer vers {targetEntity.name}
+                                  </DropdownMenuItem>
+                                ))}
+                            </>
+                          )}
+
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
                             onClick={() => openDeleteTemplate(template)}
