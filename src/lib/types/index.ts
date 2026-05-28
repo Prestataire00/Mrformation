@@ -683,6 +683,14 @@ export interface GeneratedDocument {
 }
 
 // ===== EMAILS =====
+export type EmailTemplateCategory =
+  | "transactional"
+  | "automation"
+  | "reminder"
+  | "batch"
+  | "campaign"
+  | "custom";
+
 export interface EmailTemplate {
   id: string;
   entity_id: string;
@@ -692,6 +700,20 @@ export interface EmailTemplate {
   type: string | null;
   variables: string[] | null;
   created_at: string;
+
+  // Colonnes ajoutées par em-a-1 (migration supabase/migrations/em_a_1_extend_email_templates_schema.sql)
+  // Toutes optionnelles pour rétro-compatibilité tant que la migration n'est pas appliquée.
+  key?: string | null;
+  category?: EmailTemplateCategory | null;
+  is_active?: boolean;
+  created_by?: string | null;
+  updated_at?: string | null;
+  updated_by?: string | null;
+  sender_name?: string | null;
+  sender_email?: string | null;
+  recipient_type?: string | null;
+  trigger_config?: Record<string, unknown> | null;
+  attachment_doc_types?: string[] | null;
 }
 
 export type EmailRecipientType = "learner" | "trainer" | "client" | "financier" | "manager";
