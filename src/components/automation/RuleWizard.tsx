@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 import { Loader2, ChevronRight, ChevronLeft, Check, AlertTriangle, Info } from "lucide-react";
+import { DryRunDialog } from "@/components/automation/DryRunDialog";
 
 interface Props {
   open: boolean;
@@ -85,8 +86,15 @@ export function RuleWizard({ open, onClose, onCreated, entityId }: Props) {
   const [documentType, setDocumentType] = useState("");
   const [recipientType, setRecipientType] = useState("learners");
   const [satisfactionType, setSatisfactionType] = useState("");
-  // Step 4 — Récap
+  // Step 4 — Récap (aut-b-4 : enrichi avec description + activer immédiatement)
   const [ruleName, setRuleName] = useState("");
+  const [ruleDescription, setRuleDescription] = useState("");
+  const [activateImmediately, setActivateImmediately] = useState(true);
+  // aut-b-4 : ouvre DryRunDialog après création (si bouton "Créer puis tester")
+  const [dryRunAfterCreate, setDryRunAfterCreate] = useState<{
+    ruleId: string;
+    ruleName: string;
+  } | null>(null);
 
   const selectedContext = CONTEXTS.find(c => c.value === context);
   const triggerType = selectedContext?.trigger || eventType;
@@ -138,11 +146,14 @@ export function RuleWizard({ open, onClose, onCreated, entityId }: Props) {
     return `${when}, une action sera exécutée.`;
   })();
 
-  const handleCreate = async () => {
+  // aut-b-4 : handleCreate accepte un flag pour ouvrir DryRunDialog après création
+  const handleCreate = async (openDryRunAfter: boolean = false) => {
     setSaving(true);
     try {
+      const finalName = ruleName || autoName;
       const payload = {
-        name: ruleName || autoName,
+        name: finalName,
+        description: ruleDescription || null,
         trigger_type: triggerType,
         days_offset: isDateBased ? Number(daysOffset) : 0,
         document_type: actionType === "generate_document" ? documentType
@@ -150,13 +161,15 @@ export function RuleWizard({ open, onClose, onCreated, entityId }: Props) {
           : "email",
         recipient_type: recipientType,
         template_id: templateId || null,
-        is_enabled: true,
+        is_enabled: activateImmediately,
         entity_id: entityId,
       };
 
       const endpoint = scope === "formation"
         ? "/api/formations/automation-rules"
         : "/api/crm/automations";
+
+      let createdRuleId: string | null = null;
 
       if (scope === "formation") {
         const existing = await fetch(endpoint).then(r => r.json());
@@ -167,6 +180,12 @@ export function RuleWizard({ open, onClose, onCreated, entityId }: Props) {
           body: JSON.stringify({ rules: [...currentRules, payload] }),
         });
         if (!res.ok) throw new Error("Erreur création");
+        // Récupère l'ID de la nouvelle rule (pour dry-run after-create)
+        const refetched = await fetch(endpoint).then(r => r.json());
+        const matching = (refetched.rules || []).find(
+          (r: { name?: string }) => r.name === finalName,
+        );
+        createdRuleId = matching?.id ?? null;
       } else {
         const res = await fetch(endpoint, {
           method: "POST",
@@ -174,11 +193,23 @@ export function RuleWizard({ open, onClose, onCreated, entityId }: Props) {
           body: JSON.stringify(payload),
         });
         if (!res.ok) throw new Error("Erreur création");
+        const json = await res.json();
+        createdRuleId = json?.data?.id ?? json?.id ?? null;
       }
 
-      toast({ title: "Règle créée", description: ruleName || autoName });
-      resetAndClose();
+      toast({
+        title: activateImmediately ? "Règle créée et activée" : "Règle créée (désactivée)",
+        description: finalName,
+      });
       onCreated();
+
+      if (openDryRunAfter && createdRuleId) {
+        // aut-b-4 : ouvre DryRunDialog avec la rule fraîchement créée
+        setDryRunAfterCreate({ ruleId: createdRuleId, ruleName: finalName });
+        // Le wizard reste ouvert (DryRunDialog se superpose) ; on ferme après
+      } else {
+        resetAndClose();
+      }
     } catch {
       toast({ title: "Erreur", description: "Impossible de créer la règle", variant: "destructive" });
     } finally {
@@ -197,6 +228,10 @@ export function RuleWizard({ open, onClose, onCreated, entityId }: Props) {
     setRecipientType("learners");
     setSatisfactionType("");
     setRuleName("");
+    // aut-b-4 : reset des nouveaux states étape 4 enrichie
+    setRuleDescription("");
+    setActivateImmediately(true);
+    setDryRunAfterCreate(null);
     onClose();
   };
 
@@ -432,7 +467,7 @@ export function RuleWizard({ open, onClose, onCreated, entityId }: Props) {
             </div>
           )}
 
-          {/* ══ Step 4 — Récap ══ */}
+          {/* ══ Step 4 — Récap (aut-b-4 enrichi) ══ */}
           {step === 4 && (
             <div className="space-y-4">
               <div className="bg-gray-50 rounded-lg p-4 text-sm leading-relaxed">
@@ -440,9 +475,54 @@ export function RuleWizard({ open, onClose, onCreated, entityId }: Props) {
                 <p className="text-gray-700">{summaryText}</p>
               </div>
               <div>
-                <Label className="text-sm">Nom de la règle</Label>
-                <Input value={ruleName} onChange={(e) => setRuleName(e.target.value)} placeholder={autoName} className="mt-1" />
-                <p className="text-xs text-muted-foreground mt-1">Laissez vide pour utiliser le nom auto-généré</p>
+                <Label htmlFor="rule-name" className="text-sm">Nom de la règle</Label>
+                <Input
+                  id="rule-name"
+                  value={ruleName}
+                  onChange={(e) => setRuleName(e.target.value)}
+                  placeholder={autoName}
+                  className="mt-1"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Laissez vide pour utiliser le nom auto-généré
+                </p>
+              </div>
+              {/* aut-b-4 : champ description multiline (FR-AUT-62 — column ajoutée en aut-a-5) */}
+              <div>
+                <Label htmlFor="rule-description" className="text-sm">
+                  Description (optionnel)
+                </Label>
+                <textarea
+                  id="rule-description"
+                  value={ruleDescription}
+                  onChange={(e) => setRuleDescription(e.target.value)}
+                  placeholder="Note ou contexte pour vous y retrouver plus tard"
+                  rows={2}
+                  className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
+                />
+              </div>
+              {/* aut-b-4 : checkbox activer immédiatement */}
+              <div className="flex items-start gap-2.5 rounded-md border bg-muted/30 p-3">
+                <input
+                  id="activate-immediately"
+                  type="checkbox"
+                  checked={activateImmediately}
+                  onChange={(e) => setActivateImmediately(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <div>
+                  <Label
+                    htmlFor="activate-immediately"
+                    className="text-sm font-medium cursor-pointer"
+                  >
+                    Activer immédiatement
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    {activateImmediately
+                      ? "La règle sera évaluée au prochain run (chaque jour à 7h UTC)."
+                      : "La règle sera créée désactivée — vous pourrez l'activer plus tard."}
+                  </p>
+                </div>
               </div>
             </div>
           )}
@@ -463,14 +543,45 @@ export function RuleWizard({ open, onClose, onCreated, entityId }: Props) {
                 Suivant <ChevronRight className="h-3.5 w-3.5" />
               </Button>
             ) : (
-              <Button size="sm" onClick={handleCreate} disabled={saving} className="gap-1">
-                {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-                Créer la règle
-              </Button>
+              <>
+                {/* aut-b-4 : bouton "Créer puis tester" — crée la règle puis ouvre DryRunDialog */}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleCreate(true)}
+                  disabled={saving}
+                  className="gap-1"
+                  aria-label="Créer la règle puis la tester sans envoyer"
+                >
+                  {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                  Créer puis tester
+                </Button>
+                <Button size="sm" onClick={() => handleCreate(false)} disabled={saving} className="gap-1">
+                  {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                  Créer la règle
+                </Button>
+              </>
             )}
           </div>
         </DialogFooter>
       </DialogContent>
+
+      {/* aut-b-4 : DryRunDialog ouvert après création si "Créer puis tester" cliqué.
+          Note : on lazy-importe ici pour éviter le cycle de dépendance entre
+          RuleWizard et DryRunDialog si ce composant était jamais importé par
+          un autre wizard. Pas critique en V1 — import direct fonctionne. */}
+      {dryRunAfterCreate && (
+        <DryRunDialog
+          open={true}
+          onClose={() => {
+            setDryRunAfterCreate(null);
+            resetAndClose();
+          }}
+          ruleId={dryRunAfterCreate.ruleId}
+          ruleName={dryRunAfterCreate.ruleName}
+          domain="formation"
+        />
+      )}
     </Dialog>
   );
 }
