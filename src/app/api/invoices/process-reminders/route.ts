@@ -192,6 +192,18 @@ export async function POST(request: NextRequest) {
       const subject = applyVars(resolved.subject);
       const textBody = applyVars(resolved.body);
 
+      // em-c-9 — Construit les attachments depuis le template résolu.
+      // Pour les relances facture, si le template a `facture` dans ses
+      // attachment_doc_types, on joint un descriptor type:'facture' qui sera
+      // résolu par email-attachments-resolver vers le PDF facture (em-c-10
+      // pour la gen PDF effective — pour l'instant log warning).
+      const attachments: Array<{ type: "facture"; payload: { invoice_id: string } }> = [];
+      const docTypes = (resolved as { attachment_doc_types?: string[] | null })
+        .attachment_doc_types ?? [];
+      if (docTypes.includes("facture")) {
+        attachments.push({ type: "facture", payload: { invoice_id: invoice.id } });
+      }
+
       // H6 — la mise en file et l'incrément du compteur sont enveloppés dans
       // un try/catch PAR facture : un échec de mise en file n'incrémente PAS
       // le compteur (sinon la relance serait définitivement perdue — exclue
@@ -206,6 +218,7 @@ export async function POST(request: NextRequest) {
           session_id: invoice.session_id,
           recipient_type: invoice.recipient_type,
           recipient_id: invoice.recipient_id,
+          attachments: attachments.length > 0 ? attachments : undefined,
         });
 
         // Compteurs mis à jour APRÈS la mise en file réussie uniquement.

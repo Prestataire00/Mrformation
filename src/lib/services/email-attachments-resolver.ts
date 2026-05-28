@@ -113,6 +113,18 @@ async function resolveOne(
     };
   }
 
+  // em-c-9 — Cas spéciaux facture + devis : génération via jsPDF côté serveur
+  // (modules src/lib/invoice-pdf-export.ts + src/lib/devis-pdf.ts). Le PDF
+  // generator est synchrone côté Node mais peut planter sur certaines features
+  // (canvas pour QR codes notamment). On wrap dans try/catch large : si la gen
+  // échoue, on log un event critical et l'email part sans la PJ (fail-safe).
+  if (desc.type === "facture") {
+    return await resolveFacture(supabase, desc.payload.invoice_id);
+  }
+  if (desc.type === "devis") {
+    return await resolveDevis(supabase, desc.payload.quote_id);
+  }
+
   // Cas 3a : Override "Modèle par défaut" — si un template Word custom a été
   // marqué default_for_doc_type pour ce type, on l'utilise À LA PLACE du HTML
   // système. Bénéfice client : 1 seul changement = effet partout.
@@ -323,4 +335,59 @@ async function renderTemplateHtml(
     entityName,
     entity: entity ?? undefined,
   });
+}
+
+// ============================================================
+// em-c-9 — Scaffold facture/devis (gen PDF différée à em-c-10)
+// ============================================================
+// La chaîne est désormais BRANCHÉE (descriptor → resolver) mais la génération
+// PDF côté serveur n'est PAS encore implémentée. Le resolver retourne null
+// + log critical structuré pour que Loris/Wissam soient prévenus en prod.
+//
+// Pourquoi pas implémenté maintenant :
+//   - InvoicePdfData/DevisData ont une structure complexe (entity + session +
+//     lines + signature) qui demande un build serveur dédié
+//   - jsPDF en Node serverless est risqué (canvas, polices custom)
+//   - Vrai test prod nécessaire → mieux fait en session dédiée em-c-10
+//
+// État actuel : l'email part SANS la PJ facture/devis. Loris coche "Facture"
+// → email envoyé avec subject/body resolver, mais le PDF facture n'est pas
+// attaché. Limitation explicite documentée dans docs/emails.md.
+
+async function resolveFacture(
+  _supabase: SupabaseClient,
+  invoiceId: string,
+): Promise<ResolvedAttachment | null> {
+  console.error(
+    `[attachments-resolver] facture ${invoiceId} : génération PDF serveur non encore implémentée (em-c-10 à venir). Email part sans la PJ.`,
+  );
+  console.log(
+    JSON.stringify({
+      event: "email_attachment_facture_pending_implementation",
+      ts: new Date().toISOString(),
+      invoice_id: invoiceId,
+      level: "warn",
+      note: "em-c-10 — PDF generation côté serveur à implémenter",
+    }),
+  );
+  return null;
+}
+
+async function resolveDevis(
+  _supabase: SupabaseClient,
+  quoteId: string,
+): Promise<ResolvedAttachment | null> {
+  console.error(
+    `[attachments-resolver] devis ${quoteId} : génération PDF serveur non encore implémentée (em-c-10 à venir). Email part sans la PJ.`,
+  );
+  console.log(
+    JSON.stringify({
+      event: "email_attachment_devis_pending_implementation",
+      ts: new Date().toISOString(),
+      quote_id: quoteId,
+      level: "warn",
+      note: "em-c-10 — PDF generation côté serveur à implémenter",
+    }),
+  );
+  return null;
 }

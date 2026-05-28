@@ -268,8 +268,14 @@ npx vitest run --reporter=basic
 ## 10. Hors scope V1 (différés)
 
 - **em-c-3c** : refonte complète Dialog Édition 3-colonnes (MetaPanel + EditorPanel + PreviewPanel + UsagePopover + EditDialogContext). Le dialog actuel fonctionne avec optimistic lock via em-c-3b. Refonte = pure amélioration UX, non bloquante.
+- **em-c-10** : génération PDF serveur facture + devis. La chaîne UI → descriptor → resolver est branchée (em-c-9), mais le resolver retourne null + log critical pour `type='facture'` et `type='devis'`. Pour activer pleinement :
+  1. Implémenter `resolveFacture()` et `resolveDevis()` dans `email-attachments-resolver.ts` (gen PDF jsPDF côté Node — risque polices/canvas) OU créer endpoint API qui retourne le PDF binary
+  2. Refactor `crm/quotes/process-reminders/route.ts` pour utiliser `enqueueEmail` (au lieu de Resend direct) afin de supporter les attachments
+  3. Tests prod réels (smoke test mail de relance avec PJ facture)
+  - Events à surveiller en Netlify Logs : `email_attachment_facture_pending_implementation`, `email_attachment_devis_pending_implementation`
 - **em-f-4** : smoke test E2E Playwright. Playwright pas configuré dans le projet. Smoke check manuel par Wissam suffit pour V1.
 - **Lot E** : CRM campaigns template-driven (`crm_campaigns.template_id` FK + UI sélecteur "Utiliser un template / Saisie libre"). Différé V2 selon décision cadrage Q3.
+- **Doc_types non attachables** (skip silencieux par `buildAttachmentsForRecipient`) : `attestation_assiduite`, `cgv`, `politique_confidentialite`, `reglement_interieur`, `feuille_emargement_vierge`, `planning_hebdo_signe`. Présents dans registry HTML mais ABSENTS de `EmailAttachmentDescriptor` union (email-queue.ts). Cocher dans le UI ne génère aucun descriptor. Cleanup futur : soit retrait UI, soit extension union + handler.
 
 ---
 

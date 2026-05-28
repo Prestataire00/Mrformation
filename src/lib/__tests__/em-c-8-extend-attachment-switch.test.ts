@@ -23,7 +23,7 @@ const FAKE_LEARNER_RECIPIENT = {
 
 const FAKE_COMPANY_RECIPIENT = {
   id: "client-1",
-  type: "client" as const,
+  type: "learner" as const, // RecipientInfo n'accepte que learner|trainer ; "companies" se gère via recipientType, pas via recipient.type
   first_name: "Acme",
   last_name: "Corp",
   email: "contact@acme.fr",
@@ -91,12 +91,12 @@ describe("em-c-8 — Extension buildAttachmentsForRecipient", () => {
       });
     });
 
-    it("learner doc_type SKIP si recipient n'est pas un learner", () => {
+    it("learner doc_type SKIP si recipient n'est pas un learner (ex: trainer)", () => {
       const descriptors = buildAttachmentsForRecipient(
         ["attestation_aipr"],
         FAKE_SESSION,
-        FAKE_COMPANY_RECIPIENT,
-        "companies",
+        FAKE_TRAINER_RECIPIENT,
+        "trainers",
         {},
       );
       expect(descriptors).toHaveLength(0);
