@@ -68,11 +68,10 @@ describe("aut-a-3 — Fix B1 + B6 + B2 + mode dry-run", () => {
       );
     });
 
-    it("handleRunRule utilise console.error + toast", () => {
-      expect(tabSource).toMatch(
-        /handleRunRule[\s\S]+?catch \(err\)[\s\S]{0,200}?console\.error/,
-      );
-    });
+    // Note aut-b-3 (2026-05-28) : handleRunRule a été supprimé du composant
+    // (remplacé par handleTest qui ouvre DryRunDialog au lieu d'envoyer
+    // réellement des emails). Le test originel sur handleRunRule est
+    // donc obsolète. fetchData + handleToggle restent valides ci-dessus.
   });
 
   describe("B2 — trigger-event transmet rule_id à run-cron", () => {

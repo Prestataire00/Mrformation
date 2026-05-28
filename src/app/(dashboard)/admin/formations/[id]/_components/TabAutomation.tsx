@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
-  Zap, Loader2, CheckCircle, XCircle, Clock, Play,
+  Zap, Loader2, CheckCircle, XCircle, Clock, FlaskConical,
   Settings, ChevronDown, ExternalLink, CalendarDays,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import { formatDate } from "@/lib/utils";
 import Link from "next/link";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { AutomationTimeline } from "./AutomationTimeline";
+import { DryRunDialog } from "@/components/automation/DryRunDialog";
 import type { Session } from "@/lib/types";
 
 interface Props {
@@ -80,8 +81,9 @@ export function TabAutomation({ formation, onRefresh }: Props) {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState<string | null>(null);
-  const [testing, setTesting] = useState<string | null>(null);
   const [showLogs, setShowLogs] = useState(false);
+  // aut-b-3 : dry-run target (ouvre DryRunDialog avec sessionId du contexte)
+  const [dryRunTarget, setDryRunTarget] = useState<{ ruleId: string; ruleName: string } | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -154,28 +156,14 @@ export function TabAutomation({ formation, onRefresh }: Props) {
     setToggling(null);
   };
 
-  // Execute single rule now
-  const handleRunRule = async (ruleId: string) => {
-    setTesting(ruleId);
-    try {
-      const res = await fetch("/api/formations/automation-rules/trigger-event", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_id: formation.id, rule_id: ruleId }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        toast({ title: "Exécution lancée", description: `${data.enqueued ?? 0} email(s) en file d'envoi` });
-        await fetchData();
-      } else {
-        toast({ title: "Erreur", description: data.error, variant: "destructive" });
-      }
-    } catch (err) {
-      // aut-a-3 B6 : surface l'erreur réseau (log + toast au lieu d'avalage silencieux)
-      console.error("[TabAutomation] handleRunRule failed:", err);
-      toast({ title: "Erreur réseau", variant: "destructive" });
-    }
-    setTesting(null);
+  // aut-b-3 : Tester une règle sans envoyer (DryRunDialog UX-DR-AUT-2)
+  // Remplace l'ancien handleRunRule qui pingait trigger-event en mode execute
+  // (= envoyait réellement des emails de test → trompeur, supprimé).
+  const handleTest = (rule: AutoRule) => {
+    setDryRunTarget({
+      ruleId: rule.id,
+      ruleName: rule.name || TRIGGER_LABELS[rule.trigger_type] || rule.trigger_type,
+    });
   };
 
   if (loading) {
@@ -210,9 +198,14 @@ export function TabAutomation({ formation, onRefresh }: Props) {
             </p>
           </div>
         </div>
-        <Link href="/admin/trainings/automation">
-          <Button variant="outline" size="sm" className="text-xs gap-1.5">
-            <Settings className="h-3.5 w-3.5" /> Règles globales
+        <Link href="/admin/automation?tab=rules">
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-xs gap-1.5"
+            aria-label="Configurer les règles globales d'automatisation (lien profond /admin/automation)"
+          >
+            <Settings className="h-3.5 w-3.5" /> Configurer les règles globales
             <ExternalLink className="h-3 w-3" />
           </Button>
         </Link>
@@ -223,8 +216,8 @@ export function TabAutomation({ formation, onRefresh }: Props) {
         <div className="text-center py-8 border border-dashed rounded-lg">
           <Zap className="h-8 w-8 text-gray-300 mx-auto mb-2" />
           <p className="text-sm text-muted-foreground">Aucune règle d&apos;automatisation configurée</p>
-          <Link href="/admin/trainings/automation">
-            <Button variant="outline" size="sm" className="mt-3 text-xs">Configurer les règles</Button>
+          <Link href="/admin/automation?tab=rules">
+            <Button variant="outline" size="sm" className="mt-3 text-xs">Configurer les règles globales</Button>
           </Link>
         </div>
       ) : (
@@ -255,16 +248,19 @@ export function TabAutomation({ formation, onRefresh }: Props) {
                       size="sm"
                       variant="ghost"
                       className="h-7 text-xs gap-1"
-                      onClick={() => handleRunRule(rule.id)}
-                      disabled={testing === rule.id || !enabled}
+                      onClick={() => handleTest(rule)}
+                      disabled={!enabled}
+                      aria-label={`Tester sans envoyer la règle ${rule.name || rule.trigger_type}`}
+                      title="Tester sans envoyer (aperçu sans effet)"
                     >
-                      {testing === rule.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
-                      Exécuter
+                      <FlaskConical className="h-3 w-3" />
+                      Tester sans envoyer
                     </Button>
                     <Switch
                       checked={enabled}
                       onCheckedChange={(v) => handleToggle(rule.id, v)}
                       disabled={toggling === rule.id}
+                      aria-label={`${enabled ? "Désactiver" : "Réactiver"} pour cette session : ${rule.name || rule.trigger_type}`}
                     />
                   </div>
                 </div>
@@ -311,6 +307,19 @@ export function TabAutomation({ formation, onRefresh }: Props) {
 
     </div>
       </TabsContent>
+
+      {/* aut-b-3 : DryRunDialog (b-1) — ouvert via bouton "Tester sans envoyer".
+          sessionId={formation.id} → le dry-run est ciblé sur CETTE session. */}
+      {dryRunTarget && (
+        <DryRunDialog
+          open={true}
+          onClose={() => setDryRunTarget(null)}
+          ruleId={dryRunTarget.ruleId}
+          ruleName={dryRunTarget.ruleName}
+          domain="formation"
+          sessionId={formation.id}
+        />
+      )}
     </Tabs>
   );
 }

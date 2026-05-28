@@ -76,7 +76,7 @@ development_status:
   automatisations-epic-b: backlog
   aut-b-1-dry-run-dialog-universel: done                    # ✅ Cette PR — composant pivot UI (Dialog max-w-4xl + bannière indélébile + 3 onglets + empty states)
   aut-b-2-ui-admin-automation-enrichie: done                # ✅ Cette PR — DomainToggle + NextRunBadge + RuleAuditSheet + DryRunDialog intégré + a11y aria-label partout
-  aut-b-3-refonte-tab-automation: backlog                   # P1, dépend b-1 + a-3 (+ mitigation DoD #2 a11y)
+  aut-b-3-refonte-tab-automation: done                      # ✅ Cette PR — "Exécuter" trompeur supprimé, "Tester sans envoyer" + DryRunDialog avec sessionId, liens profonds /admin/automation?tab=rules, a11y aria-label
   aut-b-4-rule-wizard-etape-5-enrichi: backlog              # P2, dépend b-1 + a-6
   automatisations-epic-b-retrospective: optional
 
