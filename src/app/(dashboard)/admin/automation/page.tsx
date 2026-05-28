@@ -14,9 +14,15 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/components/ui/use-toast";
 import {
   Loader2, Zap, Plus, Search, Package, CheckCircle, Clock, Trash2,
+  FlaskConical, History,
 } from "lucide-react";
 import { RuleWizard } from "@/components/automation/RuleWizard";
 import { QuickStartPacks } from "@/components/automation/QuickStartPacks";
+import { DryRunDialog } from "@/components/automation/DryRunDialog";
+import { DomainToggle } from "@/components/automation/DomainToggle";
+import { NextRunBadge } from "@/components/automation/NextRunBadge";
+import { RuleAuditSheet } from "@/components/automation/RuleAuditSheet";
+import { useNextRuns } from "@/components/automation/useNextRuns";
 import { TRIGGER_LABELS } from "@/lib/automation/compute-events";
 
 interface Rule {
@@ -31,6 +37,17 @@ interface Rule {
   created_at?: string;
 }
 
+type DryRunTarget = {
+  ruleId: string;
+  ruleName: string;
+  sessionId?: string;
+};
+
+type AuditTarget = {
+  ruleId: string;
+  ruleName: string;
+};
+
 export default function AutomationPage() {
   const { toast } = useToast();
   const supabase = createClient();
@@ -42,6 +59,13 @@ export default function AutomationPage() {
   const [loading, setLoading] = useState(true);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [search, setSearch] = useState("");
+
+  // aut-b-2 : dry-run + audit sheet
+  const [dryRunTarget, setDryRunTarget] = useState<DryRunTarget | null>(null);
+  const [auditTarget, setAuditTarget] = useState<AuditTarget | null>(null);
+
+  // aut-b-2 : ▶ Prochain déclenchement (batch-loader aut-a-6)
+  const { data: nextRuns } = useNextRuns(entity?.id);
 
   const fetchRules = useCallback(async () => {
     if (!entity?.id) return;
@@ -88,6 +112,31 @@ export default function AutomationPage() {
     }
   };
 
+  // aut-b-2 : ouvre DryRunDialog avec contexte rule
+  // Note: pour les règles formations, on a besoin d'un session_id. V1 simplifié :
+  // on ne propose le dry-run que pour rule isolée sans session contexte (le test
+  // dry-run vit dans TabAutomation par-session pour b-3). Ici la version sans
+  // session = sera supportée en story B.1 future. Pour V1 b-2, on désactive le
+  // bouton si pas de session pertinente — alternative : appeler dry-run avec
+  // sessionId="" et le backend retourne 0 recipients (acceptable).
+  const handleTest = (rule: Rule) => {
+    // V1 : dry-run par rule sans session_id (le backend retournera 0 recipients
+    // si la rule nécessite une session — Loris peut tester depuis TabAutomation
+    // par-session pour avoir des données réelles).
+    setDryRunTarget({
+      ruleId: rule.id,
+      ruleName: rule.name || TRIGGER_LABELS[rule.trigger_type] || rule.trigger_type,
+      sessionId: undefined,
+    });
+  };
+
+  const handleViewAudit = (rule: Rule) => {
+    setAuditTarget({
+      ruleId: rule.id,
+      ruleName: rule.name || TRIGGER_LABELS[rule.trigger_type] || rule.trigger_type,
+    });
+  };
+
   const allRules = formationRules;
   const existingRuleNames = allRules.map(r => r.name || "").filter(Boolean);
 
@@ -108,16 +157,18 @@ export default function AutomationPage() {
     const offsetLabel = offset > 0
       ? rule.trigger_type.includes("minus") ? `J-${offset}` : `J+${offset}`
       : "";
+    const nextRunInfo = nextRuns.get(rule.id);
 
     return (
-      <div key={rule.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 transition-colors">
-        <div className="flex items-center gap-3 flex-1 min-w-0">
+      <div key={rule.id} className="flex items-start justify-between p-3 border rounded-lg hover:bg-gray-50 transition-colors gap-3">
+        <div className="flex items-start gap-3 flex-1 min-w-0">
           <Switch
             checked={rule.is_enabled}
             onCheckedChange={() => handleToggle(rule)}
+            aria-label={`Activer/désactiver la règle ${rule.name || triggerLabel}`}
           />
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
+          <div className="flex-1 min-w-0 space-y-1">
+            <div className="flex items-center gap-2 flex-wrap">
               <p className={cn("text-sm font-medium truncate", !rule.is_enabled && "text-muted-foreground line-through")}>
                 {rule.name || triggerLabel}
               </p>
@@ -131,11 +182,45 @@ export default function AutomationPage() {
             <p className="text-xs text-muted-foreground truncate">
               {triggerLabel} — {rule.recipient_type} — {rule.document_type || "email"}
             </p>
+            {/* aut-b-2 : ▶ Prochain déclenchement en langage naturel */}
+            <NextRunBadge info={nextRunInfo} />
           </div>
         </div>
-        <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-700 shrink-0" onClick={() => handleDelete(rule)}>
-          <Trash2 className="h-3.5 w-3.5" />
-        </Button>
+        <div className="flex items-center gap-1 shrink-0">
+          {/* aut-b-2 : bouton "🧪 Tester sans envoyer" (UX-DR-AUT-2 libellé exact) */}
+          <Button
+            size="sm"
+            variant="ghost"
+            className="text-xs gap-1.5 h-8"
+            onClick={() => handleTest(rule)}
+            aria-label={`Tester la règle ${rule.name || triggerLabel} sans envoyer`}
+            title="Tester sans envoyer"
+          >
+            <FlaskConical className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Tester sans envoyer</span>
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="text-xs gap-1.5 h-8"
+            onClick={() => handleViewAudit(rule)}
+            aria-label={`Voir l'audit de la règle ${rule.name || triggerLabel}`}
+            title="Voir l'audit"
+          >
+            <History className="h-3.5 w-3.5" />
+            <span className="hidden md:inline">Audit</span>
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="text-red-500 hover:text-red-700 h-8"
+            onClick={() => handleDelete(rule)}
+            aria-label={`Supprimer la règle ${rule.name || triggerLabel}`}
+            title="Supprimer"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </div>
     );
   };
@@ -143,7 +228,7 @@ export default function AutomationPage() {
   return (
     <div className="p-6 space-y-6 max-w-5xl mx-auto">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
           <Zap className="h-5 w-5 text-amber-500" />
           <div>
@@ -158,13 +243,19 @@ export default function AutomationPage() {
             const el = document.getElementById("packs-section");
             el?.scrollIntoView({ behavior: "smooth" });
           }}>
-            <Package className="h-3.5 w-3.5" /> Ajouter un pack
+            <Package className="h-3.5 w-3.5" /> Ajouter un modèle
           </Button>
           <Button size="sm" className="gap-1.5 text-xs" onClick={() => setWizardOpen(true)}>
             <Plus className="h-3.5 w-3.5" /> Nouvelle règle
           </Button>
         </div>
       </div>
+
+      {/* aut-b-2 : Toggle 2 univers Formations/CRM (UX-DR-AUT-4) */}
+      <DomainToggle
+        activeDomain="formation"
+        formationsActiveCount={activeCount}
+      />
 
       {/* Quick stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -210,13 +301,14 @@ export default function AutomationPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-9 h-9 text-sm"
+              aria-label="Rechercher dans les règles d'automatisation"
             />
           </div>
           {filteredRules.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Zap className="h-8 w-8 mx-auto text-gray-300 mb-3" />
               <p className="text-sm">Aucune règle configurée</p>
-              <p className="text-xs mt-1">Activez un pack ou créez votre première règle</p>
+              <p className="text-xs mt-1">Activez un modèle ou créez votre première règle</p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -241,6 +333,28 @@ export default function AutomationPage() {
         onCreated={fetchRules}
         entityId={entity?.id || ""}
       />
+
+      {/* aut-b-2 : DryRunDialog (B.1) — ouvert via bouton "Tester sans envoyer" */}
+      {dryRunTarget && (
+        <DryRunDialog
+          open={true}
+          onClose={() => setDryRunTarget(null)}
+          ruleId={dryRunTarget.ruleId}
+          ruleName={dryRunTarget.ruleName}
+          domain="formation"
+          sessionId={dryRunTarget.sessionId}
+        />
+      )}
+
+      {/* aut-b-2 : RuleAuditSheet — ouvert via bouton "Audit" */}
+      {auditTarget && (
+        <RuleAuditSheet
+          open={true}
+          onClose={() => setAuditTarget(null)}
+          ruleId={auditTarget.ruleId}
+          ruleName={auditTarget.ruleName}
+        />
+      )}
     </div>
   );
 }
