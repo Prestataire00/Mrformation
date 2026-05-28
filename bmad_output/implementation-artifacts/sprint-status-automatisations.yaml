@@ -1,0 +1,269 @@
+# generated: 2026-05-28
+# last_updated: 2026-05-28 (création initiale post-readiness-check, score 29/30, 0 blocker)
+# project: lms-platform
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: /Users/wissam/Desktop/lms-platform/bmad_output/implementation-artifacts
+# module: automatisations
+# scope: Refonte big bang module Automatisations (Lots A-F cadrage Mary 2026-05-28)
+# epics_source: bmad_output/planning-artifacts/epics-automatisations.md
+#
+# Note de convention :
+# Ce fichier est SÉPARÉ de :
+# - bmad_output/implementation-artifacts/sprint-status.yaml (couvre le module Documents + portail apprenant + admin/PDFs)
+# - bmad_output/implementation-artifacts/sprint-status-emails.yaml (couvre le module Emails)
+# Les letters A-F sont réutilisées localement pour ce module (cohérence avec le cadrage).
+# Préfixe `aut-` ajouté aux clés de stories pour éviter toute collision si fusion future.
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working
+#   - review: Ready for code review
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Persona dev : Wissam solo, ~1-2 j-h/jour de capacité (pas full-time)
+# - Calendaire estimé : ~3-4 semaines réelles
+# - 23 stories, ~21.25 j-h cumulés (architecture 18 j + 3.25 j buffer review/debug = 18%)
+# - Priorités : P0 (sécurité bloquante + valeur immédiate = aut-a-1 + aut-a-2) / P1 (core feature) / P2 (UX raffiné + hygiène)
+# - **PAS de feature flags** pour ce module (CD-AUT-2 architecture) — vs emails qui en avait 5
+# - 4 mitigations DoD readiness à intégrer au fil de l'eau :
+#   #1 (E.2) optimistic locking + confirmation forte execution_count≥10 → FR-AUT-75+76
+#   #2 (B.2/B.3/C.1/C.3) vérification a11y WCAG AA dans DoD
+#   #3 (A.3/C.4/F.1) référence explicite Patterns 6/7/8
+#   #4 (epics ligne 47) coquille cosmétique "pack dédup" → "modèle dédup"
+
+generated: 2026-05-28
+last_updated: 2026-05-28
+project: lms-platform
+project_key: NOKEY
+tracking_system: file-system
+story_location: /Users/wissam/Desktop/lms-platform/bmad_output/implementation-artifacts
+module: automatisations
+
+development_status:
+  # ── Epic A : Infrastructure (planificateur + bugs fix + migration data + routes API) ──
+  # 6 stories | 5.5 j-h | P0-P1
+  # aut-a-1 + aut-a-2 = HOTFIX RLS + SCHEDULED FUNCTION = 2 P0 STANDALONE, shippables EN PREMIER
+  # aut-a-5 = story de tête P1 (bloque c-1, c-4, d-1, d-2 — table crm_automation_logs + CHECK)
+  # aut-a-6 = bloque b-1 (routes API dry-run requises)
+  automatisations-epic-a: in-progress
+  aut-a-1-hotfix-rls-session-automation-logs: done          # ✅ PR #171 + hotfix #172 (2026-05-28)
+  aut-a-2-scheduled-function-netlify: done                  # ✅ PR #173 (2026-05-28) — pingue CRM + log structuré
+  aut-a-3-fix-bugs-b1-b6-b2-mode-dry-run: backlog           # P1, bloque a-6
+  aut-a-4-suppression-actions-stub-b3-code-mort: done       # ✅ Code mort + boutons stub déjà supprimés par commits antérieurs ; PR test guardrail anti-régression cette PR
+  aut-a-5-migration-data-crm-logs-check-restreint: backlog  # P1, bloque c-1, c-4, d-1, d-2
+  aut-a-6-routes-api-dry-run-next-runs-eligible: backlog    # P1, dépend a-3, bloque b-1
+  automatisations-epic-a-retrospective: optional
+
+  # ── Epic B : UI Formations refonte (DryRunDialog + /admin/automation + TabAutomation) ──
+  # 4 stories | 5.5 j-h | P1-P2
+  # aut-b-1 = story de tête P1 frontend (bloque b-2, b-3, b-4, c-3)
+  # Toutes les stories UI incluent mitigation DoD #2 : vérification a11y WCAG AA
+  automatisations-epic-b: backlog
+  aut-b-1-dry-run-dialog-universel: backlog                 # P1, dépend a-6, bloque b-2/b-3/b-4/c-3
+  aut-b-2-ui-admin-automation-enrichie: backlog             # P1, dépend b-1 + a-6 (+ mitigation DoD #2 a11y)
+  aut-b-3-refonte-tab-automation: backlog                   # P1, dépend b-1 + a-3 (+ mitigation DoD #2 a11y)
+  aut-b-4-rule-wizard-etape-5-enrichi: backlog              # P2, dépend b-1 + a-6
+  automatisations-epic-b-retrospective: optional
+
+  # ── Epic C : UI CRM parité (CrmRuleWizard + Templates + page + logs) ──
+  # 5 stories | 6 j-h | P1-P2
+  # c-1 → c-2 → c-3 séquentiels (CrmRuleWizard utilisé par les autres)
+  # c-4 indépendante de c-1/c-2/c-3 (intégration logs dans moteur)
+  # Mitigations DoD #2 (a11y) sur c-1 et c-3
+  automatisations-epic-c: backlog
+  aut-c-1-crm-rule-wizard-5-etapes-4-subforms: backlog      # P1, dépend a-5 + b-1 (+ mitigation DoD #2 a11y + DoD #3 Pattern 3)
+  aut-c-2-crm-rule-templates-4-modeles: backlog             # P2, dépend c-1
+  aut-c-3-page-crm-automations-refondue: backlog            # P1, dépend c-1 + c-2 + b-1 (+ mitigation DoD #2 a11y)
+  aut-c-4-integration-crm-automation-logs-moteur: backlog   # P1, dépend a-5 (+ mitigation DoD #3 Pattern 6+7)
+  aut-c-5-eligible-targets-dry-run-update-scores: backlog   # P2, dépend c-1 + b-1
+  automatisations-epic-c-retrospective: optional
+
+  # ── Epic D : Triggers V1 manquants (on_enrollment + certificate_ready) ──
+  # 2 stories | 1.5 j-h | P1
+  # Parallélisables entre elles, dépendent de a-5 (CHECK restreint accepte les 7 valeurs V1)
+  automatisations-epic-d: backlog
+  aut-d-1-trigger-on-enrollment: backlog                    # P1, dépend a-5
+  aut-d-2-trigger-certificate-ready: backlog                # P1, dépend a-5 (+ ADR triggers V2 dans docs/automatisations.md)
+  automatisations-epic-d-retrospective: optional
+
+  # ── Epic E : Cleanup dette (renommages + any + override + bannière cron) ──
+  # 3 stories | 2 j-h | P2
+  # e-1 + e-2 derniers (touchent imports cross-modules)
+  # e-3 indépendante, peut commencer après a-2
+  # Mitigation DoD #1 dans e-2 : optimistic locking + confirmation forte execution_count≥10
+  automatisations-epic-e: backlog
+  aut-e-1-renommages-cross-system: backlog                  # P2, dépend tout (touche imports — audit git grep préalable)
+  aut-e-2-any-override-unifie-last-executed: backlog        # P2, dépend b-3 (+ mitigation DoD #1 FR-AUT-75+76)
+  aut-e-3-banniere-ui-cron-down: backlog                    # P2, dépend a-2 (détection > 25h)
+  automatisations-epic-e-retrospective: optional
+
+  # ── Epic F : Tests + docs + smoke (continu cross-cut) ──
+  # 3 stories | 2.25 j-h | P2
+  # F = cross-cutting, peut commencer dès Epic A
+  # Mitigation DoD #3 dans f-1 : Pattern 8 référencé
+  automatisations-epic-f: backlog
+  aut-f-1-tests-vitest-compute-events-crm-guardrails: backlog  # P2, dépend toutes les stories core implémentées (+ DoD #3 Pattern 8)
+  aut-f-2-documentation-docs-automatisations-md: backlog       # P2, dépend a-2 + a-5 + a-6
+  aut-f-3-smoke-test-prod-manuel: backlog                       # P2, dépend epic A+B+C complets
+  automatisations-epic-f-retrospective: optional
+
+# ──────────────────────────────────────────────────────────────────────────
+# SPRINT PLAN STRUCTURÉ (séquencement architecture Winston §Decision Impact Analysis)
+# ──────────────────────────────────────────────────────────────────────────
+#
+# Calendaire cible : 3-4 semaines réelles | Capacité Wissam : 1-2 j-h/jour
+#
+# Wave 1 — Sécurité P0 + Valeur immédiate (immédiat, démarre dès maintenant)
+#   - aut-a-1-hotfix-rls-session-automation-logs : PR hotfix standalone, mergeable en < 1h
+#     ↳ déployable AVANT tout le reste, fix B7 (INSERT WITH CHECK true sur logs)
+#   - aut-a-2-scheduled-function-netlify : PR standalone, débloque B4+B5
+#     ↳ shippable en parallèle de a-1, débloque la valeur métier immédiate (cron tourne enfin)
+#
+# Wave 2 — Stories indépendantes infra (semaine 1, après a-2 mergé)
+#   - aut-a-3-fix-bugs-b1-b6-b2-mode-dry-run (1.5 j, indépendante)
+#     ↳ résout B1 (is_active→is_enabled) + B6 (catch toast) + B2 (trigger-event rule_id + mode dry-run)
+#   - aut-a-4-suppression-actions-stub-b3-code-mort (0.5 j, indépendante)
+#     ↳ résout B3 (suppression 3 boutons) + B8 + D1 (suppression run.ts + automation-trigger)
+#   - aut-a-5-migration-data-crm-logs-check-restreint (1.5 j, indépendante)
+#     ↳ CREATE crm_automation_logs + ALTER 3 colonnes + DROP document_types[] + CHECK restreint 7 valeurs
+#   - aut-f-2-documentation-docs-automatisations-md (0.5 j, démarrable, MAJ au fil)
+#
+# Wave 3 — Routes API dry-run (semaine 1-2, après a-3 mergé)
+#   - aut-a-6-routes-api-dry-run-next-runs-eligible (1 j, dépend a-3)
+#     ↳ 4 routes : /api/automation/dry-run + /api/crm/automations/dry-run + /api/automation/next-runs + /api/crm/automations/eligible-targets
+#     ↳ + cache module-level 5min next_run_at + fonction pure naturalLanguageNextRun
+#
+# Wave 4 — DryRunDialog universel (semaine 2, après a-6 mergé)
+#   - aut-b-1-dry-run-dialog-universel (2 j, dépend a-6)
+#     ↳ Composant partagé Formations + CRM via discriminator domain (CD-AUT-5)
+#     ↳ Bannière jaune indélébile "Aucun email envoyé. Mode aperçu." + 3 onglets
+#
+# Wave 5 — UI Formations refonte (semaine 2-3, parallèles après b-1 mergé)
+#   - aut-b-2-ui-admin-automation-enrichie (2 j, dépend b-1 + a-6)
+#     ↳ + mitigation DoD #2 vérification a11y WCAG AA
+#   - aut-b-3-refonte-tab-automation (1 j, dépend b-1 + a-3 + a-4)
+#     ↳ + mitigation DoD #2 vérification a11y WCAG AA
+#   - aut-b-4-rule-wizard-etape-5-enrichi (0.5 j, dépend b-1 + a-6)
+#
+# Wave 6 — UI CRM parité (semaine 3, séquentiel c-1→c-2→c-3)
+#   - aut-c-1-crm-rule-wizard-5-etapes-4-subforms (2.5 j, dépend a-5 + b-1)
+#     ↳ + mitigation DoD #2 a11y + DoD #3 Pattern 3 (Zod discriminated union)
+#   - aut-c-2-crm-rule-templates-4-modeles (0.5 j, dépend c-1)
+#   - aut-c-3-page-crm-automations-refondue (1.5 j, dépend c-1 + c-2 + b-1)
+#     ↳ + mitigation DoD #2 a11y
+#
+# Wave 7 — Triggers V1 + Logs CRM moteur (semaine 3, parallèles après a-5/c-1)
+#   - aut-c-4-integration-crm-automation-logs-moteur (1 j, dépend a-5)
+#     ↳ + mitigation DoD #3 Pattern 6 (logs) + Pattern 7 (try/catch par règle)
+#   - aut-c-5-eligible-targets-dry-run-update-scores (0.5 j, dépend c-1 + b-1)
+#   - aut-d-1-trigger-on-enrollment (0.75 j, dépend a-5, parallèle)
+#   - aut-d-2-trigger-certificate-ready (0.75 j, dépend a-5, parallèle)
+#     ↳ + ADR triggers V2 différés dans docs/automatisations.md
+#   - aut-e-3-banniere-ui-cron-down (0.5 j, dépend a-2, parallèle)
+#
+# Wave 8 — Cleanup dette (semaine 4, après tout le reste)
+#   - aut-e-2-any-override-unifie-last-executed (0.75 j, dépend b-3)
+#     ↳ + mitigation DoD #1 optimistic locking + confirmation forte execution_count≥10 (FR-AUT-75+76)
+#   - aut-e-1-renommages-cross-system (0.75 j, dépend tout)
+#     ↳ QuickStartPacks → FormationRuleTemplates + AUTOMATION_PACKS → FORMATION_RULE_TEMPLATES + default-packs.ts → formation-rule-templates.ts
+#     ↳ Audit `git grep -l "QuickStartPacks|AUTOMATION_PACKS|default-packs"` préalable obligatoire
+#
+# Wave 9 — Tests + docs final (semaine 4, après stabilisation)
+#   - aut-f-1-tests-vitest-compute-events-crm-guardrails (1.5 j, après stories core)
+#     ↳ + mitigation DoD #3 Pattern 8 (Tests Vitest cibles)
+#     ↳ Baseline 817 → cible 850+ tests passants
+#   - aut-f-3-smoke-test-prod-manuel (0.25 j, après Wave 6-8 stabilisées)
+#     ↳ Procédure 10 étapes documentée dans docs/automatisations.md
+#
+# ──────────────────────────────────────────────────────────────────────────
+# OPEN QUESTIONS WINSTON (à trancher en début de story concernée)
+# ──────────────────────────────────────────────────────────────────────────
+#
+# 1. (aut-a-1) Helper RLS `auth.user_role()` vs `public.user_role()` ?
+#    → Le schéma actuel utilise `auth.user_role()` (cf. supabase/schema.sql:505)
+#    → Vérifier en début de a-1, assumer auth.* par défaut
+#
+# 2. (aut-a-2) Cron pattern `0 6 * * *` ou autre horaire ?
+#    → 6h UTC = 7h-8h Paris selon DST
+#    → Tranché par défaut, à confirmer avec Wissam en début de a-2
+#
+# 3. (aut-a-5) Convention path migrations ?
+#    → `supabase/migrations/` confirmée (CLI Supabase) + format `2026_05_29_automations_module_v1.sql`
+#    → Tranchée en début de a-5
+#
+# 4. (aut-a-6) Route `/api/crm/automations/eligible-targets` GET vs POST ?
+#    → POST recommandé (body conditions JSON peut être volumineux)
+#    → Tranchée par défaut, à confirmer en début de a-6
+#
+# 5. (aut-c-1) Schema Zod versioning JSONB `config` côté DB ou app-side ?
+#    → Validation Server Action only recommandée (rester flexible, version: 1 dans le config)
+#    → Tranchée en début de c-1
+#
+# 6. (aut-e-1) Renommage QuickStartPacks → FormationRuleTemplates casse autres modules ?
+#    → Audit `git grep -l "QuickStartPacks|AUTOMATION_PACKS|default-packs"` obligatoire
+#    → En début de e-1, documenter résultat audit dans la PR
+#
+# 7. (aut-f-1) `logEvent()` API wrapper existe ?
+#    → Vérifier via grep — utilisé par modules emails/documents — devrait exister
+#    → Tranchée en début de f-1
+#
+# 8. (aut-f-3) Test E2E Playwright ou smoke check manuel ?
+#    → Smoke manuel par défaut (Playwright non configuré dans le projet)
+#    → Tranchée pour V1, Playwright différé V1.5
+#
+# ──────────────────────────────────────────────────────────────────────────
+# MITIGATIONS DOD READINESS (à intégrer au fil de l'eau dans les stories concernées)
+# ──────────────────────────────────────────────────────────────────────────
+#
+# #1 — Story aut-e-2 : ajouter à la DoD
+#    - "Optimistic locking sur Server Actions `saveFormationRule` et `saveCrmRule` (compare `updated_at`)"
+#    - "Server Action `deleteRule` exige `confirmText='supprimer'` si `execution_count >= 10`"
+#    → Couvre FR-AUT-75 + FR-AUT-76 (edge cases ambigus dans range)
+#
+# #2 — Stories aut-b-2, aut-b-3, aut-c-1, aut-c-3 : ajouter à la DoD
+#    - "Vérification a11y (contraste WCAG AA, ARIA labels, keyboard nav, focus visible, prefers-reduced-motion)"
+#    → Couvre NFR-AUT-A11Y-1 à 5
+#
+# #3 — Notes techniques à enrichir :
+#    - aut-a-3 : référence "Pattern 7 (try/catch par règle, cf. architecture §Pattern 7)"
+#    - aut-c-4 : références "Pattern 6 (Logs structurés 10 events) + Pattern 7 (try/catch)"
+#    - aut-f-1 : référence "Pattern 8 (Tests Vitest cibles)"
+#
+# #4 — Coquille cosmétique (à corriger dans epics-automatisations.md ligne 47) :
+#    - "pack dédup" → "modèle dédup" dans la FR Coverage Map
+#
+# ──────────────────────────────────────────────────────────────────────────
+# RÉCAP STORIES — DAG sequencement + estimation cumulative
+# ──────────────────────────────────────────────────────────────────────────
+#
+# Wave 1 (immédiat)        : a-1 (0.5j) + a-2 (0.5j) = 1 j-h
+# Wave 2 (semaine 1)       : a-3 (1.5) + a-4 (0.5) + a-5 (1.5) + f-2 (0.5) = 4 j-h
+# Wave 3 (sem. 1-2)        : a-6 (1) = 1 j-h
+# Wave 4 (sem. 2)          : b-1 (2) = 2 j-h
+# Wave 5 (sem. 2-3)        : b-2 (2) + b-3 (1) + b-4 (0.5) = 3.5 j-h
+# Wave 6 (sem. 3)          : c-1 (2.5) + c-2 (0.5) + c-3 (1.5) = 4.5 j-h
+# Wave 7 (sem. 3)          : c-4 (1) + c-5 (0.5) + d-1 (0.75) + d-2 (0.75) + e-3 (0.5) = 3.5 j-h
+# Wave 8 (sem. 4)          : e-2 (0.75) + e-1 (0.75) = 1.5 j-h
+# Wave 9 (sem. 4)          : f-1 (1.5) + f-3 (0.25) = 1.75 j-h
+# ───────────────────────────────────────────────────────────────
+# TOTAL                    : 23 stories | ~22.75 j-h (vs 21.25 epics + buffer 7%)
+# Calendaire Wissam solo   : 3-4 semaines réelles (1-2 j-h/jour)
+#
+# ──────────────────────────────────────────────────────────────────────────
+# FIN DU SPRINT PLAN MODULE AUTOMATISATIONS
+# ──────────────────────────────────────────────────────────────────────────
