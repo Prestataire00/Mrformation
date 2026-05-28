@@ -110,7 +110,9 @@ export function TabAutomation({ formation, onRefresh }: Props) {
       setRules((rulesData as AutoRule[]) || []);
       setOverrides((overridesData as Override[]) || []);
       setLogs((logsData as LogEntry[]) || []);
-    } catch {
+    } catch (err) {
+      // aut-a-3 B6 : surface l'erreur au lieu de l'avaler silencieusement
+      console.error("[TabAutomation] fetchData failed:", err);
       toast({ title: "Erreur de chargement des automatisations", variant: "destructive" });
     }
     setLoading(false);
@@ -144,8 +146,10 @@ export function TabAutomation({ formation, onRefresh }: Props) {
         );
       if (error) throw error;
       await fetchData();
-    } catch {
-      toast({ title: "Erreur", variant: "destructive" });
+    } catch (err) {
+      // aut-a-3 B6 : surface l'erreur (log + toast au lieu d'avalage silencieux)
+      console.error("[TabAutomation] handleToggle failed:", err);
+      toast({ title: "Erreur lors de la bascule de la règle", variant: "destructive" });
     }
     setToggling(null);
   };
@@ -166,7 +170,9 @@ export function TabAutomation({ formation, onRefresh }: Props) {
       } else {
         toast({ title: "Erreur", description: data.error, variant: "destructive" });
       }
-    } catch {
+    } catch (err) {
+      // aut-a-3 B6 : surface l'erreur réseau (log + toast au lieu d'avalage silencieux)
+      console.error("[TabAutomation] handleRunRule failed:", err);
       toast({ title: "Erreur réseau", variant: "destructive" });
     }
     setTesting(null);
