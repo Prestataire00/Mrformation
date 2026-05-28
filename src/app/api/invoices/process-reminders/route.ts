@@ -1,9 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { enqueueEmail } from "@/lib/services/email-queue";
+import { resolveEmailTemplate } from "@/lib/services/email-template-resolver";
 
 // Note : ce cron enqueue les relances via la queue email (status='pending').
 // Le worker /api/emails/process-scheduled gère l'envoi avec retry.
+//
+// Story em-b-1 — Migration vers email-template-resolver via feature flag :
+//   - USE_TEMPLATE_RESOLVER_INVOICES=true  → resolver (key = reminder_invoice_*)
+//   - USE_TEMPLATE_RESOLVER_INVOICES=false → comportement legacy ci-dessous
+//                                            (DB par `type` + fallback REMINDER_TEMPLATES)
+// La constante REMINDER_TEMPLATES + le lookup par `type` sont conservés
+// jusqu'à em-b-6 cleanup (T+7 jours stabilité prod en flag ON).
+const USE_RESOLVER = process.env.USE_TEMPLATE_RESOLVER_INVOICES === "true";
 
 function createServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -173,18 +182,8 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      // Build email — check DB template first, fallback to hardcoded
+      // Build email — em-b-1 : resolver (flag ON) ou legacy (flag OFF)
       const sessionTitle = sessionMap[invoice.session_id] || "Formation";
-
-      let subject: string;
-      let textBody: string;
-
-      const { data: dbTemplate } = await supabase
-        .from("email_templates")
-        .select("subject, body")
-        .eq("entity_id", invoice.entity_id)
-        .eq("type", reminderTemplateKey)
-        .maybeSingle();
 
       const templateVars: Record<string, string> = {
         "{{reference}}": invoice.reference,
@@ -194,25 +193,57 @@ export async function POST(request: NextRequest) {
         "{{date_echeance}}": formatDate(invoice.due_date),
       };
 
-      if (dbTemplate?.subject && dbTemplate?.body) {
-        subject = dbTemplate.subject;
-        textBody = dbTemplate.body;
-        // Replace variables
-        for (const [key, val] of Object.entries(templateVars)) {
-          subject = subject.replaceAll(key, val);
-          textBody = textBody.replaceAll(key, val);
+      const applyVars = (s: string) => {
+        let out = s;
+        for (const [k, v] of Object.entries(templateVars)) out = out.replaceAll(k, v);
+        return out;
+      };
+
+      let subject: string;
+      let textBody: string;
+
+      if (USE_RESOLVER) {
+        // ── Path em-b-1 : resolver unifié (lookup par key) ──
+        const resolved = await resolveEmailTemplate(
+          supabase,
+          reminderTemplateKey,
+          invoice.entity_id,
+        );
+        if (!resolved) {
+          // Le resolver a déjà loggé email_template_missing en level error.
+          // On skip cette relance : ne pas incrémenter reminder_count pour
+          // qu'un re-run après seed la traite (cohérent avec le comportement
+          // try/catch des autres erreurs ci-dessous).
+          errors.push(
+            `${invoice.reference}: template ${reminderTemplateKey} introuvable pour entité ${invoice.entity_id}`,
+          );
+          continue;
         }
+        subject = applyVars(resolved.subject);
+        textBody = applyVars(resolved.body);
       } else {
-        // Fallback to hardcoded
-        const fallback = REMINDER_TEMPLATES[reminderType];
-        subject = fallback.subject(invoice.reference);
-        textBody = fallback.body({
-          reference: invoice.reference,
-          montant: formatCurrency(Number(invoice.amount)),
-          entreprise: invoice.recipient_name,
-          formation: sessionTitle,
-          dateEcheance: formatDate(invoice.due_date),
-        });
+        // ── Path legacy (sera supprimé en em-b-6 cleanup) ──
+        const { data: dbTemplate } = await supabase
+          .from("email_templates")
+          .select("subject, body")
+          .eq("entity_id", invoice.entity_id)
+          .eq("type", reminderTemplateKey)
+          .maybeSingle();
+
+        if (dbTemplate?.subject && dbTemplate?.body) {
+          subject = applyVars(dbTemplate.subject);
+          textBody = applyVars(dbTemplate.body);
+        } else {
+          const fallback = REMINDER_TEMPLATES[reminderType];
+          subject = fallback.subject(invoice.reference);
+          textBody = fallback.body({
+            reference: invoice.reference,
+            montant: formatCurrency(Number(invoice.amount)),
+            entreprise: invoice.recipient_name,
+            formation: sessionTitle,
+            dateEcheance: formatDate(invoice.due_date),
+          });
+        }
       }
 
       // H6 — la mise en file et l'incrément du compteur sont enveloppés dans
