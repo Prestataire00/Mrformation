@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { enqueueEmail } from "@/lib/services/email-queue";
+import { resolveEmailTemplate } from "@/lib/services/email-template-resolver";
 import {
   executeRuleForSession,
   UUID_REGEX,
@@ -9,6 +10,14 @@ import {
   type TemplateInfo,
   type CustomTemplateInfo,
 } from "@/lib/automation/execute-rule";
+
+// Story em-b-4 — Migration de la branche OPCO deposit reminder vers
+// le service email-template-resolver via feature flag :
+//   - USE_TEMPLATE_RESOLVER_OPCO=true  → resolver (key='opco_deposit')
+//   - false → legacy hardcoded inline ligne ~365
+// La branche OPCO était à 100% hardcoded — aucune autre source. Le
+// hardcoded sera supprimé en em-b-6 cleanup.
+const USE_RESOLVER_OPCO = process.env.USE_TEMPLATE_RESOLVER_OPCO === "true";
 
 // Note : ce cron n'envoie plus d'email synchronously. Il enqueue dans email_history
 // (status='pending') ; le worker /api/emails/process-scheduled (toutes les 5 min)
@@ -352,11 +361,36 @@ export async function POST(request: NextRequest) {
           if (!session) continue;
           const sessionTitle = (session as Record<string, string>).title || "Formation";
 
+          // em-b-4 : resolver (flag ON) ou hardcoded inline (flag OFF)
+          let opcoSubjectTpl: string | null = null;
+          let opcoBodyTpl: string | null = null;
+          if (USE_RESOLVER_OPCO) {
+            const resolved = await resolveEmailTemplate(supabase, "opco_deposit", entity.id);
+            if (resolved) {
+              opcoSubjectTpl = resolved.subject;
+              opcoBodyTpl = resolved.body;
+            } else {
+              console.error(`[automation OPCO] resolveEmailTemplate('opco_deposit') retourne null pour entité ${entity.id}, fallback hardcoded`);
+            }
+          }
+
           for (const admin of admins ?? []) {
             if (!admin.email) continue;
 
-            const subject = `Rappel : demande OPCO à déposer — ${sessionTitle}`;
-            const textBody = `Bonjour ${admin.first_name},\n\nLa demande de prise en charge OPCO "${opco.name}" pour la formation "${sessionTitle}" n'a pas encore été déposée.\n\nLa formation commence le ${targetDateStr}.\n\nPensez à déposer la demande rapidement.\n\nCordialement,\nL'équipe ${entity.name}`;
+            const applyOpcoVars = (s: string) =>
+              s
+                .replaceAll("{{prenom_admin}}", admin.first_name ?? "")
+                .replaceAll("{{opco_name}}", opco.name)
+                .replaceAll("{{formation}}", sessionTitle)
+                .replaceAll("{{date_debut}}", targetDateStr)
+                .replaceAll("{{entite}}", entity.name);
+
+            const subject = opcoSubjectTpl
+              ? applyOpcoVars(opcoSubjectTpl)
+              : `Rappel : demande OPCO à déposer — ${sessionTitle}`;
+            const textBody = opcoBodyTpl
+              ? applyOpcoVars(opcoBodyTpl)
+              : `Bonjour ${admin.first_name},\n\nLa demande de prise en charge OPCO "${opco.name}" pour la formation "${sessionTitle}" n'a pas encore été déposée.\n\nLa formation commence le ${targetDateStr}.\n\nPensez à déposer la demande rapidement.\n\nCordialement,\nL'équipe ${entity.name}`;
 
             try {
               await enqueueEmail(supabase, {
