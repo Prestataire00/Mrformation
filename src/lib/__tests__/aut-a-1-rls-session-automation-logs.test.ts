@@ -31,19 +31,29 @@ describe("aut-a-1 — HOTFIX RLS session_automation_logs INSERT (B7)", () => {
     expect(migrationSql).toMatch(/auth\.role\(\) = 'service_role'/);
   });
 
-  it("restreint aux admin/super_admin de l'entité propriétaire de la session", () => {
+  it("restreint aux admin/super_admin de l'entité propriétaire de la session (helpers public)", () => {
     expect(migrationSql).toMatch(
-      /auth\.user_role\(\) IN \('admin', 'super_admin'\)/,
+      /public\.user_role\(\) IN \('admin', 'super_admin'\)/,
     );
     expect(migrationSql).toMatch(
-      /entity_id = auth\.user_entity_id\(\)/,
+      /entity_id = public\.user_entity_id\(\)/,
     );
   });
 
   it("filtre via jointure sessions (session_id IN SELECT entity-scoped)", () => {
     expect(migrationSql).toMatch(
-      /session_id IN \(\s*SELECT id FROM sessions WHERE entity_id = auth\.user_entity_id\(\)\s*\)/,
+      /session_id IN \(\s*SELECT id FROM sessions WHERE entity_id = public\.user_entity_id\(\)\s*\)/,
     );
+  });
+
+  it("n'utilise pas auth.user_role() ou auth.user_entity_id() (helpers sont en public, pas auth)", () => {
+    // Exclure les commentaires qui peuvent documenter l'erreur d'origine
+    const executableLines = migrationSql
+      .split("\n")
+      .filter((line) => !line.trim().startsWith("--"))
+      .join("\n");
+    expect(executableLines).not.toMatch(/auth\.user_role\(\)/);
+    expect(executableLines).not.toMatch(/auth\.user_entity_id\(\)/);
   });
 
   it("a un WITH CHECK (pas USING) car c'est une policy INSERT", () => {
