@@ -20,6 +20,7 @@ import { QuickActions } from "./_components/QuickActions";
 import { ArchivedTab } from "./_components/ArchivedTab";
 import { AutomationsTab } from "./_components/AutomationsTab";
 import { saveTemplate } from "./_actions/save-template";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import {
   Dialog,
   DialogContent,
@@ -1529,15 +1530,18 @@ export default function EmailsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* History Detail Dialog */}
-      <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
+      {/* em-c-6 : History Detail SHEET slide-in droite (était Dialog full) */}
+      <Sheet open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
+        <SheetContent
+          side="right"
+          className="w-full sm:max-w-xl overflow-y-auto"
+        >
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
               <Mail className="h-5 w-5" />
               Détail de l&apos;envoi
-            </DialogTitle>
-          </DialogHeader>
+            </SheetTitle>
+          </SheetHeader>
           {detailItem && (
             <div className="space-y-3 py-2">
               {/* Meta info */}
@@ -1615,7 +1619,7 @@ export default function EmailsPage() {
               )}
             </div>
           )}
-          <DialogFooter>
+          <div className="flex flex-wrap justify-end gap-2 pt-4 border-t mt-4">
             {(detailItem?.status === "failed" || detailItem?.status === "pending") && (
               <Button
                 variant="outline"
@@ -1630,9 +1634,9 @@ export default function EmailsPage() {
               </Button>
             )}
             <Button variant="outline" onClick={() => setDetailDialogOpen(false)}>Fermer</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {/* Delete Template Dialog */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
