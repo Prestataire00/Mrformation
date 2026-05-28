@@ -5,13 +5,12 @@ import { requireRole } from "@/lib/auth/require-role";
 import { logAudit } from "@/lib/audit-log";
 import { resolveEmailTemplate } from "@/lib/services/email-template-resolver";
 
-// Story em-b-3 — Migration vers email-template-resolver via feature flag :
-//   - USE_TEMPLATE_RESOLVER_SIGN_REQUEST=true  → resolver (key='quote_sign_request')
-//   - false → legacy (DB par `type` + fallback hardcoded inline)
-// Le path "custom_subject/custom_body" fourni par l'utilisateur dans la
-// preview dialog reste prioritaire dans les 2 modes (ne change pas).
-// Le fallback hardcoded ligne ~155 sera supprimé en em-b-6 cleanup.
-const USE_RESOLVER = process.env.USE_TEMPLATE_RESOLVER_SIGN_REQUEST === "true";
+// Story em-b-6 cleanup — Suppression branche legacy DB par `type`.
+// Cascade conservée :
+//   1. custom_subject/custom_body (user input preview dialog) — prioritaire
+//   2. resolver (key='quote_sign_request')
+//   3. Fallback hardcoded inline si resolver null (contexte critique
+//      user-triggered, fail-soft).
 
 const isResendConfigured = !!process.env.RESEND_API_KEY && process.env.RESEND_API_KEY !== "votre-cle-resend";
 const resend = isResendConfigured ? new Resend(process.env.RESEND_API_KEY) : null;
@@ -116,33 +115,16 @@ export async function POST(request: NextRequest) {
       // Niveau 1 : User provided custom content from preview dialog (priorité)
       subject = custom_subject;
       emailBody = custom_body.replace(/\{\{lien_signature\}\}/g, signUrl);
-    } else if (USE_RESOLVER) {
-      // Niveau 2a (em-b-3) : resolver unifié
+    } else {
+      // Niveau 2 : resolver unifié
       const resolved = await resolveEmailTemplate(serviceDb, "quote_sign_request", quote.entity_id);
       if (resolved) {
         subject = applyVars(resolved.subject);
         emailBody = applyVars(resolved.body);
       } else {
-        // Resolver null = seed manquant → fail-soft : on log et utilise le hardcoded
-        // pour ne pas casser l'envoi (sign-request est user-triggered, contexte critique).
+        // Niveau 3 : fail-soft hardcoded (sign-request user-triggered, ne JAMAIS
+        // bloquer un admin qui clique "Demander signature" — même si seed cassé).
         console.error(`[sign-request] resolveEmailTemplate('quote_sign_request') retourne null pour entité ${quote.entity_id}, fallback hardcoded`);
-        subject = `Proposition ${quote.reference} — ${entityName}`;
-        emailBody = `Bonjour${recipientName ? ` ${recipientName}` : ""},\n\nVeuillez trouver notre proposition commerciale ${quote.reference}${amount > 0 ? ` d'un montant de ${amount.toLocaleString("fr-FR")}€ HT` : ""}.\n\nPour accepter cette proposition, veuillez la signer électroniquement en cliquant sur le lien suivant :\n\n${signUrl}\n\nCe lien est valide${validUntilFr ? ` jusqu'au ${validUntilFr}` : " pendant 30 jours"}.\n\nN'hésitez pas à nous contacter pour toute question.\n\nCordialement,\nL'équipe ${entityName}`;
-      }
-    } else {
-      // Niveau 2b (legacy, sera supprimé en em-b-6) : DB par `type` + fallback hardcoded
-      const { data: emailTemplate } = await serviceDb
-        .from("email_templates")
-        .select("subject, body")
-        .eq("entity_id", quote.entity_id)
-        .eq("type", "quote_sign_request")
-        .maybeSingle();
-
-      if (emailTemplate) {
-        subject = applyVars(emailTemplate.subject);
-        emailBody = applyVars(emailTemplate.body);
-      } else {
-        // Fallback hardcoded
         subject = `Proposition ${quote.reference} — ${entityName}`;
         emailBody = `Bonjour${recipientName ? ` ${recipientName}` : ""},\n\nVeuillez trouver notre proposition commerciale ${quote.reference}${amount > 0 ? ` d'un montant de ${amount.toLocaleString("fr-FR")}€ HT` : ""}.\n\nPour accepter cette proposition, veuillez la signer électroniquement en cliquant sur le lien suivant :\n\n${signUrl}\n\nCe lien est valide${validUntilFr ? ` jusqu'au ${validUntilFr}` : " pendant 30 jours"}.\n\nN'hésitez pas à nous contacter pour toute question.\n\nCordialement,\nL'équipe ${entityName}`;
       }

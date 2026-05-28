@@ -6,13 +6,10 @@ import { resolveEmailTemplate } from "@/lib/services/email-template-resolver";
 // Note : ce cron enqueue les relances via la queue email (status='pending').
 // Le worker /api/emails/process-scheduled gère l'envoi avec retry.
 //
-// Story em-b-1 — Migration vers email-template-resolver via feature flag :
-//   - USE_TEMPLATE_RESOLVER_INVOICES=true  → resolver (key = reminder_invoice_*)
-//   - USE_TEMPLATE_RESOLVER_INVOICES=false → comportement legacy ci-dessous
-//                                            (DB par `type` + fallback REMINDER_TEMPLATES)
-// La constante REMINDER_TEMPLATES + le lookup par `type` sont conservés
-// jusqu'à em-b-6 cleanup (T+7 jours stabilité prod en flag ON).
-const USE_RESOLVER = process.env.USE_TEMPLATE_RESOLVER_INVOICES === "true";
+// Story em-b-6 cleanup — Suppression de la branche legacy et de la
+// constante REMINDER_TEMPLATES. Le resolver est désormais le chemin
+// unique. Si resolver retourne null (template manquant en DB), la
+// relance est skip + log critical (cf. resolver service em-a-2).
 
 function createServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -20,27 +17,6 @@ function createServiceClient() {
   if (!url || !key) throw new Error("Missing Supabase service role configuration");
   return createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
 }
-
-// ── Reminder templates ──
-
-const REMINDER_TEMPLATES = {
-  first: {
-    subject: (ref: string) => `Rappel de paiement — Facture ${ref}`,
-    body: (data: { reference: string; montant: string; entreprise: string; formation: string; dateEcheance: string }) =>
-      `Bonjour,\n\nNous vous informons que la facture ${data.reference} d'un montant de ${data.montant} relative à la formation "${data.formation}" est arrivée à échéance le ${data.dateEcheance}.\n\nNous vous remercions de bien vouloir procéder au règlement dans les meilleurs délais.\n\nCordialement,\nL'équipe formation`,
-  },
-  second: {
-    subject: (ref: string) => `Deuxième rappel — Facture ${ref} impayée`,
-    body: (data: { reference: string; montant: string; entreprise: string; formation: string; dateEcheance: string }) =>
-      `Bonjour,\n\nMalgré notre précédent rappel, la facture ${data.reference} d'un montant de ${data.montant} relative à la formation "${data.formation}" reste impayée.\n\nÉchéance initiale : ${data.dateEcheance}\n\nNous vous prions de régulariser cette situation dans un délai de 7 jours.\n\nCordialement,\nL'équipe formation`,
-  },
-  final: {
-    subject: (ref: string) => `Mise en demeure — Facture ${ref}`,
-    body: (data: { reference: string; montant: string; entreprise: string; formation: string; dateEcheance: string }) =>
-      `Bonjour,\n\nLa présente vaut mise en demeure.\n\nLa facture ${data.reference} d'un montant de ${data.montant} relative à la formation "${data.formation}" reste impayée malgré nos précédents rappels.\n\nÉchéance initiale : ${data.dateEcheance}\n\nSans règlement sous 8 jours, nous serons contraints d'engager des procédures de recouvrement. Des pénalités de retard de 40€ seront également appliquées conformément à la réglementation.\n\nCordialement,\nL'équipe formation`,
-  },
-};
-
 
 function formatDate(d: string): string {
   return new Date(d).toLocaleDateString("fr-FR");
@@ -182,7 +158,7 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      // Build email — em-b-1 : resolver (flag ON) ou legacy (flag OFF)
+      // Build email via resolver unifié (post em-b-6 cleanup)
       const sessionTitle = sessionMap[invoice.session_id] || "Formation";
 
       const templateVars: Record<string, string> = {
@@ -199,52 +175,22 @@ export async function POST(request: NextRequest) {
         return out;
       };
 
-      let subject: string;
-      let textBody: string;
-
-      if (USE_RESOLVER) {
-        // ── Path em-b-1 : resolver unifié (lookup par key) ──
-        const resolved = await resolveEmailTemplate(
-          supabase,
-          reminderTemplateKey,
-          invoice.entity_id,
+      const resolved = await resolveEmailTemplate(
+        supabase,
+        reminderTemplateKey,
+        invoice.entity_id,
+      );
+      if (!resolved) {
+        // Resolver a déjà loggé email_template_missing en level error.
+        // Skip cette relance : ne pas incrémenter reminder_count pour
+        // qu'un re-run après fix du seed la traite.
+        errors.push(
+          `${invoice.reference}: template ${reminderTemplateKey} introuvable pour entité ${invoice.entity_id}`,
         );
-        if (!resolved) {
-          // Le resolver a déjà loggé email_template_missing en level error.
-          // On skip cette relance : ne pas incrémenter reminder_count pour
-          // qu'un re-run après seed la traite (cohérent avec le comportement
-          // try/catch des autres erreurs ci-dessous).
-          errors.push(
-            `${invoice.reference}: template ${reminderTemplateKey} introuvable pour entité ${invoice.entity_id}`,
-          );
-          continue;
-        }
-        subject = applyVars(resolved.subject);
-        textBody = applyVars(resolved.body);
-      } else {
-        // ── Path legacy (sera supprimé en em-b-6 cleanup) ──
-        const { data: dbTemplate } = await supabase
-          .from("email_templates")
-          .select("subject, body")
-          .eq("entity_id", invoice.entity_id)
-          .eq("type", reminderTemplateKey)
-          .maybeSingle();
-
-        if (dbTemplate?.subject && dbTemplate?.body) {
-          subject = applyVars(dbTemplate.subject);
-          textBody = applyVars(dbTemplate.body);
-        } else {
-          const fallback = REMINDER_TEMPLATES[reminderType];
-          subject = fallback.subject(invoice.reference);
-          textBody = fallback.body({
-            reference: invoice.reference,
-            montant: formatCurrency(Number(invoice.amount)),
-            entreprise: invoice.recipient_name,
-            formation: sessionTitle,
-            dateEcheance: formatDate(invoice.due_date),
-          });
-        }
+        continue;
       }
+      const subject = applyVars(resolved.subject);
+      const textBody = applyVars(resolved.body);
 
       // H6 — la mise en file et l'incrément du compteur sont enveloppés dans
       // un try/catch PAR facture : un échec de mise en file n'incrémente PAS

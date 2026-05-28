@@ -9,28 +9,33 @@ const ROUTE_PATH = resolve(
 
 const routeSource = readFileSync(ROUTE_PATH, "utf-8");
 
-describe("em-b-4 — Refactor OPCO branch dans run-cron vers resolver", () => {
+describe("em-b-4 / em-b-6 — OPCO branch run-cron sur resolver unifié", () => {
   it("importe resolveEmailTemplate", () => {
     expect(routeSource).toMatch(
       /import \{ resolveEmailTemplate \} from "@\/lib\/services\/email-template-resolver"/,
     );
   });
 
-  it("lit le feature flag USE_TEMPLATE_RESOLVER_OPCO", () => {
-    expect(routeSource).toMatch(
-      /const USE_RESOLVER_OPCO = process\.env\.USE_TEMPLATE_RESOLVER_OPCO === "true"/,
-    );
+  it("post-cleanup em-b-6 : aucun flag USE_TEMPLATE_RESOLVER_OPCO", () => {
+    expect(routeSource).not.toMatch(/USE_TEMPLATE_RESOLVER_OPCO/);
+    expect(routeSource).not.toMatch(/const USE_RESOLVER_OPCO/);
   });
 
-  it("path resolver : appelle resolveEmailTemplate(supabase, 'opco_deposit', entity.id) AVANT le loop admins", () => {
+  it("resolver appelé directement (sans gate flag) AVANT le loop admins", () => {
     expect(routeSource).toMatch(
-      /if \(USE_RESOLVER_OPCO\)\s*\{\s*const resolved = await resolveEmailTemplate\(\s*supabase,\s*"opco_deposit",\s*entity\.id/,
+      /resolveEmailTemplate\(\s*supabase,\s*"opco_deposit",\s*entity\.id/,
     );
+    const resolverIdx = routeSource.indexOf("resolveEmailTemplate");
+    const forLoopIdx = routeSource.indexOf("for (const admin of admins");
+    expect(resolverIdx).toBeGreaterThan(0);
+    expect(forLoopIdx).toBeGreaterThan(resolverIdx);
   });
 
-  it("path resolver : fail-soft sur null avec log error + fallback hardcoded", () => {
-    expect(routeSource).toMatch(/if \(resolved\)\s*\{/);
-    expect(routeSource).toMatch(/console\.error\([\s\S]{0,80}automation OPCO[\s\S]{0,200}fallback hardcoded/);
+  it("fail-soft sur null : log error + fallback hardcoded inline conservé (contexte critique URSSAF)", () => {
+    expect(routeSource).toMatch(/if \(resolvedOpco\)/);
+    expect(routeSource).toMatch(/console\.error[\s\S]{0,200}automation OPCO[\s\S]{0,200}fallback hardcoded/);
+    expect(routeSource).toMatch(/Rappel : demande OPCO à déposer/);
+    expect(routeSource).toMatch(/La demande de prise en charge OPCO/);
   });
 
   it("applyOpcoVars factorisé sur 5 variables (prenom_admin, opco_name, formation, date_debut, entite)", () => {
@@ -42,33 +47,15 @@ describe("em-b-4 — Refactor OPCO branch dans run-cron vers resolver", () => {
     expect(routeSource).toMatch(/\{\{entite\}\}/);
   });
 
-  it("le subject est appliqué via applyOpcoVars si template trouvé, sinon hardcoded", () => {
-    expect(routeSource).toMatch(
-      /opcoSubjectTpl[\s\S]+applyOpcoVars\(opcoSubjectTpl\)[\s\S]+Rappel : demande OPCO à déposer/,
-    );
+  it("subject appliqué via applyOpcoVars si template trouvé, sinon hardcoded", () => {
+    expect(routeSource).toMatch(/opcoSubjectTpl[\s\S]{0,400}applyOpcoVars\(opcoSubjectTpl\)/);
   });
 
-  it("le body est appliqué via applyOpcoVars si template trouvé, sinon hardcoded inline", () => {
-    expect(routeSource).toMatch(
-      /opcoBodyTpl[\s\S]+applyOpcoVars\(opcoBodyTpl\)[\s\S]+La demande de prise en charge OPCO/,
-    );
+  it("body appliqué via applyOpcoVars si template trouvé, sinon hardcoded", () => {
+    expect(routeSource).toMatch(/opcoBodyTpl[\s\S]{0,400}applyOpcoVars\(opcoBodyTpl\)/);
   });
 
-  it("hardcoded inline conservé en fallback (sera supprimé em-b-6)", () => {
-    expect(routeSource).toMatch(/Rappel : demande OPCO à déposer/);
-    expect(routeSource).toMatch(/La demande de prise en charge OPCO/);
-  });
-
-  it("le resolver est appelé 1 SEULE FOIS par entité avant le loop admins (pas N fois)", () => {
-    // Le call resolveEmailTemplate doit être avant `for (const admin of admins`
-    const resolverIdx = routeSource.indexOf("resolveEmailTemplate");
-    const forLoopIdx = routeSource.indexOf("for (const admin of admins");
-    expect(resolverIdx).toBeGreaterThan(0);
-    expect(forLoopIdx).toBeGreaterThan(resolverIdx);
-  });
-
-  it("documente em-b-4 + plan cleanup em-b-6", () => {
-    expect(routeSource).toMatch(/Story em-b-4/);
+  it("documente em-b-6 cleanup", () => {
     expect(routeSource).toMatch(/em-b-6/);
   });
 });
