@@ -20,6 +20,16 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { logEvent } from "@/lib/logger";
+import { resolveEmailTemplate } from "@/lib/services/email-template-resolver";
+
+// Story em-b-5 — Migration des subject/body batch vers email-template-resolver
+// via feature flag USE_TEMPLATE_RESOLVER_BATCH (default OFF).
+//   - true  → resolver (key='batch_<docType>')
+//   - false → legacy hardcoded (EMAIL_SUBJECT_LABELS + buildEmailHtmlBody)
+// Les constantes EMAIL_SUBJECT_LABELS et FILENAME_LABELS sont conservées
+// (utilisées par d'autres fonctions du fichier) et serviront aussi de
+// fallback hardcoded si le resolver retourne null. Cleanup em-b-6.
+const USE_RESOLVER_BATCH = process.env.USE_TEMPLATE_RESOLVER_BATCH === "true";
 import {
   SYSTEM_TEMPLATES_BY_DOC_TYPE,
   renderSystemTemplate,
@@ -405,6 +415,22 @@ export async function batchSendDocsEmail(
   const sessionTitle = (session as { title?: string }).title ?? "Formation";
   const subjectLabel = EMAIL_SUBJECT_LABELS[docType] ?? docType;
   const filenameLabel = FILENAME_LABELS[docType] ?? docType;
+  const entityName = (entitySettings as unknown as { name?: string })?.name ?? "Formation";
+
+  // em-b-5 : lookup 1× du template batch_<docType> si flag ON
+  let resolvedSubjectTpl: string | null = null;
+  let resolvedBodyTpl: string | null = null;
+  if (USE_RESOLVER_BATCH) {
+    const resolved = await resolveEmailTemplate(supabase, `batch_${docType}`, entityId);
+    if (resolved) {
+      resolvedSubjectTpl = resolved.subject;
+      resolvedBodyTpl = resolved.body;
+    } else {
+      console.warn(
+        `[batch-email] resolveEmailTemplate('batch_${docType}') retourne null pour entité ${entityId}, fallback hardcoded EMAIL_SUBJECT_LABELS`,
+      );
+    }
+  }
 
   // 6. Construire les RecipientGenerationTask
   const tasks: RecipientGenerationTask[] = recipientRows.map((recipient) => {
@@ -417,13 +443,32 @@ export async function batchSendDocsEmail(
       .toLowerCase()
       .slice(0, 60) || "destinataire";
 
+    // em-b-5 : applique les variables si template du resolver, sinon legacy
+    const applyBatchVars = (s: string) =>
+      s
+        .replaceAll("{{formation}}", sessionTitle)
+        .replaceAll("{{entite}}", entityName)
+        .replaceAll("{{prenom_apprenant}}", recipient.name)
+        .replaceAll("{{prenom_formateur}}", recipient.name)
+        .replaceAll("{{nom_apprenant}}", recipient.name);
+
+    const finalSubject = resolvedSubjectTpl
+      ? applyBatchVars(resolvedSubjectTpl)
+      : `${subjectLabel} — ${sessionTitle}`;
+    const finalTextBody = resolvedBodyTpl
+      ? applyBatchVars(resolvedBodyTpl)
+      : buildEmailTextBody(docType, sessionTitle, recipient.name);
+    const finalHtmlBody = resolvedBodyTpl
+      ? `<div style="font-family:sans-serif;font-size:14px;line-height:1.6;color:#374151;white-space:pre-wrap;">${applyBatchVars(resolvedBodyTpl).replace(/\n/g, "<br/>")}</div>`
+      : buildEmailHtmlBody(docType, sessionTitle, recipient.name);
+
     return {
       ownerId: recipient.id,
       ownerName: recipient.name,
       ownerEmail: recipient.email,
-      emailSubject: `${subjectLabel} — ${sessionTitle}`,
-      emailHtmlBody: buildEmailHtmlBody(docType, sessionTitle, recipient.name),
-      emailTextBody: buildEmailTextBody(docType, sessionTitle, recipient.name),
+      emailSubject: finalSubject,
+      emailHtmlBody: finalHtmlBody,
+      emailTextBody: finalTextBody,
       attachmentFilename: `${filenameLabel.toLowerCase()}-${slugName}.pdf`,
       generatePdf: async (): Promise<Buffer> => {
         // Construit le contexte de résolution de variables
