@@ -106,15 +106,10 @@ describe("em-c-1 — Scaffolding UI /admin/emails (non destructif)", () => {
     });
   });
 
-  describe("Non destructif", () => {
-    it("page.tsx n'a PAS encore été modifié (rendu actuel intact)", () => {
-      expect(exists("page.tsx")).toBe(true);
-      const src = read("page.tsx");
-      // Vérifie que les nouveaux composants ne sont PAS importés dans page.tsx
-      // (em-c-2..c-6 feront l'intégration progressive)
-      expect(src).not.toMatch(/from "\.\/_components\/EmailsTabsNav"/);
-      expect(src).not.toMatch(/from "\.\/_components\/QuickActions"/);
-    });
+  describe("Compat avec stories ultérieures", () => {
+    // Note : le test "page.tsx PAS modifié" présent à em-c-1 a été retiré
+    // en em-c-2 quand le wiring de EmailsTabsNav + QuickActions a été
+    // intégré dans page.tsx (c'était justement le but de em-c-2).
 
     it("EmailPreviewDialog conservé (utilisé par TabConventionDocs, pas dead code en réalité)", () => {
       const previewExists = existsSync(

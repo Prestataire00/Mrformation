@@ -15,7 +15,10 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
+import { EmailsTabsNav } from "./_components/EmailsTabsNav";
+import { QuickActions } from "./_components/QuickActions";
+import { ArchivedTab } from "./_components/ArchivedTab";
 import {
   Dialog,
   DialogContent,
@@ -220,7 +223,10 @@ export default function EmailsPage() {
   const [openOnAttachments, setOpenOnAttachments] = useState(false);
 
   // Tab actif (controlled pour permettre la navigation depuis les cards d'action)
-  const [activeTab, setActiveTab] = useState<"templates" | "history" | "relances">("templates");
+  // em-c-2 — Migration vers EmailsTabsNav 4-tabs (UX-DR1) :
+  //   - "relances" renommé en "automations" (sera étendu en em-c-5 avec 3 sous-tabs)
+  //   - "archived" ajouté (sera implémenté en em-c-4)
+  const [activeTab, setActiveTab] = useState<"templates" | "history" | "automations" | "archived">("templates");
   const [activeField, setActiveField] = useState<"subject" | "body">("body");
   const subjectRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
@@ -635,80 +641,30 @@ export default function EmailsPage() {
         </Button>
       </div>
 
-      {/* Actions rapides — point d'entrée principal */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <button
-          type="button"
-          onClick={openAddTemplate}
-          className="group text-left p-5 rounded-xl border-2 border-dashed border-blue-200 bg-blue-50/50 hover:border-blue-400 hover:bg-blue-50 transition-all flex items-start gap-4"
-        >
-          <div className="shrink-0 p-3 rounded-lg bg-blue-100 group-hover:bg-blue-200 transition-colors">
-            <Plus className="h-5 w-5 text-blue-700" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <h3 className="font-semibold text-gray-900">Créer un modèle d&apos;email</h3>
-            <p className="text-sm text-gray-500 mt-1">Sujet, corps, variables, pièces jointes auto</p>
-          </div>
-        </button>
+      {/* em-c-2 : Quick actions via composant <QuickActions> (UX-DR10) */}
+      <QuickActions
+        onCreateTemplate={() => openAddTemplate()}
+        onSendOneShot={() => {
+          setSendForm({ recipient_email: "", subject: "", body: "", template_id: "" });
+          setOriginalSubject("");
+          setOriginalBody("");
+          setSelectedSessionId("");
+          setSelectedClientId("");
+          setSelectedLearnerId("");
+          setSendDialogOpen(true);
+          fetchSendContext();
+        }}
+      />
 
-        <button
-          type="button"
-          onClick={() => {
-            setSendForm({ recipient_email: "", subject: "", body: "", template_id: "" });
-            setOriginalSubject("");
-            setOriginalBody("");
-            setSelectedSessionId("");
-            setSelectedClientId("");
-            setSelectedLearnerId("");
-            setSendDialogOpen(true);
-            fetchSendContext();
-          }}
-          className="group text-left p-5 rounded-xl border-2 border-dashed border-emerald-200 bg-emerald-50/50 hover:border-emerald-400 hover:bg-emerald-50 transition-all flex items-start gap-4"
-        >
-          <div className="shrink-0 p-3 rounded-lg bg-emerald-100 group-hover:bg-emerald-200 transition-colors">
-            <Send className="h-5 w-5 text-emerald-700" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <h3 className="font-semibold text-gray-900">Envoyer un email maintenant</h3>
-            <p className="text-sm text-gray-500 mt-1">Choix destinataire + modèle ou rédaction libre</p>
-          </div>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab("history")}
-          className="group text-left p-5 rounded-xl border-2 border-dashed border-gray-200 bg-gray-50/50 hover:border-gray-400 hover:bg-gray-50 transition-all flex items-start gap-4"
-        >
-          <div className="shrink-0 p-3 rounded-lg bg-gray-100 group-hover:bg-gray-200 transition-colors relative">
-            <Mail className="h-5 w-5 text-gray-700" />
-            {failedCount > 0 && (
-              <span className="absolute -top-1 -right-1 inline-flex items-center justify-center h-4 w-4 text-[10px] rounded-full bg-red-500 text-white font-semibold">
-                {failedCount}
-              </span>
-            )}
-          </div>
-          <div className="flex-1 min-w-0">
-            <h3 className="font-semibold text-gray-900">Voir l&apos;historique des envois</h3>
-            <p className="text-sm text-gray-500 mt-1">
-              Suivi des emails envoyés{failedCount > 0 ? `, ${failedCount} échec${failedCount > 1 ? "s" : ""} à vérifier` : ""}
-            </p>
-          </div>
-        </button>
-      </div>
+      {/* em-c-2 : Nav via EmailsTabsNav sticky 4-onglets (UX-DR1) */}
+      <EmailsTabsNav
+        activeTab={activeTab}
+        onTabChange={(t) => setActiveTab(t)}
+        historyFailedCount={failedCount}
+      />
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)} className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="templates">Modèles d&apos;emails</TabsTrigger>
-          <TabsTrigger value="history">
-            Historique d&apos;envois
-            {failedCount > 0 && (
-              <span className="ml-2 inline-flex items-center justify-center h-4 w-4 text-xs rounded-full bg-red-500 text-white">
-                {failedCount}
-              </span>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="relances">Relances automatiques</TabsTrigger>
-        </TabsList>
+        {/* TabsList retirée : remplacée par EmailsTabsNav ci-dessus */}
 
         {/* TEMPLATES TAB */}
         <TabsContent value="templates" className="space-y-4">
@@ -775,17 +731,21 @@ export default function EmailsPage() {
                               📎 {attachmentsCount} PJ
                             </Badge>
                           )}
+                          {/* em-c-2 — UsageBadge orange (UX-DR2) : warn que le template est utilisé.
+                              Couleur orange = signal d'attention avant édition / archive.
+                              Variante gris si automations désactivées (info, pas warning). */}
                           {automationRules.length > 0 && (
                             <Badge
                               className={cn(
                                 "text-xs font-normal cursor-help",
                                 enabledAutomations > 0
-                                  ? "bg-emerald-100 text-emerald-700 border-emerald-200"
+                                  ? "bg-orange-100 text-orange-700 border-orange-200"
                                   : "bg-gray-100 text-gray-600 border-gray-200"
                               )}
                               title={`Utilisé par ${automationRules.length} automation${automationRules.length > 1 ? "s" : ""} (${enabledAutomations} activée${enabledAutomations > 1 ? "s" : ""})`}
                             >
-                              🤖 {enabledAutomations}/{automationRules.length} auto
+                              {enabledAutomations > 0 ? "⚠️" : "🤖"} Utilisé par {automationRules.length} automation{automationRules.length > 1 ? "s" : ""}
+                              {enabledAutomations !== automationRules.length && ` (${enabledAutomations} active${enabledAutomations > 1 ? "s" : ""})`}
                             </Badge>
                           )}
                         </div>
@@ -1049,9 +1009,14 @@ export default function EmailsPage() {
           </div>
         </TabsContent>
 
-        {/* RELANCES TAB */}
-        <TabsContent value="relances" className="space-y-4">
+        {/* AUTOMATIONS TAB (ex-Relances) — em-c-5 ajoutera 3 sous-tabs */}
+        <TabsContent value="automations" className="space-y-4">
           <RelancesTab />
+        </TabsContent>
+
+        {/* ARCHIVED TAB — scaffold, implémenté en em-c-4 */}
+        <TabsContent value="archived" className="space-y-4">
+          <ArchivedTab />
         </TabsContent>
       </Tabs>
 
