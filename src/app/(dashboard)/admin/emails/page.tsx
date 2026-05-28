@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import DOMPurify from "dompurify";
 import { createClient } from "@/lib/supabase/client";
 import { InsertVariableButton } from "@/components/editor/InsertVariableButton";
-import { RelancesTab } from "@/components/emails/RelancesTab";
 import { useEntity } from "@/contexts/EntityContext";
 import { EmailTemplate, EmailHistory, Session, Client, Learner } from "@/lib/types";
 import { cn, formatDateTime, truncate } from "@/lib/utils";
@@ -19,6 +18,7 @@ import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { EmailsTabsNav } from "./_components/EmailsTabsNav";
 import { QuickActions } from "./_components/QuickActions";
 import { ArchivedTab } from "./_components/ArchivedTab";
+import { AutomationsTab } from "./_components/AutomationsTab";
 import { saveTemplate } from "./_actions/save-template";
 import {
   Dialog,
@@ -1044,9 +1044,9 @@ export default function EmailsPage() {
           </div>
         </TabsContent>
 
-        {/* AUTOMATIONS TAB (ex-Relances) — em-c-5 ajoutera 3 sous-tabs */}
+        {/* AUTOMATIONS TAB (em-c-5 : 3 sous-tabs Relances/Formation/CRM) */}
         <TabsContent value="automations" className="space-y-4">
-          <RelancesTab />
+          <AutomationsTab />
         </TabsContent>
 
         {/* ARCHIVED TAB — scaffold, implémenté en em-c-4 */}
