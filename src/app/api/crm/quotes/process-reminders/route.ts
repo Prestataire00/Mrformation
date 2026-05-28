@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
 import { createClient } from "@supabase/supabase-js";
+import { resolveEmailTemplate } from "@/lib/services/email-template-resolver";
+
+// Story em-b-2 — Migration vers email-template-resolver via feature flag :
+//   - USE_TEMPLATE_RESOLVER_QUOTES=true  → resolver (key = reminder_quote_*)
+//   - USE_TEMPLATE_RESOLVER_QUOTES=false → legacy (DB par `type` + fallback TEMPLATES)
+// La constante TEMPLATES + le lookup `type` seront supprimés en em-b-6.
+const USE_RESOLVER = process.env.USE_TEMPLATE_RESOLVER_QUOTES === "true";
 
 const isResendConfigured =
   !!process.env.RESEND_API_KEY &&
@@ -133,38 +140,53 @@ export async function POST(request: NextRequest) {
 
       const entityName = entityMap[quote.entity_id] || "MR FORMATION";
 
-      // DB template first, fallback to hardcoded
+      // em-b-2 : resolver (flag ON) ou legacy (flag OFF)
       let subject: string;
       let textBody: string;
-
-      const { data: dbTpl } = await supabase
-        .from("email_templates")
-        .select("subject, body")
-        .eq("entity_id", quote.entity_id)
-        .eq("type", reminderTemplateKey)
-        .maybeSingle();
 
       const vars: Record<string, string> = {
         "{{reference}}": quote.reference,
         "{{entreprise}}": prospectName,
+        "{{prospect}}": prospectName,
         "{{date_echeance}}": quote.valid_until ? formatDate(quote.valid_until) : "",
+        "{{date_validite_clause}}": quote.valid_until ? ` le ${formatDate(quote.valid_until)}` : " prochainement",
+      };
+      const applyVars = (s: string) => {
+        let out = s;
+        for (const [k, v] of Object.entries(vars)) out = out.replaceAll(k, v);
+        return out;
       };
 
-      if (dbTpl?.subject && dbTpl?.body) {
-        subject = dbTpl.subject;
-        textBody = dbTpl.body;
-        for (const [k, v] of Object.entries(vars)) {
-          subject = subject.replaceAll(k, v);
-          textBody = textBody.replaceAll(k, v);
+      if (USE_RESOLVER) {
+        // ── Path em-b-2 : resolver unifié ──
+        const resolved = await resolveEmailTemplate(supabase, reminderTemplateKey, quote.entity_id);
+        if (!resolved) {
+          console.warn(`[quote-reminders] Template ${reminderTemplateKey} introuvable pour entité ${quote.entity_id}, skip ${quote.reference}`);
+          continue;
         }
+        subject = applyVars(resolved.subject);
+        textBody = applyVars(resolved.body);
       } else {
-        const fallback = TEMPLATES[reminderType];
-        subject = fallback.subject(quote.reference);
-        textBody = fallback.body({
-          reference: quote.reference,
-          prospect: prospectName,
-          validUntil: quote.valid_until ? formatDate(quote.valid_until) : "",
-        });
+        // ── Path legacy (sera supprimé en em-b-6 cleanup) ──
+        const { data: dbTpl } = await supabase
+          .from("email_templates")
+          .select("subject, body")
+          .eq("entity_id", quote.entity_id)
+          .eq("type", reminderTemplateKey)
+          .maybeSingle();
+
+        if (dbTpl?.subject && dbTpl?.body) {
+          subject = applyVars(dbTpl.subject);
+          textBody = applyVars(dbTpl.body);
+        } else {
+          const fallback = TEMPLATES[reminderType];
+          subject = fallback.subject(quote.reference);
+          textBody = fallback.body({
+            reference: quote.reference,
+            prospect: prospectName,
+            validUntil: quote.valid_until ? formatDate(quote.valid_until) : "",
+          });
+        }
       }
 
       let emailSent = false;
