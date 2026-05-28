@@ -20,6 +20,7 @@ import { exportHtmlToPDF, exportToPDF } from "@/lib/pdf-export";
 import { renderSystemTemplate } from "@/lib/templates/registry";
 import { BackToFormationLink } from "@/components/ui/back-to-formation-link";
 import { DocumentsTabsNav } from "./_components/DocumentsTabsNav";
+import { ChooseTemplateDialog } from "./_components/ChooseTemplateDialog";
 import DOMPurifyLib from "dompurify";
 
 // Safe sanitize — avoid hydration mismatch by always using the same function reference
@@ -384,6 +385,8 @@ export default function DocumentsPage() {
     };
     input.click();
   };
+
+  const [chooseTemplateDialogOpen, setChooseTemplateDialogOpen] = useState(false);
 
   // ── Send Document Dialog (Phase 3 UX v2) ──
   const [sendDialogOpen, setSendDialogOpen] = useState(false);
@@ -1082,13 +1085,7 @@ export default function DocumentsPage() {
 
         <button
           type="button"
-          onClick={() => {
-            setActiveTab("custom");
-            toast({
-              title: "Choisissez un modèle",
-              description: "Cliquez sur «Envoyer» depuis la carte du modèle voulu.",
-            });
-          }}
+          onClick={() => setChooseTemplateDialogOpen(true)}
           className="group text-left p-5 rounded-xl border-2 border-dashed border-emerald-200 bg-emerald-50/50 hover:border-emerald-400 hover:bg-emerald-50 transition-all flex items-start gap-4"
         >
           <div className="shrink-0 p-3 rounded-lg bg-emerald-100 group-hover:bg-emerald-200 transition-colors">
@@ -2352,6 +2349,15 @@ export default function DocumentsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Choose Template Dialog (QuickAction "Envoyer à un apprenant") */}
+      <ChooseTemplateDialog
+        open={chooseTemplateDialogOpen}
+        onOpenChange={setChooseTemplateDialogOpen}
+        customTemplates={templates}
+        onSelectOfficial={(ot) => handleSendOfficial(ot)}
+        onSelectCustom={(tpl) => openSendDialog(tpl)}
+      />
 
       {/* Delete Template Dialog */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
