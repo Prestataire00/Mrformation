@@ -60,13 +60,13 @@ development_status:
   # aut-a-1 + aut-a-2 = HOTFIX RLS + SCHEDULED FUNCTION = 2 P0 STANDALONE, shippables EN PREMIER
   # aut-a-5 = story de tête P1 (bloque c-1, c-4, d-1, d-2 — table crm_automation_logs + CHECK)
   # aut-a-6 = bloque b-1 (routes API dry-run requises)
-  automatisations-epic-a: in-progress
+  automatisations-epic-a: done                              # ✅ Wave 1 + Wave 2 + Wave 3 (6/6 stories Epic A)
   aut-a-1-hotfix-rls-session-automation-logs: done          # ✅ PR #171 + hotfix #172 (2026-05-28)
   aut-a-2-scheduled-function-netlify: done                  # ✅ PR #173 (2026-05-28) — pingue CRM + log structuré
   aut-a-3-fix-bugs-b1-b6-b2-mode-dry-run: done              # ✅ PR #175 (2026-05-28) — B1+B2 déjà OK, B6 fixé, mode dry-run ajouté
   aut-a-4-suppression-actions-stub-b3-code-mort: done       # ✅ PR #174 — code mort déjà supprimé, guardrail anti-régression
   aut-a-5-migration-data-crm-logs-check-restreint: done     # ✅ Migration SQL prête (à appliquer Supabase Dashboard) — PR cette PR
-  aut-a-6-routes-api-dry-run-next-runs-eligible: backlog    # P1, dépend a-3, bloque b-1
+  aut-a-6-routes-api-dry-run-next-runs-eligible: done       # ✅ Cette PR — 4 routes API + fonction pure naturalLanguageNextRun + cache 5min
   automatisations-epic-a-retrospective: optional
 
   # ── Epic B : UI Formations refonte (DryRunDialog + /admin/automation + TabAutomation) ──
