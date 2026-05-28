@@ -160,16 +160,85 @@ interface TemplateFormData {
   attachment_doc_types: string[];
 }
 
-const ATTACHMENT_OPTIONS = [
-  { value: "convocation", label: "Convocation" },
-  { value: "convention_entreprise", label: "Convention entreprise" },
-  { value: "programme_formation", label: "Programme de formation" },
-  { value: "certificat_realisation", label: "Certificat de réalisation" },
-  { value: "attestation_assiduite", label: "Attestation d'assiduité" },
-  { value: "feuille_emargement", label: "Feuille d'émargement" },
-  { value: "cgv", label: "CGV" },
-  { value: "reglement_interieur", label: "Règlement intérieur" },
+// em-c-7 — Liste enrichie des pièces jointes système groupées.
+// Source de vérité des doc_types supportés : src/lib/services/email-attachments-resolver.ts
+// FILENAME_LABELS. Tout type listé ici doit être généré-able par le resolver.
+const ATTACHMENT_OPTION_GROUPS: Array<{
+  groupLabel: string;
+  options: Array<{ value: string; label: string }>;
+}> = [
+  {
+    groupLabel: "Documents standard",
+    options: [
+      { value: "convocation", label: "Convocation" },
+      { value: "convention_entreprise", label: "Convention entreprise" },
+      { value: "convention_intervention", label: "Convention d'intervention (sous-traitance)" },
+      { value: "programme_formation", label: "Programme de formation" },
+      { value: "certificat_realisation", label: "Certificat de réalisation" },
+      { value: "attestation_assiduite", label: "Attestation d'assiduité" },
+      { value: "cgv", label: "CGV" },
+      { value: "reglement_interieur", label: "Règlement intérieur" },
+      { value: "politique_confidentialite", label: "Politique de confidentialité" },
+    ],
+  },
+  {
+    groupLabel: "Facturation",
+    options: [
+      { value: "facture", label: "Facture" },
+      { value: "devis", label: "Devis / Proposition" },
+    ],
+  },
+  {
+    groupLabel: "Émargements",
+    options: [
+      { value: "feuille_emargement", label: "Feuille d'émargement individuelle" },
+      { value: "feuille_emargement_collectif", label: "Feuille d'émargement collective" },
+      { value: "feuille_emargement_vierge", label: "Feuille d'émargement vierge" },
+      { value: "planning_hebdo_signe", label: "Planning hebdomadaire signé" },
+    ],
+  },
+  {
+    groupLabel: "Habilitations électriques",
+    options: [
+      { value: "avis_hab_elec_generique", label: "Avis habilitation électrique (générique)" },
+      { value: "avis_hab_elec_b0_bf_bs", label: "Avis hab. élec. B0/BF/BS" },
+      { value: "avis_hab_elec_b1v_b2v_br", label: "Avis hab. élec. B1V/B2V/BR" },
+      { value: "avis_hab_elec_bf_hf", label: "Avis hab. élec. BF/HF" },
+      { value: "avis_hab_elec_bt", label: "Avis hab. élec. BT" },
+      { value: "avis_hab_elec_bt_ht", label: "Avis hab. élec. BT/HT" },
+      { value: "avis_hab_elec_h0_b0", label: "Avis hab. élec. H0/B0" },
+      { value: "avis_hab_elec_h0_b0_bf_hf_bs", label: "Avis hab. élec. H0/B0/BF/HF/BS" },
+      { value: "avis_hab_elec_h0_b0_initial", label: "Avis hab. élec. H0/B0 initial" },
+    ],
+  },
+  {
+    groupLabel: "Attestations métier",
+    options: [
+      { value: "attestation_aipr", label: "Attestation AIPR" },
+      { value: "attestation_competences", label: "Attestation de compétences" },
+      { value: "attestation_abandon_formation", label: "Attestation d'abandon de formation" },
+      { value: "certificat_travail_hauteur", label: "Certificat travail en hauteur" },
+      { value: "certificat_diplome", label: "Certificat / Diplôme" },
+      { value: "bilan_poe", label: "Bilan POE" },
+      { value: "reponses_evaluations", label: "Réponses aux évaluations" },
+      { value: "reponses_satisfaction_session", label: "Réponses satisfaction session" },
+      { value: "resultats_evaluations", label: "Résultats des évaluations" },
+    ],
+  },
+  {
+    groupLabel: "Documents annexes",
+    options: [
+      { value: "autorisation_image", label: "Autorisation droit à l'image" },
+      { value: "decharge_responsabilite", label: "Décharge de responsabilité" },
+      { value: "lettre_decharge_responsabilite", label: "Lettre de décharge de responsabilité" },
+      { value: "charte_formateur", label: "Charte formateur" },
+      { value: "contrat_engagement_stagiaire", label: "Contrat d'engagement stagiaire" },
+    ],
+  },
 ];
+
+// Compatibilité descendante : ATTACHMENT_OPTIONS = liste plate de tous les groupes
+const ATTACHMENT_OPTIONS = ATTACHMENT_OPTION_GROUPS.flatMap((g) => g.options);
 
 interface SendFormData {
   recipient_email: string;
@@ -1249,28 +1318,44 @@ export default function EmailsPage() {
                 </div>
               )}
 
-              {/* Pièces jointes automatiques */}
+              {/* Pièces jointes automatiques (em-c-7 : groupées par catégorie) */}
               <div className="space-y-3 col-span-3">
                 <div>
                   <Label className="text-xs">Documents système (générés depuis les templates par défaut)</Label>
-                  <div className="flex flex-wrap gap-2 mt-1.5">
-                    {ATTACHMENT_OPTIONS.map(opt => (
-                      <label key={opt.value} className="flex items-center gap-1.5 text-xs cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={templateForm.attachment_doc_types.includes(opt.value)}
-                          onChange={(e) => {
-                            setTemplateForm(f => ({
-                              ...f,
-                              attachment_doc_types: e.target.checked
-                                ? [...f.attachment_doc_types, opt.value]
-                                : f.attachment_doc_types.filter(v => v !== opt.value),
-                            }));
-                          }}
-                          className="h-3.5 w-3.5 rounded border-gray-300"
-                        />
-                        {opt.label}
-                      </label>
+                  <p className="text-[11px] text-gray-500 mt-0.5">
+                    Les documents cochés seront générés et joints automatiquement au PDF lors de l&apos;envoi
+                    si le contexte le permet (apprenant, session, facture, etc.).
+                  </p>
+                  <div className="space-y-3 mt-2">
+                    {ATTACHMENT_OPTION_GROUPS.map((group) => (
+                      <div key={group.groupLabel}>
+                        <p className="text-[10px] uppercase tracking-wider font-semibold text-gray-400 mb-1">
+                          {group.groupLabel}
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {group.options.map((opt) => (
+                            <label
+                              key={opt.value}
+                              className="flex items-center gap-1.5 text-xs cursor-pointer"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={templateForm.attachment_doc_types.includes(opt.value)}
+                                onChange={(e) => {
+                                  setTemplateForm((f) => ({
+                                    ...f,
+                                    attachment_doc_types: e.target.checked
+                                      ? [...f.attachment_doc_types, opt.value]
+                                      : f.attachment_doc_types.filter((v) => v !== opt.value),
+                                  }));
+                                }}
+                                className="h-3.5 w-3.5 rounded border-gray-300"
+                              />
+                              {opt.label}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
                     ))}
                   </div>
                 </div>
