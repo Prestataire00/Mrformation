@@ -63,9 +63,9 @@ development_status:
   automatisations-epic-a: in-progress
   aut-a-1-hotfix-rls-session-automation-logs: done          # ✅ PR #171 + hotfix #172 (2026-05-28)
   aut-a-2-scheduled-function-netlify: done                  # ✅ PR #173 (2026-05-28) — pingue CRM + log structuré
-  aut-a-3-fix-bugs-b1-b6-b2-mode-dry-run: backlog           # P1, bloque a-6
-  aut-a-4-suppression-actions-stub-b3-code-mort: done       # ✅ Code mort + boutons stub déjà supprimés par commits antérieurs ; PR test guardrail anti-régression cette PR
-  aut-a-5-migration-data-crm-logs-check-restreint: backlog  # P1, bloque c-1, c-4, d-1, d-2
+  aut-a-3-fix-bugs-b1-b6-b2-mode-dry-run: done              # ✅ PR #175 (2026-05-28) — B1+B2 déjà OK, B6 fixé, mode dry-run ajouté
+  aut-a-4-suppression-actions-stub-b3-code-mort: done       # ✅ PR #174 — code mort déjà supprimé, guardrail anti-régression
+  aut-a-5-migration-data-crm-logs-check-restreint: done     # ✅ Migration SQL prête (à appliquer Supabase Dashboard) — PR cette PR
   aut-a-6-routes-api-dry-run-next-runs-eligible: backlog    # P1, dépend a-3, bloque b-1
   automatisations-epic-a-retrospective: optional
 
