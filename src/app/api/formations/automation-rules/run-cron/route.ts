@@ -4,6 +4,7 @@ import { enqueueEmail } from "@/lib/services/email-queue";
 import { resolveEmailTemplate } from "@/lib/services/email-template-resolver";
 import {
   executeRuleForSession,
+  resolveRecipients,
   UUID_REGEX,
   type RuleInfo,
   type SessionInfo,
@@ -43,11 +44,13 @@ export async function POST(request: NextRequest) {
   let specificTrigger: string | null = null;
   let specificSessionId: string | null = null;
   let specificRuleId: string | null = null;
+  let mode: "execute" | "dry-run" = "execute";
   try {
     const body = await request.json();
     specificTrigger = body.trigger_type || null;
     specificSessionId = body.session_id || null;
     specificRuleId = body.rule_id || null;
+    if (body.mode === "dry-run") mode = "dry-run";
   } catch { /* empty body = normal cron mode */ }
 
   // ── RULE-SCOPED MODE: une règle précise, une session précise ──
@@ -92,6 +95,72 @@ export async function POST(request: NextRequest) {
             if (ct) customTemplatesById[v] = ct as unknown as CustomTemplateInfo;
           }
         }
+      }
+
+      // ── DRY-RUN MODE (aut-a-3) : calcule destinataires sans envoyer ──
+      // Garantie NFR-AUT-SEC-5 : aucun appel à enqueueEmail / Resend en dry-run.
+      // Le consommateur attendu (DryRunDialog en B.1) affichera ce payload.
+      if (mode === "dry-run") {
+        // Filtre subcontracted (même logique qu'en mode execute)
+        const condSub = (rule as Record<string, unknown>).condition_subcontracted;
+        if (condSub === true && !(session as Record<string, unknown>).is_subcontracted) {
+          return NextResponse.json({
+            mode: "dry-run",
+            recipients: [],
+            rendered_email: null,
+            attachments: [],
+            warnings: ["Règle filtrée : condition_subcontracted=true mais session non sous-traitée"],
+          });
+        }
+        if (condSub === false && (session as Record<string, unknown>).is_subcontracted) {
+          return NextResponse.json({
+            mode: "dry-run",
+            recipients: [],
+            rendered_email: null,
+            attachments: [],
+            warnings: ["Règle filtrée : condition_subcontracted=false mais session sous-traitée"],
+          });
+        }
+
+        const recipientType = (rule as RuleInfo).recipient_type ?? "learners";
+        const recipients = await resolveRecipients(supabase, session.id, recipientType);
+
+        // Aperçu mail : on retourne les chaines brutes du template (sans résolution
+        // des variables — le UI DryRunDialog en B.1 peut résoudre côté client si besoin
+        // via resolveVariablesForPreview, ou les afficher telles quelles).
+        const renderedEmail = template
+          ? {
+              subject: template.subject ?? "",
+              body: template.body ?? "",
+            }
+          : null;
+
+        // PJ : retourne les descripteurs des attachment_doc_types (sans gen PDF)
+        const attachmentDescriptors = (template?.attachment_doc_types ?? []).map((v) => ({
+          key: v,
+          type: UUID_REGEX.test(v) ? "custom_docx" : "system",
+          custom_name: UUID_REGEX.test(v) ? customTemplatesById[v]?.name : undefined,
+        }));
+
+        const warnings: string[] = [];
+        if (recipients.length === 0) warnings.push("Aucun destinataire calculé pour cette règle");
+        if (!template) warnings.push("Aucun template associé à cette règle");
+
+        return NextResponse.json({
+          mode: "dry-run",
+          rule_id: rule.id,
+          rule_name: rule.name,
+          session_id: session.id,
+          recipients: recipients.map((r) => ({
+            id: r.id,
+            email: r.email,
+            name: `${r.first_name ?? ""} ${r.last_name ?? ""}`.trim(),
+            type: r.type,
+          })),
+          rendered_email: renderedEmail,
+          attachments: attachmentDescriptors,
+          warnings,
+        });
       }
 
       const { enqueued, skipped, failed } = await executeRuleForSession(supabase, {

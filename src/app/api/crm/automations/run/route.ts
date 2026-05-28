@@ -141,6 +141,96 @@ export async function POST(request: NextRequest) {
 
     const entityId = resolveActiveEntityId(profile);
 
+    // ── DRY-RUN MODE (aut-a-3) : calcule cibles éligibles sans agir ──
+    // Body input : { mode: "dry-run", trigger_type?: string }
+    // Garantie NFR-AUT-SEC-5 : aucune création de tâche/notification en dry-run.
+    let bodyMode: "execute" | "dry-run" = "execute";
+    let bodyTriggerType: string | null = null;
+    try {
+      const body = await request.json();
+      if (body?.mode === "dry-run") bodyMode = "dry-run";
+      if (body?.trigger_type) bodyTriggerType = body.trigger_type;
+    } catch { /* empty body = execute mode */ }
+
+    if (bodyMode === "dry-run") {
+      const eligibility: Record<string, { count: number; sample: Array<{ id: string; name: string }> }> = {};
+      const today = new Date();
+
+      // prospect_inactive_30d : prospects sans activité depuis 30 jours
+      if (!bodyTriggerType || bodyTriggerType === "prospect_inactive_30d") {
+        const cutoff = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+        const { data: prospects } = await supabase
+          .from("crm_prospects")
+          .select("id, company_name, last_activity_at")
+          .eq("entity_id", entityId)
+          .lt("last_activity_at", cutoff)
+          .limit(5);
+        const { count: totalCount } = await supabase
+          .from("crm_prospects")
+          .select("id", { count: "exact", head: true })
+          .eq("entity_id", entityId)
+          .lt("last_activity_at", cutoff);
+        eligibility.prospect_inactive_30d = {
+          count: totalCount ?? 0,
+          sample: (prospects ?? []).map((p) => ({ id: p.id, name: p.company_name ?? "—" })),
+        };
+      }
+
+      // quote_expiring_3d : devis expirant dans les 3 prochains jours
+      if (!bodyTriggerType || bodyTriggerType === "quote_expiring_3d") {
+        const inThreeDays = new Date(today.getTime() + 3 * 24 * 60 * 60 * 1000).toISOString();
+        const { data: quotes } = await supabase
+          .from("crm_quotes")
+          .select("id, reference, valid_until")
+          .eq("entity_id", entityId)
+          .lte("valid_until", inThreeDays)
+          .gte("valid_until", today.toISOString())
+          .limit(5);
+        const { count: totalCount } = await supabase
+          .from("crm_quotes")
+          .select("id", { count: "exact", head: true })
+          .eq("entity_id", entityId)
+          .lte("valid_until", inThreeDays)
+          .gte("valid_until", today.toISOString());
+        eligibility.quote_expiring_3d = {
+          count: totalCount ?? 0,
+          sample: (quotes ?? []).map((q) => ({ id: q.id, name: q.reference ?? "—" })),
+        };
+      }
+
+      // task_overdue_3d : tâches commerciales en retard de 3+ jours
+      if (!bodyTriggerType || bodyTriggerType === "task_overdue_3d") {
+        const overdueCutoff = new Date(today.getTime() - 3 * 24 * 60 * 60 * 1000).toISOString();
+        const { data: tasks } = await supabase
+          .from("crm_tasks")
+          .select("id, title, due_at, status")
+          .eq("entity_id", entityId)
+          .lt("due_at", overdueCutoff)
+          .neq("status", "done")
+          .limit(5);
+        const { count: totalCount } = await supabase
+          .from("crm_tasks")
+          .select("id", { count: "exact", head: true })
+          .eq("entity_id", entityId)
+          .lt("due_at", overdueCutoff)
+          .neq("status", "done");
+        eligibility.task_overdue_3d = {
+          count: totalCount ?? 0,
+          sample: (tasks ?? []).map((t) => ({ id: t.id, name: t.title ?? "—" })),
+        };
+      }
+
+      return NextResponse.json({
+        data: {
+          mode: "dry-run",
+          entity_id: entityId,
+          trigger_type: bodyTriggerType ?? "all",
+          eligibility,
+        },
+        error: null,
+      });
+    }
+
     // Fetch enabled rules
     const { data: rules } = await supabase
       .from("crm_automation_rules")
