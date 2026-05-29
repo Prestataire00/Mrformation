@@ -19,6 +19,7 @@ import { plainTextToHtml, isHtmlContent } from "@/lib/migrate-templates";
 import { exportHtmlToPDF, exportToPDF } from "@/lib/pdf-export";
 import { renderSystemTemplate } from "@/lib/templates/registry";
 import { BackToFormationLink } from "@/components/ui/back-to-formation-link";
+import { InsertVariableButton } from "@/components/editor/InsertVariableButton";
 import { DocumentsTabsNav } from "./_components/DocumentsTabsNav";
 import { ChooseTemplateDialog } from "./_components/ChooseTemplateDialog";
 import DOMPurifyLib from "dompurify";
@@ -1863,7 +1864,18 @@ export default function DocumentsPage() {
                 <div className="flex flex-1 gap-4 px-1 pb-2 overflow-hidden min-h-0" style={{ minHeight: "400px" }}>
                   {/* Gauche — Éditeur */}
                   <div className="flex-1 flex flex-col overflow-hidden">
-                    <p className="text-xs font-medium text-gray-500 mb-2">Éditeur</p>
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs font-medium text-gray-500">Éditeur</p>
+                      <InsertVariableButton
+                        context="document"
+                        onInsert={(placeholder) =>
+                          setTemplateForm((p) => ({
+                            ...p,
+                            content: (p.content ?? "") + placeholder,
+                          }))
+                        }
+                      />
+                    </div>
                     <div className="flex-1 overflow-y-auto border rounded-lg">
                       <RichTextEditor
                         content={templateForm.content}
