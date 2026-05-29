@@ -8,7 +8,13 @@ import { createClient } from "@/lib/supabase/server";
  * mode=dry-run. Utilisé par <DryRunDialog> côté UI (B.1) pour afficher
  * destinataires + aperçu mail + PJ d'une règle SANS l'exécuter.
  *
- * Body input : { rule_id: string, session_id: string }
+ * Body input : { rule_id: string, session_id?: string }
+ *   - session_id optionnel : si absent, auto-pick la première session future
+ *     de l'entité de la règle. Si aucune session future éligible, retourne
+ *     un payload dry-run vide avec un warning explicatif (au lieu d'une
+ *     erreur 400). Permet à <DryRunDialog> ouvert depuis /admin/automation
+ *     (vue globale, sans session_id) de fonctionner.
+ *
  * Body output : DryRunResult (cf. run-cron mode dry-run, aut-a-3)
  *
  * Auth : admin/super_admin de l'entité (vérifié via la rule).
@@ -55,33 +61,64 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     );
   }
-  if (!rule_id || !session_id) {
+  if (!rule_id) {
     return NextResponse.json(
-      { data: null, error: "rule_id and session_id are required" },
+      { data: null, error: "rule_id is required" },
       { status: 400 },
     );
   }
 
-  // Vérification d'appartenance entité (défense en profondeur)
-  // Un admin ne peut tester que les règles de son entité (super_admin peut tout).
-  if (profile.role === "admin") {
-    const { data: rule } = await supabase
-      .from("formation_automation_rules")
-      .select("entity_id")
-      .eq("id", rule_id)
-      .maybeSingle();
-    if (!rule) {
+  // Charge la rule pour auto-pick session et vérif d'appartenance entité
+  const { data: rule } = await supabase
+    .from("formation_automation_rules")
+    .select("entity_id, trigger_type, name")
+    .eq("id", rule_id)
+    .maybeSingle();
+  if (!rule) {
+    return NextResponse.json(
+      { data: null, error: "Règle introuvable" },
+      { status: 404 },
+    );
+  }
+  if (profile.role === "admin" && rule.entity_id !== profile.entity_id) {
+    return NextResponse.json(
+      { data: null, error: "Règle hors de l'entité" },
+      { status: 403 },
+    );
+  }
+
+  // Auto-pick session_id si absent (cas /admin/automation vue globale)
+  if (!session_id) {
+    const today = new Date().toISOString().split("T")[0];
+    const { data: candidates } = await supabase
+      .from("sessions")
+      .select("id")
+      .eq("entity_id", rule.entity_id)
+      .gte("start_date", today)
+      .order("start_date", { ascending: true })
+      .limit(1);
+
+    if (!candidates || candidates.length === 0) {
       return NextResponse.json(
-        { data: null, error: "Règle introuvable" },
-        { status: 404 },
+        {
+          data: {
+            mode: "dry-run",
+            rule_id,
+            rule_name: rule.name,
+            session_id: null,
+            recipients: [],
+            rendered_email: null,
+            attachments: [],
+            warnings: [
+              "Aucune session future éligible. Créez une session future pour obtenir un aperçu réel des destinataires.",
+            ],
+          },
+          error: null,
+        },
+        { status: 200 },
       );
     }
-    if (rule.entity_id !== profile.entity_id) {
-      return NextResponse.json(
-        { data: null, error: "Règle hors de l'entité" },
-        { status: 403 },
-      );
-    }
+    session_id = candidates[0].id;
   }
 
   // Proxy vers run-cron mode=dry-run avec Bearer CRON_SECRET

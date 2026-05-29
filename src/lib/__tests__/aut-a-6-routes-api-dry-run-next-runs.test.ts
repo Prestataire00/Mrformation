@@ -201,8 +201,8 @@ describe("aut-a-6 — POST /api/automation/dry-run (proxy formations)", () => {
     expect(routeSrc).toMatch(/export async function POST\(/);
   });
 
-  it("requiert rule_id + session_id dans le body", () => {
-    expect(routeSrc).toMatch(/rule_id and session_id are required/);
+  it("requiert rule_id dans le body (session_id devenu optionnel)", () => {
+    expect(routeSrc).toMatch(/rule_id is required/);
   });
 
   it("auth admin + check entity (admin: son entité, super_admin: toutes)", () => {
@@ -210,6 +210,19 @@ describe("aut-a-6 — POST /api/automation/dry-run (proxy formations)", () => {
     expect(routeSrc).toMatch(
       /profile\.role === "admin"[\s\S]+?rule\.entity_id !== profile\.entity_id/,
     );
+  });
+
+  it("auto-pick : si session_id absent, sélectionne la 1re session future de l'entité", () => {
+    expect(routeSrc).toMatch(/if \(!session_id\)/);
+    expect(routeSrc).toMatch(/from\("sessions"\)[\s\S]+?\.gte\("start_date", today\)/);
+    expect(routeSrc).toMatch(/\.order\("start_date", \{ ascending: true \}\)[\s\S]+?\.limit\(1\)/);
+  });
+
+  it("auto-pick : si aucune session future éligible, retourne dry-run vide avec warning (pas d'erreur 400)", () => {
+    expect(routeSrc).toMatch(
+      /Aucune session future éligible\. Créez une session future/,
+    );
+    expect(routeSrc).toMatch(/recipients: \[\]/);
   });
 
   it("proxy vers /api/formations/automation-rules/run-cron avec mode=dry-run + Bearer", () => {
