@@ -1,5 +1,5 @@
 # generated: 2026-05-28
-# last_updated: 2026-05-28 (création initiale post-readiness-check, score 29/30, 0 blocker)
+# last_updated: 2026-05-29 (création initiale post-readiness-check, score 29/30, 0 blocker)
 # project: lms-platform
 # project_key: NOKEY
 # tracking_system: file-system
@@ -47,7 +47,7 @@
 #   #4 (epics ligne 47) coquille cosmétique "pack dédup" → "modèle dédup"
 
 generated: 2026-05-28
-last_updated: 2026-05-28
+last_updated: 2026-05-29
 project: lms-platform
 project_key: NOKEY
 tracking_system: file-system
@@ -89,7 +89,7 @@ development_status:
   aut-c-1-crm-rule-wizard-5-etapes-4-subforms: done         # ✅ Cette PR — Wizard 5 étapes + 4 sub-forms + Zod discriminated union + DryRunDialog post-création
   aut-c-2-crm-rule-templates-4-modeles: done                # ✅ Cette PR — 4 modèles préétablis + 12 règles valides Zod + pré-décochage + toast partiel
   aut-c-3-page-crm-automations-refondue: done               # ✅ Cette PR — Refonte miroir /admin/automation : DomainToggle + 4 cards état + CrmRuleWizard + CrmRuleTemplates + DryRunDialog + a11y
-  aut-c-4-integration-crm-automation-logs-moteur: backlog   # P1, dépend a-5 (+ mitigation DoD #3 Pattern 6+7)
+  aut-c-4-integration-crm-automation-logs-moteur: done      # ✅ Cette PR — Helper logCrmAutomationExecution + intégration CRON + USER branch + multi-rule logging + PG function increment_crm_rule_execution
   aut-c-5-eligible-targets-dry-run-update-scores: backlog   # P2, dépend c-1 + b-1
   automatisations-epic-c-retrospective: optional
 
