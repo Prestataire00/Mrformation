@@ -33,7 +33,7 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, AlertTriangle, Mail, Users, Paperclip, Activity } from "lucide-react";
+import { Loader2, AlertTriangle, Mail, Users, Paperclip, Activity, Target, TrendingUp, TrendingDown } from "lucide-react";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -75,11 +75,30 @@ type CrmEligibility = {
   sample: Array<{ id: string; name: string }>;
 };
 
+// aut-c-5 — Aperçu d'impact d'une règle update_scores ou update_prospect_status
+type ActionPreviewSampleItem = {
+  id: string;
+  name: string;
+  current: string | number;
+  next: string | number;
+  delta?: number;
+};
+
+type ActionPreview = {
+  action_type: "update_prospect_status" | "update_scores";
+  total_count: number;
+  sample: ActionPreviewSampleItem[];
+  avg_before?: number;
+  avg_after?: number;
+  avg_delta?: number;
+};
+
 type CrmDryRunResult = {
   mode: "dry-run";
   entity_id: string;
   trigger_type: string;
   eligibility: Record<string, CrmEligibility>;
+  action_preview?: ActionPreview; // aut-c-5
 };
 
 type Props = {
@@ -375,12 +394,13 @@ function FormationDryRunContent({ result }: { result: FormationDryRunResult }) {
   );
 }
 
-// ── Sous-composant : contenu CRM (eligibility par trigger) ───────────────
+// ── Sous-composant : contenu CRM (eligibility par trigger + action_preview) ──
 
 function CrmDryRunContent({ result }: { result: CrmDryRunResult }) {
   const entries = Object.entries(result.eligibility);
+  const hasActionPreview = !!result.action_preview;
 
-  if (entries.length === 0) {
+  if (entries.length === 0 && !hasActionPreview) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center">
         <span className="text-4xl mb-2" aria-hidden>
@@ -395,12 +415,146 @@ function CrmDryRunContent({ result }: { result: CrmDryRunResult }) {
     );
   }
 
+  // aut-c-5 : 2 onglets si action_preview présent (Cibles éligibles + Prospects impactés)
+  if (hasActionPreview && result.action_preview) {
+    const impactedCount = result.action_preview.total_count;
+    return (
+      <Tabs defaultValue="impacted" className="w-full mt-2">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="impacted" className="gap-1.5">
+            <Target className="h-4 w-4" />
+            Prospects impactés ({impactedCount})
+          </TabsTrigger>
+          <TabsTrigger value="eligibility" className="gap-1.5">
+            <Activity className="h-4 w-4" />
+            Déclencheur évalué
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="impacted" className="mt-4">
+          <ActionPreviewContent preview={result.action_preview} />
+        </TabsContent>
+
+        <TabsContent value="eligibility" className="mt-4">
+          <EligibilityList entries={entries} triggerType={result.trigger_type} />
+        </TabsContent>
+      </Tabs>
+    );
+  }
+
+  // Cas par défaut (create_task / create_notification) : eligibility seule
   return (
     <div className="space-y-4 mt-2">
       <p className="text-sm text-muted-foreground flex items-center gap-2">
         <Activity className="h-4 w-4" />
         Déclencheur évalué : <code className="text-xs">{result.trigger_type}</code>
       </p>
+      <EligibilityList entries={entries} triggerType={result.trigger_type} />
+    </div>
+  );
+}
+
+// ── aut-c-5 : sous-composant "Prospects impactés" (update_scores/update_status) ──
+
+function ActionPreviewContent({ preview }: { preview: ActionPreview }) {
+  if (preview.sample.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 text-center">
+        <span className="text-4xl mb-2" aria-hidden>
+          🤷
+        </span>
+        <p className="font-medium">Aucun prospect impacté actuellement.</p>
+        <p className="text-sm text-muted-foreground mt-1">
+          Aucun prospect ne correspond aux conditions du déclencheur aujourd&apos;hui.
+        </p>
+      </div>
+    );
+  }
+
+  const isScores = preview.action_type === "update_scores";
+
+  return (
+    <div className="space-y-3">
+      {/* Sub-resume pour update_scores : moyenne avant → après */}
+      {isScores && preview.avg_before !== undefined && preview.avg_after !== undefined && (
+        <div className="rounded-md border bg-muted/30 p-3 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm">
+            {(preview.avg_delta ?? 0) >= 0 ? (
+              <TrendingUp className="h-4 w-4 text-emerald-600" />
+            ) : (
+              <TrendingDown className="h-4 w-4 text-red-600" />
+            )}
+            <span className="font-medium">Score moyen</span>
+          </div>
+          <div className="text-sm">
+            <span className="text-muted-foreground">{preview.avg_before}</span>
+            <span className="mx-2 text-muted-foreground">→</span>
+            <span className="font-semibold">{preview.avg_after}</span>
+            <Badge
+              variant={(preview.avg_delta ?? 0) >= 0 ? "default" : "destructive"}
+              className="ml-2 text-xs"
+            >
+              {(preview.avg_delta ?? 0) >= 0 ? "+" : ""}
+              {preview.avg_delta}
+            </Badge>
+          </div>
+        </div>
+      )}
+
+      <p className="text-xs text-muted-foreground">
+        Aperçu des {preview.sample.length} premiers prospects affectés
+        {preview.total_count > preview.sample.length && (
+          <> (+ {preview.total_count - preview.sample.length} autre
+          {preview.total_count - preview.sample.length > 1 ? "s" : ""} non affiché
+          {preview.total_count - preview.sample.length > 1 ? "s" : ""})</>
+        )}
+      </p>
+
+      <ul className="divide-y rounded-md border">
+        {preview.sample.map((item) => (
+          <li
+            key={item.id}
+            className="flex items-center justify-between p-3 text-sm gap-3"
+          >
+            <span className="font-medium truncate">{item.name}</span>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-muted-foreground">{item.current}</span>
+              <span className="text-muted-foreground">→</span>
+              <span className="font-semibold">{item.next}</span>
+              {isScores && item.delta !== undefined && (
+                <Badge
+                  variant={item.delta >= 0 ? "default" : "destructive"}
+                  className="text-xs"
+                >
+                  {item.delta >= 0 ? "+" : ""}
+                  {item.delta}
+                </Badge>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function EligibilityList({
+  entries,
+  triggerType,
+}: {
+  entries: Array<[string, CrmEligibility]>;
+  triggerType: string;
+}) {
+  if (entries.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground text-center py-6 italic">
+        Déclencheur <code className="text-xs">{triggerType}</code> : aucune
+        donnée d&apos;éligibilité retournée.
+      </p>
+    );
+  }
+  return (
+    <div className="space-y-3">
       {entries.map(([trigger, eligibility]) => (
         <div key={trigger} className="rounded-md border p-3">
           <div className="flex items-center justify-between mb-2">
