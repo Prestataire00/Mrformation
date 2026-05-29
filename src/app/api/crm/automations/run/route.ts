@@ -9,6 +9,7 @@ import {
 } from "@/lib/crm/automations";
 import { sanitizeError } from "@/lib/api-error";
 import { resolveActiveEntityId } from "@/lib/crm/active-entity";
+import { logCrmAutomationExecution } from "@/lib/crm/automation-logger";
 
 // Story aut-a-2 — Branche cron pour scheduled function Netlify
 // `process-automation-rules.mts` pingue cette route avec Bearer ${CRON_SECRET}
@@ -70,6 +71,15 @@ export async function POST(request: NextRequest) {
               supabase,
               entity.id,
             );
+            // aut-c-4 : log audit (NFR-AUT-REL-2 non-blocking via helper)
+            await logCrmAutomationExecution(supabase, {
+              entity_id: entity.id,
+              trigger_type: "prospect_inactive_30d",
+              action_type: "create_task",
+              recipient_count: results.inactive_relances + results.dormant_prospects,
+              status: "success",
+              is_manual: false,
+            });
           }
 
           if (enabledTriggers.has("quote_expiring_3d")) {
@@ -77,6 +87,14 @@ export async function POST(request: NextRequest) {
               supabase,
               entity.id,
             );
+            await logCrmAutomationExecution(supabase, {
+              entity_id: entity.id,
+              trigger_type: "quote_expiring_3d",
+              action_type: "create_task",
+              recipient_count: results.expiring_quote_tasks,
+              status: "success",
+              is_manual: false,
+            });
           }
 
           if (enabledTriggers.has("task_overdue_3d")) {
@@ -84,6 +102,14 @@ export async function POST(request: NextRequest) {
               supabase,
               entity.id,
             );
+            await logCrmAutomationExecution(supabase, {
+              entity_id: entity.id,
+              trigger_type: "task_overdue_3d",
+              action_type: "create_notification",
+              recipient_count: results.overdue_notifications,
+              status: "success",
+              is_manual: false,
+            });
           }
 
           summary[entity.id] = { name: entity.name, results };
@@ -248,16 +274,44 @@ export async function POST(request: NextRequest) {
       results.inactive_prospect_relances = `${relanceCount} tâche(s) de relance créée(s)`;
       const dormantCount = await checkDormantProspects(supabase, entityId);
       results.dormant_prospects = `${dormantCount} prospect(s) marqué(s) dormant`;
+      // aut-c-4 : log audit (NFR-AUT-REL-2 non-blocking via helper)
+      await logCrmAutomationExecution(supabase, {
+        entity_id: entityId,
+        trigger_type: "prospect_inactive_30d",
+        action_type: "create_task",
+        recipient_count: relanceCount + dormantCount,
+        status: "success",
+        executed_by: user.id,
+        is_manual: true,
+      });
     }
 
     if (enabledTriggers.has("quote_expiring_3d")) {
       const count = await createExpiringQuoteTasks(supabase, entityId);
       results.expiring_quote_tasks = `${count} tâche(s) de relance créée(s)`;
+      await logCrmAutomationExecution(supabase, {
+        entity_id: entityId,
+        trigger_type: "quote_expiring_3d",
+        action_type: "create_task",
+        recipient_count: count,
+        status: "success",
+        executed_by: user.id,
+        is_manual: true,
+      });
     }
 
     if (enabledTriggers.has("task_overdue_3d")) {
       const count = await notifyOverdueTasks(supabase, entityId);
       results.overdue_notifications = `${count} notification(s) créée(s)`;
+      await logCrmAutomationExecution(supabase, {
+        entity_id: entityId,
+        trigger_type: "task_overdue_3d",
+        action_type: "create_notification",
+        recipient_count: count,
+        status: "success",
+        executed_by: user.id,
+        is_manual: true,
+      });
     }
 
     // Daily digest and weekly summary are handled by their respective API routes
