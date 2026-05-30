@@ -44,12 +44,14 @@ export async function POST(request: NextRequest) {
   let specificTrigger: string | null = null;
   let specificSessionId: string | null = null;
   let specificRuleId: string | null = null;
+  let specificLearnerId: string | null = null;
   let mode: "execute" | "dry-run" = "execute";
   try {
     const body = await request.json();
     specificTrigger = body.trigger_type || null;
     specificSessionId = body.session_id || null;
     specificRuleId = body.rule_id || null;
+    specificLearnerId = body.learner_id || null;
     if (body.mode === "dry-run") mode = "dry-run";
   } catch { /* empty body = normal cron mode */ }
 
@@ -263,6 +265,7 @@ export async function POST(request: NextRequest) {
           session: session as unknown as SessionInfo,
           template: rule.template_id ? (templateMap[rule.template_id] as TemplateInfo) ?? null : null,
           customTemplatesById,
+          onlyLearnerId: specificLearnerId ?? undefined,
         });
         emailsSent += enqueued;
       }

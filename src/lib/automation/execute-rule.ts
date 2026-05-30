@@ -300,20 +300,32 @@ export function buildFallbackEmail(
   };
 }
 
-/** Résout les destinataires d'une session selon le recipient_type de la règle. */
+/**
+ * Résout les destinataires d'une session selon le recipient_type de la règle.
+ *
+ * @param opts.onlyLearnerId — si fourni, restreint les recipients de type
+ *   "learner" à ce learner_id uniquement (pas d'effet sur trainers/companies).
+ *   Cas d'usage : trigger `on_enrollment` aut-d-1, où l'on veut notifier
+ *   seulement le nouvel apprenant inscrit, pas tous les apprenants existants.
+ */
 export async function resolveRecipients(
   supabase: SupabaseClient,
   sessionId: string,
   recipientType: string,
+  opts?: { onlyLearnerId?: string },
 ): Promise<RecipientInfo[]> {
   const recipients: RecipientInfo[] = [];
 
   if (recipientType === "learners" || recipientType === "all") {
-    const { data: enrollments } = await supabase
+    let query = supabase
       .from("enrollments")
       .select("learner:learners!enrollments_learner_id_fkey(id, email, first_name, last_name)")
       .eq("session_id", sessionId)
       .in("status", ["registered", "confirmed", "completed"]);
+    if (opts?.onlyLearnerId) {
+      query = query.eq("learner_id", opts.onlyLearnerId);
+    }
+    const { data: enrollments } = await query;
     for (const e of enrollments ?? []) {
       const l = e.learner as unknown as { id: string; email: string | null; first_name: string; last_name: string } | null;
       if (l?.email) recipients.push({ id: l.id, email: l.email, first_name: l.first_name, last_name: l.last_name, type: "learner" });
@@ -358,6 +370,8 @@ export async function resolveRecipients(
  *   destinataires qui ont déjà reçu un email correspondant depuis cette date sont
  *   ignorés (anti-doublon pour le mode global cron quotidien). Omettre pour les
  *   modes ciblé-trigger et ciblé-règle (exécutions volontaires).
+ * @param args.onlyLearnerId - optionnel. Quand fourni, restreint les destinataires
+ *   de type "learner" à cet apprenant uniquement (cas trigger `on_enrollment`).
  */
 export async function executeRuleForSession(
   supabase: SupabaseClient,
@@ -367,11 +381,12 @@ export async function executeRuleForSession(
     template: TemplateInfo | null;
     customTemplatesById: Record<string, CustomTemplateInfo>;
     dedupAgainstHistoryFromDate?: string;
+    onlyLearnerId?: string;
   },
 ): Promise<{ enqueued: number; skipped: number; failed: number }> {
-  const { rule, session, template, customTemplatesById, dedupAgainstHistoryFromDate } = args;
+  const { rule, session, template, customTemplatesById, dedupAgainstHistoryFromDate, onlyLearnerId } = args;
   const recipientType = rule.recipient_type || "learners";
-  const recipients = await resolveRecipients(supabase, session.id, recipientType);
+  const recipients = await resolveRecipients(supabase, session.id, recipientType, { onlyLearnerId });
 
   // Calculée une seule fois : la clé de matching anti-doublon dépend uniquement de la règle.
   const matchKey = dedupAgainstHistoryFromDate
