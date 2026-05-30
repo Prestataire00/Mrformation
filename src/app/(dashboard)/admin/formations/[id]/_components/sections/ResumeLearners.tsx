@@ -83,6 +83,25 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
     fetchLearners();
   }, [fetchLearners, formation.enrollments]);
 
+  /**
+   * Story aut-d-1 — ping fire-and-forget vers le moteur d'automatisations
+   * après une inscription réussie. Déclenche les règles `on_enrollment`
+   * configurées sur l'entité (email de bienvenue, convention, etc.) pour
+   * le seul apprenant inscrit (filtre learner_id côté run-cron).
+   *
+   * Catch silencieux : un échec du ping ne doit pas casser l'inscription
+   * (l'apprenant est déjà inscrit en BDD).
+   */
+  const pingOnEnrollment = (sessionId: string, learnerId: string): void => {
+    fetch("/api/automation/trigger-on-enrollment", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: sessionId, learner_id: learnerId }),
+    }).catch((err) => {
+      console.error("[automation] on_enrollment ping failed:", err);
+    });
+  };
+
   const handleAdd = async () => {
     if (!selectedLearnerId) return;
 
@@ -125,6 +144,7 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
       }
     } else {
       toast({ title: "Apprenant ajouté" });
+      pingOnEnrollment(formation.id, selectedLearnerId);
       setDialogOpen(false);
       setSelectedLearnerId("");
       setSelectedClientId("");
@@ -170,6 +190,7 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
       if (!result.ok) throw new Error(result.error.message);
 
       toast({ title: "Apprenant créé et inscrit" });
+      pingOnEnrollment(formation.id, result.learner.id);
       setCreateDialogOpen(false);
       setNewFirstName("");
       setNewLastName("");
