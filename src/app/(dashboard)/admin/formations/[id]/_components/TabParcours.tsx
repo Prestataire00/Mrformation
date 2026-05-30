@@ -65,6 +65,20 @@ export function TabParcours({ formation, onRefresh }: Props) {
         }),
       }).catch((err) => console.error("[automation] on_session_completion:", err));
 
+      // Story aut-d-2 : trigger certificate_ready (envoi automatique
+      // certificat de réalisation + questionnaire satisfaction Qualiopi).
+      // L'admin est responsable de marquer "terminée" uniquement quand tous
+      // les émargements sont signés (philosophie V1 loose, cf. ADR V2 dans
+      // docs/automatisations.md pour le check strict envisagé).
+      fetch("/api/formations/automation-rules/trigger-event", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          trigger_type: "certificate_ready",
+          session_id: formation.id,
+        }),
+      }).catch((err) => console.error("[automation] certificate_ready:", err));
+
       await onRefresh();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Impossible de terminer la formation";
