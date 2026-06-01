@@ -1,9 +1,12 @@
 /**
  * Template HTML système — Planning hebdomadaire signé (paysage).
  *
- * Layout : tableau N+1 colonnes (Nom + jours×moments matin/après-midi),
- * max 10 colonnes, format A4 paysage. Pour chaque cellule (column, person),
- * affiche la signature image si signée, vide sinon.
+ * Layout : N semaines successives, chacune en tableau (Nom + jours×moments
+ * matin/après-midi), max 10 colonnes par semaine, format A4 paysage. Si la
+ * formation tient sur 1 seule semaine, 1 seul tableau (rétrocompat). Pour
+ * chaque cellule (column, person), affiche la signature image si signée,
+ * vide sinon. Multi-semaines : titre "Semaine du DD/MM/YYYY au DD/MM/YYYY"
+ * + page-break-inside:avoid par bloc.
  *
  * Utilisé par : TabEmargements Action 3 ("Planning hebdo signé").
  *
@@ -91,6 +94,32 @@ export const PLANNING_HEBDO_SIGNE_HTML = `<!DOCTYPE html>
   table.planning-table img {
     display: block;
     margin: auto;
+  }
+
+  /* Lot E : multi-semaines — chaque bloc semaine reste groupé visuellement
+     (header + tableau) et essaie de tenir sur la même page. Si une semaine
+     dépasse 1 page (beaucoup d'apprenants), Chrome ignore avoid et coupe
+     dans le tableau — acceptable, mieux que d'orpheliner le titre. */
+  .week-block {
+    page-break-inside: avoid;
+    margin-bottom: 14px;
+  }
+  .week-block:last-child {
+    margin-bottom: 0;
+  }
+  .week-block + .week-block {
+    margin-top: 10px;
+  }
+  .week-title {
+    font-size: 11pt;
+    font-weight: 700;
+    color: #1f2937;
+    margin: 10px 0 4px;
+    padding-bottom: 3px;
+    border-bottom: 1.5px solid #d1d5db;
+  }
+  table.planning-table thead {
+    display: table-header-group;
   }
 </style>
 </head>

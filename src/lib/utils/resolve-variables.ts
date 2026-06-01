@@ -1220,19 +1220,29 @@ export function resolveVariables(content: string, data: ResolveContext): string 
       return sections.join("\n");
     })(),
     // Tableau planning hebdomadaire signé (Action 3 de TabEmargements).
-    // Layout : N+1 colonnes (Nom + jours×moments M/AM), max 10 colonnes.
-    // Pour chaque (column, person) : signature image si signée, vide sinon.
+    // Layout : N+1 colonnes (Nom + jours×moments M/AM) par semaine ISO
+    // (lundi → dimanche). Si la formation dure plusieurs semaines, rend
+    // 1 sous-tableau par semaine avec titre "Semaine du X au Y", chaque
+    // bloc en page-break-inside:avoid pour rester groupé visuellement.
+    // (Lot E — retour Loris : "lorsque les formations durent plusieurs mois
+    // il faudrait que les semaines s'enchainent" — avant : .slice(0,10)
+    // coupait à 1 semaine max.)
     "{{tableau_planning_hebdo}}": (() => {
       const sess = data.session;
       const slots = (sess as unknown as { formation_time_slots?: Array<{ id: string; start_time: string; end_time: string }> })?.formation_time_slots ?? [];
       if (slots.length === 0) return "[Aucun créneau]";
 
       // Group by (date, moment=M|AM)
+      // ⚠ TZ : dateKey, hour et label DOIVENT tous être calculés sur la même
+      // timezone Paris pour éviter qu'un slot en bordure de journée (ex 22:30Z =
+      // 00:30 Paris) ne se retrouve dans une dateKey UTC qui ne correspond pas
+      // au jour Paris affiché (et donc dans la mauvaise semaine après group).
       type Column = { key: string; date: string; moment: "M" | "AM"; label: string; slotIds: string[] };
       const columnsMap = new Map<string, Column>();
       for (const slot of slots) {
         const d = new Date(slot.start_time);
-        const dateKey = d.toISOString().slice(0, 10);
+        // fr-CA produit yyyy-mm-dd, parfait pour clé ISO + alignement Paris
+        const dateKey = d.toLocaleDateString("fr-CA", { timeZone: "Europe/Paris" });
         const hour = parseInt(d.toLocaleTimeString("fr-FR", { hour: "2-digit", hour12: false, timeZone: "Europe/Paris" }), 10);
         const moment: "M" | "AM" = hour < 13 ? "M" : "AM";
         const key = `${dateKey}|${moment}`;
@@ -1244,14 +1254,45 @@ export function resolveVariables(content: string, data: ResolveContext): string 
       // Sort : par date croissante, puis Matin (M) AVANT Après-midi (AM).
       // Sans cette priorité, le localeCompare placerait "AM" avant "M"
       // alphabétiquement, inversant l'ordre attendu.
-      const columns = Array.from(columnsMap.values())
+      const allColumns = Array.from(columnsMap.values())
         .sort((a, b) => {
           const dateCompare = a.date.localeCompare(b.date);
           if (dateCompare !== 0) return dateCompare;
           if (a.moment === b.moment) return 0;
           return a.moment === "M" ? -1 : 1;
-        })
-        .slice(0, 10);
+        });
+
+      // Group columns by ISO week (Monday-Sunday). Calcul du lundi de la
+      // semaine contenant `dateStr` (en local Paris pour éviter décalage UTC).
+      const getWeekStart = (dateStr: string): string => {
+        const [y, m, dd] = dateStr.split("-").map(Number);
+        const d = new Date(y, m - 1, dd);
+        const day = d.getDay(); // 0=dim, 1=lun, ..., 6=sam
+        const diffToMonday = day === 0 ? -6 : 1 - day;
+        d.setDate(d.getDate() + diffToMonday);
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, "0");
+        const ddd = String(d.getDate()).padStart(2, "0");
+        return `${yyyy}-${mm}-${ddd}`;
+      };
+      const formatDateFr = (dateStr: string): string => {
+        const [y, m, dd] = dateStr.split("-").map(Number);
+        return new Date(y, m - 1, dd).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
+      };
+      const addDays = (dateStr: string, n: number): string => {
+        const [y, m, dd] = dateStr.split("-").map(Number);
+        const d = new Date(y, m - 1, dd);
+        d.setDate(d.getDate() + n);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      };
+
+      const weekGroupsMap = new Map<string, Column[]>();
+      for (const col of allColumns) {
+        const weekKey = getWeekStart(col.date);
+        if (!weekGroupsMap.has(weekKey)) weekGroupsMap.set(weekKey, []);
+        weekGroupsMap.get(weekKey)!.push(col);
+      }
+      const weekGroups = Array.from(weekGroupsMap.entries()).sort(([a], [b]) => a.localeCompare(b));
 
       // Collect persons : trainers from formation_trainers + learners from enrollments
       const trainers = ((sess as { formation_trainers?: Array<{ trainer: { id: string; first_name: string; last_name: string } | { id: string; first_name: string; last_name: string }[] }> })?.formation_trainers ?? [])
@@ -1280,21 +1321,37 @@ export function resolveVariables(content: string, data: ResolveContext): string 
         return `<img src="${dataUrl}" alt="Signature" style="max-width:60px;max-height:24px;display:block;margin:auto;" />`;
       };
 
-      const headHtml = `<tr><th class="col-name">Nom</th>${columns.map((c) => `<th>${c.label}</th>`).join("")}</tr>`;
+      const renderWeekTable = (weekColumns: Column[]): string => {
+        const headHtml = `<tr><th class="col-name">Nom</th>${weekColumns.map((c) => `<th>${c.label}</th>`).join("")}</tr>`;
+        const trainerRowsHtml = trainers.map((t) => {
+          const label = `${(t.last_name ?? "").toUpperCase()} ${t.first_name ?? ""} <span class="role">(F)</span>`;
+          const cells = weekColumns.map((c) => `<td>${renderSigCell(c, t.id, "trainer")}</td>`).join("");
+          return `<tr class="trainer-row"><td class="col-name">${label}</td>${cells}</tr>`;
+        }).join("");
+        const learnerRowsHtml = learners.map((l) => {
+          const label = `${(l.last_name ?? "").toUpperCase()} ${l.first_name ?? ""}`;
+          const cells = weekColumns.map((c) => `<td>${renderSigCell(c, l.id, "learner")}</td>`).join("");
+          return `<tr><td class="col-name">${label}</td>${cells}</tr>`;
+        }).join("");
+        return `<table class="planning-table"><thead>${headHtml}</thead><tbody>${trainerRowsHtml}${learnerRowsHtml}</tbody></table>`;
+      };
 
-      const trainerRowsHtml = trainers.map((t) => {
-        const label = `${(t.last_name ?? "").toUpperCase()} ${t.first_name ?? ""} <span class="role">(F)</span>`;
-        const cells = columns.map((c) => `<td>${renderSigCell(c, t.id, "trainer")}</td>`).join("");
-        return `<tr class="trainer-row"><td class="col-name">${label}</td>${cells}</tr>`;
-      }).join("");
+      // 1 seul tableau si toutes les colonnes tiennent dans une semaine
+      // (rétrocompat : pas de titre "Semaine du X au Y" inutile).
+      if (weekGroups.length <= 1) {
+        return renderWeekTable(weekGroups[0]?.[1] ?? []);
+      }
 
-      const learnerRowsHtml = learners.map((l) => {
-        const label = `${(l.last_name ?? "").toUpperCase()} ${l.first_name ?? ""}`;
-        const cells = columns.map((c) => `<td>${renderSigCell(c, l.id, "learner")}</td>`).join("");
-        return `<tr><td class="col-name">${label}</td>${cells}</tr>`;
-      }).join("");
-
-      return `<table class="planning-table"><thead>${headHtml}</thead><tbody>${trainerRowsHtml}${learnerRowsHtml}</tbody></table>`;
+      // Multi-semaines : 1 sous-bloc par semaine avec titre + page-break-inside:avoid.
+      return weekGroups
+        .map(([weekStart, weekColumns]) => {
+          const weekEnd = addDays(weekStart, 6);
+          return `<div class="week-block">
+  <h2 class="week-title">Semaine du ${formatDateFr(weekStart)} au ${formatDateFr(weekEnd)}</h2>
+  ${renderWeekTable(weekColumns)}
+</div>`;
+        })
+        .join("\n");
     })(),
     "{{tableau_couts_client}}": (() => {
       if (montantHt <= 0) return "[Tableau coûts]";
