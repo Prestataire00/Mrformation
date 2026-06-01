@@ -26,11 +26,14 @@ export const CONVOCATION_APPRENANT_HTML = `<!DOCTYPE html>
 <meta charset="utf-8">
 <title>Convocation à la formation professionnelle</title>
 <style>
-  @page { size: A4; margin: 18mm 16mm 22mm 16mm; }
+  /* Lot C : marges et tailles compressées pour tenir sur 1 page A4.
+     Bottom margin = 18mm pour laisser au footer Puppeteer (~11mm)
+     un gap suffisant avec le contenu. */
+  @page { size: A4; margin: 12mm 14mm 18mm 14mm; }
   body {
     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-    font-size: 10pt;
-    line-height: 1.55;
+    font-size: 9.5pt;
+    line-height: 1.4;
     color: #1f2937;
     margin: 0;
   }
@@ -39,48 +42,48 @@ export const CONVOCATION_APPRENANT_HTML = `<!DOCTYPE html>
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    margin-bottom: 16px;
+    margin-bottom: 8px;
   }
-  .header .org-info { flex: 1; padding-right: 12px; }
+  .header .org-info { flex: 1; padding-right: 10px; }
   .header .org-name {
-    font-size: 17pt;
+    font-size: 15pt;
     font-weight: 700;
     color: #111827;
-    margin: 0 0 6px;
+    margin: 0 0 3px;
     letter-spacing: 0.3px;
   }
   .header .org-address {
-    font-size: 8.5pt;
-    line-height: 1.5;
+    font-size: 8pt;
+    line-height: 1.4;
     color: #374151;
   }
-  .header .logo-cell { width: 130px; text-align: right; }
-  .header .logo-cell img { max-width: 130px; max-height: 110px; }
+  .header .logo-cell { width: 110px; text-align: right; }
+  .header .logo-cell img { max-width: 110px; max-height: 80px; object-fit: contain; }
 
   h1.title {
-    font-size: 13pt;
+    font-size: 12pt;
     font-weight: 700;
     text-align: center;
-    margin: 20px 0 14px;
+    margin: 10px 0 8px;
     color: #111827;
   }
 
   h2.formation-title {
-    font-size: 11pt;
+    font-size: 10.5pt;
     font-weight: 700;
-    margin: 14px 0 8px;
+    margin: 8px 0 4px;
     color: #111827;
   }
 
-  p { margin: 0 0 6px; }
+  p { margin: 0 0 3px; }
 
   ul.dates-list {
     list-style: none;
     padding: 0;
-    margin: 4px 0 14px 4px;
+    margin: 3px 0 8px 4px;
   }
   ul.dates-list > li {
-    padding: 2px 0 2px 16px;
+    padding: 1px 0 1px 14px;
     position: relative;
   }
   ul.dates-list > li::before {
@@ -89,34 +92,34 @@ export const CONVOCATION_APPRENANT_HTML = `<!DOCTYPE html>
     font-weight: 700;
     position: absolute;
     left: 2px;
-    top: 2px;
+    top: 1px;
   }
 
   .qr-block {
     text-align: center;
-    margin: 28px 0;
+    margin: 14px 0;
   }
   .qr-block img {
-    width: 200px;
-    height: 200px;
+    width: 150px;
+    height: 150px;
   }
 
   .important-block {
-    margin-top: 14px;
+    margin-top: 8px;
   }
   .important-block h3 {
-    font-size: 11pt;
+    font-size: 10.5pt;
     font-weight: 700;
-    margin: 14px 0 6px;
+    margin: 8px 0 3px;
   }
 
   .signature-block {
-    margin-top: 24px;
-    font-size: 10pt;
+    margin-top: 12px;
+    font-size: 9.5pt;
   }
   .signature-block .org-line { margin: 0; }
-  .signature-cachet { margin-top: 8px; min-height: 100px; }
-  .signature-cachet img { max-width: 220px; max-height: 110px; }
+  .signature-cachet { margin-top: 4px; min-height: 70px; }
+  .signature-cachet img { max-width: 180px; max-height: 90px; object-fit: contain; }
 
   strong { font-weight: 700; }
 </style>
@@ -151,25 +154,24 @@ export const CONVOCATION_APPRENANT_HTML = `<!DOCTYPE html>
 
   <p><strong>Accès à votre espace de formation :</strong></p>
 
-  <div class="login-credentials" style="border: 2px solid #2563EB; padding: 16px; margin: 20px 0; border-radius: 8px; background: #f0f7ff;">
-    <h3 style="margin: 0 0 12px; color: #1e3a8a; font-size: 13pt;">🔐 Accès à votre espace formation</h3>
-    <p style="margin: 0 0 12px;">Connectez-vous à votre espace personnel avec vos identifiants :</p>
-    <table style="width: 100%; margin: 8px 0; border-collapse: collapse;">
+  <div class="login-credentials" style="border: 1.5px solid #2563EB; padding: 8px 10px; margin: 8px 0; border-radius: 6px; background: #f0f7ff;">
+    <h3 style="margin: 0 0 4px; color: #1e3a8a; font-size: 11pt;">🔐 Accès à votre espace formation</h3>
+    <table style="width: 100%; margin: 2px 0; border-collapse: collapse; font-size: 9pt;">
       <tr>
-        <td style="padding: 4px 8px; font-weight: 700; width: 30%;">URL :</td>
-        <td style="padding: 4px 8px;">[%URL de connexion%]</td>
+        <td style="padding: 1px 6px; font-weight: 700; width: 28%;">URL :</td>
+        <td style="padding: 1px 6px;">[%URL de connexion%]</td>
       </tr>
       <tr>
-        <td style="padding: 4px 8px; font-weight: 700;">Email :</td>
-        <td style="padding: 4px 8px;">[%Email de l'apprenant%]</td>
+        <td style="padding: 1px 6px; font-weight: 700;">Email :</td>
+        <td style="padding: 1px 6px;">[%Email de l'apprenant%]</td>
       </tr>
       <tr>
-        <td style="padding: 4px 8px; font-weight: 700;">Mot de passe :</td>
-        <td style="padding: 4px 8px; font-family: monospace; background: #fff; border: 1px dashed #cbd5e1; border-radius: 4px;">[%Mot de passe apprenant%]</td>
+        <td style="padding: 1px 6px; font-weight: 700;">Mot de passe :</td>
+        <td style="padding: 1px 6px; font-family: monospace; background: #fff; border: 1px dashed #cbd5e1; border-radius: 3px;">[%Mot de passe apprenant%]</td>
       </tr>
     </table>
-    <p style="font-size: 9pt; color: #6b7280; margin-top: 12px; margin-bottom: 0;">
-      💡 Vous pouvez modifier votre mot de passe à tout moment via "Mot de passe oublié" sur la page de connexion. Si vous avez déjà modifié votre mot de passe, utilisez le nouveau.
+    <p style="font-size: 8pt; color: #6b7280; margin: 4px 0 0;">
+      💡 Vous pouvez modifier votre mot de passe via "Mot de passe oublié".
     </p>
   </div>
   <p>En cas d'indisponibilité ou de renoncement, veuillez nous prévenir le plus rapidement possible.</p>
@@ -191,7 +193,7 @@ export const CONVOCATION_APPRENANT_HTML = `<!DOCTYPE html>
 </body>
 </html>`;
 
-export const CONVOCATION_APPRENANT_FOOTER_TEMPLATE = `<div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 7.5pt; color: #6b7280; font-style: italic; width: 100%; padding: 0 16mm; text-align: center; line-height: 1.4;">
+export const CONVOCATION_APPRENANT_FOOTER_TEMPLATE = `<div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 7.5pt; color: #6b7280; font-style: italic; width: 100%; padding: 0 14mm; text-align: center; line-height: 1.4;">
   <div>[%Nom de l'organisme%], [%Adresse de l'organisme%] , Numéro SIRET: [%SIRET de l'organisme%], Numéro de déclaration d'activité: [%NDA de l'organisme%]</div>
   <div>(auprès du préfet de région de: PACA)</div>
   <div style="margin-top: 2px;"><span class="pageNumber"></span></div>

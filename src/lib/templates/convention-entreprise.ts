@@ -23,11 +23,14 @@ export const CONVENTION_ENTREPRISE_HTML = `<!DOCTYPE html>
 <meta charset="utf-8">
 <title>Convention de formation professionnelle</title>
 <style>
-  @page { size: A4; margin: 18mm 16mm 22mm 16mm; }
+  /* Lot C : marges et tailles compressées pour tenir sur 1 page A4.
+     Bottom 18mm = footer Puppeteer (~11mm) + gap suffisant
+     (alignement avec convocation/certificat). */
+  @page { size: A4; margin: 10mm 14mm 18mm 14mm; }
   body {
     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-    font-size: 9pt;
-    line-height: 1.45;
+    font-size: 8.5pt;
+    line-height: 1.35;
     color: #1f2937;
     margin: 0;
   }
@@ -37,55 +40,55 @@ export const CONVENTION_ENTREPRISE_HTML = `<!DOCTYPE html>
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    margin-bottom: 8px;
+    margin-bottom: 4px;
   }
-  .header .org-info { flex: 1; padding-right: 12px; }
+  .header .org-info { flex: 1; padding-right: 10px; }
   .header .org-name {
-    font-size: 17pt;
+    font-size: 14pt;
     font-weight: 700;
     color: #111827;
-    margin: 0 0 6px;
+    margin: 0 0 2px;
     letter-spacing: 0.3px;
   }
   .header .org-address {
-    font-size: 8.5pt;
-    line-height: 1.5;
+    font-size: 7.5pt;
+    line-height: 1.35;
     color: #374151;
   }
-  .header .logo-cell { width: 130px; text-align: right; }
-  .header .logo-cell img { max-width: 130px; max-height: 110px; }
+  .header .logo-cell { width: 95px; text-align: right; }
+  .header .logo-cell img { max-width: 95px; max-height: 70px; object-fit: contain; }
 
   /* Titre central */
   h1.title {
-    font-size: 14pt;
+    font-size: 12pt;
     font-weight: 700;
     color: #7f1d1d;
     text-align: center;
-    margin: 26px 0 4px;
+    margin: 8px 0 2px;
   }
   p.subtitle {
-    font-size: 10pt;
+    font-size: 9pt;
     font-weight: 700;
     color: #7f1d1d;
     text-align: center;
-    margin: 0 0 18px;
+    margin: 0 0 6px;
   }
 
   /* En-têtes d'article */
   h2 {
-    font-size: 10pt;
+    font-size: 9pt;
     font-weight: 700;
     color: #7f1d1d;
-    margin: 14px 0 6px;
+    margin: 6px 0 2px;
   }
 
-  p { margin: 0 0 8px; }
+  p { margin: 0 0 3px; }
 
   /* Boîte Article 1 avec puces rouges */
   .article-1-box {
     border: 1px solid #9ca3af;
-    padding: 10px 16px;
-    margin: 4px 0 10px;
+    padding: 5px 10px;
+    margin: 2px 0 4px;
   }
   .article-1-box ul {
     list-style: none;
@@ -93,7 +96,7 @@ export const CONVENTION_ENTREPRISE_HTML = `<!DOCTYPE html>
     margin: 0;
   }
   .article-1-box li {
-    padding: 3px 0 3px 14px;
+    padding: 1px 0 1px 12px;
     position: relative;
   }
   .article-1-box li::before {
@@ -109,10 +112,10 @@ export const CONVENTION_ENTREPRISE_HTML = `<!DOCTYPE html>
   ul.bullets {
     list-style: none;
     padding: 0;
-    margin: 0 0 8px 4px;
+    margin: 0 0 4px 4px;
   }
   ul.bullets li {
-    padding: 2px 0 2px 14px;
+    padding: 1px 0 1px 12px;
     position: relative;
   }
   ul.bullets li::before {
@@ -126,17 +129,17 @@ export const CONVENTION_ENTREPRISE_HTML = `<!DOCTYPE html>
 
   /* Bloc signature */
   .signature-block {
-    margin-top: 28px;
+    margin-top: 10px;
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 24px;
+    gap: 16px;
     page-break-inside: avoid;
   }
-  .signature-col { font-size: 9pt; }
-  .signature-col .role { font-weight: 700; margin: 0 0 2px; }
-  .signature-col .signatory { margin: 0 0 6px; }
-  .signature-cachet { margin-top: 6px; min-height: 110px; }
-  .signature-cachet img { max-width: 240px; max-height: 130px; }
+  .signature-col { font-size: 8.5pt; page-break-inside: avoid; }
+  .signature-col .role { font-weight: 700; margin: 0 0 1px; }
+  .signature-col .signatory { margin: 0 0 3px; }
+  .signature-cachet { margin-top: 3px; min-height: 70px; }
+  .signature-cachet img { max-width: 180px; max-height: 100px; object-fit: contain; }
 
   strong { font-weight: 700; }
 </style>
@@ -253,7 +256,7 @@ export const CONVENTION_ENTREPRISE_HTML = `<!DOCTYPE html>
  * doivent être inline. `<span class="pageNumber"></span>` et `totalPages` sont
  * remplacés automatiquement par Chrome.
  */
-export const CONVENTION_FOOTER_TEMPLATE = `<div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 7.5pt; color: #6b7280; font-style: italic; width: 100%; padding: 0 16mm; text-align: center; line-height: 1.4;">
+export const CONVENTION_FOOTER_TEMPLATE = `<div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 7.5pt; color: #6b7280; font-style: italic; width: 100%; padding: 0 14mm; text-align: center; line-height: 1.4;">
   <div>[%Nom de l'organisme%], [%Adresse de l'organisme%] , Numéro SIRET: [%SIRET de l'organisme%], Numéro de déclaration d'activité: [%NDA de l'organisme%]</div>
   <div>(auprès du préfet de région de: PACA)</div>
   <div style="margin-top: 2px;"><span class="pageNumber"></span></div>

@@ -145,7 +145,7 @@ exports[`Templates snapshots — couvre F1/F2.x/F3 > attestation-assiduite : HTM
 
 exports[`Templates snapshots — couvre F1/F2.x/F3 > certificat-realisation : HTML + footer résolus avec learner + client 1`] = `
 {
-  "footer": "<div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 7.5pt; color: #6b7280; font-style: italic; width: 100%; padding: 0 16mm; text-align: center; line-height: 1.4;">
+  "footer": "<div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 7.5pt; color: #6b7280; font-style: italic; width: 100%; padding: 0 14mm; text-align: center; line-height: 1.4;">
   <div>[Nom organisme], 1 cours Mirabeau 13100 Aix-en-Provence , Numéro SIRET: 11122233344455, Numéro de déclaration d'activité: 13123456789</div>
   <div>(auprès du préfet de région de: PACA)</div>
   <div style="margin-top: 2px;"><span class="pageNumber"></span></div>
@@ -156,11 +156,13 @@ exports[`Templates snapshots — couvre F1/F2.x/F3 > certificat-realisation : HT
 <meta charset="utf-8">
 <title>Certificat de réalisation de formation</title>
 <style>
-  @page { size: A4; margin: 18mm 16mm 22mm 16mm; }
+  /* Lot C : marges et tailles compressées pour tenir sur 1 page A4.
+     Bottom 18mm = footer Puppeteer (~11mm) + gap suffisant. */
+  @page { size: A4; margin: 12mm 14mm 18mm 14mm; }
   body {
     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-    font-size: 10pt;
-    line-height: 1.55;
+    font-size: 9.5pt;
+    line-height: 1.4;
     color: #1f2937;
     margin: 0;
   }
@@ -169,50 +171,50 @@ exports[`Templates snapshots — couvre F1/F2.x/F3 > certificat-realisation : HT
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    margin-bottom: 16px;
+    margin-bottom: 8px;
   }
-  .header .org-info { flex: 1; padding-right: 12px; }
+  .header .org-info { flex: 1; padding-right: 10px; }
   .header .org-name {
-    font-size: 17pt;
+    font-size: 15pt;
     font-weight: 700;
     color: #111827;
-    margin: 0 0 6px;
+    margin: 0 0 3px;
     letter-spacing: 0.3px;
   }
   .header .org-address {
-    font-size: 8.5pt;
-    line-height: 1.5;
+    font-size: 8pt;
+    line-height: 1.4;
     color: #374151;
   }
-  .header .logo-cell { width: 130px; text-align: right; }
-  .header .logo-cell img { max-width: 130px; max-height: 110px; }
+  .header .logo-cell { width: 110px; text-align: right; }
+  .header .logo-cell img { max-width: 110px; max-height: 80px; object-fit: contain; }
 
   h1.title {
-    font-size: 14pt;
+    font-size: 13pt;
     font-weight: 700;
     text-align: center;
-    margin: 20px 0 18px;
+    margin: 10px 0 8px;
     color: #7f1d1d;
     letter-spacing: 0.5px;
   }
 
-  p { margin: 0 0 6px; }
+  p { margin: 0 0 3px; }
 
   .formation-block {
-    margin: 12px 0;
+    margin: 6px 0;
   }
-  .formation-block p { margin: 0 0 4px; }
+  .formation-block p { margin: 0 0 2px; }
 
   .nature-block {
-    margin: 14px 0;
+    margin: 6px 0;
   }
   .nature-block .nature-title {
     font-style: italic;
-    margin: 0 0 8px;
+    margin: 0 0 4px;
   }
   .nature-block .checkbox-line {
     margin: 0;
-    padding: 2px 6px;
+    padding: 1px 6px;
   }
   .nature-block .checkbox-line.checked {
     background: #fef3c7;
@@ -224,25 +226,26 @@ exports[`Templates snapshots — couvre F1/F2.x/F3 > certificat-realisation : HT
     font-style: italic;
     border-top: 1px solid #d1d5db;
     border-bottom: 1px solid #d1d5db;
-    padding: 12px 0;
-    margin: 14px 0;
+    padding: 6px 0;
+    margin: 6px 0;
     color: #374151;
+    font-size: 8.5pt;
   }
 
   h2.section {
-    font-size: 11pt;
+    font-size: 10.5pt;
     font-weight: 700;
-    margin: 14px 0 6px;
+    margin: 6px 0 3px;
     color: #111827;
   }
 
   ul.objectifs {
     list-style: none;
     padding: 0;
-    margin: 4px 0 12px 4px;
+    margin: 2px 0 4px 4px;
   }
   ul.objectifs > li {
-    padding: 2px 0 2px 16px;
+    padding: 1px 0 1px 14px;
     position: relative;
   }
   ul.objectifs > li::before {
@@ -251,33 +254,33 @@ exports[`Templates snapshots — couvre F1/F2.x/F3 > certificat-realisation : HT
     font-weight: 700;
     position: absolute;
     left: 2px;
-    top: 2px;
+    top: 1px;
   }
 
   .evaluation-line {
-    margin: 12px 0 4px;
+    margin: 6px 0 2px;
   }
   .evaluation-line strong { font-weight: 700; }
   .emargement-line {
-    margin: 0 0 18px;
+    margin: 0 0 6px;
   }
 
   /* Logo Ministère du Travail aligné à droite */
   .mintravail-block {
     text-align: right;
-    margin: 8px 0 18px;
+    margin: 4px 0 6px;
   }
   .mintravail-block img {
-    max-height: 80px;
+    max-height: 50px;
     width: auto;
   }
 
   .signature-block {
-    margin-top: 18px;
+    margin-top: 8px;
   }
-  .signature-block .fait-line { margin: 0 0 8px; }
-  .signature-cachet { margin-top: 4px; min-height: 100px; }
-  .signature-cachet img { max-width: 220px; max-height: 110px; }
+  .signature-block .fait-line { margin: 0 0 4px; }
+  .signature-cachet { margin-top: 2px; min-height: 70px; }
+  .signature-cachet img { max-width: 180px; max-height: 90px; object-fit: contain; }
 
   strong { font-weight: 700; }
 </style>
@@ -342,7 +345,7 @@ exports[`Templates snapshots — couvre F1/F2.x/F3 > certificat-realisation : HT
 
 exports[`Templates snapshots — couvre F1/F2.x/F3 > convention-entreprise : HTML + footer avec client + contacts 1`] = `
 {
-  "footer": "<div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 7.5pt; color: #6b7280; font-style: italic; width: 100%; padding: 0 16mm; text-align: center; line-height: 1.4;">
+  "footer": "<div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 7.5pt; color: #6b7280; font-style: italic; width: 100%; padding: 0 14mm; text-align: center; line-height: 1.4;">
   <div>[Nom organisme], 1 cours Mirabeau 13100 Aix-en-Provence , Numéro SIRET: 11122233344455, Numéro de déclaration d'activité: 13123456789</div>
   <div>(auprès du préfet de région de: PACA)</div>
   <div style="margin-top: 2px;"><span class="pageNumber"></span></div>
@@ -353,11 +356,14 @@ exports[`Templates snapshots — couvre F1/F2.x/F3 > convention-entreprise : HTM
 <meta charset="utf-8">
 <title>Convention de formation professionnelle</title>
 <style>
-  @page { size: A4; margin: 18mm 16mm 22mm 16mm; }
+  /* Lot C : marges et tailles compressées pour tenir sur 1 page A4.
+     Bottom 18mm = footer Puppeteer (~11mm) + gap suffisant
+     (alignement avec convocation/certificat). */
+  @page { size: A4; margin: 10mm 14mm 18mm 14mm; }
   body {
     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-    font-size: 9pt;
-    line-height: 1.45;
+    font-size: 8.5pt;
+    line-height: 1.35;
     color: #1f2937;
     margin: 0;
   }
@@ -367,55 +373,55 @@ exports[`Templates snapshots — couvre F1/F2.x/F3 > convention-entreprise : HTM
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    margin-bottom: 8px;
+    margin-bottom: 4px;
   }
-  .header .org-info { flex: 1; padding-right: 12px; }
+  .header .org-info { flex: 1; padding-right: 10px; }
   .header .org-name {
-    font-size: 17pt;
+    font-size: 14pt;
     font-weight: 700;
     color: #111827;
-    margin: 0 0 6px;
+    margin: 0 0 2px;
     letter-spacing: 0.3px;
   }
   .header .org-address {
-    font-size: 8.5pt;
-    line-height: 1.5;
+    font-size: 7.5pt;
+    line-height: 1.35;
     color: #374151;
   }
-  .header .logo-cell { width: 130px; text-align: right; }
-  .header .logo-cell img { max-width: 130px; max-height: 110px; }
+  .header .logo-cell { width: 95px; text-align: right; }
+  .header .logo-cell img { max-width: 95px; max-height: 70px; object-fit: contain; }
 
   /* Titre central */
   h1.title {
-    font-size: 14pt;
+    font-size: 12pt;
     font-weight: 700;
     color: #7f1d1d;
     text-align: center;
-    margin: 26px 0 4px;
+    margin: 8px 0 2px;
   }
   p.subtitle {
-    font-size: 10pt;
+    font-size: 9pt;
     font-weight: 700;
     color: #7f1d1d;
     text-align: center;
-    margin: 0 0 18px;
+    margin: 0 0 6px;
   }
 
   /* En-têtes d'article */
   h2 {
-    font-size: 10pt;
+    font-size: 9pt;
     font-weight: 700;
     color: #7f1d1d;
-    margin: 14px 0 6px;
+    margin: 6px 0 2px;
   }
 
-  p { margin: 0 0 8px; }
+  p { margin: 0 0 3px; }
 
   /* Boîte Article 1 avec puces rouges */
   .article-1-box {
     border: 1px solid #9ca3af;
-    padding: 10px 16px;
-    margin: 4px 0 10px;
+    padding: 5px 10px;
+    margin: 2px 0 4px;
   }
   .article-1-box ul {
     list-style: none;
@@ -423,7 +429,7 @@ exports[`Templates snapshots — couvre F1/F2.x/F3 > convention-entreprise : HTM
     margin: 0;
   }
   .article-1-box li {
-    padding: 3px 0 3px 14px;
+    padding: 1px 0 1px 12px;
     position: relative;
   }
   .article-1-box li::before {
@@ -439,10 +445,10 @@ exports[`Templates snapshots — couvre F1/F2.x/F3 > convention-entreprise : HTM
   ul.bullets {
     list-style: none;
     padding: 0;
-    margin: 0 0 8px 4px;
+    margin: 0 0 4px 4px;
   }
   ul.bullets li {
-    padding: 2px 0 2px 14px;
+    padding: 1px 0 1px 12px;
     position: relative;
   }
   ul.bullets li::before {
@@ -456,17 +462,17 @@ exports[`Templates snapshots — couvre F1/F2.x/F3 > convention-entreprise : HTM
 
   /* Bloc signature */
   .signature-block {
-    margin-top: 28px;
+    margin-top: 10px;
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 24px;
+    gap: 16px;
     page-break-inside: avoid;
   }
-  .signature-col { font-size: 9pt; }
-  .signature-col .role { font-weight: 700; margin: 0 0 2px; }
-  .signature-col .signatory { margin: 0 0 6px; }
-  .signature-cachet { margin-top: 6px; min-height: 110px; }
-  .signature-cachet img { max-width: 240px; max-height: 130px; }
+  .signature-col { font-size: 8.5pt; page-break-inside: avoid; }
+  .signature-col .role { font-weight: 700; margin: 0 0 1px; }
+  .signature-col .signatory { margin: 0 0 3px; }
+  .signature-cachet { margin-top: 3px; min-height: 70px; }
+  .signature-cachet img { max-width: 180px; max-height: 100px; object-fit: contain; }
 
   strong { font-weight: 700; }
 </style>
@@ -775,7 +781,7 @@ exports[`Templates snapshots — couvre F1/F2.x/F3 > convention-intervention : H
 
 exports[`Templates snapshots — couvre F1/F2.x/F3 > convocation-apprenant : HTML + footer résolus correctement 1`] = `
 {
-  "footer": "<div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 7.5pt; color: #6b7280; font-style: italic; width: 100%; padding: 0 16mm; text-align: center; line-height: 1.4;">
+  "footer": "<div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 7.5pt; color: #6b7280; font-style: italic; width: 100%; padding: 0 14mm; text-align: center; line-height: 1.4;">
   <div>[Nom organisme], 1 cours Mirabeau 13100 Aix-en-Provence , Numéro SIRET: 11122233344455, Numéro de déclaration d'activité: 13123456789</div>
   <div>(auprès du préfet de région de: PACA)</div>
   <div style="margin-top: 2px;"><span class="pageNumber"></span></div>
@@ -786,11 +792,14 @@ exports[`Templates snapshots — couvre F1/F2.x/F3 > convocation-apprenant : HTM
 <meta charset="utf-8">
 <title>Convocation à la formation professionnelle</title>
 <style>
-  @page { size: A4; margin: 18mm 16mm 22mm 16mm; }
+  /* Lot C : marges et tailles compressées pour tenir sur 1 page A4.
+     Bottom margin = 18mm pour laisser au footer Puppeteer (~11mm)
+     un gap suffisant avec le contenu. */
+  @page { size: A4; margin: 12mm 14mm 18mm 14mm; }
   body {
     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-    font-size: 10pt;
-    line-height: 1.55;
+    font-size: 9.5pt;
+    line-height: 1.4;
     color: #1f2937;
     margin: 0;
   }
@@ -799,48 +808,48 @@ exports[`Templates snapshots — couvre F1/F2.x/F3 > convocation-apprenant : HTM
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    margin-bottom: 16px;
+    margin-bottom: 8px;
   }
-  .header .org-info { flex: 1; padding-right: 12px; }
+  .header .org-info { flex: 1; padding-right: 10px; }
   .header .org-name {
-    font-size: 17pt;
+    font-size: 15pt;
     font-weight: 700;
     color: #111827;
-    margin: 0 0 6px;
+    margin: 0 0 3px;
     letter-spacing: 0.3px;
   }
   .header .org-address {
-    font-size: 8.5pt;
-    line-height: 1.5;
+    font-size: 8pt;
+    line-height: 1.4;
     color: #374151;
   }
-  .header .logo-cell { width: 130px; text-align: right; }
-  .header .logo-cell img { max-width: 130px; max-height: 110px; }
+  .header .logo-cell { width: 110px; text-align: right; }
+  .header .logo-cell img { max-width: 110px; max-height: 80px; object-fit: contain; }
 
   h1.title {
-    font-size: 13pt;
+    font-size: 12pt;
     font-weight: 700;
     text-align: center;
-    margin: 20px 0 14px;
+    margin: 10px 0 8px;
     color: #111827;
   }
 
   h2.formation-title {
-    font-size: 11pt;
+    font-size: 10.5pt;
     font-weight: 700;
-    margin: 14px 0 8px;
+    margin: 8px 0 4px;
     color: #111827;
   }
 
-  p { margin: 0 0 6px; }
+  p { margin: 0 0 3px; }
 
   ul.dates-list {
     list-style: none;
     padding: 0;
-    margin: 4px 0 14px 4px;
+    margin: 3px 0 8px 4px;
   }
   ul.dates-list > li {
-    padding: 2px 0 2px 16px;
+    padding: 1px 0 1px 14px;
     position: relative;
   }
   ul.dates-list > li::before {
@@ -849,34 +858,34 @@ exports[`Templates snapshots — couvre F1/F2.x/F3 > convocation-apprenant : HTM
     font-weight: 700;
     position: absolute;
     left: 2px;
-    top: 2px;
+    top: 1px;
   }
 
   .qr-block {
     text-align: center;
-    margin: 28px 0;
+    margin: 14px 0;
   }
   .qr-block img {
-    width: 200px;
-    height: 200px;
+    width: 150px;
+    height: 150px;
   }
 
   .important-block {
-    margin-top: 14px;
+    margin-top: 8px;
   }
   .important-block h3 {
-    font-size: 11pt;
+    font-size: 10.5pt;
     font-weight: 700;
-    margin: 14px 0 6px;
+    margin: 8px 0 3px;
   }
 
   .signature-block {
-    margin-top: 24px;
-    font-size: 10pt;
+    margin-top: 12px;
+    font-size: 9.5pt;
   }
   .signature-block .org-line { margin: 0; }
-  .signature-cachet { margin-top: 8px; min-height: 100px; }
-  .signature-cachet img { max-width: 220px; max-height: 110px; }
+  .signature-cachet { margin-top: 4px; min-height: 70px; }
+  .signature-cachet img { max-width: 180px; max-height: 90px; object-fit: contain; }
 
   strong { font-weight: 700; }
 </style>
@@ -911,25 +920,24 @@ exports[`Templates snapshots — couvre F1/F2.x/F3 > convocation-apprenant : HTM
 
   <p><strong>Accès à votre espace de formation :</strong></p>
 
-  <div class="login-credentials" style="border: 2px solid #2563EB; padding: 16px; margin: 20px 0; border-radius: 8px; background: #f0f7ff;">
-    <h3 style="margin: 0 0 12px; color: #1e3a8a; font-size: 13pt;">🔐 Accès à votre espace formation</h3>
-    <p style="margin: 0 0 12px;">Connectez-vous à votre espace personnel avec vos identifiants :</p>
-    <table style="width: 100%; margin: 8px 0; border-collapse: collapse;">
+  <div class="login-credentials" style="border: 1.5px solid #2563EB; padding: 8px 10px; margin: 8px 0; border-radius: 6px; background: #f0f7ff;">
+    <h3 style="margin: 0 0 4px; color: #1e3a8a; font-size: 11pt;">🔐 Accès à votre espace formation</h3>
+    <table style="width: 100%; margin: 2px 0; border-collapse: collapse; font-size: 9pt;">
       <tr>
-        <td style="padding: 4px 8px; font-weight: 700; width: 30%;">URL :</td>
-        <td style="padding: 4px 8px;">https://mrformationcrm.netlify.app/login</td>
+        <td style="padding: 1px 6px; font-weight: 700; width: 28%;">URL :</td>
+        <td style="padding: 1px 6px;">https://mrformationcrm.netlify.app/login</td>
       </tr>
       <tr>
-        <td style="padding: 4px 8px; font-weight: 700;">Email :</td>
-        <td style="padding: 4px 8px;">pierre.martin@example.com</td>
+        <td style="padding: 1px 6px; font-weight: 700;">Email :</td>
+        <td style="padding: 1px 6px;">pierre.martin@example.com</td>
       </tr>
       <tr>
-        <td style="padding: 4px 8px; font-weight: 700;">Mot de passe :</td>
-        <td style="padding: 4px 8px; font-family: monospace; background: #fff; border: 1px dashed #cbd5e1; border-radius: 4px;">SnapPass2026</td>
+        <td style="padding: 1px 6px; font-weight: 700;">Mot de passe :</td>
+        <td style="padding: 1px 6px; font-family: monospace; background: #fff; border: 1px dashed #cbd5e1; border-radius: 3px;">SnapPass2026</td>
       </tr>
     </table>
-    <p style="font-size: 9pt; color: #6b7280; margin-top: 12px; margin-bottom: 0;">
-      💡 Vous pouvez modifier votre mot de passe à tout moment via "Mot de passe oublié" sur la page de connexion. Si vous avez déjà modifié votre mot de passe, utilisez le nouveau.
+    <p style="font-size: 8pt; color: #6b7280; margin: 4px 0 0;">
+      💡 Vous pouvez modifier votre mot de passe via "Mot de passe oublié".
     </p>
   </div>
   <p>En cas d'indisponibilité ou de renoncement, veuillez nous prévenir le plus rapidement possible.</p>

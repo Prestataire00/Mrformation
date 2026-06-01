@@ -26,11 +26,13 @@ export const CERTIFICAT_REALISATION_HTML = `<!DOCTYPE html>
 <meta charset="utf-8">
 <title>Certificat de réalisation de formation</title>
 <style>
-  @page { size: A4; margin: 18mm 16mm 22mm 16mm; }
+  /* Lot C : marges et tailles compressées pour tenir sur 1 page A4.
+     Bottom 18mm = footer Puppeteer (~11mm) + gap suffisant. */
+  @page { size: A4; margin: 12mm 14mm 18mm 14mm; }
   body {
     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-    font-size: 10pt;
-    line-height: 1.55;
+    font-size: 9.5pt;
+    line-height: 1.4;
     color: #1f2937;
     margin: 0;
   }
@@ -39,50 +41,50 @@ export const CERTIFICAT_REALISATION_HTML = `<!DOCTYPE html>
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    margin-bottom: 16px;
+    margin-bottom: 8px;
   }
-  .header .org-info { flex: 1; padding-right: 12px; }
+  .header .org-info { flex: 1; padding-right: 10px; }
   .header .org-name {
-    font-size: 17pt;
+    font-size: 15pt;
     font-weight: 700;
     color: #111827;
-    margin: 0 0 6px;
+    margin: 0 0 3px;
     letter-spacing: 0.3px;
   }
   .header .org-address {
-    font-size: 8.5pt;
-    line-height: 1.5;
+    font-size: 8pt;
+    line-height: 1.4;
     color: #374151;
   }
-  .header .logo-cell { width: 130px; text-align: right; }
-  .header .logo-cell img { max-width: 130px; max-height: 110px; }
+  .header .logo-cell { width: 110px; text-align: right; }
+  .header .logo-cell img { max-width: 110px; max-height: 80px; object-fit: contain; }
 
   h1.title {
-    font-size: 14pt;
+    font-size: 13pt;
     font-weight: 700;
     text-align: center;
-    margin: 20px 0 18px;
+    margin: 10px 0 8px;
     color: #7f1d1d;
     letter-spacing: 0.5px;
   }
 
-  p { margin: 0 0 6px; }
+  p { margin: 0 0 3px; }
 
   .formation-block {
-    margin: 12px 0;
+    margin: 6px 0;
   }
-  .formation-block p { margin: 0 0 4px; }
+  .formation-block p { margin: 0 0 2px; }
 
   .nature-block {
-    margin: 14px 0;
+    margin: 6px 0;
   }
   .nature-block .nature-title {
     font-style: italic;
-    margin: 0 0 8px;
+    margin: 0 0 4px;
   }
   .nature-block .checkbox-line {
     margin: 0;
-    padding: 2px 6px;
+    padding: 1px 6px;
   }
   .nature-block .checkbox-line.checked {
     background: #fef3c7;
@@ -94,25 +96,26 @@ export const CERTIFICAT_REALISATION_HTML = `<!DOCTYPE html>
     font-style: italic;
     border-top: 1px solid #d1d5db;
     border-bottom: 1px solid #d1d5db;
-    padding: 12px 0;
-    margin: 14px 0;
+    padding: 6px 0;
+    margin: 6px 0;
     color: #374151;
+    font-size: 8.5pt;
   }
 
   h2.section {
-    font-size: 11pt;
+    font-size: 10.5pt;
     font-weight: 700;
-    margin: 14px 0 6px;
+    margin: 6px 0 3px;
     color: #111827;
   }
 
   ul.objectifs {
     list-style: none;
     padding: 0;
-    margin: 4px 0 12px 4px;
+    margin: 2px 0 4px 4px;
   }
   ul.objectifs > li {
-    padding: 2px 0 2px 16px;
+    padding: 1px 0 1px 14px;
     position: relative;
   }
   ul.objectifs > li::before {
@@ -121,33 +124,33 @@ export const CERTIFICAT_REALISATION_HTML = `<!DOCTYPE html>
     font-weight: 700;
     position: absolute;
     left: 2px;
-    top: 2px;
+    top: 1px;
   }
 
   .evaluation-line {
-    margin: 12px 0 4px;
+    margin: 6px 0 2px;
   }
   .evaluation-line strong { font-weight: 700; }
   .emargement-line {
-    margin: 0 0 18px;
+    margin: 0 0 6px;
   }
 
   /* Logo Ministère du Travail aligné à droite */
   .mintravail-block {
     text-align: right;
-    margin: 8px 0 18px;
+    margin: 4px 0 6px;
   }
   .mintravail-block img {
-    max-height: 80px;
+    max-height: 50px;
     width: auto;
   }
 
   .signature-block {
-    margin-top: 18px;
+    margin-top: 8px;
   }
-  .signature-block .fait-line { margin: 0 0 8px; }
-  .signature-cachet { margin-top: 4px; min-height: 100px; }
-  .signature-cachet img { max-width: 220px; max-height: 110px; }
+  .signature-block .fait-line { margin: 0 0 4px; }
+  .signature-cachet { margin-top: 2px; min-height: 70px; }
+  .signature-cachet img { max-width: 180px; max-height: 90px; object-fit: contain; }
 
   strong { font-weight: 700; }
 </style>
@@ -208,7 +211,7 @@ export const CERTIFICAT_REALISATION_HTML = `<!DOCTYPE html>
 </body>
 </html>`;
 
-export const CERTIFICAT_REALISATION_FOOTER_TEMPLATE = `<div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 7.5pt; color: #6b7280; font-style: italic; width: 100%; padding: 0 16mm; text-align: center; line-height: 1.4;">
+export const CERTIFICAT_REALISATION_FOOTER_TEMPLATE = `<div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 7.5pt; color: #6b7280; font-style: italic; width: 100%; padding: 0 14mm; text-align: center; line-height: 1.4;">
   <div>[%Nom de l'organisme%], [%Adresse de l'organisme%] , Numéro SIRET: [%SIRET de l'organisme%], Numéro de déclaration d'activité: [%NDA de l'organisme%]</div>
   <div>(auprès du préfet de région de: PACA)</div>
   <div style="margin-top: 2px;"><span class="pageNumber"></span></div>
