@@ -177,7 +177,7 @@ export const ATTESTATION_AIPR_HTML = `<!DOCTYPE html>
     <p>Je, soussigné <strong>[%Nom du représentant de l'organisme%]</strong>, <strong>[%Titre du représentant de l'organisme%]</strong>,</p>
     <p>Atteste que</p>
     <p>M. / Mme : <strong>[%Nom de l'apprenant%]</strong></p>
-    <p>Présenté par : <strong>[%Nom de l'entreprise%]</strong> - <strong>[%Adresse de l'entreprise%]</strong></p>
+    <p>Présenté par : <strong>[%Nom de l'entreprise%]</strong></p>
     <p>à l'examen tenu le <strong>[%Date de début de la formation%]</strong> relatif au domaine de compétences susmentionné,</p>
     <p>sous le n° de ticket d'examen <strong>[%Ville de naissance de l'apprenant%]</strong></p>
     <p><strong>[%Résultat examen AIPR%]</strong></p>

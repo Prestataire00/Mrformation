@@ -362,7 +362,7 @@ export function resolveVariables(content: string, data: ResolveContext): string 
       }
       const c = (s?.program?.content || {}) as Record<string, unknown>;
       const items = Array.isArray(c.pedagogical_resources) ? (c.pedagogical_resources as string[]) : [];
-      if (items.length === 0) return `<p>[Moyens pédagogiques à préciser dans le programme]</p>`;
+      if (items.length === 0) return `<p style="color:#9ca3af;font-style:italic;">À renseigner dans : fiche Programme → « Ressources pédagogiques », ou champ libre au niveau de la session.</p>`;
       return `<ul class="bullets">${items.map((i) => `<li>${i}</li>`).join("")}</ul>`;
     })(),
     "{{dispositif_evaluation}}": (() => {
@@ -374,7 +374,7 @@ export function resolveVariables(content: string, data: ResolveContext): string 
       }
       const c = (s?.program?.content || {}) as Record<string, unknown>;
       const items = Array.isArray(c.evaluation_methods) ? (c.evaluation_methods as string[]) : [];
-      if (items.length === 0) return `<p>[Dispositif d'évaluation à préciser dans le programme]</p>`;
+      if (items.length === 0) return `<p style="color:#9ca3af;font-style:italic;">À renseigner dans : fiche Programme → « Méthodes d'évaluation », ou champ libre au niveau de la session.</p>`;
       return `<ul class="bullets">${items.map((i) => `<li>${i}</li>`).join("")}</ul>`;
     })(),
     "{{taux_satisfaction}}": (() => {
@@ -393,7 +393,9 @@ export function resolveVariables(content: string, data: ResolveContext): string 
         || data.session?.program?.objectives
         || data.session?.training?.objectives
         || "";
-      if (!raw) return `<p>[Objectifs pédagogiques à préciser]</p>`;
+      if (!raw) {
+        return `<p style="color:#9ca3af;font-style:italic;">À renseigner dans : fiche Programme → « Objectifs pédagogiques » (priorité 1), ou fiche Formation (Training) → « Objectifs » (priorité 2), ou directement sur la session.</p>`;
+      }
       // Split par newline, retire bullets/dashes en début de ligne
       const items = raw
         .split(/\n+/)
@@ -737,14 +739,27 @@ export function resolveVariables(content: string, data: ResolveContext): string 
     // === Story B-Convocation Apprenant ===
     // Liste détaillée des créneaux (matin/aprem) : "• De DD/MM/YYYY - HH:MM
     // À DD/MM/YYYY - HH:MM" par créneau. Source = formation_time_slots.
-    // Fallback (pas de slots) : matin 09:00-12:00 + aprem 13:00-17:00 par
-    // jour de la session.
+    // Fallback (pas de slots) : 1 créneau par jour entre start et end,
+    // utilisant les VRAIES heures de start_date et end_date au lieu de
+    // l'ancien hardcode 09:00-12:00 / 13:00-17:00 qui ne correspondait
+    // jamais au planning réel (cf retour Loris "les heures ne correspondent
+    // pas au planning"). Pour un découpage matin/après-midi précis, l'admin
+    // doit configurer `formation_time_slots` au niveau de la session.
+    //
+    // ⚠ TZ : on utilise getHours()/getDate() (heure locale serveur, Paris
+    // en prod Netlify) plutôt que getUTCHours/getUTCDate, parce que :
+    // (a) le formulaire admin saisit l'heure en local et la convertit en
+    //     ISO Z (cf admin/sessions/page.tsx) → l'heure UTC stockée est
+    //     décalée de l'offset Paris ;
+    // (b) à l'affichage, on veut re-rendre l'heure telle que saisie côté
+    //     admin → repasser en local. Aligné avec formatDate (date-fns
+    //     locale FR) sur tout le builder.
     "{{dates_detail}}": (() => {
       const fmtDate = (iso: string) => formatDate(iso);
       const fmtTime = (iso: string) => {
         try {
           const d = new Date(iso);
-          return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
+          return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
         } catch {
           return "--:--";
         }
@@ -756,21 +771,22 @@ export function resolveVariables(content: string, data: ResolveContext): string 
           .join("");
         return `<ul class="dates-list">${items}</ul>`;
       }
-      // Fallback : 2 créneaux par jour entre start et end
+      // Fallback : 1 créneau par jour entre start et end avec les heures réelles
       if (!data.session?.start_date || !data.session?.end_date) {
-        return `<p>[Détail des créneaux à préciser dans formation_time_slots]</p>`;
+        return `<p style="color:#9ca3af;font-style:italic;">À renseigner dans : section « Planning » de la session.</p>`;
       }
       const start = new Date(data.session.start_date);
       const end = new Date(data.session.end_date);
+      const startTime = fmtTime(data.session.start_date);
+      const endTime = fmtTime(data.session.end_date);
       const items: string[] = [];
-      const cursor = new Date(start);
-      cursor.setHours(0, 0, 0, 0);
-      const endDay = new Date(end);
-      endDay.setHours(0, 0, 0, 0);
+      // Itération par jour LOCAL (cohérent avec le getHours local du fmtTime
+      // pour éviter de créer un jour fantôme si end_date est juste après minuit UTC).
+      const cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+      const endDay = new Date(end.getFullYear(), end.getMonth(), end.getDate());
       while (cursor.getTime() <= endDay.getTime()) {
         const dateStr = formatDate(cursor.toISOString());
-        items.push(`<li>De ${dateStr} - 09:00 À ${dateStr} - 12:00</li>`);
-        items.push(`<li>De ${dateStr} - 13:00 À ${dateStr} - 17:00</li>`);
+        items.push(`<li>De ${dateStr} - ${startTime} À ${dateStr} - ${endTime}</li>`);
         cursor.setDate(cursor.getDate() + 1);
       }
       return `<ul class="dates-list">${items.join("")}</ul>`;
@@ -866,7 +882,7 @@ export function resolveVariables(content: string, data: ResolveContext): string 
       const c = (data.session?.program?.content || {}) as Record<string, unknown>;
       const modules = Array.isArray(c.modules) ? (c.modules as Module[]) : [];
       if (modules.length === 0) {
-        return `<p>[Contenu pédagogique à structurer en modules dans le programme]</p>`;
+        return `<p style="color:#9ca3af;font-style:italic;">À renseigner dans : fiche Programme → section « Contenu de la formation (Modules) », ou champ libre « Contenu pédagogique » au niveau de la session.</p>`;
       }
 
       const renderModuleContent = (m: Module): string => {
