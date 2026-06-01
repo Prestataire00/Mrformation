@@ -62,6 +62,10 @@ import { getScoreCategory } from "@/lib/ai/prospect-scoring";
 import ProspectTasksSection from "../liste/_components/ProspectTasksSection";
 import ProspectCommentsSection from "../liste/_components/ProspectCommentsSection";
 import ProspectEmailSection from "../liste/_components/ProspectEmailSection";
+import {
+  EditCommercialActionDialog,
+  type EditableCommercialAction,
+} from "@/components/crm/EditCommercialActionDialog";
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
@@ -89,7 +93,27 @@ interface ActivityEntry {
   date: string;
   author: string;
   metadata?: Record<string, unknown>;
+  /**
+   * Valeurs brutes BDD nécessaires pour pré-remplir le dialog d'édition.
+   * Non définies pour les items synthétiques (creation) ou les logs auto.
+   */
+  rawSubject?: string | null;
+  rawContent?: string | null;
 }
+
+/**
+ * Types d'actions saisies manuellement par Loris (donc modifiables /
+ * supprimables). Les autres types (status_change, quote_*, task_created,
+ * document_sent) sont des LOGS SYSTÈME — non modifiables pour préserver
+ * l'intégrité de l'historique commercial.
+ */
+const EDITABLE_ACTION_TYPES = new Set([
+  "call",
+  "email",
+  "meeting",
+  "comment",
+  "relance",
+]);
 
 const ACTION_ICONS: Record<string, { icon: string; color: string }> = {
   call: { icon: "📞", color: "text-green-600" },
@@ -168,6 +192,9 @@ export default function ProspectDetailPage() {
   // Activity log (unified timeline)
   const [activities, setActivities] = useState<ActivityEntry[]>([]);
   const [actionForm, setActionForm] = useState({ type: "call", subject: "", content: "" });
+  // Édition / suppression d'une action commerciale manuelle
+  const [editingAction, setEditingAction] = useState<EditableCommercialAction | null>(null);
+  const [deletingActionId, setDeletingActionId] = useState<string | null>(null);
 
   // Conversion to client
   const [convertDialogOpen, setConvertDialogOpen] = useState(false);
@@ -282,6 +309,8 @@ export default function ProspectDetailPage() {
           date: a.created_at,
           author: authorName,
           metadata: a.metadata as Record<string, unknown> | undefined,
+          rawSubject: a.subject,
+          rawContent: a.content,
         });
       }
     }
@@ -450,6 +479,44 @@ export default function ProspectDetailPage() {
     setShowActionForm(false);
     setActionForm({ type: "call", subject: "", content: "" });
     if (prospect) fetchTimeline(prospect);
+  }
+
+  /**
+   * Supprime une action commerciale manuelle. RLS crm_commercial_actions
+   * (USING + WITH CHECK entity_id = user_entity_id() + role admin/super_admin/
+   * commercial) protège contre les suppressions cross-entité.
+   *
+   * Try/catch/finally pour éviter le state bloqué si le client Supabase
+   * throw (réseau down, abort) sans retourner d'objet { error }.
+   */
+  async function handleDeleteAction(actionId: string) {
+    if (!confirm("Supprimer cette action ? Cette opération est irréversible.")) return;
+    setDeletingActionId(actionId);
+    try {
+      const { error } = await supabase
+        .from("crm_commercial_actions")
+        .delete()
+        .eq("id", actionId);
+      if (error) {
+        toast({
+          title: "Erreur",
+          description: error.message,
+          variant: "destructive",
+        });
+        return;
+      }
+      toast({ title: "Action supprimée" });
+      if (prospect) fetchTimeline(prospect);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      toast({
+        title: "Erreur",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      setDeletingActionId(null);
+    }
   }
 
   async function handleDelete() {
@@ -985,10 +1052,11 @@ export default function ProspectDetailPage() {
                   )}
                   {activities.map((a) => {
                     const cfg = ACTION_ICONS[a.type] || ACTION_ICONS.note;
+                    const isEditable = EDITABLE_ACTION_TYPES.has(a.type);
                     return (
                       <div
                         key={a.id}
-                        className="flex items-start gap-3 rounded-lg border border-gray-100 px-4 py-3 hover:bg-muted/30 transition-colors"
+                        className="group flex items-start gap-3 rounded-lg border border-gray-100 px-4 py-3 hover:bg-muted/30 transition-colors"
                       >
                         <span className="text-base mt-0.5">{cfg.icon}</span>
                         <div className="flex-1 min-w-0">
@@ -999,9 +1067,43 @@ export default function ProspectDetailPage() {
                             </p>
                           )}
                         </div>
-                        <div className="text-right shrink-0">
-                          <p className="text-xs text-muted-foreground">{formatDate(a.date)}</p>
-                          {a.author && <p className="text-xs text-muted-foreground">{a.author}</p>}
+                        <div className="text-right shrink-0 flex items-start gap-2">
+                          <div>
+                            <p className="text-xs text-muted-foreground">{formatDate(a.date)}</p>
+                            {a.author && <p className="text-xs text-muted-foreground">{a.author}</p>}
+                          </div>
+                          {isEditable && (
+                            <div className="flex items-center gap-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 w-7 p-0"
+                                onClick={() =>
+                                  setEditingAction({
+                                    id: a.id,
+                                    action_type: a.type as EditableCommercialAction["action_type"],
+                                    subject: a.rawSubject ?? null,
+                                    content: a.rawContent ?? null,
+                                  })
+                                }
+                                title="Modifier"
+                                aria-label="Modifier l'action"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 w-7 p-0 text-red-500 hover:text-red-700"
+                                onClick={() => handleDeleteAction(a.id)}
+                                disabled={deletingActionId === a.id}
+                                title="Supprimer"
+                                aria-label="Supprimer l'action"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          )}
                         </div>
                       </div>
                     );
@@ -1358,6 +1460,14 @@ export default function ProspectDetailPage() {
           <PappersSearchPanel companyName={prospect?.company_name || ""} onSelect={handlePappersSearchSelect} />
         </DialogContent>
       </Dialog>
+
+      {/* Mini-dialog édition d'une action commerciale manuelle */}
+      <EditCommercialActionDialog
+        open={editingAction !== null}
+        onOpenChange={(o) => { if (!o) setEditingAction(null); }}
+        action={editingAction}
+        onUpdated={() => { if (prospect) fetchTimeline(prospect); }}
+      />
     </div>
   );
 }
