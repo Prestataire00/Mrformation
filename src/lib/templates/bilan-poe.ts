@@ -123,7 +123,7 @@ export const BILAN_POE_HTML = `<!DOCTYPE html>
   <div class="formation-details">
     <p>Lieu de la formation : <strong>[%Lieu de la formation%]</strong></p>
     <p>Dates de la formation : du <strong>[%Date de début de la formation%]</strong> au <strong>[%Date de fin de la formation%]</strong></p>
-    <p>Durée de la formation : <strong>[%Durée de la formation%]</strong></p>
+    <p>Durée de la formation : <strong>[%Durée de la formation%] heure(s)</strong></p>
     <p>Type d'action de formation : <strong>[%Type d'action de formation%]</strong></p>
   </div>
 

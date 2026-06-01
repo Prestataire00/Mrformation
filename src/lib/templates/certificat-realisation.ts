@@ -176,7 +176,7 @@ export const CERTIFICAT_REALISATION_HTML = `<!DOCTYPE html>
     <p>Nom de la formation : <strong>[%Nom de la formation%]</strong></p>
     <p>Lieu de la formation : <strong>[%Adresse de la formation%]</strong></p>
     <p>Dates de la formation : du <strong>[%Date de début de la formation%]</strong> au <strong>[%Date de fin de la formation%]</strong></p>
-    <p>Durée de la formation : <strong>[%Durée de la formation%]</strong></p>
+    <p>Durée de la formation : <strong>[%Durée de la formation%] heure(s)</strong></p>
     <p>Présenté par : <strong>[%Nom de l'entreprise%]</strong></p>
   </div>
 

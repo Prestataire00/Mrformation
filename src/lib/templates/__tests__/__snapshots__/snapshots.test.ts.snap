@@ -121,7 +121,7 @@ exports[`Templates snapshots — couvre F1/F2.x/F3 > attestation-assiduite : HTM
   <div class="formation-details">
     <p>Lieu de la formation : <strong>Aix-en-Provence</strong></p>
     <p>Dates de la formation : du <strong>15/06/2026</strong> au <strong>16/06/2026</strong></p>
-    <p>Durée de la formation : <strong>14 heures</strong></p>
+    <p>Durée de la formation : <strong>14 heure(s)</strong></p>
     <p>Type d'action de formation : <strong>Action de formation</strong></p>
   </div>
 
@@ -306,7 +306,7 @@ exports[`Templates snapshots — couvre F1/F2.x/F3 > certificat-realisation : HT
     <p>Nom de la formation : <strong>Habilitation Électrique B1V</strong></p>
     <p>Lieu de la formation : <strong>Aix-en-Provence</strong></p>
     <p>Dates de la formation : du <strong>15/06/2026</strong> au <strong>16/06/2026</strong></p>
-    <p>Durée de la formation : <strong>14</strong></p>
+    <p>Durée de la formation : <strong>14 heure(s)</strong></p>
     <p>Présenté par : <strong>Acme SAS</strong></p>
   </div>
 
@@ -701,7 +701,7 @@ exports[`Templates snapshots — couvre F1/F2.x/F3 > convention-intervention : H
   <h2 class="article">ARTICLE 1 - OBJET ET NATURE DE LA FORMATION</h2>
   <p>Le présent contrat est conclu dans le cadre d'une prestation de formation réalisée par le sous-traitant au bénéfice du donneur d'ordre.</p>
   <p><strong>Intitulé de la formation :</strong> Habilitation Électrique B1V</p>
-  <p><strong>Durée de la formation :</strong> 14</p>
+  <p><strong>Durée de la formation :</strong> 14 heure(s)</p>
   <p><strong>Lieu de la formation :</strong> Aix-en-Provence, Aix-en-Provence</p>
   <p><strong>Dates de la formation :</strong> Du 15/06/2026 au 16/06/2026</p>
   <p><strong>Programme de formation :</strong> sur votre extranet, considéré accepté en signant ce contrat : [Lien extranet]</p>
@@ -903,7 +903,7 @@ exports[`Templates snapshots — couvre F1/F2.x/F3 > convocation-apprenant : HTM
   <h2 class="formation-title">Habilitation Électrique B1V</h2>
 
   <p>Lieu de la formation : <strong>Aix-en-Provence - Aix-en-Provence</strong></p>
-  <p>Durée de la formation : <strong>14</strong></p>
+  <p>Durée de la formation : <strong>14 heure(s)</strong></p>
   <p>Dates de la formation : <strong>Du 15/06/2026 au 16/06/2026</strong></p>
 
   <p><strong>Vos dates en détail :</strong></p>
@@ -1084,7 +1084,7 @@ exports[`Templates snapshots — couvre F1/F2.x/F3 > emargement-individuel : HTM
     <p class="info-line">Nom de la formation : <strong>Habilitation Électrique B1V</strong></p>
     <p class="info-line">Date de la formation : du <strong>15/06/2026</strong> au <strong>16/06/2026</strong></p>
     <p class="info-line">Lieu de la formation : <strong>Aix-en-Provence</strong></p>
-    <p class="info-line">Durée : <strong>14 heure(s)</strong> heures</p>
+    <p class="info-line">Durée : <strong>14 heure(s)</strong></p>
     <p class="info-line">Prestataire de la formation : <strong>[Nom organisme] N° de déclaration d'activité : 13123456789</strong></p>
     <p class="info-line">Formateur(s) : [Nom formateur]</p>
   </div>
@@ -1094,14 +1094,14 @@ exports[`Templates snapshots — couvre F1/F2.x/F3 > emargement-individuel : HTM
   
 <div class="creneau-card">
   <p class="creneau-header">Créneau : De 15/06/2026 - 09:00 À 15/06/2026 - 17:00 (MATIN)</p>
-  <p class="person-name">[Nom formateur]</p>
+  <p class="person-name">[Nom formateur] (Formateur)</p>
   
   <p class="person-name learner">MARTIN Pierre</p>
   
 </div>
 <div class="creneau-card">
   <p class="creneau-header">Créneau : De 16/06/2026 - 09:00 À 16/06/2026 - 17:00 (MATIN)</p>
-  <p class="person-name">[Nom formateur]</p>
+  <p class="person-name">[Nom formateur] (Formateur)</p>
   
   <p class="person-name learner">MARTIN Pierre</p>
   

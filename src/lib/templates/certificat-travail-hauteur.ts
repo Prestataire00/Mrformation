@@ -142,7 +142,7 @@ export const CERTIFICAT_TRAVAIL_HAUTEUR_HTML = `<!DOCTYPE html>
   <div class="formation-details">
     <p>Qui s'est déroulée au <strong>[%Adresse de la formation%]</strong></p>
     <p>Le <strong>[%Date de début de la formation%]</strong></p>
-    <p>Pour une durée de <strong>[%Durée de la formation%]</strong></p>
+    <p>Pour une durée de <strong>[%Durée de la formation%] heure(s)</strong></p>
   </div>
 
   <p style="margin-top:14px;">Présenté par : <strong>[%Nom de l'entreprise%]</strong></p>

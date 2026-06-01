@@ -143,7 +143,7 @@ export const CONVOCATION_APPRENANT_HTML = `<!DOCTYPE html>
   <h2 class="formation-title">[%Nom de la formation%]</h2>
 
   <p>Lieu de la formation : <strong>[%Lieu de la formation%] - [%Adresse de la formation%]</strong></p>
-  <p>Durée de la formation : <strong>[%Durée de la formation%]</strong></p>
+  <p>Durée de la formation : <strong>[%Durée de la formation%] heure(s)</strong></p>
   <p>Dates de la formation : <strong>Du [%Date de début de la formation%] au [%Date de fin de la formation%]</strong></p>
 
   <p><strong>Vos dates en détail :</strong></p>

@@ -158,7 +158,7 @@ export const FEUILLE_EMARGEMENT_VIERGE_HTML = `<!DOCTYPE html>
     <p class="info-line">Nom de la formation: <strong>[%Nom de la formation%]</strong></p>
     <p class="info-line">Date de la formation: du <strong>[%Date de début de la formation%]</strong> au <strong>[%Date de fin de la formation%]</strong></p>
     <p class="info-line">Lieu de la formation: <strong>[%Modalité de la formation%] - [%Lieu de la formation%] - [%Nom du client%]</strong></p>
-    <p class="info-line">Durée: <strong>[%Durée de la formation%] heure(s)</strong> heures</p>
+    <p class="info-line">Durée: <strong>[%Durée de la formation%] heure(s)</strong></p>
     <p class="info-line">Prestataire de la formation: <strong>[%Nom de l'organisme%] N° de déclaration d'activité: [%NDA de l'organisme%]</strong></p>
     <p class="info-line">Formateur(s): [%Formateurs de la formation%]</p>
   </div>

@@ -651,7 +651,7 @@ export function resolveVariables(content: string, data: ResolveContext): string 
           return `
 <div class="creneau-card">
   <p class="creneau-header">Créneau : De ${fmtDate(s.start_time)} - ${fmtTime(s.start_time)} À ${fmtDate(s.end_time)} - ${fmtTime(s.end_time)} (${label})</p>
-  <p class="person-name">${formateursLine}</p>
+  <p class="person-name">${formateursLine}${formateursNoms ? " (Formateur)" : ""}</p>
   ${trainerStatusForSlot(s.id)}
   <p class="person-name learner">${learnerName}</p>
   ${learnerStatusForSlot(s.id)}
@@ -694,7 +694,7 @@ export function resolveVariables(content: string, data: ResolveContext): string 
       const cards = creneaux.map((c) => `
 <div class="creneau-card">
   <p class="creneau-header">Créneau : De ${fmtDate(c.startIso)} - ${fmtTime(c.startIso)} À ${fmtDate(c.endIso)} - ${fmtTime(c.endIso)} (${c.label})</p>
-  <p class="person-name">${formateursLine}</p>
+  <p class="person-name">${formateursLine}${formateursNoms ? " (Formateur)" : ""}</p>
   ${formateurStatusHtml}
   <p class="person-name learner">${learnerName}</p>
   ${learnerStatusHtml}

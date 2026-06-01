@@ -220,7 +220,7 @@ export const CONTRAT_ENGAGEMENT_STAGIAIRE_HTML = `<!DOCTYPE html>
 
   <div class="formation-block">
     <p><strong>Intitulé de la formation :</strong> [%Nom de la formation%]</p>
-    <p><strong>Durée :</strong> [%Durée de la formation%]</p>
+    <p><strong>Durée :</strong> [%Durée de la formation%] heure(s)</p>
     <p><strong>Dates :</strong> Du <strong>[%Date de début de la formation%]</strong> au <strong>[%Date de fin de la formation%]</strong></p>
     <p><strong>Lieu :</strong> [%Lieu de la formation%]</p>
   </div>

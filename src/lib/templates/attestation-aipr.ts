@@ -166,7 +166,7 @@ export const ATTESTATION_AIPR_HTML = `<!DOCTYPE html>
   <div class="cas-block">
     <p class="cas-label">(Cas où l'employeur est un exécutant de travaux)</p>
     <p class="checkbox-line">☐ Encadrement de chantiers de travaux (Encadrant)</p>
-    <p class="checkbox-line">☐ Conduite d'engins ou Réalisation de travaux urgents (Opérateur)</p>
+    <p class="checkbox-line">☑ Conduite d'engins ou Réalisation de travaux urgents (Opérateur)</p>
   </div>
 
   <div class="nota-block">
@@ -185,7 +185,6 @@ export const ATTESTATION_AIPR_HTML = `<!DOCTYPE html>
 
   <div class="validity-block">
     <p>La présente attestation est valable pour une durée de <strong>5 ans</strong> à compter de la date de réussite à l'examen mentionnée ci-dessus, ou du <strong>1er janvier 2017</strong> si la date de réussite à l'examen est antérieure au 1er janvier 2017.</p>
-    <p>Elle permet la délivrance par l'employeur d'une <strong>autorisation d'intervention à proximité des réseaux (AIPR)</strong>, dont le délai de validité ne peut dépasser celui de la présente attestation.</p>
   </div>
 
   <div class="signature-block">

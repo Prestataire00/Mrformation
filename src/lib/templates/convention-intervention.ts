@@ -130,7 +130,7 @@ export const CONVENTION_INTERVENTION_HTML = `<!DOCTYPE html>
   <h2 class="article">ARTICLE 1 - OBJET ET NATURE DE LA FORMATION</h2>
   <p>Le présent contrat est conclu dans le cadre d'une prestation de formation réalisée par le sous-traitant au bénéfice du donneur d'ordre.</p>
   <p><strong>Intitulé de la formation :</strong> [%Nom de la formation%]</p>
-  <p><strong>Durée de la formation :</strong> [%Durée de la formation%]</p>
+  <p><strong>Durée de la formation :</strong> [%Durée de la formation%] heure(s)</p>
   <p><strong>Lieu de la formation :</strong> [%Lieu de la formation%], [%Adresse de la formation%]</p>
   <p><strong>Dates de la formation :</strong> Du [%Date de début de la formation%] au [%Date de fin de la formation%]</p>
   <p><strong>Programme de formation :</strong> sur votre extranet, considéré accepté en signant ce contrat : [%Lien de l'extranet du formateur%]</p>

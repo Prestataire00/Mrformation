@@ -138,7 +138,7 @@ export const ATTESTATION_COMPETENCES_HTML = `<!DOCTYPE html>
   <div class="formation-title">[%Nom de la formation%]</div>
 
   <p>qui s'est déroulée du <strong>[%Date de début de la formation%]</strong> au <strong>[%Date de fin de la formation%]</strong></p>
-  <p>pour une durée de <strong>[%Durée de la formation%]</strong></p>
+  <p>pour une durée de <strong>[%Durée de la formation%] heure(s)</strong></p>
 
   <h2 class="section">Objectifs des évaluations des acquis :</h2>
   <div class="objectifs-block">
