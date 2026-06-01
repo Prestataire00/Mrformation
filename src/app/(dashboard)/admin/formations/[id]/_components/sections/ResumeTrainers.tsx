@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Plus, Trash2, Loader2, Sparkles, Clock, CalendarDays } from "lucide-react";
+import { Plus, Trash2, Loader2, Sparkles, Clock, CalendarDays, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -107,14 +107,21 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
     sublabel: t.email || "",
   }));
 
+  /**
+   * Pré-remplit tarif horaire (depuis trainer.hourly_rate) + heures effectuées
+   * (depuis formation.planned_hours) au moment du choix d'un formateur.
+   *
+   * Lot D : Loris se plaignait que le système redemande des infos déjà saisies.
+   * Le hourly_rate était déjà pré-rempli, désormais hours_done aussi.
+   * Pour le daily_rate : le champ n'existe pas sur trainers (uniquement sur
+   * formation_trainers, car le tarif jour est spécifique à la session), donc
+   * pas de prefill possible — c'est une saisie volontaire si Loris veut.
+   */
   const handleSelectTrainer = (id: string) => {
     setSelectedTrainerId(id);
     const trainer = allTrainers.find((t) => t.id === id);
-    if (trainer?.hourly_rate != null) {
-      setSelectedHourlyRate(String(trainer.hourly_rate));
-    } else {
-      setSelectedHourlyRate("");
-    }
+    setSelectedHourlyRate(trainer?.hourly_rate != null ? String(trainer.hourly_rate) : "");
+    setSelectedHoursDone(formation.planned_hours != null ? String(formation.planned_hours) : "");
   };
 
   const selectedTrainer = allTrainers.find((t) => t.id === selectedTrainerId);
@@ -318,7 +325,17 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-sm font-medium mb-1.5 block">Taux horaire (€/h)</label>
+                <label className="text-sm font-medium mb-1.5 block flex items-center gap-1.5">
+                  Taux horaire (€/h)
+                  {/* Comparaison via parseFloat pour éviter faux-positif "50" vs "50.0" */}
+                  {selectedTrainer?.hourly_rate != null &&
+                    selectedHourlyRate !== "" &&
+                    parseFloat(selectedHourlyRate) === selectedTrainer.hourly_rate && (
+                    <span className="inline-flex items-center gap-0.5 text-xs text-green-700 font-normal" title="Rempli automatiquement depuis le profil du formateur">
+                      <CheckCircle2 className="h-3 w-3" /> Auto
+                    </span>
+                  )}
+                </label>
                 <Input
                   type="number"
                   min="0"
@@ -341,7 +358,17 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
               </div>
             </div>
             <div>
-              <label className="text-sm font-medium mb-1.5 block">Heures effectuées (optionnel)</label>
+              <label className="text-sm font-medium mb-1.5 block flex items-center gap-1.5">
+                Heures effectuées
+                {/* Comparaison via parseFloat pour éviter faux-positif "21" vs "21.0" */}
+                {formation.planned_hours != null &&
+                  selectedHoursDone !== "" &&
+                  parseFloat(selectedHoursDone) === formation.planned_hours && (
+                  <span className="inline-flex items-center gap-0.5 text-xs text-green-700 font-normal" title="Rempli automatiquement depuis la durée de la session">
+                    <CheckCircle2 className="h-3 w-3" /> Auto (durée session)
+                  </span>
+                )}
+              </label>
               <Input
                 type="number"
                 min="0"
@@ -352,6 +379,26 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
               />
               <p className="text-xs text-muted-foreground mt-1">Si vide, les heures seront calculées depuis les signatures</p>
             </div>
+
+            {/* Lot D : alerte sur le profil formateur incomplet pour la
+                convention d'intervention (adresse / SIRET / NDA manquants). */}
+            {selectedTrainer && (() => {
+              const missing: string[] = [];
+              if (!selectedTrainer.address) missing.push("adresse");
+              if (!selectedTrainer.siret) missing.push("SIRET");
+              if (!selectedTrainer.nda) missing.push("NDA");
+              if (missing.length === 0) return null;
+              return (
+                <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                  <div>
+                    <strong>Profil formateur incomplet</strong> : {missing.join(", ")} manquant{missing.length > 1 ? "s" : ""}.
+                    {" "}La convention d&apos;intervention affichera des placeholders pour ces champs.
+                    {" "}<a href={`/admin/trainers/${selectedTrainer.id}`} target="_blank" rel="noopener noreferrer" className="underline font-medium">Compléter le profil</a>.
+                  </div>
+                </div>
+              );
+            })()}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Annuler</Button>

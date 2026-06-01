@@ -323,9 +323,52 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        const trainerData = payload.context.trainer_id
-          ? (await auth.supabase.from("trainers").select("*").eq("id", payload.context.trainer_id).single()).data as Trainer | null
-          : null;
+        // Lot D : pour convention_intervention, on doit aussi charger
+        // formation_trainers (table join) pour calculer le coût HT à injecter
+        // dans data.trainer._agreed_cost_ht (consommé par {{cout_formateur_ht}}).
+        // Sans ça le validator détecte [Coût formateur] manquant → 422 même si
+        // Loris a renseigné hourly_rate + hours_done. Cf retour Loris ticket
+        // "Me demande l'adresse et le tarif alors qu'il est déjà renseigné".
+        let trainerData: (Trainer & { _agreed_cost_ht?: number | null }) | null = null;
+        if (payload.context.trainer_id) {
+          const { data: rawTrainer } = await auth.supabase
+            .from("trainers")
+            .select("*")
+            .eq("id", payload.context.trainer_id)
+            .single();
+          trainerData = rawTrainer as Trainer | null;
+
+          // Si on a aussi un session_id : charger le lien formation_trainers
+          // et calculer _agreed_cost_ht selon la chaîne de fallback :
+          // agreed_cost_ht > hourly_rate × hours_done > daily_rate × jours.
+          if (trainerData && payload.context.session_id) {
+            const { data: ft } = await auth.supabase
+              .from("formation_trainers")
+              .select("agreed_cost_ht, hourly_rate, hours_done, daily_rate, dates_done")
+              .eq("session_id", payload.context.session_id)
+              .eq("trainer_id", payload.context.trainer_id)
+              .maybeSingle();
+            if (ft) {
+              const ftTyped = ft as {
+                agreed_cost_ht: number | null;
+                hourly_rate: number | null;
+                hours_done: number | null;
+                daily_rate: number | null;
+                dates_done: string | null;
+              };
+              let costHt: number | null = null;
+              if (typeof ftTyped.agreed_cost_ht === "number" && ftTyped.agreed_cost_ht > 0) {
+                costHt = ftTyped.agreed_cost_ht;
+              } else if (typeof ftTyped.hourly_rate === "number" && typeof ftTyped.hours_done === "number") {
+                costHt = ftTyped.hourly_rate * ftTyped.hours_done;
+              } else if (typeof ftTyped.daily_rate === "number" && ftTyped.dates_done) {
+                const days = ftTyped.dates_done.split(",").filter(Boolean).length;
+                if (days > 0) costHt = ftTyped.daily_rate * days;
+              }
+              trainerData = { ...trainerData, _agreed_cost_ht: costHt };
+            }
+          }
+        }
         const entity = await loadEntitySettings(auth.supabase, auth.profile.entity_id);
 
         // Convocation : ensure l'apprenant a un compte Supabase + password
