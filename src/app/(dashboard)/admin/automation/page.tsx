@@ -14,7 +14,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/components/ui/use-toast";
 import {
   Loader2, Zap, Plus, Search, Package, CheckCircle, Clock, Trash2,
-  FlaskConical, History,
+  FlaskConical, History, Pencil,
 } from "lucide-react";
 import { RuleWizard } from "@/components/automation/RuleWizard";
 import { QuickStartPacks } from "@/components/automation/QuickStartPacks";
@@ -22,6 +22,7 @@ import { DryRunDialog } from "@/components/automation/DryRunDialog";
 import { DomainToggle } from "@/components/automation/DomainToggle";
 import { NextRunBadge } from "@/components/automation/NextRunBadge";
 import { RuleAuditSheet } from "@/components/automation/RuleAuditSheet";
+import { EditRuleDialog, type EditableRule } from "@/components/automation/EditRuleDialog";
 import { useNextRuns } from "@/components/automation/useNextRuns";
 import { TRIGGER_LABELS } from "@/lib/automation/compute-events";
 
@@ -34,6 +35,7 @@ interface Rule {
   recipient_type: string;
   is_enabled: boolean;
   condition_subcontracted: boolean | null;
+  template_id: string | null;
   created_at?: string;
 }
 
@@ -63,6 +65,8 @@ export default function AutomationPage() {
   // aut-b-2 : dry-run + audit sheet
   const [dryRunTarget, setDryRunTarget] = useState<DryRunTarget | null>(null);
   const [auditTarget, setAuditTarget] = useState<AuditTarget | null>(null);
+  // Mini-dialog édition rapide
+  const [editingRule, setEditingRule] = useState<EditableRule | null>(null);
 
   // aut-b-2 : ▶ Prochain déclenchement (batch-loader aut-a-6)
   const { data: nextRuns } = useNextRuns(entity?.id);
@@ -73,7 +77,7 @@ export default function AutomationPage() {
 
     const { data } = await supabase
       .from("formation_automation_rules")
-      .select("id, name, trigger_type, days_offset, document_type, recipient_type, is_enabled, condition_subcontracted, created_at")
+      .select("id, name, trigger_type, days_offset, document_type, recipient_type, is_enabled, condition_subcontracted, template_id, created_at")
       .eq("entity_id", entity.id)
       .order("created_at", { ascending: false });
 
@@ -213,6 +217,25 @@ export default function AutomationPage() {
           <Button
             size="sm"
             variant="ghost"
+            className="text-xs gap-1.5 h-8"
+            onClick={() => setEditingRule({
+              id: rule.id,
+              name: rule.name,
+              trigger_type: rule.trigger_type,
+              days_offset: rule.days_offset,
+              recipient_type: rule.recipient_type,
+              condition_subcontracted: rule.condition_subcontracted,
+              template_id: rule.template_id,
+            })}
+            aria-label={`Modifier la règle ${rule.name || triggerLabel}`}
+            title="Modifier"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+            <span className="hidden md:inline">Modifier</span>
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
             className="text-red-500 hover:text-red-700 h-8"
             onClick={() => handleDelete(rule)}
             aria-label={`Supprimer la règle ${rule.name || triggerLabel}`}
@@ -332,6 +355,15 @@ export default function AutomationPage() {
         onClose={() => setWizardOpen(false)}
         onCreated={fetchRules}
         entityId={entity?.id || ""}
+      />
+
+      {/* Mini-dialog édition rapide */}
+      <EditRuleDialog
+        open={editingRule !== null}
+        onOpenChange={(o) => { if (!o) setEditingRule(null); }}
+        rule={editingRule}
+        entityId={entity?.id || ""}
+        onUpdated={fetchRules}
       />
 
       {/* aut-b-2 : DryRunDialog (B.1) — ouvert via bouton "Tester sans envoyer" */}
