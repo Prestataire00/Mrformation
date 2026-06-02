@@ -377,7 +377,7 @@ export async function updateDocsByDocType(
   sessionId: string,
   docType: string,
   patch: Record<string, unknown>,
-  options?: { onlyStatus?: string },
+  options?: { onlyStatus?: string; ownerType?: OwnerType },
 ): Promise<ServiceResult<{ updated: number }>> {
   let query = supabase
     .from("documents")
@@ -388,6 +388,12 @@ export async function updateDocsByDocType(
     .eq("doc_type", docType);
   if (options?.onlyStatus) {
     query = query.eq("status", options.onlyStatus);
+  }
+  // Lot G : owner_type filter pour empêcher qu'un "Tout figer" depuis une
+  // section (ex. Apprenants) ne touche les docs d'une autre section (ex.
+  // Formateurs) qui partageraient le même doc_type. Cf audit BMAD #2.
+  if (options?.ownerType) {
+    query = query.eq("owner_type", options.ownerType);
   }
   const { data, error } = await query.select("id");
   if (error) return { ok: false, error: { message: error.message, code: error.code } };
