@@ -456,6 +456,11 @@ interface LegacyTemplateData {
   // Champs additionnels utilisés par certains call sites legacy
   doc?: { document_date?: string | null; confirmed_at?: string | null };
   clientSignature?: { signature_data: string; signer_name: string; signed_at: string } | null;
+  // Lot F : agrégats session pour les docs reponses_evaluations /
+  // reponses_satisfaction_session / resultats_evaluations. Chargés en amont
+  // par l'API (cf. loadSessionAggregates / loadEvaluationResults).
+  sessionAggregates?: ResolveContext["sessionAggregates"];
+  evaluationResults?: ResolveContext["evaluationResults"];
 }
 
 export function renderSystemTemplate(
@@ -472,6 +477,8 @@ export function renderSystemTemplate(
     client: data.company as Client | undefined,
     trainer: data.trainer as Trainer | undefined,
     entity: data.entity,
+    sessionAggregates: data.sessionAggregates,
+    evaluationResults: data.evaluationResults,
   };
 
   // Résout HTML + footer + concatène (le footer Puppeteer est géré séparément

@@ -43,7 +43,19 @@ import {
 } from "@/lib/services/document-generation";
 import { convertDocxToPdfWithVariables } from "@/lib/services/docx-converter";
 import { loadClientsWithContacts } from "@/lib/services/load-client";
+import { loadSessionAggregates } from "@/lib/services/load-session-aggregates";
+import { loadEvaluationResults } from "@/lib/services/load-evaluation-results";
 import type { Session, Learner, Client, Trainer, Contact } from "@/lib/types";
+
+/**
+ * Lot F : doc_types qui consomment data.sessionAggregates. Pour ces docs,
+ * batch-email-handler doit charger les agrégats session avant de générer
+ * les PDFs (sinon les builders retournent "Aucune réponse...").
+ */
+const DOC_TYPES_NEEDING_AGGREGATES = new Set<string>([
+  "reponses_evaluations",
+  "reponses_satisfaction_session",
+]);
 
 const isResendConfigured =
   !!process.env.RESEND_API_KEY && process.env.RESEND_API_KEY !== "votre-cle-resend";
@@ -427,6 +439,19 @@ export async function batchSendDocsEmail(
     );
   }
 
+  // Lot F : agrégats session pour reponses_evaluations / reponses_satisfaction.
+  // Sans ça les builders {{tableau_reponses_*}} retournent "Aucune réponse..."
+  // même quand les questionnaires ont reçu des réponses. 1 seul fetch par
+  // batch (pas par destinataire) car les agrégats sont session-scoped.
+  let sessionAggregates: ResolveContext["sessionAggregates"];
+  if (DOC_TYPES_NEEDING_AGGREGATES.has(docType)) {
+    try {
+      sessionAggregates = await loadSessionAggregates(supabase, sessionId);
+    } catch (err) {
+      console.warn("[batch-email] loadSessionAggregates failed:", err);
+    }
+  }
+
   // 6. Construire les RecipientGenerationTask
   const tasks: RecipientGenerationTask[] = recipientRows.map((recipient) => {
     const slugName = recipient.name
@@ -466,6 +491,20 @@ export async function batchSendDocsEmail(
       emailTextBody: finalTextBody,
       attachmentFilename: `${filenameLabel.toLowerCase()}-${slugName}.pdf`,
       generatePdf: async (): Promise<Buffer> => {
+        // Lot F : charge evaluationResults par destinataire si doc per-apprenant
+        // (resultats_evaluations exige sessionId + learnerId).
+        let evaluationResults: ResolveContext["evaluationResults"];
+        if (
+          docType === "resultats_evaluations" &&
+          (ownerType === "learner" || ownerType === "session")
+        ) {
+          try {
+            evaluationResults = await loadEvaluationResults(supabase, sessionId, recipient.id);
+          } catch (err) {
+            console.warn("[batch-email] loadEvaluationResults failed:", err);
+          }
+        }
+
         // Construit le contexte de résolution de variables
         const ctx: ResolveContext = {
           session: session as unknown as Session,
@@ -477,6 +516,8 @@ export async function batchSendDocsEmail(
             ? (recipient.fullRecord as unknown as Learner) : undefined,
           client: ownerType === "company" ? (recipient.fullRecord as unknown as Client) : undefined,
           trainer: ownerType === "trainer" ? (recipient.fullRecord as unknown as Trainer) : undefined,
+          sessionAggregates,
+          evaluationResults,
         };
 
         // 6a. ⚠ CRITIQUE — Branchement docx_fidelity PRIORITAIRE
@@ -500,6 +541,10 @@ export async function batchSendDocsEmail(
           company: ownerType === "company" ? (recipient.fullRecord as unknown as Client) : undefined,
           trainer: ownerType === "trainer" ? (recipient.fullRecord as unknown as Trainer) : undefined,
           entity: entitySettings ?? undefined,
+          // Lot F : propage les agrégats session pour que les builders
+          // {{tableau_reponses_*}} retournent les vraies données.
+          sessionAggregates,
+          evaluationResults,
         });
         if (!html) {
           throw new Error(`Template HTML système introuvable pour doc_type="${docType}"`);
@@ -517,6 +562,10 @@ export async function batchSendDocsEmail(
             ...(ownerType === "company" && { client_id: recipient.id }),
             ...(ownerType === "trainer" && { trainer_id: recipient.id }),
             session_updated_at: (session as { updated_at?: string }).updated_at ?? null,
+            // Lot F : bump custom_variables.cache_version pour invalider les
+            // anciens PDFs "Aucune réponse" mis en cache avant le fix
+            // (cf. audit BMAD #3).
+            custom_variables: { cache_version: "lot-f-v1" },
           },
           options: {
             format: "A4",

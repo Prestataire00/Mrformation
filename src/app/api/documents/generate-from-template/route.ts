@@ -18,6 +18,8 @@ import {
 import { validateDocumentVariables, type MissingByEntity } from "@/lib/validation/document-vars-validator";
 import { loadSignaturesBySessionId } from "@/lib/services/load-signatures";
 import { loadClientWithContacts } from "@/lib/services/load-client";
+import { loadSessionAggregates } from "@/lib/services/load-session-aggregates";
+import { loadEvaluationResults } from "@/lib/services/load-evaluation-results";
 import { ensureLearnerAccount } from "@/lib/services/learner-account";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import type { Session, Learner, Client, Trainer } from "@/lib/types";
@@ -471,6 +473,47 @@ export async function POST(request: NextRequest) {
           };
         })();
 
+        // Lot F : pour les docs qui rendent des tableaux de réponses
+        // (satisfaction / évaluations / suivi qualité), charger les agrégats
+        // depuis questionnaire_responses. Sans ça les builders
+        // {{tableau_reponses_satisfaction}}, {{tableau_reponses_evaluations}},
+        // {{tableau_suivi_qualite}} retournent "Aucune réponse..." même
+        // quand les questionnaires ont reçu des réponses.
+        // (Retour Loris : "RÉPONSES AUX ÉVALUATIONS : Ne fonctionne pas,
+        // aucune réponse").
+        const DOC_TYPES_NEEDING_AGGREGATES = new Set([
+          "reponses_evaluations",
+          "reponses_satisfaction_session",
+        ]);
+        let sessionAggregates: ResolveContext["sessionAggregates"];
+        if (payload.context.session_id && DOC_TYPES_NEEDING_AGGREGATES.has(payload.doc_type ?? "")) {
+          try {
+            sessionAggregates = await loadSessionAggregates(auth.supabase, payload.context.session_id);
+          } catch (err) {
+            console.warn("[generate-from-template] loadSessionAggregates failed:", err);
+          }
+        }
+
+        // Lot F : resultats_evaluations utilise {{tableau_resultats_evaluations}}
+        // qui consomme data.evaluationResults (différent de sessionAggregates).
+        // Exige sessionId + learnerId (doc per-apprenant).
+        let evaluationResults: ResolveContext["evaluationResults"];
+        if (
+          payload.doc_type === "resultats_evaluations" &&
+          payload.context.session_id &&
+          payload.context.learner_id
+        ) {
+          try {
+            evaluationResults = await loadEvaluationResults(
+              auth.supabase,
+              payload.context.session_id,
+              payload.context.learner_id,
+            );
+          } catch (err) {
+            console.warn("[generate-from-template] loadEvaluationResults failed:", err);
+          }
+        }
+
         const ctx: ResolveContext = {
           session: sessionForCtx as unknown as Session,
           learner: learnerData ?? undefined,
@@ -482,6 +525,8 @@ export async function POST(request: NextRequest) {
           signaturesBySlotPerson: signaturesBySlotPerson as ResolveContext["signaturesBySlotPerson"],
           learnerCredentials: learnerCredentials ?? undefined,
           documentSignature,
+          sessionAggregates,
+          evaluationResults,
         };
 
         const resolvedHtml = resolveDocumentVariables(systemTemplate.html, ctx);
@@ -528,7 +573,10 @@ export async function POST(request: NextRequest) {
             client_id: payload.context.client_id ?? null,
             trainer_id: payload.context.trainer_id ?? null,
             session_updated_at: sessionUpdatedAt,
-            custom_variables: null,
+            // Lot F : bump pour invalider les anciens PDFs "Aucune réponse"
+            // mis en cache avant le chargement de sessionAggregates /
+            // evaluationResults dans le ctx (cf. audit BMAD).
+            custom_variables: { cache_version: "lot-f-v1" },
           },
           options: {
             format: "A4",
