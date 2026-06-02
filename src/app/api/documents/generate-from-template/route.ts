@@ -20,6 +20,7 @@ import { loadSignaturesBySessionId } from "@/lib/services/load-signatures";
 import { loadClientWithContacts } from "@/lib/services/load-client";
 import { loadSessionAggregates } from "@/lib/services/load-session-aggregates";
 import { loadEvaluationResults } from "@/lib/services/load-evaluation-results";
+import { generateLoginQrDataUrl } from "@/lib/services/login-qr-code";
 import { ensureLearnerAccount } from "@/lib/services/learner-account";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import type { Session, Learner, Client, Trainer } from "@/lib/types";
@@ -514,6 +515,13 @@ export async function POST(request: NextRequest) {
           }
         }
 
+        // Lot H : QR code connexion pré-calculé pour convocation (async).
+        let loginQrCodeDataUrl: string | undefined;
+        if (payload.doc_type === "convocation") {
+          const qr = await generateLoginQrDataUrl();
+          if (qr) loginQrCodeDataUrl = qr;
+        }
+
         const ctx: ResolveContext = {
           session: sessionForCtx as unknown as Session,
           learner: learnerData ?? undefined,
@@ -527,6 +535,7 @@ export async function POST(request: NextRequest) {
           documentSignature,
           sessionAggregates,
           evaluationResults,
+          loginQrCodeDataUrl,
         };
 
         const resolvedHtml = resolveDocumentVariables(systemTemplate.html, ctx);
@@ -573,10 +582,9 @@ export async function POST(request: NextRequest) {
             client_id: payload.context.client_id ?? null,
             trainer_id: payload.context.trainer_id ?? null,
             session_updated_at: sessionUpdatedAt,
-            // Lot F : bump pour invalider les anciens PDFs "Aucune réponse"
-            // mis en cache avant le chargement de sessionAggregates /
-            // evaluationResults dans le ctx (cf. audit BMAD).
-            custom_variables: { cache_version: "lot-f-v1" },
+            // Lot F + H : bump pour invalider les anciens PDFs en cache
+            // (sans agrégats / sans QR code convocation, cf. audits BMAD).
+            custom_variables: { cache_version: "lot-h-v1" },
           },
           options: {
             format: "A4",

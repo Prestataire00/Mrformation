@@ -27,6 +27,7 @@ import {
   createDefaultEngine,
 } from "@/lib/services/document-generation";
 import { ensureLearnerAccount } from "@/lib/services/learner-account";
+import { generateLoginQrDataUrl } from "@/lib/services/login-qr-code";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import {
   executeBatchEmailSend,
@@ -120,6 +121,9 @@ export async function POST(request: NextRequest) {
     // Service client pour les appels auth.admin (ensureLearnerAccount)
     const serviceClient = createServiceClient();
 
+    // Lot H : QR code connexion pré-calculé 1× pour tout le batch.
+    const loginQrCodeDataUrl = (await generateLoginQrDataUrl()) ?? undefined;
+
     const tasks: RecipientGenerationTask[] = learners.map((learner) => ({
       ownerId: learner.id,
       ownerName: `${learner.last_name} ${learner.first_name}`,
@@ -144,6 +148,7 @@ export async function POST(request: NextRequest) {
           learner,
           entity,
           learnerCredentials: learnerCredentials ?? undefined,
+          loginQrCodeDataUrl,
         };
         const html = resolveDocumentVariables(CONVOCATION_APPRENANT_HTML, context);
         const footer = resolveDocumentVariables(CONVOCATION_APPRENANT_FOOTER_TEMPLATE, context);
@@ -156,7 +161,8 @@ export async function POST(request: NextRequest) {
             session_id: body.sessionId,
             learner_id: learner.id,
             session_updated_at: (session as { updated_at?: string }).updated_at ?? null,
-            custom_variables: null,
+            // Lot H : bump pour invalider les anciennes convocations en cache.
+            custom_variables: { template_version: "lot-h" },
           },
           options: {
             format: "A4",

@@ -461,6 +461,8 @@ interface LegacyTemplateData {
   // par l'API (cf. loadSessionAggregates / loadEvaluationResults).
   sessionAggregates?: ResolveContext["sessionAggregates"];
   evaluationResults?: ResolveContext["evaluationResults"];
+  // Lot H : QR code connexion pour convocation (pré-calculé async côté API).
+  loginQrCodeDataUrl?: string;
 }
 
 export function renderSystemTemplate(
@@ -479,6 +481,7 @@ export function renderSystemTemplate(
     entity: data.entity,
     sessionAggregates: data.sessionAggregates,
     evaluationResults: data.evaluationResults,
+    loginQrCodeDataUrl: data.loginQrCodeDataUrl,
   };
 
   // Résout HTML + footer + concatène (le footer Puppeteer est géré séparément

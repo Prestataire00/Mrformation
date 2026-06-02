@@ -23,6 +23,7 @@ import {
   DocumentGenerationService,
   createDefaultEngine,
 } from "@/lib/services/document-generation";
+import { generateLoginQrDataUrl } from "@/lib/services/login-qr-code";
 import type { Session, Learner } from "@/lib/types";
 
 export async function POST(_request: NextRequest) {
@@ -140,11 +141,14 @@ export async function POST(_request: NextRequest) {
 
     // Pour le mock, override session.location pour matcher le PDF Loris exactement
     const sessionForRender = { ...mockSession, location: "UNICIL, 11 RUE ARMENY 13006 MARSEILLE" } as Session;
+    // Lot H : QR code connexion pour la preview mock
+    const loginQrCodeDataUrl = (await generateLoginQrDataUrl()) ?? undefined;
     const context: ResolveContext = {
       session: sessionForRender,
       learner: mockLearner,
       entity,
       learnerCredentials: mockCredentials,
+      loginQrCodeDataUrl,
     };
     const resolvedHtml = resolveDocumentVariables(CONVOCATION_APPRENANT_HTML, context);
     const resolvedFooter = resolveDocumentVariables(CONVOCATION_APPRENANT_FOOTER_TEMPLATE, context);

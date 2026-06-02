@@ -23,6 +23,13 @@ export interface ResolveContext {
    */
   learnerCredentials?: { email: string; tempPassword: string };
   /**
+   * Lot H : QR code data URL (data:image/png;base64,...) pointant vers
+   * la page de connexion. Pré-calculé côté API via `qrcode` (toDataURL
+   * async, impossible côté builder sync). Utilisé par
+   * `{{qr_code_connexion}}` dans le template convocation.
+   */
+  loginQrCodeDataUrl?: string;
+  /**
    * Signature SVG du document courant (table `documents.signature_data`)
    * pour insérer la signature du signataire (client, formateur, etc.) dans
    * le PDF du document signé. Cf h-2 Epic H : Story C n'avait jamais
@@ -802,6 +809,14 @@ export function resolveVariables(content: string, data: ResolveContext): string 
     // generate-from-template via ensureLearnerAccount pour doc_type=convocation
     "{{mot_de_passe_apprenant}}": data.learnerCredentials?.tempPassword || "[Mot de passe apprenant]",
 
+    // Lot H : QR code (data URL) pointant vers la page de connexion.
+    // Pré-calculé côté API via qrcode.toDataURL et injecté dans le ctx.
+    // Si absent → vide (le label "Scannez..." disparaît avec le QR pour
+    // éviter un texte orphelin sans image, cf audit BMAD #2).
+    "{{qr_code_connexion}}": data.loginQrCodeDataUrl
+      ? `<img src="${data.loginQrCodeDataUrl}" alt="QR code connexion" style="width:80px;height:80px;display:block;" /><p style="font-size:7pt;color:#6b7280;text-align:center;margin:2px 0 0;line-height:1.2;">Scannez<br>pour vous connecter</p>`
+      : "",
+
     // === Story B-Convention Intervention (contrat sous-traitance formateur) ===
     "{{nom_formateur_complet}}": (() => {
       const t = data.trainer;
@@ -1480,6 +1495,8 @@ export const ALIAS_TO_VARIABLE_KEY: Record<string, string> = {
   "Vos dates en détail": "{{dates_detail}}",
   "URL de connexion": "{{url_connexion}}",
   "Mot de passe apprenant": "{{mot_de_passe_apprenant}}",
+  // Lot H : QR code page connexion (pré-calculé async côté API)
+  "QR code connexion": "{{qr_code_connexion}}",
   // === Story B-Certificat Réalisation ===
   "URL Logo Ministère du Travail": "{{url_logo_ministere_travail}}",
   "Objectifs pédagogiques du programme": "{{liste_objectifs_pedagogiques}}",

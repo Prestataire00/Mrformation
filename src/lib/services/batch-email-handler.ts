@@ -45,6 +45,7 @@ import { convertDocxToPdfWithVariables } from "@/lib/services/docx-converter";
 import { loadClientsWithContacts } from "@/lib/services/load-client";
 import { loadSessionAggregates } from "@/lib/services/load-session-aggregates";
 import { loadEvaluationResults } from "@/lib/services/load-evaluation-results";
+import { generateLoginQrDataUrl } from "@/lib/services/login-qr-code";
 import type { Session, Learner, Client, Trainer, Contact } from "@/lib/types";
 
 /**
@@ -452,6 +453,14 @@ export async function batchSendDocsEmail(
     }
   }
 
+  // Lot H : QR code connexion pour convocation (1× par batch, identique
+  // pour tous les destinataires car URL fixe /login).
+  let loginQrCodeDataUrl: string | undefined;
+  if (docType === "convocation") {
+    const qr = await generateLoginQrDataUrl();
+    if (qr) loginQrCodeDataUrl = qr;
+  }
+
   // 6. Construire les RecipientGenerationTask
   const tasks: RecipientGenerationTask[] = recipientRows.map((recipient) => {
     const slugName = recipient.name
@@ -518,6 +527,7 @@ export async function batchSendDocsEmail(
           trainer: ownerType === "trainer" ? (recipient.fullRecord as unknown as Trainer) : undefined,
           sessionAggregates,
           evaluationResults,
+          loginQrCodeDataUrl,
         };
 
         // 6a. ⚠ CRITIQUE — Branchement docx_fidelity PRIORITAIRE
@@ -545,6 +555,8 @@ export async function batchSendDocsEmail(
           // {{tableau_reponses_*}} retournent les vraies données.
           sessionAggregates,
           evaluationResults,
+          // Lot H : QR code connexion convocation
+          loginQrCodeDataUrl,
         });
         if (!html) {
           throw new Error(`Template HTML système introuvable pour doc_type="${docType}"`);
@@ -562,10 +574,9 @@ export async function batchSendDocsEmail(
             ...(ownerType === "company" && { client_id: recipient.id }),
             ...(ownerType === "trainer" && { trainer_id: recipient.id }),
             session_updated_at: (session as { updated_at?: string }).updated_at ?? null,
-            // Lot F : bump custom_variables.cache_version pour invalider les
-            // anciens PDFs "Aucune réponse" mis en cache avant le fix
-            // (cf. audit BMAD #3).
-            custom_variables: { cache_version: "lot-f-v1" },
+            // Lot F + H : bump pour invalider les anciens PDFs en cache
+            // (sans agrégats / sans QR code convocation).
+            custom_variables: { cache_version: "lot-h-v1" },
           },
           options: {
             format: "A4",

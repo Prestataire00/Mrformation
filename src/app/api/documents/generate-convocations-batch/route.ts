@@ -29,6 +29,7 @@ import {
   createDefaultEngine,
 } from "@/lib/services/document-generation";
 import { ensureLearnerAccount } from "@/lib/services/learner-account";
+import { generateLoginQrDataUrl } from "@/lib/services/login-qr-code";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import type { Session, Learner } from "@/lib/types";
 
@@ -134,6 +135,10 @@ export async function POST(request: NextRequest) {
     // Service client pour les appels auth.admin (ensureLearnerAccount)
     const serviceClient = createServiceClient();
 
+    // Lot H : QR code connexion pré-calculé 1× pour tout le batch
+    // (URL identique pour tous les apprenants : /login).
+    const loginQrCodeDataUrl = (await generateLoginQrDataUrl()) ?? undefined;
+
     // Credentials PAR apprenant (ensureLearnerAccount idempotent : réutilise
     // les credentials existants pour cohérence entre les convocations).
     const tasks = learners.map(async (learner) => {
@@ -149,6 +154,7 @@ export async function POST(request: NextRequest) {
         learner,
         entity,
         learnerCredentials: learnerCredentials ?? undefined,
+        loginQrCodeDataUrl,
       };
       const resolvedHtml = resolveDocumentVariables(CONVOCATION_APPRENANT_HTML, context);
       const resolvedFooter = resolveDocumentVariables(CONVOCATION_APPRENANT_FOOTER_TEMPLATE, context);
@@ -162,7 +168,9 @@ export async function POST(request: NextRequest) {
           session_id: body.sessionId,
           learner_id: learner.id,
           session_updated_at: (session as { updated_at?: string }).updated_at ?? null,
-          custom_variables: null,
+          // Lot H : bump pour invalider les anciennes convocations en cache
+          // (sans QR code) après l'ajout de l'image QR dans le header.
+          custom_variables: { template_version: "lot-h" },
         },
         options: {
           format: "A4",

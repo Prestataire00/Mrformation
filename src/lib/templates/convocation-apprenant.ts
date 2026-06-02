@@ -44,7 +44,7 @@ export const CONVOCATION_APPRENANT_HTML = `<!DOCTYPE html>
     align-items: flex-start;
     margin-bottom: 8px;
   }
-  .header .org-info { flex: 1; padding-right: 10px; }
+  .header .org-info { flex: 1 1 0; min-width: 0; padding-right: 10px; }
   .header .org-name {
     font-size: 15pt;
     font-weight: 700;
@@ -59,6 +59,15 @@ export const CONVOCATION_APPRENANT_HTML = `<!DOCTYPE html>
   }
   .header .logo-cell { width: 110px; text-align: right; }
   .header .logo-cell img { max-width: 110px; max-height: 80px; object-fit: contain; }
+
+  /* Lot H : QR code connexion en haut à droite (le label "Scannez..."
+     est rendu dans le builder {{qr_code_connexion}} pour disparaître
+     avec l'image si QR absent). */
+  .header .qr-cell {
+    flex: 0 0 90px;
+    text-align: right;
+    margin-left: 8px;
+  }
 
   h1.title {
     font-size: 12pt;
@@ -137,6 +146,7 @@ export const CONVOCATION_APPRENANT_HTML = `<!DOCTYPE html>
       </div>
     </div>
     <div class="logo-cell">[%Logo de l'organisme%]</div>
+    <div class="qr-cell">[%QR code connexion%]</div>
   </div>
 
   <h1 class="title">Convocation à la formation professionnelle</h1>
@@ -162,7 +172,7 @@ export const CONVOCATION_APPRENANT_HTML = `<!DOCTYPE html>
         <td style="padding: 1px 6px;">[%URL de connexion%]</td>
       </tr>
       <tr>
-        <td style="padding: 1px 6px; font-weight: 700;">Email :</td>
+        <td style="padding: 1px 6px; font-weight: 700;">Identifiant :</td>
         <td style="padding: 1px 6px;">[%Email de l'apprenant%]</td>
       </tr>
       <tr>
@@ -171,7 +181,7 @@ export const CONVOCATION_APPRENANT_HTML = `<!DOCTYPE html>
       </tr>
     </table>
     <p style="font-size: 8pt; color: #6b7280; margin: 4px 0 0;">
-      💡 Vous pouvez modifier votre mot de passe via "Mot de passe oublié".
+      💡 Scannez le QR code en haut à droite pour accéder directement à la page de connexion. Vous pouvez modifier votre mot de passe via "Mot de passe oublié".
     </p>
   </div>
   <p>En cas d'indisponibilité ou de renoncement, veuillez nous prévenir le plus rapidement possible.</p>
