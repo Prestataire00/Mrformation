@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/require-role";
 import { claudeChat } from "@/lib/ai/claude-client";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
+import { escapeForPrompt, PROMPT_INJECTION_GUARDRAIL } from "@/lib/ai/sanitize-prompt";
 
 export async function POST(req: NextRequest) {
   const auth = await requireRole(["super_admin", "admin"]);
@@ -21,12 +22,18 @@ export async function POST(req: NextRequest) {
 
     if (!trainers?.length) return NextResponse.json({ trainers: [] });
 
+    // Lot G audit BMAD #G.3 : échappe les contenus user-controlled (bio,
+    // formation_domains, ai_keywords, competencies) pour empêcher la
+    // prompt injection via le contenu DB. Aligné sur match-trainer route.
     const list = trainers.map(t =>
-      `ID:${t.id}|${t.first_name} ${t.last_name}|Bio:${t.bio || ""}|Compét:${(t.competencies || []).map((c: Record<string, string>) => c.competency).join(",")}|Domaines:${(t.formation_domains || []).join(",")}|Keywords:${(t.ai_keywords || []).join(",")}|Langues:${JSON.stringify(t.languages || [])}|Séniorité:${t.seniority_level || ""}`
+      `ID:${escapeForPrompt(t.id)}|${escapeForPrompt(t.first_name)} ${escapeForPrompt(t.last_name)}|Bio:${escapeForPrompt(t.bio || "")}|Compét:${escapeForPrompt((t.competencies || []).map((c: Record<string, string>) => c.competency).join(","))}|Domaines:${escapeForPrompt((t.formation_domains || []).join(","))}|Keywords:${escapeForPrompt((t.ai_keywords || []).join(","))}|Langues:${escapeForPrompt(JSON.stringify(t.languages || []))}|Séniorité:${escapeForPrompt(t.seniority_level || "")}`
     ).join("\n");
 
+    // Échappe aussi la query user (saisie directe par l'admin).
+    const safeQuery = escapeForPrompt(query);
+
     const response = await claudeChat(
-      [{ role: "user", content: `REQUÊTE:"${query}"\n\nFORMATEURS:\n${list}\n\nSélection sémantique (pas juste keyword). JSON strict:\n{"matches":[{"trainer_id":"uuid","relevance":0-100,"why":"raison courte"}]}\nRègles: relevance>=50, max 10, tri desc.` }],
+      [{ role: "user", content: `${PROMPT_INJECTION_GUARDRAIL}\n\nREQUÊTE:"${safeQuery}"\n\nFORMATEURS:\n${list}\n\nSélection sémantique (pas juste keyword). JSON strict:\n{"matches":[{"trainer_id":"uuid","relevance":0-100,"why":"raison courte"}]}\nRègles: relevance>=50, max 10, tri desc.` }],
       { maxTokens: 1000, temperature: 0.1 }
     );
 

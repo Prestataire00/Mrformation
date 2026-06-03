@@ -42,9 +42,13 @@ export async function GET(
       return NextResponse.json({ error: "Profil non trouvé" }, { status: 403 });
     }
 
-    const isAdmin = profile.role === "admin" && profile.entity_id === doc.entity_id;
+    // Lot G audit BMAD #G.4 : autoriser aussi super_admin (entité matching)
+    // + commercial. Avant : seul "admin" strict → super_admin bloqué.
+    const isAdminOrSuper =
+      ["admin", "super_admin", "commercial"].includes(profile.role) &&
+      profile.entity_id === doc.entity_id;
 
-    if (!isAdmin) {
+    if (!isAdminOrSuper) {
       const { data: trainer } = await supabase
         .from("trainers")
         .select("id")

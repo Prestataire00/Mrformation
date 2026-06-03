@@ -135,26 +135,38 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { first_name, last_name, email, phone, bio, status, hourly_rate } = parsed.data;
+    // Lot G audit BMAD : utilise parsed.data validé (au lieu de body brut
+    // pour adresse/SIRET/etc.). Ajout type, IBAN/BIC, NDA, legal_status,
+    // company_name, tva_number, availability_notes, bank_name.
+    const data = parsed.data;
     const { competency_ids } = body;
 
     const { data: trainer, error: insertError } = await supabase
       .from("trainers")
       .insert({
         entity_id: profile.entity_id,
-        first_name,
-        last_name,
-        email: email ?? null,
-        phone: phone ?? null,
-        address: body.address ?? null,
-        city: body.city ?? null,
-        postal_code: body.postal_code ?? null,
-        country: body.country ?? "France",
-        siret: body.siret ?? null,
-        status: status ?? "active",
-        bio: bio ?? null,
-        hourly_rate: hourly_rate ?? null,
-        contract_type: body.contract_type ?? null,
+        first_name: data.first_name,
+        last_name: data.last_name,
+        email: data.email ?? null,
+        phone: data.phone ?? null,
+        type: data.type ?? "internal",
+        bio: data.bio ?? null,
+        status: data.status ?? "active",
+        hourly_rate: data.hourly_rate ?? null,
+        availability_notes: data.availability_notes ?? null,
+        address: data.address ?? null,
+        city: data.city ?? null,
+        postal_code: data.postal_code ?? null,
+        country: data.country ?? "France",
+        siret: data.siret ?? null,
+        nda: data.nda ?? null,
+        legal_status: data.legal_status ?? null,
+        company_name: data.company_name ?? null,
+        tva_number: data.tva_number ?? null,
+        contract_type: data.contract_type ?? null,
+        iban: data.iban ?? null,
+        bic: data.bic ?? null,
+        bank_name: data.bank_name ?? null,
         created_by: user.id,
       })
       .select()

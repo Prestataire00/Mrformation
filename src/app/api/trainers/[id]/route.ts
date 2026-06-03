@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 import { logAudit } from "@/lib/audit-log";
+import { updateTrainerSchema } from "@/lib/validations";
 import { NextRequest, NextResponse } from "next/server";
 
 interface RouteContext {
@@ -98,29 +99,18 @@ export async function PUT(request: NextRequest, { params }: RouteContext) {
 
     const body = await request.json();
 
-    const {
-      first_name,
-      last_name,
-      email,
-      phone,
-      address,
-      city,
-      postal_code,
-      country,
-      siret,
-      status: trainerStatus,
-      bio,
-      hourly_rate,
-      contract_type,
-      competency_ids,
-    } = body;
-
-    if (!first_name || !last_name) {
+    // Lot G audit BMAD : valider via Zod (avant : juste check first_name &&
+    // last_name, payload non validé pour IBAN/SIRET/etc.). Schema partial
+    // → tous les champs sont optionnels pour un PUT (update).
+    const parsed = updateTrainerSchema.safeParse(body);
+    if (!parsed.success) {
       return NextResponse.json(
-        { data: null, error: "Le prénom et le nom du formateur sont requis" },
+        { data: null, error: parsed.error.issues[0].message },
         { status: 400 }
       );
     }
+    const data = parsed.data;
+    const { competency_ids } = body;
 
     const { data: existing } = await supabase
       .from("trainers")
@@ -136,24 +126,36 @@ export async function PUT(request: NextRequest, { params }: RouteContext) {
       );
     }
 
+    // Construit l'objet UPDATE uniquement avec les champs fournis (partial).
+    // Évite d'écraser un champ existant en BDD avec `null` si le client ne
+    // l'a pas envoyé du tout.
+    const updatePayload: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (data.first_name !== undefined) updatePayload.first_name = data.first_name;
+    if (data.last_name !== undefined) updatePayload.last_name = data.last_name;
+    if (data.email !== undefined) updatePayload.email = data.email;
+    if (data.phone !== undefined) updatePayload.phone = data.phone;
+    if (data.type !== undefined) updatePayload.type = data.type;
+    if (data.bio !== undefined) updatePayload.bio = data.bio;
+    if (data.status !== undefined) updatePayload.status = data.status;
+    if (data.hourly_rate !== undefined) updatePayload.hourly_rate = data.hourly_rate;
+    if (data.availability_notes !== undefined) updatePayload.availability_notes = data.availability_notes;
+    if (data.address !== undefined) updatePayload.address = data.address;
+    if (data.city !== undefined) updatePayload.city = data.city;
+    if (data.postal_code !== undefined) updatePayload.postal_code = data.postal_code;
+    if (data.country !== undefined) updatePayload.country = data.country;
+    if (data.siret !== undefined) updatePayload.siret = data.siret;
+    if (data.nda !== undefined) updatePayload.nda = data.nda;
+    if (data.legal_status !== undefined) updatePayload.legal_status = data.legal_status;
+    if (data.company_name !== undefined) updatePayload.company_name = data.company_name;
+    if (data.tva_number !== undefined) updatePayload.tva_number = data.tva_number;
+    if (data.contract_type !== undefined) updatePayload.contract_type = data.contract_type;
+    if (data.iban !== undefined) updatePayload.iban = data.iban;
+    if (data.bic !== undefined) updatePayload.bic = data.bic;
+    if (data.bank_name !== undefined) updatePayload.bank_name = data.bank_name;
+
     const { data: trainer, error: updateError } = await supabase
       .from("trainers")
-      .update({
-        first_name,
-        last_name,
-        email: email ?? null,
-        phone: phone ?? null,
-        address: address ?? null,
-        city: city ?? null,
-        postal_code: postal_code ?? null,
-        country: country ?? "France",
-        siret: siret ?? null,
-        status: trainerStatus ?? "active",
-        bio: bio ?? null,
-        hourly_rate: hourly_rate ?? null,
-        contract_type: contract_type ?? null,
-        updated_at: new Date().toISOString(),
-      })
+      .update(updatePayload)
       .eq("id", params.id)
       .eq("entity_id", profile.entity_id)
       .select()
@@ -195,7 +197,7 @@ export async function PUT(request: NextRequest, { params }: RouteContext) {
       action: "update",
       resourceType: "trainers",
       resourceId: params.id,
-      details: { first_name, last_name },
+      details: { first_name: data.first_name, last_name: data.last_name },
     });
 
     return NextResponse.json({ data: trainer, error: null });

@@ -43,15 +43,40 @@ export const createClientSchema = z.object({
 export const updateClientSchema = createClientSchema.partial();
 
 // Trainer schemas
+// Lot G audit BMAD : étendu avec tous les champs Lot C/F (type, adresse,
+// identification entreprise, coordonnées bancaires, NDA). Côté API,
+// payload JSON donc types stricts (number, enum, string|null) — pas
+// de preprocess "" → null (le UI gère via validations/trainer.ts).
 export const createTrainerSchema = z.object({
   first_name: z.string().min(1, "Le prénom est requis").max(100),
   last_name: z.string().min(1, "Le nom est requis").max(100),
-  email: emailField,
+  email: emailField.optional().nullable(),
   phone: phoneField,
+  type: z.enum(["internal", "external"]).optional().default("internal"),
   bio: z.string().max(5000).optional().nullable(),
   specialties: z.array(z.string().max(100)).optional().nullable(),
   status: z.enum(["active", "inactive"]).optional().default("active"),
   hourly_rate: z.number().min(0).max(10000).optional().nullable(),
+  availability_notes: z.string().max(2000).optional().nullable(),
+  // Adresse
+  address: z.string().max(500).optional().nullable(),
+  city: z.string().max(255).optional().nullable(),
+  postal_code: z.string().regex(/^\d{5}$/, "Code postal invalide (5 chiffres)").optional().nullable(),
+  country: z.string().max(100).optional().nullable(),
+  // Identification entreprise
+  siret: siretField,
+  nda: z.string().regex(/^\d{11}$/, "Le NDA doit contenir 11 chiffres").optional().nullable(),
+  legal_status: z
+    .enum(["auto_entrepreneur", "sasu", "eurl", "sarl", "portage_salarial", "salarie", "autre"])
+    .optional()
+    .nullable(),
+  company_name: z.string().max(255).optional().nullable(),
+  tva_number: z.string().regex(/^FR[A-Z0-9]{2}\d{9}$/, "TVA invalide (format FR + 11 caractères)").optional().nullable(),
+  contract_type: z.string().max(100).optional().nullable(),
+  // Coordonnées bancaires
+  iban: z.string().regex(/^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$/, "IBAN invalide").optional().nullable(),
+  bic: z.string().regex(/^[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}([A-Z0-9]{3})?$/, "BIC invalide (8 ou 11 caractères)").optional().nullable(),
+  bank_name: z.string().max(255).optional().nullable(),
 });
 
 export const updateTrainerSchema = createTrainerSchema.partial();

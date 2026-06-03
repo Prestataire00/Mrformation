@@ -127,12 +127,12 @@ describe("createTrainerSchema", () => {
     expect(result.success).toBe(false);
   });
 
-  it("rejects missing email", () => {
+  it("accepts missing email (Lot G : optionnel — formateurs externes sans email connu)", () => {
     const result = createTrainerSchema.safeParse({
       first_name: "Jean",
       last_name: "Dupont",
     });
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
   });
 
   it("accepts optional specialties as array", () => {
