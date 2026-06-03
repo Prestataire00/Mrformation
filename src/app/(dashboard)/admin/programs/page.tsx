@@ -243,11 +243,19 @@ export default function ProgramsPage() {
       bpf_funding_type: formData.bpf_funding_type || null,
     };
 
+    if (!entityId) {
+      toast({ title: "Erreur", description: "Entité non chargée — réessayez.", variant: "destructive" });
+      setSaving(false);
+      return;
+    }
+
     if (editingProgram) {
+      // Lot B audit BMAD : entity_id filter (defense in depth).
       const { error } = await supabase
         .from("programs")
         .update(payload)
-        .eq("id", editingProgram.id);
+        .eq("id", editingProgram.id)
+        .eq("entity_id", entityId);
       if (error) {
         toast({ title: "Erreur", description: error.message, variant: "destructive" });
         setSaving(false);
@@ -275,10 +283,12 @@ export default function ProgramsPage() {
   };
 
   const handleToggleActive = async (program: Program) => {
+    if (!entityId) return;
     const { error } = await supabase
       .from("programs")
       .update({ is_active: !program.is_active, updated_at: new Date().toISOString() })
-      .eq("id", program.id);
+      .eq("id", program.id)
+      .eq("entity_id", entityId);
     if (error) {
       toast({ title: "Erreur", description: error.message, variant: "destructive" });
     } else {
@@ -326,11 +336,12 @@ export default function ProgramsPage() {
       return;
     }
 
-    // Update program version number
+    // Update program version number — entity_id filter (Lot B).
     const { error: pErr } = await supabase
       .from("programs")
       .update({ version: newVersion, updated_at: new Date().toISOString() })
-      .eq("id", selectedProgram.id);
+      .eq("id", selectedProgram.id)
+      .eq("entity_id", entityId!);
 
     if (pErr) {
       toast({ title: "Erreur", description: pErr.message, variant: "destructive" });
@@ -357,9 +368,15 @@ export default function ProgramsPage() {
   };
 
   const handleDelete = async () => {
-    if (!programToDelete) return;
+    if (!programToDelete || !entityId) return;
     setDeleting(true);
-    const { error } = await supabase.from("programs").delete().eq("id", programToDelete.id);
+    // Lot B audit BMAD : entity_id filter (defense in depth — RLS doit déjà
+    // protéger, mais on évite les surprises côté super_admin cross-entité).
+    const { error } = await supabase
+      .from("programs")
+      .delete()
+      .eq("id", programToDelete.id)
+      .eq("entity_id", entityId);
     if (error) {
       toast({ title: "Erreur", description: error.message, variant: "destructive" });
     } else {

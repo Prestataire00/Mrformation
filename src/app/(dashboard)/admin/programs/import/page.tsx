@@ -263,6 +263,13 @@ export default function ImportProgramPage() {
       certification_details: parsed.certification_details,
     };
 
+    if (!entityId) {
+      toast({ title: "Erreur", description: "Entité non chargée.", variant: "destructive" });
+      setSaving(false);
+      return;
+    }
+
+    // Lot B audit BMAD : entity_id filter (defense in depth).
     const { error: updateError } = await supabase
       .from("programs")
       .update({
@@ -271,7 +278,8 @@ export default function ImportProgramPage() {
         content,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", selectedProgramId);
+      .eq("id", selectedProgramId)
+      .eq("entity_id", entityId);
 
     if (updateError) {
       toast({

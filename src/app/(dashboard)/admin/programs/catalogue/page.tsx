@@ -56,11 +56,14 @@ export default function CataloguePage() {
   }, [fetchPrograms]);
 
   const handleToggleCatalogue = async (program: Program) => {
+    if (!entityId) return;
     const newActive = !program.is_active;
+    // Lot B audit BMAD : entity_id filter (defense in depth).
     const { error } = await supabase
       .from("programs")
       .update({ is_active: newActive, updated_at: new Date().toISOString() })
-      .eq("id", program.id);
+      .eq("id", program.id)
+      .eq("entity_id", entityId);
     if (error) {
       toast({ title: "Erreur", description: error.message, variant: "destructive" });
     } else {

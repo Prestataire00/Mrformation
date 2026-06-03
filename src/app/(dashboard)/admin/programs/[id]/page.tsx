@@ -155,6 +155,7 @@ export default function ProgramDetailPage() {
   const router = useRouter();
   const supabase = createClient();
   const { toast } = useToast();
+  const { entityId } = useEntity();
   const programId = params.id as string;
 
   const [program, setProgram] = useState<Program | null>(null);
@@ -206,21 +207,35 @@ export default function ProgramDetailPage() {
   });
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
+  // Lot B audit BMAD : entity_id filter (defense in depth applicative en plus
+  // de la RLS). Évite qu'un super_admin (RLS cross-entité) charge accidentellement
+  // un programme d'une autre entité que celle sélectionnée via le selector top-bar.
   const fetchProgram = useCallback(async () => {
+    if (!entityId) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     const { data, error } = await supabase
       .from("programs")
       .select("*")
       .eq("id", programId)
-      .single();
+      .eq("entity_id", entityId)
+      .maybeSingle();
 
-    if (error || !data) {
+    if (error) {
       console.error("fetchProgram error:", error);
+      toast({ title: "Erreur", description: "Impossible de charger ce programme.", variant: "destructive" });
+      setProgram(null);
+    } else if (!data) {
+      toast({ title: "Programme introuvable", description: "Ce programme n'existe pas dans l'entité actuelle.", variant: "destructive" });
+      setProgram(null);
+      router.push("/admin/programs");
     } else {
       setProgram(data as Program);
     }
     setLoading(false);
-  }, [programId, supabase]);
+  }, [programId, supabase, entityId, toast, router]);
 
   useEffect(() => {
     fetchProgram();
@@ -299,6 +314,13 @@ export default function ProgramDetailPage() {
       certification_details: editForm.certification_details || undefined,
     };
 
+    if (!entityId) {
+      setSaving(false);
+      toast({ title: "Erreur", description: "Entité non chargée.", variant: "destructive" });
+      return;
+    }
+
+    // Lot B audit BMAD : entity_id filter (defense in depth applicative).
     const { error } = await supabase
       .from("programs")
       .update({
@@ -308,7 +330,8 @@ export default function ProgramDetailPage() {
         content,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", program.id);
+      .eq("id", program.id)
+      .eq("entity_id", entityId);
 
     setSaving(false);
 
@@ -376,7 +399,8 @@ export default function ProgramDetailPage() {
           content: newContent,
           updated_at: new Date().toISOString(),
         })
-        .eq("id", program.id);
+        .eq("id", program.id)
+        .eq("entity_id", entityId!);
 
       if (error) {
         toast({ title: "Erreur", description: error.message, variant: "destructive" });
