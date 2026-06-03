@@ -7,12 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import {
   GraduationCap,
@@ -94,6 +96,10 @@ export default function ProgramEnrollments({ programId, modules }: Props) {
   const [selectedEnrollment, setSelectedEnrollment] = useState<EnrolledLearner | null>(null);
   const [savingProgress, setSavingProgress] = useState(false);
 
+  // Lot E audit BMAD : Dialog shadcn de confirmation au lieu de confirm() natif.
+  const [removeTarget, setRemoveTarget] = useState<EnrolledLearner | null>(null);
+  const [removing, setRemoving] = useState(false);
+
   // ── Fetch enrolled learners ──────────────────────────────────────────
   const fetchEnrollments = useCallback(async () => {
     setLoading(true);
@@ -165,17 +171,29 @@ export default function ProgramEnrollments({ programId, modules }: Props) {
   };
 
   // ── Remove enrollment ────────────────────────────────────────────────
-  const handleRemove = async (enrollment: EnrolledLearner) => {
-    const name = `${enrollment.learner.first_name} ${enrollment.learner.last_name}`;
-    if (!confirm(`Retirer ${name} de ce parcours ?`)) return;
+  // Lot E audit BMAD : ouvre un Dialog shadcn de confirmation au lieu de
+  // l'ancien confirm() natif. La suppression effective vit dans
+  // confirmRemove() — appelé depuis le Dialog footer.
+  const handleRemove = (enrollment: EnrolledLearner) => {
+    setRemoveTarget(enrollment);
+  };
 
-    const { error } = await supabase.from("program_enrollments").delete().eq("id", enrollment.id);
+  const confirmRemove = async () => {
+    if (!removeTarget) return;
+    setRemoving(true);
+    const name = `${removeTarget.learner.first_name} ${removeTarget.learner.last_name}`;
+    const { error } = await supabase
+      .from("program_enrollments")
+      .delete()
+      .eq("id", removeTarget.id);
     if (error) {
       toast({ title: "Erreur", description: error.message, variant: "destructive" });
     } else {
       toast({ title: "Retiré", description: `${name} a été retiré du parcours.` });
       fetchEnrollments();
     }
+    setRemoving(false);
+    setRemoveTarget(null);
   };
 
   // ── Toggle module completion ─────────────────────────────────────────
@@ -413,10 +431,9 @@ export default function ProgramEnrollments({ programId, modules }: Props) {
                     key={l.id}
                     className={`flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors ${selected ? "bg-blue-50" : ""}`}
                   >
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={selected}
-                      onChange={() => {
+                      onCheckedChange={() => {
                         setSelectedIds((prev) => {
                           const next = new Set(prev);
                           if (next.has(l.id)) next.delete(l.id);
@@ -424,7 +441,6 @@ export default function ProgramEnrollments({ programId, modules }: Props) {
                           return next;
                         });
                       }}
-                      className="rounded border-gray-300"
                     />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-gray-800">
@@ -542,6 +558,33 @@ export default function ProgramEnrollments({ programId, modules }: Props) {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setProgressOpen(false)}>Fermer</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Lot E audit BMAD : Dialog de confirmation de retrait (remplace confirm() natif) */}
+      <Dialog open={removeTarget !== null} onOpenChange={(open) => !open && setRemoveTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Retirer du parcours</DialogTitle>
+            <DialogDescription>
+              {removeTarget
+                ? `${removeTarget.learner.first_name} ${removeTarget.learner.last_name} sera retiré(e) de ce parcours. Cette action est définitive et supprime aussi sa progression sur les modules.`
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRemoveTarget(null)} disabled={removing}>
+              Annuler
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmRemove}
+              disabled={removing}
+            >
+              {removing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Retirer
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

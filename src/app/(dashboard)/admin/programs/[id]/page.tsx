@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
 import { formatDate } from "@/lib/utils";
 import type { Program, ProgramContent } from "@/lib/types";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   fetchProgramById as fetchProgramByIdService,
   updateProgram as updateProgramService,
@@ -1101,13 +1102,11 @@ export default function ProgramDetailPage() {
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Eligible CPF</label>
                 <div className="flex items-center gap-2 pt-2">
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={editForm.cpf_eligible}
-                    onChange={(e) =>
-                      setEditForm((p) => ({ ...p, cpf_eligible: e.target.checked }))
+                    onCheckedChange={(checked) =>
+                      setEditForm((p) => ({ ...p, cpf_eligible: checked === true }))
                     }
-                    className="rounded"
                   />
                   <span className="text-sm text-gray-600">Oui</span>
                 </div>
