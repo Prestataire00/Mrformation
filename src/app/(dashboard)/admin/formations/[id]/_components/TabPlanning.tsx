@@ -3,13 +3,15 @@
 import { useEffect, useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
-import { ChevronLeft, ChevronRight, Trash2, CheckCircle, AlertTriangle, Clock, Sparkles, UserX } from "lucide-react";
+import { ChevronLeft, ChevronRight, Trash2, CheckCircle, AlertTriangle, Clock, Sparkles, UserX, Calendar, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
 import { resolveDisplayedHours } from "@/lib/utils/hours-source";
 import { distributeModulesToSlots } from "@/lib/utils/auto-fill-modules";
+import { slotsToIcs } from "@/lib/utils/ics-export";
+import { generatePlanningPdf } from "@/lib/utils/planning-pdf";
 import { deleteAllTimeSlotsForSession, updateTimeSlot } from "@/lib/services/time-slots";
 import { detectTrainerConflicts, type TrainerConflict } from "@/lib/services/trainer-conflicts";
 import type { Session, FormationTimeSlot } from "@/lib/types";
@@ -161,6 +163,44 @@ export function TabPlanning({ formation, onRefresh }: Props) {
       await onRefresh();
     }
     setDeleting(false);
+  };
+
+  // PLAN-7 audit BMAD : exports planning (ICS pour calendriers, PDF récap).
+  const handleExportIcs = () => {
+    if (timeSlots.length === 0) {
+      toast({ title: "Aucun créneau à exporter", variant: "destructive" });
+      return;
+    }
+    const ics = slotsToIcs({
+      sessionId: formation.id,
+      sessionTitle: formation.title,
+      slots: timeSlots,
+    });
+    const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `planning-${formation.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 60)}.ics`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast({ title: "Planning .ics téléchargé", description: "Importable dans Google Calendar, Outlook, Apple Calendar." });
+  };
+
+  const handleExportPdf = () => {
+    if (timeSlots.length === 0) {
+      toast({ title: "Aucun créneau à exporter", variant: "destructive" });
+      return;
+    }
+    const doc = generatePlanningPdf({
+      sessionTitle: formation.title,
+      sessionStart: formation.start_date,
+      sessionEnd: formation.end_date,
+      slots: timeSlots,
+    });
+    doc.save(`planning-${formation.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 60)}.pdf`);
+    toast({ title: "Planning PDF téléchargé" });
   };
 
   // PLAN-5 audit BMAD : auto-fill des modules pédagogiques depuis le programme
@@ -551,6 +591,25 @@ export function TabPlanning({ formation, onRefresh }: Props) {
       {/* Actions compactes */}
       {timeSlots.length > 0 && (
         <div className="flex items-center gap-3 pt-2 flex-wrap">
+          {/* PLAN-7 audit BMAD : exports planning */}
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-xs h-7 gap-1"
+            onClick={handleExportIcs}
+            title="Importable dans Google Calendar / Outlook / Apple Calendar"
+          >
+            <Calendar className="h-3 w-3" /> Exporter .ics
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-xs h-7 gap-1"
+            onClick={handleExportPdf}
+            title="Récap PDF avec horaires et modules pédagogiques"
+          >
+            <Download className="h-3 w-3" /> Exporter PDF
+          </Button>
           {/* PLAN-5 audit BMAD : auto-fill modules depuis programme.
               Visible uniquement si le programme attaché a au moins 1 module. */}
           {(formation.program?.content?.modules?.length ?? 0) > 0 && (
