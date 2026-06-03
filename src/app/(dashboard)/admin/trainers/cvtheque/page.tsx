@@ -28,6 +28,7 @@ import {
   FileText,
 } from "lucide-react";
 import Link from "next/link";
+import { TrainersViewSwitcher } from "../_components/TrainersViewSwitcher";
 
 type TrainerWithCompetencies = Trainer & { competencies: TrainerCompetency[] };
 
@@ -346,6 +347,7 @@ export default function CVThequePage() {
 
   return (
     <div className="p-6 space-y-6">
+      <TrainersViewSwitcher />
       {/* Page header */}
       <div className="flex items-start justify-between">
         <div>

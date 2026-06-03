@@ -15,6 +15,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import type { Trainer as TrainerFull } from "@/lib/types";
+import { TrainersViewSwitcher } from "../_components/TrainersViewSwitcher";
 
 // Lot C audit BMAD : utilise le type global Trainer via Pick (SELECT
 // partiel des 8 colonnes affichées). Avant : interface locale qui faisait
@@ -151,6 +152,9 @@ export default function TrainersListePage() {
 
   return (
     <div className="p-6">
+      <div className="mb-4">
+        <TrainersViewSwitcher />
+      </div>
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm mb-4">
         <Link href="/admin" className="text-[#374151] hover:underline">Accueil</Link>

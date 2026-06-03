@@ -28,6 +28,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { TrainersViewSwitcher } from "./_components/TrainersViewSwitcher";
 import {
   Plus, Sparkles, Briefcase, Loader2,
   Search,
@@ -350,6 +351,7 @@ export default function TrainersPage() {
 
   return (
     <div className="p-4 md:p-6 space-y-4 bg-gray-50 min-h-screen">
+      <TrainersViewSwitcher />
       {/* Hero CVthèque */}
       <div className="rounded-2xl bg-gradient-to-br from-[#374151] to-[#1f2937] text-white p-6">
         <div className="flex items-start justify-between gap-4 mb-4">
