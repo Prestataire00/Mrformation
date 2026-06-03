@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { z } from "zod";
 import { createClient } from "@/lib/supabase/client";
 import { toUtcIsoFromParisTime } from "@/lib/timezone";
 import { CalendarPlus, Loader2 } from "lucide-react";
@@ -12,6 +13,59 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 import type { Session } from "@/lib/types";
+
+/**
+ * PLAN-2 audit BMAD — Zod schema local pour BulkSlotCreator.
+ *
+ * Avant : aucune validation, accepte silencieusement timeEnd<timeStart,
+ * dateFrom>dateTo, lunch hors plage. bulkTimeSlotSchema existe dans
+ * validations/index.ts mais n'était pas branché.
+ *
+ * Ce schema étend la validation de base avec :
+ *  - cross-field : timeEnd > timeStart
+ *  - cross-field : dateTo >= dateFrom
+ *  - cross-field : lunch dans [timeStart, timeEnd] (si withLunch)
+ *  - cross-field : lunchEnd > lunchStart (si withLunch)
+ *  - warning bornes session : dateFrom/dateTo dans [session.start_date,
+ *    session.end_date] (côté UI, pas dans le schema — laisse passer mais
+ *    affiche un message).
+ */
+const bulkSlotFormSchema = z
+  .object({
+    title: z.string().max(500).optional(),
+    dateFrom: z.string().min(1, "Date de début requise"),
+    dateTo: z.string().min(1, "Date de fin requise"),
+    timeStart: z.string().min(1, "Heure de début requise"),
+    timeEnd: z.string().min(1, "Heure de fin requise"),
+    excludeWeekends: z.boolean(),
+    withLunch: z.boolean(),
+    lunchStart: z.string(),
+    lunchEnd: z.string(),
+    weeklyMode: z.boolean(),
+    weeklyDay: z.string(),
+  })
+  .refine((d) => d.dateTo >= d.dateFrom, {
+    message: "La date de fin doit être ≥ date de début",
+    path: ["dateTo"],
+  })
+  .refine((d) => d.timeEnd > d.timeStart, {
+    message: "L'heure de fin doit être > heure de début",
+    path: ["timeEnd"],
+  })
+  .refine((d) => !d.withLunch || d.lunchEnd > d.lunchStart, {
+    message: "Fin pause > début pause",
+    path: ["lunchEnd"],
+  })
+  .refine((d) => !d.withLunch || (d.lunchStart >= d.timeStart && d.lunchEnd <= d.timeEnd), {
+    message: "Pause hors de la plage horaire",
+    path: ["lunchStart"],
+  });
+
+type BulkSlotFormErrors = Partial<Record<
+  | "title" | "dateFrom" | "dateTo" | "timeStart" | "timeEnd"
+  | "lunchStart" | "lunchEnd",
+  string
+>>;
 
 const WEEK_DAYS = [
   { value: "1", label: "Lundi" },
@@ -32,6 +86,7 @@ export function BulkSlotCreator({ formation, onRefresh }: Props) {
   const { toast } = useToast();
   const supabase = createClient();
   const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState<BulkSlotFormErrors>({});
 
   // Form
   const [title, setTitle] = useState(formation.title);
@@ -87,7 +142,46 @@ export function BulkSlotCreator({ formation, onRefresh }: Props) {
     return slots;
   }, [title, dateFrom, dateTo, timeStart, timeEnd, excludeWeekends, withLunch, lunchStart, lunchEnd, weeklyMode, weeklyDay, formation.title]);
 
+  // PLAN-2 audit BMAD : warning si dates hors bornes de la session
+  // (best-effort UI, n'empêche pas la création).
+  const sessionStart = formation.start_date?.split("T")[0];
+  const sessionEnd = formation.end_date?.split("T")[0];
+  const dateOutOfRange =
+    dateFrom && dateTo && sessionStart && sessionEnd
+      ? dateFrom < sessionStart || dateTo > sessionEnd
+      : false;
+
   async function handlePlanifier() {
+    // PLAN-2 audit BMAD : validation Zod centralisée (cross-field).
+    const parsed = bulkSlotFormSchema.safeParse({
+      title,
+      dateFrom,
+      dateTo,
+      timeStart,
+      timeEnd,
+      excludeWeekends,
+      withLunch,
+      lunchStart,
+      lunchEnd,
+      weeklyMode,
+      weeklyDay,
+    });
+    if (!parsed.success) {
+      const map: BulkSlotFormErrors = {};
+      for (const issue of parsed.error.issues) {
+        const key = issue.path[0] as keyof BulkSlotFormErrors;
+        if (key && !map[key]) map[key] = issue.message;
+      }
+      setErrors(map);
+      toast({
+        title: "Formulaire invalide",
+        description: Object.values(map)[0] || "Vérifiez les champs en rouge.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setErrors({});
+
     if (previewSlots.length === 0) {
       toast({ title: "Aucun créneau à créer", variant: "destructive" });
       return;
@@ -128,23 +222,54 @@ export function BulkSlotCreator({ formation, onRefresh }: Props) {
         </div>
         <div>
           <label className="text-xs text-gray-500 mb-1 block">Du</label>
-          <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-8 text-sm" />
+          <Input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className={`h-8 text-sm ${errors.dateFrom ? "border-red-400" : ""}`}
+          />
+          {errors.dateFrom && <p className="text-xs text-red-600 mt-0.5">{errors.dateFrom}</p>}
         </div>
         <div>
           <label className="text-xs text-gray-500 mb-1 block">Au</label>
-          <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-8 text-sm" />
+          <Input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className={`h-8 text-sm ${errors.dateTo ? "border-red-400" : ""}`}
+          />
+          {errors.dateTo && <p className="text-xs text-red-600 mt-0.5">{errors.dateTo}</p>}
         </div>
       </div>
+
+      {/* PLAN-2 : warning si dates hors bornes de la session */}
+      {dateOutOfRange && (
+        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+          ⚠ Les dates sortent de la période de la session ({sessionStart} → {sessionEnd}). Vérifiez avant de planifier.
+        </p>
+      )}
 
       {/* Row 2: Times */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div>
           <label className="text-xs text-gray-500 mb-1 block">De</label>
-          <Input type="time" value={timeStart} onChange={(e) => setTimeStart(e.target.value)} className="h-8 text-sm" />
+          <Input
+            type="time"
+            value={timeStart}
+            onChange={(e) => setTimeStart(e.target.value)}
+            className={`h-8 text-sm ${errors.timeStart ? "border-red-400" : ""}`}
+          />
+          {errors.timeStart && <p className="text-xs text-red-600 mt-0.5">{errors.timeStart}</p>}
         </div>
         <div>
           <label className="text-xs text-gray-500 mb-1 block">À</label>
-          <Input type="time" value={timeEnd} onChange={(e) => setTimeEnd(e.target.value)} className="h-8 text-sm" />
+          <Input
+            type="time"
+            value={timeEnd}
+            onChange={(e) => setTimeEnd(e.target.value)}
+            className={`h-8 text-sm ${errors.timeEnd ? "border-red-400" : ""}`}
+          />
+          {errors.timeEnd && <p className="text-xs text-red-600 mt-0.5">{errors.timeEnd}</p>}
         </div>
       </div>
 
@@ -160,10 +285,25 @@ export function BulkSlotCreator({ formation, onRefresh }: Props) {
           Pause déjeuner
         </label>
         {withLunch && (
-          <div className="flex items-center gap-2 ml-6">
-            <Input type="time" value={lunchStart} onChange={(e) => setLunchStart(e.target.value)} className="h-7 w-28 text-xs" />
-            <span className="text-xs text-gray-400">à</span>
-            <Input type="time" value={lunchEnd} onChange={(e) => setLunchEnd(e.target.value)} className="h-7 w-28 text-xs" />
+          <div className="ml-6 space-y-1">
+            <div className="flex items-center gap-2">
+              <Input
+                type="time"
+                value={lunchStart}
+                onChange={(e) => setLunchStart(e.target.value)}
+                className={`h-7 w-28 text-xs ${errors.lunchStart ? "border-red-400" : ""}`}
+              />
+              <span className="text-xs text-gray-400">à</span>
+              <Input
+                type="time"
+                value={lunchEnd}
+                onChange={(e) => setLunchEnd(e.target.value)}
+                className={`h-7 w-28 text-xs ${errors.lunchEnd ? "border-red-400" : ""}`}
+              />
+            </div>
+            {(errors.lunchStart || errors.lunchEnd) && (
+              <p className="text-xs text-red-600">{errors.lunchStart || errors.lunchEnd}</p>
+            )}
           </div>
         )}
 
