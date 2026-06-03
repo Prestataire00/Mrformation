@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 import { bulkCreateTimeSlots } from "@/lib/services/time-slots";
+import { buildHolidaySet } from "@/lib/utils/french-holidays";
 import type { Session } from "@/lib/types";
 
 /**
@@ -100,6 +101,8 @@ export function BulkSlotCreator({ formation, onRefresh }: Props) {
 
   // Options
   const [excludeWeekends, setExcludeWeekends] = useState(true);
+  // PLAN-11 audit BMAD : option d'exclusion des jours fériés FR (cochée par défaut).
+  const [excludeHolidays, setExcludeHolidays] = useState(true);
   const [withLunch, setWithLunch] = useState(false);
   const [lunchStart, setLunchStart] = useState("12:00");
   const [lunchEnd, setLunchEnd] = useState("13:00");
@@ -117,6 +120,10 @@ export function BulkSlotCreator({ formation, onRefresh }: Props) {
 
     const slotTitle = title || formation.title;
     const current = new Date(from);
+    // PLAN-11 audit BMAD : précalcule les fériés FR sur la plage.
+    const holidays = excludeHolidays
+      ? buildHolidaySet(from.getFullYear(), to.getFullYear())
+      : null;
 
     while (current <= to) {
       const dayOfWeek = current.getDay();
@@ -128,11 +135,16 @@ export function BulkSlotCreator({ formation, onRefresh }: Props) {
         shouldAdd = false;
       }
 
+      const year = current.getFullYear();
+      const month = String(current.getMonth() + 1).padStart(2, "0");
+      const day = String(current.getDate()).padStart(2, "0");
+      const dateStr = `${year}-${month}-${day}`;
+
+      if (shouldAdd && holidays?.has(dateStr)) {
+        shouldAdd = false;
+      }
+
       if (shouldAdd) {
-        const year = current.getFullYear();
-        const month = String(current.getMonth() + 1).padStart(2, "0");
-        const day = String(current.getDate()).padStart(2, "0");
-        const dateStr = `${year}-${month}-${day}`;
         if (withLunch) {
           slots.push({ title: slotTitle, start_time: toUtcIsoFromParisTime(dateStr, timeStart), end_time: toUtcIsoFromParisTime(dateStr, lunchStart) });
           slots.push({ title: slotTitle, start_time: toUtcIsoFromParisTime(dateStr, lunchEnd), end_time: toUtcIsoFromParisTime(dateStr, timeEnd) });
@@ -143,7 +155,7 @@ export function BulkSlotCreator({ formation, onRefresh }: Props) {
       current.setDate(current.getDate() + 1);
     }
     return slots;
-  }, [title, dateFrom, dateTo, timeStart, timeEnd, excludeWeekends, withLunch, lunchStart, lunchEnd, weeklyMode, weeklyDay, formation.title]);
+  }, [title, dateFrom, dateTo, timeStart, timeEnd, excludeWeekends, excludeHolidays, withLunch, lunchStart, lunchEnd, weeklyMode, weeklyDay, formation.title]);
 
   // PLAN-2 audit BMAD : warning si dates hors bornes de la session
   // (best-effort UI, n'empêche pas la création).
@@ -324,6 +336,12 @@ export function BulkSlotCreator({ formation, onRefresh }: Props) {
         <label className="flex items-center gap-2 text-sm cursor-pointer">
           <Checkbox checked={excludeWeekends} onCheckedChange={(v) => setExcludeWeekends(!!v)} />
           Exclure les weekends
+        </label>
+
+        {/* PLAN-11 audit BMAD : exclusion des jours fériés FR */}
+        <label className="flex items-center gap-2 text-sm cursor-pointer">
+          <Checkbox checked={excludeHolidays} onCheckedChange={(v) => setExcludeHolidays(!!v)} />
+          Exclure les jours fériés (France métropolitaine)
         </label>
 
         <label className="flex items-center gap-2 text-sm cursor-pointer">
