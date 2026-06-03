@@ -186,6 +186,97 @@ export async function fetchProgramVersions(
 }
 
 /**
+ * CONT-7 audit BMAD : compte les enregistrements "orphelins" de l'entité
+ * qui cassent la continuité Programme → Formation → Session :
+ *  - formations (trainings) sans program_id
+ *  - sessions sans training_id (= sessions non rattachées à une formation)
+ *  - program_enrollments sans session associée pour le même learner
+ *
+ * Affiché en bandeau sur le hub Programmes pour signaler des nettoyages
+ * possibles. Best-effort : si une table est inaccessible, le count vaut 0.
+ */
+export interface OrphanLinkCounts {
+  formationsWithoutProgram: number;
+  sessionsWithoutTraining: number;
+}
+
+export async function auditOrphanLinks(
+  supabase: SupabaseClient,
+  entityId: string,
+): Promise<ServiceResult<{ counts: OrphanLinkCounts }>> {
+  const [trainingsOrphans, sessionsOrphans] = await Promise.all([
+    supabase
+      .from("trainings")
+      .select("id", { count: "exact", head: true })
+      .is("program_id", null)
+      .eq("entity_id", entityId),
+    supabase
+      .from("sessions")
+      .select("id", { count: "exact", head: true })
+      .is("training_id", null)
+      .eq("entity_id", entityId),
+  ]);
+
+  return {
+    ok: true,
+    counts: {
+      formationsWithoutProgram: trainingsOrphans.count ?? 0,
+      sessionsWithoutTraining: sessionsOrphans.count ?? 0,
+    },
+  };
+}
+
+/**
+ * CONT-5 audit BMAD : pour le hub Programmes, retourne par programme le
+ * nombre de formations (trainings) et de sessions associées. Permet
+ * d'afficher un badge "Utilisé par X formations / Y sessions" sur chaque
+ * card pour donner du contexte managérial.
+ *
+ * Performance : 2 requêtes Supabase (trainings + sessions) avec
+ * `program_id IN (...)`, agrégation côté client. Aucun N+1.
+ */
+export interface ProgramUsageCounts {
+  trainings: number;
+  sessions: number;
+}
+
+export async function fetchProgramsUsageCounts(
+  supabase: SupabaseClient,
+  programIds: string[],
+): Promise<ServiceResult<{ countsByProgram: Record<string, ProgramUsageCounts> }>> {
+  if (programIds.length === 0) {
+    return { ok: true, countsByProgram: {} };
+  }
+
+  const [trainingsResult, sessionsResult] = await Promise.all([
+    supabase.from("trainings").select("program_id").in("program_id", programIds),
+    supabase.from("sessions").select("program_id").in("program_id", programIds),
+  ]);
+
+  const countsByProgram: Record<string, ProgramUsageCounts> = {};
+  for (const id of programIds) {
+    countsByProgram[id] = { trainings: 0, sessions: 0 };
+  }
+
+  if (trainingsResult.data) {
+    for (const row of trainingsResult.data as Array<{ program_id: string | null }>) {
+      if (row.program_id && countsByProgram[row.program_id]) {
+        countsByProgram[row.program_id].trainings++;
+      }
+    }
+  }
+  if (sessionsResult.data) {
+    for (const row of sessionsResult.data as Array<{ program_id: string | null }>) {
+      if (row.program_id && countsByProgram[row.program_id]) {
+        countsByProgram[row.program_id].sessions++;
+      }
+    }
+  }
+
+  return { ok: true, countsByProgram };
+}
+
+/**
  * Lot G audit BMAD : compte les références FK vers un programme avant
  * suppression. Permet d'avertir l'utilisateur des effets cascade /
  * SET NULL silencieux :

@@ -12,7 +12,11 @@ import {
   fetchProgramVersions as fetchProgramVersionsService,
   createProgramVersion as createProgramVersionService,
   countProgramReferences as countProgramReferencesService,
+  fetchProgramsUsageCounts as fetchProgramsUsageCountsService,
+  auditOrphanLinks as auditOrphanLinksService,
   type ProgramReferenceCounts,
+  type ProgramUsageCounts,
+  type OrphanLinkCounts,
 } from "@/lib/services/programs";
 import {
   programHubFormSchema,
@@ -131,6 +135,10 @@ export default function ProgramsPage() {
 
   const [programs, setPrograms] = useState<Program[]>([]);
   const [loading, setLoading] = useState(true);
+  // CONT-5 audit BMAD : counts d'usage par programme pour affichage badge.
+  const [usageCounts, setUsageCounts] = useState<Record<string, ProgramUsageCounts>>({});
+  // CONT-7 audit BMAD : count des orphelins (formations/sessions sans liens).
+  const [orphanCounts, setOrphanCounts] = useState<OrphanLinkCounts | null>(null);
   const [search, setSearch] = useState("");
   const [activeFilter, setActiveFilter] = useState<"all" | "active" | "inactive">("all");
 
@@ -175,9 +183,24 @@ export default function ProgramsPage() {
     const result = await fetchProgramsService(supabase, entityId);
     if (!result.ok) {
       toast({ title: "Erreur", description: "Impossible de charger les programmes.", variant: "destructive" });
-    } else {
-      setPrograms(result.programs);
+      setLoading(false);
+      return;
     }
+    setPrograms(result.programs);
+
+    // CONT-5 : charge les counts en arrière-plan (l'UI ne bloque pas).
+    if (result.programs.length > 0) {
+      const ids = result.programs.map((p) => p.id);
+      const counts = await fetchProgramsUsageCountsService(supabase, ids);
+      if (counts.ok) setUsageCounts(counts.countsByProgram);
+    } else {
+      setUsageCounts({});
+    }
+
+    // CONT-7 : audit orphelins (formations sans programme, sessions sans formation).
+    const orphans = await auditOrphanLinksService(supabase, entityId);
+    if (orphans.ok) setOrphanCounts(orphans.counts);
+
     setLoading(false);
   }, [entityId, supabase, toast]);
 
@@ -440,6 +463,34 @@ export default function ProgramsPage() {
 
   return (
     <div className="p-6 space-y-6">
+      {/* CONT-7 audit BMAD : bandeau de continuité — formations/sessions
+          orphelines (sans lien programme/formation). Visible seulement
+          si > 0 pour ne pas polluer l'UX quand tout est propre. */}
+      {orphanCounts && (orphanCounts.formationsWithoutProgram > 0 || orphanCounts.sessionsWithoutTraining > 0) && (
+        <div className="border border-amber-200 bg-amber-50 rounded-lg p-3 flex items-start gap-3">
+          <div className="text-amber-600 text-xl leading-none mt-0.5">⚠</div>
+          <div className="text-xs text-amber-900 space-y-0.5">
+            <p className="font-medium">Continuité Programme → Formation → Session</p>
+            {orphanCounts.formationsWithoutProgram > 0 && (
+              <p>
+                <Link href="/admin/trainings" className="underline hover:text-amber-700">
+                  {orphanCounts.formationsWithoutProgram} formation{orphanCounts.formationsWithoutProgram > 1 ? "s" : ""}
+                </Link>{" "}
+                sans programme rattaché — la doc générée (conventions, programmes PDF) sera incomplète.
+              </p>
+            )}
+            {orphanCounts.sessionsWithoutTraining > 0 && (
+              <p>
+                <Link href="/admin/sessions" className="underline hover:text-amber-700">
+                  {orphanCounts.sessionsWithoutTraining} session{orphanCounts.sessionsWithoutTraining > 1 ? "s" : ""}
+                </Link>{" "}
+                sans formation source — risque d'incohérence Qualiopi.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -541,6 +592,25 @@ export default function ProgramsPage() {
                         {truncate(program.description, 100)}
                       </CardDescription>
                     )}
+                    {/* CONT-5 audit BMAD : badge usage formations / sessions */}
+                    {(() => {
+                      const counts = usageCounts[program.id];
+                      if (!counts || (counts.trainings === 0 && counts.sessions === 0)) return null;
+                      return (
+                        <div className="flex items-center gap-2 mt-2 flex-wrap">
+                          {counts.trainings > 0 && (
+                            <Badge variant="outline" className="text-[10px] gap-1 border-blue-200 text-blue-700 bg-blue-50">
+                              {counts.trainings} formation{counts.trainings > 1 ? "s" : ""}
+                            </Badge>
+                          )}
+                          {counts.sessions > 0 && (
+                            <Badge variant="outline" className="text-[10px] gap-1 border-emerald-200 text-emerald-700 bg-emerald-50">
+                              {counts.sessions} session{counts.sessions > 1 ? "s" : ""}
+                            </Badge>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>

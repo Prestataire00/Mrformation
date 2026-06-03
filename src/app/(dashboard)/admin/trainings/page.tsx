@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
 import { useDebounce } from "@/hooks/useDebounce";
@@ -136,6 +137,10 @@ export default function FormationsPage() {
   const supabase = createClient();
   const { toast } = useToast();
   const { entityId } = useEntity();
+  // CONT-1 audit BMAD : lecture du param ?from_program (envoyé par
+  // /admin/programs/[id] bouton "Créer une formation depuis ce programme").
+  const searchParams = useSearchParams();
+  const router = useRouter();
 
   // Data
   const [sessions, setSessions] = useState<SessionCard[]>([]);
@@ -215,6 +220,32 @@ export default function FormationsPage() {
   useEffect(() => {
     fetchSessions();
   }, [fetchSessions]);
+
+  // CONT-1 audit BMAD : si l'utilisateur arrive depuis "Créer une formation"
+  // sur la fiche programme, on ouvre directement le formulaire de création
+  // avec le programme + le titre pré-remplis. Avant : le param était envoyé
+  // mais ignoré → workflow cassé, Wissam devait re-sélectionner à la main.
+  useEffect(() => {
+    if (!entityId) return;
+    const fromProgram = searchParams.get("from_program");
+    const programTitle = searchParams.get("title");
+    if (!fromProgram) return;
+
+    (async () => {
+      // Charge les programmes pour s'assurer que le picker peut afficher
+      // le programme pré-sélectionné, puis ouvre le formulaire.
+      await fetchPrograms();
+      setFormData({
+        ...emptyForm,
+        title: programTitle ?? "",
+        program_id: fromProgram,
+      });
+      setShowCreateForm(true);
+
+      // Nettoie l'URL pour ne pas réouvrir le formulaire au refresh.
+      router.replace("/admin/trainings");
+    })();
+  }, [entityId, searchParams, fetchPrograms, router]);
 
   // ── Filtering ──────────────────────────────────────────────────────────────
 
@@ -530,6 +561,13 @@ export default function FormationsPage() {
                             {trainerName && (
                               <p className="text-xs text-gray-500 truncate">{trainerName}</p>
                             )}
+                            {/* CONT-3 audit BMAD : afficher le programme source (kanban) */}
+                            {session.program?.title && (
+                              <div className="flex items-center gap-1 text-[11px] text-purple-700">
+                                <BookOpen className="h-3 w-3 text-purple-500" />
+                                <span className="truncate font-medium">{session.program.title}</span>
+                              </div>
+                            )}
                             <div className="flex items-center gap-1.5 flex-wrap">
                               <Badge variant="outline" className="text-[10px] font-medium gap-1">
                                 <ModeIcon className="h-3 w-3" />
@@ -629,6 +667,15 @@ export default function FormationsPage() {
                       <div className="flex items-center gap-1.5 text-xs text-gray-500">
                         <MapPin className="h-3 w-3 text-gray-400" />
                         <span className="truncate">{session.location}</span>
+                      </div>
+                    )}
+
+                    {/* CONT-3 audit BMAD : afficher le programme source pour
+                        donner du contexte sans devoir ouvrir la fiche. */}
+                    {session.program?.title && (
+                      <div className="flex items-center gap-1.5 text-xs text-purple-700">
+                        <BookOpen className="h-3 w-3 text-purple-500" />
+                        <span className="truncate font-medium">{session.program.title}</span>
                       </div>
                     )}
 

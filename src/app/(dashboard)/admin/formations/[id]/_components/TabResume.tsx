@@ -3,9 +3,10 @@
 import type { Session } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, MapPin, Euro, Link2, GraduationCap } from "lucide-react";
+import { Users, MapPin, Euro, Link2, GraduationCap, BookOpen } from "lucide-react";
 import { getFormationKind } from "@/lib/utils/formation-companies";
 import { ResumeActions } from "./sections/ResumeActions";
+import { ResumeProgramme } from "./sections/ResumeProgramme";
 import { ResumeManager } from "./sections/ResumeManager";
 import { ResumeLocation } from "./sections/ResumeLocation";
 import { ResumeTrainers } from "./sections/ResumeTrainers";
@@ -95,6 +96,20 @@ export function TabResume({ formation, onRefresh }: TabResumeProps) {
 
         {/* ═══ COLONNE DROITE (1/3) ═══ */}
         <div className="space-y-6">
+          {/* CONT-2 audit BMAD : Programme pédagogique visible dès TabResume.
+              Avant : info uniquement dans TabProgramme (13ᵉ onglet, caché). */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-semibold flex items-center gap-2">
+                <BookOpen className="h-4 w-4 text-purple-500" />
+                Programme pédagogique
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ResumeProgramme formation={formation} />
+            </CardContent>
+          </Card>
+
           {/* Lieu & modalités */}
           <Card>
             <CardHeader className="pb-3">

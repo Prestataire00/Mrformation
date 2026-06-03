@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
 import { Session, Training, Trainer } from "@/lib/types";
@@ -180,7 +181,9 @@ export default function SessionsPage() {
     setLoading(true);
     const { data, error } = await supabase
       .from("sessions")
-      .select("*, training:trainings(title, classification), trainer:trainers(first_name, last_name), enrollments:enrollments(id)")
+      // CONT-4 audit BMAD : ajouter program (id + title) pour afficher le
+      // contexte pédagogique de la session sans devoir ouvrir la fiche.
+      .select("*, training:trainings(title, classification), trainer:trainers(first_name, last_name), program:programs(id, title), enrollments:enrollments(id)")
       .order("start_date", { ascending: false });
 
     if (error) {
@@ -597,6 +600,7 @@ export default function SessionsPage() {
               <tr>
                 <th className="text-left px-4 py-3 font-medium text-gray-600 min-w-[180px]">Session</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-600 min-w-[150px]">Formation</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-600 min-w-[150px]">Programme</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-600 min-w-[160px]">Dates</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-600">Lieu</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-600">Mode</th>
@@ -610,7 +614,7 @@ export default function SessionsPage() {
               {loading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i}>
-                    {Array.from({ length: 9 }).map((_, j) => (
+                    {Array.from({ length: 10 }).map((_, j) => (
                       <td key={j} className="px-4 py-3">
                         <div className="h-4 bg-gray-100 rounded animate-pulse" />
                       </td>
@@ -619,7 +623,7 @@ export default function SessionsPage() {
                 ))
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-12 text-center text-gray-500">
+                  <td colSpan={10} className="px-4 py-12 text-center text-gray-500">
                     <CalendarDays className="h-10 w-10 mx-auto mb-2 text-gray-300" />
                     <p className="font-medium">Aucune session trouvée</p>
                     <p className="text-xs mt-1">Modifiez vos filtres ou planifiez une nouvelle session.</p>
@@ -637,6 +641,20 @@ export default function SessionsPage() {
                     <td className="px-4 py-3">
                       {session.training ? (
                         <p className="text-gray-600 text-xs truncate max-w-[150px]">{session.training.title}</p>
+                      ) : (
+                        <span className="text-gray-400 text-xs">—</span>
+                      )}
+                    </td>
+                    {/* CONT-4 audit BMAD : colonne Programme */}
+                    <td className="px-4 py-3">
+                      {session.program ? (
+                        <Link
+                          href={`/admin/programs/${session.program.id}`}
+                          className="text-purple-700 text-xs hover:underline truncate block max-w-[150px] font-medium"
+                          title={session.program.title}
+                        >
+                          {session.program.title}
+                        </Link>
                       ) : (
                         <span className="text-gray-400 text-xs">—</span>
                       )}

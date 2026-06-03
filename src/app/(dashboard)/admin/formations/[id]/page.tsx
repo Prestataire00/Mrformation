@@ -215,6 +215,31 @@ export default function FormationDetailPage() {
 
   return (
     <div className="p-6 space-y-5">
+      {/* CONT-6 audit BMAD : breadcrumb cross-module
+          Programmes > [Programme source] > Formations > [Formation] */}
+      <nav className="flex items-center gap-1.5 text-xs text-muted-foreground" aria-label="Fil d'Ariane">
+        <Link href="/admin/programs" className="hover:text-foreground hover:underline">
+          Programmes
+        </Link>
+        {formation.program && (
+          <>
+            <span className="text-gray-300">/</span>
+            <Link
+              href={`/admin/programs/${formation.program_id}`}
+              className="hover:text-foreground hover:underline truncate max-w-[240px]"
+              title={formation.program.title}
+            >
+              {formation.program.title}
+            </Link>
+          </>
+        )}
+        <span className="text-gray-300">/</span>
+        <Link href="/admin/trainings" className="hover:text-foreground hover:underline">
+          Formations
+        </Link>
+        <span className="text-gray-300">/</span>
+        <span className="text-foreground font-medium truncate max-w-[240px]">{formation.title}</span>
+      </nav>
       {/* ═══ HEADER ═══ */}
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-start gap-4">
