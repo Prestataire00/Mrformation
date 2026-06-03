@@ -146,6 +146,11 @@ export default function ProgramsPage() {
   // BPF section toggle
   const [bpfSectionOpen, setBpfSectionOpen] = useState(false);
 
+  // Lot H audit BMAD : pagination client (jusqu'à ~500 programmes, au-delà
+  // il faudrait passer en LIMIT/OFFSET serveur).
+  const PAGE_SIZE = 12;
+  const [currentPage, setCurrentPage] = useState(1);
+
   // Version history dialog
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
   const [selectedProgram, setSelectedProgram] = useState<Program | null>(null);
@@ -192,6 +197,14 @@ export default function ProgramsPage() {
       (activeFilter === "inactive" && !p.is_active);
     return matchSearch && matchActive;
   });
+
+  // Lot H : pagination + reset page quand les filtres changent.
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(currentPage, totalPages);
+  const pagedFiltered = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, activeFilter]);
 
   const validateContent = (raw: string): boolean => {
     try {
@@ -498,7 +511,7 @@ export default function ProgramsPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {filtered.map((program) => (
+          {pagedFiltered.map((program) => (
             <Card
               key={program.id}
               className={cn(
@@ -622,6 +635,36 @@ export default function ProgramsPage() {
               </CardContent>
             </Card>
           ))}
+        </div>
+      )}
+
+      {/* Lot H audit BMAD : pagination si > 1 page */}
+      {!loading && filtered.length > 0 && totalPages > 1 && (
+        <div className="flex items-center justify-between gap-3 pt-4">
+          <p className="text-xs text-gray-500">
+            Affichage {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, filtered.length)} sur {filtered.length}
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={safePage <= 1}
+            >
+              Précédent
+            </Button>
+            <span className="text-xs text-gray-600">
+              Page {safePage} / {totalPages}
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={safePage >= totalPages}
+            >
+              Suivant
+            </Button>
+          </div>
         </div>
       )}
 

@@ -100,6 +100,9 @@ export default function ProgramEnrollments({ programId, modules }: Props) {
   const [removeTarget, setRemoveTarget] = useState<EnrolledLearner | null>(null);
   const [removing, setRemoving] = useState(false);
 
+  // Lot H audit BMAD : recherche client sur la liste des apprenants inscrits.
+  const [enrollmentSearch, setEnrollmentSearch] = useState("");
+
   // ── Fetch enrolled learners ──────────────────────────────────────────
   const fetchEnrollments = useCallback(async () => {
     setLoading(true);
@@ -291,6 +294,21 @@ export default function ProgramEnrollments({ programId, modules }: Props) {
   };
 
   // ── Render ───────────────────────────────────────────────────────────
+  // Lot H : filtre côté client sur nom/prénom/email/entreprise.
+  const filteredEnrollments = enrollments.filter((e) => {
+    if (!enrollmentSearch.trim()) return true;
+    const learner = Array.isArray(e.learner) ? e.learner[0] : e.learner;
+    if (!learner) return false;
+    const q = enrollmentSearch.toLowerCase();
+    const company = Array.isArray(learner.clients) ? learner.clients[0]?.company_name : learner.clients?.company_name;
+    return (
+      learner.first_name?.toLowerCase().includes(q) ||
+      learner.last_name?.toLowerCase().includes(q) ||
+      learner.email?.toLowerCase().includes(q) ||
+      (company?.toLowerCase().includes(q) ?? false)
+    );
+  });
+
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-6">
       {/* Header */}
@@ -311,6 +329,19 @@ export default function ProgramEnrollments({ programId, modules }: Props) {
         </Button>
       </div>
 
+      {/* Lot H audit BMAD : barre de recherche sur la liste des inscrits */}
+      {enrollments.length > 0 && (
+        <div className="relative mb-4">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <Input
+            placeholder="Rechercher par nom, email, entreprise..."
+            value={enrollmentSearch}
+            onChange={(e) => setEnrollmentSearch(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+      )}
+
       {/* Table */}
       {loading ? (
         <div className="flex justify-center py-10">
@@ -319,6 +350,10 @@ export default function ProgramEnrollments({ programId, modules }: Props) {
       ) : enrollments.length === 0 ? (
         <div className="text-center py-10 text-gray-400 text-sm">
           Aucun apprenant inscrit à ce parcours.
+        </div>
+      ) : filteredEnrollments.length === 0 ? (
+        <div className="text-center py-10 text-gray-400 text-sm">
+          Aucun apprenant ne correspond à votre recherche.
         </div>
       ) : (
         <div className="overflow-x-auto">
@@ -333,7 +368,7 @@ export default function ProgramEnrollments({ programId, modules }: Props) {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {enrollments.map((e) => {
+              {filteredEnrollments.map((e) => {
                 const learner = Array.isArray(e.learner) ? e.learner[0] : e.learner;
                 if (!learner) return null;
                 const name = `${learner.first_name} ${learner.last_name}`;
