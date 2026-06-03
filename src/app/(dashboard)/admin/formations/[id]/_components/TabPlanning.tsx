@@ -3,11 +3,12 @@
 import { useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
-import { ChevronLeft, ChevronRight, Trash2, CheckCircle } from "lucide-react";
+import { ChevronLeft, ChevronRight, Trash2, CheckCircle, AlertTriangle, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
+import { resolveDisplayedHours } from "@/lib/utils/hours-source";
 import type { Session, FormationTimeSlot } from "@/lib/types";
 import { BulkSlotCreator } from "./BulkSlotCreator";
 import { SlotEditDialog } from "./SlotEditDialog";
@@ -37,6 +38,28 @@ export function TabPlanning({ formation, onRefresh }: Props) {
   const [editingSlot, setEditingSlot] = useState<FormationTimeSlot | null>(null);
 
   const timeSlots = formation.formation_time_slots || [];
+
+  // PLAN-3 audit BMAD : cohérence heures planifiées vs prévues +
+  // détection slots hors période de la session.
+  const coherence = useMemo(() => {
+    const totalMs = timeSlots.reduce((acc, s) => {
+      return acc + (new Date(s.end_time).getTime() - new Date(s.start_time).getTime());
+    }, 0);
+    const plannedHours = Math.round((totalMs / (1000 * 60 * 60)) * 10) / 10;
+    const expected = resolveDisplayedHours(formation).value;
+    const sessionStart = formation.start_date ? new Date(formation.start_date).getTime() : null;
+    const sessionEnd = formation.end_date ? new Date(formation.end_date).getTime() : null;
+    const outOfRangeSlots = timeSlots.filter((s) => {
+      if (sessionStart === null || sessionEnd === null) return false;
+      const slotStart = new Date(s.start_time).getTime();
+      const slotEnd = new Date(s.end_time).getTime();
+      // On compare la date du créneau (Europe/Paris pratique : on ajoute
+      // 1 jour de tolérance à `sessionEnd` car formation.end_date est
+      // souvent à 00:00 du dernier jour alors qu'un slot finit à 17h).
+      return slotStart < sessionStart || slotEnd > sessionEnd + 24 * 3600 * 1000;
+    }).length;
+    return { plannedHours, expected, outOfRangeSlots };
+  }, [timeSlots, formation]);
 
   // Navigation
   const navigate = (direction: number) => {
@@ -126,10 +149,61 @@ export function TabPlanning({ formation, onRefresh }: Props) {
     d.getFullYear() === today.getFullYear();
   const isCurrentMonth = (d: Date) => d.getMonth() === currentDate.getMonth();
 
+  // Banner cohérence : compare heures planifiées vs heures prévues.
+  const renderCoherenceBanner = () => {
+    if (timeSlots.length === 0) return null;
+    const { plannedHours, expected, outOfRangeSlots } = coherence;
+    const delta = expected !== null ? plannedHours - expected : null;
+    const status: "ok" | "missing" | "excess" | "neutral" =
+      delta === null
+        ? "neutral"
+        : Math.abs(delta) < 0.1
+          ? "ok"
+          : delta < 0
+            ? "missing"
+            : "excess";
+    const palette = {
+      ok: "border-green-200 bg-green-50 text-green-900",
+      missing: "border-amber-200 bg-amber-50 text-amber-900",
+      excess: "border-red-200 bg-red-50 text-red-900",
+      neutral: "border-gray-200 bg-gray-50 text-gray-700",
+    }[status];
+
+    return (
+      <div className={cn("border rounded-lg px-3 py-2 flex items-start gap-3", palette)}>
+        <Clock className="h-4 w-4 mt-0.5 shrink-0" />
+        <div className="flex-1 text-xs space-y-0.5">
+          <p className="font-medium">
+            {plannedHours} h planifiée{plannedHours > 1 ? "s" : ""}
+            {expected !== null && (
+              <> sur {expected} h prévue{expected > 1 ? "s" : ""}</>
+            )}
+            {status === "ok" && " ✓"}
+            {status === "missing" && delta !== null && (
+              <> — manque {Math.abs(delta).toFixed(1)} h</>
+            )}
+            {status === "excess" && delta !== null && (
+              <> — excès de {delta.toFixed(1)} h</>
+            )}
+          </p>
+          {outOfRangeSlots > 0 && (
+            <p className="flex items-center gap-1 text-amber-700">
+              <AlertTriangle className="h-3 w-3" />
+              {outOfRangeSlots} créneau{outOfRangeSlots > 1 ? "x" : ""} hors période de la session
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
       {/* Titre */}
       <h2 className="text-xl font-bold">{formation.title}</h2>
+
+      {/* PLAN-3 audit BMAD : banner cohérence heures + alerte hors-période */}
+      {renderCoherenceBanner()}
 
       {/* Calendrier */}
       <Card>
@@ -193,7 +267,8 @@ export function TabPlanning({ formation, onRefresh }: Props) {
                       )}>
                         {day.getDate()}
                       </div>
-                      {slots.map((slot) => (
+                      {/* PLAN-3 audit BMAD : affiche 2 slots max + indicator "+N" si plus */}
+                      {slots.slice(0, 2).map((slot) => (
                         <button
                           key={slot.id}
                           type="button"
@@ -205,6 +280,16 @@ export function TabPlanning({ formation, onRefresh }: Props) {
                           {slot.title || formation.title}
                         </button>
                       ))}
+                      {slots.length > 2 && (
+                        <button
+                          type="button"
+                          onClick={() => setViewMode("day")}
+                          className="block w-full text-[10px] text-gray-500 hover:text-gray-700 cursor-pointer pl-1"
+                          title="Basculer en vue Jour pour voir tous les créneaux"
+                        >
+                          + {slots.length - 2} autre{slots.length - 2 > 1 ? "s" : ""}…
+                        </button>
+                      )}
                     </div>
                   );
                 })}
