@@ -5,7 +5,11 @@ import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
 import { formatDate } from "@/lib/utils";
-import type { Program } from "@/lib/types";
+import type { Program, ProgramContent } from "@/lib/types";
+import {
+  fetchProgramById as fetchProgramByIdService,
+  updateProgram as updateProgramService,
+} from "@/lib/services/programs";
 import {
   ArrowLeft,
   Loader2,
@@ -207,32 +211,25 @@ export default function ProgramDetailPage() {
   });
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
-  // Lot B audit BMAD : entity_id filter (defense in depth applicative en plus
-  // de la RLS). Évite qu'un super_admin (RLS cross-entité) charge accidentellement
-  // un programme d'une autre entité que celle sélectionnée via le selector top-bar.
+  // Lot A audit BMAD : passe par le service centralisé (entity_id filter +
+  // colonnes explicites). Lot B : redirect si introuvable dans l'entité.
   const fetchProgram = useCallback(async () => {
     if (!entityId) {
       setLoading(false);
       return;
     }
     setLoading(true);
-    const { data, error } = await supabase
-      .from("programs")
-      .select("*")
-      .eq("id", programId)
-      .eq("entity_id", entityId)
-      .maybeSingle();
-
-    if (error) {
-      console.error("fetchProgram error:", error);
+    const result = await fetchProgramByIdService(supabase, programId, entityId);
+    if (!result.ok) {
+      console.error("fetchProgram error:", result.error);
       toast({ title: "Erreur", description: "Impossible de charger ce programme.", variant: "destructive" });
       setProgram(null);
-    } else if (!data) {
+    } else if (!result.program) {
       toast({ title: "Programme introuvable", description: "Ce programme n'existe pas dans l'entité actuelle.", variant: "destructive" });
       setProgram(null);
       router.push("/admin/programs");
     } else {
-      setProgram(data as Program);
+      setProgram(result.program);
     }
     setLoading(false);
   }, [programId, supabase, entityId, toast, router]);
@@ -320,23 +317,18 @@ export default function ProgramDetailPage() {
       return;
     }
 
-    // Lot B audit BMAD : entity_id filter (defense in depth applicative).
-    const { error } = await supabase
-      .from("programs")
-      .update({
-        title: editForm.title.trim(),
-        description: editForm.description.trim() || null,
-        objectives: editForm.objectives.trim() || null,
-        content,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", program.id)
-      .eq("entity_id", entityId);
+    // Lot A audit BMAD : service centralisé (entity_id filter inclus).
+    const result = await updateProgramService(supabase, program.id, entityId, {
+      title: editForm.title.trim(),
+      description: editForm.description.trim() || null,
+      objectives: editForm.objectives.trim() || null,
+      content: content as ProgramContent,
+    });
 
     setSaving(false);
 
-    if (error) {
-      toast({ title: "Erreur", description: error.message, variant: "destructive" });
+    if (!result.ok) {
+      toast({ title: "Erreur", description: result.error.message, variant: "destructive" });
       return;
     }
 
@@ -391,19 +383,20 @@ export default function ProgramDetailPage() {
         certification_results: ai.certification_results ?? m.certification_results,
       };
 
-      const { error } = await supabase
-        .from("programs")
-        .update({
-          description: ai.description || program.description,
-          objectives: ai.objectives || program.objectives,
-          content: newContent,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", program.id)
-        .eq("entity_id", entityId!);
+      if (!entityId) {
+        toast({ title: "Erreur", description: "Entité non chargée.", variant: "destructive" });
+        setGenerating(false);
+        return;
+      }
+      // Lot A audit BMAD : service centralisé.
+      const result = await updateProgramService(supabase, program.id, entityId, {
+        description: ai.description || program.description,
+        objectives: ai.objectives || program.objectives,
+        content: newContent as ProgramContent,
+      });
 
-      if (error) {
-        toast({ title: "Erreur", description: error.message, variant: "destructive" });
+      if (!result.ok) {
+        toast({ title: "Erreur", description: result.error.message, variant: "destructive" });
       } else {
         toast({ title: "Contenu généré par l'IA", description: "Le programme a été enrichi avec succès." });
         fetchProgram();

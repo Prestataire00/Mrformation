@@ -3,6 +3,10 @@
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Program } from "@/lib/types";
+import {
+  fetchPrograms as fetchProgramsService,
+  toggleProgramActive as toggleProgramActiveService,
+} from "@/lib/services/programs";
 import { cn, formatDate, truncate } from "@/lib/utils";
 import { useEntity } from "@/contexts/EntityContext";
 import { Button } from "@/components/ui/button";
@@ -38,18 +42,15 @@ export default function CataloguePage() {
   const fetchPrograms = useCallback(async () => {
     if (!entityId) return;
     setLoading(true);
-    const { data, error } = await supabase
-      .from("programs")
-      .select("*")
-      .eq("entity_id", entityId)
-      .order("updated_at", { ascending: false });
-    if (error) {
+    // Lot A audit BMAD : passe par le service centralisé.
+    const result = await fetchProgramsService(supabase, entityId);
+    if (!result.ok) {
       toast({ title: "Erreur", description: "Impossible de charger les programmes.", variant: "destructive" });
     } else {
-      setPrograms((data as Program[]) || []);
+      setPrograms(result.programs);
     }
     setLoading(false);
-  }, [entityId]);
+  }, [entityId, supabase, toast]);
 
   useEffect(() => {
     fetchPrograms();
@@ -58,14 +59,10 @@ export default function CataloguePage() {
   const handleToggleCatalogue = async (program: Program) => {
     if (!entityId) return;
     const newActive = !program.is_active;
-    // Lot B audit BMAD : entity_id filter (defense in depth).
-    const { error } = await supabase
-      .from("programs")
-      .update({ is_active: newActive, updated_at: new Date().toISOString() })
-      .eq("id", program.id)
-      .eq("entity_id", entityId);
-    if (error) {
-      toast({ title: "Erreur", description: error.message, variant: "destructive" });
+    // Lot A audit BMAD : service centralisé (entity_id filter inclus).
+    const result = await toggleProgramActiveService(supabase, program.id, entityId, newActive);
+    if (!result.ok) {
+      toast({ title: "Erreur", description: result.error.message, variant: "destructive" });
     } else {
       toast({
         title: newActive ? "Publié dans le catalogue" : "Retiré du catalogue",

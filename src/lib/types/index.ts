@@ -603,6 +603,38 @@ export interface Enrollment {
 }
 
 // ===== PROGRAMS =====
+/**
+ * Lot A audit BMAD Programmes : `ProgramContent` proprement typé pour
+ * remplacer le Record<string, unknown> de `Program.content`. Le JSON BDD
+ * suit cette forme (modules + métadonnées Qualiopi/BPF). Le typage est
+ * partagé entre la page hub, le détail et l'import PDF.
+ */
+export interface ProgramContentModule {
+  id: number;
+  title: string;
+  duration_hours?: number;
+  objectives?: string[];
+  topics?: string[];
+}
+
+export interface ProgramContent {
+  modules?: ProgramContentModule[];
+  duration_hours?: number;
+  duration_days?: number;
+  location?: string;
+  specialty?: string;
+  diploma?: string;
+  cpf_eligible?: boolean;
+  target_audience?: string;
+  prerequisites?: string;
+  team_description?: string;
+  evaluation_methods?: string[];
+  pedagogical_resources?: string[];
+  certification_results?: string;
+  certification_terms?: string;
+  certification_details?: string;
+}
+
 export interface Program {
   id: string;
   entity_id: string;
@@ -611,7 +643,7 @@ export interface Program {
   objectives: string | null;
   version: number;
   is_active: boolean;
-  content: Record<string, unknown> | null;
+  content: ProgramContent | null;
   price: number | null;
   tva_rate: number | null;
   duration_hours: number | null;
@@ -629,7 +661,7 @@ export interface ProgramVersion {
   id: string;
   program_id: string;
   version: number;
-  content: Record<string, unknown> | null;
+  content: ProgramContent | null;
   created_by: string | null;
   created_at: string;
 }

@@ -2,7 +2,16 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Program, ProgramVersion } from "@/lib/types";
+import { Program, ProgramContent, ProgramVersion } from "@/lib/types";
+import {
+  fetchPrograms as fetchProgramsService,
+  createProgram as createProgramService,
+  updateProgram as updateProgramService,
+  deleteProgram as deleteProgramService,
+  toggleProgramActive as toggleProgramActiveService,
+  fetchProgramVersions as fetchProgramVersionsService,
+  createProgramVersion as createProgramVersionService,
+} from "@/lib/services/programs";
 import { cn, formatDate, formatDateTime, truncate } from "@/lib/utils";
 import { useEntity } from "@/contexts/EntityContext";
 import { Button } from "@/components/ui/button";
@@ -143,18 +152,15 @@ export default function ProgramsPage() {
   const fetchPrograms = useCallback(async () => {
     if (!entityId) return;
     setLoading(true);
-    const { data, error } = await supabase
-      .from("programs")
-      .select("*")
-      .eq("entity_id", entityId)
-      .order("updated_at", { ascending: false });
-    if (error) {
+    // Lot A audit BMAD : passe par le service centralisé.
+    const result = await fetchProgramsService(supabase, entityId);
+    if (!result.ok) {
       toast({ title: "Erreur", description: "Impossible de charger les programmes.", variant: "destructive" });
     } else {
-      setPrograms((data as Program[]) || []);
+      setPrograms(result.programs);
     }
     setLoading(false);
-  }, [entityId]);
+  }, [entityId, supabase, toast]);
 
   useEffect(() => {
     fetchPrograms();
@@ -225,22 +231,23 @@ export default function ProgramsPage() {
     if (!validateContent(formData.content)) return;
 
     setSaving(true);
-    const contentParsed = JSON.parse(formData.content);
+    // Lot A audit BMAD : type ProgramContent (validateContent garantit la
+    // forme { modules: [...] } pré-parsing).
+    const contentParsed = JSON.parse(formData.content) as ProgramContent;
 
     const payload = {
       title: formData.title.trim(),
       description: formData.description.trim() || null,
       objectives: formData.objectives.trim() || null,
       content: contentParsed,
-      updated_at: new Date().toISOString(),
       price: formData.price ? parseFloat(formData.price) : null,
       tva_rate: formData.tva_rate ? parseFloat(formData.tva_rate) : null,
       duration_hours: formData.duration_hours ? parseFloat(formData.duration_hours) : null,
       nsf_code: formData.nsf_code.trim() || null,
       nsf_label: formData.nsf_label.trim() || null,
       is_apprenticeship: formData.is_apprenticeship,
-      bpf_objective: formData.bpf_objective || null,
-      bpf_funding_type: formData.bpf_funding_type || null,
+      bpf_objective: (formData.bpf_objective || null) as Program["bpf_objective"],
+      bpf_funding_type: (formData.bpf_funding_type || null) as Program["bpf_funding_type"],
     };
 
     if (!entityId) {
@@ -249,32 +256,38 @@ export default function ProgramsPage() {
       return;
     }
 
+    // Lot A audit BMAD : passe par le service centralisé (entity_id filter
+    // garanti + colonnes explicites + ServiceResult typé).
+    const servicePayload = {
+      title: payload.title,
+      description: payload.description,
+      objectives: payload.objectives,
+      content: payload.content,
+      price: payload.price,
+      tva_rate: payload.tva_rate,
+      duration_hours: payload.duration_hours,
+      nsf_code: payload.nsf_code,
+      nsf_label: payload.nsf_label,
+      is_apprenticeship: payload.is_apprenticeship,
+      bpf_objective: payload.bpf_objective,
+      bpf_funding_type: payload.bpf_funding_type,
+    };
     if (editingProgram) {
-      // Lot B audit BMAD : entity_id filter (defense in depth).
-      const { error } = await supabase
-        .from("programs")
-        .update(payload)
-        .eq("id", editingProgram.id)
-        .eq("entity_id", entityId);
-      if (error) {
-        toast({ title: "Erreur", description: error.message, variant: "destructive" });
+      const result = await updateProgramService(supabase, editingProgram.id, entityId, servicePayload);
+      if (!result.ok) {
+        toast({ title: "Erreur", description: result.error.message, variant: "destructive" });
         setSaving(false);
         return;
       }
       toast({ title: "Programme mis à jour" });
     } else {
-      const { error } = await supabase.from("programs").insert({
-        ...payload,
-        entity_id: entityId,
-        version: 1,
-        is_active: true,
-      });
-      if (error) {
-        toast({ title: "Erreur", description: error.message, variant: "destructive" });
+      const result = await createProgramService(supabase, entityId, servicePayload);
+      if (!result.ok) {
+        toast({ title: "Erreur", description: result.error.message, variant: "destructive" });
         setSaving(false);
         return;
       }
-      toast({ title: "Programme créé", description: `"${payload.title}" a été ajouté.` });
+      toast({ title: "Programme créé", description: `"${servicePayload.title}" a été ajouté.` });
     }
 
     setSaving(false);
@@ -284,13 +297,9 @@ export default function ProgramsPage() {
 
   const handleToggleActive = async (program: Program) => {
     if (!entityId) return;
-    const { error } = await supabase
-      .from("programs")
-      .update({ is_active: !program.is_active, updated_at: new Date().toISOString() })
-      .eq("id", program.id)
-      .eq("entity_id", entityId);
-    if (error) {
-      toast({ title: "Erreur", description: error.message, variant: "destructive" });
+    const result = await toggleProgramActiveService(supabase, program.id, entityId, !program.is_active);
+    if (!result.ok) {
+      toast({ title: "Erreur", description: result.error.message, variant: "destructive" });
     } else {
       toast({
         title: program.is_active ? "Programme désactivé" : "Programme activé",
@@ -304,61 +313,39 @@ export default function ProgramsPage() {
     setSelectedProgram(program);
     setHistoryDialogOpen(true);
     setVersionsLoading(true);
-    const { data, error } = await supabase
-      .from("program_versions")
-      .select("*")
-      .eq("program_id", program.id)
-      .order("version", { ascending: false });
-    if (error) {
+    const result = await fetchProgramVersionsService(supabase, program.id);
+    if (!result.ok) {
       toast({ title: "Erreur", description: "Impossible de charger l'historique.", variant: "destructive" });
     } else {
-      setVersions((data as ProgramVersion[]) || []);
+      setVersions(result.versions);
     }
     setVersionsLoading(false);
   };
 
   const handleCreateVersion = async () => {
-    if (!selectedProgram) return;
+    if (!selectedProgram || !entityId) return;
     setCreatingVersion(true);
 
-    const newVersion = selectedProgram.version + 1;
+    // Lot A : service centralisé (snapshot + increment).
+    const result = await createProgramVersionService(
+      supabase,
+      selectedProgram.id,
+      entityId,
+      selectedProgram.version,
+      selectedProgram.content,
+    );
 
-    // Save snapshot to program_versions
-    const { error: vErr } = await supabase.from("program_versions").insert({
-      program_id: selectedProgram.id,
-      version: newVersion,
-      content: selectedProgram.content,
-    });
-
-    if (vErr) {
-      toast({ title: "Erreur", description: vErr.message, variant: "destructive" });
+    if (!result.ok) {
+      toast({ title: "Erreur", description: result.error.message, variant: "destructive" });
       setCreatingVersion(false);
       return;
     }
 
-    // Update program version number — entity_id filter (Lot B).
-    const { error: pErr } = await supabase
-      .from("programs")
-      .update({ version: newVersion, updated_at: new Date().toISOString() })
-      .eq("id", selectedProgram.id)
-      .eq("entity_id", entityId!);
-
-    if (pErr) {
-      toast({ title: "Erreur", description: pErr.message, variant: "destructive" });
-    } else {
-      toast({ title: `Version v${newVersion} créée`, description: selectedProgram.title });
-      await fetchPrograms();
-      // Reload versions
-      const { data } = await supabase
-        .from("program_versions")
-        .select("*")
-        .eq("program_id", selectedProgram.id)
-        .order("version", { ascending: false });
-      setVersions((data as ProgramVersion[]) || []);
-      setSelectedProgram((prev) =>
-        prev ? { ...prev, version: newVersion } : null
-      );
-    }
+    toast({ title: `Version v${result.newVersion} créée`, description: selectedProgram.title });
+    await fetchPrograms();
+    const versionsResult = await fetchProgramVersionsService(supabase, selectedProgram.id);
+    if (versionsResult.ok) setVersions(versionsResult.versions);
+    setSelectedProgram((prev) => (prev ? { ...prev, version: result.newVersion } : null));
     setCreatingVersion(false);
   };
 
@@ -370,15 +357,10 @@ export default function ProgramsPage() {
   const handleDelete = async () => {
     if (!programToDelete || !entityId) return;
     setDeleting(true);
-    // Lot B audit BMAD : entity_id filter (defense in depth — RLS doit déjà
-    // protéger, mais on évite les surprises côté super_admin cross-entité).
-    const { error } = await supabase
-      .from("programs")
-      .delete()
-      .eq("id", programToDelete.id)
-      .eq("entity_id", entityId);
-    if (error) {
-      toast({ title: "Erreur", description: error.message, variant: "destructive" });
+    // Lot A audit BMAD : service centralisé (entity_id filter inclus).
+    const result = await deleteProgramService(supabase, programToDelete.id, entityId);
+    if (!result.ok) {
+      toast({ title: "Erreur", description: result.error.message, variant: "destructive" });
     } else {
       toast({ title: "Programme supprimé" });
       setDeleteDialogOpen(false);
