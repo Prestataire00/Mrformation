@@ -155,7 +155,7 @@ export default function ProgramDetailPage() {
   const router = useRouter();
   const supabase = createClient();
   const { toast } = useToast();
-  const { entityId } = useEntity();
+  const { entityId, entity } = useEntity();
   const programId = params.id as string;
 
   const [program, setProgram] = useState<Program | null>(null);
@@ -564,13 +564,21 @@ export default function ProgramDetailPage() {
 
         {/* ── Hero Grid ──────────────────────────────────────────────────── */}
         <div className="flex flex-col lg:flex-row gap-8 mb-10">
-          {/* Entity logo */}
-          <div className="w-full max-w-[400px] h-[300px] rounded-3xl bg-gradient-to-br from-[#374151]/20 to-[#374151]/5 flex items-center justify-center overflow-hidden">
-            <img
-              src="/mr-formation-img-bibliotheque.png"
-              alt="MR Formation"
-              className="w-full h-full object-contain p-6"
-            />
+          {/* Visuel programme — logo de l'entité courante si disponible,
+              sinon icône décorative neutre. Avant : logo statique
+              /mr-formation-img-bibliotheque.png hard-codé (ancien logo
+              affiché même sur les autres entités). */}
+          <div className="w-full max-w-[400px] h-[300px] rounded-3xl bg-gradient-to-br from-[#374151]/15 to-[#374151]/5 flex items-center justify-center overflow-hidden">
+            {entity?.logo_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={entity.logo_url}
+                alt={entity.name}
+                className="w-full h-full object-contain p-8"
+              />
+            ) : (
+              <BookOpen className="h-24 w-24 text-gray-300" strokeWidth={1.5} />
+            )}
           </div>
 
           {/* Metadata */}
