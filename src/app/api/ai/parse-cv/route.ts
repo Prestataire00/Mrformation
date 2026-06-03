@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/require-role";
+import { logAudit } from "@/lib/audit-log";
+import { sanitizeDbError } from "@/lib/api-error";
 
 const PROMPT = `Extrais du CV en JSON strict (pas de markdown):
 {"first_name":"","last_name":"","email":null,"phone":null,"competencies":[{"name":"compétence","level":"beginner|intermediate|expert"}],"experience_years":0,"seniority_level":"junior|confirmed|senior|expert","education":[{"degree":"","school":"","year":null}],"certifications":[{"name":"","organism":""}],"languages":[{"language":"","level":"A1-C2|native"}],"bio":"2 phrases max","formation_domains":["domaines enseignables"],"ai_keywords":["10 mots-clés métier"]}
@@ -66,35 +68,109 @@ export async function POST(req: NextRequest) {
     const trainerId = formData.get("trainer_id") as string | null;
     const autoSave = formData.get("auto_save") === "true";
 
-    if (trainerId && autoSave) {
-      // Update trainer fields
-      await auth.supabase.from("trainers").update({
-        bio: parsed.bio || undefined,
-        experience_years: parsed.experience_years || undefined,
-        seniority_level: parsed.seniority_level || undefined,
-        education: parsed.education || [],
-        certifications: parsed.certifications || [],
-        languages: parsed.languages || [],
-        formation_domains: parsed.formation_domains || [],
-        ai_summary: parsed.bio || undefined,
-        ai_keywords: parsed.ai_keywords || [],
-        cv_uploaded_at: new Date().toISOString(),
-      }).eq("id", trainerId);
+    let competenciesSaved = 0;
+    let saved = false;
 
-      // Upsert competencies
-      if (parsed.competencies?.length) {
-        await auth.supabase.from("trainer_competencies").delete().eq("trainer_id", trainerId);
-        await auth.supabase.from("trainer_competencies").insert(
-          parsed.competencies.map((c: { name: string; level: string }) => ({
-            trainer_id: trainerId,
-            competency: c.name,
-            level: c.level || "intermediate",
-          }))
+    if (trainerId && autoSave) {
+      // Lot AI audit BMAD : defense in depth multi-tenant. requireRole déjà
+      // vérifié super_admin/admin, mais le trainer_id arrive du client donc
+      // on doit vérifier qu'il appartient bien à l'entité du user (sauf
+      // super_admin cross-entité).
+      const { data: trainerRow, error: fetchErr } = await auth.supabase
+        .from("trainers")
+        .select("id, entity_id")
+        .eq("id", trainerId)
+        .maybeSingle();
+      if (fetchErr) {
+        return NextResponse.json(
+          { error: sanitizeDbError(fetchErr, "parse-cv fetch trainer") },
+          { status: 500 }
         );
       }
+      if (!trainerRow) {
+        return NextResponse.json({ error: "Formateur introuvable" }, { status: 404 });
+      }
+      if (auth.profile.role === "admin" && trainerRow.entity_id !== auth.profile.entity_id) {
+        return NextResponse.json({ error: "Formateur hors de l'entité" }, { status: 403 });
+      }
+
+      // Update trainer fields — entity_id filter pour defense in depth.
+      // Lot AI audit BMAD #1 : avant, pas de filter → super_admin pouvait
+      // écraser un trainer d'une autre entité par un trainer_id pris du DOM.
+      const { error: updateErr } = await auth.supabase
+        .from("trainers")
+        .update({
+          bio: parsed.bio || undefined,
+          experience_years: parsed.experience_years || undefined,
+          seniority_level: parsed.seniority_level || undefined,
+          education: parsed.education || [],
+          certifications: parsed.certifications || [],
+          languages: parsed.languages || [],
+          formation_domains: parsed.formation_domains || [],
+          ai_summary: parsed.bio || undefined,
+          ai_keywords: parsed.ai_keywords || [],
+          cv_uploaded_at: new Date().toISOString(),
+        })
+        .eq("id", trainerId)
+        .eq("entity_id", trainerRow.entity_id);
+      if (updateErr) {
+        console.error("[parse-cv] trainer update failed:", updateErr);
+        return NextResponse.json(
+          { error: sanitizeDbError(updateErr, "parse-cv update trainer") },
+          { status: 500 }
+        );
+      }
+
+      // Upsert competencies — error handling explicite (avant : silent fail).
+      if (parsed.competencies?.length) {
+        const { error: deleteErr } = await auth.supabase
+          .from("trainer_competencies")
+          .delete()
+          .eq("trainer_id", trainerId);
+        if (deleteErr) {
+          console.error("[parse-cv] competencies delete failed:", deleteErr);
+          return NextResponse.json(
+            { error: sanitizeDbError(deleteErr, "parse-cv delete competencies") },
+            { status: 500 }
+          );
+        }
+
+        const rows = parsed.competencies.map((c: { name: string; level: string }) => ({
+          trainer_id: trainerId,
+          competency: c.name,
+          level: c.level || "intermediate",
+        }));
+        const { error: insertErr } = await auth.supabase
+          .from("trainer_competencies")
+          .insert(rows);
+        if (insertErr) {
+          console.error("[parse-cv] competencies insert failed:", insertErr);
+          return NextResponse.json(
+            { error: sanitizeDbError(insertErr, "parse-cv insert competencies") },
+            { status: 500 }
+          );
+        }
+        competenciesSaved = rows.length;
+      }
+
+      saved = true;
+
+      logAudit({
+        supabase: auth.supabase,
+        entityId: trainerRow.entity_id as string,
+        userId: auth.user.id,
+        action: "update",
+        resourceType: "trainers.cv_analysis",
+        resourceId: trainerId,
+        details: {
+          competencies_saved: competenciesSaved,
+          ai_keywords_count: (parsed.ai_keywords || []).length,
+          formation_domains_count: (parsed.formation_domains || []).length,
+        },
+      });
     }
 
-    return NextResponse.json(parsed);
+    return NextResponse.json({ ...parsed, saved, competencies_saved: competenciesSaved });
   } catch (err) {
     console.error("[parse-cv]", err);
     return NextResponse.json({ error: "Erreur lors de l'analyse" }, { status: 500 });

@@ -404,9 +404,43 @@ export default function TrainerProfilePage() {
       toast({
         title: "CV uploadé",
         description: result.cv_text_length > 0
-          ? `Texte extrait (${result.cv_text_length} caractères) — recherche par mots-clés activée.`
+          ? `Texte extrait (${result.cv_text_length} caractères) — analyse IA en cours…`
           : "Fichier enregistré (extraction du texte non disponible).",
       });
+
+      // Lot AI audit BMAD : auto-trigger analyse IA après upload. Avant,
+      // l'utilisateur devait cliquer un 2e bouton "Analyser avec l'IA" et
+      // oubliait régulièrement — d'où les CV uploadés mais sans compétences
+      // extraites. On re-envoie le même fichier vers /api/ai/parse-cv avec
+      // auto_save=true pour peupler competencies / ai_keywords / formation_domains.
+      if (trainer?.id && result.cv_text_length > 0) {
+        setParsingCv(true);
+        try {
+          const aiFd = new FormData();
+          aiFd.append("file", file);
+          aiFd.append("trainer_id", trainer.id);
+          aiFd.append("auto_save", "true");
+          const aiRes = await fetch("/api/ai/parse-cv", { method: "POST", body: aiFd });
+          const aiData = await aiRes.json().catch(() => ({}));
+          if (!aiRes.ok) {
+            throw new Error(aiData.error || `Erreur ${aiRes.status}`);
+          }
+          toast({
+            title: "Analyse IA terminée",
+            description: `${aiData.competencies_saved || 0} compétences, ${aiData.certifications?.length || 0} certifications détectées`,
+          });
+          await fetchTrainer();
+        } catch (aiErr) {
+          console.error("[auto parse-cv] error:", aiErr);
+          toast({
+            title: "Analyse IA échouée",
+            description: aiErr instanceof Error ? aiErr.message : "Réessayez via 'Analyser avec l'IA'",
+            variant: "destructive",
+          });
+        } finally {
+          setParsingCv(false);
+        }
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Erreur inconnue";
       toast({ title: "Erreur", description: msg, variant: "destructive" });
