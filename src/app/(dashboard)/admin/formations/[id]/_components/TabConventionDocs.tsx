@@ -25,6 +25,7 @@ import { renderSystemTemplate } from "@/lib/templates/registry";
 import { resolveVariables } from "@/lib/utils/resolve-variables";
 import { validateCompanyExport, findUncoveredLearners } from "@/lib/utils/formation-companies";
 import { exportHtmlToPDF } from "@/lib/pdf-export";
+import { SubcontractingContractsPanel } from "./sections/SubcontractingContractsPanel";
 import { hasBatchEndpoint, downloadBatchZip } from "@/lib/utils/batch-doc-download";
 import { sendBatchEmail, hasBatchSendEndpoint } from "@/lib/utils/batch-doc-send";
 import {
@@ -1478,6 +1479,9 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
 
   return (
     <div className="space-y-4">
+      {/* ═══ CONTRATS DE SOUS-TRAITANCE FORMATEURS — Lot Sub audit BMAD ═══ */}
+      <SubcontractingContractsPanel formation={formation} />
+
       {/* ═══ HERO ROW — Progress par type ═══ */}
       {docProgress.length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
