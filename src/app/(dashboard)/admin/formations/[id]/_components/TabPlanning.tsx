@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
-import { ChevronLeft, ChevronRight, Trash2, CheckCircle, AlertTriangle, Clock, Sparkles } from "lucide-react";
+import { ChevronLeft, ChevronRight, Trash2, CheckCircle, AlertTriangle, Clock, Sparkles, UserX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/use-toast";
@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { resolveDisplayedHours } from "@/lib/utils/hours-source";
 import { distributeModulesToSlots } from "@/lib/utils/auto-fill-modules";
 import { deleteAllTimeSlotsForSession, updateTimeSlot } from "@/lib/services/time-slots";
+import { detectTrainerConflicts, type TrainerConflict } from "@/lib/services/trainer-conflicts";
 import type { Session, FormationTimeSlot } from "@/lib/types";
 import { BulkSlotCreator } from "./BulkSlotCreator";
 import { SlotEditDialog } from "./SlotEditDialog";
@@ -40,8 +41,44 @@ export function TabPlanning({ formation, onRefresh }: Props) {
   const [editingSlot, setEditingSlot] = useState<FormationTimeSlot | null>(null);
   // PLAN-5 audit BMAD : auto-fill modules depuis le programme.
   const [autoFilling, setAutoFilling] = useState(false);
+  // PLAN-6 audit BMAD : conflits formateurs cross-session.
+  const [conflicts, setConflicts] = useState<TrainerConflict[]>([]);
 
   const timeSlots = formation.formation_time_slots || [];
+
+  // PLAN-6 audit BMAD : recalcule les conflits formateurs quand les slots
+  // ou les trainers de la session changent. Effet best-effort : erreurs
+  // silencieuses (ne casse pas l'affichage du calendrier).
+  useEffect(() => {
+    if (!entityId) return;
+    const trainerIds = (formation.formation_trainers ?? [])
+      .map((ft) => ft.trainer_id)
+      .filter((id): id is string => !!id);
+    if (trainerIds.length === 0 || timeSlots.length === 0) {
+      setConflicts([]);
+      return;
+    }
+    const currentSlots = timeSlots.map((s) => ({
+      id: s.id,
+      start_time: s.start_time,
+      end_time: s.end_time,
+    }));
+    (async () => {
+      const result = await detectTrainerConflicts(supabase, {
+        sessionId: formation.id,
+        entityId,
+        currentSlots,
+        trainerIds,
+      });
+      if (result.ok) setConflicts(result.conflicts);
+    })();
+  }, [entityId, formation.id, formation.formation_trainers, timeSlots, supabase]);
+
+  // Set des slot_ids en conflit pour highlight rapide dans le rendu.
+  const conflictingSlotIds = useMemo(
+    () => new Set(conflicts.map((c) => c.slotId)),
+    [conflicts],
+  );
 
   // PLAN-3 audit BMAD : cohérence heures planifiées vs prévues +
   // détection slots hors période de la session.
@@ -269,6 +306,36 @@ export function TabPlanning({ formation, onRefresh }: Props) {
       {/* PLAN-3 audit BMAD : banner cohérence heures + alerte hors-période */}
       {renderCoherenceBanner()}
 
+      {/* PLAN-6 audit BMAD : banner conflits formateurs cross-session */}
+      {conflicts.length > 0 && (
+        <div className="border border-red-200 bg-red-50 rounded-lg px-3 py-2 flex items-start gap-3">
+          <UserX className="h-4 w-4 mt-0.5 shrink-0 text-red-600" />
+          <div className="flex-1 text-xs space-y-0.5">
+            <p className="font-medium text-red-900">
+              {conflicts.length} conflit{conflicts.length > 1 ? "s" : ""} formateur détecté{conflicts.length > 1 ? "s" : ""}
+            </p>
+            {Array.from(
+              new Map(
+                conflicts.map((c) => [
+                  `${c.trainerId}-${c.conflictingSessionId}`,
+                  c,
+                ]),
+              ).values(),
+            )
+              .slice(0, 5)
+              .map((c) => (
+                <p key={`${c.trainerId}-${c.conflictingSessionId}`} className="text-red-800">
+                  • <strong>{c.trainerName}</strong> est aussi sur «&nbsp;{c.conflictingSessionTitle}&nbsp;»
+                  ({new Date(c.conflictingStart).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short", timeZone: "Europe/Paris" })})
+                </p>
+              ))}
+            {conflicts.length > 5 && (
+              <p className="text-red-700 italic">… et {conflicts.length - 5} autre(s).</p>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Calendrier */}
       <Card>
         <CardHeader className="pb-3">
@@ -332,18 +399,27 @@ export function TabPlanning({ formation, onRefresh }: Props) {
                         {day.getDate()}
                       </div>
                       {/* PLAN-3 audit BMAD : affiche 2 slots max + indicator "+N" si plus */}
-                      {slots.slice(0, 2).map((slot) => (
-                        <button
-                          key={slot.id}
-                          type="button"
-                          onClick={() => setEditingSlot(slot)}
-                          className="block w-full text-left text-xs p-1 mb-0.5 bg-primary/10 hover:bg-primary/20 text-primary rounded truncate transition-colors cursor-pointer"
-                          title={`${new Date(slot.start_time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })} - ${slot.title || formation.title} — cliquer pour éditer`}
-                        >
-                          {new Date(slot.start_time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })}{" "}
-                          {slot.title || formation.title}
-                        </button>
-                      ))}
+                      {slots.slice(0, 2).map((slot) => {
+                        const conflict = conflictingSlotIds.has(slot.id);
+                        return (
+                          <button
+                            key={slot.id}
+                            type="button"
+                            onClick={() => setEditingSlot(slot)}
+                            className={cn(
+                              "block w-full text-left text-xs p-1 mb-0.5 rounded truncate transition-colors cursor-pointer",
+                              conflict
+                                ? "bg-red-100 hover:bg-red-200 text-red-800 border border-red-300"
+                                : "bg-primary/10 hover:bg-primary/20 text-primary",
+                            )}
+                            title={`${new Date(slot.start_time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })} - ${slot.title || formation.title}${conflict ? " — ⚠ conflit formateur" : " — cliquer pour éditer"}`}
+                          >
+                            {conflict && "⚠ "}
+                            {new Date(slot.start_time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })}{" "}
+                            {slot.title || formation.title}
+                          </button>
+                        );
+                      })}
                       {slots.length > 2 && (
                         <button
                           type="button"
@@ -388,15 +464,22 @@ export function TabPlanning({ formation, onRefresh }: Props) {
                       {slots.map((slot) => {
                         const start = new Date(slot.start_time);
                         const end = new Date(slot.end_time);
+                        const conflict = conflictingSlotIds.has(slot.id);
                         return (
                           <button
                             key={slot.id}
                             type="button"
                             onClick={() => setEditingSlot(slot)}
-                            className="block w-full text-left text-xs p-2 mb-1 bg-primary/10 hover:bg-primary/20 text-primary rounded transition-colors cursor-pointer"
-                            title="Cliquer pour éditer ce créneau"
+                            className={cn(
+                              "block w-full text-left text-xs p-2 mb-1 rounded transition-colors cursor-pointer",
+                              conflict
+                                ? "bg-red-100 hover:bg-red-200 text-red-800 border border-red-300"
+                                : "bg-primary/10 hover:bg-primary/20 text-primary",
+                            )}
+                            title={conflict ? "⚠ Conflit formateur — cliquer pour éditer" : "Cliquer pour éditer"}
                           >
-                            <div className="font-medium">
+                            <div className="font-medium flex items-center gap-1">
+                              {conflict && <UserX className="h-3 w-3" />}
                               {start.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })} -{" "}
                               {end.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })}
                             </div>
@@ -431,14 +514,21 @@ export function TabPlanning({ formation, onRefresh }: Props) {
                         {slots.map((slot) => {
                           const start = new Date(slot.start_time);
                           const end = new Date(slot.end_time);
+                          const conflict = conflictingSlotIds.has(slot.id);
                           return (
                             <button
                               key={slot.id}
                               type="button"
                               onClick={() => setEditingSlot(slot)}
-                              className="block w-full text-left text-xs p-2 bg-primary/10 hover:bg-primary/20 text-primary rounded transition-colors cursor-pointer"
-                              title="Cliquer pour éditer ce créneau"
+                              className={cn(
+                                "block w-full text-left text-xs p-2 rounded transition-colors cursor-pointer",
+                                conflict
+                                  ? "bg-red-100 hover:bg-red-200 text-red-800 border border-red-300"
+                                  : "bg-primary/10 hover:bg-primary/20 text-primary",
+                              )}
+                              title={conflict ? "⚠ Conflit formateur — cliquer pour éditer" : "Cliquer pour éditer"}
                             >
+                              {conflict && "⚠ "}
                               {start.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })} -{" "}
                               {end.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })} |{" "}
                               {slot.title || formation.title}
