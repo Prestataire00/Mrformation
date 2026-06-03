@@ -4,6 +4,11 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Trainer, TrainerCompetency, Session } from "@/lib/types";
+import {
+  trainerProfileSchema,
+  getTrainerProfileErrors,
+  type TrainerProfileFormInput,
+} from "@/lib/validations/trainer";
 import { cn, getInitials, formatCurrency, formatDate, formatDateTime, STATUS_COLORS, SESSION_STATUS_LABELS } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -128,6 +133,8 @@ export default function TrainerProfilePage() {
   const [parsingCv, setParsingCv] = useState(false);
   const [cvUrl, setCvUrl] = useState<string | null>(null);
   const [openingCv, setOpeningCv] = useState(false);
+  // Lot F : erreurs de validation Zod affichées sous chaque champ.
+  const [formErrors, setFormErrors] = useState<Partial<Record<keyof TrainerProfileFormInput, string>>>({});
   const [cvTextLength, setCvTextLength] = useState(0);
 
   // Email
@@ -290,10 +297,22 @@ export default function TrainerProfilePage() {
   }, [fetchTrainer, fetchSessions]);
 
   const handleSaveProfile = async () => {
-    if (!formData.first_name.trim() || !formData.last_name.trim()) {
-      toast({ title: "Champs requis", description: "Prénom et nom sont obligatoires.", variant: "destructive" });
+    // Lot F audit BMAD : validation Zod centralisée AVANT toute opération
+    // (remplace les checks manuels ligne-par-ligne, valide IBAN/SIRET/BIC/
+    // email/postal_code en plus). Erreurs affichées sous chaque champ.
+    const result = trainerProfileSchema.safeParse(formData);
+    if (!result.success) {
+      const errors = getTrainerProfileErrors(result);
+      setFormErrors(errors);
+      toast({
+        title: "Formulaire invalide",
+        description: result.error.issues[0]?.message ?? "Vérifiez les champs en erreur.",
+        variant: "destructive",
+      });
       return;
     }
+    setFormErrors({});
+
     // Lot A audit BMAD #2 (critique) : guard explicite si trainer.entity_id
     // pas chargé pour éviter UPDATE silencieux qui ne match aucune ligne
     // mais retourne sans erreur (Supabase n'erreur pas sur 0 rows).
@@ -302,31 +321,35 @@ export default function TrainerProfilePage() {
       return;
     }
     setSaving(true);
+
+    // result.data contient les valeurs normalisées (trim, "" → null,
+    // IBAN/BIC uppercase + sans espaces, hourly_rate en number).
+    const payload = result.data;
     const { data: updated, error } = await supabase
       .from("trainers")
       .update({
-        first_name: formData.first_name.trim(),
-        last_name: formData.last_name.trim(),
-        email: formData.email.trim() || null,
-        phone: formData.phone.trim() || null,
-        type: formData.type,
-        bio: formData.bio.trim() || null,
-        hourly_rate: formData.hourly_rate ? parseFloat(formData.hourly_rate) : null,
-        availability_notes: formData.availability_notes.trim() || null,
-        siret: formData.siret.trim() || null,
-        nda: formData.nda?.trim() || null,
-        contract_type: formData.contract_type || null,
-        status: formData.status || "active",
-        legal_status: formData.legal_status || null,
-        company_name: formData.company_name.trim() || null,
-        tva_number: formData.tva_number.trim() || null,
-        address: formData.address.trim() || null,
-        city: formData.city.trim() || null,
-        postal_code: formData.postal_code.trim() || null,
-        country: formData.country.trim() || "France",
-        iban: formData.iban.trim() || null,
-        bic: formData.bic.trim() || null,
-        bank_name: formData.bank_name.trim() || null,
+        first_name: payload.first_name,
+        last_name: payload.last_name,
+        email: payload.email,
+        phone: payload.phone,
+        type: payload.type,
+        bio: payload.bio,
+        hourly_rate: payload.hourly_rate,
+        availability_notes: payload.availability_notes,
+        siret: payload.siret,
+        nda: payload.nda,
+        contract_type: payload.contract_type,
+        status: payload.status ?? "active",
+        legal_status: payload.legal_status,
+        company_name: payload.company_name,
+        tva_number: payload.tva_number,
+        address: payload.address,
+        city: payload.city,
+        postal_code: payload.postal_code,
+        country: payload.country ?? "France",
+        iban: payload.iban,
+        bic: payload.bic,
+        bank_name: payload.bank_name,
       })
       .eq("id", id)
       // Lot A audit BMAD : filtre entity_id pour empêcher cross-entity
@@ -556,7 +579,9 @@ export default function TrainerProfilePage() {
                   type="email"
                   value={formData.email}
                   onChange={(e) => setFormData((p) => ({ ...p, email: e.target.value }))}
+                  className={formErrors.email ? "border-red-400" : ""}
                 />
+                {formErrors.email && <p className="text-xs text-red-600">{formErrors.email}</p>}
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
@@ -768,7 +793,9 @@ export default function TrainerProfilePage() {
                     value={formData.siret}
                     onChange={(e) => setFormData((p) => ({ ...p, siret: e.target.value }))}
                     placeholder="12345678901234"
+                    className={formErrors.siret ? "border-red-400" : ""}
                   />
+                  {formErrors.siret && <p className="text-xs text-red-600">{formErrors.siret}</p>}
                 </div>
                 <div className="space-y-1.5">
                   <Label>NDA (N° déclaration d&apos;activité)</Label>
@@ -776,7 +803,9 @@ export default function TrainerProfilePage() {
                     value={formData.nda || ""}
                     onChange={(e) => setFormData((p) => ({ ...p, nda: e.target.value }))}
                     placeholder="Ex: 93132013113"
+                    className={formErrors.nda ? "border-red-400" : ""}
                   />
+                  {formErrors.nda && <p className="text-xs text-red-600">{formErrors.nda}</p>}
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -888,7 +917,10 @@ export default function TrainerProfilePage() {
                   <Input
                     value={formData.postal_code}
                     onChange={(e) => setFormData((p) => ({ ...p, postal_code: e.target.value }))}
+                    placeholder="75001"
+                    className={formErrors.postal_code ? "border-red-400" : ""}
                   />
+                  {formErrors.postal_code && <p className="text-xs text-red-600">{formErrors.postal_code}</p>}
                 </div>
                 <div className="space-y-1.5">
                   <Label>Pays</Label>
@@ -924,7 +956,9 @@ export default function TrainerProfilePage() {
                   value={formData.iban}
                   onChange={(e) => setFormData((p) => ({ ...p, iban: e.target.value }))}
                   placeholder="FR76 1234 5678 9012 3456 7890 123"
+                  className={formErrors.iban ? "border-red-400" : ""}
                 />
+                {formErrors.iban && <p className="text-xs text-red-600">{formErrors.iban}</p>}
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
@@ -933,7 +967,9 @@ export default function TrainerProfilePage() {
                     value={formData.bic}
                     onChange={(e) => setFormData((p) => ({ ...p, bic: e.target.value }))}
                     placeholder="BNPAFRPP"
+                    className={formErrors.bic ? "border-red-400" : ""}
                   />
+                  {formErrors.bic && <p className="text-xs text-red-600">{formErrors.bic}</p>}
                 </div>
                 <div className="space-y-1.5">
                   <Label>Nom de la banque</Label>
