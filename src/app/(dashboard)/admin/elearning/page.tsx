@@ -108,6 +108,10 @@ interface AICourse {
   estimated_duration_minutes: number;
   created_at: string;
   updated_at: string;
+  // ELE-1 audit BMAD : programme source (si le cours a été généré depuis
+  // un programme via /admin/programs/[id] bouton "Générer un E-Learning").
+  program_id: string | null;
+  program: { id: string; title: string } | null;
   elearning_chapters: { id: string }[];
 }
 
@@ -213,7 +217,9 @@ export default function ELearningPage() {
         .order("updated_at", { ascending: false }),
       supabase
         .from("elearning_courses")
-        .select("id, entity_id, title, description, status, generation_status, estimated_duration_minutes, created_at, updated_at, elearning_chapters(id)")
+        // ELE-1 audit BMAD : on join le programme source (program_id +
+        // titre) pour afficher un badge "Issu du programme X" sur la card.
+        .select("id, entity_id, title, description, status, generation_status, estimated_duration_minutes, created_at, updated_at, program_id, program:programs(id, title), elearning_chapters(id)")
         .eq("entity_id", entityId)
         .order("updated_at", { ascending: false }),
     ]);
@@ -235,7 +241,15 @@ export default function ELearningPage() {
     );
 
     setCourses(eLearningCourses);
-    setAiCourses((aiRes.data as AICourse[]) || []);
+    // Supabase retourne `program` comme array (relation FK) ; on l'aplatit
+    // côté client en single | null pour le typage AICourse.
+    type AICourseRaw = Omit<AICourse, "program"> & { program: { id: string; title: string }[] | { id: string; title: string } | null };
+    const rawAi = (aiRes.data as unknown as AICourseRaw[]) || [];
+    const flattened: AICourse[] = rawAi.map((c) => ({
+      ...c,
+      program: Array.isArray(c.program) ? (c.program[0] ?? null) : c.program,
+    }));
+    setAiCourses(flattened);
     setLoading(false);
   }, [entityId]);
 
@@ -874,6 +888,18 @@ export default function ELearningPage() {
                           <CardDescription className="mt-1 text-xs leading-relaxed">
                             {truncate(course.description, 90)}
                           </CardDescription>
+                        )}
+                        {/* ELE-1 audit BMAD : badge programme source cliquable */}
+                        {course.program && (
+                          <Link
+                            href={`/admin/programs/${course.program.id}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="inline-flex items-center gap-1 mt-2 text-[11px] text-purple-700 hover:underline"
+                            title="Voir le programme source de ce cours"
+                          >
+                            <BookOpen className="h-3 w-3" />
+                            Issu de « {truncate(course.program.title, 36)} »
+                          </Link>
                         )}
                       </div>
                     </div>

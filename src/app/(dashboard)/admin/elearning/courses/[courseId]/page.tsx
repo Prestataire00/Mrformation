@@ -88,6 +88,10 @@ interface Course {
   gamma_deck_url: string | null;
   gamma_deck_id: string | null;
   gamma_export_pptx: string | null;
+  // ELE-2 audit BMAD : programme source (si le cours a été généré depuis
+  // un programme via /admin/programs/[id] bouton "Générer un E-Learning").
+  program_id: string | null;
+  program: { id: string; title: string } | { id: string; title: string }[] | null;
   elearning_chapters: Chapter[];
 }
 
@@ -231,16 +235,49 @@ export default function CourseEditorPage() {
   const gammaApiCalls = chapters.filter((ch) => !!ch.gamma_deck_url).length || (course.gamma_embed_url ? 1 : 0);
   const hasContent = chapters.length > 0;
 
+  // ELE-2 / ELE-6 audit BMAD : breadcrumb cross-module avec programme source
+  // si le cours a été généré depuis un programme.
+  const programSource = Array.isArray(course.program) ? course.program[0] : course.program;
+
   return (
     <div className="p-6 space-y-6 max-w-5xl mx-auto">
       {/* Breadcrumb */}
-      <div className="flex items-center gap-2 text-sm">
+      <div className="flex items-center gap-2 text-sm flex-wrap">
         <Link href="/admin" className="text-[#374151] hover:underline">Accueil</Link>
         <span className="text-gray-400">/</span>
+        {programSource && (
+          <>
+            <Link href="/admin/programs" className="text-[#374151] hover:underline">Programmes</Link>
+            <span className="text-gray-400">/</span>
+            <Link
+              href={`/admin/programs/${programSource.id}`}
+              className="text-[#374151] hover:underline truncate max-w-[240px]"
+              title={programSource.title}
+            >
+              {programSource.title}
+            </Link>
+            <span className="text-gray-400">/</span>
+          </>
+        )}
         <Link href="/admin/elearning" className="text-[#374151] hover:underline">E-Learning</Link>
         <span className="text-gray-400">/</span>
         <span className="text-gray-500 truncate max-w-xs">{course.title}</span>
       </div>
+
+      {/* ELE-2 audit BMAD : bloc "Issu du programme X" sous le breadcrumb,
+          plus visible que dans la section Source & Historique en bas. */}
+      {programSource && (
+        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-purple-50 border border-purple-200 text-xs text-purple-800">
+          <BookOpen className="h-3.5 w-3.5" />
+          Issu du programme{" "}
+          <Link
+            href={`/admin/programs/${programSource.id}`}
+            className="font-semibold hover:underline"
+          >
+            {programSource.title}
+          </Link>
+        </div>
+      )}
 
       {/* Header */}
       <div className="flex items-start justify-between gap-4">

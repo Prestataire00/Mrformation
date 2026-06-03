@@ -238,6 +238,8 @@ export async function auditOrphanLinks(
 export interface ProgramUsageCounts {
   trainings: number;
   sessions: number;
+  /** ELE-8 audit BMAD : nombre de cours e-learning générés depuis ce programme. */
+  elearnings: number;
 }
 
 export async function fetchProgramsUsageCounts(
@@ -248,14 +250,15 @@ export async function fetchProgramsUsageCounts(
     return { ok: true, countsByProgram: {} };
   }
 
-  const [trainingsResult, sessionsResult] = await Promise.all([
+  const [trainingsResult, sessionsResult, elearningsResult] = await Promise.all([
     supabase.from("trainings").select("program_id").in("program_id", programIds),
     supabase.from("sessions").select("program_id").in("program_id", programIds),
+    supabase.from("elearning_courses").select("program_id").in("program_id", programIds),
   ]);
 
   const countsByProgram: Record<string, ProgramUsageCounts> = {};
   for (const id of programIds) {
-    countsByProgram[id] = { trainings: 0, sessions: 0 };
+    countsByProgram[id] = { trainings: 0, sessions: 0, elearnings: 0 };
   }
 
   if (trainingsResult.data) {
@@ -269,6 +272,13 @@ export async function fetchProgramsUsageCounts(
     for (const row of sessionsResult.data as Array<{ program_id: string | null }>) {
       if (row.program_id && countsByProgram[row.program_id]) {
         countsByProgram[row.program_id].sessions++;
+      }
+    }
+  }
+  if (elearningsResult.data) {
+    for (const row of elearningsResult.data as Array<{ program_id: string | null }>) {
+      if (row.program_id && countsByProgram[row.program_id]) {
+        countsByProgram[row.program_id].elearnings++;
       }
     }
   }

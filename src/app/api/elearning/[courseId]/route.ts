@@ -15,11 +15,14 @@ export async function GET(
     // shallow=true returns only course + chapter counts (fast, for admin page)
     const isShallow = request.nextUrl.searchParams.get("shallow") === "true";
 
+    // ELE-2 audit BMAD : on join le programme source (program_id + titre)
+    // pour afficher breadcrumb cross-module + bloc "Issu du programme X".
     const shallowQueryFull = `id, title, description, objectives, status, generation_status,
          estimated_duration_minutes, source_file_name, source_file_url, source_file_type,
          course_type, num_chapters, generation_log, created_at, updated_at,
          gamma_deck_id, gamma_deck_url, gamma_embed_url, gamma_export_pdf, gamma_export_pptx,
          final_exam_passing_score, final_quiz_target_count,
+         program_id, program:programs(id, title),
          elearning_chapters(id, title, summary, order_index, estimated_duration_minutes,
            key_concepts, is_enriched,
            gamma_deck_id, gamma_deck_url, gamma_embed_url, gamma_export_pdf, gamma_export_pptx, gamma_slide_start,
@@ -28,6 +31,7 @@ export async function GET(
     const shallowQueryFallback = `id, title, description, objectives, status, generation_status,
          estimated_duration_minutes, source_file_name, source_file_url, source_file_type,
          course_type, num_chapters, generation_log, created_at, updated_at,
+         program_id, program:programs(id, title),
          elearning_chapters(id, title, summary, order_index, estimated_duration_minutes,
            key_concepts, is_enriched,
            gamma_deck_id, gamma_deck_url, gamma_embed_url, gamma_export_pdf, gamma_export_pptx,

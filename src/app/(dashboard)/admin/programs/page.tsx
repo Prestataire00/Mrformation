@@ -592,10 +592,10 @@ export default function ProgramsPage() {
                         {truncate(program.description, 100)}
                       </CardDescription>
                     )}
-                    {/* CONT-5 audit BMAD : badge usage formations / sessions */}
+                    {/* CONT-5 + ELE-4 audit BMAD : badges usage formations / sessions / e-learnings */}
                     {(() => {
                       const counts = usageCounts[program.id];
-                      if (!counts || (counts.trainings === 0 && counts.sessions === 0)) return null;
+                      if (!counts || (counts.trainings === 0 && counts.sessions === 0 && counts.elearnings === 0)) return null;
                       return (
                         <div className="flex items-center gap-2 mt-2 flex-wrap">
                           {counts.trainings > 0 && (
@@ -606,6 +606,11 @@ export default function ProgramsPage() {
                           {counts.sessions > 0 && (
                             <Badge variant="outline" className="text-[10px] gap-1 border-emerald-200 text-emerald-700 bg-emerald-50">
                               {counts.sessions} session{counts.sessions > 1 ? "s" : ""}
+                            </Badge>
+                          )}
+                          {counts.elearnings > 0 && (
+                            <Badge variant="outline" className="text-[10px] gap-1 border-purple-200 text-purple-700 bg-purple-50">
+                              {counts.elearnings} e-learning{counts.elearnings > 1 ? "s" : ""}
                             </Badge>
                           )}
                         </div>

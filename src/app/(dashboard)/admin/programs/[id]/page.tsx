@@ -50,6 +50,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 import ProgramEnrollments from "./_components/ProgramEnrollments";
+import { ProgramElearningsList } from "./_components/ProgramElearningsList";
 import { EditProgramDialog, type EditModule, type EditFormState } from "./_components/EditProgramDialog";
 
 // ── Simple markdown → HTML (bold, italic, lists, line breaks) ─────────────────
@@ -935,6 +936,10 @@ export default function ProgramDetailPage() {
           </InfoCard>
         </div>
       </div>
+
+      {/* ── ELE-3 audit BMAD : Cours e-learning générés depuis ce programme ───── */}
+      <SectionDivider label="Cours e-learning générés depuis ce programme" />
+      <ProgramElearningsList programId={program.id} />
 
       {/* ── Apprenants inscrits ─────────────────────────────────────────────── */}
       <SectionDivider label="Apprenants inscrits au parcours" />

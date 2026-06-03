@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { Loader2, ChevronDown, GraduationCap, BookOpen } from "lucide-react";
+import { Loader2, ChevronDown, GraduationCap, BookOpen, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -456,6 +457,23 @@ export function TabElearning({ formation, onRefresh }: Props) {
                             )}
                           </SelectContent>
                         </Select>
+                        {/* ELE-5 audit BMAD : lien cliquable vers le programme
+                            source quand un cours "programme" est sélectionné. */}
+                        {(() => {
+                          const selectedId = courseSelections[learner.id];
+                          if (!selectedId) return null;
+                          const selected = courses.find((c) => c.id === selectedId);
+                          if (!selected || selected.source !== "program") return null;
+                          return (
+                            <Link
+                              href={`/admin/programs/${selected.id}`}
+                              className="text-[10px] text-purple-700 hover:underline inline-flex items-center gap-0.5 mt-0.5"
+                              target="_blank"
+                            >
+                              <ExternalLink className="h-2.5 w-2.5" /> Voir le programme
+                            </Link>
+                          );
+                        })()}
                       </div>
                       <div className="space-y-1">
                         <span className="text-xs text-muted-foreground">Début</span>
