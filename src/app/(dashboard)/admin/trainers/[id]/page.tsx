@@ -187,12 +187,22 @@ export default function TrainerProfilePage() {
 
   const fetchTrainer = useCallback(async () => {
     setLoading(true);
+    // Lot A audit BMAD #1 (critique) : filtrer fetchTrainer par entity_id.
+    // Avant : un admin entité A pouvait LIRE un trainer entité B en collant
+    // son UUID dans l'URL → fuite iban/bic/siret/nda/cv. Pour super_admin
+    // cross-entity légitime, switcher l'entity cookie avant de naviguer.
+    if (!entityId) {
+      toast({ title: "Entité non chargée", description: "Veuillez recharger la page.", variant: "destructive" });
+      setLoading(false);
+      return;
+    }
 
     // Try with competencies join first
     let { data, error } = await supabase
       .from("trainers")
       .select("*, competencies:trainer_competencies(*)")
       .eq("id", id)
+      .eq("entity_id", entityId)
       .single();
 
     // Fallback: if join fails, fetch trainer alone
@@ -202,6 +212,7 @@ export default function TrainerProfilePage() {
         .from("trainers")
         .select("*")
         .eq("id", id)
+        .eq("entity_id", entityId)
         .single();
       data = fallback.data ? { ...fallback.data, competencies: [] } : null;
       error = fallback.error;
@@ -244,13 +255,19 @@ export default function TrainerProfilePage() {
     setCvUrl(raw.cv_url as string | null);
     setCvTextLength((raw.cv_text as string)?.length || 0);
     setLoading(false);
-  }, [id]);
+  }, [id, entityId, router, supabase, toast]);
 
   const fetchSessions = useCallback(async () => {
+    // Lot A audit BMAD #6 : filtre entity_id avec deps cohérent.
+    // Avant : deps [id] uniquement → query lancée AVANT trainer chargé,
+    // sans filtre. Maintenant : deps [id, entityId] et early-return
+    // tant que entityId pas chargé.
+    if (!entityId) return;
     const { data } = await supabase
       .from("sessions")
       .select("*, training:trainings(title), enrollments:enrollments(id)")
       .eq("trainer_id", id)
+      .eq("entity_id", entityId)
       .order("start_date", { ascending: false });
 
     if (data) {
@@ -264,7 +281,7 @@ export default function TrainerProfilePage() {
       });
       setSessions(mapped as SessionWithTraining[]);
     }
-  }, [id]);
+  }, [id, entityId, supabase]);
 
   useEffect(() => {
     fetchTrainer();
@@ -276,8 +293,15 @@ export default function TrainerProfilePage() {
       toast({ title: "Champs requis", description: "Prénom et nom sont obligatoires.", variant: "destructive" });
       return;
     }
+    // Lot A audit BMAD #2 (critique) : guard explicite si trainer.entity_id
+    // pas chargé pour éviter UPDATE silencieux qui ne match aucune ligne
+    // mais retourne sans erreur (Supabase n'erreur pas sur 0 rows).
+    if (!trainer?.entity_id) {
+      toast({ title: "Erreur", description: "Formateur non chargé.", variant: "destructive" });
+      return;
+    }
     setSaving(true);
-    const { error } = await supabase
+    const { data: updated, error } = await supabase
       .from("trainers")
       .update({
         first_name: formData.first_name.trim(),
@@ -303,10 +327,22 @@ export default function TrainerProfilePage() {
         bic: formData.bic.trim() || null,
         bank_name: formData.bank_name.trim() || null,
       })
-      .eq("id", id);
+      .eq("id", id)
+      // Lot A audit BMAD : filtre entity_id pour empêcher cross-entity
+      // UPDATE. RLS protège côté admin, on renforce côté applicatif.
+      .eq("entity_id", trainer.entity_id)
+      .select("id"); // pour détecter 0 rows affected sans erreur
 
     if (error) {
       toast({ title: "Erreur", description: error.message, variant: "destructive" });
+    } else if (!updated || updated.length === 0) {
+      // 0 rows affected → save silencieux (audit BMAD #2). RLS bloquée ou
+      // entity_id du trainer chargé ne match plus la BDD (race condition).
+      toast({
+        title: "Aucune modification enregistrée",
+        description: "Vérifiez vos droits d'accès puis rechargez la page.",
+        variant: "destructive",
+      });
     } else {
       toast({ title: "Profil mis à jour", description: "Les informations ont été enregistrées." });
       await fetchTrainer();

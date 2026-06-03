@@ -79,8 +79,14 @@ export default function TrainersListePage() {
 
   const handleSaveEdit = async () => {
     if (!editItem) return;
+    if (!entityId) {
+      toast({ title: "Entité non chargée", variant: "destructive" });
+      return;
+    }
     setSaving(true);
     try {
+      // Lot A audit BMAD : filtre entity_id en plus de l'id pour
+      // bloquer cross-entity UPDATE si RLS faille.
       const { error } = await supabase
         .from("trainers")
         .update({
@@ -89,7 +95,8 @@ export default function TrainersListePage() {
           email: editItem.email,
           phone: editItem.phone || null,
         })
-        .eq("id", editItem.id);
+        .eq("id", editItem.id)
+        .eq("entity_id", entityId);
       if (error) throw error;
       toast({ title: "Modifié", description: "Le formateur a été mis à jour." });
       setEditItem(null);
@@ -103,7 +110,16 @@ export default function TrainersListePage() {
 
   const handleDelete = async (id: string, name: string) => {
     if (!confirm(`Supprimer ${name} ?`)) return;
-    const { error } = await supabase.from("trainers").delete().eq("id", id);
+    if (!entityId) {
+      toast({ title: "Entité non chargée", variant: "destructive" });
+      return;
+    }
+    // Lot A audit BMAD : entity_id filter sur DELETE.
+    const { error } = await supabase
+      .from("trainers")
+      .delete()
+      .eq("id", id)
+      .eq("entity_id", entityId);
     if (error) {
       toast({ title: "Erreur", description: "Impossible de supprimer.", variant: "destructive" });
     } else {

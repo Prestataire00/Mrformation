@@ -196,6 +196,11 @@ export default function TrainersPage() {
       toast({ title: "Champs requis", description: "Prénom et nom sont obligatoires.", variant: "destructive" });
       return;
     }
+    // Lot A audit BMAD : guard AVANT setSaving pour éviter état zombie.
+    if (!entityId) {
+      toast({ title: "Entité non chargée", description: "Veuillez recharger la page.", variant: "destructive" });
+      return;
+    }
     setSaving(true);
 
     const payload = {
@@ -212,7 +217,8 @@ export default function TrainersPage() {
       const { error } = await supabase
         .from("trainers")
         .update(payload)
-        .eq("id", editingTrainer.id);
+        .eq("id", editingTrainer.id)
+        .eq("entity_id", entityId);
       if (error) {
         toast({ title: "Erreur", description: error.message, variant: "destructive" });
         setSaving(false);
@@ -222,7 +228,7 @@ export default function TrainersPage() {
       setDialogOpen(false);
       await fetchTrainers();
     } else {
-      const insertPayload = entityId ? { ...payload, entity_id: entityId } : payload;
+      const insertPayload = { ...payload, entity_id: entityId };
       const { data: newTrainer, error } = await supabase
         .from("trainers")
         .insert(insertPayload)
@@ -292,8 +298,16 @@ export default function TrainersPage() {
 
   const handleDelete = async () => {
     if (!trainerToDelete) return;
+    if (!entityId) {
+      toast({ title: "Entité non chargée", variant: "destructive" });
+      return;
+    }
     setDeleting(true);
-    const { error } = await supabase.from("trainers").delete().eq("id", trainerToDelete.id);
+    const { error } = await supabase
+      .from("trainers")
+      .delete()
+      .eq("id", trainerToDelete.id)
+      .eq("entity_id", entityId);
     if (error) {
       toast({ title: "Erreur", description: error.message, variant: "destructive" });
     } else {

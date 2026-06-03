@@ -239,23 +239,29 @@ export default function CVThequePage() {
   const fetchTrainers = useCallback(async () => {
     setLoading(true);
 
-    let query = supabase
-      .from("trainers")
-      .select("*, competencies:trainer_competencies(*)")
-      .order("last_name", { ascending: true });
-
-    if (entityId) {
-      query = query.eq("entity_id", entityId);
+    // Lot A audit BMAD : guard explicite si entityId non chargé.
+    // Avant : `if (entityId) ...` laissait passer la query sans filtre
+    // → un super_admin sans entity cookie chargeait TOUTES les entités.
+    if (!entityId) {
+      setTrainers([]);
+      setLoading(false);
+      return;
     }
 
-    let { data, error } = await query;
+    let { data, error } = await supabase
+      .from("trainers")
+      .select("*, competencies:trainer_competencies(*)")
+      .eq("entity_id", entityId)
+      .order("last_name", { ascending: true });
 
     // Fallback: if join fails, fetch trainers alone
     if (error) {
       console.warn("trainer_competencies join failed:", error.message);
-      let fallbackQuery = supabase.from("trainers").select("*").order("last_name", { ascending: true });
-      if (entityId) fallbackQuery = fallbackQuery.eq("entity_id", entityId);
-      const fallback = await fallbackQuery;
+      const fallback = await supabase
+        .from("trainers")
+        .select("*")
+        .eq("entity_id", entityId)
+        .order("last_name", { ascending: true });
       data = fallback.data?.map((t: Record<string, unknown>) => ({ ...t, competencies: [] })) ?? null;
       error = fallback.error;
     }
