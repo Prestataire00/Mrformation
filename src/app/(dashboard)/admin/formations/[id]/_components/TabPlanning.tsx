@@ -6,6 +6,14 @@ import { useEntity } from "@/contexts/EntityContext";
 import { ChevronLeft, ChevronRight, Trash2, CheckCircle, AlertTriangle, Clock, Sparkles, UserX, Calendar, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
 import { resolveDisplayedHours } from "@/lib/utils/hours-source";
@@ -52,6 +60,9 @@ export function TabPlanning({ formation, onRefresh }: Props) {
   const [conflicts, setConflicts] = useState<TrainerConflict[]>([]);
   // PLAN-9 audit BMAD : vue ressources — charge hebdo des formateurs.
   const [trainerLoads, setTrainerLoads] = useState<TrainerLoad[]>([]);
+  // PLAN-10 audit BMAD : Dialogs shadcn remplaçant les confirm() natifs.
+  const [confirmDeleteAllOpen, setConfirmDeleteAllOpen] = useState(false);
+  const [confirmMarkPlannedOpen, setConfirmMarkPlannedOpen] = useState(false);
 
   const timeSlots = formation.formation_time_slots || [];
 
@@ -841,18 +852,15 @@ export function TabPlanning({ formation, onRefresh }: Props) {
             </Button>
           )}
           {!formation.is_planned && (
-            <Button size="sm" className="text-xs h-7 gap-1 bg-green-600 hover:bg-green-700 text-white" onClick={async () => {
-              if (!confirm("Confirmer que la formation est planifiée ?")) return;
-              setSaving(true);
-              await handleMarkPlanned();
-            }} disabled={saving}>
+            <Button size="sm" className="text-xs h-7 gap-1 bg-green-600 hover:bg-green-700 text-white"
+              onClick={() => setConfirmMarkPlannedOpen(true)}
+              disabled={saving}>
               <CheckCircle className="h-3 w-3" /> Marquer comme planifiée
             </Button>
           )}
-          <Button size="sm" variant="outline" className="text-xs h-7 gap-1 text-red-500 hover:text-red-600 hover:bg-red-50" onClick={async () => {
-            if (!confirm("Supprimer tous les créneaux planifiés ? Cette action est irréversible.")) return;
-            await handleDeleteAll();
-          }} disabled={deleting}>
+          <Button size="sm" variant="outline" className="text-xs h-7 gap-1 text-red-500 hover:text-red-600 hover:bg-red-50"
+            onClick={() => setConfirmDeleteAllOpen(true)}
+            disabled={deleting}>
             <Trash2 className="h-3 w-3" /> Supprimer tous les créneaux
           </Button>
         </div>
@@ -865,6 +873,64 @@ export function TabPlanning({ formation, onRefresh }: Props) {
         onRefresh={onRefresh}
         entityId={entityId}
       />
+
+      {/* PLAN-10 audit BMAD : Dialog shadcn de confirmation
+          (remplace les confirm() natifs) */}
+      <Dialog open={confirmMarkPlannedOpen} onOpenChange={setConfirmMarkPlannedOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Marquer la formation comme planifiée</DialogTitle>
+            <DialogDescription>
+              Une fois marquée, la formation passe au statut planifiée. Les automatisations
+              déclenchées par cet état (notifications, rappels…) seront activées.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmMarkPlannedOpen(false)} disabled={saving}>
+              Annuler
+            </Button>
+            <Button
+              className="bg-green-600 hover:bg-green-700 text-white"
+              onClick={async () => {
+                setConfirmMarkPlannedOpen(false);
+                setSaving(true);
+                await handleMarkPlanned();
+              }}
+              disabled={saving}
+            >
+              <CheckCircle className="h-4 w-4 mr-1" /> Confirmer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={confirmDeleteAllOpen} onOpenChange={setConfirmDeleteAllOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Supprimer tous les créneaux ?</DialogTitle>
+            <DialogDescription>
+              {timeSlots.length} créneau(x) seront définitivement supprimés. Le contenu
+              pédagogique (modules, objectifs, thèmes, exercices) sera aussi perdu. Cette
+              action est irréversible.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmDeleteAllOpen(false)} disabled={deleting}>
+              Annuler
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={async () => {
+                setConfirmDeleteAllOpen(false);
+                await handleDeleteAll();
+              }}
+              disabled={deleting}
+            >
+              <Trash2 className="h-4 w-4 mr-1" /> Supprimer tout
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
