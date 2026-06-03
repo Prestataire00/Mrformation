@@ -39,7 +39,13 @@ import {
   Award,
 } from "lucide-react";
 
-type TrainerWithCompetencies = Trainer & { competencies: TrainerCompetency[] };
+// Lot C audit BMAD : type local étendu pour inclure les champs AI runtime
+// (relevance / why) ajoutés par /api/ai/search-trainers, pas en BDD.
+type TrainerWithCompetencies = Trainer & {
+  competencies: TrainerCompetency[];
+  relevance?: number;
+  why?: string;
+};
 
 const LEVEL_LABELS: Record<string, string> = {
   beginner: "Débutant",
@@ -457,7 +463,7 @@ export default function TrainersPage() {
                   </div>
                 )}
                 <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground pt-3 mt-auto border-t">
-                  <span className="flex items-center gap-1"><Briefcase className="h-3 w-3" /> {(trainer as any).total_sessions || 0} sessions</span>
+                  <span className="flex items-center gap-1"><Briefcase className="h-3 w-3" /> {trainer.total_sessions || 0} sessions</span>
                   {/* Lot D audit BMAD #D.2 : câbler les handlers définis mais
                       jamais rendus. preventDefault + stopPropagation pour
                       empêcher le <Link> parent d'intercepter le clic. */}
@@ -491,10 +497,10 @@ export default function TrainersPage() {
                     </button>
                   </div>
                 </div>
-                {(trainer as any).relevance && (
+                {trainer.relevance != null && (
                   <div className="mt-2 bg-purple-50 border border-purple-100 rounded-md p-2">
-                    <span className="text-[10px] font-semibold text-purple-700">✨ Pertinence : {(trainer as any).relevance}%</span>
-                    {(trainer as any).why && <p className="text-[11px] text-purple-900 mt-0.5">{(trainer as any).why}</p>}
+                    <span className="text-[10px] font-semibold text-purple-700">✨ Pertinence : {trainer.relevance}%</span>
+                    {trainer.why && <p className="text-[11px] text-purple-900 mt-0.5">{trainer.why}</p>}
                   </div>
                 )}
               </div>

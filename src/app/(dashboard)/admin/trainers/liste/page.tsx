@@ -14,17 +14,15 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import type { Trainer as TrainerFull } from "@/lib/types";
 
-interface Trainer {
-  id: string;
-  first_name: string;
-  last_name: string;
-  email: string;
-  phone?: string;
-  type?: string;
-  bio?: string;
-  hourly_rate?: number;
-}
+// Lot C audit BMAD : utilise le type global Trainer via Pick (SELECT
+// partiel des 8 colonnes affichées). Avant : interface locale qui faisait
+// double emploi et divergeait du type global au fil des évolutions DB.
+type Trainer = Pick<
+  TrainerFull,
+  "id" | "first_name" | "last_name" | "email" | "phone" | "type" | "bio" | "hourly_rate"
+>;
 
 const PAGE_SIZE = 15;
 
@@ -61,7 +59,9 @@ export default function TrainersListePage() {
 
       const { data, error, count } = await query;
       if (error) throw error;
-      setTrainers((data as unknown as Trainer[]) ?? []);
+      // Lot C audit BMAD : Supabase retourne le shape DB exactement,
+      // typage explicite via cast direct (interface Trainer alignée DB).
+      setTrainers((data ?? []) as Trainer[]);
       setTotal(count ?? 0);
     } catch {
       toast({ title: "Erreur", description: "Impossible de charger les formateurs.", variant: "destructive" });
@@ -326,7 +326,7 @@ export default function TrainersListePage() {
                 <label className="block text-xs text-gray-500 mb-1">Email</label>
                 <input
                   type="email"
-                  value={editItem.email}
+                  value={editItem.email ?? ""}
                   onChange={(e) => setEditItem((p) => p ? { ...p, email: e.target.value } : p)}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#374151]"
                 />
@@ -344,7 +344,7 @@ export default function TrainersListePage() {
                 <label className="block text-xs text-gray-500 mb-1">Type</label>
                 <select
                   value={editItem.type ?? "internal"}
-                  onChange={(e) => setEditItem((p) => p ? { ...p, type: e.target.value } : p)}
+                  onChange={(e) => setEditItem((p) => p ? { ...p, type: e.target.value as TrainerFull["type"] } : p)}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#374151]"
                 >
                   <option value="internal">Interne</option>

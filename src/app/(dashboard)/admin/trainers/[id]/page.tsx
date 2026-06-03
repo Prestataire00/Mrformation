@@ -235,25 +235,24 @@ export default function TrainerProfilePage() {
       bio: t.bio || "",
       hourly_rate: t.hourly_rate?.toString() || "",
       availability_notes: t.availability_notes || "",
-      siret: (t as any).siret || "",
-      nda: (t as any).nda || "",
-      contract_type: (t as any).contract_type || "",
-      status: (t as any).status || "active",
-      legal_status: (t as any).legal_status || "",
-      company_name: (t as any).company_name || "",
-      tva_number: (t as any).tva_number || "",
-      address: (t as any).address || "",
-      city: (t as any).city || "",
-      postal_code: (t as any).postal_code || "",
-      country: (t as any).country || "France",
-      iban: (t as any).iban || "",
-      bic: (t as any).bic || "",
-      bank_name: (t as any).bank_name || "",
+      siret: t.siret || "",
+      nda: t.nda || "",
+      contract_type: t.contract_type || "",
+      status: t.status || "active",
+      legal_status: t.legal_status || "",
+      company_name: t.company_name || "",
+      tva_number: t.tva_number || "",
+      address: t.address || "",
+      city: t.city || "",
+      postal_code: t.postal_code || "",
+      country: t.country || "France",
+      iban: t.iban || "",
+      bic: t.bic || "",
+      bank_name: t.bank_name || "",
     });
-    // CV fields
-    const raw = t as unknown as Record<string, unknown>;
-    setCvUrl(raw.cv_url as string | null);
-    setCvTextLength((raw.cv_text as string)?.length || 0);
+    // CV fields — Lot C audit BMAD : types explicites maintenant disponibles
+    setCvUrl(t.cv_url);
+    setCvTextLength(t.cv_text?.length || 0);
     setLoading(false);
   }, [id, entityId, router, supabase, toast]);
 
@@ -271,15 +270,17 @@ export default function TrainerProfilePage() {
       .order("start_date", { ascending: false });
 
     if (data) {
-      const mapped = (data as unknown[]).map((s: unknown) => {
-        const sess = s as Record<string, unknown>;
-        const enrollments = sess.enrollments as unknown[];
-        return {
-          ...sess,
-          _count: { enrollments: enrollments?.length ?? 0 },
-        };
-      });
-      setSessions(mapped as SessionWithTraining[]);
+      // Lot C audit BMAD : typage explicite du shape Supabase (session +
+      // joins training/enrollments) au lieu des cascades de `as unknown`.
+      type RawSession = Session & {
+        training?: { title: string } | null;
+        enrollments?: { id: string }[];
+      };
+      const mapped: SessionWithTraining[] = (data as RawSession[]).map((s) => ({
+        ...s,
+        _count: { enrollments: s.enrollments?.length ?? 0 },
+      })) as SessionWithTraining[];
+      setSessions(mapped);
     }
   }, [id, entityId, supabase]);
 
@@ -958,7 +959,7 @@ export default function TrainerProfilePage() {
               { key: "cv", label: "CV uploadé", ok: !!cvUrl },
               { key: "bio", label: "Biographie (50+ car.)", ok: !!trainer.bio && trainer.bio.length >= 50 },
               { key: "competencies", label: "≥ 3 compétences", ok: (trainer.competencies || []).length >= 3 },
-              { key: "nda", label: "NDA si externe", ok: trainer.type === "internal" || !!(trainer as unknown as Record<string, unknown>).nda },
+              { key: "nda", label: "NDA si externe", ok: trainer.type === "internal" || !!trainer.nda },
               { key: "email", label: "Email renseigné", ok: !!trainer.email },
             ];
             const passed = checks.filter(c => c.ok).length;

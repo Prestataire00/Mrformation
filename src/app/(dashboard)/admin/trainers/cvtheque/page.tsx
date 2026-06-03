@@ -51,7 +51,7 @@ const LEVEL_DOT_CLASSES: Record<string, string> = {
 
 function TrainerCard({ trainer }: { trainer: TrainerWithCompetencies }) {
   const initials = getInitials(trainer.first_name, trainer.last_name);
-  const hasCv = !!(trainer as unknown as Record<string, unknown>).cv_url;
+  const hasCv = !!trainer.cv_url;
 
   // Group competencies by level for display
   const expertComps = trainer.competencies.filter((c) => c.level === "expert");
@@ -289,7 +289,7 @@ export default function CVThequePage() {
 
     return trainers.filter((t) => {
       // Full-text search: name, bio, competency names, CV text
-      const cvText = ((t as unknown as Record<string, unknown>).cv_text as string) || "";
+      const cvText = t.cv_text || "";
       const matchSearch =
         q === "" ||
         `${t.first_name} ${t.last_name}`.toLowerCase().includes(q) ||

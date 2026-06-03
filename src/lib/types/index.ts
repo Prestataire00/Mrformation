@@ -134,6 +134,19 @@ export interface Learner {
 // ===== TRAINERS =====
 export type TrainerType = "internal" | "external";
 
+/**
+ * Statut juridique du formateur (CHECK constraint BDD —
+ * add_trainer_learner_fields.sql).
+ */
+export type TrainerLegalStatus =
+  | "auto_entrepreneur"
+  | "sasu"
+  | "eurl"
+  | "sarl"
+  | "portage_salarial"
+  | "salarie"
+  | "autre";
+
 export interface Trainer {
   id: string;
   profile_id: string | null;
@@ -155,7 +168,51 @@ export interface Trainer {
   nda: string | null;
   extranet_link: string | null;
   signature_url: string | null;
+  // Lot C audit BMAD : champs DB explicitement typés pour supprimer
+  // les 17× `as any` éparpillés (cf. migration-fix-schema.sql +
+  // add_trainer_learner_fields.sql).
+  contract_type: string | null;
+  status: string | null;
+  legal_status: TrainerLegalStatus | null;
+  company_name: string | null;
+  tva_number: string | null;
+  country: string | null;
+  iban: string | null;
+  bic: string | null;
+  bank_name: string | null;
+  // CV
+  cv_url: string | null;
+  cv_text: string | null;
+  cv_uploaded_at: string | null;
+  // AI enrichment (search-trainers / parse-cv)
+  ai_keywords: string[] | null;
+  ai_summary: string | null;
+  ai_target_audience: string[] | null;
+  certifications: unknown[] | null; // JSONB
+  education: unknown[] | null; // JSONB
+  languages: unknown[] | null; // JSONB
+  experience_years: number | null;
+  formation_domains: string[] | null;
+  linkedin_url: string | null;
+  seniority_level: string | null;
+  // Stats Qualiopi
+  total_sessions: number | null;
+  total_hours: number | null;
+  avg_satisfaction: number | null;
+  last_session_date: string | null;
+  qualiopi_ready: boolean | null;
+  qualiopi_missing: unknown[] | null; // JSONB
   competencies?: TrainerCompetency[];
+}
+
+/**
+ * Lot C audit BMAD : champs ajoutés au runtime par les routes AI
+ * (search-trainers / match-trainer), pas en BDD. Type séparé pour ne
+ * pas polluer `Trainer` avec des champs purement transients.
+ */
+export interface TrainerWithAIEnrichment extends Trainer {
+  relevance?: number;
+  why?: string;
 }
 
 export interface TrainerCompetency {
