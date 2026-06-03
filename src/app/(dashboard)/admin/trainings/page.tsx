@@ -6,6 +6,8 @@ import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
 import { useDebounce } from "@/hooks/useDebounce";
 import { cn, formatDate } from "@/lib/utils";
+import type { ProgramContent } from "@/lib/types";
+import { ProgramContentPreview } from "./_components/ProgramContentPreview";
 import { exportToCSV } from "@/lib/utils/export-csv";
 import { SkeletonCards } from "@/components/ui/skeleton-rows";
 import { Button } from "@/components/ui/button";
@@ -86,6 +88,10 @@ interface ProgramOption {
   description: string | null;
   objectives: string | null;
   duration_hours: number | null;
+  // Preview du contenu pédagogique dans le panel de création session.
+  // Permet à l'admin de voir ce que le programme apportera dans les
+  // documents générés (convention, programme PDF, attestations).
+  content: ProgramContent | null;
 }
 
 interface SessionFormData {
@@ -208,9 +214,12 @@ export default function FormationsPage() {
 
   const fetchPrograms = useCallback(async () => {
     if (!entityId) return;
+    // Inclut `content` pour la preview du contenu dans la pop-up de
+    // création de session (montre ce qui sera repris dans les documents
+    // générés : objectifs, modules, méta Qualiopi).
     const { data } = await supabase
       .from("programs")
-      .select("id, title, description, objectives, duration_hours")
+      .select("id, title, description, objectives, duration_hours, content")
       .eq("entity_id", entityId)
       .eq("is_active", true)
       .order("title");
@@ -479,6 +488,14 @@ export default function FormationsPage() {
               {saving ? "Création…" : "Créer"}
             </Button>
           </div>
+
+          {/* Preview du contenu programme — montre à l'admin ce qui sera repris
+              dans les documents générés (convention, programme PDF, attestations). */}
+          {formData.program_id && (() => {
+            const selected = programs.find((p) => p.id === formData.program_id);
+            if (!selected) return null;
+            return <ProgramContentPreview program={selected} />;
+          })()}
         </div>
       )}
 
