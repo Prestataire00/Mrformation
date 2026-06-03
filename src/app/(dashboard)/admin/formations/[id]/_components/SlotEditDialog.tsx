@@ -33,6 +33,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
 import { Loader2, Save, Trash2 } from "lucide-react";
+import { updateTimeSlot, deleteTimeSlot } from "@/lib/services/time-slots";
 import type { FormationTimeSlot } from "@/lib/types";
 
 interface Props {
@@ -144,58 +145,49 @@ export function SlotEditDialog({ slot, onClose, onRefresh, entityId }: Props) {
       return;
     }
     setErrors({});
+    if (!entityId) {
+      toast({ title: "Erreur", description: "Entité non chargée.", variant: "destructive" });
+      return;
+    }
     setSaving(true);
-    try {
-      const { error } = await supabase
-        .from("formation_time_slots")
-        .update({
-          title: form.title.trim() || null,
-          start_time: localInputToIso(form.start_time),
-          end_time: localInputToIso(form.end_time),
-          module_title: form.module_title.trim() || null,
-          module_objectives: form.module_objectives.trim() || null,
-          module_themes: form.module_themes.trim() || null,
-          module_exercises: form.module_exercises.trim() || null,
-        })
-        .eq("id", slot.id)
-        .eq("session_id", slot.session_id);
-      if (error) throw error;
+    // PLAN-4 audit BMAD : service centralisé (entity_id check + ServiceResult).
+    const result = await updateTimeSlot(supabase, slot.id, slot.session_id, entityId, {
+      title: form.title.trim() || null,
+      start_time: localInputToIso(form.start_time),
+      end_time: localInputToIso(form.end_time),
+      module_title: form.module_title.trim() || null,
+      module_objectives: form.module_objectives.trim() || null,
+      module_themes: form.module_themes.trim() || null,
+      module_exercises: form.module_exercises.trim() || null,
+    });
+    if (!result.ok) {
+      toast({ title: "Erreur", description: result.error.message, variant: "destructive" });
+    } else {
       toast({ title: "Créneau mis à jour" });
       await onRefresh();
       onClose();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Impossible de sauvegarder";
-      toast({ title: "Erreur", description: message, variant: "destructive" });
-    } finally {
-      setSaving(false);
     }
+    setSaving(false);
   };
 
   const handleDelete = async () => {
+    if (!entityId) {
+      toast({ title: "Erreur", description: "Entité non chargée.", variant: "destructive" });
+      return;
+    }
     setDeleting(true);
-    try {
-      const { error } = await supabase
-        .from("formation_time_slots")
-        .delete()
-        .eq("id", slot.id)
-        .eq("session_id", slot.session_id);
-      if (error) throw error;
+    // PLAN-4 audit BMAD : service centralisé.
+    const result = await deleteTimeSlot(supabase, slot.id, slot.session_id, entityId);
+    if (!result.ok) {
+      toast({ title: "Erreur", description: result.error.message, variant: "destructive" });
+    } else {
       toast({ title: "Créneau supprimé" });
       await onRefresh();
       onClose();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Impossible de supprimer";
-      toast({ title: "Erreur", description: message, variant: "destructive" });
-    } finally {
-      setDeleting(false);
-      setConfirmDelete(false);
     }
+    setDeleting(false);
+    setConfirmDelete(false);
   };
-
-  // entityId est passé en prop pour défense en profondeur (ressuscitée
-  // côté service au lot PLAN-4) — actuellement la sécurité repose sur
-  // session_id + RLS. On garde le filtre pour cohérence future.
-  void entityId;
 
   return (
     <Dialog open={slot !== null} onOpenChange={(open) => !open && onClose()}>

@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/client";
+import { useEntity } from "@/contexts/EntityContext";
 import { toUtcIsoFromParisTime } from "@/lib/timezone";
 import { CalendarPlus, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
+import { bulkCreateTimeSlots } from "@/lib/services/time-slots";
 import type { Session } from "@/lib/types";
 
 /**
@@ -85,6 +87,7 @@ interface Props {
 export function BulkSlotCreator({ formation, onRefresh }: Props) {
   const { toast } = useToast();
   const supabase = createClient();
+  const { entityId } = useEntity();
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<BulkSlotFormErrors>({});
 
@@ -186,28 +189,28 @@ export function BulkSlotCreator({ formation, onRefresh }: Props) {
       toast({ title: "Aucun créneau à créer", variant: "destructive" });
       return;
     }
+    if (!entityId) {
+      toast({ title: "Erreur", description: "Entité non chargée.", variant: "destructive" });
+      return;
+    }
 
     setLoading(true);
-    try {
-      const existing = formation.formation_time_slots?.length ?? 0;
-      const rows = previewSlots.map((s, i) => ({
-        session_id: formation.id,
-        title: s.title,
-        start_time: s.start_time,
-        end_time: s.end_time,
-        slot_order: existing + i + 1,
-      }));
-
-      const { error } = await supabase.from("formation_time_slots").insert(rows);
-      if (error) throw error;
-      toast({ title: `${previewSlots.length} créneau${previewSlots.length > 1 ? "x" : ""} créé${previewSlots.length > 1 ? "s" : ""}` });
+    // PLAN-4 audit BMAD : service centralisé (entity_id check + erreur ServiceResult).
+    const existing = formation.formation_time_slots?.length ?? 0;
+    const inputs = previewSlots.map((s, i) => ({
+      title: s.title,
+      start_time: s.start_time,
+      end_time: s.end_time,
+      slot_order: existing + i + 1,
+    }));
+    const result = await bulkCreateTimeSlots(supabase, formation.id, entityId, inputs);
+    if (!result.ok) {
+      toast({ title: "Erreur", description: result.error.message, variant: "destructive" });
+    } else {
+      toast({ title: `${result.count} créneau${result.count > 1 ? "x" : ""} créé${result.count > 1 ? "s" : ""}` });
       await onRefresh();
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Impossible de créer les créneaux";
-      toast({ title: "Erreur", description: message, variant: "destructive" });
-    } finally {
-      setLoading(false);
     }
+    setLoading(false);
   }
 
   return (

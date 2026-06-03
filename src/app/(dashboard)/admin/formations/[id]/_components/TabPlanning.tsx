@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
 import { resolveDisplayedHours } from "@/lib/utils/hours-source";
+import { deleteAllTimeSlotsForSession } from "@/lib/services/time-slots";
 import type { Session, FormationTimeSlot } from "@/lib/types";
 import { BulkSlotCreator } from "./BulkSlotCreator";
 import { SlotEditDialog } from "./SlotEditDialog";
@@ -106,21 +107,20 @@ export function TabPlanning({ formation, onRefresh }: Props) {
   };
 
   const handleDeleteAll = async () => {
+    if (!entityId) {
+      toast({ title: "Erreur", description: "Entité non chargée.", variant: "destructive" });
+      return;
+    }
     setDeleting(true);
-    try {
-      const { error } = await supabase
-        .from("formation_time_slots")
-        .delete()
-        .eq("session_id", formation.id);
-      if (error) throw error;
+    // PLAN-4 audit BMAD : service centralisé (entity_id check).
+    const result = await deleteAllTimeSlotsForSession(supabase, formation.id, entityId);
+    if (!result.ok) {
+      toast({ title: "Erreur", description: result.error.message, variant: "destructive" });
+    } else {
       toast({ title: "Tous les créneaux supprimés" });
       await onRefresh();
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Impossible de supprimer les créneaux";
-      toast({ title: "Erreur", description: message, variant: "destructive" });
-    } finally {
-      setDeleting(false);
     }
+    setDeleting(false);
   };
 
   const handleMarkPlanned = async () => {
