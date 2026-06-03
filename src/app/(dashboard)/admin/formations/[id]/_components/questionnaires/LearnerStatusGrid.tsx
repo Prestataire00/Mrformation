@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { CheckCircle2, Mail, Pause, Clock, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
+import { CheckCircle2, Mail, Pause, Clock, ChevronDown, ChevronUp, Loader2, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -42,7 +42,10 @@ const STATUS_COLORS: Record<LearnerStatus, string> = {
 
 export function LearnerStatusGrid({ sessionId, cells, onSelectAnswered, onRefresh }: LearnerStatusGridProps) {
   const { toast } = useToast();
-  const [expanded, setExpanded] = useState(cells.length >= 25);
+  // Grille ouverte par défaut sauf pour les très grosses sessions (> 50
+  // cellules = ex 10 apprenants × 5 questionnaires). Avant : ouverte seulement
+  // si >= 25, ce qui cachait les réponses pour la majorité des cas usuels.
+  const [expanded, setExpanded] = useState(cells.length <= 50);
   const [filter, setFilter] = useState<LearnerStatus | "all" | "pending">("all");
   const [relaunching, setRelaunching] = useState(false);
 
@@ -121,6 +124,10 @@ export function LearnerStatusGrid({ sessionId, cells, onSelectAnswered, onRefres
 
       {expanded && (
         <div className="border-t border-gray-200 p-4">
+          <p className="text-xs text-gray-500 mb-3 flex items-center gap-1.5">
+            <Eye className="h-3 w-3" />
+            Cliquez sur une cellule <span className="text-emerald-700 font-medium">verte (« Répondu »)</span> pour consulter les réponses de l&apos;apprenant.
+          </p>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -138,15 +145,27 @@ export function LearnerStatusGrid({ sessionId, cells, onSelectAnswered, onRefres
                     {questionnaires.map((q) => {
                       const cell = cellMap.get(`${l.id}::${q.id}`);
                       const status: LearnerStatus = cell?.status ?? "not_assigned";
+                      const clickable = status === "answered" && cell;
                       return (
                         <td key={q.id} className="text-center py-2 px-1">
                           <span
-                            onClick={() => { if (status === "answered" && cell) onSelectAnswered(cell); }}
-                            className={cn("inline-flex items-center gap-1 px-2 py-1 rounded text-xs", STATUS_COLORS[status])}
-                            title={status === "sent" && cell?.tokenExpiresAt ? `Token expire le ${new Date(cell.tokenExpiresAt).toLocaleDateString("fr-FR")}` : STATUS_LABELS[status]}
+                            onClick={() => { if (clickable) onSelectAnswered(cell); }}
+                            className={cn(
+                              "inline-flex items-center gap-1 px-2 py-1 rounded text-xs",
+                              STATUS_COLORS[status],
+                              clickable && "hover:underline",
+                            )}
+                            title={
+                              clickable
+                                ? "Cliquer pour voir les réponses de l'apprenant"
+                                : status === "sent" && cell?.tokenExpiresAt
+                                  ? `Token expire le ${new Date(cell.tokenExpiresAt).toLocaleDateString("fr-FR")}`
+                                  : STATUS_LABELS[status]
+                            }
                           >
                             {STATUS_ICONS[status]}
                             <span className="hidden sm:inline">{STATUS_LABELS[status]}</span>
+                            {clickable && <Eye className="h-3 w-3 inline ml-0.5 opacity-70" />}
                           </span>
                         </td>
                       );
