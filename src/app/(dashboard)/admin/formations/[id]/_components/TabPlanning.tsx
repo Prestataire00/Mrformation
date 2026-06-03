@@ -3,13 +3,14 @@
 import { useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
-import { ChevronLeft, ChevronRight, Trash2, CheckCircle, AlertTriangle, Clock } from "lucide-react";
+import { ChevronLeft, ChevronRight, Trash2, CheckCircle, AlertTriangle, Clock, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
 import { resolveDisplayedHours } from "@/lib/utils/hours-source";
-import { deleteAllTimeSlotsForSession } from "@/lib/services/time-slots";
+import { distributeModulesToSlots } from "@/lib/utils/auto-fill-modules";
+import { deleteAllTimeSlotsForSession, updateTimeSlot } from "@/lib/services/time-slots";
 import type { Session, FormationTimeSlot } from "@/lib/types";
 import { BulkSlotCreator } from "./BulkSlotCreator";
 import { SlotEditDialog } from "./SlotEditDialog";
@@ -37,6 +38,8 @@ export function TabPlanning({ formation, onRefresh }: Props) {
   const [saving, setSaving] = useState(false);
   // PLAN-1 audit BMAD : édition d'un créneau au clic sur le pavé du calendrier.
   const [editingSlot, setEditingSlot] = useState<FormationTimeSlot | null>(null);
+  // PLAN-5 audit BMAD : auto-fill modules depuis le programme.
+  const [autoFilling, setAutoFilling] = useState(false);
 
   const timeSlots = formation.formation_time_slots || [];
 
@@ -121,6 +124,67 @@ export function TabPlanning({ formation, onRefresh }: Props) {
       await onRefresh();
     }
     setDeleting(false);
+  };
+
+  // PLAN-5 audit BMAD : auto-fill des modules pédagogiques depuis le programme
+  // attaché à la session. Distribue program.content.modules[i] → slot[i] par
+  // ordre chronologique (helper distributeModulesToSlots).
+  const handleAutoFillModules = async () => {
+    if (!entityId) return;
+    const modules = formation.program?.content?.modules ?? [];
+    if (modules.length === 0) {
+      toast({
+        title: "Aucun module dans le programme",
+        description: "Complétez les modules du programme avant d'auto-remplir.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (timeSlots.length === 0) {
+      toast({
+        title: "Aucun créneau à remplir",
+        description: "Planifiez d'abord les créneaux ci-dessus.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const plan = distributeModulesToSlots(modules, timeSlots);
+
+    if (plan.slotsAlreadyFilled > 0) {
+      const ok = confirm(
+        `${plan.slotsAlreadyFilled} créneau(x) ont déjà un contenu pédagogique. Remplacer ?`,
+      );
+      if (!ok) return;
+    }
+
+    setAutoFilling(true);
+    let success = 0;
+    let failed = 0;
+    for (const a of plan.assignments) {
+      const result = await updateTimeSlot(supabase, a.slotId, formation.id, entityId, a.patch);
+      if (result.ok) success++;
+      else failed++;
+    }
+    setAutoFilling(false);
+
+    if (failed > 0) {
+      toast({
+        title: "Auto-remplissage partiel",
+        description: `${success} créneau(x) mis à jour, ${failed} en échec.`,
+        variant: "destructive",
+      });
+    } else {
+      const extras: string[] = [];
+      if (plan.emptySlots > 0) extras.push(`${plan.emptySlots} créneau(x) sans module`);
+      if (plan.unassignedModules > 0)
+        extras.push(`${plan.unassignedModules} module(s) ignoré(s) — manque de créneaux`);
+      toast({
+        title: `${success} créneau(x) auto-remplis`,
+        description: extras.length > 0 ? extras.join(" · ") : "Tout est aligné sur le programme.",
+      });
+    }
+    await onRefresh();
   };
 
   const handleMarkPlanned = async () => {
@@ -396,7 +460,24 @@ export function TabPlanning({ formation, onRefresh }: Props) {
 
       {/* Actions compactes */}
       {timeSlots.length > 0 && (
-        <div className="flex items-center gap-3 pt-2">
+        <div className="flex items-center gap-3 pt-2 flex-wrap">
+          {/* PLAN-5 audit BMAD : auto-fill modules depuis programme.
+              Visible uniquement si le programme attaché a au moins 1 module. */}
+          {(formation.program?.content?.modules?.length ?? 0) > 0 && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-xs h-7 gap-1 border-purple-300 text-purple-700 hover:bg-purple-50"
+              onClick={handleAutoFillModules}
+              disabled={autoFilling}
+              title="Distribue les modules du programme sur les créneaux par ordre chronologique"
+            >
+              <Sparkles className="h-3 w-3" />
+              {autoFilling
+                ? "Remplissage…"
+                : `Auto-remplir depuis le programme (${formation.program?.content?.modules?.length} module${(formation.program?.content?.modules?.length ?? 0) > 1 ? "s" : ""})`}
+            </Button>
+          )}
           {!formation.is_planned && (
             <Button size="sm" className="text-xs h-7 gap-1 bg-green-600 hover:bg-green-700 text-white" onClick={async () => {
               if (!confirm("Confirmer que la formation est planifiée ?")) return;
