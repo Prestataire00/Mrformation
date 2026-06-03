@@ -193,6 +193,9 @@ export default function CreateCoursePage() {
   }, []);
 
   // Fetch Gamma themes when course type includes presentations
+  // Quick win audit BMAD : catch silencieux remplacé par toast d'erreur.
+  // Avant : si l'API Gamma plantait, l'utilisateur croyait qu'il n'y avait
+  // simplement aucun thème.
   useEffect(() => {
     if (courseType !== "quiz" && gammaThemes.length === 0 && !themesLoading) {
       setThemesLoading(true);
@@ -201,10 +204,17 @@ export default function CreateCoursePage() {
         .then(({ data }) => {
           if (data) setGammaThemes(data);
         })
-        .catch(() => {})
+        .catch((err) => {
+          const message = err instanceof Error ? err.message : "Erreur réseau";
+          toast({
+            title: "Thèmes Gamma indisponibles",
+            description: message,
+            variant: "destructive",
+          });
+        })
         .finally(() => setThemesLoading(false));
     }
-  }, [courseType, gammaThemes.length, themesLoading]);
+  }, [courseType, gammaThemes.length, themesLoading, toast]);
 
   // ---------- Handlers ----------
 

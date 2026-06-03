@@ -142,30 +142,44 @@ export default function CourseEditorPage() {
 
   useEffect(() => { fetchCourse(); }, [fetchCourse]);
 
+  // EL-3 audit BMAD : try/catch + toast sur les 3 handlers du détail cours
+  // (avant : un rejet réseau bloquait le state loading sans message).
   const handleDelete = async () => {
     setDeleteLoading(true);
-    const res = await fetch(`/api/elearning/${courseId}`, { method: "DELETE" });
-    const { error } = await res.json();
-    if (error) {
-      toast({ title: "Erreur", description: error, variant: "destructive" });
-      setDeleteLoading(false);
-    } else {
+    try {
+      const res = await fetch(`/api/elearning/${courseId}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.error) {
+        toast({ title: "Erreur", description: data.error || `Erreur ${res.status}`, variant: "destructive" });
+        setDeleteLoading(false);
+        return;
+      }
       toast({ title: "Cours supprimé" });
       router.push("/admin/elearning");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erreur réseau";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
+      setDeleteLoading(false);
     }
   };
 
   const handleTogglePublish = async () => {
     setPublishLoading(true);
-    const res = await fetch(`/api/elearning/${courseId}/publish`, { method: "PATCH" });
-    const { data, error } = await res.json();
-    if (error) {
-      toast({ title: "Erreur", description: error, variant: "destructive" });
-    } else {
-      toast({ title: data.status === "published" ? "Cours publié" : "Cours dépublié" });
-      fetchCourse();
+    try {
+      const res = await fetch(`/api/elearning/${courseId}/publish`, { method: "PATCH" });
+      const { data, error } = await res.json().catch(() => ({}));
+      if (!res.ok || error) {
+        toast({ title: "Erreur", description: error || `Erreur ${res.status}`, variant: "destructive" });
+      } else {
+        toast({ title: data.status === "published" ? "Cours publié" : "Cours dépublié" });
+        fetchCourse();
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erreur réseau";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
+    } finally {
+      setPublishLoading(false);
     }
-    setPublishLoading(false);
   };
 
   const handleSaveDuration = async () => {
@@ -175,20 +189,26 @@ export default function CourseEditorPage() {
       return;
     }
     setSavingDuration(true);
-    const res = await fetch(`/api/elearning/${courseId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ estimated_duration_minutes: mins }),
-    });
-    const { error } = await res.json();
-    if (error) {
-      toast({ title: "Erreur", description: error, variant: "destructive" });
-    } else {
-      setCourse((prev) => prev ? { ...prev, estimated_duration_minutes: mins } : prev);
-      toast({ title: "Durée mise à jour" });
+    try {
+      const res = await fetch(`/api/elearning/${courseId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ estimated_duration_minutes: mins }),
+      });
+      const { error } = await res.json().catch(() => ({}));
+      if (!res.ok || error) {
+        toast({ title: "Erreur", description: error || `Erreur ${res.status}`, variant: "destructive" });
+      } else {
+        setCourse((prev) => prev ? { ...prev, estimated_duration_minutes: mins } : prev);
+        toast({ title: "Durée mise à jour" });
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erreur réseau";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
+    } finally {
+      setSavingDuration(false);
+      setEditingDuration(false);
     }
-    setSavingDuration(false);
-    setEditingDuration(false);
   };
 
   const handleGenerateGamma = async () => {

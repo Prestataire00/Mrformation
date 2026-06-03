@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
 import { cn, formatDate, truncate } from "@/lib/utils";
@@ -184,6 +185,7 @@ export default function ELearningPage() {
   const supabase = createClient();
   const { entityId } = useEntity();
   const { toast } = useToast();
+  const router = useRouter();
 
   const [courses, setCourses] = useState<Course[]>([]);
   const [aiCourses, setAiCourses] = useState<AICourse[]>([]);
@@ -367,10 +369,12 @@ export default function ELearningPage() {
     };
 
     if (editingCourse) {
+      // EL-2 audit BMAD : entity_id filter (defense in depth applicative).
       const { error } = await supabase
         .from("programs")
         .update(payload)
-        .eq("id", editingCourse.id);
+        .eq("id", editingCourse.id)
+        .eq("entity_id", entityId!);
 
       if (error) {
         toast({ title: "Erreur", description: error.message, variant: "destructive" });
@@ -408,10 +412,13 @@ export default function ELearningPage() {
       status: newStatus,
     };
 
+    // EL-2 audit BMAD : entity_id filter (defense in depth).
+    if (!entityId) return;
     const { error } = await supabase
       .from("programs")
       .update({ content: newContent, updated_at: new Date().toISOString() })
-      .eq("id", course.id);
+      .eq("id", course.id)
+      .eq("entity_id", entityId);
 
     if (error) {
       toast({ title: "Erreur", description: error.message, variant: "destructive" });
@@ -432,13 +439,15 @@ export default function ELearningPage() {
   };
 
   const handleDelete = async () => {
-    if (!courseToDelete) return;
+    if (!courseToDelete || !entityId) return;
     setDeleting(true);
 
+    // EL-2 audit BMAD : entity_id filter (defense in depth).
     const { error } = await supabase
       .from("programs")
       .delete()
-      .eq("id", courseToDelete.id);
+      .eq("id", courseToDelete.id)
+      .eq("entity_id", entityId);
 
     if (error) {
       toast({ title: "Erreur", description: error.message, variant: "destructive" });
@@ -841,14 +850,22 @@ export default function ELearningPage() {
               const isPublished = course.status === "published";
               const isProcessing = course.generation_status === "generating" || course.generation_status === "extracting";
               const isFailed = course.generation_status === "failed";
+              // Quick win audit BMAD : card cliquable seulement si le cours est
+              // navigable (pas en cours / pas échoué). Évite les nav vers une page
+              // qui ne sait rien rendre. Et router.push (SPA) au lieu de
+              // window.location.href (perte de state).
+              const isClickable = !isProcessing && !isFailed;
 
               return (
                 <Card
                   key={course.id}
-                  className="group hover:shadow-md transition-all duration-200 border-gray-200 cursor-pointer"
+                  className={cn(
+                    "group hover:shadow-md transition-all duration-200 border-gray-200",
+                    isClickable ? "cursor-pointer" : "cursor-not-allowed opacity-90",
+                  )}
                   onClick={() => {
-                    if (course.generation_status === "completed" || course.status === "draft" || course.status === "published") {
-                      window.location.href = `/admin/elearning/courses/${course.id}`;
+                    if (isClickable) {
+                      router.push(`/admin/elearning/courses/${course.id}`);
                     }
                   }}
                 >
