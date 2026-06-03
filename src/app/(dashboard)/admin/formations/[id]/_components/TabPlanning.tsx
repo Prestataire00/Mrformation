@@ -13,12 +13,17 @@ import { distributeModulesToSlots } from "@/lib/utils/auto-fill-modules";
 import { slotsToIcs } from "@/lib/utils/ics-export";
 import { generatePlanningPdf } from "@/lib/utils/planning-pdf";
 import { bulkCreateTimeSlots, deleteAllTimeSlotsForSession, updateTimeSlot } from "@/lib/services/time-slots";
-import { detectTrainerConflicts, type TrainerConflict } from "@/lib/services/trainer-conflicts";
+import {
+  detectTrainerConflicts,
+  fetchTrainerWeeklyLoad,
+  type TrainerConflict,
+  type TrainerLoad,
+} from "@/lib/services/trainer-conflicts";
 import type { Session, FormationTimeSlot } from "@/lib/types";
 import { BulkSlotCreator } from "./BulkSlotCreator";
 import { SlotEditDialog } from "./SlotEditDialog";
 
-type ViewMode = "month" | "week" | "day";
+type ViewMode = "month" | "week" | "day" | "trainers";
 
 const DAYS_FR = ["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."];
 const MONTHS_FR = [
@@ -45,6 +50,8 @@ export function TabPlanning({ formation, onRefresh }: Props) {
   const [autoFilling, setAutoFilling] = useState(false);
   // PLAN-6 audit BMAD : conflits formateurs cross-session.
   const [conflicts, setConflicts] = useState<TrainerConflict[]>([]);
+  // PLAN-9 audit BMAD : vue ressources — charge hebdo des formateurs.
+  const [trainerLoads, setTrainerLoads] = useState<TrainerLoad[]>([]);
 
   const timeSlots = formation.formation_time_slots || [];
 
@@ -81,6 +88,43 @@ export function TabPlanning({ formation, onRefresh }: Props) {
     () => new Set(conflicts.map((c) => c.slotId)),
     [conflicts],
   );
+
+  // PLAN-9 audit BMAD : début/fin de la semaine affichée (lundi → dimanche),
+  // utilisé par la vue "Par formateur" pour requêter les slots cross-session.
+  const weekRange = useMemo(() => {
+    const start = new Date(currentDate);
+    const dayOfWeek = start.getDay();
+    const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    start.setDate(start.getDate() - diff);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 7);
+    return { fromIso: start.toISOString(), toIso: end.toISOString(), start };
+  }, [currentDate]);
+
+  // PLAN-9 audit BMAD : charge la charge hebdo des formateurs quand on
+  // entre dans la vue "trainers" (ou quand la semaine ou les trainers
+  // changent en mode trainers).
+  useEffect(() => {
+    if (viewMode !== "trainers" || !entityId) return;
+    const trainerIds = (formation.formation_trainers ?? [])
+      .map((ft) => ft.trainer_id)
+      .filter((id): id is string => !!id);
+    if (trainerIds.length === 0) {
+      setTrainerLoads([]);
+      return;
+    }
+    (async () => {
+      const result = await fetchTrainerWeeklyLoad(supabase, {
+        entityId,
+        trainerIds,
+        currentSessionId: formation.id,
+        fromIso: weekRange.fromIso,
+        toIso: weekRange.toIso,
+      });
+      if (result.ok) setTrainerLoads(result.loads);
+    })();
+  }, [viewMode, entityId, formation.formation_trainers, formation.id, weekRange.fromIso, weekRange.toIso, supabase]);
 
   // PLAN-3 audit BMAD : cohérence heures planifiées vs prévues +
   // détection slots hors période de la session.
@@ -455,14 +499,20 @@ export function TabPlanning({ formation, onRefresh }: Props) {
               {MONTHS_FR[currentDate.getMonth()]} {currentDate.getFullYear()}
             </h3>
             <div className="flex gap-1">
-              {(["month", "week", "day"] as ViewMode[]).map((m) => (
+              {(["month", "week", "day", "trainers"] as ViewMode[]).map((m) => (
                 <Button
                   key={m}
                   size="sm"
                   variant={viewMode === m ? "default" : "outline"}
                   onClick={() => setViewMode(m)}
                 >
-                  {m === "month" ? "Mois" : m === "week" ? "Semaine" : "Jour"}
+                  {m === "month"
+                    ? "Mois"
+                    : m === "week"
+                      ? "Semaine"
+                      : m === "day"
+                        ? "Jour"
+                        : "Par formateur"}
                 </Button>
               ))}
             </div>
@@ -654,6 +704,95 @@ export function TabPlanning({ formation, onRefresh }: Props) {
                   );
                 })}
               </div>
+            </div>
+          )}
+
+          {/* PLAN-9 audit BMAD : vue par formateur — tableau formateur × jour
+              de la semaine. Inclut les slots cross-session pour spotter les
+              double-bookings et la disponibilité. */}
+          {viewMode === "trainers" && (
+            <div className="border rounded-lg overflow-hidden">
+              {trainerLoads.length === 0 ? (
+                <p className="p-6 text-center text-sm text-muted-foreground">
+                  Aucun formateur assigné à cette session — assignez-en dans l&apos;onglet Résumé.
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead className="bg-muted/50">
+                      <tr>
+                        <th className="text-left px-3 py-2 font-semibold text-gray-700 min-w-[160px]">Formateur</th>
+                        {DAYS_FR.map((d, i) => {
+                          const day = new Date(weekRange.start);
+                          day.setDate(day.getDate() + i);
+                          return (
+                            <th key={d} className={cn("text-left px-3 py-2 font-semibold text-gray-700 min-w-[140px]", isToday(day) && "bg-amber-50")}>
+                              {d} {day.getDate()}
+                            </th>
+                          );
+                        })}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {trainerLoads.map((load) => {
+                        const totalHours = load.slots.reduce(
+                          (acc, s) => acc + (new Date(s.end_time).getTime() - new Date(s.start_time).getTime()) / 3_600_000,
+                          0,
+                        );
+                        return (
+                          <tr key={load.trainerId}>
+                            <td className="px-3 py-2 align-top">
+                              <p className="font-medium">{load.name}</p>
+                              <p className="text-[10px] text-gray-400">{Math.round(totalHours * 10) / 10} h / semaine</p>
+                            </td>
+                            {DAYS_FR.map((_, i) => {
+                              const day = new Date(weekRange.start);
+                              day.setDate(day.getDate() + i);
+                              const dayStr = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
+                              const daySlots = load.slots.filter((s) => {
+                                const sd = new Date(s.start_time);
+                                const sdStr = `${sd.getFullYear()}-${String(sd.getMonth() + 1).padStart(2, "0")}-${String(sd.getDate()).padStart(2, "0")}`;
+                                return sdStr === dayStr;
+                              });
+                              return (
+                                <td key={i} className={cn("px-2 py-1 align-top", isToday(day) && "bg-amber-50/50")}>
+                                  {daySlots.length === 0 ? (
+                                    <span className="text-[10px] text-gray-300">—</span>
+                                  ) : (
+                                    daySlots.map((s) => (
+                                      <div
+                                        key={s.id}
+                                        className={cn(
+                                          "text-[10px] p-1 mb-0.5 rounded truncate",
+                                          s.isCurrentSession
+                                            ? "bg-primary/10 text-primary"
+                                            : "bg-orange-100 text-orange-800 border border-orange-200",
+                                        )}
+                                        title={`${new Date(s.start_time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })}–${new Date(s.end_time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })} | ${s.sessionTitle}`}
+                                      >
+                                        {new Date(s.start_time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })}{" "}
+                                        {s.isCurrentSession ? "" : "↪"}
+                                      </div>
+                                    ))
+                                  )}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  <p className="text-[10px] text-gray-400 px-3 py-2 border-t flex items-center gap-3">
+                    <span className="inline-flex items-center gap-1">
+                      <span className="inline-block h-2 w-2 rounded bg-primary/40" /> cette session
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <span className="inline-block h-2 w-2 rounded bg-orange-300" /> autre session (↪)
+                    </span>
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </CardContent>

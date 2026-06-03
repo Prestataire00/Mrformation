@@ -58,6 +58,124 @@ interface CurrentSlot extends TimeRange {
   id: string;
 }
 
+/**
+ * PLAN-9 audit BMAD — charge la "charge de travail" hebdomadaire de
+ * plusieurs formateurs sur une plage donnée, cross-session, même entité.
+ *
+ * Retourne par trainer la liste de ses slots qui chevauchent [from, to],
+ * avec un flag isCurrentSession pour distinguer les slots de la session
+ * courante vs les autres.
+ *
+ * Usage : vue "Par formateur" du TabPlanning. Permet de voir d'un coup
+ * d'œil quel formateur est saturé / disponible sur la semaine.
+ */
+export interface TrainerLoadSlot {
+  id: string;
+  sessionId: string;
+  sessionTitle: string;
+  start_time: string;
+  end_time: string;
+  isCurrentSession: boolean;
+}
+
+export interface TrainerLoad {
+  trainerId: string;
+  name: string;
+  slots: TrainerLoadSlot[];
+}
+
+export async function fetchTrainerWeeklyLoad(
+  supabase: SupabaseClient,
+  params: {
+    entityId: string;
+    trainerIds: string[];
+    currentSessionId: string;
+    fromIso: string;
+    toIso: string;
+  },
+): Promise<ServiceResult<{ loads: TrainerLoad[] }>> {
+  const { entityId, trainerIds, currentSessionId, fromIso, toIso } = params;
+
+  if (trainerIds.length === 0) {
+    return { ok: true, loads: [] };
+  }
+
+  // 1. Toutes les assignations formateurs sur ces trainers, même entité.
+  const { data: assignments, error: assignErr } = await supabase
+    .from("formation_trainers")
+    .select("trainer_id, session_id, trainer:trainers(first_name, last_name), sessions!inner(entity_id, title)")
+    .in("trainer_id", trainerIds)
+    .eq("sessions.entity_id", entityId);
+
+  if (assignErr) {
+    return { ok: false, error: { message: assignErr.message, code: assignErr.code } };
+  }
+
+  type AssignRow = {
+    trainer_id: string;
+    session_id: string;
+    trainer: { first_name: string | null; last_name: string | null } | null;
+    sessions: { entity_id: string; title: string | null } | null;
+  };
+  const rows = (assignments ?? []) as unknown as AssignRow[];
+
+  if (rows.length === 0) {
+    return { ok: true, loads: [] };
+  }
+
+  // Map : session_id → titre, et trainer_id → set de session_ids assignées.
+  const sessionTitleById = new Map<string, string>();
+  const sessionsByTrainer = new Map<string, Set<string>>();
+  const trainerNameById = new Map<string, string>();
+  for (const r of rows) {
+    sessionTitleById.set(r.session_id, r.sessions?.title || "Session sans titre");
+    const set = sessionsByTrainer.get(r.trainer_id) ?? new Set<string>();
+    set.add(r.session_id);
+    sessionsByTrainer.set(r.trainer_id, set);
+    const name = `${r.trainer?.first_name ?? ""} ${r.trainer?.last_name ?? ""}`.trim() || "Formateur";
+    trainerNameById.set(r.trainer_id, name);
+  }
+
+  // 2. Slots de toutes ces sessions qui chevauchent [fromIso, toIso].
+  const allSessionIds = Array.from(new Set(rows.map((r) => r.session_id)));
+  const { data: slots, error: slotsErr } = await supabase
+    .from("formation_time_slots")
+    .select("id, session_id, start_time, end_time")
+    .in("session_id", allSessionIds)
+    .gte("end_time", fromIso)
+    .lte("start_time", toIso);
+
+  if (slotsErr) {
+    return { ok: false, error: { message: slotsErr.message, code: slotsErr.code } };
+  }
+
+  type SlotRow = { id: string; session_id: string; start_time: string; end_time: string };
+  const slotRows = (slots ?? []) as unknown as SlotRow[];
+
+  // 3. Agrégation côté client : pour chaque trainer, filtrer les slots
+  // dont session_id est dans son set d'assignations.
+  const loads: TrainerLoad[] = trainerIds.map((tid) => {
+    const allowedSessions = sessionsByTrainer.get(tid) ?? new Set<string>();
+    const trainerSlots = slotRows
+      .filter((s) => allowedSessions.has(s.session_id))
+      .map((s) => ({
+        id: s.id,
+        sessionId: s.session_id,
+        sessionTitle: sessionTitleById.get(s.session_id) ?? "Session",
+        start_time: s.start_time,
+        end_time: s.end_time,
+        isCurrentSession: s.session_id === currentSessionId,
+      }));
+    return {
+      trainerId: tid,
+      name: trainerNameById.get(tid) ?? "Formateur",
+      slots: trainerSlots,
+    };
+  });
+
+  return { ok: true, loads };
+}
+
 export async function detectTrainerConflicts(
   supabase: SupabaseClient,
   params: {
