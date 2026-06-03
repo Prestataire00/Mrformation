@@ -3,6 +3,7 @@ import { formatDate } from "@/lib/utils";
 import { addDays, getISOWeek, startOfISOWeek, endOfISOWeek, format } from "date-fns";
 import type { Session, Client, Learner, Trainer } from "@/lib/types";
 import { getLearnersForCompany, getAmountForCompany } from "@/lib/utils/formation-companies";
+import { formatTimeParis, getHourParis } from "@/lib/utils/paris-time";
 
 export interface ResolveContext {
   session?: Session | null;
@@ -753,24 +754,14 @@ export function resolveVariables(content: string, data: ResolveContext): string 
     // pas au planning"). Pour un découpage matin/après-midi précis, l'admin
     // doit configurer `formation_time_slots` au niveau de la session.
     //
-    // ⚠ TZ : on utilise getHours()/getDate() (heure locale serveur, Paris
-    // en prod Netlify) plutôt que getUTCHours/getUTCDate, parce que :
-    // (a) le formulaire admin saisit l'heure en local et la convertit en
-    //     ISO Z (cf admin/sessions/page.tsx) → l'heure UTC stockée est
-    //     décalée de l'offset Paris ;
-    // (b) à l'affichage, on veut re-rendre l'heure telle que saisie côté
-    //     admin → repasser en local. Aligné avec formatDate (date-fns
-    //     locale FR) sur tout le builder.
+    // ⚠ TZ : on force le rendu en Europe/Paris via formatTimeParis
+    // (Intl.DateTimeFormat avec timeZone explicite) plutôt que getHours()
+    // qui suit le TZ runtime. En prod Netlify (UTC), un créneau saisi
+    // 09:00 Paris (= 07:00Z l'été) sortait "07:00" dans la convocation
+    // alors que le planning admin l'affiche correctement à "09:00".
     "{{dates_detail}}": (() => {
       const fmtDate = (iso: string) => formatDate(iso);
-      const fmtTime = (iso: string) => {
-        try {
-          const d = new Date(iso);
-          return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-        } catch {
-          return "--:--";
-        }
-      };
+      const fmtTime = (iso: string) => formatTimeParis(iso);
       const slots = (data.session as unknown as { formation_time_slots?: { start_time: string; end_time: string }[] })?.formation_time_slots;
       if (slots && slots.length > 0) {
         // Dédup par (start_time, end_time) pour éviter les créneaux dupliqués
@@ -1128,10 +1119,11 @@ export function resolveVariables(content: string, data: ResolveContext): string 
           const rows = weekSlots
             .map((slot) => {
               const slotStart = new Date(slot.start_time);
-              const slotEnd = new Date(slot.end_time);
-              const horaire = `${format(slotStart, "HH:mm")} - ${format(slotEnd, "HH:mm")}`;
-              // Label MATIN/APRES MIDI déduit de l'heure de début
-              const label = slotStart.getHours() < 13 ? "MATIN" : "APRES MIDI";
+              // ⚠ TZ : utilise formatTimeParis pour rendre en Europe/Paris
+              // indépendamment du TZ runtime (cf bug heures convocation).
+              const horaire = `${formatTimeParis(slot.start_time)} - ${formatTimeParis(slot.end_time)}`;
+              // Label MATIN/APRES MIDI déduit de l'heure de début Paris.
+              const label = getHourParis(slot.start_time) < 13 ? "MATIN" : "APRES MIDI";
               const apprenantsCell = learnersForTable
                 .map((e) => {
                   const l = e.learner!;
