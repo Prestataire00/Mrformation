@@ -7,7 +7,7 @@ import { useEntity } from "@/contexts/EntityContext";
 import { useDebounce } from "@/hooks/useDebounce";
 import { cn, formatDate } from "@/lib/utils";
 import type { ProgramContent } from "@/lib/types";
-import { ProgramContentPreview } from "./_components/ProgramContentPreview";
+import { ProgramContentPreview } from "@/components/programs/ProgramContentPreview";
 import { exportToCSV } from "@/lib/utils/export-csv";
 import { SkeletonCards } from "@/components/ui/skeleton-rows";
 import { Button } from "@/components/ui/button";

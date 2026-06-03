@@ -3,14 +3,15 @@
 /**
  * CONT-2 audit BMAD — Card "Programme pédagogique" dans TabResume.
  *
- * Avant : le programme attribué à une formation n'apparaissait QUE dans
- * TabProgramme (13ᵉ onglet). Un admin ouvrait la fiche, voyait TabResume
- * par défaut et ne savait pas que la formation venait d'un programme.
+ * Affiche le détail complet du contenu programme via le composant partagé
+ * ProgramContentPreview (le même utilisé dans la pop-up de création de
+ * session) — objectifs, modules, méta Qualiopi, certif. Permet à l'admin
+ * de comprendre ce qui sera repris dans les documents générés sans
+ * naviguer hors de la fiche.
  *
- * Cette section rend visible le lien dès l'arrivée :
- *  - Programme attaché → titre + 2 boutons (Détail / Export PDF)
- *  - Pas de programme → état vide + bouton "Assigner un programme" qui
- *    pointe vers le hub programmes pour en créer un et l'attacher.
+ * En complément : bouton "Exporter le programme PDF" spécifique à cette
+ * session (utilise sessionId, donc PDF aligné sur les dates/formateurs
+ * de la session concrète).
  */
 
 import { useState } from "react";
@@ -18,7 +19,8 @@ import Link from "next/link";
 import type { Session } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
-import { BookOpen, ExternalLink, Download, Loader2 } from "lucide-react";
+import { BookOpen, Download, Loader2 } from "lucide-react";
+import { ProgramContentPreview } from "@/components/programs/ProgramContentPreview";
 
 interface Props {
   formation: Session;
@@ -83,34 +85,22 @@ export function ResumeProgramme({ formation }: Props) {
 
   return (
     <div className="space-y-3">
-      <div>
-        <p className="text-sm font-medium text-gray-900">{program.title}</p>
-        {program.description && (
-          <p className="text-xs text-gray-500 mt-1 line-clamp-2">{program.description}</p>
+      <ProgramContentPreview program={program} />
+
+      <Button
+        size="sm"
+        variant="outline"
+        className="gap-1.5 w-full"
+        onClick={handleExportPdf}
+        disabled={exporting}
+      >
+        {exporting ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <Download className="h-3.5 w-3.5" />
         )}
-      </div>
-      <div className="flex flex-wrap gap-2">
-        <Button asChild size="sm" variant="outline" className="gap-1.5">
-          <Link href={`/admin/programs/${program.id}`}>
-            <ExternalLink className="h-3.5 w-3.5" />
-            Détails
-          </Link>
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          className="gap-1.5"
-          onClick={handleExportPdf}
-          disabled={exporting}
-        >
-          {exporting ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <Download className="h-3.5 w-3.5" />
-          )}
-          {exporting ? "Génération…" : "Exporter le programme (PDF)"}
-        </Button>
-      </div>
+        {exporting ? "Génération…" : "Exporter le programme (PDF)"}
+      </Button>
     </div>
   );
 }
