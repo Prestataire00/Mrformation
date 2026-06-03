@@ -8,6 +8,7 @@ import {
   toggleProgramActive,
   fetchProgramVersions,
   createProgramVersion,
+  countProgramReferences,
 } from "../programs";
 import type { ProgramContent } from "@/lib/types";
 
@@ -190,6 +191,66 @@ describe("fetchProgramVersions", () => {
     await fetchProgramVersions(client, "p-1");
     expect(builder._calls.eqFilters).toEqual([["program_id", "p-1"]]);
     expect(builder._calls.ordered).toEqual({ column: "version", ascending: false });
+  });
+});
+
+describe("countProgramReferences", () => {
+  it("retourne les comptes des 6 tables avec FK vers programs", async () => {
+    // Mock simplifié : chaque appel from() retourne un builder qui résout
+    // avec un count fixé. On vérifie surtout que les 6 tables sont sondées.
+    const fromCalls: string[] = [];
+    const client = {
+      from: vi.fn((table: string) => {
+        fromCalls.push(table);
+        return {
+          select() {
+            return this;
+          },
+          eq() {
+            return Promise.resolve({ count: 3, error: null });
+          },
+        };
+      }),
+    } as unknown as Parameters<typeof countProgramReferences>[0];
+
+    const result = await countProgramReferences(client, "p-1");
+    expect(result.ok).toBe(true);
+    expect(fromCalls).toEqual([
+      "trainings",
+      "sessions",
+      "elearning_courses",
+      "crm_quotes",
+      "program_enrollments",
+      "program_versions",
+    ]);
+    if (result.ok) {
+      expect(result.counts.trainings).toBe(3);
+      expect(result.counts.program_versions).toBe(3);
+    }
+  });
+
+  it("renvoie null pour une table inaccessible (RLS / table absente)", async () => {
+    const client = {
+      from: vi.fn((table: string) => ({
+        select() {
+          return this;
+        },
+        eq() {
+          // simule un échec pour une seule table
+          if (table === "crm_quotes") {
+            return Promise.resolve({ count: null, error: { message: "relation not found" } });
+          }
+          return Promise.resolve({ count: 0, error: null });
+        },
+      })),
+    } as unknown as Parameters<typeof countProgramReferences>[0];
+
+    const result = await countProgramReferences(client, "p-1");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.counts.crm_quotes).toBeNull();
+      expect(result.counts.trainings).toBe(0);
+    }
   });
 });
 

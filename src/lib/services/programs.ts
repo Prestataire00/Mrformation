@@ -186,6 +186,64 @@ export async function fetchProgramVersions(
 }
 
 /**
+ * Lot G audit BMAD : compte les références FK vers un programme avant
+ * suppression. Permet d'avertir l'utilisateur des effets cascade /
+ * SET NULL silencieux :
+ *   - trainings.program_id → SET NULL (perte du lien programme)
+ *   - sessions.program_id → SET NULL
+ *   - elearning_courses.program_id → SET NULL
+ *   - crm_quotes.program_id → SET NULL
+ *   - program_versions → CASCADE (suppression)
+ *   - program_enrollments → CASCADE (suppression)
+ *
+ * Le compte est `null` si la table est inaccessible (RLS / table absente
+ * dans certains déploiements legacy) — l'UI affiche alors "?" sans bloquer.
+ */
+export interface ProgramReferenceCounts {
+  trainings: number | null;
+  sessions: number | null;
+  elearning_courses: number | null;
+  crm_quotes: number | null;
+  program_enrollments: number | null;
+  program_versions: number | null;
+}
+
+export async function countProgramReferences(
+  supabase: SupabaseClient,
+  programId: string,
+): Promise<ServiceResult<{ counts: ProgramReferenceCounts }>> {
+  async function safeCount(table: string): Promise<number | null> {
+    const { count, error } = await supabase
+      .from(table)
+      .select("id", { count: "exact", head: true })
+      .eq("program_id", programId);
+    if (error) return null;
+    return count ?? 0;
+  }
+
+  const [trainings, sessions, elearning, quotes, enrollments, versions] = await Promise.all([
+    safeCount("trainings"),
+    safeCount("sessions"),
+    safeCount("elearning_courses"),
+    safeCount("crm_quotes"),
+    safeCount("program_enrollments"),
+    safeCount("program_versions"),
+  ]);
+
+  return {
+    ok: true,
+    counts: {
+      trainings,
+      sessions,
+      elearning_courses: elearning,
+      crm_quotes: quotes,
+      program_enrollments: enrollments,
+      program_versions: versions,
+    },
+  };
+}
+
+/**
  * Crée une nouvelle version : snapshot l'état actuel dans program_versions
  * puis incrémente le numéro de version sur le programme. Pas atomique côté
  * Postgres (pas de transaction côté supabase-js client), mais l'ordre

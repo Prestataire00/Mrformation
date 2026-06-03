@@ -11,6 +11,8 @@ import {
   toggleProgramActive as toggleProgramActiveService,
   fetchProgramVersions as fetchProgramVersionsService,
   createProgramVersion as createProgramVersionService,
+  countProgramReferences as countProgramReferencesService,
+  type ProgramReferenceCounts,
 } from "@/lib/services/programs";
 import {
   programHubFormSchema,
@@ -155,6 +157,11 @@ export default function ProgramsPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [programToDelete, setProgramToDelete] = useState<Program | null>(null);
   const [deleting, setDeleting] = useState(false);
+  // Lot G audit BMAD : compte les références FK pour avertir l'utilisateur
+  // avant un DELETE qui mettrait à NULL des trainings/sessions/devis ou
+  // cascade-supprimerait des program_enrollments / program_versions.
+  const [deleteCounts, setDeleteCounts] = useState<ProgramReferenceCounts | null>(null);
+  const [countsLoading, setCountsLoading] = useState(false);
 
   const fetchPrograms = useCallback(async () => {
     if (!entityId) return;
@@ -368,9 +375,36 @@ export default function ProgramsPage() {
     setCreatingVersion(false);
   };
 
-  const openDeleteDialog = (program: Program) => {
+  const openDeleteDialog = async (program: Program) => {
     setProgramToDelete(program);
     setDeleteDialogOpen(true);
+    // Lot G : pré-charge les comptes FK pour afficher l'avertissement.
+    setDeleteCounts(null);
+    setCountsLoading(true);
+    const result = await countProgramReferencesService(supabase, program.id);
+    if (result.ok) setDeleteCounts(result.counts);
+    setCountsLoading(false);
+  };
+
+  // Lot G : soft-delete = désactiver (is_active=false) au lieu de supprimer.
+  // Recommandé quand le programme a des trainings/sessions/devis liés.
+  const handleSoftDelete = async () => {
+    if (!programToDelete || !entityId) return;
+    setDeleting(true);
+    const result = await toggleProgramActiveService(supabase, programToDelete.id, entityId, false);
+    if (!result.ok) {
+      toast({ title: "Erreur", description: result.error.message, variant: "destructive" });
+    } else {
+      toast({
+        title: "Programme désactivé",
+        description: "Le programme reste accessible aux liens existants mais n'apparaît plus dans le catalogue.",
+      });
+      setDeleteDialogOpen(false);
+      setProgramToDelete(null);
+      setDeleteCounts(null);
+      await fetchPrograms();
+    }
+    setDeleting(false);
   };
 
   const handleDelete = async () => {
@@ -895,24 +929,79 @@ export default function ProgramsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
+      {/* Delete Confirmation Dialog — Lot G audit BMAD : compte des refs FK +
+          option soft-delete pour éviter cassures silencieuses en prod. */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Supprimer le programme</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-gray-600">
-            Supprimer{" "}
-            <strong>&quot;{programToDelete?.title}&quot;</strong> ? Cette action est
-            irréversible et supprimera toutes les versions archivées.
-          </p>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
+          <div className="space-y-3">
+            <p className="text-sm text-gray-600">
+              Programme : <strong>&quot;{programToDelete?.title}&quot;</strong>
+            </p>
+
+            {countsLoading ? (
+              <p className="text-xs text-gray-400">Analyse des données liées…</p>
+            ) : deleteCounts ? (
+              (() => {
+                const setNull = [
+                  ["formation(s)", deleteCounts.trainings],
+                  ["session(s)", deleteCounts.sessions],
+                  ["cours e-learning", deleteCounts.elearning_courses],
+                  ["devis CRM", deleteCounts.crm_quotes],
+                ] as const;
+                const cascade = [
+                  ["inscription(s) au parcours", deleteCounts.program_enrollments],
+                  ["version(s) archivée(s)", deleteCounts.program_versions],
+                ] as const;
+                const hasSetNull = setNull.some(([, c]) => (c ?? 0) > 0);
+                const hasCascade = cascade.some(([, c]) => (c ?? 0) > 0);
+                return (
+                  <div className="space-y-2">
+                    {hasSetNull && (
+                      <div className="border border-amber-200 bg-amber-50 rounded-md p-3 text-xs space-y-1">
+                        <p className="font-medium text-amber-900">⚠️ Liens qui seront cassés (silencieux) :</p>
+                        {setNull.filter(([, c]) => (c ?? 0) > 0).map(([label, c]) => (
+                          <p key={label} className="text-amber-800">• {c} {label} (le champ program_id sera mis à NULL)</p>
+                        ))}
+                      </div>
+                    )}
+                    {hasCascade && (
+                      <div className="border border-red-200 bg-red-50 rounded-md p-3 text-xs space-y-1">
+                        <p className="font-medium text-red-900">🗑️ Données qui seront supprimées définitivement :</p>
+                        {cascade.filter(([, c]) => (c ?? 0) > 0).map(([label, c]) => (
+                          <p key={label} className="text-red-800">• {c} {label}</p>
+                        ))}
+                      </div>
+                    )}
+                    {!hasSetNull && !hasCascade && (
+                      <p className="text-xs text-green-700">Aucune donnée liée — la suppression est sans risque.</p>
+                    )}
+                    {(hasSetNull || hasCascade) && (
+                      <p className="text-xs text-gray-600 mt-2">
+                        💡 Pour préserver les liens existants, préférez <strong>Désactiver</strong> (le programme reste visible pour les formations / devis déjà créés mais disparaît du catalogue).
+                      </p>
+                    )}
+                  </div>
+                );
+              })()
+            ) : null}
+          </div>
+          <DialogFooter className="flex-col-reverse sm:flex-row sm:justify-between gap-2">
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={deleting}>
               Annuler
             </Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
-              {deleting ? "Suppression..." : "Supprimer"}
-            </Button>
+            <div className="flex gap-2">
+              {programToDelete?.is_active && (
+                <Button variant="secondary" onClick={handleSoftDelete} disabled={deleting}>
+                  {deleting ? "..." : "Désactiver"}
+                </Button>
+              )}
+              <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
+                {deleting ? "Suppression..." : "Supprimer définitivement"}
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
