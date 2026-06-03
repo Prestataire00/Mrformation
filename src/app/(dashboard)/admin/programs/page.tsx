@@ -12,6 +12,11 @@ import {
   fetchProgramVersions as fetchProgramVersionsService,
   createProgramVersion as createProgramVersionService,
 } from "@/lib/services/programs";
+import {
+  programHubFormSchema,
+  getProgramFormErrors,
+  type ProgramHubFormInput,
+} from "@/lib/validations/program";
 import { cn, formatDate, formatDateTime, truncate } from "@/lib/utils";
 import { useEntity } from "@/contexts/EntityContext";
 import { Button } from "@/components/ui/button";
@@ -133,6 +138,8 @@ export default function ProgramsPage() {
   const [formData, setFormData] = useState<ProgramFormData>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [contentError, setContentError] = useState("");
+  // Lot C audit BMAD : erreurs Zod par champ pour affichage sous chaque Input.
+  const [formErrors, setFormErrors] = useState<Partial<Record<keyof ProgramHubFormInput, string>>>({});
 
   // BPF section toggle
   const [bpfSectionOpen, setBpfSectionOpen] = useState(false);
@@ -198,12 +205,14 @@ export default function ProgramsPage() {
     setEditingProgram(null);
     setFormData(emptyForm);
     setContentError("");
+    setFormErrors({});
     setBpfSectionOpen(false);
     setDialogOpen(true);
   };
 
   const openEditDialog = (program: Program) => {
     setEditingProgram(program);
+    setFormErrors({});
     setFormData({
       title: program.title,
       description: program.description || "",
@@ -224,15 +233,25 @@ export default function ProgramsPage() {
   };
 
   const handleSave = async () => {
-    if (!formData.title.trim()) {
-      toast({ title: "Titre requis", variant: "destructive" });
+    // Lot C audit BMAD : validation Zod centralisée — remplace les checks
+    // manuels (if !title.trim() / validateContent inline) par un parse strict.
+    const parsed = programHubFormSchema.safeParse(formData);
+    if (!parsed.success) {
+      const errors = getProgramFormErrors<ProgramHubFormInput>(parsed);
+      setFormErrors(errors);
+      // Surfacer aussi l'erreur content dans son state legacy pour l'affichage existant.
+      if (errors.content) setContentError(errors.content);
+      toast({
+        title: "Formulaire invalide",
+        description: Object.values(errors)[0] || "Vérifiez les champs en rouge.",
+        variant: "destructive",
+      });
       return;
     }
-    if (!validateContent(formData.content)) return;
+    setFormErrors({});
+    setContentError("");
 
     setSaving(true);
-    // Lot A audit BMAD : type ProgramContent (validateContent garantit la
-    // forme { modules: [...] } pré-parsing).
     const contentParsed = JSON.parse(formData.content) as ProgramContent;
 
     const payload = {
@@ -590,7 +609,9 @@ export default function ProgramsPage() {
                 value={formData.title}
                 onChange={(e) => setFormData((prev) => ({ ...prev, title: e.target.value }))}
                 placeholder="Ex: Management d'équipe niveau 1"
+                className={formErrors.title ? "border-red-400" : ""}
               />
+              {formErrors.title && <p className="text-xs text-red-600">{formErrors.title}</p>}
             </div>
 
             <div className="space-y-1.5">
