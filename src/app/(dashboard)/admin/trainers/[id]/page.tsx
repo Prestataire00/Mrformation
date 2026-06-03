@@ -127,6 +127,7 @@ export default function TrainerProfilePage() {
   const [uploading, setUploading] = useState(false);
   const [parsingCv, setParsingCv] = useState(false);
   const [cvUrl, setCvUrl] = useState<string | null>(null);
+  const [openingCv, setOpeningCv] = useState(false);
   const [cvTextLength, setCvTextLength] = useState(0);
 
   // Email
@@ -588,14 +589,42 @@ export default function TrainerProfilePage() {
                           : "Fichier enregistré"}
                       </p>
                     </div>
-                    <a
-                      href={cvUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="shrink-0 text-green-700 hover:text-green-900"
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        // Bucket privé désormais : fetch signed URL côté serveur
+                        // puis ouvrir dans un nouvel onglet. Rétrocompat avec
+                        // les anciens cv_url publics (la route détecte http(s)).
+                        setOpeningCv(true);
+                        try {
+                          const res = await fetch(`/api/trainers/${id}/cv/url`);
+                          const { url } = await res.json();
+                          if (url) {
+                            const popup = window.open(url, "_blank", "noopener,noreferrer");
+                            // Fallback popup blocker : si window.open bloqué,
+                            // toast avec lien cliquable explicite.
+                            if (!popup || popup.closed) {
+                              toast({
+                                title: "Cliquez ici pour ouvrir le CV",
+                                description: url,
+                              });
+                            }
+                          } else {
+                            throw new Error("URL non disponible");
+                          }
+                        } catch {
+                          toast({ title: "Erreur d'ouverture du CV", variant: "destructive" });
+                        } finally {
+                          setOpeningCv(false);
+                        }
+                      }}
+                      className="shrink-0 text-green-700 hover:text-green-900 disabled:opacity-50"
+                      title="Ouvrir le CV"
+                      aria-label="Ouvrir le CV"
+                      disabled={openingCv}
                     >
-                      <ExternalLink className="h-4 w-4" />
-                    </a>
+                      {openingCv ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />}
+                    </button>
                   </div>
                 ) : (
                   <div className="p-4 rounded-lg border-2 border-dashed border-gray-200 text-center">
@@ -1175,7 +1204,11 @@ function TrainerDocumentsSection({ trainerId, entityId }: { trainerId: string; e
     try {
       const ext = file.name.split(".").pop();
       const path = `trainer-docs/${trainerId}/${Date.now()}.${ext}`;
-      const { error: uploadErr } = await supabase.storage.from("documents").upload(path, file);
+      // Bug fix Loris "Erreur ajout document" : migration vers le bucket
+      // elearning-documents (privé) qui est celui utilisé par la route
+      // GET /api/trainer/documents/[id]/file-url pour les signed URLs.
+      // Avant : bucket "documents" inexistant ou mal configuré → upload échouait.
+      const { error: uploadErr } = await supabase.storage.from("elearning-documents").upload(path, file);
       if (uploadErr) throw uploadErr;
 
       const { error: insertErr } = await supabase.from("trainer_documents").insert({
@@ -1188,7 +1221,11 @@ function TrainerDocumentsSection({ trainerId, entityId }: { trainerId: string; e
         file_size: file.size,
         file_path: path,
       });
-      if (insertErr) throw insertErr;
+      if (insertErr) {
+        // Si insert table échoue, purger le fichier Storage uploadé pour éviter orphelin
+        await supabase.storage.from("elearning-documents").remove([path]);
+        throw insertErr;
+      }
 
       toast({ title: "Document ajouté" });
       fetchDocs();
@@ -1203,13 +1240,31 @@ function TrainerDocumentsSection({ trainerId, entityId }: { trainerId: string; e
 
   const handleDelete = async (docId: string) => {
     if (!confirm("Supprimer ce document ?")) return;
-    const { error } = await supabase.from("trainer_documents").delete().eq("id", docId);
+    // 1. Récupérer le file_path AVANT delete pour purger Storage
+    const { data: doc } = await supabase
+      .from("trainer_documents")
+      .select("file_path")
+      .eq("id", docId)
+      .eq("entity_id", entityId)
+      .single();
+    // 2. DELETE row avec défense en profondeur entity_id (en plus de la RLS).
+    const { error } = await supabase
+      .from("trainer_documents")
+      .delete()
+      .eq("id", docId)
+      .eq("entity_id", entityId);
     if (error) {
       toast({ title: "Erreur", description: error.message, variant: "destructive" });
-    } else {
-      toast({ title: "Document supprimé" });
-      fetchDocs();
+      return;
     }
+    // 3. Purger le fichier Storage (évite bloat orphelin — audit BMAD).
+    // Fallback sur les 2 buckets pour les anciens documents pré-fix.
+    if (doc?.file_path) {
+      await supabase.storage.from("elearning-documents").remove([doc.file_path]).catch(() => undefined);
+      await supabase.storage.from("documents").remove([doc.file_path]).catch(() => undefined);
+    }
+    toast({ title: "Document supprimé" });
+    fetchDocs();
   };
 
   const handleDownload = async (doc: { file_name: string; id: string }) => {

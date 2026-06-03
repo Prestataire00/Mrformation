@@ -56,15 +56,21 @@ export async function GET(
       }
     }
 
-    const { data, error } = await supabase.storage
-      .from("elearning-documents")
-      .createSignedUrl(doc.file_path, 3600);
-
-    if (error || !data?.signedUrl) {
+    // Fallback rétrocompat : essayer `elearning-documents` (nouveau bucket
+    // standard) puis `documents` (legacy bucket utilisé avant migration).
+    // Sans ça les anciens trainer_documents uploadés AVANT le fix bucket
+    // mismatch (audit BMAD #3) restaient illisibles → 404.
+    const trySign = async (bucket: string) => {
+      const { data, error } = await supabase.storage
+        .from(bucket)
+        .createSignedUrl(doc.file_path, 3600);
+      return error || !data?.signedUrl ? null : data.signedUrl;
+    };
+    const signedUrl = (await trySign("elearning-documents")) ?? (await trySign("documents"));
+    if (!signedUrl) {
       return NextResponse.json({ error: "Impossible de générer le lien" }, { status: 500 });
     }
-
-    return NextResponse.json({ url: data.signedUrl });
+    return NextResponse.json({ url: signedUrl });
   } catch (e) {
     return NextResponse.json(
       { error: sanitizeError(e, "trainer/documents/[id]/file-url GET") },
