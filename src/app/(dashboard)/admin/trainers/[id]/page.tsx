@@ -519,7 +519,7 @@ export default function TrainerProfilePage() {
 
       {/* Tabs */}
       <Tabs defaultValue="profil">
-        <TabsList className="grid grid-cols-3 w-full max-w-md">
+        <TabsList className="grid grid-cols-4 w-full max-w-lg">
           <TabsTrigger value="profil">Profil</TabsTrigger>
           <TabsTrigger value="documents">Documents</TabsTrigger>
           <TabsTrigger value="competences">Compétences</TabsTrigger>
@@ -721,7 +721,10 @@ export default function TrainerProfilePage() {
                           }
                           const data = await res.json();
                           toast({ title: "CV analysé", description: `${data.competencies?.length || 0} compétences, ${data.certifications?.length || 0} certifications détectées` });
-                          window.location.reload();
+                          // Lot D audit BMAD #D.5 : recharger les données via
+                          // fetchTrainer (états locaux préservés, plus rapide
+                          // que window.location.reload()).
+                          await fetchTrainer();
                         } catch (err) {
                           console.error("[parse-cv] error:", err);
                           toast({ title: "Erreur d'analyse", description: err instanceof Error ? err.message : "Analyse échouée", variant: "destructive" });

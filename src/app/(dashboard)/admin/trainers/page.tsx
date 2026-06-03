@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
 import { useDebounce } from "@/hooks/useDebounce";
@@ -35,8 +36,8 @@ import {
   UserCircle,
   Tag,
   X,
+  Award,
 } from "lucide-react";
-import Link from "next/link";
 
 type TrainerWithCompetencies = Trainer & { competencies: TrainerCompetency[] };
 
@@ -78,6 +79,7 @@ interface CompetencyInput {
 }
 
 export default function TrainersPage() {
+  const router = useRouter();
   const supabase = createClient();
   const { toast } = useToast();
   const { entityId } = useEntity();
@@ -416,7 +418,23 @@ export default function TrainersPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           {filtered.map((trainer) => (
-            <Link key={trainer.id} href={`/admin/trainers/${trainer.id}`} className="block group">
+            // Lot D audit BMAD #1 : refactor en div role="link" pour éviter
+            // HTML invalide (button-in-a). Navigation via router.push +
+            // keyboard accessibilité Enter/Space.
+            <div
+              key={trainer.id}
+              role="link"
+              tabIndex={0}
+              onClick={() => router.push(`/admin/trainers/${trainer.id}`)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  router.push(`/admin/trainers/${trainer.id}`);
+                }
+              }}
+              className="block group cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded-xl"
+              aria-label={`Voir la fiche de ${trainer.first_name} ${trainer.last_name}`}
+            >
               <div className="rounded-xl border bg-white p-4 hover:shadow-md hover:border-gray-300 transition-all h-full flex flex-col">
                 <div className="flex items-start gap-3 mb-3">
                   <Avatar className="h-12 w-12 flex-shrink-0">
@@ -438,8 +456,40 @@ export default function TrainersPage() {
                     {trainer.competencies.length > 3 && <span className="text-[10px] text-muted-foreground">+{trainer.competencies.length - 3}</span>}
                   </div>
                 )}
-                <div className="flex items-center gap-3 text-xs text-muted-foreground pt-3 mt-auto border-t">
+                <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground pt-3 mt-auto border-t">
                   <span className="flex items-center gap-1"><Briefcase className="h-3 w-3" /> {(trainer as any).total_sessions || 0} sessions</span>
+                  {/* Lot D audit BMAD #D.2 : câbler les handlers définis mais
+                      jamais rendus. preventDefault + stopPropagation pour
+                      empêcher le <Link> parent d'intercepter le clic. */}
+                  <div className="flex items-center gap-0.5">
+                    <button
+                      type="button"
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); openCompetencyDialog(trainer); }}
+                      className="p-1.5 rounded hover:bg-blue-50 text-gray-500 hover:text-blue-600 transition-colors"
+                      title="Gérer les compétences"
+                      aria-label={`Gérer les compétences de ${trainer.first_name} ${trainer.last_name}`}
+                    >
+                      <Award className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); openEditDialog(trainer); }}
+                      className="p-1.5 rounded hover:bg-amber-50 text-gray-500 hover:text-amber-600 transition-colors"
+                      title="Modifier le formateur"
+                      aria-label={`Modifier ${trainer.first_name} ${trainer.last_name}`}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); openDeleteDialog(trainer); }}
+                      className="p-1.5 rounded hover:bg-red-50 text-gray-500 hover:text-red-600 transition-colors"
+                      title="Supprimer le formateur"
+                      aria-label={`Supprimer ${trainer.first_name} ${trainer.last_name}`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 </div>
                 {(trainer as any).relevance && (
                   <div className="mt-2 bg-purple-50 border border-purple-100 rounded-md p-2">
@@ -448,7 +498,7 @@ export default function TrainersPage() {
                   </div>
                 )}
               </div>
-            </Link>
+            </div>
           ))}
         </div>
       )}
