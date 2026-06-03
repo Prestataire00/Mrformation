@@ -170,7 +170,7 @@ export async function POST(request: NextRequest) {
           session_updated_at: (session as { updated_at?: string }).updated_at ?? null,
           // Lot H : bump pour invalider les anciennes convocations en cache
           // (sans QR code) après l'ajout de l'image QR dans le header.
-          custom_variables: { template_version: "lot-h" },
+          custom_variables: { template_version: "lot-h-bis" },
         },
         options: {
           format: "A4",

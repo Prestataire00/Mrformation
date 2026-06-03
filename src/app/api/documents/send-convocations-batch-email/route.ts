@@ -162,7 +162,7 @@ export async function POST(request: NextRequest) {
             learner_id: learner.id,
             session_updated_at: (session as { updated_at?: string }).updated_at ?? null,
             // Lot H : bump pour invalider les anciennes convocations en cache.
-            custom_variables: { template_version: "lot-h" },
+            custom_variables: { template_version: "lot-h-bis" },
           },
           options: {
             format: "A4",

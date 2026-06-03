@@ -584,7 +584,7 @@ export async function POST(request: NextRequest) {
             session_updated_at: sessionUpdatedAt,
             // Lot F + H : bump pour invalider les anciens PDFs en cache
             // (sans agrégats / sans QR code convocation, cf. audits BMAD).
-            custom_variables: { cache_version: "lot-h-v1" },
+            custom_variables: { cache_version: "lot-h-bis-v1" },
           },
           options: {
             format: "A4",

@@ -576,7 +576,7 @@ export async function batchSendDocsEmail(
             session_updated_at: (session as { updated_at?: string }).updated_at ?? null,
             // Lot F + H : bump pour invalider les anciens PDFs en cache
             // (sans agrégats / sans QR code convocation).
-            custom_variables: { cache_version: "lot-h-v1" },
+            custom_variables: { cache_version: "lot-h-bis-v1" },
           },
           options: {
             format: "A4",

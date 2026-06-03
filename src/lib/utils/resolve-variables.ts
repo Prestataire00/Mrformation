@@ -773,7 +773,19 @@ export function resolveVariables(content: string, data: ResolveContext): string 
       };
       const slots = (data.session as unknown as { formation_time_slots?: { start_time: string; end_time: string }[] })?.formation_time_slots;
       if (slots && slots.length > 0) {
-        const items = slots
+        // Dédup par (start_time, end_time) pour éviter les créneaux dupliqués
+        // observés en prod (cf retour Loris : convocation listait 2× les mêmes
+        // dates). Cause racine probable : doublons en BDD côté formation_time_slots.
+        const seenKeys = new Set<string>();
+        const uniqueSlots = slots.filter((s) => {
+          const key = `${s.start_time}|${s.end_time}`;
+          if (seenKeys.has(key)) return false;
+          seenKeys.add(key);
+          return true;
+        });
+        // Tri par date de début croissante pour ordre cohérent
+        uniqueSlots.sort((a, b) => a.start_time.localeCompare(b.start_time));
+        const items = uniqueSlots
           .map((s) => `<li>De ${fmtDate(s.start_time)} - ${fmtTime(s.start_time)} À ${fmtDate(s.end_time)} - ${fmtTime(s.end_time)}</li>`)
           .join("");
         return `<ul class="dates-list">${items}</ul>`;

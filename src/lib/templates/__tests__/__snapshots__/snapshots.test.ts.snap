@@ -826,13 +826,19 @@ exports[`Templates snapshots — couvre F1/F2.x/F3 > convocation-apprenant : HTM
   .header .logo-cell { width: 110px; text-align: right; }
   .header .logo-cell img { max-width: 110px; max-height: 80px; object-fit: contain; }
 
-  /* Lot H : QR code connexion en haut à droite (le label "Scannez..."
-     est rendu dans le builder  pour disparaître
-     avec l'image si QR absent). */
-  .header .qr-cell {
-    flex: 0 0 90px;
-    text-align: right;
-    margin-left: 8px;
+  /* Lot H bis : QR code connexion DANS le bloc credentials
+     (l'emplacement header était "trop bizarre" — retour Loris).
+     Le bloc credentials est restructuré en 2 colonnes : tableau à
+     gauche, QR à droite, alignement vertical centré. */
+  .login-credentials .lc-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .login-credentials .lc-left { flex: 1 1 0; min-width: 0; }
+  .login-credentials .lc-qr {
+    flex: 0 0 80px;
+    text-align: center;
   }
 
   h1.title {
@@ -912,7 +918,6 @@ exports[`Templates snapshots — couvre F1/F2.x/F3 > convocation-apprenant : HTM
       </div>
     </div>
     <div class="logo-cell"><img src="https://example.com/logo.png" alt="Logo" style="max-height:60px;" /></div>
-    <div class="qr-cell"></div>
   </div>
 
   <h1 class="title">Convocation à la formation professionnelle</h1>
@@ -932,23 +937,28 @@ exports[`Templates snapshots — couvre F1/F2.x/F3 > convocation-apprenant : HTM
 
   <div class="login-credentials" style="border: 1.5px solid #2563EB; padding: 8px 10px; margin: 8px 0; border-radius: 6px; background: #f0f7ff;">
     <h3 style="margin: 0 0 4px; color: #1e3a8a; font-size: 11pt;">🔐 Accès à votre espace formation</h3>
-    <table style="width: 100%; margin: 2px 0; border-collapse: collapse; font-size: 9pt;">
-      <tr>
-        <td style="padding: 1px 6px; font-weight: 700; width: 28%;">URL :</td>
-        <td style="padding: 1px 6px;">https://mrformationcrm.netlify.app/login</td>
-      </tr>
-      <tr>
-        <td style="padding: 1px 6px; font-weight: 700;">Identifiant :</td>
-        <td style="padding: 1px 6px;">pierre.martin@example.com</td>
-      </tr>
-      <tr>
-        <td style="padding: 1px 6px; font-weight: 700;">Mot de passe :</td>
-        <td style="padding: 1px 6px; font-family: monospace; background: #fff; border: 1px dashed #cbd5e1; border-radius: 3px;">SnapPass2026</td>
-      </tr>
-    </table>
-    <p style="font-size: 8pt; color: #6b7280; margin: 4px 0 0;">
-      💡 Scannez le QR code en haut à droite pour accéder directement à la page de connexion. Vous pouvez modifier votre mot de passe via "Mot de passe oublié".
-    </p>
+    <div class="lc-row">
+      <div class="lc-left">
+        <table style="width: 100%; margin: 2px 0; border-collapse: collapse; font-size: 9pt;">
+          <tr>
+            <td style="padding: 1px 6px; font-weight: 700; width: 28%;">URL :</td>
+            <td style="padding: 1px 6px;">https://mrformationcrm.netlify.app/login</td>
+          </tr>
+          <tr>
+            <td style="padding: 1px 6px; font-weight: 700;">Identifiant :</td>
+            <td style="padding: 1px 6px;">pierre.martin@example.com</td>
+          </tr>
+          <tr>
+            <td style="padding: 1px 6px; font-weight: 700;">Mot de passe :</td>
+            <td style="padding: 1px 6px; font-family: monospace; background: #fff; border: 1px dashed #cbd5e1; border-radius: 3px;">SnapPass2026</td>
+          </tr>
+        </table>
+        <p style="font-size: 8pt; color: #6b7280; margin: 4px 0 0;">
+          💡 Scannez le QR code à droite pour accéder directement à la page de connexion. Vous pouvez modifier votre mot de passe via "Mot de passe oublié".
+        </p>
+      </div>
+      <div class="lc-qr"></div>
+    </div>
   </div>
   <p>En cas d'indisponibilité ou de renoncement, veuillez nous prévenir le plus rapidement possible.</p>
 
