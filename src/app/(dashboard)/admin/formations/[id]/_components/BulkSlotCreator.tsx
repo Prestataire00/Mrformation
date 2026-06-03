@@ -213,9 +213,52 @@ export function BulkSlotCreator({ formation, onRefresh }: Props) {
     setLoading(false);
   }
 
+  // PLAN-8 audit BMAD : presets horaires pour gagner du temps. Chaque
+  // preset modifie timeStart/timeEnd/withLunch en un clic — l'admin n'a
+  // plus besoin de retaper les horaires usuels.
+  const applyPreset = (preset: "journee-pause" | "journee" | "matin" | "aprem") => {
+    if (preset === "journee-pause") {
+      setTimeStart("09:00");
+      setTimeEnd("17:00");
+      setWithLunch(true);
+      setLunchStart("12:00");
+      setLunchEnd("13:00");
+    } else if (preset === "journee") {
+      setTimeStart("09:00");
+      setTimeEnd("17:00");
+      setWithLunch(false);
+    } else if (preset === "matin") {
+      setTimeStart("09:00");
+      setTimeEnd("12:00");
+      setWithLunch(false);
+    } else if (preset === "aprem") {
+      setTimeStart("14:00");
+      setTimeEnd("17:00");
+      setWithLunch(false);
+    }
+  };
+
   return (
     <div className="border rounded-lg p-4 bg-gray-50/50 space-y-4">
-      <h3 className="text-sm font-semibold text-gray-700">Planifier des créneaux en masse</h3>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <h3 className="text-sm font-semibold text-gray-700">Planifier des créneaux en masse</h3>
+        {/* PLAN-8 audit BMAD : presets horaires */}
+        <div className="flex items-center gap-1 flex-wrap">
+          <span className="text-[10px] text-gray-400 mr-1">Modèles :</span>
+          <Button size="sm" variant="outline" className="h-6 text-[11px] px-2" onClick={() => applyPreset("journee-pause")}>
+            Journée 9h–17h pause
+          </Button>
+          <Button size="sm" variant="outline" className="h-6 text-[11px] px-2" onClick={() => applyPreset("journee")}>
+            Journée 9h–17h
+          </Button>
+          <Button size="sm" variant="outline" className="h-6 text-[11px] px-2" onClick={() => applyPreset("matin")}>
+            Matin 9h–12h
+          </Button>
+          <Button size="sm" variant="outline" className="h-6 text-[11px] px-2" onClick={() => applyPreset("aprem")}>
+            Aprem 14h–17h
+          </Button>
+        </div>
+      </div>
 
       {/* Row 1: Title + Dates */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

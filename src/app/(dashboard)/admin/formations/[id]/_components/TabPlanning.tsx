@@ -12,7 +12,7 @@ import { resolveDisplayedHours } from "@/lib/utils/hours-source";
 import { distributeModulesToSlots } from "@/lib/utils/auto-fill-modules";
 import { slotsToIcs } from "@/lib/utils/ics-export";
 import { generatePlanningPdf } from "@/lib/utils/planning-pdf";
-import { deleteAllTimeSlotsForSession, updateTimeSlot } from "@/lib/services/time-slots";
+import { bulkCreateTimeSlots, deleteAllTimeSlotsForSession, updateTimeSlot } from "@/lib/services/time-slots";
 import { detectTrainerConflicts, type TrainerConflict } from "@/lib/services/trainer-conflicts";
 import type { Session, FormationTimeSlot } from "@/lib/types";
 import { BulkSlotCreator } from "./BulkSlotCreator";
@@ -163,6 +163,66 @@ export function TabPlanning({ formation, onRefresh }: Props) {
       await onRefresh();
     }
     setDeleting(false);
+  };
+
+  // PLAN-8 audit BMAD : duplique tous les slots du jour affiché vers
+  // une date cible (prompt) — n'écrase rien, ajoute en complément.
+  const handleDuplicateDay = async () => {
+    if (!entityId) return;
+    const slotsToday = getSlotsForDay(currentDate);
+    if (slotsToday.length === 0) {
+      toast({
+        title: "Rien à dupliquer",
+        description: "Aucun créneau ce jour. Basculez sur un jour avec des créneaux.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const todayStr = currentDate.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
+    const targetStr = window.prompt(
+      `Dupliquer les ${slotsToday.length} créneau(x) du ${todayStr} vers quelle date ? (YYYY-MM-DD)`,
+    );
+    if (!targetStr) return;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(targetStr)) {
+      toast({ title: "Date invalide", description: "Format attendu : YYYY-MM-DD", variant: "destructive" });
+      return;
+    }
+    const targetDate = new Date(targetStr + "T00:00:00");
+    if (isNaN(targetDate.getTime())) {
+      toast({ title: "Date invalide", variant: "destructive" });
+      return;
+    }
+    // Décale chaque slot du delta jour-cible − jour-source (en jours).
+    const dayMs = 24 * 60 * 60 * 1000;
+    const deltaDays = Math.round(
+      (Date.UTC(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate()) -
+        Date.UTC(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate())) /
+        dayMs,
+    );
+    const existing = timeSlots.length;
+    const inputs = slotsToday.map((s, i) => {
+      const newStart = new Date(new Date(s.start_time).getTime() + deltaDays * dayMs);
+      const newEnd = new Date(new Date(s.end_time).getTime() + deltaDays * dayMs);
+      return {
+        title: s.title,
+        start_time: newStart.toISOString(),
+        end_time: newEnd.toISOString(),
+        slot_order: existing + i + 1,
+        module_title: s.module_title,
+        module_objectives: s.module_objectives,
+        module_themes: s.module_themes,
+        module_exercises: s.module_exercises,
+      };
+    });
+    const result = await bulkCreateTimeSlots(supabase, formation.id, entityId, inputs);
+    if (!result.ok) {
+      toast({ title: "Erreur", description: result.error.message, variant: "destructive" });
+    } else {
+      toast({
+        title: `${result.count} créneau(x) dupliqué(s) vers le ${targetStr}`,
+      });
+      await onRefresh();
+    }
   };
 
   // PLAN-7 audit BMAD : exports planning (ICS pour calendriers, PDF récap).
@@ -536,8 +596,22 @@ export function TabPlanning({ formation, onRefresh }: Props) {
 
           {viewMode === "day" && (
             <div className="border rounded-lg">
-              <div className="p-3 bg-muted/50 font-medium text-center border-b">
-                {currentDate.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+              <div className="p-3 bg-muted/50 border-b flex items-center justify-between gap-2">
+                <span className="font-medium">
+                  {currentDate.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+                </span>
+                {/* PLAN-8 audit BMAD : duplication d'un jour vers une date cible */}
+                {getSlotsForDay(currentDate).length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-[11px] h-6 gap-1"
+                    onClick={handleDuplicateDay}
+                    title="Recopie les créneaux de ce jour vers une autre date (titre + horaires + contenu pédagogique)"
+                  >
+                    Dupliquer ce jour
+                  </Button>
+                )}
               </div>
               <div className="divide-y">
                 {Array.from({ length: 12 }, (_, i) => i + 8).map((hour) => {
