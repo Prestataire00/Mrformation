@@ -2,19 +2,15 @@
 
 import { useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
-import {
-  Calendar as CalendarIcon, ChevronLeft, ChevronRight, Trash2, CheckCircle, Loader2,
-} from "lucide-react";
+import { useEntity } from "@/contexts/EntityContext";
+import { ChevronLeft, ChevronRight, Trash2, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-} from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/use-toast";
-import { cn, formatDate } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import type { Session, FormationTimeSlot } from "@/lib/types";
 import { BulkSlotCreator } from "./BulkSlotCreator";
+import { SlotEditDialog } from "./SlotEditDialog";
 
 type ViewMode = "month" | "week" | "day";
 
@@ -32,10 +28,13 @@ interface Props {
 export function TabPlanning({ formation, onRefresh }: Props) {
   const { toast } = useToast();
   const supabase = createClient();
+  const { entityId } = useEntity();
   const [viewMode, setViewMode] = useState<ViewMode>("month");
   const [currentDate, setCurrentDate] = useState(new Date());
   const [deleting, setDeleting] = useState(false);
   const [saving, setSaving] = useState(false);
+  // PLAN-1 audit BMAD : édition d'un créneau au clic sur le pavé du calendrier.
+  const [editingSlot, setEditingSlot] = useState<FormationTimeSlot | null>(null);
 
   const timeSlots = formation.formation_time_slots || [];
 
@@ -195,14 +194,16 @@ export function TabPlanning({ formation, onRefresh }: Props) {
                         {day.getDate()}
                       </div>
                       {slots.map((slot) => (
-                        <div
+                        <button
                           key={slot.id}
-                          className="text-xs p-1 mb-0.5 bg-primary/10 text-primary rounded truncate"
-                          title={`${new Date(slot.start_time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })} - ${slot.title || formation.title}`}
+                          type="button"
+                          onClick={() => setEditingSlot(slot)}
+                          className="block w-full text-left text-xs p-1 mb-0.5 bg-primary/10 hover:bg-primary/20 text-primary rounded truncate transition-colors cursor-pointer"
+                          title={`${new Date(slot.start_time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })} - ${slot.title || formation.title} — cliquer pour éditer`}
                         >
                           {new Date(slot.start_time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })}{" "}
                           {slot.title || formation.title}
-                        </div>
+                        </button>
                       ))}
                     </div>
                   );
@@ -239,13 +240,19 @@ export function TabPlanning({ formation, onRefresh }: Props) {
                         const start = new Date(slot.start_time);
                         const end = new Date(slot.end_time);
                         return (
-                          <div key={slot.id} className="text-xs p-2 mb-1 bg-primary/10 text-primary rounded">
+                          <button
+                            key={slot.id}
+                            type="button"
+                            onClick={() => setEditingSlot(slot)}
+                            className="block w-full text-left text-xs p-2 mb-1 bg-primary/10 hover:bg-primary/20 text-primary rounded transition-colors cursor-pointer"
+                            title="Cliquer pour éditer ce créneau"
+                          >
                             <div className="font-medium">
                               {start.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })} -{" "}
                               {end.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })}
                             </div>
                             <div className="truncate">{slot.title || formation.title}</div>
-                          </div>
+                          </button>
                         );
                       })}
                     </div>
@@ -276,11 +283,17 @@ export function TabPlanning({ formation, onRefresh }: Props) {
                           const start = new Date(slot.start_time);
                           const end = new Date(slot.end_time);
                           return (
-                            <div key={slot.id} className="text-xs p-2 bg-primary/10 text-primary rounded">
+                            <button
+                              key={slot.id}
+                              type="button"
+                              onClick={() => setEditingSlot(slot)}
+                              className="block w-full text-left text-xs p-2 bg-primary/10 hover:bg-primary/20 text-primary rounded transition-colors cursor-pointer"
+                              title="Cliquer pour éditer ce créneau"
+                            >
                               {start.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })} -{" "}
                               {end.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })} |{" "}
                               {slot.title || formation.title}
-                            </div>
+                            </button>
                           );
                         })}
                       </div>
@@ -316,6 +329,14 @@ export function TabPlanning({ formation, onRefresh }: Props) {
           </Button>
         </div>
       )}
+
+      {/* PLAN-1 audit BMAD : dialog d'édition au clic sur un slot */}
+      <SlotEditDialog
+        slot={editingSlot}
+        onClose={() => setEditingSlot(null)}
+        onRefresh={onRefresh}
+        entityId={entityId}
+      />
     </div>
   );
 }
