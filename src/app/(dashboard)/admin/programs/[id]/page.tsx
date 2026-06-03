@@ -168,6 +168,8 @@ export default function ProgramDetailPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
+  // Lot F audit BMAD : export PDF via template + Puppeteer (remplace window.print()).
+  const [exportingPdf, setExportingPdf] = useState(false);
 
   // Session creation
   const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
@@ -656,18 +658,51 @@ export default function ProgramDetailPage() {
                 size="sm"
                 variant="outline"
                 className="rounded-full gap-2"
-                onClick={() => {
-                  const printWindow = window.open(window.location.href, '_blank');
-                  if (printWindow) {
-                    printWindow.addEventListener('afterprint', () => printWindow.close());
-                    printWindow.onload = () => {
-                      setTimeout(() => printWindow.print(), 500);
-                    };
+                disabled={exportingPdf}
+                onClick={async () => {
+                  if (!program) return;
+                  setExportingPdf(true);
+                  try {
+                    const res = await fetch("/api/documents/generate-program-preview", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ programId: program.id }),
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.error || `Erreur ${res.status}`);
+
+                    // Base64 → Blob → download (sans popup blocker).
+                    const byteChars = atob(data.pdfBase64);
+                    const bytes = new Uint8Array(byteChars.length);
+                    for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
+                    const blob = new Blob([bytes], { type: "application/pdf" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `programme-${program.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 60)}.pdf`;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+                    toast({ title: "Programme exporté", description: "PDF téléchargé." });
+                  } catch (err) {
+                    toast({
+                      title: "Export échoué",
+                      description: err instanceof Error ? err.message : "Erreur inconnue",
+                      variant: "destructive",
+                    });
+                  } finally {
+                    setExportingPdf(false);
                   }
                 }}
               >
-                <Download className="w-3.5 h-3.5" />
-                Exporter (PDF)
+                {exportingPdf ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Download className="w-3.5 h-3.5" />
+                )}
+                {exportingPdf ? "Génération…" : "Exporter (PDF)"}
               </Button>
               <Button
                 size="sm"
