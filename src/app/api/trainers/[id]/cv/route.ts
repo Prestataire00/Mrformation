@@ -3,6 +3,13 @@ import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import pdf from "pdf-parse";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
+import { logAudit } from "@/lib/audit-log";
+import {
+  TRAINER_CV_BUCKET,
+  detectCvBucket,
+  extractCvStorageCleanPath,
+  getTrainerCvStoragePath,
+} from "@/lib/trainers/cv-storage";
 
 interface RouteContext {
   params: { id: string };
@@ -89,24 +96,17 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     }
 
     // Storage : bucket privé existant `elearning-documents`, path
-    // déterministe pour upsert propre (pas de Date.now() → l'ancien CV
-    // est écrasé proprement par upsert: true).
+    // déterministe (cf src/lib/trainers/cv-storage.ts) pour upsert propre.
     const serviceSupabase = getServiceSupabase();
-    const storagePath = `trainers/cv/cv-${params.id}.pdf`;
+    const storagePath = getTrainerCvStoragePath(params.id);
 
     // Purger l'ancien CV s'il existe sur un autre path. Best-effort
-    // silencieux. Heuristique : si l'ancien cv_url contient "/documents/"
-    // c'est le bucket legacy `documents` (public), sinon `elearning-documents`.
-    // Cf audit BMAD #4 : la purge précédente visait le mauvais bucket.
+    // silencieux. Détection du bucket via helper testé pour éviter la
+    // purge sur le mauvais bucket (cf audit BMAD #4).
     const previousCvUrl = trainerRow.cv_url as string | null;
     if (previousCvUrl && previousCvUrl !== storagePath) {
-      const isLegacyDocumentsBucket =
-        previousCvUrl.includes("/documents/") ||
-        /^trainers\/cv-[^/]+\.pdf$/.test(previousCvUrl);
-      const legacyBucket = isLegacyDocumentsBucket ? "documents" : "elearning-documents";
-      const cleanPath = previousCvUrl
-        .replace(/^https?:\/\/[^/]+\/storage\/v1\/object\/(?:public|sign)\/[^/]+\//, "")
-        .replace(/\?.*$/, "");
+      const legacyBucket = detectCvBucket(previousCvUrl);
+      const cleanPath = extractCvStorageCleanPath(previousCvUrl);
       if (cleanPath) {
         await serviceSupabase.storage
           .from(legacyBucket)
@@ -116,7 +116,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     }
 
     const { error: uploadError } = await serviceSupabase.storage
-      .from("elearning-documents")
+      .from(TRAINER_CV_BUCKET)
       .upload(storagePath, buffer, {
         contentType: "application/pdf",
         upsert: true,
@@ -141,6 +141,17 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
         { status: 500 }
       );
     }
+
+    // Lot H audit BMAD : trace audit log (CV upload = action sensible RGPD).
+    logAudit({
+      supabase,
+      entityId: trainerRow.entity_id as string,
+      userId: user.id,
+      action: "update",
+      resourceType: "trainers.cv",
+      resourceId: params.id,
+      details: { cv_text_length: cvText.length, file_size: file.size },
+    });
 
     return NextResponse.json({
       cv_url: storagePath,

@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
+import { logAudit } from "@/lib/audit-log";
 
 const VALID_SCOPES = ["session", "admin"] as const;
 const SESSION_DOC_TYPES = ["feuille_emargement", "evaluation", "compte_rendu", "bilan_pedagogique", "autre"];
@@ -103,6 +104,18 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) return NextResponse.json({ error: sanitizeDbError(error, "trainer/documents POST") }, { status: 500 });
+
+    if (trainer.entity_id) {
+      logAudit({
+        supabase,
+        entityId: trainer.entity_id,
+        userId: user.id,
+        action: "create",
+        resourceType: "trainer_documents",
+        resourceId: doc.id,
+        details: { scope, doc_type, file_name },
+      });
+    }
 
     return NextResponse.json({ data: doc }, { status: 201 });
   } catch (e) {
