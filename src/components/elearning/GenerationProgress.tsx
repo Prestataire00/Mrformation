@@ -3,7 +3,19 @@
 import { useState, useEffect, useRef } from "react";
 import { CheckCircle2, Loader2, AlertCircle, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { GenerationProgressEvent } from "@/lib/types/elearning";
+
+/**
+ * Phase B.2 fix 504 : orchestre les 3 routes split au lieu du SSE
+ * monolithique qui timeoutait Netlify Functions.
+ *
+ *   1. POST /generate/outline → chapter_ids[]
+ *   2. POST /generate/chapter { chapter_id } × N (en série)
+ *   3. POST /generate/quiz
+ *
+ * Chaque appel reste sous timeout (60s par route via maxDuration, mais
+ * réellement 3-15s). Examen final + Gamma sont temporairement skippés
+ * (Phase A.2 + B.3 à venir).
+ */
 
 interface GenerationProgressProps {
   courseId: string;
@@ -27,21 +39,22 @@ export default function GenerationProgress({
   const [progress, setProgress] = useState(0);
   const [currentMessage, setCurrentMessage] = useState("Initialisation...");
 
-  // Build initial steps based on course type
+  // Phase B.2 : steps reflètent le pipeline split (3 appels courts au lieu
+  // du SSE monolithique). Gamma + examen final sont marqués "à venir".
   const buildInitialSteps = (): StepInfo[] => {
     const base: StepInfo[] = [
       { label: "Extraction du texte", status: "done" },
-      { label: "Analyse du document", status: "active" },
-      { label: "Structuration des chapitres + enrichissement", status: "pending" },
+      { label: "Plan du cours", status: "active" },
+      { label: "Génération des chapitres", status: "pending" },
     ];
     if (courseType !== "presentation") {
-      base.push({ label: "Quiz interactifs & flashcards par chapitre", status: "pending" });
+      base.push({ label: "Quiz interactifs & flashcards", status: "pending" });
     }
     if (courseType !== "quiz") {
-      base.push({ label: "Présentations Gamma par chapitre", status: "pending" });
+      base.push({ label: "Présentations Gamma (non disponible — fix 504)", status: "pending" });
     }
     if (courseType !== "presentation") {
-      base.push({ label: "Examen final (banque de questions)", status: "pending" });
+      base.push({ label: "Examen final (non disponible — fix 504)", status: "pending" });
     }
     return base;
   };
@@ -57,115 +70,78 @@ export default function GenerationProgress({
     const controller = new AbortController();
     abortRef.current = controller;
 
+    function patchStep(label: string, patch: Partial<StepInfo>) {
+      setSteps((prev) =>
+        prev.map((s) => (s.label.toLowerCase().includes(label.toLowerCase()) ? { ...s, ...patch } : s)),
+      );
+    }
+
     async function startGeneration() {
       try {
-        const response = await fetch(`/api/elearning/${courseId}/generate`, {
+        // 1. Outline (3-8s)
+        setCurrentMessage("Génération du plan…");
+        setProgress(5);
+        patchStep("plan", { status: "active", message: "Analyse du document…" });
+
+        const outRes = await fetch(`/api/elearning/${courseId}/generate/outline`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
           signal: controller.signal,
         });
-
-        if (!response.body) {
-          onError("Pas de flux de réponse");
-          return;
+        const outBody = await outRes.json().catch(() => ({}));
+        if (!outRes.ok || !outBody.ok) {
+          throw new Error(outBody.error || `Plan échoué (${outRes.status})`);
         }
+        const chapterIds: string[] = outBody.chapter_ids ?? [];
+        if (chapterIds.length === 0) {
+          throw new Error("Aucun chapitre planifié par l'IA");
+        }
+        patchStep("plan", { status: "done", message: `${chapterIds.length} chapitres planifiés` });
+        patchStep("chapitres", { status: "active" });
+        setProgress(15);
 
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
+        // 2. Chapitres en série (5-12s × N)
+        for (let i = 0; i < chapterIds.length; i++) {
+          const pct = 15 + Math.round(((i + 1) / chapterIds.length) * 60);
+          setCurrentMessage(`Chapitre ${i + 1}/${chapterIds.length}…`);
+          patchStep("chapitres", { status: "active", message: `Chapitre ${i + 1}/${chapterIds.length}…` });
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          const text = decoder.decode(value);
-          const lines = text.split("\n\n").filter(Boolean);
-
-          for (const line of lines) {
-            if (!line.startsWith("data: ")) continue;
-            try {
-              const event: GenerationProgressEvent = JSON.parse(line.slice(6));
-
-              setProgress(event.progress);
-              if (event.message) setCurrentMessage(event.message);
-
-              if (event.step === "error") {
-                onError(event.message || "Erreur de génération");
-                return;
-              }
-
-              if (event.step === "complete") {
-                setSteps((prev) =>
-                  prev.map((s) => ({ ...s, status: "done" as const }))
-                );
-                setProgress(100);
-                setCurrentMessage("Cours généré avec succès !");
-                setTimeout(() => onComplete(), 1500);
-                return;
-              }
-
-              // Update steps based on event (find step by label prefix, not hard-coded index)
-              setSteps((prev) => {
-                const updated = [...prev];
-                const findStep = (keyword: string) => updated.findIndex((s) => s.label.toLowerCase().includes(keyword));
-                const analyzeIdx = findStep("analyse");
-                const chaptersIdx = findStep("structuration");
-                const quizIdx = findStep("quiz interactifs");
-                const gammaIdx = findStep("gamma");
-                const finalIdx = findStep("examen final");
-
-                if (event.step === "analyzing" || event.step === "outline_done") {
-                  if (analyzeIdx >= 0) {
-                    updated[analyzeIdx] = { ...updated[analyzeIdx], status: event.step === "outline_done" ? "done" : "active", message: event.message };
-                  }
-                  if (event.step === "outline_done" && chaptersIdx >= 0) {
-                    updated[chaptersIdx] = { ...updated[chaptersIdx], status: "active" };
-                  }
-                }
-                else if (event.step.startsWith("chapter_")) {
-                  if (chaptersIdx >= 0) updated[chaptersIdx] = { ...updated[chaptersIdx], status: "active", message: event.message };
-                }
-                else if (event.step === "quizzes" || event.step === "quizzes_done" || event.step === "quizzes_skipped") {
-                  if (chaptersIdx >= 0) updated[chaptersIdx] = { ...updated[chaptersIdx], status: "done" };
-                  if (quizIdx >= 0) {
-                    updated[quizIdx] = {
-                      ...updated[quizIdx],
-                      status: event.step === "quizzes" ? "active" : "done",
-                      message: event.message,
-                    };
-                  }
-                }
-                else if (event.step.startsWith("gamma")) {
-                  // Mark previous step done
-                  if (quizIdx >= 0) updated[quizIdx] = { ...updated[quizIdx], status: "done" };
-                  else if (chaptersIdx >= 0) updated[chaptersIdx] = { ...updated[chaptersIdx], status: "done" };
-                  if (gammaIdx >= 0) {
-                    updated[gammaIdx] = {
-                      ...updated[gammaIdx],
-                      status: event.step === "gamma_done" || event.step === "gamma_skipped" ? "done" : "active",
-                      message: event.message,
-                    };
-                  }
-                }
-                else if (event.step.startsWith("final_exam")) {
-                  // Mark previous step done
-                  if (gammaIdx >= 0) updated[gammaIdx] = { ...updated[gammaIdx], status: "done" };
-                  else if (quizIdx >= 0) updated[quizIdx] = { ...updated[quizIdx], status: "done" };
-                  else if (chaptersIdx >= 0) updated[chaptersIdx] = { ...updated[chaptersIdx], status: "done" };
-                  if (finalIdx >= 0) {
-                    updated[finalIdx] = {
-                      ...updated[finalIdx],
-                      status: event.step === "final_exam_done" || event.step === "final_exam_skipped" ? "done" : "active",
-                      message: event.message,
-                    };
-                  }
-                }
-                return updated;
-              });
-            } catch {
-              // ignore parse errors
-            }
+          const chRes = await fetch(`/api/elearning/${courseId}/generate/chapter`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ chapter_id: chapterIds[i] }),
+            signal: controller.signal,
+          });
+          const chBody = await chRes.json().catch(() => ({}));
+          if (!chRes.ok || !chBody.ok) {
+            throw new Error(chBody.error || `Chapitre ${i + 1} échoué (${chRes.status})`);
           }
+          setProgress(pct);
         }
+        patchStep("chapitres", { status: "done", message: `${chapterIds.length} chapitres générés` });
+
+        // 3. Quiz + flashcards (8-15s) — si applicable
+        if (courseType !== "presentation") {
+          setCurrentMessage("Génération des quiz et flashcards…");
+          patchStep("quiz interactifs", { status: "active" });
+          setProgress(80);
+
+          const qRes = await fetch(`/api/elearning/${courseId}/generate/quiz`, {
+            method: "POST",
+            signal: controller.signal,
+          });
+          const qBody = await qRes.json().catch(() => ({}));
+          if (!qRes.ok || !qBody.ok) {
+            throw new Error(qBody.error || `Quiz échoué (${qRes.status})`);
+          }
+          patchStep("quiz interactifs", {
+            status: "done",
+            message: `${qBody.quiz_count ?? 0} questions, ${qBody.flashcards_count ?? 0} flashcards`,
+          });
+        }
+
+        setProgress(100);
+        setCurrentMessage("Cours généré ! (Examen final + Gamma à compléter manuellement pour l'instant)");
+        setTimeout(() => onComplete(), 1500);
       } catch (err) {
         if ((err as Error).name !== "AbortError") {
           onError((err as Error).message || "Erreur de connexion");
