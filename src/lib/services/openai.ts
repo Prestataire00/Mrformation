@@ -217,7 +217,10 @@ export async function generateCourseOutline(
   documentText: string,
   maxChapters: number = 6
 ): Promise<CourseOutline> {
-  const truncated = documentText.substring(0, 100000);
+  // Fix 504 Netlify Pro (26s) : 100k → 60k chars suffisent pour générer
+  // un outline pertinent (titres + summaries court). Réduit le temps de
+  // processing prompt d'OpenAI.
+  const truncated = documentText.substring(0, 60000);
 
   const result = await chatCompletion(
     [
@@ -279,7 +282,10 @@ export async function generateChapterContent(
   courseTitle: string,
   courseObjectives: string
 ): Promise<GeneratedChapterContent> {
-  const truncatedSource = relevantSourceText.substring(0, 80000);
+  // Fix 504 Netlify Pro (26s) : on réduit le contexte source de 80k → 50k
+  // chars pour diminuer le temps de processing prompt par OpenAI sans
+  // sacrifier la qualité (50k chars = ~12k tokens, largement assez).
+  const truncatedSource = relevantSourceText.substring(0, 50000);
 
   const result = await chatCompletion(
     [
@@ -326,10 +332,14 @@ Règles :
 - Utiliser un ton professionnel mais accessible
 - Structurer en 2-5 sections par chapitre
 - Contenu HTML simple et propre (pas de classes CSS, pas de scripts)
-- Contenu riche et détaillé (au moins 300 mots par section)`,
+- Contenu détaillé (200-300 mots par section, pas plus)`,
       },
     ],
-    { model: "gpt-4o-mini", temperature: 0.5, max_tokens: 4000 }
+    // Fix 504 Netlify Pro (26s) : max_tokens 4000 → 2500 réduit le temps
+    // de génération d'environ 35% sans casser la qualité (chapitres
+    // toujours riches mais moins verbeux). 2500 tokens ≈ 1800 mots ≈
+    // 3-5 sections de 200-300 mots.
+    { model: "gpt-4o-mini", temperature: 0.5, max_tokens: 2500 }
   );
 
   return parseJsonResponse<GeneratedChapterContent>(result.content);
@@ -400,7 +410,11 @@ Règles :
 - Explications claires pour chaque réponse`,
       },
     ],
-    { model: "gpt-4o-mini", temperature: 0.4, max_tokens: 4000 }
+    // Fix 504 Netlify Pro : 4000 → 3000 tokens. La génération de N quiz +
+    // N flashcards en 1 call peut être longue ; on reste à 3000 (suffit
+    // pour ~10 questions + ~20 flashcards), si plus de chapitres on
+    // peut splitter en sous-lots côté client.
+    { model: "gpt-4o-mini", temperature: 0.4, max_tokens: 3000 }
   );
 
   return parseJsonResponse<GeneratedQuizData>(result.content);
