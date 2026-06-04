@@ -19,28 +19,28 @@ export async function GET(
     // (id+title) est chargé via 2e query séparée plus bas pour rester
     // robuste — l'embed PostgREST programs(...) plantait en prod sur
     // certains cours fraîchement générés ("Cours non trouvé").
-    // Hotfix : generation_progress est fetché séparément (best-effort, plus bas)
-    // car PostgREST peut avoir un schema cache stale juste après la migration
-    // qui ajoute la colonne. Inclure une colonne fraîchement créée dans un
-    // SELECT cause un 400 qui retombe en 404 côté API.
+    // Notes sur les colonnes retirées des SELECT shallow :
+    // - program_id : la migration link-program-training-elearning.sql qui
+    //   ajoute cette colonne à elearning_courses N'A PAS été exécutée en prod
+    //   → un SELECT explicite plante avec code 42703 "column does not exist"
+    //   (le SELECT * du mode full marche car Postgres skip les colonnes
+    //   inexistantes au parse). On le fetche séparément en best-effort plus bas.
+    // - generation_progress : fetch séparé pour être résistant au schema cache
+    //   PostgREST stale juste après la migration qui l'ajoute.
     const shallowQueryFull = `id, title, description, objectives, status, generation_status,
          estimated_duration_minutes, source_file_name, source_file_url, source_file_type,
          course_type, num_chapters, generation_log, created_at, updated_at,
          gamma_deck_id, gamma_deck_url, gamma_embed_url, gamma_export_pdf, gamma_export_pptx,
          final_exam_passing_score, final_quiz_target_count,
-         program_id,
          elearning_chapters(id, title, summary, order_index, estimated_duration_minutes,
            key_concepts, is_enriched,
            gamma_deck_id, gamma_deck_url, gamma_embed_url, gamma_export_pdf, gamma_export_pptx, gamma_slide_start,
            elearning_quizzes(id, passing_score, elearning_quiz_questions(id)))`;
 
-    // Fix : fallback SANS la jointure programs (la PostgREST peut planter
-    // si la FK program_id est nullable et l'embed pose problème — observé
-    // en prod après création d'un cours fraîchement généré).
+    // Fallback minimal SANS les colonnes course-level gamma (migration optionnelle).
     const shallowQueryFallback = `id, title, description, objectives, status, generation_status,
          estimated_duration_minutes, source_file_name, source_file_url, source_file_type,
          course_type, num_chapters, generation_log, created_at, updated_at,
-         program_id,
          elearning_chapters(id, title, summary, order_index, estimated_duration_minutes,
            key_concepts, is_enriched,
            gamma_deck_id, gamma_deck_url, gamma_embed_url, gamma_export_pdf, gamma_export_pptx,
