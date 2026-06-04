@@ -45,3 +45,11 @@ export function isPedagogieV2Epic1Enabled(): boolean {
 export function isPedagogieV2Epic2Enabled(): boolean {
   return flagOn("NEXT_PUBLIC_FEATURE_PEDAGOGIE_V2_EPIC_2");
 }
+
+/**
+ * Epic 3 — UX admin : section "E-learning par défaut" sur la fiche programme
+ * + (futur Epic 3.5) onglet E-learning attaché sur la fiche session + UI opt-out.
+ */
+export function isPedagogieV2Epic3Enabled(): boolean {
+  return flagOn("NEXT_PUBLIC_FEATURE_PEDAGOGIE_V2_EPIC_3");
+}
