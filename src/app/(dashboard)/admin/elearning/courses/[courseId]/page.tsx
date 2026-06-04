@@ -17,6 +17,7 @@ import {
   Download,
   Edit3,
   ExternalLink,
+  Eye,
   EyeOff,
   FileText,
   Globe,
@@ -35,6 +36,7 @@ import {
 import { cn, formatDate } from "@/lib/utils";
 import { ChapterEditDialog } from "./_components/ChapterEditDialog";
 import { CourseEnrollmentsList } from "./_components/CourseEnrollmentsList";
+import { ContentPreviewDialog } from "./_components/ContentPreviewDialog";
 
 interface QuizQuestion {
   id: string;
@@ -119,6 +121,9 @@ export default function CourseEditorPage() {
   const [expandedChapter, setExpandedChapter] = useState<string | null>(null);
   // EL-5 audit BMAD : dialog d'édition chapitre (title, summary, key_concepts, durée + supprimer).
   const [editingChapter, setEditingChapter] = useState<Chapter | null>(null);
+  // EL-8 audit BMAD : dialog d'aperçu quiz/flashcards (chapter) ou examen final (course).
+  const [previewChapter, setPreviewChapter] = useState<Chapter | null>(null);
+  const [previewExamOpen, setPreviewExamOpen] = useState(false);
 
   // Duration editing
   const [editingDuration, setEditingDuration] = useState(false);
@@ -649,6 +654,28 @@ export default function CourseEditorPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
+                      {/* EL-8 audit BMAD : aperçu quiz + flashcards */}
+                      {(ch.elearning_quizzes.length > 0 || questionsCount > 0) && (
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPreviewChapter(ch);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setPreviewChapter(ch);
+                            }
+                          }}
+                          className="p-1.5 rounded hover:bg-gray-100 cursor-pointer text-gray-400 hover:text-gray-700"
+                          title="Aperçu des questions et flashcards"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                        </span>
+                      )}
                       {/* EL-5 audit BMAD : bouton édition chapitre (PATCH/DELETE API) */}
                       <span
                         role="button"
@@ -859,6 +886,22 @@ export default function CourseEditorPage() {
         )}
       </div>
 
+      {/* EL-8 audit BMAD : bouton aperçu examen final (mode admin) */}
+      {chapters.length > 0 && (
+        <div className="flex justify-end">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPreviewExamOpen(true)}
+            className="gap-2"
+            title="Aperçu (lecture seule) des questions de l'examen final"
+          >
+            <Eye className="h-3.5 w-3.5" />
+            Aperçu de l&apos;examen final
+          </Button>
+        </div>
+      )}
+
       {/* EL-6 audit BMAD : vue Inscriptions admin */}
       {course.status !== "archived" && (
         <CourseEnrollmentsList courseId={courseId} />
@@ -870,6 +913,23 @@ export default function CourseEditorPage() {
         chapter={editingChapter}
         onClose={() => setEditingChapter(null)}
         onRefresh={fetchCourse}
+      />
+
+      {/* EL-8 audit BMAD : aperçu quiz + flashcards d'un chapitre */}
+      <ContentPreviewDialog
+        open={previewChapter !== null}
+        onClose={() => setPreviewChapter(null)}
+        mode="chapter"
+        chapterId={previewChapter?.id}
+        chapterTitle={previewChapter?.title}
+      />
+
+      {/* EL-8 audit BMAD : aperçu examen final + flashcards globales */}
+      <ContentPreviewDialog
+        open={previewExamOpen}
+        onClose={() => setPreviewExamOpen(false)}
+        mode="exam"
+        courseId={courseId}
       />
     </div>
   );
