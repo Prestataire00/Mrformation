@@ -52,7 +52,7 @@ import { useToast } from "@/components/ui/use-toast";
 import ProgramEnrollments from "./_components/ProgramEnrollments";
 import { ProgramElearningsList } from "./_components/ProgramElearningsList";
 import ProgramElearningDefaults from "@/components/pedagogie-v2/ProgramElearningDefaults";
-import { isPedagogieV2Epic3Enabled } from "@/lib/feature-flags";
+import { isPedagogieV2Epic1Enabled, isPedagogieV2Epic2Enabled, isPedagogieV2Epic3Enabled } from "@/lib/feature-flags";
 import { EditProgramDialog, type EditModule, type EditFormState } from "./_components/EditProgramDialog";
 
 // ── Simple markdown → HTML (bold, italic, lists, line breaks) ─────────────────
@@ -1074,6 +1074,38 @@ export default function ProgramDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* DEBUG VISUEL TEMPORAIRE — affiche les flags Pédagogie V2 + entityId
+          dans le coin bas-droit. À retirer après diag. Toujours rendu. */}
+      <div
+        style={{
+          position: "fixed",
+          bottom: 12,
+          right: 12,
+          padding: "10px 14px",
+          background: "#FBBF24",
+          color: "#1F2937",
+          zIndex: 9999,
+          fontSize: 12,
+          fontFamily: "monospace",
+          border: "2px solid #B45309",
+          borderRadius: 8,
+          maxWidth: 320,
+          lineHeight: 1.4,
+          boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
+        }}
+      >
+        <div><strong>DEBUG Pédagogie V2</strong></div>
+        <div>EPIC_1 = {String(isPedagogieV2Epic1Enabled())}</div>
+        <div>EPIC_2 = {String(isPedagogieV2Epic2Enabled())}</div>
+        <div>EPIC_3 = {String(isPedagogieV2Epic3Enabled())}</div>
+        <div>entityId = {entityId ? `${entityId.slice(0, 8)}…` : "null/undef"}</div>
+        <div>program.id = {program.id.slice(0, 8)}…</div>
+        <div>
+          Section visible si EPIC_3 && entityId ={" "}
+          <strong>{String(isPedagogieV2Epic3Enabled() && Boolean(entityId))}</strong>
+        </div>
+      </div>
 
       <EditProgramDialog
         open={editOpen}
