@@ -33,6 +33,7 @@ import {
   Youtube,
 } from "lucide-react";
 import { cn, formatDate } from "@/lib/utils";
+import { ChapterEditDialog } from "./_components/ChapterEditDialog";
 
 interface QuizQuestion {
   id: string;
@@ -115,6 +116,8 @@ export default function CourseEditorPage() {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [expandedChapter, setExpandedChapter] = useState<string | null>(null);
+  // EL-5 audit BMAD : dialog d'édition chapitre (title, summary, key_concepts, durée + supprimer).
+  const [editingChapter, setEditingChapter] = useState<Chapter | null>(null);
 
   // Duration editing
   const [editingDuration, setEditingDuration] = useState(false);
@@ -644,7 +647,27 @@ export default function CourseEditorPage() {
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-1 shrink-0">
+                      {/* EL-5 audit BMAD : bouton édition chapitre (PATCH/DELETE API) */}
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingChapter(ch);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setEditingChapter(ch);
+                          }
+                        }}
+                        className="p-1.5 rounded hover:bg-gray-100 cursor-pointer text-gray-400 hover:text-gray-700"
+                        title="Modifier ce chapitre"
+                      >
+                        <Edit3 className="h-3.5 w-3.5" />
+                      </span>
                       {hasGamma && (
                         <CheckCircle2 className="h-5 w-5 text-green-500" />
                       )}
@@ -834,6 +857,14 @@ export default function CourseEditorPage() {
           </div>
         )}
       </div>
+
+      {/* EL-5 audit BMAD : dialog d'édition / suppression chapitre */}
+      <ChapterEditDialog
+        courseId={courseId}
+        chapter={editingChapter}
+        onClose={() => setEditingChapter(null)}
+        onRefresh={fetchCourse}
+      />
     </div>
   );
 }
