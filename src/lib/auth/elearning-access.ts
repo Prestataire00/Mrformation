@@ -24,10 +24,10 @@ export type ElearningEnrollmentAccess =
   | { ok: true; supabase: SupabaseClient; profile: Profile; userId: string; enrollment: { id: string; course_id: string; learner_id: string } }
   | { ok: false; error: NextResponse };
 
-const forbidden = (diag?: string) =>
-  NextResponse.json({ error: "Accès refusé", _diag: diag ?? "forbidden" }, { status: 403 });
-const notFound = (what: string, diag?: string) =>
-  NextResponse.json({ error: `${what} introuvable`, _diag: diag ?? "not-found" }, { status: 404 });
+const forbidden = () =>
+  NextResponse.json({ error: "Accès refusé" }, { status: 403 });
+const notFound = (what: string) =>
+  NextResponse.json({ error: `${what} introuvable` }, { status: 404 });
 
 /**
  * Vérifie le rôle, charge le cours e-learning et contrôle l'isolation
@@ -47,16 +47,11 @@ export async function requireElearningCourse(
     .maybeSingle();
 
   if (error) {
-    console.error("[requireElearningCourse] DB error", { courseId, message: error.message, code: error.code, details: error.details, hint: error.hint });
-    return { ok: false, error: NextResponse.json({ error: "Erreur de chargement du cours", _diag: { stage: "require-course-select", msg: error.message, code: error.code, hint: error.hint } }, { status: 500 }) };
+    return { ok: false, error: NextResponse.json({ error: "Erreur de chargement du cours" }, { status: 500 }) };
   }
-  if (!course) {
-    console.error("[requireElearningCourse] course not found", { courseId });
-    return { ok: false, error: notFound("Cours", `course-not-found id=${courseId}`) };
-  }
+  if (!course) return { ok: false, error: notFound("Cours") };
   if (course.entity_id !== auth.profile.entity_id) {
-    console.error("[requireElearningCourse] entity mismatch", { courseId, courseEntity: course.entity_id, profileEntity: auth.profile.entity_id });
-    return { ok: false, error: forbidden(`entity-mismatch course=${course.entity_id} profile=${auth.profile.entity_id}`) };
+    return { ok: false, error: forbidden() };
   }
   return { ok: true, supabase: auth.supabase, profile: auth.profile, userId: auth.user.id, course };
 }
