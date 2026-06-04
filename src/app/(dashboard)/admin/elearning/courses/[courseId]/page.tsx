@@ -223,63 +223,78 @@ export default function CourseEditorPage() {
     }
   };
 
-  // EL-12 + Phase B.1 fix 504 : orchestre la régénération en séquence
-  // d'appels courts (chacun < timeout Netlify Functions) :
-  //   1. POST /generate/outline (3-8s) → ids chapitres placeholders
-  //   2. for chapter : POST /generate/chapter { chapter_id } (5-12s × N)
-  //   3. POST /generate/quiz (8-15s)
-  // L'examen final est temporairement skippé (Phase A.2 à venir).
+  // Fix 504 définitif : pipeline async via Netlify Background Function.
+  //   1. POST /api/elearning/{id}/generate/start
+  //      → trigger /.netlify/functions/elearning-generate-pipeline-background
+  //      → renvoie 202 immédiatement
+  //   2. Poll GET /api/elearning/{id}?shallow=true toutes les 3s
+  //      → lit generation_progress.message + .percent
+  //      → status="completed" → toast + refresh
+  //      → status="failed"   → toast erreur
   //
-  // Progression affichée via state regenerateStep ("Outline..." / "Chapitre 2/4" / etc).
+  // L'admin peut quitter la page : la BG function continue (15min de timeout).
   const handleRegenerate = async () => {
     if (!confirm(
       "Relancer la génération IA à partir du texte extrait ?\n\n" +
       "Les chapitres / quiz / flashcards actuels seront remplacés. " +
-      "L'examen final n'est pas régénéré pour cette version.",
+      "Le pipeline tourne en arrière-plan (~2-3 min). Tu peux fermer cette page, " +
+      "la génération continuera.",
     )) {
       return;
     }
     setRegenerating(true);
-    setRegenerateStep("Plan du cours…");
+    setRegenerateStep("Démarrage…");
     try {
-      // 1. Outline
-      const outRes = await fetch(`/api/elearning/${courseId}/generate/outline`, { method: "POST" });
-      const outBody = await outRes.json().catch(() => ({}));
-      if (!outRes.ok || !outBody.ok) {
-        throw new Error(outBody.error || `Outline échoué (${outRes.status})`);
-      }
-      const chapterIds = (outBody.chapter_ids ?? []) as string[];
-      if (chapterIds.length === 0) {
-        throw new Error("Aucun chapitre planifié par l'IA");
+      // 1. Kickoff
+      const startRes = await fetch(`/api/elearning/${courseId}/generate/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ course_type: course?.course_type ?? "complete" }),
+      });
+      const startBody = await startRes.json().catch(() => ({}));
+      if (!startRes.ok || !startBody.ok) {
+        throw new Error(startBody.error || `Démarrage échoué (${startRes.status})`);
       }
 
-      // 2. Chapitres en série (limite timeout par appel)
-      for (let i = 0; i < chapterIds.length; i++) {
-        setRegenerateStep(`Chapitre ${i + 1}/${chapterIds.length}…`);
-        const chRes = await fetch(`/api/elearning/${courseId}/generate/chapter`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ chapter_id: chapterIds[i] }),
-        });
-        const chBody = await chRes.json().catch(() => ({}));
-        if (!chRes.ok || !chBody.ok) {
-          throw new Error(chBody.error || `Chapitre ${i + 1} échoué (${chRes.status})`);
+      // 2. Polling (toutes les 3s, timeout sécurité 20 min)
+      const pollIntervalMs = 3000;
+      const maxAttempts = (20 * 60 * 1000) / pollIntervalMs;
+      let attempts = 0;
+      let finalStatus: "completed" | "failed" | null = null;
+      let finalMessage = "";
+
+      while (attempts < maxAttempts && finalStatus === null) {
+        await new Promise((r) => setTimeout(r, pollIntervalMs));
+        attempts++;
+        try {
+          const r = await fetch(`/api/elearning/${courseId}?shallow=true`, { cache: "no-store" });
+          if (!r.ok) continue;
+          const j = (await r.json()) as { data?: { generation_status?: string; generation_progress?: { percent?: number; message?: string; error?: string } } };
+          const status = j.data?.generation_status;
+          const p = j.data?.generation_progress;
+          if (p?.message) {
+            setRegenerateStep(`${p.message}${typeof p.percent === "number" ? ` (${p.percent}%)` : ""}`);
+          }
+          if (status === "completed") {
+            finalStatus = "completed";
+            finalMessage = p?.message || "Cours généré";
+          } else if (status === "failed") {
+            finalStatus = "failed";
+            finalMessage = p?.error || p?.message || "Erreur de génération";
+          }
+        } catch {
+          // Polling transitoire — on continue
         }
       }
 
-      // 3. Quiz + flashcards
-      setRegenerateStep("Quiz et flashcards…");
-      const qRes = await fetch(`/api/elearning/${courseId}/generate/quiz`, { method: "POST" });
-      const qBody = await qRes.json().catch(() => ({}));
-      if (!qRes.ok || !qBody.ok) {
-        throw new Error(qBody.error || `Quiz échoué (${qRes.status})`);
+      if (finalStatus === "completed") {
+        toast({ title: "Régénération terminée", description: finalMessage });
+        await fetchCourse();
+      } else if (finalStatus === "failed") {
+        throw new Error(finalMessage);
+      } else {
+        throw new Error("Timeout du polling (20 min) — vérifie l'état du cours manuellement");
       }
-
-      toast({
-        title: "Régénération terminée",
-        description: `${chapterIds.length} chapitre(s), ${qBody.quiz_count ?? 0} questions, ${qBody.flashcards_count ?? 0} flashcards.`,
-      });
-      await fetchCourse();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Erreur réseau";
       toast({ title: "Régénération échouée", description: message, variant: "destructive" });
