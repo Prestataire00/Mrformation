@@ -17,6 +17,8 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/use-toast";
+import { isPedagogieV2Epic2Enabled } from "@/lib/feature-flags";
+import { copyProgramElearningToSession } from "@/lib/services/pedagogie-v2-snapshot";
 import type { Session, Program } from "@/lib/types";
 import { getFormationKind } from "@/lib/utils/formation-companies";
 
@@ -106,7 +108,32 @@ export function TabProgramme({ formation, onRefresh }: Props) {
         .eq("id", formation.id)
         .eq("entity_id", formation.entity_id);
       if (error) throw error;
-      toast({ title: "Programme attribué" });
+
+      // Pédagogie V2 Epic 2 : déclencher le snapshot des e-learning du
+      // programme vers session_elearning_courses. Idempotent (no-op si la
+      // session a déjà des e-learning attachés, ex: assignation antérieure
+      // déjà fait le snapshot).
+      let copiedCount = 0;
+      if (isPedagogieV2Epic2Enabled()) {
+        try {
+          const result = await copyProgramElearningToSession(supabase, {
+            sessionId: formation.id,
+            programId: selectedProgramId,
+          });
+          copiedCount = result.copied;
+        } catch (err) {
+          // Non-bloquant : l'assignation du programme reste valide même
+          // si le snapshot e-learning échoue.
+          console.error("[pedagogie-v2] copyProgramElearningToSession failed:", err);
+        }
+      }
+
+      toast({
+        title: "Programme attribué",
+        description: copiedCount > 0
+          ? `${copiedCount} module(s) e-learning du programme attaché(s) à cette session.`
+          : undefined,
+      });
       setShowAssign(false);
       await onRefresh();
     } catch (err: unknown) {
