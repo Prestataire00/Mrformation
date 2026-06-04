@@ -73,7 +73,24 @@ export async function GET(
     }
 
     if (error) {
-      return NextResponse.json({ error: sanitizeDbError(error, "fetching course details") }, { status: 404 });
+      console.error("[GET /api/elearning/[id]] shallow query failed", {
+        courseId: params.courseId,
+        isShallow,
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint,
+      });
+      return NextResponse.json({
+        error: sanitizeDbError(error, "fetching course details"),
+        _diag: {
+          stage: isShallow ? "shallow-select-or-fallback" : "full-select",
+          msg: error.message,
+          code: error.code,
+          hint: error.hint,
+          details: error.details,
+        },
+      }, { status: 404 });
     }
 
     // Strip is_correct from quiz options before returning to learners
