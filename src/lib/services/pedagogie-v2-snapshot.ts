@@ -83,10 +83,10 @@ export type AutoEnrollResult = {
  * Crée les `elearning_enrollments` pour un apprenant sur tous les e-learning
  * attachés à une session, en respectant la liste opt-out.
  *
- * Idempotent via upsert : ré-enrôler ne crée pas de doublon. Suppose une
- * UNIQUE constraint sur elearning_enrollments(learner_id, elearning_course_id).
- * Si la contrainte n'existe pas (à vérifier dans le schema), le upsert insert
- * quand même mais des doublons peuvent apparaître sur re-run multiples.
+ * Idempotent via upsert sur UNIQUE(course_id, learner_id) (cf. schema
+ * add-elearning-courses.sql). ⚠ Important : la colonne s'appelle `course_id`
+ * dans elearning_enrollments (PAS `elearning_course_id` comme dans
+ * session_elearning_courses). Fix bug initial Epic 2.
  */
 export async function autoEnrollLearnerToSessionElearning(
   supabase: SupabaseClient,
@@ -116,16 +116,19 @@ export async function autoEnrollLearnerToSessionElearning(
     return { enrolled: 0, skippedOptOut: skipped };
   }
 
-  // 3. Upsert idempotent.
+  // 3. Upsert idempotent. La colonne dans elearning_enrollments s'appelle
+  // course_id (héritée de la création initiale de la table), pas
+  // elearning_course_id comme dans session_elearning_courses.
   const rows = toEnroll.map((r) => ({
     learner_id: learnerId,
-    elearning_course_id: r.elearning_course_id,
+    course_id: r.elearning_course_id,
+    status: "enrolled" as const,
     enrolled_at: new Date().toISOString(),
   }));
 
   await supabase
     .from("elearning_enrollments")
-    .upsert(rows, { onConflict: "learner_id,elearning_course_id" });
+    .upsert(rows, { onConflict: "course_id,learner_id" });
 
   return { enrolled: toEnroll.length, skippedOptOut: skipped };
 }

@@ -15,6 +15,8 @@ import { useToast } from "@/components/ui/use-toast";
 import { formatCurrency } from "@/lib/utils";
 import { computeAmountsReconciliation, getLearnersForCompany } from "@/lib/utils/formation-companies";
 import { addCompanyToSession, removeCompanyFromSession } from "@/lib/services/formation-companies";
+import { autoEnrollLearnerToSessionElearning } from "@/lib/services/pedagogie-v2-snapshot";
+import { isPedagogieV2Epic2Enabled } from "@/lib/feature-flags";
 import type { Session, Client } from "@/lib/types";
 
 interface Props {
@@ -187,6 +189,27 @@ export function ResumeCompanies({ formation, onRefresh }: Props) {
           title: "Entreprise ajoutée",
           description: `${toEnroll.length} apprenant(s) inscrit(s) automatiquement : ${names}`,
         });
+
+        // Pédagogie V2 Epic 2 : auto-enrôlement aux e-learning de la session
+        // pour chaque apprenant nouvellement inscrit. Non-bloquant : si
+        // l'auto-enroll plante, l'inscription reste valide. UI opt-out viendra
+        // dans une PR future (Epic 3.5+).
+        if (isPedagogieV2Epic2Enabled()) {
+          for (const learner of toEnroll) {
+            try {
+              await autoEnrollLearnerToSessionElearning(supabase, {
+                sessionId: formation.id,
+                learnerId: learner.id,
+                optOutElearningCourseIds: [],
+              });
+            } catch (err) {
+              console.error("[pedagogie-v2] autoEnrollLearnerToSessionElearning failed", {
+                learnerId: learner.id,
+                error: err,
+              });
+            }
+          }
+        }
       }
     } else {
       toast({ title: "Entreprise ajoutée" });
