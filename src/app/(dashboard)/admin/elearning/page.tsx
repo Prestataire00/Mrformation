@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
+import { isPedagogieV2Epic1Enabled } from "@/lib/feature-flags";
 import { cn, formatDate, truncate } from "@/lib/utils";
 import {
   elearningHubCourseSchema,
@@ -227,12 +228,28 @@ export default function ELearningPage() {
     const aiSelectWithProgram = "id, entity_id, title, description, status, generation_status, estimated_duration_minutes, created_at, updated_at, program_id, program:programs(id, title), elearning_chapters(id)";
     const aiSelectFallback = "id, entity_id, title, description, status, generation_status, estimated_duration_minutes, created_at, updated_at, elearning_chapters(id)";
 
-    const [programsRes, aiResInitial] = await Promise.all([
+    // Pédagogie V2 Epic 1 : quand le flag est ON, on cesse d'afficher
+    // le chemin legacy "programs.content.type='elearning'". On évite donc
+    // aussi de lancer la requête correspondante (économie de bande passante
+    // Supabase + cohérence avec le rendu UI conditionné par le même flag).
+    const epic1Enabled = isPedagogieV2Epic1Enabled();
+
+    // Référence pour inférer le type retourné par la query programs (utilisé
+    // pour fabriquer un fallback typé sans `any` quand flag ON).
+    const programsLegacyQuery = () =>
       supabase
         .from("programs")
         .select("*")
         .eq("entity_id", entityId)
-        .order("updated_at", { ascending: false }),
+        .order("updated_at", { ascending: false });
+    type ProgramsRes = Awaited<ReturnType<typeof programsLegacyQuery>>;
+    const emptyProgramsRes: ProgramsRes = {
+      data: [],
+      error: null,
+    } as unknown as ProgramsRes;
+
+    const [programsRes, aiResInitial] = await Promise.all([
+      epic1Enabled ? Promise.resolve(emptyProgramsRes) : programsLegacyQuery(),
       supabase
         .from("elearning_courses")
         // ELE-1 audit BMAD : on join le programme source (program_id +
@@ -348,12 +365,18 @@ export default function ELearningPage() {
   const pagedProgram = filtered.slice((safePageProgram - 1) * PAGE_SIZE, safePageProgram * PAGE_SIZE);
   const pagedAi = filteredAiCourses.slice((safePageAi - 1) * PAGE_SIZE, safePageAi * PAGE_SIZE);
 
-  const totalCourses = courses.length + aiCourses.length;
+  // Pédagogie V2 Epic 1 : flag lu une seule fois par render. Lorsqu'il est
+  // ON, les cours legacy (programs.content.type='elearning') sont masqués
+  // du listing, des stats et du dialog d'édition. Le fetch correspondant
+  // n'est pas exécuté non plus (cf. fetchCourses).
+  const epic1Enabled = isPedagogieV2Epic1Enabled();
+
+  const totalCourses = (epic1Enabled ? 0 : courses.length) + aiCourses.length;
   const publishedCourses =
-    courses.filter((c) => c.content?.status === "published").length +
+    (epic1Enabled ? 0 : courses.filter((c) => c.content?.status === "published").length) +
     aiCourses.filter((c) => c.status === "published").length;
   const totalModules =
-    courses.reduce((acc, c) => acc + (c.content?.modules?.length ?? 0), 0) +
+    (epic1Enabled ? 0 : courses.reduce((acc, c) => acc + (c.content?.modules?.length ?? 0), 0)) +
     aiCourses.reduce((acc, c) => acc + (c.elearning_chapters?.length ?? 0), 0);
 
   // ── Dialog handlers ────────────────────────────────────────────────────────
@@ -626,10 +649,12 @@ export default function ELearningPage() {
             <Sparkles className="h-4 w-4" />
             Doc → Cours IA
           </Link>
-          <Button onClick={openAddDialog} className="gap-2">
-            <Plus className="h-4 w-4" />
-            Nouveau cours
-          </Button>
+          {!epic1Enabled && (
+            <Button onClick={openAddDialog} className="gap-2">
+              <Plus className="h-4 w-4" />
+              Nouveau cours
+            </Button>
+          )}
         </div>
       </div>
 
@@ -711,7 +736,8 @@ export default function ELearningPage() {
             <div key={i} className="h-60 rounded-xl bg-gray-100 animate-pulse" />
           ))}
         </div>
-      ) : filtered.length === 0 && filteredAiCourses.length === 0 ? (
+      ) : (epic1Enabled && filteredAiCourses.length === 0) ||
+          (!epic1Enabled && filtered.length === 0 && filteredAiCourses.length === 0) ? (
         <div className="flex flex-col items-center justify-center py-24 text-center">
           <div className="w-20 h-20 rounded-2xl bg-gray-100 flex items-center justify-center mb-4">
             <BookOpen className="h-10 w-10 text-gray-300" />
@@ -735,14 +761,16 @@ export default function ELearningPage() {
                 <Sparkles className="h-4 w-4" />
                 Créer avec l&apos;IA
               </Link>
-              <Button onClick={openAddDialog} variant="outline" className="gap-2">
-                <Plus className="h-4 w-4" />
-                Cours manuel
-              </Button>
+              {!epic1Enabled && (
+                <Button onClick={openAddDialog} variant="outline" className="gap-2">
+                  <Plus className="h-4 w-4" />
+                  Cours manuel
+                </Button>
+              )}
             </div>
           )}
         </div>
-      ) : filtered.length > 0 ? (
+      ) : !epic1Enabled && filtered.length > 0 ? (
         <>
         {filtered.length > 0 && (
           <div className="space-y-4">
@@ -1069,6 +1097,7 @@ export default function ELearningPage() {
       )}
 
       {/* ── Course Editor Dialog ─────────────────────────────────────────── */}
+      {!epic1Enabled && (
       <Dialog open={dialogOpen} onOpenChange={(open) => !open && closeDialog()}>
         <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto">
           <DialogHeader>
@@ -1402,6 +1431,7 @@ export default function ELearningPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      )}
 
       {/* ── Delete Confirmation Dialog ───────────────────────────────────── */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
