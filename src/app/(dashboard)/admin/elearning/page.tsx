@@ -224,7 +224,10 @@ export default function ELearningPage() {
     setLoading(true);
 
     // Fetch both program-based and AI-generated courses in parallel
-    const [programsRes, aiRes] = await Promise.all([
+    const aiSelectWithProgram = "id, entity_id, title, description, status, generation_status, estimated_duration_minutes, created_at, updated_at, program_id, program:programs(id, title), elearning_chapters(id)";
+    const aiSelectFallback = "id, entity_id, title, description, status, generation_status, estimated_duration_minutes, created_at, updated_at, elearning_chapters(id)";
+
+    const [programsRes, aiResInitial] = await Promise.all([
       supabase
         .from("programs")
         .select("*")
@@ -234,10 +237,24 @@ export default function ELearningPage() {
         .from("elearning_courses")
         // ELE-1 audit BMAD : on join le programme source (program_id +
         // titre) pour afficher un badge "Issu du programme X" sur la card.
-        .select("id, entity_id, title, description, status, generation_status, estimated_duration_minutes, created_at, updated_at, program_id, program:programs(id, title), elearning_chapters(id)")
+        .select(aiSelectWithProgram)
         .eq("entity_id", entityId)
         .order("updated_at", { ascending: false }),
     ]);
+
+    // Fallback si la migration link-program-training-elearning.sql n'a pas
+    // été exécutée en prod (code Postgres 42703 = column does not exist).
+    // On retombe sur un SELECT sans program_id ni l'embed program, perdant
+    // juste le badge "Issu du programme X" sur les cards.
+    let aiRes = aiResInitial;
+    if (aiRes.error && (aiRes.error as { code?: string }).code === "42703") {
+      const fallbackRes = await supabase
+        .from("elearning_courses")
+        .select(aiSelectFallback)
+        .eq("entity_id", entityId)
+        .order("updated_at", { ascending: false });
+      aiRes = fallbackRes as unknown as typeof aiResInitial;
+    }
 
     if (programsRes.error) {
       toast({
