@@ -1,5 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { enqueueEmail } from "@/lib/services/email-queue";
+import { isPedagogieV2Epic2Enabled } from "@/lib/feature-flags";
+import { copyProgramElearningToSession } from "@/lib/services/pedagogie-v2-snapshot";
 
 export type ServiceResult<T> =
   | ({ ok: true } & T)
@@ -117,6 +119,23 @@ export async function createSessionWithOptionalCompany(
         ok: false,
         error: { message: fcError.message, code: fcError.code },
       };
+    }
+  }
+
+  // Pédagogie V2 Epic 2 : snapshot des e-learning du programme vers la session.
+  // No-op si flag OFF ou si la session n'a pas de program_id.
+  // Non-bloquant : si la copy plante, la session reste créée. L'admin pourra
+  // ajouter les e-learning manuellement depuis la fiche session (Epic 3).
+  const sessionRow = session as Record<string, unknown>;
+  const programId = typeof sessionRow.program_id === "string" ? sessionRow.program_id : null;
+  if (isPedagogieV2Epic2Enabled() && programId) {
+    try {
+      await copyProgramElearningToSession(supabase, {
+        sessionId: session.id,
+        programId,
+      });
+    } catch (err) {
+      console.error("[pedagogie-v2] copyProgramElearningToSession failed:", err);
     }
   }
 

@@ -34,3 +34,14 @@ function flagOn(name: string): boolean {
 export function isPedagogieV2Epic1Enabled(): boolean {
   return flagOn("NEXT_PUBLIC_FEATURE_PEDAGOGIE_V2_EPIC_1");
 }
+
+/**
+ * Epic 2 — Pipeline d'inscription enrichi : snapshot programme → session
+ * (copy program_elearning_courses → session_elearning_courses à la création
+ * de session) + auto-enrôlement des apprenants aux e-learning de la session.
+ *
+ * Pré-requis activation : Epic 1 actif + hooks Epic 2 déployés.
+ */
+export function isPedagogieV2Epic2Enabled(): boolean {
+  return flagOn("NEXT_PUBLIC_FEATURE_PEDAGOGIE_V2_EPIC_2");
+}
