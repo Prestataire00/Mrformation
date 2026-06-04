@@ -1,129 +1,103 @@
 import { NextRequest, NextResponse } from "next/server";
-import { generateGammaChapterDeck } from "@/lib/services/gamma";
-import type { GammaGenerateOptions } from "@/lib/services/gamma";
 import { sanitizeError } from "@/lib/api-error";
 import { requireElearningCourse } from "@/lib/auth/elearning-access";
 
-export const maxDuration = 300;
-
-function buildChapterMarkdown(title: string, contentMarkdown: string): string {
-  // Convertit ### → ## pour la structure Gamma (H1 titre + H2 sections)
-  const body = contentMarkdown.replace(/^### /gm, "## ");
-  return `# ${title}\n\n${body}`;
-}
+export const maxDuration = 30;
 
 /**
- * POST: Regenerate Gamma decks — one per chapter, in parallel.
+ * POST : déclenche la génération Gamma de façon async via une Netlify
+ * Background Function (timeout 15min vs 26s d'une route classique). La
+ * génération en parallèle de N decks Gamma prend 30-120s par deck → trop
+ * pour une route sync sur Netlify Pro.
+ *
+ * Le client poll ensuite GET /api/elearning/[id]?shallow=true et lit
+ * generation_progress.step ∈ ("gamma_starting" | "gamma_running" |
+ * "gamma_done" | "gamma_failed").
  */
 export async function POST(
   _request: NextRequest,
-  { params }: { params: { courseId: string } }
+  { params }: { params: { courseId: string } },
 ) {
   try {
     const access = await requireElearningCourse(params.courseId, ["admin", "super_admin"]);
     if (!access.ok) return access.error;
     const { supabase } = access;
 
-    // Load course + chapters
-    const { data: course, error: courseError } = await supabase
-      .from("elearning_courses")
-      .select(`
-        id, title, gamma_theme_id,
-        elearning_chapters (
-          id, title, summary, order_index, content_markdown
-        )
-      `)
-      .eq("id", params.courseId)
-      .single();
-
-    if (courseError || !course) {
-      return NextResponse.json({ error: "Cours non trouvé" }, { status: 404 });
+    const cronSecret = process.env.CRON_SECRET;
+    if (!cronSecret) {
+      return NextResponse.json(
+        { error: "CRON_SECRET non configuré côté serveur" },
+        { status: 500 },
+      );
     }
 
-    const chapters = ((course.elearning_chapters || []) as {
-      id: string; title: string; summary: string;
-      order_index: number; content_markdown: string;
-    }[]).sort((a, b) => a.order_index - b.order_index);
-
-    if (chapters.length === 0) {
+    // Vérification présence de chapitres avant de trigger la BG fct
+    // (économise un cycle inutile si rien à générer).
+    const { count } = await supabase
+      .from("elearning_chapters")
+      .select("id", { count: "exact", head: true })
+      .eq("course_id", params.courseId);
+    if (!count || count === 0) {
       return NextResponse.json({ error: "Aucun chapitre dans ce cours" }, { status: 400 });
     }
 
-    const gammaOptions: GammaGenerateOptions = {
-      themeId: (course as Record<string, unknown>).gamma_theme_id as string || undefined,
-      numCards: 8,
-      language: "fr",
-      tone: "professionnel et pédagogique",
-      audience: "apprenants en formation professionnelle",
-      textAmount: "medium",
-      imageSource: "aiGenerated",
-      imageStyle: "professionnel, moderne, éducatif",
-      exportAs: "pptx",
-    };
+    // Reset generation_progress en mode gamma_starting → polling visible immédiat
+    const startedAt = new Date().toISOString();
+    await supabase
+      .from("elearning_courses")
+      .update({
+        generation_progress: {
+          step: "gamma_starting",
+          percent: 0,
+          message: "Démarrage Gamma…",
+          started_at: startedAt,
+          updated_at: startedAt,
+          error: null,
+        },
+        updated_at: startedAt,
+      })
+      .eq("id", params.courseId);
 
-    // Generate one deck per chapter in parallel
-    const gammaResults = await Promise.allSettled(
-      chapters.map((ch) =>
-        generateGammaChapterDeck(
-          buildChapterMarkdown(ch.title, ch.content_markdown || ch.summary || ""),
-          gammaOptions
-        )
-      )
-    );
-
-    const succeeded: { chapter_id: string; deck_url: string; embed_url: string }[] = [];
-
-    for (let i = 0; i < chapters.length; i++) {
-      const r = gammaResults[i];
-      if (r.status === "fulfilled" && r.value.status === "completed" && r.value.embedUrl) {
-        await supabase
-          .from("elearning_chapters")
-          .update({
-            gamma_embed_url: r.value.embedUrl,
-            gamma_deck_url: r.value.url,
-            gamma_deck_id: r.value.id, // generationId — used for re-downloading PPTX
-            gamma_slide_start: null,
-            ...(r.value.exportPptx && { gamma_export_pptx: r.value.exportPptx }),
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", chapters[i].id);
-        succeeded.push({ chapter_id: chapters[i].id, deck_url: r.value.url, embed_url: r.value.embedUrl });
-      } else {
-        console.warn(`[Gamma] Chapitre ${i + 1} échoué:`, r.status === "rejected" ? r.reason : r.value.status);
+    // Trigger BG function — Netlify renvoie 202 immédiat pour les fonctions
+    // -background ; on n'attend pas la fin (qui prend 1-3 min).
+    const baseUrl = process.env.URL || "http://localhost:8888";
+    const bgUrl = `${baseUrl}/.netlify/functions/elearning-generate-gamma-background`;
+    try {
+      const bgRes = await fetch(bgUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${cronSecret}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ courseId: params.courseId }),
+      });
+      if (bgRes.status !== 202 && !bgRes.ok) {
+        console.error(`[gamma start] BG trigger returned ${bgRes.status}`);
       }
-    }
-
-    // Store chapter 1's deck at course level (for "Voir dans Gamma" button)
-    if (succeeded.length > 0) {
-      const firstResult = gammaResults[0];
-      if (firstResult?.status === "fulfilled" && firstResult.value.status === "completed") {
-        const first = firstResult.value;
-        await supabase
-          .from("elearning_courses")
-          .update({
-            gamma_embed_url: first.embedUrl,
-            gamma_deck_url: first.url,
-            gamma_deck_id: first.id, // generationId — used for re-downloading PPTX
-            ...(first.exportPptx && { gamma_export_pptx: first.exportPptx }),
+    } catch (fetchErr) {
+      const msg = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
+      await supabase
+        .from("elearning_courses")
+        .update({
+          generation_progress: {
+            step: "gamma_failed",
+            percent: 0,
+            message: "Impossible de déclencher Gamma",
+            error: msg,
             updated_at: new Date().toISOString(),
-          })
-          .eq("id", params.courseId);
-      }
-    }
-
-    if (succeeded.length === 0) {
-      return NextResponse.json({ error: "Aucun deck Gamma généré" }, { status: 502 });
+          },
+        })
+        .eq("id", params.courseId);
+      return NextResponse.json({ error: `Impossible de déclencher Gamma : ${msg}` }, { status: 502 });
     }
 
     return NextResponse.json({
-      data: {
-        chapters_succeeded: succeeded.length,
-        chapters_total: chapters.length,
-        chapters: succeeded,
-      },
+      ok: true,
+      status: "gamma_starting",
+      poll_url: `/api/elearning/${params.courseId}?shallow=true`,
     });
   } catch (error) {
-    return NextResponse.json({ error: sanitizeError(error, "generating Gamma decks") }, { status: 500 });
+    return NextResponse.json({ error: sanitizeError(error, "starting Gamma generation") }, { status: 500 });
   }
 }
 

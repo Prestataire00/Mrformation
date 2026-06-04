@@ -304,19 +304,63 @@ export default function CourseEditorPage() {
     }
   };
 
+  // Fix 504 Gamma : kickoff async via Netlify Background Function (timeout
+  // 15min) puis polling sur generation_progress.step ("gamma_running" →
+  // "gamma_done"). Gamma génère 1 deck en 30-120s, trop long pour une route
+  // sync sur Netlify Pro (26s).
   const handleGenerateGamma = async () => {
     setGammaLoading(true);
     try {
-      const res = await fetch(`/api/elearning/${courseId}/gamma`, { method: "POST" });
-      const { data, error } = await res.json();
-      if (error) {
-        toast({ title: "Erreur Gamma", description: error, variant: "destructive" });
-      } else {
-        toast({ title: "Présentation Gamma générée", description: `Deck créé pour ${data.chapters_count} chapitres` });
-        fetchCourse();
+      // 1. Kickoff
+      const startRes = await fetch(`/api/elearning/${courseId}/gamma`, { method: "POST" });
+      const startBody = await startRes.json().catch(() => ({}));
+      if (!startRes.ok || !startBody.ok) {
+        throw new Error(startBody.error || `Démarrage Gamma échoué (${startRes.status})`);
       }
-    } catch {
-      toast({ title: "Erreur", description: "Erreur lors de la génération Gamma", variant: "destructive" });
+
+      // 2. Polling (toutes les 3s, timeout sécurité 10 min)
+      const pollIntervalMs = 3000;
+      const maxAttempts = (10 * 60 * 1000) / pollIntervalMs;
+      let attempts = 0;
+      let finalStep: "gamma_done" | "gamma_failed" | null = null;
+      let finalMessage = "";
+
+      while (attempts < maxAttempts && !finalStep) {
+        await new Promise((r) => setTimeout(r, pollIntervalMs));
+        attempts++;
+        try {
+          const r = await fetch(`/api/elearning/${courseId}?shallow=true`, { cache: "no-store" });
+          if (!r.ok) continue;
+          const j = (await r.json()) as { data?: { generation_progress?: { step?: string; percent?: number; message?: string; error?: string } } };
+          const p = j.data?.generation_progress;
+          if (p?.message) {
+            // Pas de UI dédiée pour le step Gamma → on log dans la console.
+            // (Le toast final indique la fin de l'opération.)
+            console.log(`[Gamma] ${p.message} (${p.percent ?? 0}%)`);
+          }
+          if (p?.step === "gamma_done") {
+            finalStep = "gamma_done";
+            finalMessage = p.message || "Decks Gamma générés";
+          } else if (p?.step === "gamma_failed") {
+            finalStep = "gamma_failed";
+            finalMessage = p.error || p.message || "Erreur Gamma";
+          }
+        } catch {
+          // Polling transitoire — on continue
+        }
+      }
+
+      if (finalStep === "gamma_done") {
+        toast({ title: "Présentation Gamma générée", description: finalMessage });
+        await fetchCourse();
+      } else if (finalStep === "gamma_failed") {
+        throw new Error(finalMessage);
+      } else {
+        throw new Error("Timeout du polling Gamma (10 min) — vérifie l'état du cours");
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Erreur lors de la génération Gamma";
+      toast({ title: "Erreur Gamma", description: msg, variant: "destructive" });
     }
     setGammaLoading(false);
   };
