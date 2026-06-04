@@ -63,3 +63,12 @@ export function isPedagogieV2Epic3Enabled(): boolean {
 export function isPedagogieV2Epic4Enabled(): boolean {
   return flagOn("NEXT_PUBLIC_FEATURE_PEDAGOGIE_V2_EPIC_4");
 }
+
+/**
+ * Epic 5 — Visibilité multi-acteurs : matrice apprenant × module e-learning
+ * affichant l'avancement de la cohorte d'une session. Visible côté formateur
+ * (/trainer/sessions) et admin (fiche formation, future intégration).
+ */
+export function isPedagogieV2Epic5Enabled(): boolean {
+  return flagOn("NEXT_PUBLIC_FEATURE_PEDAGOGIE_V2_EPIC_5");
+}

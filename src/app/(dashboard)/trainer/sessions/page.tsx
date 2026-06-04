@@ -14,6 +14,8 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn, formatDate, SESSION_STATUS_LABELS, STATUS_COLORS } from "@/lib/utils";
+import { isPedagogieV2Epic5Enabled } from "@/lib/feature-flags";
+import CohortElearningProgress from "@/components/pedagogie-v2/CohortElearningProgress";
 import type { Session } from "@/lib/types";
 
 const MODE_LABELS: Record<string, string> = {
@@ -176,6 +178,14 @@ export default function TrainerSessionsPage() {
                     </Badge>
                   </div>
                 </div>
+                {/* Pédagogie V2 Epic 5 — matrice apprenant × module
+                     e-learning. Le composant s'auto-masque (return null) si
+                     aucun e-learning attaché à la session. */}
+                {isPedagogieV2Epic5Enabled() && (
+                  <div className="mt-4 pt-4 border-t border-gray-100">
+                    <CohortElearningProgress sessionId={session.id} />
+                  </div>
+                )}
               </div>
             );
           })}
