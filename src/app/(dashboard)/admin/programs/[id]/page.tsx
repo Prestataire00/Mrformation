@@ -52,7 +52,7 @@ import { useToast } from "@/components/ui/use-toast";
 import ProgramEnrollments from "./_components/ProgramEnrollments";
 import { ProgramElearningsList } from "./_components/ProgramElearningsList";
 import ProgramElearningDefaults from "@/components/pedagogie-v2/ProgramElearningDefaults";
-import { isPedagogieV2Epic1Enabled, isPedagogieV2Epic2Enabled, isPedagogieV2Epic3Enabled } from "@/lib/feature-flags";
+import { isPedagogieV2Epic3Enabled } from "@/lib/feature-flags";
 import { EditProgramDialog, type EditModule, type EditFormState } from "./_components/EditProgramDialog";
 
 // ── Simple markdown → HTML (bold, italic, lists, line breaks) ─────────────────
@@ -943,27 +943,14 @@ export default function ProgramDetailPage() {
       <SectionDivider label="Cours e-learning générés depuis ce programme" />
       <ProgramElearningsList programId={program.id} />
 
-      {/* DEBUG : balise toujours rendue pour tester si le JSX arrive ici */}
-      <div style={{ background: "#FECACA", padding: "20px", border: "4px solid red", margin: "20px 0", fontSize: "14px" }}>
-        🔴 ZONE EPIC 3 — le code de rendu arrive ici, ce bloc est TOUJOURS visible (pas conditionné).
-        <br />
-        Condition Epic 3 && entityId = {String(isPedagogieV2Epic3Enabled() && Boolean(entityId))}
-      </div>
-
       {/* ── Pédagogie V2 Epic 3 : E-learning par défaut du programme ──────────
            Sera copié vers session_elearning_courses à chaque nouvelle session
            créée à partir de ce programme (snapshot, cf. Epic 2). Caché derrière
            feature flag NEXT_PUBLIC_FEATURE_PEDAGOGIE_V2_EPIC_3. */}
       {isPedagogieV2Epic3Enabled() && entityId && (
         <>
-          <div style={{ background: "#BBF7D0", padding: "10px", border: "3px solid green", margin: "10px 0" }}>
-            🟢 CONDITION ON — La section et le composant ProgramElearningDefaults devraient apparaître JUSTE EN DESSOUS.
-          </div>
           <SectionDivider label="E-learning par défaut (Pédagogie V2)" />
           <ProgramElearningDefaults programId={program.id} entityId={entityId} />
-          <div style={{ background: "#BBF7D0", padding: "10px", border: "3px solid green", margin: "10px 0" }}>
-            🟢 FIN SECTION — si tu vois cette ligne mais pas la section au-dessus, le composant ProgramElearningDefaults plante.
-          </div>
         </>
       )}
 
@@ -1087,38 +1074,6 @@ export default function ProgramDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* DEBUG VISUEL TEMPORAIRE — affiche les flags Pédagogie V2 + entityId
-          dans le coin bas-droit. À retirer après diag. Toujours rendu. */}
-      <div
-        style={{
-          position: "fixed",
-          bottom: 12,
-          right: 12,
-          padding: "10px 14px",
-          background: "#FBBF24",
-          color: "#1F2937",
-          zIndex: 9999,
-          fontSize: 12,
-          fontFamily: "monospace",
-          border: "2px solid #B45309",
-          borderRadius: 8,
-          maxWidth: 320,
-          lineHeight: 1.4,
-          boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
-        }}
-      >
-        <div><strong>DEBUG Pédagogie V2</strong></div>
-        <div>EPIC_1 = {String(isPedagogieV2Epic1Enabled())}</div>
-        <div>EPIC_2 = {String(isPedagogieV2Epic2Enabled())}</div>
-        <div>EPIC_3 = {String(isPedagogieV2Epic3Enabled())}</div>
-        <div>entityId = {entityId ? `${entityId.slice(0, 8)}…` : "null/undef"}</div>
-        <div>program.id = {program.id.slice(0, 8)}…</div>
-        <div>
-          Section visible si EPIC_3 && entityId ={" "}
-          <strong>{String(isPedagogieV2Epic3Enabled() && Boolean(entityId))}</strong>
-        </div>
-      </div>
 
       <EditProgramDialog
         open={editOpen}
