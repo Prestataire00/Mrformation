@@ -51,6 +51,8 @@ import {
 import { useToast } from "@/components/ui/use-toast";
 import ProgramEnrollments from "./_components/ProgramEnrollments";
 import { ProgramElearningsList } from "./_components/ProgramElearningsList";
+import ProgramElearningDefaults from "@/components/pedagogie-v2/ProgramElearningDefaults";
+import { isPedagogieV2Epic3Enabled } from "@/lib/feature-flags";
 import { EditProgramDialog, type EditModule, type EditFormState } from "./_components/EditProgramDialog";
 
 // ── Simple markdown → HTML (bold, italic, lists, line breaks) ─────────────────
@@ -940,6 +942,17 @@ export default function ProgramDetailPage() {
       {/* ── ELE-3 audit BMAD : Cours e-learning générés depuis ce programme ───── */}
       <SectionDivider label="Cours e-learning générés depuis ce programme" />
       <ProgramElearningsList programId={program.id} />
+
+      {/* ── Pédagogie V2 Epic 3 : E-learning par défaut du programme ──────────
+           Sera copié vers session_elearning_courses à chaque nouvelle session
+           créée à partir de ce programme (snapshot, cf. Epic 2). Caché derrière
+           feature flag NEXT_PUBLIC_FEATURE_PEDAGOGIE_V2_EPIC_3. */}
+      {isPedagogieV2Epic3Enabled() && entityId && (
+        <>
+          <SectionDivider label="E-learning par défaut (Pédagogie V2)" />
+          <ProgramElearningDefaults programId={program.id} entityId={entityId} />
+        </>
+      )}
 
       {/* ── Apprenants inscrits ─────────────────────────────────────────────── */}
       <SectionDivider label="Apprenants inscrits au parcours" />
