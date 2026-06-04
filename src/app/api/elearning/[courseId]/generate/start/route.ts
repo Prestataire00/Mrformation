@@ -50,13 +50,15 @@ export async function POST(
       );
     }
 
-    // 1. Reset generation_progress et passe le cours en status="queued".
-    //    Le frontend qui poll verra immédiatement le nouvel état.
+    // 1. Reset generation_progress et passe le cours en status="generating".
+    //    Le CHECK constraint sur elearning_courses.generation_status autorise
+    //    ('pending','extracting','generating','completed','failed') — pas
+    //    de 'queued' (on garde le terme côté step JSONB qui n'est pas contraint).
     const startedAt = new Date().toISOString();
     const { error: resetErr } = await supabase
       .from("elearning_courses")
       .update({
-        generation_status: "queued",
+        generation_status: "generating",
         generation_progress: {
           step: "queued",
           percent: 0,
