@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
+import { isPedagogieV2Epic4Enabled } from "@/lib/feature-flags";
+import SessionElearningAttached from "@/components/pedagogie-v2/SessionElearningAttached";
 import {
   Clock,
   Loader2,
@@ -100,6 +102,9 @@ export default function LearnerMyTrainingsPage() {
   const { entityId } = useEntity();
 
   const [trainingGroups, setTrainingGroups] = useState<TrainingGroup[]>([]);
+  // Pédagogie V2 Epic 4 — id du learner courant, utilisé par
+  // SessionElearningAttached pour fetch ses elearning_enrollments.
+  const [currentLearnerId, setCurrentLearnerId] = useState<string | null>(null);
   const [programEnrollments, setProgramEnrollments] = useState<ProgramEnrollmentData[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -146,6 +151,7 @@ export default function LearnerMyTrainingsPage() {
       return;
     }
 
+    setCurrentLearnerId((learnerData as { id: string }).id);
     setProgramEnrollments(
       (learnerData.program_enrollments as unknown as ProgramEnrollmentData[]) ?? []
     );
@@ -504,42 +510,52 @@ export default function LearnerMyTrainingsPage() {
                       {group.sessions
                         .sort((a, b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime())
                         .map((session) => (
-                          <div
-                            key={session.id}
-                            className="flex items-center justify-between gap-3 py-2 px-3 rounded-lg hover:bg-gray-50 transition-colors"
-                          >
-                            <div className="flex items-center gap-3 min-w-0">
-                              <div className="shrink-0">
-                                {getSessionStatusBadge(session.status)}
-                              </div>
-                              <div className="min-w-0">
-                                <p className="text-sm font-medium text-gray-900 truncate">
-                                  {session.title}
-                                </p>
-                                <div className="flex items-center gap-2 text-xs text-gray-400 mt-0.5">
-                                  <span className="flex items-center gap-1">
-                                    <Calendar className="w-3 h-3" />
-                                    {formatDate(session.start_date)} · {formatTime(session.start_date)}
-                                  </span>
-                                  {session.location && (
+                          <div key={session.id} className="space-y-1">
+                            <div className="flex items-center justify-between gap-3 py-2 px-3 rounded-lg hover:bg-gray-50 transition-colors">
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div className="shrink-0">
+                                  {getSessionStatusBadge(session.status)}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-sm font-medium text-gray-900 truncate">
+                                    {session.title}
+                                  </p>
+                                  <div className="flex items-center gap-2 text-xs text-gray-400 mt-0.5">
                                     <span className="flex items-center gap-1">
-                                      <MapPin className="w-3 h-3" />
-                                      {session.location}
+                                      <Calendar className="w-3 h-3" />
+                                      {formatDate(session.start_date)} · {formatTime(session.start_date)}
                                     </span>
-                                  )}
-                                  <span className="text-gray-300">
-                                    {getModeLabel(session.mode)}
-                                  </span>
+                                    {session.location && (
+                                      <span className="flex items-center gap-1">
+                                        <MapPin className="w-3 h-3" />
+                                        {session.location}
+                                      </span>
+                                    )}
+                                    <span className="text-gray-300">
+                                      {getModeLabel(session.mode)}
+                                    </span>
+                                  </div>
                                 </div>
                               </div>
+                              <Link
+                                href={`/learner/sessions/${session.id}/sign`}
+                                className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                              >
+                                <PenLine className="w-3 h-3" />
+                                Voir détail
+                              </Link>
                             </div>
-                            <Link
-                              href={`/learner/sessions/${session.id}/sign`}
-                              className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                            >
-                              <PenLine className="w-3 h-3" />
-                              Voir détail
-                            </Link>
+                            {/* Pédagogie V2 Epic 4 — liste e-learning attachés à
+                                 cette session (via session_elearning_courses) avec
+                                 état avancement learner. Caché derrière feature flag. */}
+                            {isPedagogieV2Epic4Enabled() && currentLearnerId && (
+                              <div className="px-3">
+                                <SessionElearningAttached
+                                  sessionId={session.id}
+                                  learnerId={currentLearnerId}
+                                />
+                              </div>
+                            )}
                           </div>
                         ))}
                     </div>

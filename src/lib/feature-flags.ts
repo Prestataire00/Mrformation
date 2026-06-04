@@ -53,3 +53,13 @@ export function isPedagogieV2Epic2Enabled(): boolean {
 export function isPedagogieV2Epic3Enabled(): boolean {
   return flagOn("NEXT_PUBLIC_FEATURE_PEDAGOGIE_V2_EPIC_3");
 }
+
+/**
+ * Epic 4 — UX apprenant : sur la page /learner/my-trainings, affiche les
+ * modules e-learning attachés à chaque session (via session_elearning_courses)
+ * avec leur état d'avancement (via elearning_enrollments) et lien direct
+ * vers la page /learner/courses/[id].
+ */
+export function isPedagogieV2Epic4Enabled(): boolean {
+  return flagOn("NEXT_PUBLIC_FEATURE_PEDAGOGIE_V2_EPIC_4");
+}
