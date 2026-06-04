@@ -13,6 +13,7 @@ import {
 import { generateGammaChapterDeck } from "@/lib/services/gamma";
 import type { GammaGenerateOptions } from "@/lib/services/gamma";
 import { chunkText } from "@/lib/services/doc-extraction";
+import { createSseSender } from "@/lib/services/elearning-sse";
 
 export const maxDuration = 300;
 
@@ -32,10 +33,9 @@ export async function POST(
 
   const stream = new ReadableStream({
     async start(controller) {
-      function send(step: string, progress: number, message?: string, data?: unknown) {
-        const event = { step, progress, message, data };
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
-      }
+      // EL-9 audit BMAD : SSE sender extrait dans src/lib/services/elearning-sse.ts
+      // pour testabilité + alignement avec le client GenerationProgress.tsx.
+      const send = createSseSender(controller, encoder);
 
       try {
         const supabase = createClient();
