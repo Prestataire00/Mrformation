@@ -19,7 +19,7 @@ export async function GET(
     // (id+title) est chargé via 2e query séparée plus bas pour rester
     // robuste — l'embed PostgREST programs(...) plantait en prod sur
     // certains cours fraîchement générés ("Cours non trouvé").
-    const shallowQueryFull = `id, title, description, objectives, status, generation_status,
+    const shallowQueryFull = `id, title, description, objectives, status, generation_status, generation_progress,
          estimated_duration_minutes, source_file_name, source_file_url, source_file_type,
          course_type, num_chapters, generation_log, created_at, updated_at,
          gamma_deck_id, gamma_deck_url, gamma_embed_url, gamma_export_pdf, gamma_export_pptx,
@@ -33,7 +33,7 @@ export async function GET(
     // Fix : fallback SANS la jointure programs (la PostgREST peut planter
     // si la FK program_id est nullable et l'embed pose problème — observé
     // en prod après création d'un cours fraîchement généré).
-    const shallowQueryFallback = `id, title, description, objectives, status, generation_status,
+    const shallowQueryFallback = `id, title, description, objectives, status, generation_status, generation_progress,
          estimated_duration_minutes, source_file_name, source_file_url, source_file_type,
          course_type, num_chapters, generation_log, created_at, updated_at,
          program_id,
