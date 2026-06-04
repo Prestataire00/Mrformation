@@ -1265,6 +1265,107 @@ CREATE POLICY "trainer_documents_trainer_own" ON trainer_documents
   );
 
 -- ============================================================
+-- TABLES E-LEARNING (catalogue + cours générés par IA)
+-- ============================================================
+--
+-- EL-11 audit BMAD : index documentaire des 13 tables `elearning_*`.
+-- Le schéma EXACT (toutes colonnes finales après ALTER) vit dans les
+-- migrations source de vérité — voir références ci-dessous. Schema.sql
+-- est conservé léger pour rester lisible ; pour bootstrap d'une base
+-- vide, appliquer les migrations dans l'ordre.
+--
+-- Tables et migrations source :
+--
+-- 1. elearning_courses
+--    → migrations/add-elearning-courses.sql (création)
+--    → migrations/add-course-type.sql (course_type, num_chapters)
+--    → migrations/add-elearning-v2.sql (final_quiz_target_count,
+--       flashcards_target_count)
+--    → migrations/add-gamma-single-deck.sql + add_gamma_columns.sql
+--       (gamma_deck_id, gamma_deck_url, gamma_embed_url, gamma_export_*)
+--    → migrations/link-program-training-elearning.sql (program_id FK)
+--    Colonnes-clés : id, entity_id (FK entities), title, description,
+--    objectives, status, generation_status, course_type, num_chapters,
+--    final_quiz_target_count, flashcards_target_count, gamma_*,
+--    estimated_duration_minutes, source_file_url, source_file_name,
+--    source_file_type, program_id (FK programs, nullable),
+--    extracted_text, generation_log, created_at, updated_at.
+--
+-- 2. elearning_chapters
+--    → migrations/add-elearning-courses.sql + add-elearning-gamma-chapters.sql
+--    Colonnes : id, course_id (FK elearning_courses, CASCADE), title,
+--    summary, content_markdown, content_html, key_concepts (text[]),
+--    order_index, estimated_duration_minutes, is_enriched, gamma_*.
+--
+-- 3. elearning_quizzes
+--    → migrations/add-elearning-courses.sql
+--    Colonnes : id, chapter_id (FK), passing_score (default 70).
+--
+-- 4. elearning_quiz_questions
+--    → migrations/add-elearning-courses.sql + add-elearning-v2.sql
+--    Colonnes : id, quiz_id (FK), question_text, question_type
+--    (multiple_choice|true_false), options (jsonb), explanation,
+--    order_index.
+--
+-- 5. elearning_flashcards
+--    → migrations/add-elearning-courses.sql
+--    Colonnes : id, chapter_id (FK), front_text, back_text, order_index.
+--
+-- 6. elearning_enrollments
+--    → migrations/add-elearning-courses.sql
+--    Colonnes : id, course_id (FK), learner_id (FK learners),
+--    status (enrolled|in_progress|completed), started_at, completed_at,
+--    completion_rate, enrolled_at. UNIQUE(course_id, learner_id).
+--
+-- 7. elearning_chapter_progress
+--    → migrations/add-elearning-courses.sql
+--    Colonnes : id, enrollment_id (FK), chapter_id (FK), is_completed,
+--    started_at, completed_at, quiz_score, attempts.
+--
+-- 8. elearning_final_exam_questions
+--    → migrations/add-elearning-v2.sql
+--    Colonnes : id, course_id (FK), question_text, question_type
+--    (multiple_choice|true_false|short_answer), options (jsonb),
+--    correct_answer, explanation, difficulty (1-5), topic,
+--    objective_ref, estimated_time_sec, citations (jsonb), tags (jsonb),
+--    order_index.
+--
+-- 9. elearning_global_flashcards
+--    → migrations/add-elearning-v2.sql
+--    Colonnes : id, course_id (FK), front_text, back_text, tags (jsonb),
+--    citations (jsonb), order_index.
+--
+-- 10. elearning_final_exam_progress
+--    → migrations/add-elearning-v2.sql
+--    Colonnes : id, enrollment_id (FK), attempts (jsonb[]),
+--    best_score, passed_at, last_attempt_at.
+--
+-- 11. elearning_slide_specs
+--    → migrations/add-elearning-v2.sql
+--    Colonnes : id, course_id (FK), chapter_id (FK nullable), spec_json
+--    (jsonb), order_index.
+--
+-- 12. elearning_live_sessions
+--    → migrations/add-elearning-v2.sql
+--    Colonnes : id, course_id (FK), enrollment_id (FK), start_time,
+--    end_time, kind (presentation|quiz|flashcards), metadata (jsonb).
+--
+-- 13. elearning_course_scores
+--    → migrations/add-elearning-scores.sql
+--    Colonnes : id, course_id (FK), enrollment_id (FK), score_type
+--    (chapter_quiz|final_exam), score_value, max_score, awarded_at.
+--
+-- RLS : toutes ces tables ont RLS activé. Les policies définitives
+-- sont dans :
+--   - migrations/cleanup_allow_all_phase2b_lot1_elearning.sql
+--     (policies admin_all + reads granulaires par rôle)
+--   - migrations/el-1-drop-elearning-allow-all-leftovers.sql
+--     (drop des policies legacy "Auth users full access elearning_*")
+--
+-- Storage bucket associé : `elearning-documents` (privé), policies
+-- dans migrations/add_trainer_documents_storage_bucket.sql.
+
+-- ============================================================
 -- DONNÉES DE DÉMONSTRATION
 -- ============================================================
 

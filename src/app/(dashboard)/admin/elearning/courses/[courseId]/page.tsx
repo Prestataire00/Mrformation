@@ -116,6 +116,8 @@ export default function CourseEditorPage() {
   const [course, setCourse] = useState<Course | null>(null);
   const [loading, setLoading] = useState(true);
   const [publishLoading, setPublishLoading] = useState(false);
+  // EL-12 audit BMAD : régénération du cours quand generation_status === "failed".
+  const [regenerating, setRegenerating] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [expandedChapter, setExpandedChapter] = useState<string | null>(null);
@@ -217,6 +219,54 @@ export default function CourseEditorPage() {
     } finally {
       setSavingDuration(false);
       setEditingDuration(false);
+    }
+  };
+
+  // EL-12 audit BMAD : relance le pipeline de génération IA quand le cours
+  // est en status "failed". Utilise EventSource pour streamer la progression
+  // (mêmes events que /create wizard) — on consomme silencieusement et on
+  // refetch à la fin pour mettre l'UI à jour. Pas de modal de progression
+  // détaillée pour rester simple : l'admin peut suivre via le bouton de
+  // statut + refresh manuel.
+  const handleRegenerate = async () => {
+    if (!confirm(
+      "Relancer la génération IA complète à partir du texte extrait ?\n\n" +
+      "Les chapitres / quiz / flashcards / examen actuels seront remplacés.",
+    )) {
+      return;
+    }
+    setRegenerating(true);
+    try {
+      const res = await fetch(`/api/elearning/${courseId}/generate`, {
+        method: "POST",
+      });
+      if (!res.ok || !res.body) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `Erreur ${res.status}`);
+      }
+      // Consomme le stream SSE en arrière-plan sans bloquer l'UI.
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let lastStep = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value);
+        // Parse les events pour le dernier step (best-effort)
+        const match = chunk.match(/"step":"([^"]+)"/);
+        if (match) lastStep = match[1];
+        if (lastStep === "error" || lastStep === "complete") break;
+      }
+      toast({
+        title: lastStep === "complete" ? "Régénération terminée" : "Régénération en cours…",
+        description: "Le cours sera mis à jour automatiquement.",
+      });
+      await fetchCourse();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erreur réseau";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
+    } finally {
+      setRegenerating(false);
     }
   };
 
@@ -326,6 +376,16 @@ export default function CourseEditorPage() {
                 <Sparkles className="h-3 w-3" /> Généré par IA
               </Badge>
             )}
+            {course.generation_status === "failed" && (
+              <Badge className="bg-red-100 text-red-700 border-red-200 border text-xs gap-1">
+                Génération échouée
+              </Badge>
+            )}
+            {(course.generation_status === "generating" || course.generation_status === "extracting") && (
+              <Badge className="bg-amber-100 text-amber-700 border-amber-200 border text-xs gap-1">
+                Génération en cours…
+              </Badge>
+            )}
             {hasGammaDeck && (
               <Badge className="bg-violet-100 text-violet-700 border-violet-200 border text-xs gap-1">
                 <Sparkles className="h-3 w-3" /> Présentation Gamma
@@ -341,6 +401,19 @@ export default function CourseEditorPage() {
           <Button variant="outline" onClick={() => router.push("/admin/elearning")} className="gap-2">
             <ArrowLeft className="h-4 w-4" /> Retour
           </Button>
+          {/* EL-12 audit BMAD : bouton Régénérer si la génération a échoué */}
+          {course.generation_status === "failed" && (
+            <Button
+              variant="outline"
+              onClick={handleRegenerate}
+              disabled={regenerating}
+              className="gap-2 text-amber-700 border-amber-300 hover:bg-amber-50"
+              title="Relance le pipeline IA complet à partir du texte extrait"
+            >
+              {regenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              {regenerating ? "Régénération…" : "Régénérer le cours"}
+            </Button>
+          )}
           {!showDeleteConfirm ? (
             <Button
               variant="outline"
