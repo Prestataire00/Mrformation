@@ -24,6 +24,31 @@ function flagOn(name: string): boolean {
   return process.env[name] === "true";
 }
 
+// DEBUG TEMPORAIRE — Pédagogie V2 (à retirer une fois le bug "flags ne s'appliquent
+// pas côté client" résolu). Log dans la console browser la valeur lue par chaque
+// flag au premier appel. Permet de diagnostiquer si le replace build time des
+// NEXT_PUBLIC_* a bien injecté la valeur.
+declare global {
+  // eslint-disable-next-line no-var
+  var __pedagogieV2DebugLogged: boolean | undefined;
+}
+function logFlagDebug(name: string, value: string | undefined): void {
+  if (typeof window === "undefined") return;
+  if (globalThis.__pedagogieV2DebugLogged) return;
+  globalThis.__pedagogieV2DebugLogged = true;
+  // eslint-disable-next-line no-console
+  console.log(
+    "[pedagogie-v2-debug]",
+    name,
+    "raw:",
+    JSON.stringify(value),
+    "typeof:",
+    typeof value,
+    "→ flagOn:",
+    value === "true",
+  );
+}
+
 /**
  * Epic 1 — Fondations data : nouvelles tables session_elearning_courses
  * et program_elearning_courses actives, suppression du chemin UI legacy
@@ -32,7 +57,9 @@ function flagOn(name: string): boolean {
  * Pré-requis activation : migrations Task 1, 2, 3 exécutées en prod.
  */
 export function isPedagogieV2Epic1Enabled(): boolean {
-  return flagOn("NEXT_PUBLIC_FEATURE_PEDAGOGIE_V2_EPIC_1");
+  const val = process.env.NEXT_PUBLIC_FEATURE_PEDAGOGIE_V2_EPIC_1;
+  logFlagDebug("NEXT_PUBLIC_FEATURE_PEDAGOGIE_V2_EPIC_1", val);
+  return val === "true";
 }
 
 /**
