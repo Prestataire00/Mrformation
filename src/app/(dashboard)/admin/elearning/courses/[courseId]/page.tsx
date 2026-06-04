@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import { cn, formatDate } from "@/lib/utils";
 import { ChapterEditDialog } from "./_components/ChapterEditDialog";
+import { CourseEnrollmentsList } from "./_components/CourseEnrollmentsList";
 
 interface QuizQuestion {
   id: string;
@@ -857,6 +858,11 @@ export default function CourseEditorPage() {
           </div>
         )}
       </div>
+
+      {/* EL-6 audit BMAD : vue Inscriptions admin */}
+      {course.status !== "archived" && (
+        <CourseEnrollmentsList courseId={courseId} />
+      )}
 
       {/* EL-5 audit BMAD : dialog d'édition / suppression chapitre */}
       <ChapterEditDialog
