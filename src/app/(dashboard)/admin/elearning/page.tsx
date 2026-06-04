@@ -6,6 +6,11 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
 import { cn, formatDate, truncate } from "@/lib/utils";
+import {
+  elearningHubCourseSchema,
+  getElearningFormErrors,
+  type ElearningHubCourseInput,
+} from "@/lib/validations/elearning";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -198,6 +203,8 @@ export default function ELearningPage() {
   const [editingCourse, setEditingCourse] = useState<Course | null>(null);
   const [formData, setFormData] = useState<CourseFormData>(emptyForm());
   const [saving, setSaving] = useState(false);
+  // EL-4 audit BMAD : erreurs Zod par champ pour affichage UI.
+  const [formErrors, setFormErrors] = useState<Partial<Record<keyof ElearningHubCourseInput, string>>>({});
 
   // Delete dialog
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -300,6 +307,7 @@ export default function ELearningPage() {
   const openAddDialog = () => {
     setEditingCourse(null);
     setFormData(emptyForm());
+    setFormErrors({});
     setDialogOpen(true);
   };
 
@@ -312,6 +320,7 @@ export default function ELearningPage() {
       status: course.content?.status ?? "draft",
       modules: course.content?.modules ? [...course.content.modules] : [],
     });
+    setFormErrors({});
     setDialogOpen(true);
   };
 
@@ -324,26 +333,26 @@ export default function ELearningPage() {
   // ── Save ───────────────────────────────────────────────────────────────────
 
   const handleSave = async () => {
-    if (!formData.title.trim()) {
-      toast({ title: "Titre requis", variant: "destructive" });
-      return;
-    }
     if (!entityId) {
       toast({ title: "Erreur", description: "Entité non sélectionnée.", variant: "destructive" });
       return;
     }
 
-    // Validate modules
-    for (const mod of formData.modules) {
-      if (!mod.title.trim()) {
-        toast({
-          title: "Module incomplet",
-          description: "Tous les modules doivent avoir un titre.",
-          variant: "destructive",
-        });
-        return;
-      }
+    // EL-4 audit BMAD : validation Zod centralisée (titre + modules + status).
+    // Remplace les check inline ad-hoc qui surfaçaient uniquement via toast
+    // générique, pas d'erreur sous chaque champ.
+    const parsed = elearningHubCourseSchema.safeParse(formData);
+    if (!parsed.success) {
+      const errors = getElearningFormErrors<ElearningHubCourseInput>(parsed);
+      setFormErrors(errors);
+      toast({
+        title: "Formulaire invalide",
+        description: Object.values(errors)[0] || "Vérifiez les champs en rouge.",
+        variant: "destructive",
+      });
+      return;
     }
+    setFormErrors({});
 
     setSaving(true);
 
@@ -984,7 +993,9 @@ export default function ELearningPage() {
                     setFormData((prev) => ({ ...prev, title: e.target.value }))
                   }
                   placeholder="Ex : Formation Excel Avancé"
+                  className={formErrors.title ? "border-red-400" : ""}
                 />
+                {formErrors.title && <p className="text-xs text-red-600">{formErrors.title}</p>}
               </div>
 
               <div className="space-y-1.5">
@@ -1073,8 +1084,11 @@ export default function ELearningPage() {
                 </Button>
               </div>
 
+              {formErrors.modules && (
+                <p className="text-xs text-red-600 mb-2">{formErrors.modules}</p>
+              )}
               {formData.modules.length === 0 ? (
-                <div className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center">
+                <div className={`border-2 border-dashed rounded-xl p-8 text-center ${formErrors.modules ? "border-red-300" : "border-gray-200"}`}>
                   <Layers className="h-8 w-8 text-gray-300 mx-auto mb-2" />
                   <p className="text-sm text-gray-500 font-medium">Aucun module</p>
                   <p className="text-xs text-gray-400 mt-1">
