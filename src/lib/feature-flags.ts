@@ -7,7 +7,15 @@
  * branchement du nouveau comportement, et faire un fallback explicite
  * vers l'ancien comportement quand le flag est OFF.
  *
- * Stockage : variables d'env Netlify (process.env.FEATURE_PEDAGOGIE_V2_EPIC_<N>).
+ * Stockage : variables d'env Netlify (process.env.NEXT_PUBLIC_FEATURE_PEDAGOGIE_V2_EPIC_<N>).
+ *
+ * ⚠ Préfixe `NEXT_PUBLIC_` obligatoire : ces flags doivent être lisibles
+ * dans les Client Components Next.js (le hub /admin/elearning est marqué
+ * "use client"). Sans NEXT_PUBLIC_, la variable n'est pas injectée dans
+ * le bundle client et `process.env[name]` est `undefined` au runtime.
+ * Le flag n'est pas un secret (boolean fonctionnel), l'exposition dans
+ * le bundle client est acceptée.
+ *
  * Acceptée comme TRUE uniquement la valeur littérale "true" (strict, pour
  * éviter les confusions "1", "yes", etc.).
  */
@@ -24,5 +32,5 @@ function flagOn(name: string): boolean {
  * Pré-requis activation : migrations Task 1, 2, 3 exécutées en prod.
  */
 export function isPedagogieV2Epic1Enabled(): boolean {
-  return flagOn("FEATURE_PEDAGOGIE_V2_EPIC_1");
+  return flagOn("NEXT_PUBLIC_FEATURE_PEDAGOGIE_V2_EPIC_1");
 }
