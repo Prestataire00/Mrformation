@@ -197,6 +197,12 @@ export default function ELearningPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "draft" | "published">("all");
+  // EL-7 audit BMAD : tri + pagination client.
+  type SortKey = "date" | "title" | "chapters";
+  const [sortBy, setSortBy] = useState<SortKey>("date");
+  const PAGE_SIZE = 12;
+  const [pageProgram, setPageProgram] = useState(1);
+  const [pageAi, setPageAi] = useState(1);
 
   // Course editor dialog
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -268,31 +274,62 @@ export default function ELearningPage() {
 
   // ── Filtering ──────────────────────────────────────────────────────────────
 
-  const filtered = courses.filter((c) => {
-    const matchSearch =
-      search === "" ||
-      c.title.toLowerCase().includes(search.toLowerCase()) ||
-      c.description?.toLowerCase().includes(search.toLowerCase());
-    const courseStatus = c.content?.status ?? "draft";
-    const matchStatus =
-      statusFilter === "all" || courseStatus === statusFilter;
-    return matchSearch && matchStatus;
-  });
+  const filtered = courses
+    .filter((c) => {
+      const matchSearch =
+        search === "" ||
+        c.title.toLowerCase().includes(search.toLowerCase()) ||
+        c.description?.toLowerCase().includes(search.toLowerCase());
+      const courseStatus = c.content?.status ?? "draft";
+      const matchStatus =
+        statusFilter === "all" || courseStatus === statusFilter;
+      return matchSearch && matchStatus;
+    })
+    .sort((a, b) => {
+      // EL-7 audit BMAD : tri par clé sélectionnée.
+      if (sortBy === "title") return a.title.localeCompare(b.title);
+      if (sortBy === "chapters") {
+        return (b.content?.modules?.length ?? 0) - (a.content?.modules?.length ?? 0);
+      }
+      return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+    });
 
   // ── Stats ──────────────────────────────────────────────────────────────────
 
   // Filter AI courses
-  const filteredAiCourses = aiCourses.filter((c) => {
-    const matchSearch =
-      search === "" ||
-      c.title.toLowerCase().includes(search.toLowerCase()) ||
-      c.description?.toLowerCase().includes(search.toLowerCase());
-    const matchStatus =
-      statusFilter === "all" ||
-      (statusFilter === "published" && c.status === "published") ||
-      (statusFilter === "draft" && c.status !== "published");
-    return matchSearch && matchStatus;
-  });
+  const filteredAiCourses = aiCourses
+    .filter((c) => {
+      const matchSearch =
+        search === "" ||
+        c.title.toLowerCase().includes(search.toLowerCase()) ||
+        c.description?.toLowerCase().includes(search.toLowerCase());
+      const matchStatus =
+        statusFilter === "all" ||
+        (statusFilter === "published" && c.status === "published") ||
+        (statusFilter === "draft" && c.status !== "published");
+      return matchSearch && matchStatus;
+    })
+    .sort((a, b) => {
+      if (sortBy === "title") return a.title.localeCompare(b.title);
+      if (sortBy === "chapters") {
+        return (b.elearning_chapters?.length ?? 0) - (a.elearning_chapters?.length ?? 0);
+      }
+      return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+    });
+
+  // EL-7 audit BMAD : pagination client par section. Reset à page 1 quand
+  // les filtres ou le tri changent.
+  useEffect(() => {
+    setPageProgram(1);
+    setPageAi(1);
+  }, [search, statusFilter, sortBy]);
+
+  const totalPagesProgram = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const totalPagesAi = Math.max(1, Math.ceil(filteredAiCourses.length / PAGE_SIZE));
+  const safePageProgram = Math.min(pageProgram, totalPagesProgram);
+  const safePageAi = Math.min(pageAi, totalPagesAi);
+  const pagedProgram = filtered.slice((safePageProgram - 1) * PAGE_SIZE, safePageProgram * PAGE_SIZE);
+  const pagedAi = filteredAiCourses.slice((safePageAi - 1) * PAGE_SIZE, safePageAi * PAGE_SIZE);
 
   const totalCourses = courses.length + aiCourses.length;
   const publishedCourses =
@@ -611,7 +648,7 @@ export default function ELearningPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3">
+      <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
           <Input
@@ -637,6 +674,17 @@ export default function ELearningPage() {
             </button>
           ))}
         </div>
+        {/* EL-7 audit BMAD : tri (date / titre / nb chapitres) */}
+        <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortKey)}>
+          <SelectTrigger className="w-[200px]">
+            <SelectValue placeholder="Trier par" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="date">Date (récent → ancien)</SelectItem>
+            <SelectItem value="title">Titre (A → Z)</SelectItem>
+            <SelectItem value="chapters">Nb chapitres (max → min)</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Courses Grid */}
@@ -687,7 +735,7 @@ export default function ELearningPage() {
               <span className="text-xs text-gray-400">({filtered.length})</span>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {filtered.map((course) => {
+          {pagedProgram.map((course) => {
             const modules = course.content?.modules ?? [];
             const status = course.content?.status ?? "draft";
             const duration = totalDuration(modules);
@@ -840,6 +888,23 @@ export default function ELearningPage() {
             );
           })}
             </div>
+            {/* EL-7 audit BMAD : pagination programmes */}
+            {totalPagesProgram > 1 && (
+              <div className="flex items-center justify-between gap-3 pt-2">
+                <p className="text-xs text-gray-500">
+                  Affichage {(safePageProgram - 1) * PAGE_SIZE + 1}–{Math.min(safePageProgram * PAGE_SIZE, filtered.length)} sur {filtered.length}
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button size="sm" variant="outline" onClick={() => setPageProgram((p) => Math.max(1, p - 1))} disabled={safePageProgram <= 1}>
+                    Précédent
+                  </Button>
+                  <span className="text-xs text-gray-600">Page {safePageProgram} / {totalPagesProgram}</span>
+                  <Button size="sm" variant="outline" onClick={() => setPageProgram((p) => Math.min(totalPagesProgram, p + 1))} disabled={safePageProgram >= totalPagesProgram}>
+                    Suivant
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         )}
         </>
@@ -854,7 +919,7 @@ export default function ELearningPage() {
             <span className="text-xs text-gray-400">({filteredAiCourses.length})</span>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {filteredAiCourses.map((course) => {
+            {pagedAi.map((course) => {
               const chaptersCount = course.elearning_chapters?.length ?? 0;
               const isPublished = course.status === "published";
               const isProcessing = course.generation_status === "generating" || course.generation_status === "extracting";
@@ -966,6 +1031,23 @@ export default function ELearningPage() {
               );
             })}
           </div>
+          {/* EL-7 audit BMAD : pagination AI courses */}
+          {totalPagesAi > 1 && (
+            <div className="flex items-center justify-between gap-3 pt-2">
+              <p className="text-xs text-gray-500">
+                Affichage {(safePageAi - 1) * PAGE_SIZE + 1}–{Math.min(safePageAi * PAGE_SIZE, filteredAiCourses.length)} sur {filteredAiCourses.length}
+              </p>
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="outline" onClick={() => setPageAi((p) => Math.max(1, p - 1))} disabled={safePageAi <= 1}>
+                  Précédent
+                </Button>
+                <span className="text-xs text-gray-600">Page {safePageAi} / {totalPagesAi}</span>
+                <Button size="sm" variant="outline" onClick={() => setPageAi((p) => Math.min(totalPagesAi, p + 1))} disabled={safePageAi >= totalPagesAi}>
+                  Suivant
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
