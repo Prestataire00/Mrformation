@@ -24,18 +24,19 @@ function flagOn(name: string): boolean {
   return process.env[name] === "true";
 }
 
-// DEBUG TEMPORAIRE — Pédagogie V2 (à retirer une fois le bug "flags ne s'appliquent
-// pas côté client" résolu). Log dans la console browser la valeur lue par chaque
-// flag au premier appel. Permet de diagnostiquer si le replace build time des
-// NEXT_PUBLIC_* a bien injecté la valeur.
+// DEBUG TEMPORAIRE — Pédagogie V2 (à retirer une fois le diagnostic terminé).
+// Log dans la console browser la valeur lue par CHAQUE flag au premier appel
+// (1 log par flag, déduplé via un Set). Permet de diagnostiquer si le replace
+// build time des NEXT_PUBLIC_* a bien injecté la valeur dans le bundle.
 declare global {
   // eslint-disable-next-line no-var
-  var __pedagogieV2DebugLogged: boolean | undefined;
+  var __pedagogieV2DebugLogged: Set<string> | undefined;
 }
 function logFlagDebug(name: string, value: string | undefined): void {
   if (typeof window === "undefined") return;
-  if (globalThis.__pedagogieV2DebugLogged) return;
-  globalThis.__pedagogieV2DebugLogged = true;
+  if (!globalThis.__pedagogieV2DebugLogged) globalThis.__pedagogieV2DebugLogged = new Set();
+  if (globalThis.__pedagogieV2DebugLogged.has(name)) return;
+  globalThis.__pedagogieV2DebugLogged.add(name);
   // eslint-disable-next-line no-console
   console.log(
     "[pedagogie-v2-debug]",
@@ -70,7 +71,9 @@ export function isPedagogieV2Epic1Enabled(): boolean {
  * Pré-requis activation : Epic 1 actif + hooks Epic 2 déployés.
  */
 export function isPedagogieV2Epic2Enabled(): boolean {
-  return flagOn("NEXT_PUBLIC_FEATURE_PEDAGOGIE_V2_EPIC_2");
+  const val = process.env.NEXT_PUBLIC_FEATURE_PEDAGOGIE_V2_EPIC_2;
+  logFlagDebug("NEXT_PUBLIC_FEATURE_PEDAGOGIE_V2_EPIC_2", val);
+  return val === "true";
 }
 
 /**
@@ -78,5 +81,7 @@ export function isPedagogieV2Epic2Enabled(): boolean {
  * + (futur Epic 3.5) onglet E-learning attaché sur la fiche session + UI opt-out.
  */
 export function isPedagogieV2Epic3Enabled(): boolean {
-  return flagOn("NEXT_PUBLIC_FEATURE_PEDAGOGIE_V2_EPIC_3");
+  const val = process.env.NEXT_PUBLIC_FEATURE_PEDAGOGIE_V2_EPIC_3;
+  logFlagDebug("NEXT_PUBLIC_FEATURE_PEDAGOGIE_V2_EPIC_3", val);
+  return val === "true";
 }
