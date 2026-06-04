@@ -26,16 +26,19 @@ export async function POST(
   request: NextRequest,
   { params }: { params: { courseId: string } }
 ) {
-  if (!verifyCronAuth(request)) {
+  const isCron = verifyCronAuth(request);
+  if (!isCron) {
     const access = await requireElearningCourse(params.courseId, ["admin", "super_admin"]);
     if (!access.ok) return access.error;
   }
 
   try {
-    // Charge le cours via service direct (verifyCronAuth bypass possible).
-    // On utilise le supabase server client classique pour rester cohérent.
-    const { createClient } = await import("@/lib/supabase/server");
-    const supabase = createClient();
+    // En mode cron (Bearer CRON_SECRET), aucun cookie Supabase Auth n'est
+    // envoyé → le client anon ne peut rien lire à cause des RLS. On utilise
+    // service_role qui bypass RLS. En mode user normal, on garde le client
+    // server classique (auth via cookies, RLS appliquées).
+    const { createClient, createServiceRoleClient } = await import("@/lib/supabase/server");
+    const supabase = isCron ? createServiceRoleClient() : createClient();
 
     const { data: course, error: courseError } = await supabase
       .from("elearning_courses")

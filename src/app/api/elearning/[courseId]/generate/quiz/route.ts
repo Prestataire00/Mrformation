@@ -23,14 +23,17 @@ export async function POST(
   request: NextRequest,
   { params }: { params: { courseId: string } }
 ) {
-  if (!verifyCronAuth(request)) {
+  const isCron = verifyCronAuth(request);
+  if (!isCron) {
     const access = await requireElearningCourse(params.courseId, ["admin", "super_admin"]);
     if (!access.ok) return access.error;
   }
 
   try {
-    const { createClient } = await import("@/lib/supabase/server");
-    const supabase = createClient();
+    // service_role en mode cron (BG function n'a pas de cookies Supabase),
+    // client server classique sinon.
+    const { createClient, createServiceRoleClient } = await import("@/lib/supabase/server");
+    const supabase = isCron ? createServiceRoleClient() : createClient();
 
     // Charge cours + chapitres.
     const [{ data: course }, { data: chapters }] = await Promise.all([

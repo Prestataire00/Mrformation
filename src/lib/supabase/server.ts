@@ -1,4 +1,5 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 
 export function createClient() {
@@ -29,4 +30,29 @@ export function createClient() {
       },
     }
   );
+}
+
+/**
+ * Client Supabase utilisant la service_role key — bypass complet des RLS.
+ *
+ * À n'utiliser QUE dans des contextes serveur authentifiés par un mécanisme
+ * autre que Supabase Auth (ex: routes cron protégées par CRON_SECRET, appels
+ * inter-services depuis une Netlify Background Function).
+ *
+ * NE JAMAIS instancier dans un code qui peut être déclenché par un utilisateur
+ * non authentifié sans audit préalable — toute la sécurité multi-tenant
+ * (entity_id, propriété apprenant) doit être appliquée explicitement par le
+ * code appelant.
+ */
+export function createServiceRoleClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !serviceRoleKey) {
+    throw new Error(
+      "createServiceRoleClient : NEXT_PUBLIC_SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY manquant",
+    );
+  }
+  return createSupabaseClient(url, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
 }
