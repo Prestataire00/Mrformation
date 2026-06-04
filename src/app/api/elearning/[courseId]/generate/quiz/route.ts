@@ -19,6 +19,35 @@ import { generateQuizAndFlashcards } from "@/lib/services/openai";
 
 export const maxDuration = 60;
 
+/**
+ * OpenAI renvoie les questions au format :
+ *   { type: "multiple_choice", options: ["a","b","c","d"], correct_answer: 0 }
+ *   { type: "true_false", correct_answer: true }
+ * mais le UI learner attend :
+ *   { options: [{ text: "a", is_correct: false }, ...] }
+ * Cette fonction fait le pont sans révéler la bonne réponse côté DB
+ * (le UI lit is_correct uniquement, le serveur strip avant de renvoyer
+ * au learner — cf /api/elearning/[id]/route.ts).
+ */
+function convertAIOptions(q: {
+  type: string;
+  options?: string[];
+  correct_answer: number | boolean | string;
+}): { text: string; is_correct: boolean }[] {
+  if (q.type === "true_false") {
+    return [
+      { text: "Vrai", is_correct: q.correct_answer === true },
+      { text: "Faux", is_correct: q.correct_answer === false },
+    ];
+  }
+  // multiple_choice par défaut
+  const opts = Array.isArray(q.options) ? q.options : [];
+  return opts.map((text, i) => ({
+    text: typeof text === "string" ? text : String(text ?? ""),
+    is_correct: typeof q.correct_answer === "number" ? i === q.correct_answer : false,
+  }));
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: { courseId: string } }
@@ -87,7 +116,7 @@ export async function POST(
         quiz_id: quizRow.id as string,
         question_text: q.question,
         question_type: q.type,
-        options: q.options ?? [],
+        options: convertAIOptions(q),
         explanation: q.explanation,
         order_index: qi,
       }));
