@@ -20,9 +20,20 @@ const stringToNumber = (v: unknown) => {
 };
 
 // ── Dialog "Nouveau cours" du hub (programs.content.type='elearning') ──
+//
+// ⚠ DEPRECATED — Pédagogie V2 Epic 1 (2026-06-04).
+// Ces schémas servaient à valider la création d'un program avec
+// content.type='elearning' via le dialog "Nouveau cours" du hub
+// /admin/elearning. Décision Phase 3 brainstorm 2026-06-04 : fusion vers
+// elearning_courses uniquement. Le dialog et les chemins de création legacy
+// sont masqués derrière NEXT_PUBLIC_FEATURE_PEDAGOGIE_V2_EPIC_1 (cf. commit
+// 29e285b). Les schémas sont gardés en V1 Epic 1 pour ne pas casser le code
+// legacy quand le flag est OFF. À retirer en V1.1 quand le flag sera ON par
+// défaut en prod.
 
 export const elearningCourseStatusEnum = z.enum(["draft", "published", "archived"]);
 
+/** @deprecated Pédagogie V2 Epic 1 — voir commentaire en tête de section. */
 export const elearningCourseModuleSchema = z.object({
   id: z.union([z.string(), z.number()]),
   title: z.string().min(1, "Le titre du module est requis").max(255, "Maximum 255 caractères"),
@@ -30,6 +41,7 @@ export const elearningCourseModuleSchema = z.object({
   order_index: z.number().optional(),
 });
 
+/** @deprecated Pédagogie V2 Epic 1 — utiliser elearningCreateConfigSchema pour les nouveaux cours via /admin/elearning/create. */
 export const elearningHubCourseSchema = z.object({
   title: z.string().min(1, "Le titre est requis").max(255, "Maximum 255 caractères"),
   description: z.preprocess(emptyToNull, z.string().max(5000).nullable()),
@@ -38,6 +50,7 @@ export const elearningHubCourseSchema = z.object({
   modules: z.array(elearningCourseModuleSchema).min(1, "Au moins un module est requis"),
 });
 
+/** @deprecated Pédagogie V2 Epic 1 — voir commentaire en tête de section. */
 export type ElearningHubCourseInput = z.input<typeof elearningHubCourseSchema>;
 
 // ── Édition de la durée estimée (detail course) ────────────────────
