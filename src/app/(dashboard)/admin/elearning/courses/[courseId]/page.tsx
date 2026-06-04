@@ -118,6 +118,7 @@ export default function CourseEditorPage() {
   const [publishLoading, setPublishLoading] = useState(false);
   // EL-12 audit BMAD : régénération du cours quand generation_status === "failed".
   const [regenerating, setRegenerating] = useState(false);
+  const [regenerateStep, setRegenerateStep] = useState<string | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [expandedChapter, setExpandedChapter] = useState<string | null>(null);
@@ -222,51 +223,69 @@ export default function CourseEditorPage() {
     }
   };
 
-  // EL-12 audit BMAD : relance le pipeline de génération IA quand le cours
-  // est en status "failed". Utilise EventSource pour streamer la progression
-  // (mêmes events que /create wizard) — on consomme silencieusement et on
-  // refetch à la fin pour mettre l'UI à jour. Pas de modal de progression
-  // détaillée pour rester simple : l'admin peut suivre via le bouton de
-  // statut + refresh manuel.
+  // EL-12 + Phase B.1 fix 504 : orchestre la régénération en séquence
+  // d'appels courts (chacun < timeout Netlify Functions) :
+  //   1. POST /generate/outline (3-8s) → ids chapitres placeholders
+  //   2. for chapter : POST /generate/chapter { chapter_id } (5-12s × N)
+  //   3. POST /generate/quiz (8-15s)
+  // L'examen final est temporairement skippé (Phase A.2 à venir).
+  //
+  // Progression affichée via state regenerateStep ("Outline..." / "Chapitre 2/4" / etc).
   const handleRegenerate = async () => {
     if (!confirm(
-      "Relancer la génération IA complète à partir du texte extrait ?\n\n" +
-      "Les chapitres / quiz / flashcards / examen actuels seront remplacés.",
+      "Relancer la génération IA à partir du texte extrait ?\n\n" +
+      "Les chapitres / quiz / flashcards actuels seront remplacés. " +
+      "L'examen final n'est pas régénéré pour cette version.",
     )) {
       return;
     }
     setRegenerating(true);
+    setRegenerateStep("Plan du cours…");
     try {
-      const res = await fetch(`/api/elearning/${courseId}/generate`, {
-        method: "POST",
-      });
-      if (!res.ok || !res.body) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || `Erreur ${res.status}`);
+      // 1. Outline
+      const outRes = await fetch(`/api/elearning/${courseId}/generate/outline`, { method: "POST" });
+      const outBody = await outRes.json().catch(() => ({}));
+      if (!outRes.ok || !outBody.ok) {
+        throw new Error(outBody.error || `Outline échoué (${outRes.status})`);
       }
-      // Consomme le stream SSE en arrière-plan sans bloquer l'UI.
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let lastStep = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value);
-        // Parse les events pour le dernier step (best-effort)
-        const match = chunk.match(/"step":"([^"]+)"/);
-        if (match) lastStep = match[1];
-        if (lastStep === "error" || lastStep === "complete") break;
+      const chapterIds = (outBody.chapter_ids ?? []) as string[];
+      if (chapterIds.length === 0) {
+        throw new Error("Aucun chapitre planifié par l'IA");
       }
+
+      // 2. Chapitres en série (limite timeout par appel)
+      for (let i = 0; i < chapterIds.length; i++) {
+        setRegenerateStep(`Chapitre ${i + 1}/${chapterIds.length}…`);
+        const chRes = await fetch(`/api/elearning/${courseId}/generate/chapter`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chapter_id: chapterIds[i] }),
+        });
+        const chBody = await chRes.json().catch(() => ({}));
+        if (!chRes.ok || !chBody.ok) {
+          throw new Error(chBody.error || `Chapitre ${i + 1} échoué (${chRes.status})`);
+        }
+      }
+
+      // 3. Quiz + flashcards
+      setRegenerateStep("Quiz et flashcards…");
+      const qRes = await fetch(`/api/elearning/${courseId}/generate/quiz`, { method: "POST" });
+      const qBody = await qRes.json().catch(() => ({}));
+      if (!qRes.ok || !qBody.ok) {
+        throw new Error(qBody.error || `Quiz échoué (${qRes.status})`);
+      }
+
       toast({
-        title: lastStep === "complete" ? "Régénération terminée" : "Régénération en cours…",
-        description: "Le cours sera mis à jour automatiquement.",
+        title: "Régénération terminée",
+        description: `${chapterIds.length} chapitre(s), ${qBody.quiz_count ?? 0} questions, ${qBody.flashcards_count ?? 0} flashcards.`,
       });
       await fetchCourse();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Erreur réseau";
-      toast({ title: "Erreur", description: message, variant: "destructive" });
+      toast({ title: "Régénération échouée", description: message, variant: "destructive" });
     } finally {
       setRegenerating(false);
+      setRegenerateStep(null);
     }
   };
 
@@ -408,10 +427,10 @@ export default function CourseEditorPage() {
               onClick={handleRegenerate}
               disabled={regenerating}
               className="gap-2 text-amber-700 border-amber-300 hover:bg-amber-50"
-              title="Relance le pipeline IA complet à partir du texte extrait"
+              title="Relance le pipeline IA en plusieurs appels courts (évite le timeout Netlify)"
             >
               {regenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-              {regenerating ? "Régénération…" : "Régénérer le cours"}
+              {regenerating ? (regenerateStep ?? "Régénération…") : "Régénérer le cours"}
             </Button>
           )}
           {!showDeleteConfirm ? (
