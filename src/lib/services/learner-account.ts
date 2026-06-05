@@ -6,11 +6,33 @@ import { buildSyntheticEmail } from "@/lib/utils/learner-email-synthetic";
 /**
  * Génère un mot de passe temporaire alphanumeric 12 chars sans caractères
  * ambigus (pas de O/0/I/l/1) — facilite le copier-coller depuis le PDF
- * de convocation par l'apprenant.
+ * de convocation par l'apprenant. Garantit au moins 1 majuscule + 1
+ * minuscule + 1 chiffre (sinon ~16% des tirages n'auraient pas eu de
+ * digit pour 12 chars sur 56).
  */
 export function generateTempPassword(): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
-  return Array.from({ length: 12 }, () => chars[crypto.randomInt(0, chars.length)]).join("");
+  const upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const lower = "abcdefghijkmnopqrstuvwxyz";
+  const digits = "23456789";
+  const all = upper + lower + digits;
+  const required = [
+    upper[crypto.randomInt(0, upper.length)],
+    lower[crypto.randomInt(0, lower.length)],
+    digits[crypto.randomInt(0, digits.length)],
+  ];
+  const rest = Array.from(
+    { length: 9 },
+    () => all[crypto.randomInt(0, all.length)],
+  );
+  // Mélange Fisher-Yates avec crypto.randomInt pour garantir un shuffle
+  // non biaisé (et non-flaky : `Math.random()` interdit côté Workflow,
+  // crypto.randomInt OK ici).
+  const out = [...required, ...rest];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = crypto.randomInt(0, i + 1);
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out.join("");
 }
 
 export type LearnerCredentials = {
