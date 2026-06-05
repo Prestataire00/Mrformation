@@ -95,13 +95,51 @@ function LoginContent() {
     setLoading(true);
     setError(null);
 
+    // Pédagogie V2 Epic 2.5 — Si l'identifiant ne contient pas de "@",
+    // on suppose un username apprenant et on résout d'abord vers son email
+    // (réel ou synthétique) via la route timing-safe /api/auth/resolve-username.
+    // Cf. spec §4 Architecture C Hybride Username-Alias.
+    let emailToUse = email.trim();
+    if (!emailToUse.includes("@")) {
+      if (!entitySlug) {
+        setError(
+          "Pour vous connecter par identifiant, choisissez d'abord votre entité.",
+        );
+        setLoading(false);
+        return;
+      }
+      try {
+        const res = await fetch("/api/auth/resolve-username", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ identifier: emailToUse, entitySlug }),
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          email?: string;
+        };
+        if (!res.ok || !data.email) {
+          // Anti-énumération : message générique unique.
+          setError("Identifiant ou mot de passe incorrect.");
+          setLoading(false);
+          return;
+        }
+        emailToUse = data.email;
+      } catch {
+        setError("Identifiant ou mot de passe incorrect.");
+        setLoading(false);
+        return;
+      }
+    }
+
     const { error } = await supabase.auth.signInWithPassword({
-      email,
+      email: emailToUse,
       password,
     });
 
     if (error) {
-      setError("Email ou mot de passe incorrect.");
+      // Message générique unique (anti-énumération — ne distingue pas
+      // "email/identifiant inconnu" de "mauvais mot de passe").
+      setError("Identifiant ou mot de passe incorrect.");
       setLoading(false);
       return;
     }
@@ -285,17 +323,23 @@ function LoginContent() {
                 )}
 
                 <form onSubmit={handleLogin} className="space-y-4">
-                  <input
-                    type="email"
-                    placeholder="Adresse email"
-                    aria-label="Adresse email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    autoComplete="email"
-                    aria-describedby={error ? "login-error" : undefined}
-                    className="w-full px-4 py-3 bg-blue-50 border border-blue-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#374151] focus:border-transparent placeholder:text-gray-400"
-                  />
+                  <div>
+                    <input
+                      type="text"
+                      placeholder="Identifiant (ex: marie.dupont) ou adresse email"
+                      aria-label="Identifiant ou adresse email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                      autoComplete="username"
+                      aria-describedby={error ? "login-error" : "login-helper"}
+                      className="w-full px-4 py-3 bg-blue-50 border border-blue-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#374151] focus:border-transparent placeholder:text-gray-400"
+                    />
+                    <p id="login-helper" className="text-xs text-gray-500 mt-1.5">
+                      Vous n&apos;avez pas d&apos;email ? Utilisez l&apos;identifiant
+                      reçu dans votre PDF de bienvenue.
+                    </p>
+                  </div>
 
                   <div className="relative">
                     <input
@@ -354,6 +398,15 @@ function LoginContent() {
                 >
                   Cliquez ici
                 </button>
+              </p>
+              <p className="text-xs text-gray-400">
+                Identifiant oublié ?{" "}
+                <a
+                  href="mailto:acces.prestataires@i-a-infinity.com?subject=Identifiant%20oubli%C3%A9&body=Bonjour%2C%0A%0AJe%20n%27arrive%20plus%20%C3%A0%20me%20connecter%20%C3%A0%20mon%20espace%20apprenant.%0A%0APr%C3%A9nom%20%3A%20%0ANom%20%3A%20%0AEntreprise%20%3A%20%0AFormation%20%3A%20%0A%0AMerci%20de%20me%20renvoyer%20mes%20identifiants."
+                  className="text-[#374151] hover:underline"
+                >
+                  Contactez votre formateur
+                </a>
               </p>
             </div>
           )}
