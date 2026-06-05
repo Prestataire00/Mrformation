@@ -1,17 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
-import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 import { createUserSchema } from "@/lib/validations";
 import { logAudit } from "@/lib/audit-log";
 import { NextRequest, NextResponse } from "next/server";
-
-function createAdminClient() {
-  return createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-  );
-}
 
 // GET: List all users (profiles + learners + trainers) for the current entity
 export async function GET() {
