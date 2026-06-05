@@ -25,14 +25,30 @@ function flagOn(name: string): boolean {
 }
 
 /**
+ * Helper inverse de `flagOn` : retourne TRUE par défaut (var non définie ou
+ * autre valeur que "false"), seulement FALSE si explicitement `"false"`.
+ *
+ * Utilisé pour les flags Pédagogie V2 Epic 1-5 qui ont été validés en prod
+ * le 04/06/2026 (cf. commit 0b2ef45 "Epic 1-3 confirmés fonctionnels en prod").
+ * Le rollout progressif via flag opt-in n'a plus de valeur à ce stade, et
+ * un oubli côté env vars Netlify cause une fausse régression visible (cf.
+ * incident du 05/06 — bouton "Nouveau cours" réapparu en prod alors que le
+ * code était inchangé). On garde l'opt-OUT au cas où un rollback express
+ * serait nécessaire (NEXT_PUBLIC_FEATURE_PEDAGOGIE_V2_EPIC_N=false).
+ */
+function flagOnByDefault(name: string): boolean {
+  return process.env[name] !== "false";
+}
+
+/**
  * Epic 1 — Fondations data : nouvelles tables session_elearning_courses
  * et program_elearning_courses actives, suppression du chemin UI legacy
  * "Nouveau cours" du hub (programs.content.type='elearning').
  *
- * Pré-requis activation : migrations Task 1, 2, 3 exécutées en prod.
+ * ⚠ Par défaut ON depuis 06/2026 (validé prod). Opt-out via env var =false.
  */
 export function isPedagogieV2Epic1Enabled(): boolean {
-  return flagOn("NEXT_PUBLIC_FEATURE_PEDAGOGIE_V2_EPIC_1");
+  return flagOnByDefault("NEXT_PUBLIC_FEATURE_PEDAGOGIE_V2_EPIC_1");
 }
 
 /**
@@ -40,18 +56,20 @@ export function isPedagogieV2Epic1Enabled(): boolean {
  * (copy program_elearning_courses → session_elearning_courses à la création
  * de session) + auto-enrôlement des apprenants aux e-learning de la session.
  *
- * Pré-requis activation : Epic 1 actif + hooks Epic 2 déployés.
+ * ⚠ Par défaut ON depuis 06/2026 (validé prod). Opt-out via env var =false.
  */
 export function isPedagogieV2Epic2Enabled(): boolean {
-  return flagOn("NEXT_PUBLIC_FEATURE_PEDAGOGIE_V2_EPIC_2");
+  return flagOnByDefault("NEXT_PUBLIC_FEATURE_PEDAGOGIE_V2_EPIC_2");
 }
 
 /**
  * Epic 3 — UX admin : section "E-learning par défaut" sur la fiche programme
  * + (futur Epic 3.5) onglet E-learning attaché sur la fiche session + UI opt-out.
+ *
+ * ⚠ Par défaut ON depuis 06/2026 (validé prod). Opt-out via env var =false.
  */
 export function isPedagogieV2Epic3Enabled(): boolean {
-  return flagOn("NEXT_PUBLIC_FEATURE_PEDAGOGIE_V2_EPIC_3");
+  return flagOnByDefault("NEXT_PUBLIC_FEATURE_PEDAGOGIE_V2_EPIC_3");
 }
 
 /**
@@ -59,18 +77,22 @@ export function isPedagogieV2Epic3Enabled(): boolean {
  * modules e-learning attachés à chaque session (via session_elearning_courses)
  * avec leur état d'avancement (via elearning_enrollments) et lien direct
  * vers la page /learner/courses/[id].
+ *
+ * ⚠ Par défaut ON depuis 06/2026 (validé prod). Opt-out via env var =false.
  */
 export function isPedagogieV2Epic4Enabled(): boolean {
-  return flagOn("NEXT_PUBLIC_FEATURE_PEDAGOGIE_V2_EPIC_4");
+  return flagOnByDefault("NEXT_PUBLIC_FEATURE_PEDAGOGIE_V2_EPIC_4");
 }
 
 /**
  * Epic 5 — Visibilité multi-acteurs : matrice apprenant × module e-learning
  * affichant l'avancement de la cohorte d'une session. Visible côté formateur
  * (/trainer/sessions) et admin (fiche formation, future intégration).
+ *
+ * ⚠ Par défaut ON depuis 06/2026 (validé prod). Opt-out via env var =false.
  */
 export function isPedagogieV2Epic5Enabled(): boolean {
-  return flagOn("NEXT_PUBLIC_FEATURE_PEDAGOGIE_V2_EPIC_5");
+  return flagOnByDefault("NEXT_PUBLIC_FEATURE_PEDAGOGIE_V2_EPIC_5");
 }
 
 /**
