@@ -82,11 +82,43 @@ export async function POST(request: NextRequest) {
       console.error("[create-access] Profile error:", profileError);
     }
 
-    // 3. Link profile to entity record
+    // 3. Link profile to entity record.
+    //
+    // Fix P0 audit RLS 2026-06-05 : sans pré-validation entity_id, un admin
+    // de l'entité A pouvait linker n'importe quel learner cross-entity à son
+    // propre profil fraîchement créé (service_role bypasse la RLS). On
+    // pré-charge le learner pour vérifier qu'il appartient bien à l'entité
+    // du caller — sauf super_admin qui peut cross-entity légitimement.
     if (entity_type === "learner" && entity_type_id) {
-      await adminClient.from("learners")
+      const { data: targetLearner, error: learnerLoadErr } = await adminClient
+        .from("learners")
+        .select("id, entity_id")
+        .eq("id", entity_type_id)
+        .maybeSingle();
+
+      if (learnerLoadErr || !targetLearner) {
+        return NextResponse.json(
+          { error: "Apprenant introuvable" },
+          { status: 404 },
+        );
+      }
+
+      const isSuperAdmin = auth.profile.role === "super_admin";
+      if (!isSuperAdmin && targetLearner.entity_id !== auth.profile.entity_id) {
+        return NextResponse.json(
+          { error: "Apprenant rattaché à une autre entité (accès refusé)" },
+          { status: 403 },
+        );
+      }
+
+      const { error: linkErr } = await adminClient
+        .from("learners")
         .update({ profile_id: authUser.user.id })
         .eq("id", entity_type_id);
+
+      if (linkErr) {
+        console.error("[create-access] Link learner error:", linkErr);
+      }
     }
 
     // 4. Build login URL for QR code
