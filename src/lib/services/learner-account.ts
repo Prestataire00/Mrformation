@@ -1,5 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import crypto from "crypto";
+import { slugifyName } from "@/lib/utils/slugify-name";
+import { buildSyntheticEmail } from "@/lib/utils/learner-email-synthetic";
 
 /**
  * Génère un mot de passe temporaire alphanumeric 12 chars sans caractères
@@ -105,3 +107,143 @@ export async function ensureLearnerAccount(
 
   return { email: learner.email, tempPassword: password };
 }
+
+// ============================================================================
+// Pédagogie V2 Epic 2.5 — Création apprenant + credentials sans persistance
+// ============================================================================
+
+export type CreateLearnerInput = {
+  entityId: string;
+  /** Slug entity pour fabriquer un email synthétique si pas d'email réel. */
+  entitySlug: string;
+  firstName: string;
+  lastName: string;
+  /** Email réel optionnel. Si absent : email synthétique de domaine .local. */
+  email?: string | null;
+  /** Optionnel : lien direct vers une entreprise cliente (bulk via fiche session). */
+  clientId?: string | null;
+};
+
+export type CreateLearnerResult = {
+  learnerId: string;
+  username: string;
+  email: string;
+  tempPassword: string;
+  syntheticEmailUsed: boolean;
+};
+
+/**
+ * Crée un apprenant + son compte Supabase Auth + un mot de passe temporaire.
+ *
+ * Différences avec `ensureLearnerAccount` :
+ *  - Crée la ligne `learners` (alors qu'`ensureLearnerAccount` la suppose existante)
+ *  - Accepte un apprenant SANS email (synthèse `<username>@learner.<slug>.local`)
+ *  - NE PERSISTE PAS `temp_password` en DB (réduction dette RGPD) — le password
+ *    n'est retourné que dans la réponse de cette fonction. Si l'admin perd le PDF,
+ *    il doit utiliser la route /regenerate-credentials qui regen un nouveau.
+ *  - Marque `password_must_change = true` (middleware Epic 2.5 v2 force la
+ *    réinit à la 1re connexion).
+ *
+ * Le `username` est auto-généré par le trigger PG `tg_learners_autogen_username`
+ * à partir de first_name/last_name. En cas de collision UNIQUE (23505) malgré
+ * le trigger, retry avec suffix UUID court.
+ *
+ * @param supabase client service_role (bypass RLS, accès `auth.admin.*`)
+ */
+export async function createLearnerWithCredentials(
+  supabase: SupabaseClient,
+  input: CreateLearnerInput,
+): Promise<CreateLearnerResult> {
+  // 1. Préparer email (réel ou synthétique) + flag.
+  const usernameCandidate = `${slugifyName(input.firstName)}.${slugifyName(input.lastName)}`.substring(0, 50);
+  const realEmail = input.email?.trim() || null;
+  const syntheticEmailUsed = !realEmail;
+  const emailToUse = realEmail ?? buildSyntheticEmail(usernameCandidate, input.entitySlug);
+
+  // 2. INSERT learners (le trigger PG va auto-générer username, retourne la valeur finale).
+  //    Pas de `username` explicite : on laisse le trigger le générer (collision -N gérée).
+  const insertPayload: Record<string, unknown> = {
+    entity_id: input.entityId,
+    first_name: input.firstName,
+    last_name: input.lastName,
+    email: emailToUse,
+    synthetic_email_used: syntheticEmailUsed,
+    password_must_change: true,
+  };
+  if (input.clientId) insertPayload.client_id = input.clientId;
+
+  let learnerRow: { id: string; username: string } | null = null;
+  let lastError: unknown = null;
+  const MAX_RETRIES = 3;
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    const { data, error } = await supabase
+      .from("learners")
+      .insert(insertPayload)
+      .select("id, username")
+      .single();
+    if (!error && data) {
+      learnerRow = data as { id: string; username: string };
+      break;
+    }
+    lastError = error;
+    // Collision UNIQUE (code postgres 23505) sur username → on insiste, le trigger
+    // va incrémenter le suffix. Si vraiment bloqué après MAX_RETRIES, on injecte
+    // un username explicite avec suffix UUID.
+    if ((error as { code?: string } | null)?.code === "23505" && attempt < MAX_RETRIES - 1) {
+      continue;
+    }
+    if (attempt === MAX_RETRIES - 1) {
+      const uuidSuffix = crypto.randomUUID().slice(0, 4);
+      insertPayload.username = `${usernameCandidate}-${uuidSuffix}`.substring(0, 50);
+    }
+  }
+  if (!learnerRow) {
+    throw new Error(`createLearnerWithCredentials: insert learner failed after ${MAX_RETRIES} retries (${String(lastError)})`);
+  }
+
+  // 3. Générer temp_password (NE PAS le persister).
+  const tempPassword = generateTempPassword();
+
+  // 4. Créer compte Supabase Auth.
+  const { data: authUser, error: authErr } = await supabase.auth.admin.createUser({
+    email: emailToUse,
+    password: tempPassword,
+    email_confirm: true,
+    user_metadata: {
+      first_name: input.firstName,
+      last_name: input.lastName,
+      role: "learner",
+      password_must_change: true,
+    },
+  });
+  if (authErr || !authUser.user) {
+    // Rollback applicatif : delete la learner row qu'on vient d'insérer.
+    await supabase.from("learners").delete().eq("id", learnerRow.id);
+    throw new Error(`createLearnerWithCredentials: auth.admin.createUser failed (${authErr?.message ?? "unknown"})`);
+  }
+  const authUserId = authUser.user.id;
+
+  // 5. Upsert profile.
+  await supabase.from("profiles").upsert({
+    id: authUserId,
+    first_name: input.firstName,
+    last_name: input.lastName,
+    role: "learner",
+    entity_id: input.entityId,
+  });
+
+  // 6. Link learners.profile_id (sans persister temp_password).
+  await supabase
+    .from("learners")
+    .update({ profile_id: authUserId })
+    .eq("id", learnerRow.id);
+
+  return {
+    learnerId: learnerRow.id,
+    username: learnerRow.username,
+    email: emailToUse,
+    tempPassword,
+    syntheticEmailUsed,
+  };
+}
+
