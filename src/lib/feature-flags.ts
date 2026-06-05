@@ -72,3 +72,18 @@ export function isPedagogieV2Epic4Enabled(): boolean {
 export function isPedagogieV2Epic5Enabled(): boolean {
   return flagOn("NEXT_PUBLIC_FEATURE_PEDAGOGIE_V2_EPIC_5");
 }
+
+/**
+ * Epic 2.5 — Auth apprenant sans email + PDF identifiants.
+ *
+ * Permet : (a) la résolution username → email (route POST /api/auth/resolve-username),
+ * (b) le bulk import d'apprenants sans email avec génération d'un PDF de
+ * credentials, (c) le forçage du changement de mot de passe à la 1re connexion,
+ * (d) la régénération de credentials par l'admin.
+ *
+ * Pré-requis activation : migrations Phase A + B + audit_event_types
+ * exécutées en prod.
+ */
+export function isPedagogieV2Epic25Enabled(): boolean {
+  return flagOn("NEXT_PUBLIC_FEATURE_PEDAGOGIE_V2_EPIC_2_5");
+}
