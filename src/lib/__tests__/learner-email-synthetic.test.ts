@@ -28,8 +28,17 @@ describe("isSyntheticEmail", () => {
     expect(isSyntheticEmail("marie@gmail.com")).toBe(false);
     expect(isSyntheticEmail("user@learner.com")).toBe(false); // pas .local
     expect(isSyntheticEmail("user@example.local")).toBe(false); // pas learner.*
-    // case-sensitive : LEARNER en majuscule rejeté (les synthétiques sont toujours lowercase)
-    expect(isSyntheticEmail("user@LEARNER.mr-formation.local")).toBe(false);
+  });
+
+  it("accepte les emails synthétiques avec casing mixte (RFC 5321 §2.4)", () => {
+    // Fix M1 review adversariale : les domaines email sont insensibles à
+    // la casse — on doit reconnaître un email synthétique même s'il a été
+    // saisi avec une casse mixte.
+    expect(isSyntheticEmail("user@LEARNER.mr-formation.local")).toBe(true);
+    expect(isSyntheticEmail("Pierre@Learner.MR-FORMATION.Local")).toBe(true);
+    expect(isSyntheticEmail("MARIE.DUPONT@LEARNER.C3V-FORMATION.LOCAL")).toBe(
+      true,
+    );
   });
 
   it("rejette les inputs invalides", () => {

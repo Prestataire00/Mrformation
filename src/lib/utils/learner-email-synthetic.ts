@@ -34,9 +34,12 @@ export function buildSyntheticEmail(username: string, entitySlug: string): strin
  *  (b) garde-fou anti-envoi sur ce domaine (cf. Task 7)
  *  (c) marquer `learners.synthetic_email_used = true` à la création
  *
- * Regex stricte case-sensitive : rejette `LEARNER.foo.local` pour éviter les
- * confusions de casing (les emails synthétiques sont TOUJOURS en lowercase).
+ * Case-insensitive (RFC 5321 §2.4 : les domaines email sont insensibles à la
+ * casse). On lowercase l'input avant le test pour matcher un email saisi
+ * manuellement avec une casse mixte (ex: `Pierre@LEARNER.mr-formation.local`).
+ * Fix M1 review adversariale Phase B Epic 2.5.
  */
 export function isSyntheticEmail(email: string): boolean {
-  return SYNTHETIC_EMAIL_REGEX.test(email);
+  if (typeof email !== "string" || email.length === 0) return false;
+  return SYNTHETIC_EMAIL_REGEX.test(email.toLowerCase());
 }
