@@ -74,6 +74,71 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
+  // Pédagogie V2 Epic 2.5 — Force change password à la première connexion.
+  // Le flag `password_must_change` est porté par `user_metadata` (claim JWT,
+  // donc lu depuis la session sans hit DB). On laisse passer la page de
+  // changement de mot de passe elle-même, son API, et l'API auth (sign-out).
+  if (user && user.user_metadata?.password_must_change === true) {
+    const isChangePasswordPage = pathname.startsWith("/learner/change-password");
+    const isChangePasswordApi = pathname.startsWith("/api/learner/change-password");
+    const isAuthApi = pathname.startsWith("/api/auth");
+    if (!isChangePasswordPage && !isChangePasswordApi && !isAuthApi) {
+      if (pathname.startsWith("/api/")) {
+        return NextResponse.json(
+          { error: "password_change_required" },
+          { status: 403 },
+        );
+      }
+      return NextResponse.redirect(
+        new URL("/learner/change-password", request.url),
+      );
+    }
+  }
+
+  // Pédagogie V2 Epic 2.5 — Audit log first_login (fire-and-forget).
+  // Quand un apprenant accède pour la 1re fois (post-change-password) à une
+  // page de son espace, on stamp `first_login_at`. La marque
+  // `learner_first_login_at_stamped` (cookie session) évite de rerequêter
+  // sur chaque navigation : on ne stamp qu'une seule fois par session.
+  if (
+    user &&
+    pathname.startsWith("/learner") &&
+    !pathname.startsWith("/learner/change-password") &&
+    !request.cookies.get("learner_first_login_stamped")
+  ) {
+    // On marque dès maintenant pour ne pas relancer le check à chaque nav.
+    response.cookies.set("learner_first_login_stamped", "1", {
+      path: "/",
+      maxAge: 60 * 60 * 24, // 24h
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      httpOnly: true,
+    });
+    // Stamping en arrière-plan (non bloquant). On ne fait PAS attendre la
+    // requête principale — c'est juste un best-effort audit log.
+    void supabase
+      .from("learners")
+      .select("id, entity_id, first_login_at")
+      .eq("profile_id", user.id)
+      .maybeSingle()
+      .then(async ({ data: learner }) => {
+        if (learner && !learner.first_login_at) {
+          await supabase
+            .from("learners")
+            .update({ first_login_at: new Date().toISOString() })
+            .eq("id", learner.id);
+          await supabase.from("activity_log").insert({
+            entity_id: learner.entity_id,
+            user_id: user.id,
+            action: "update",
+            resource_type: "learner.first_login",
+            resource_id: learner.id,
+            details: {},
+          });
+        }
+      });
+  }
+
   // Entity selection enforcement: authenticated users must have an entity cookie
   if (user && !isPublicPath && !isRoot) {
     const entityId = request.cookies.get("entity_id")?.value;
