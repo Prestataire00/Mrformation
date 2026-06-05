@@ -1,0 +1,1714 @@
+{
+  "inventory": "Perfect! I now have enough information to create the cartography. Let me compile the report:\n\n## CARTOGRAPHIE RAPIDE - MODULE LMS (lms-platform)\n\n### 1. SESSIONS\n**Pages principales:**\n- `/admin/sessions` — Liste sessions\n- `/admin/sessions/[id]` — Détail + bulk import apprenants\n- `/learner/sessions` — Sessions apprenant\n\n**Composants:**\n- `src/components/` — Composants généraux\n- `src/app/(dashboard)/admin/_components/AdminSessionCalendar.tsx`\n- `src/app/(dashboard)/admin/_components/AdminUpcomingSessions.tsx`\n\n**Services:**\n- `src/lib/services/sessions.ts` — Logique métier sessions\n- `src/lib/services/load-session-aggregates.ts` — Agrégations KPI\n\n**API routes:**\n- `POST /api/sessions/[id]` — Maj session\n- `POST /api/sessions/[id]/auto-absences` — Auto-absences\n- `POST /api/sessions/[id]/send-visio-link` — Envoi lien visio\n- `POST /api/sessions/[id]/learners/bulk/*` — Import apprenants\n\n**Tables Supabase:**\n- `sessions` — Formations/Sessions\n- `enrollments` — Inscriptions apprenant-session\n\n**Auth helpers:**\n- `src/lib/auth/permissions.ts` — Permissions par rôle\n\n---\n\n### 2. FORMATIONS (Fiche [id] avec 13 tabs)\n**Pages principales:**\n- `/admin/formations` — Liste\n- `/admin/formations/[id]` — Détail avec 10 tabs atomiques\n- `/admin/formations/[id]/emargement-live` — Signature live\n\n**Composants (dans `_components/`):**\n- `TabResume.tsx` — Infos générales\n- `TabPlanning.tsx` — Créneaux + BulkSlotCreator\n- `TabParcours.tsx` — Parcours apprenants\n- `TabEmargements.tsx` — Émargements\n- `TabAbsences.tsx` — Absences\n- `TabDocsPartages.tsx` — Docs partagés\n- `TabMessagerie.tsx` — Messagerie interne\n- `TabProgramme.tsx` — Programme lié\n- `TabQuestionnaires.tsx` — Questionnaires\n- `TabConventionDocs.tsx` — Docs conventions (99KB)\n- `TabElearning.tsx` — E-Learning intégré\n- `TabFinances.tsx` — Factures + invoices (55KB)\n- `TabQualiopi.tsx` — Scores Qualiopi\n- `TabAutomation.tsx` — Automatisations\n\n**Sous-composants:**\n- `sections/Resume*.tsx` — Sections résumé\n- `emargements/` — Logique émargements\n- `finances/` — Logique finances\n- `questionnaires/` — Logique questionnaires\n\n**Services:**\n- `src/lib/services/documents-store.ts` — Gestion docs convention\n\n**API routes:**\n- `GET/PUT /api/formations/[id]` — CRUD formation\n- `POST /api/formations/[id]/invoices/*` — Factures\n- `POST /api/formations/[id]/questionnaire-tokens` — Tokens questionnaires\n- `GET /api/formations/[id]/timeline` — Timeline événements\n\n**Tables:**\n- `sessions` (alias formations)\n- `formation_time_slots` (créneaux)\n- `formation_invoice_lines` (lignes factures)\n\n---\n\n### 3. PROGRAMMES\n**Pages principales:**\n- `/admin/programs` — Liste\n- `/admin/programs/[id]` — Détail programme\n- `/admin/programs/catalogue` — Catalogue\n- `/admin/programs/import` — Import PDF\n\n**Composants:**\n- `src/app/(dashboard)/admin/programs/[id]/_components/ProgramElearningsList.tsx`\n\n**Services:**\n- `src/lib/services/programs.ts` — CRUD programmes\n- `src/lib/services/program-elearning-defaults.ts` — Defaults E-Learning\n- `src/lib/services/pedagogie-v2-snapshot.ts` — Snapshots pédagogiques\n\n**API routes:**\n- `POST /api/programs/import-pdf` — Import depuis PDF\n\n**Tables:**\n- `programs` — Programmes\n- `program_versions` — Versions\n\n---\n\n### 4. E-LEARNING (Hub + IA + Lecteur)\n**Pages principales:**\n- `/admin/elearning/courses` — Liste cours\n- `/admin/elearning/courses/[courseId]` — Éditeur cours\n- `/admin/elearning/create` — Créateur avec IA\n- `/learner/courses` — Hub apprenant\n- `/learner/courses/[courseId]` — Lecteur (65KB)\n\n**Composants:**\n- `src/app/(dashboard)/admin/elearning/courses/[courseId]/_components/ChapterEditDialog.tsx`\n- `src/app/(dashboard)/admin/elearning/courses/[courseId]/_components/ContentPreviewDialog.tsx`\n- `src/app/(dashboard)/admin/elearning/courses/[courseId]/_components/CourseEnrollmentsList.tsx`\n\n**Services:**\n- `src/lib/services/elearning-courses.ts` — Gestion cours\n- `src/lib/services/elearning-sse.ts` — Server-sent events temps réel\n- `src/lib/services/openai.ts` — Intégration IA (35KB)\n\n**API routes (elearning/):**\n- `GET/PUT /api/elearning/[courseId]` — CRUD\n- `POST /api/elearning/[courseId]/generate/*` — Génération IA (outline, chapters, quiz, start)\n- `POST /api/elearning/[courseId]/publish` — Publication\n- `POST /api/elearning/[courseId]/enroll` — Inscription\n- `POST /api/elearning/[courseId]/slides` — Extraction slides\n- `POST /api/elearning/[courseId]/extract` — Extraction contenu\n- `POST /api/elearning/[courseId]/global-flashcards` — Flashcards\n- `GET /api/elearning/[courseId]/live-session` — Sessions live\n- `POST /api/elearning/final-exam/[courseId]/submit` — Exam final\n- `GET /api/elearning/scores` — Scores apprenants\n\n**Auth helper:**\n- `src/lib/auth/elearning-access.ts` — Contrôle accès E-Learning\n\n**Tables:**\n- `trainer_courses` — Cours formateur\n- Intégration Supabase pour stockage contenu\n\n---\n\n### 5. QUESTIONNAIRES\n**Pages principales:**\n- `/admin/questionnaires/dashboard` — Dashboard\n- `/learner/questionnaires` — Liste apprenant\n- `/learner/questionnaires/[id]` — Répondre questionnaire\n\n**Composants:**\n- `src/app/(dashboard)/admin/formations/[id]/_components/questionnaires/LearnerStatusGrid.tsx`\n\n**Services:**\n- `src/lib/services/questionnaire-scoring.ts` — Scoring automatique\n\n**API routes:**\n- `POST /api/questionnaires/auto-send` — Envoi automatique\n- `POST /api/questionnaires/relaunch` — Relance\n- `POST /api/admin/questionnaires/fill-for-learner` — Remplir pour apprenant\n\n**Tables:**\n- `questionnaires` — Modèles\n- `questions` — Questions\n- `questionnaire_sessions` — Instances\n- `questionnaire_responses` — Réponses\n\n---\n\n### HELPERS AUTH GLOBAUX\n- `src/lib/auth/permissions.ts` — RBAC (Admin/Client/Learner/Trainer)\n- `src/lib/auth/require-role.ts` — Middleware rôles\n- `src/lib/auth/csrf-check.ts` — CSRF protection\n- `src/lib/auth/timing-safe.ts` — Timing-safe comparaisons",
+  "audits": [
+    {
+      "subsystem": "SESSIONS",
+      "inventory": "Services: sessions.ts, load-session-aggregates.ts. Pages: admin/sessions, learner/trainer sessions. APIs: sessions route handlers, bulk import, auto-absences, visio link dispatch.",
+      "completeness_pct": 70,
+      "verdict": "has-gaps",
+      "findings": [
+        {
+          "severity": "critical",
+          "category": "security-multitenant",
+          "title": "Missing entity_id filter in admin sessions fetch",
+          "where": "admin/sessions/page.tsx:183",
+          "recommendation": "Add .eq(entity_id, entityId) per route.ts:67",
+          "description": "fetchSessions() queries all sessions. Admins bypass RLS."
+        },
+        {
+          "severity": "critical",
+          "category": "security-multitenant",
+          "title": "Missing entity_id on session update",
+          "where": "admin/sessions/page.tsx:331",
+          "recommendation": "Add .eq(entity_id) to update chain",
+          "description": "handleSave() allows any session_id modification"
+        },
+        {
+          "severity": "critical",
+          "category": "security-multitenant",
+          "title": "Missing entity_id on session delete",
+          "where": "admin/sessions/page.tsx:414",
+          "recommendation": "Add .eq(entity_id, entityId) filter",
+          "description": "handleDelete() vulnerable to cross-tenant deletion"
+        },
+        {
+          "severity": "critical",
+          "category": "data-integrity",
+          "title": "Trainers query lacks entity_id filter",
+          "where": "admin/sessions/page.tsx:228",
+          "recommendation": "Add .eq(entity_id, entityId)",
+          "description": "Trainers loaded without entity isolation"
+        },
+        {
+          "severity": "major",
+          "category": "ux-friction",
+          "title": "Empty catch block hides errors",
+          "where": "admin/sessions/page.tsx:388",
+          "recommendation": "Add console.error logging",
+          "description": "Questionnaire auto-send failures silent"
+        },
+        {
+          "severity": "major",
+          "category": "data-integrity",
+          "title": "Email dispatch untracked",
+          "where": "admin/sessions/page.tsx:370",
+          "recommendation": "Use enqueueEmail() service",
+          "description": "Fire-and-forget with no error handling"
+        },
+        {
+          "severity": "major",
+          "category": "ux-friction",
+          "title": "Client status overrides DB",
+          "where": "admin/sessions/page.tsx:193-206",
+          "recommendation": "Trust DB status only",
+          "description": "Auto-recompute based on dates loses manual changes"
+        },
+        {
+          "severity": "major",
+          "category": "completeness-gap",
+          "title": "Unfiltered data loads",
+          "where": "admin/sessions/page.tsx:227-228",
+          "recommendation": "Add .limit(100) pagination",
+          "description": "Trainings/trainers load unfiltered on every form open"
+        },
+        {
+          "severity": "major",
+          "category": "data-integrity",
+          "title": "Enrollment query missing entity defense",
+          "where": "admin/sessions/page.tsx:446",
+          "recommendation": "Add explicit .eq(entity_id)",
+          "description": "Compound risk from missing session entity filter"
+        },
+        {
+          "severity": "minor",
+          "category": "tech-debt",
+          "title": "Session type incomplete",
+          "where": "admin/sessions/page.tsx:264,682",
+          "recommendation": "Extend Session type with all fields",
+          "description": "Multiple as unknown casts for meeting_url, pedagogical fields"
+        },
+        {
+          "severity": "minor",
+          "category": "tech-debt",
+          "title": "as any casts in queries",
+          "where": "admin/sessions/page.tsx:366",
+          "recommendation": "Type questionnaire response explicitly",
+          "description": "Type inference broken with any casts"
+        },
+        {
+          "severity": "minor",
+          "category": "ux-missing",
+          "title": "No loading for auto-send",
+          "where": "admin/sessions/page.tsx:341-387",
+          "recommendation": "Move to backend fire-and-forget",
+          "description": "Blocks form without visible progress"
+        },
+        {
+          "severity": "minor",
+          "category": "ux-friction",
+          "title": "Filter state lost on save",
+          "where": "admin/sessions/page.tsx:402",
+          "recommendation": "Persist filters across refetch",
+          "description": "Stale counts after adding session"
+        },
+        {
+          "severity": "minor",
+          "category": "completeness-gap",
+          "title": "Cancelled sessions in location suggestions",
+          "where": "admin/sessions/page.tsx:215",
+          "recommendation": "Filter by status and date",
+          "description": "Outdated venues suggested"
+        },
+        {
+          "severity": "major",
+          "category": "security-multitenant",
+          "title": "Trainer sessions missing entity filter",
+          "where": "trainer/sessions/page.tsx:65",
+          "recommendation": "Add .eq(entity_id, entityId)",
+          "description": "Cross-entity trainer sessions visible"
+        },
+        {
+          "severity": "major",
+          "category": "data-integrity",
+          "title": "Bulk import missing entity_id",
+          "where": "bulk/start/route.ts:309",
+          "recommendation": "Add entity_id to enrollment insert",
+          "description": "Enrollments inserted without entity isolation"
+        },
+        {
+          "severity": "major",
+          "category": "completeness-gap",
+          "title": "V1 threshold undocumented",
+          "where": "bulk/start/route.ts:84",
+          "recommendation": "Add feature flag and ticket reference",
+          "description": "BG_NOT_READY_V1 hard-coded without migration plan"
+        },
+        {
+          "severity": "major",
+          "category": "tech-debt",
+          "title": "Auto-absences missing entity verification",
+          "where": "auto-absences/route.ts:22",
+          "recommendation": "Verify session.entity_id before proceeding",
+          "description": "Sub-table queries lack explicit entity check"
+        },
+        {
+          "severity": "major",
+          "category": "data-integrity",
+          "title": "Send visio link missing learner check",
+          "where": "services/sessions.ts:318",
+          "recommendation": "Assert learner.entity_id matches",
+          "description": "Email sent without explicit entity verification"
+        },
+        {
+          "severity": "minor",
+          "category": "ux-missing",
+          "title": "No enrollment count on delete",
+          "where": "admin/sessions/page.tsx:406",
+          "recommendation": "Fetch and show count in modal",
+          "description": "Delete confirmation omits enrollment impact"
+        },
+        {
+          "severity": "minor",
+          "category": "ux-friction",
+          "title": "Single-day sessions unclear",
+          "where": "admin/sessions/page.tsx:300",
+          "recommendation": "Add clear helper text or auto-fill",
+          "description": "Form allows start==end without notice"
+        },
+        {
+          "severity": "minor",
+          "category": "ux-friction",
+          "title": "Search not debounced",
+          "where": "admin/sessions/page.tsx:1170",
+          "recommendation": "Add 300ms debounce",
+          "description": "Learner filter triggers per keystroke"
+        },
+        {
+          "severity": "minor",
+          "category": "completeness-gap",
+          "title": "Pagination hard-coded to 20",
+          "where": "admin/sessions/page.tsx:1180",
+          "recommendation": "Add load-more button",
+          "description": "No way to see >20 of many learners"
+        },
+        {
+          "severity": "info",
+          "category": "tech-debt",
+          "title": "Feature flag not enforced",
+          "where": "bulk-import-learners/page.tsx:92",
+          "recommendation": "Gate page in layout/nav",
+          "description": "Flag checked but page renders regardless"
+        }
+      ]
+    },
+    {
+      "subsystem": "FORMATIONS",
+      "inventory": "Main formation detail page (/admin/formations/[id]/page.tsx, 504 LOC) with 13 tab components (TabResume, TabPlanning, TabParcours, TabEmargements, TabAbsences, TabDocsPartages, TabMessagerie, TabProgramme, TabQuestionnaires, TabConventionDocs, TabElearning, TabFinances, TabQualiopi, TabAutomation). API routes for invoices/questionnaires/timeline. Services for time-slots/elearning/programs. Large components: TabConventionDocs (2219 LOC), TabFinances (1199 LOC), TabPlanning (936 LOC), TabEmargements (807 LOC).",
+      "completeness_pct": 68,
+      "verdict": "has-gaps",
+      "findings": [
+        {
+          "severity": "critical",
+          "category": "security-multitenant",
+          "title": "Missing entity_id in TabAbsences insert",
+          "where": "TabAbsences.tsx:72",
+          "description": "Insert into formation_absences lacks entity_id constraint, enabling cross-entity data pollution if RLS fails. Only session_id provided as filter.",
+          "recommendation": "Add entity_id: formation.entity_id to insert payload and verify formation_absences table has RLS policies. Effort: S"
+        },
+        {
+          "severity": "critical",
+          "category": "security-multitenant",
+          "title": "TabAbsences update missing session_id and entity_id filters",
+          "where": "TabAbsences.tsx:144-145",
+          "description": "Update to status only filters by absence id, allowing modification of absences in other sessions via ID knowledge.",
+          "recommendation": "Chain .eq('session_id', formation.id).eq('entity_id', formation.entity_id) before update. Effort: S"
+        },
+        {
+          "severity": "critical",
+          "category": "security-multitenant",
+          "title": "TabDocsPartages insert missing entity_id",
+          "where": "TabDocsPartages.tsx:109",
+          "description": "Insert into formation_documents omits entity_id, risking cross-entity document access if RLS policies are misconfigured.",
+          "recommendation": "Add entity_id: formation.entity_id after session_id in insert object. Effort: S"
+        },
+        {
+          "severity": "major",
+          "category": "security-multitenant",
+          "title": "TabDocsPartages delete missing session and entity filters",
+          "where": "TabDocsPartages.tsx:145",
+          "description": "Delete chain only filters by id, permitting document deletion across sessions/entities with ID knowledge.",
+          "recommendation": "Add .eq('session_id', formation.id).eq('entity_id', formation.entity_id) to delete. Effort: S"
+        },
+        {
+          "severity": "major",
+          "category": "ux-friction",
+          "title": "Dropdown menu items without handlers in main page",
+          "where": "page.tsx:318-324",
+          "description": "Duplicate and Delete menu items lack onClick handlers, showing buttons with no action. User expectation broken.",
+          "recommendation": "Implement handlers or disable menu items with tooltip. Effort: M"
+        },
+        {
+          "severity": "major",
+          "category": "tech-debt",
+          "title": "TabFinances excessive type casts",
+          "where": "TabFinances.tsx:93-658",
+          "description": "14+ 'as unknown as Record<string,...>' casts indicating weak TypeScript integration for Entity, Client, Invoice types.",
+          "recommendation": "Define strict types in src/lib/types for Entity, Client, Invoice records. Replace casts. Effort: L"
+        },
+        {
+          "severity": "major",
+          "category": "tech-debt",
+          "title": "TabConventionDocs exceeds 2200 LOC",
+          "where": "TabConventionDocs.tsx:1-2219",
+          "description": "Single component handles document matrix, batch operations, signatures, auto-generation. Violates 500 LOC guideline severely.",
+          "recommendation": "Extract DocumentMatrixSection, BatchOperationsPanel, SignatureWorkflow into sub-components. Move logic to services. Effort: L"
+        },
+        {
+          "severity": "major",
+          "category": "tech-debt",
+          "title": "TabFinances at 1199 LOC combining multiple concerns",
+          "where": "TabFinances.tsx:1-1199",
+          "description": "Mixes invoice CRUD, form state, auto-generation, PDF export, batch operations. Hinders testing and maintenance.",
+          "recommendation": "Extract InvoiceFormDialog, AutoGeneratePanel, ChargesSection components. Move to services/invoice-management.ts. Effort: L"
+        },
+        {
+          "severity": "major",
+          "category": "completeness-gap",
+          "title": "TabElearning lacks entity_id in enrollment query",
+          "where": "TabElearning.tsx:114-116",
+          "description": "Query elearning_enrollments by id without entity_id filtering. Should verify enrollments belong to current entity.",
+          "recommendation": "Add .eq('entity_id', entityId) or verify parent formation ensures entity filtering. Effort: S"
+        },
+        {
+          "severity": "major",
+          "category": "data-integrity",
+          "title": "TabAbsences update missing error handling and refetch",
+          "where": "TabAbsences.tsx:141-150",
+          "description": "handleUpdateStatus catches errors without logging and doesn't refetch after successful update.",
+          "recommendation": "Add console.error logging, catch block logging, and onRefresh() call after successful update. Effort: S"
+        },
+        {
+          "severity": "major",
+          "category": "ux-friction",
+          "title": "TabPlanning auto-fill lacks loading feedback",
+          "where": "TabPlanning.tsx:325-376",
+          "description": "Auto-fill modules button lacks disabled state during operation, allowing multiple clicks and no loading indicator.",
+          "recommendation": "Set autoFilling state, disable button, show Loader2 spinner, display progress toast. Effort: M"
+        },
+        {
+          "severity": "major",
+          "category": "completeness-gap",
+          "title": "TabMessagerie email insert lacks error handling",
+          "where": "TabMessagerie.tsx:306",
+          "description": "Email history insert omits error handling and try/catch. Failures silently ignored without user notification.",
+          "recommendation": "Wrap in try/catch with toast error feedback on insertion failure. Effort: M"
+        },
+        {
+          "severity": "major",
+          "category": "ux-missing",
+          "title": "TabQuestionnaires empty state missing",
+          "where": "TabQuestionnaires.tsx:150-250",
+          "description": "No UI guidance when zero questionnaires configured. Blank space confuses users.",
+          "recommendation": "Add conditional empty state with message and action to create questionnaires. Effort: M"
+        },
+        {
+          "severity": "major",
+          "category": "ux-missing",
+          "title": "TabElearning empty state missing",
+          "where": "TabElearning.tsx:58-200",
+          "description": "No empty state when no courses available. User gets blank section without guidance.",
+          "recommendation": "Render empty state with 'No courses available' and action to create/assign courses. Effort: M"
+        },
+        {
+          "severity": "major",
+          "category": "ux-friction",
+          "title": "TabFinances uses setTimeout for dialog sequencing",
+          "where": "TabFinances.tsx:170,390",
+          "description": "setTimeout(..., 50ms) for dialog-to-prefill sequencing is brittle timing-dependent approach.",
+          "recommendation": "Use Promise-based dialog close or callback pattern for reliable async sequencing. Effort: M"
+        },
+        {
+          "severity": "major",
+          "category": "ux-friction",
+          "title": "TabPlanning calendar missing loading skeleton",
+          "where": "TabPlanning.tsx:410-600",
+          "description": "Calendar renders nothing during data load. No visual indicator or placeholder during slots fetch.",
+          "recommendation": "Add loading state check and render skeleton calendar grid while fetching. Effort: M"
+        },
+        {
+          "severity": "major",
+          "category": "completeness-gap",
+          "title": "TabConventionDocs document generation lacks entity_id verification",
+          "where": "TabConventionDocs.tsx:900-1000",
+          "description": "Document record inserts during generation don't explicitly verify entity_id attached to records.",
+          "recommendation": "Ensure all document inserts include entity_id: formation.entity_id parameter. Effort: M"
+        },
+        {
+          "severity": "minor",
+          "category": "tech-debt",
+          "title": "Duplicate automation trigger fire-and-forget code",
+          "where": "page.tsx:177-181, TabParcours.tsx:66",
+          "description": "On session completion trigger appears in two places without centralized helper function.",
+          "recommendation": "Create src/lib/services/automation-triggers.ts with reusable trigger functions. Effort: S"
+        },
+        {
+          "severity": "minor",
+          "category": "tech-debt",
+          "title": "Incomplete refactoring TODO in TabConventionDocs",
+          "where": "TabConventionDocs.tsx:1522",
+          "description": "TODO comment indicates unfinished extraction of updateAllDocsForSession helper.",
+          "recommendation": "Create service function updateAllDocsForSession and refactor the code to use it. Effort: M"
+        },
+        {
+          "severity": "minor",
+          "category": "ux-friction",
+          "title": "Trainer conflict detection has no error handling",
+          "where": "TabPlanning.tsx:86-94",
+          "description": "Conflict detection async call lacks error handling. API failure silently results in empty conflicts array.",
+          "recommendation": "Add console.error on detection failure, optionally show toast warning to user. Effort: S"
+        },
+        {
+          "severity": "minor",
+          "category": "data-integrity",
+          "title": "Invoice amount validation incomplete",
+          "where": "TabFinances.tsx:412",
+          "description": "Amount > 0 check insufficient for decimal precision edge cases, NaN, or Infinity values.",
+          "recommendation": "Add isFinite() and parseFloat validation, handle currency formatting edge cases. Effort: S"
+        },
+        {
+          "severity": "minor",
+          "category": "completeness-gap",
+          "title": "Tab KPI counts may become stale",
+          "where": "page.tsx:133-141",
+          "description": "Memoized counts don't update if formation data changes, showing outdated numbers until manual refetch.",
+          "recommendation": "Recalculate counts on formation dependency change or use formation-triggered refetch. Effort: S"
+        },
+        {
+          "severity": "minor",
+          "category": "ux-missing",
+          "title": "Batch operations lack confirmation dialogs",
+          "where": "TabConventionDocs.tsx:850-900",
+          "description": "Batch sign, send, generate operations execute without confirmation. User could accidentally bulk-operate.",
+          "recommendation": "Add confirmation dialogs showing affected document count before executing. Effort: M"
+        },
+        {
+          "severity": "minor",
+          "category": "accessibility",
+          "title": "Icon-only buttons missing aria-labels",
+          "where": "page.tsx:246 and throughout",
+          "description": "Multiple icon buttons lack aria-label attributes, failing accessibility for screen reader users.",
+          "recommendation": "Add aria-label to all icon-only buttons (e.g., 'Go back', 'Settings', 'Delete'). Effort: M"
+        }
+      ]
+    },
+    {
+      "subsystem": "PROGRAMMES",
+      "inventory": "\nFichiers balayés : src/app/(dashboard)/admin/programs/ (5 pages + 3 composants), src/lib/services/programs.ts (382 LOC), program-elearning-defaults.ts, pedagogie-v2-snapshot.ts, src/lib/validations/program.ts, tests unitaires, migrations SQL RLS (aut-prog-b-fix-rls-programs.sql), API route import-pdf.\n",
+      "completeness_pct": 82,
+      "verdict": "mostly-ok",
+      "findings": [
+        {
+          "severity": "critical",
+          "category": "security-multitenant",
+          "title": "Absence filtrage entity_id dans pedagogie-v2-snapshot.ts",
+          "where": "src/lib/services/pedagogie-v2-snapshot.ts:29-74",
+          "description": "copyProgramElearningToSession() et autoEnrollLearnerToSessionElearning() ne filtrent pas par entity_id. Relience implicite sur RLS table session_elearning_courses et elearning_enrollments. Violation défense-in-depth : un attaquant avec accès server-side pourrait copier des e-learning cross-entité.",
+          "recommendation": "Ajouter explicit eq('entity_id') filters ou passer entityId en paramètre et filtrer via RLS+ server-side. Effort : M"
+        },
+        {
+          "severity": "critical",
+          "category": "data-integrity",
+          "title": "Enum mismatch : BpfFundingType vs schema Zod",
+          "where": "src/lib/validations/program.ts:116-131 vs src/lib/types/index.ts:53-58",
+          "description": "Zod schema accepte ['opco', 'entreprise', 'particulier', 'pole_emploi', 'cpf', 'region', 'etat', 'fne', 'autre'] mais types.ts définit BpfFundingType avec [entreprise_privee, apprentissage, reconversion_alternance, etc]. Les enums ne correspondent pas. Risque : validation passera avec 'opco' mais échouera à l'insert Postgres.",
+          "recommendation": "Aligner Zod enum sur BpfFundingType exact. Utiliser union type directe (satisfies BpfFundingType[]). Effort : S"
+        },
+        {
+          "severity": "critical",
+          "category": "data-integrity",
+          "title": "Enum mismatch : BpfObjective non aligné",
+          "where": "src/lib/validations/program.ts:99-114",
+          "description": "Zod accepte ['professionnalisation', 'qualification', 'validation_acquis', ...] mais BpfObjective définit ['rncp_6_8', 'rncp_5', 'certification_rs', ...]. Les enums diffèrent complètement — validation Zod passe, insert échoue.",
+          "recommendation": "Remplacer par enum exact depuis types.ts pour BpfObjective (rncp_6_8, rncp_5, etc.). Effort : S"
+        },
+        {
+          "severity": "major",
+          "category": "ux-friction",
+          "title": "Champs BPF affichés mais enums invalides",
+          "where": "src/app/(dashboard)/admin/programs/page.tsx:876-942",
+          "description": "Dialog ajoute/édite 19 items SelectItem pour bpf_funding_type (ligne 891-913) avec enum ['entreprise_privee', 'apprentissage', ...] MAIS Zod en ligne 119-130 accepte ['opco', 'entreprise', ...]. Utilisateur sélectionne 'Apprentissage' → validation échoue silencieusement (toast générique).",
+          "recommendation": "Centraliser enum BPF dans types.ts et réutiliser partout (Zod, SelectItem, API). Générer SelectItems dynamiquement depuis enum. Effort : M"
+        },
+        {
+          "severity": "major",
+          "category": "ux-missing",
+          "title": "Pas de validation côté client pour contenu JSON",
+          "where": "src/app/(dashboard)/admin/programs/page.tsx:232-245",
+          "description": "validateContent() valide JSON syntax et présence clé 'modules' mais ne valide pas les MODULES eux-mêmes (id, title type, duration format). À l'édition, l'utilisateur peut saisir modules invalides → passe validation, échoue au save serveur.",
+          "recommendation": "Utiliser programContentSchema Zod pour valider modules (id: number, title: string, duration_hours: number min 0). Afficher erreurs précises sous le textarea. Effort : M"
+        },
+        {
+          "severity": "major",
+          "category": "completeness-gap",
+          "title": "EditProgramDialog ne valide pas content JSON",
+          "where": "src/app/(dashboard)/admin/programs/[id]/_components/EditProgramDialog.tsx:200-450",
+          "description": "La fiche programme a un dialog 'Modifier' qui édite modules via editModules state (titre, durée, topics textarea). À la sauvegarde (handleSave), pas de validation Zod du content reconstruit — lecture direct JSON.parse() sans refine checks. Modules invalides peuvent être savés.",
+          "recommendation": "Appliquer programContentSchema.safeParse() avant updateProgramService. Afficher validation errors sous titre module. Effort : M"
+        },
+        {
+          "severity": "major",
+          "category": "data-integrity",
+          "title": "Type casting unsafeité : as unknown as Program",
+          "where": "src/lib/services/programs.ts:67, 86, 110, 131, 185",
+          "description": "Tout le service programmes utilise (data as unknown as Program). Le compilateur TypeScript ne peut pas vérifier que data respecte Program shape. Champ manquant ou type incorrect passera inaperçu et causera un runtime error.",
+          "recommendation": "Remplacer par type guard ou Zod parse côté service. Example : data ? Program.parse(data) : null. Effort : M"
+        },
+        {
+          "severity": "major",
+          "category": "data-integrity",
+          "title": "ProgramElearningsList et ProgramEnrollments castent as unknown as",
+          "where": "src/app/(dashboard)/admin/programs/[id]/_components/ProgramElearningsList.tsx:49 et ProgramEnrollments.tsx:120, 143, 253, 267",
+          "description": "Même anti-pattern — aucune validation runtime sur la shape de Supabase. Si le schéma Supabase change, composants crasheront.",
+          "recommendation": "Utiliser Zod parse() ou type guard pour valider shape Supabase avant setState. Effort : M"
+        },
+        {
+          "severity": "major",
+          "category": "security-multitenant",
+          "title": "ProgramEnrollments fetch sans filtre explicit entity_id",
+          "where": "src/app/(dashboard)/admin/programs/[id]/_components/ProgramEnrollments.tsx:107-122",
+          "description": "Fetch enrollments par .eq('program_id', programId) seul. La RLS protège (via program_id → programs.entity_id), mais devrait avoir .eq('entity_id', ...) explicite ou user_entity_id() server-side pour defense-in-depth.",
+          "recommendation": "Ajouter entity_id filter explicite via useEntity hook. Effort : S"
+        },
+        {
+          "severity": "major",
+          "category": "ux-friction",
+          "title": "Page détail programme génère N+5 requêtes en parallèle",
+          "where": "src/app/(dashboard)/admin/programs/[id]/page.tsx:417-424",
+          "description": "handleCreateSession() fait 5 requêtes distinct : check trainings, insert training, check sessions, insert session, select. Pas de transaction Postgres → fenêtre race condition entre check et insert (2 requêtes simultanées créent 2 trainings).",
+          "recommendation": "Utiliser une fonction Postgres UPSERT atomique ou rpc('create_session_from_program', ...) qui fait tout en 1 transaction. Effort : M"
+        },
+        {
+          "severity": "major",
+          "category": "ux-missing",
+          "title": "Markdown rendering dangereux sans sanitization complète",
+          "where": "src/app/(dashboard)/admin/programs/[id]/page.tsx:59-69",
+          "description": "renderMarkdown() échappe HTML de base (& < >) mais replace() patterns peuvent être contournées. Exemple : **<img onerror='alert(1)'>** → <strong><img onerror='alert(1)'></strong> → XSS. dangerouslySetInnerHTML lignes 780, 790, 803 affiche sans sanitizer library (DOMPurify).",
+          "recommendation": "Remplacer renderMarkdown() par remark/rehype ou DOMPurify. Ou : ne pas accepter '< >' dans titles/descriptions côté validation. Effort : M"
+        },
+        {
+          "severity": "major",
+          "category": "completeness-gap",
+          "title": "Pagination hub programmes client-only, pas scalable",
+          "where": "src/app/(dashboard)/admin/programs/page.tsx:159, 224-227",
+          "description": "PAGE_SIZE=12, pagination en mémoire JavaScript après filter. Si entity a 500+ programmes, charge TOUS en mémoire, tri, filter, puis pagine. À 500 programmes, le slice() et filter() ralentiront notablement. Pas de LIMIT/OFFSET serveur.",
+          "recommendation": "Passer pagination serveur : limit 12, offset (page-1)*12. Envoyer page et filtered params à service.ts qui retourne { programs, total }. Effort : M"
+        },
+        {
+          "severity": "major",
+          "category": "tech-debt",
+          "title": "ProgramEnrollments (628 LOC) trop complexe, dépasser 500 LOC",
+          "where": "src/app/(dashboard)/admin/programs/[id]/_components/ProgramEnrollments.tsx",
+          "description": "Composant fait : fetch enrollments, enroll dialog, learning progress tracking, remove dialog, search, pagination. 628 LOC dans 1 fichier → logique entrelacée, difficile à tester, réutiliser.",
+          "recommendation": "Extraire : EnrollmentsList (100 LOC), EnrollDialog (150 LOC), ProgressDialog (100 LOC) en sous-composants. Lift logique métier dans service + hook. Effort : L"
+        },
+        {
+          "severity": "major",
+          "category": "tech-debt",
+          "title": "Page hub programmes (1128 LOC) trop grosse, dépassant 1000 LOC",
+          "where": "src/app/(dashboard)/admin/programs/page.tsx:1-1128",
+          "description": "Fait : listing, filtering, sorting, add/edit dialog, history dialog, delete dialog avec counts. 1128 LOC. Logique CRUD inline, state éparpillé (dialogOpen, editingProgram, formData, formErrors, versions, deleteCounts, orphanCounts, usageCounts). Difficile à maintenir.",
+          "recommendation": "Extraire : <ProgramGrid>, <AddEditDialog>, <VersionHistoryDialog>, <DeleteDialog>. Créer hook usePrograms() qui gère fetch + counts. Effort : L"
+        },
+        {
+          "severity": "major",
+          "category": "tech-debt",
+          "title": "Détail programme (1090 LOC) dépasse 1000 LOC",
+          "where": "src/app/(dashboard)/admin/programs/[id]/page.tsx:1-1090",
+          "description": "Affiche résumé + edit dialog + session dialog + tabs e-learning/enrollments. Trop de logique locale (renderMarkdown, splitDescriptionByJour, Métadata parsing inline). Difficile à tester isolément.",
+          "recommendation": "Extraire : <ProgramMetadata>, <ProgramContent>, <ProgramEnrollments> en composants. Déplacer renderMarkdown/splitDescriptionByJour dans utils. Effort : L"
+        },
+        {
+          "severity": "major",
+          "category": "completeness-gap",
+          "title": "feature flag isPedagogieV2Epic3Enabled() pas testé",
+          "where": "src/app/(dashboard)/admin/programs/[id]/page.tsx:950-955",
+          "description": "ProgramElearningDefaults section affichée seulement si isPedagogieV2Epic3Enabled() ET entityId. Pas de test que la section render correctement, que les buttons work, que la feature flag marche. Risque : faux positif si flag returns undefined.",
+          "recommendation": "Ajouter test : describe('ProgramElearningDefaults integration') avec mock flag. Effort : S"
+        },
+        {
+          "severity": "major",
+          "category": "completeness-gap",
+          "title": "Pas de tests e2e pour le flow add/edit programme",
+          "where": "src/lib/services/__tests__/programs.test.ts",
+          "description": "Unit tests existent pour le service (mock Supabase). Mais aucun test e2e : ouvrir dialog, remplir, sauver, vérifier toast, refetch. Risque : UI peut crasher pendant save sans être détecté.",
+          "recommendation": "Ajouter e2e tests : Playwright ou Cypress. Scenario : add programme + verify list refresh. Effort : M"
+        },
+        {
+          "severity": "minor",
+          "category": "ux-missing",
+          "title": "Pas d'optimistic update lors save programme",
+          "where": "src/app/(dashboard)/admin/programs/page.tsx:278-358",
+          "description": "handleSave() bloque UI (saving=true) pendant la requête Supabase. Avec réseau lent (3G), utilisateur attend 2-3s. Après save, refetch() repull tout.",
+          "recommendation": "Ajouter optimistic update : setPrograms([updated, ...rest]) avant save. Effort : S"
+        },
+        {
+          "severity": "minor",
+          "category": "ux-friction",
+          "title": "Dialog Add/Edit n'indique pas si c'est create vs update",
+          "where": "src/app/(dashboard)/admin/programs/page.tsx:750-752",
+          "description": "DialogTitle change ('Modifier' vs 'Nouveau') mais pas de contexte visuel supplémentaire (badge 'Mode édition' ou 'Créer'). Utilisateur peut être confus.",
+          "recommendation": "Ajouter Badge variant='secondary' à côté du titre : 'Mode édition' ou 'Nouvelle création'. Effort : S"
+        },
+        {
+          "severity": "minor",
+          "category": "ux-missing",
+          "title": "Programme soft-delete ne cache pas usage counts",
+          "where": "src/app/(dashboard)/admin/programs/page.tsx:595-618",
+          "description": "Cards montrent badges '3 formations / 2 sessions' même si programme inactif. Confus : les formations peuvent toujours l'utiliser (c'est l'intérêt soft-delete), mais visually pareil que actif.",
+          "recommendation": "Ajouter opacity/désaturation sur card si !program.is_active. Ou ajouter small badge 'Inactif'. Effort : S"
+        },
+        {
+          "severity": "minor",
+          "category": "accessibility",
+          "title": "Boutons dropdown menu pas accessible au clavier",
+          "where": "src/app/(dashboard)/admin/programs/page.tsx:620-655",
+          "description": "DropdownMenuTrigger button a tabIndex implicite. Mais DropdownMenu peut pas se trigger via keyboard sur certains assistants d'accessibilité.",
+          "recommendation": "Vérifier shadcn DropdownMenu a onKeyDown handling. Ou ajouter data-testid pour accessibility audit. Effort : S"
+        },
+        {
+          "severity": "minor",
+          "category": "tech-debt",
+          "title": "Pas de abort controller pour requêtes en vol",
+          "where": "src/app/(dashboard)/admin/programs/[id]/page.tsx:336-405",
+          "description": "handleGenerateAI() fetch sans AbortController. Utilisateur navigue away → requête continue, refetch() quand composant unmounted.",
+          "recommendation": "Ajouter useEffect() cleanup : return () => ac.abort() dans generation. Effort : S"
+        },
+        {
+          "severity": "minor",
+          "category": "completeness-gap",
+          "title": "Import PDF API pas testé pour malformed PDFs",
+          "where": "src/app/api/programs/import-pdf/route.ts:1-200+",
+          "description": "parsePdfText() utilise regex hardcodées pour extraire titre, durée, modules. Si PDF pas au format attendu (ex: structure différente), parsing échoue silencieusement ou extrait garbage.",
+          "recommendation": "Ajouter tests : malformed PDF, missing sections, special chars. Ajouter fallback defaults si parse échoue. Effort : M"
+        },
+        {
+          "severity": "minor",
+          "category": "completeness-gap",
+          "title": "Validation content textarea ne montre pas exact JSON error",
+          "where": "src/app/(dashboard)/admin/programs/page.tsx:232-245",
+          "description": "setContentError('JSON invalide') est générique. Si JSON est {modules: []} (vide), ou {modules: [{id: 'string' instead of number}]}, erreur est 'JSON invalide' au lieu de 'Modules vide' ou 'Module ID doit être number'.",
+          "recommendation": "Parser JSON + Zod, display specific error : 'Module #1 missing title' instead of generic. Effort : S"
+        },
+        {
+          "severity": "info",
+          "category": "completeness-gap",
+          "title": "Bandeau continuité Program→Formation→Session pas persistent",
+          "where": "src/app/(dashboard)/admin/programs/page.tsx:469-492",
+          "description": "Bandeau jaune affiche orphan counts, mais utilisateur peut fermer ou ignorer. À prochain chargement, audit rerun, bandeau rapparaît. Pas de 'ack' ou tracking que l'utilisateur a vu/agi.",
+          "recommendation": "Ajouter checkbox 'Masquer ce message' (localStorage). Ou auto-dismiss après 8 secondes. Effort : S"
+        }
+      ]
+    },
+    {
+      "subsystem": "E-LEARNING",
+      "inventory": "Main admin pages: /admin/elearning (1468 LOC list/hub), /admin/elearning/create (1284 LOC wizard), /admin/elearning/courses/[id] (1087 LOC editor). Learner pages: /learner/courses (catalog/enrollments). API routes: 18 elearning API endpoints under /api/elearning/. Services: elearning-courses.ts (95 LOC), elearning-sse.ts (46 LOC), openai.ts (967 LOC generation). Auth: elearning-access.ts guard. Tests: 6 test files.",
+      "completeness_pct": 72,
+      "verdict": "has-gaps",
+      "findings": [
+        {
+          "severity": "critical",
+          "category": "security-multitenant",
+          "title": "Missing entity_id filter on learner course catalog queries",
+          "where": "src/app/(dashboard)/learner/courses/page.tsx:128-132, 142-145",
+          "description": "Two catalog queries fetch published elearning courses and programs without filtering by entity_id. A learner from entity A could browse/access courses from entity B. Query 1 (line 129): `.from('elearning_courses').select(...).eq('status', 'published')` lacks `.eq('entity_id', entityId)`. Query 2 (line 143): `.from('programs').select(...).order(...)` has no entity filter.",
+          "recommendation": "Add `.eq('entity_id', entityId)` to both catalog queries after status/order clauses. Test with multi-tenant scenario. Estimated effort: S"
+        },
+        {
+          "severity": "critical",
+          "category": "data-integrity",
+          "title": "Missing entity_id filter in elearning_courses fetch by ID (learner enrollment flow)",
+          "where": "src/app/(dashboard)/learner/courses/page.tsx:179-182",
+          "description": "When fetching elearning courses by `courseIds` to stitch with assignments, query uses `.in('id', courseIds)` without entity_id filter. An admin assignment to course A pointing to a course ID that happens to exist in entity B would leak data.",
+          "recommendation": "Add `.eq('entity_id', entityId)` before `.in('id', courseIds)`. Verify entity context propagates through assignment lookup. Estimated effort: S"
+        },
+        {
+          "severity": "major",
+          "category": "data-integrity",
+          "title": "Catalog programs query unfiltered (learner page)",
+          "where": "src/app/(dashboard)/learner/courses/page.tsx:142-145",
+          "description": "Programs table fetch omits entity_id constraint. All published elearning programs across all entities visible to all learners. No RLS protection mentioned in code comments.",
+          "recommendation": "Add `elearning_programs` view or filter: `.eq('entity_id', entityId)` on programs query. Verify RLS policy on programs table enforces entity isolation. Estimated effort: M"
+        },
+        {
+          "severity": "major",
+          "category": "completeness-gap",
+          "title": "Large page components exceed recommended size",
+          "where": "src/app/(dashboard)/admin/elearning/page.tsx (1468 LOC), /admin/elearning/create/page.tsx (1284 LOC), /admin/elearning/courses/[courseId]/page.tsx (1087 LOC)",
+          "description": "Three main pages are 1000+ lines each, combining state management, filtering, pagination, dialogs, rendering. Violates single-responsibility. Hard to test, maintain, refactor.",
+          "recommendation": "Extract: list logic → custom hook, pagination → reusable component, dialog forms → separate components. Break into <500 LOC pages. Estimated effort: L"
+        },
+        {
+          "severity": "major",
+          "category": "ux-friction",
+          "title": "Presentation mode (Gamma slides) course type is 'presentation' but model expects 'presentation_quiz'/'complete'",
+          "where": "src/app/(dashboard)/admin/elearning/create/page.tsx:36, 82-86 vs src/app/api/elearning/route.ts:63, src/lib/validations/elearning.ts:69-74",
+          "description": "Create page allows course_type 'presentation', 'quiz', 'complete'. But POST /api/elearning validates enum ['presentation', 'quiz', 'complete'] and passes to insert (line 63-65). However, elearningCourseTypeEnum (validations/elearning.ts) lists only ['presentation_quiz', 'presentation_quiz_flashcard', 'quiz', 'flashcards'] (lines 69-74). Enum mismatch — create page and API likely don't align.",
+          "recommendation": "Audit course_type enum across all layers. Unify on single enum. Update create page, API schema, DB defaults. Add test for round-trip create→fetch→edit. Estimated effort: M"
+        },
+        {
+          "severity": "major",
+          "category": "data-integrity",
+          "title": "No validation that enrollment's learner belongs to the course's entity",
+          "where": "src/app/api/elearning/[courseId]/enroll/route.ts:102-147",
+          "description": "POST /api/elearning/[courseId]/enroll accepts learner_ids array and inserts enrollments. No check that each learner's entity_id matches the course's entity_id. An admin could enroll a learner from a different entity.",
+          "recommendation": "Fetch course to get entity_id. Fetch learner(s) via learners table join. Verify learner.entity_id == course.entity_id before upsert. Add test: enrolling cross-entity learner should fail. Estimated effort: M"
+        },
+        {
+          "severity": "major",
+          "category": "ux-missing",
+          "title": "No progress indicator or loading skeleton for large chapter list",
+          "where": "src/app/(dashboard)/admin/elearning/courses/[courseId]/page.tsx (reader starts ~line 100, renders chapters)",
+          "description": "Admin detail page with many chapters may take 1-2s to load chapters tree + quiz + flashcard counts. No skeleton or 'Loading chapters...' feedback. User might think the page is broken.",
+          "recommendation": "Add React.Suspense around chapter list or skeleton cards while loading. Show chapter count in header with Loader2 icon. Estimated effort: M"
+        },
+        {
+          "severity": "major",
+          "category": "ux-friction",
+          "title": "Learner course reader (1523 LOC) combines content display, quiz, flashcards, final exam in one mega-component",
+          "where": "src/app/(dashboard)/learner/courses/[courseId]/page.tsx (1-150 visible, 1523 total LOC)",
+          "description": "Reader mixes screen-type routing, state for 8+ screen types (cover, gamma, flashcards, quiz, final, scores), quiz answer tracking, progress updates, audio generation. Monolithic. Hard to unit-test screens independently.",
+          "recommendation": "Extract screen types into custom hooks or separate components: <GammaScreen>, <FlashcardScreen>, <QuizScreen>, <FinalExamScreen>. Use React.Suspense for async data. Estimated effort: L"
+        },
+        {
+          "severity": "major",
+          "category": "accessibility",
+          "title": "No focus management or tab-trapping in dialog flows",
+          "where": "src/app/(dashboard)/admin/elearning/page.tsx (Dialog, ChapterEditDialog, ContentPreviewDialog components)",
+          "description": "Dialogs lack return-focus-to-trigger, focus-trap, and keyboard navigation guidance. Accessible to keyboard users but not optimal. No aria-labels for dynamic state (e.g., 'Saving…' button state).",
+          "recommendation": "Add autoFocus to first input in dialogs. Use Dialog's built-in focus-trap. Add aria-busy, aria-label on loading buttons. Test with axe-core. Estimated effort: M"
+        },
+        {
+          "severity": "major",
+          "category": "tech-debt",
+          "title": "Type assertion `as unknown as` used 5 times to work around type mismatches",
+          "where": "src/app/(dashboard)/admin/elearning/page.tsx:249, 273, 296; src/app/(dashboard)/learner/courses/page.tsx:201; ContentPreviewDialog.tsx:123",
+          "description": "Fallback type casts suggest schema mismatch. Line 273 casts fallbackRes after migration schema mismatch. Line 296 flattens program relation array manually. These workarounds hide real type issues.",
+          "recommendation": "Create explicit types for each fallback case (ProgramsV1, ProgramsV2, AICourseWithProgram). Codegen from Supabase types or use type-safe client wrapper. Add regression tests for fallback paths. Estimated effort: M"
+        },
+        {
+          "severity": "major",
+          "category": "completeness-gap",
+          "title": "No RLS policy verification in code or tests for elearning tables",
+          "where": "src/lib/auth/elearning-access.ts, /api/elearning routes (all routes)",
+          "description": "Guard `requireElearningCourse` checks entity_id at app layer, but no tests verify RLS rows are actually filtered. If RLS is missing, app-layer check alone doesn't protect. No test suite for cross-tenant access attempts.",
+          "recommendation": "Document RLS policies in schema comments. Add test suite (entity-isolation-elearning.test.ts) that verifies learner A cannot RLS-query learner B's enrollments. Estimated effort: M"
+        },
+        {
+          "severity": "major",
+          "category": "data-integrity",
+          "title": "Upsert without validation: enrollment insert allows duplicate courses per learner without conflict handling in UI",
+          "where": "src/app/api/elearning/[courseId]/enroll/route.ts:126",
+          "description": "Upsert uses `ignoreDuplicates: true`, silently ignoring re-enrollments. No feedback to user: were they already enrolled, or did the enroll succeed? UI shows success toast regardless.",
+          "recommendation": "Return both 'inserted' and 'ignored' counts. Update UI toast: 'X newly enrolled, Y already enrolled'. Test: enroll twice, verify toast reflects reality. Estimated effort: S"
+        },
+        {
+          "severity": "major",
+          "category": "ux-friction",
+          "title": "No empty state for chapters when course is draft or generation failed",
+          "where": "src/app/(dashboard)/admin/elearning/courses/[courseId]/page.tsx",
+          "description": "If course.generation_status is 'failed' or course is in 'draft' status with 0 chapters, admin sees blank chapter list. No message explaining why or CTA to retry generation.",
+          "recommendation": "Add conditional rendering: if status='failed', show error + 'Retry generation' button. If generation_status='generating', show spinner + ETA. Estimated effort: S"
+        },
+        {
+          "severity": "major",
+          "category": "performance",
+          "title": "Admin elearning hub page fetches ALL courses twice in parallel (programs + elearning_courses)",
+          "where": "src/app/(dashboard)/admin/elearning/page.tsx:251-260",
+          "description": "Promise.all fetches programs (with content filtering) AND elearning_courses. If entity has 1000 legacy programs and 500 AI courses, loads 1500 rows. No pagination on initial hub load.",
+          "recommendation": "Add client-side pagination from page 1. Lazy-load tab 2 (AI courses) when tab is opened. Paginate at DB layer with limit(100). Estimated effort: M"
+        },
+        {
+          "severity": "major",
+          "category": "completeness-gap",
+          "title": "Course type 'presentation' mode (Gamma only, no quiz) lacks final exam completion flow",
+          "where": "src/app/(dashboard)/learner/courses/[courseId]/page.tsx:106-137 (buildScreens)",
+          "description": "If courseType='presentation', no final exam questions are generated. Course ends after presentation without learner assessment. No passing score, no certificate. Learning outcome unclear.",
+          "recommendation": "For presentation mode: either (a) auto-add 5-10 recall questions post-gamma, or (b) document that presentation courses don't have final exams (opt-in). Test learner flow end-to-end. Estimated effort: M"
+        },
+        {
+          "severity": "minor",
+          "category": "ux-friction",
+          "title": "No confirmation dialog before deleting all chapters when deleting course",
+          "where": "src/app/(dashboard)/admin/elearning/page.tsx:527-547 (handleDelete for manual courses)",
+          "description": "Delete button triggers DELETE /api/elearning/[courseId] with one confirm. Warns 'Cette action est irréversible et supprimera tous les modules associés.' But deletion is cascaded by RLS, not explicitly shown what is deleted (chapters, quiz, flashcards, enrollments).",
+          "recommendation": "Before delete, fetch chapter count + enrollment count. Show in confirm: 'This will delete X chapters, unenroll Y learners.' Estimated effort: S"
+        },
+        {
+          "severity": "minor",
+          "category": "ux-friction",
+          "title": "Toggle publish button does not disable during save",
+          "where": "src/app/(dashboard)/admin/elearning/page.tsx:493-518 (handleTogglePublish)",
+          "description": "handleTogglePublish has no loading state. User can click 'Publish' twice in rapid succession, causing race condition.",
+          "recommendation": "Add [publishing, setPublishing] state. Disable button while publishing. Add visual feedback spinner. Estimated effort: S"
+        },
+        {
+          "severity": "minor",
+          "category": "tech-debt",
+          "title": "Chapter endpoint filters by eq(course_id) alone, relies on app layer to verify ownership",
+          "where": "src/app/api/elearning/[courseId]/download-pdf/route.ts:41-46",
+          "description": "Fetch chapter by `.eq('id', chapterId).eq('course_id', courseId)` is correct, but pattern not uniform across routes. Some routes trust guard only, some re-verify.",
+          "recommendation": "Standardize: always use guard for role + entity_id, then fetch-verify resource. Document pattern in auth/elearning-access.ts comments. Estimated effort: S"
+        },
+        {
+          "severity": "minor",
+          "category": "ux-missing",
+          "title": "No visual indicator of quiz passing vs failing score threshold",
+          "where": "src/app/(dashboard)/learner/courses/[courseId]/page.tsx (quiz screens)",
+          "description": "Quiz displays score % but doesn't highlight passing_score threshold or explain what % is needed to pass.",
+          "recommendation": "Show 'Passing score: 70%' label, highlight score bar in green if >=threshold, red if <threshold. Estimated effort: S"
+        },
+        {
+          "severity": "minor",
+          "category": "completeness-gap",
+          "title": "No analytics or reporting for elearning course completion rates",
+          "where": "src/app/(dashboard)/admin/reports/bpf-elearning/page.tsx mentioned in audit context but not reviewed",
+          "description": "Reports page exists but incomplete. No dashboard showing: courses by completion %, learner progress heatmap, quiz score distribution, time spent per chapter.",
+          "recommendation": "Add dashboard tab: 'E-Learning Analytics' with completion %, avg score, completion trend. Use chart library (recharts). Estimated effort: L"
+        },
+        {
+          "severity": "minor",
+          "category": "ux-friction",
+          "title": "File upload for course source truncates at 200k chars without user warning",
+          "where": "src/app/api/elearning/[courseId]/extract/route.ts:62-63",
+          "description": "extractText returns full text, but insert silently truncates to 200k chars. If PDF is 500KB, user sees 'Extraction done' but half the content is lost.",
+          "recommendation": "Return truncated_at flag in response. Show warning toast: 'Document truncated to 200k chars (content too large). Review extracted text.' Estimated effort: S"
+        },
+        {
+          "severity": "minor",
+          "category": "tech-debt",
+          "title": "SSE event schema (elearning-sse.ts) has optional data field but not all senders use it consistently",
+          "where": "src/lib/services/elearning-sse.ts:15-23 vs src/app/api/elearning/[courseId]/generate/route.ts generation events",
+          "description": "Some events include data payload (e.g., chapter_id, deck_url), others don't. Client GenerationProgress.tsx has to handle both patterns. No type-safe event dispatch.",
+          "recommendation": "Define typed event union: OutlineEvent { step:'outline_done'; data: { chapters: [...] } }, ChapterEvent { step:'chapter_done'; data: { chapter_id, order_index } }. Enforce at sender/receiver. Estimated effort: M"
+        },
+        {
+          "severity": "minor",
+          "category": "accessibility",
+          "title": "Pagination buttons don't announce page number to screen readers",
+          "where": "src/app/(dashboard)/admin/elearning/page.tsx:937-952, 1080-1095 (pagination controls)",
+          "description": "Pagination shows 'Page X / Y' as plain text. Next/Prev buttons have no aria-label explaining which page they navigate to.",
+          "recommendation": "Add aria-label='Go to page X' to Next/Prev. Add role='region' aria-live='polite' around page number text. Estimated effort: S"
+        },
+        {
+          "severity": "minor",
+          "category": "ux-missing",
+          "title": "No breadcrumb or context in elearning course detail pages",
+          "where": "src/app/(dashboard)/admin/elearning/courses/[courseId]/page.tsx",
+          "description": "Admin in detailed course edit page has no 'Back to Courses' link or breadcrumb. Must use browser back button.",
+          "recommendation": "Add top breadcrumb: 'E-Learning > Courses > [Title]' with clickable 'Courses' link. Add ArrowLeft button. Estimated effort: S"
+        },
+        {
+          "severity": "info",
+          "category": "tech-debt",
+          "title": "Fallback query logic for migration schema mismatch adds operational complexity",
+          "where": "src/app/api/elearning/[courseId]/route.ts:30-73 (shallow query fallback), src/app/(dashboard)/admin/elearning/page.tsx:267-274 (program_id fallback)",
+          "description": "Two routes have try-catch fallbacks for schema migrations (program_id column, generation_progress column). This is defensive but suggests migration didn't complete in prod. Code will need cleanup once migrations are guaranteed.",
+          "recommendation": "Document migration deadlines. Once all instances deployed, remove fallback queries. Update CI/CD to verify migrations before deploy. Estimated effort: S"
+        },
+        {
+          "severity": "info",
+          "category": "ux-friction",
+          "title": "Create page wizard has 7 steps but no progress bar or step indicator",
+          "where": "src/app/(dashboard)/admin/elearning/create/page.tsx:135-250+ (viewStep state)",
+          "description": "User flows through method → import → configure → generate → done. No visual progress. User doesn't know how many steps remain.",
+          "recommendation": "Add step indicator bar at top: 'Step 2 of 5: Configure' with filled/unfilled circles. Estimated effort: S"
+        }
+      ]
+    },
+    {
+      "subsystem": "QUESTIONNAIRES",
+      "inventory": "Pages: /app/questionnaire/[token], /app/(dashboard)/learner/questionnaires/[id], /app/(dashboard)/admin/questionnaires/page.tsx, /app/(dashboard)/admin/formations/[id]/_components/TabQuestionnaires.tsx, /app/(dashboard)/admin/questionnaires/dashboard/page.tsx. Services: src/lib/services/questionnaire-scoring.ts, src/lib/automation/questionnaire-token-helper.ts. API routes: /api/questionnaire/public-submit, /api/questionnaires/relaunch, /api/questionnaires/auto-send, /api/admin/questionnaires/fill-for-learner. DB: questionnaires, questions, questionnaire_responses, questionnaire_tokens, questionnaire_sessions, formation_evaluation_assignments, formation_satisfaction_assignments. Components: AdminFillQuestionnaireDialog.tsx, QuestionnaireOverview, LearnerStatusGrid, LearnerResponsesDialog.",
+      "completeness_pct": 78,
+      "verdict": "mostly-ok",
+      "findings": [
+        {
+          "severity": "major",
+          "category": "security-multitenant",
+          "title": "Missing entity_id validation in auto-send questionnaires cron",
+          "where": "src/app/api/questionnaires/auto-send/route.ts:51-120",
+          "description": "The auto-send endpoint fetches questionnaire_sessions with nested session data but does NOT filter returned questionnaires by entity_id. When iterating enrollments, it calls ensureQuestionnaireToken with session.entity_id, but the initial questionnaire_sessions query lacks entity filtering, allowing a cron to potentially enumerate questionnaires across entities if direct DB access is breached.",
+          "recommendation": "Add .eq('entity_id', <admin_entity>) validation or restrict at questionnaire fetch stage (line 71) to filter only questionnaires matching the caller's entity. Effort: S (add 1-2 lines to queries)."
+        },
+        {
+          "severity": "major",
+          "category": "security-multitenant",
+          "title": "Service role bypass in auto-send allows enumeration without user context check",
+          "where": "src/app/api/questionnaires/auto-send/route.ts:5-42",
+          "description": "The cron uses service_role (bypasses RLS) to enumerate all questionnaire_sessions without filtering by entity. If CRON_SECRET is leaked, an attacker can trigger data enumeration across all entities. The admin session fallback (lines 31-41) checks role but doesn't prevent the earlier cron-secret path from leaking cross-entity data.",
+          "recommendation": "In cron path (line 28), validate auth.profile.entity_id before processing, or hard-code allowed entity list. For production, use narrow CRON_SECRET scope. Effort: M (refactor auth logic to segregate cron vs admin paths)."
+        },
+        {
+          "severity": "major",
+          "category": "data-integrity",
+          "title": "Race condition risk: questionnaire token already-sent deduplication relies on email_history pattern match, not unique constraint",
+          "where": "src/app/api/questionnaires/auto-send/route.ts:97-104",
+          "description": "Lines 97-104 check email_history via ilike('subject', `%${questionnaire.title}%`) to detect already-sent emails. This is a fuzzy pattern match (not exact), and title collisions across questionnaires could cause false positives. More critically, no UNIQUE constraint on (questionnaire_id, learner_id, session_id) in email_history prevents duplicate emails if auto-send is triggered twice in same second.",
+          "recommendation": "Use UNIQUE (questionnaire_id, learner_id, session_id) constraint in email_history table, or add UNIQUE INDEX. Alternatively, mark questionnaire_sessions.auto_send_on_completion = false after first send. Effort: M (schema change + index, or add state column)."
+        },
+        {
+          "severity": "major",
+          "category": "ux-friction",
+          "title": "Admin fill questionnaire blocks updates when learner already responded, but error message is not inline during load",
+          "where": "src/components/questionnaires/AdminFillQuestionnaireDialog.tsx:104-106",
+          "description": "When loading existing response, if fill_mode='learner', component sets blocked=true and displays banner (line 189). However, user experience is jarring: dialog opens with spinner, then suddenly switches to blocked state. No loading indicator on the blocking banner itself.",
+          "recommendation": "Show the blocked state in the initial loading state (or within the Loader component), or preload block status before opening dialog. Display a clear 'Blocked by learner response' badge in the dialog trigger button. Effort: S (UX refactor in load sequence)."
+        },
+        {
+          "severity": "major",
+          "category": "ux-missing",
+          "title": "No confirmation dialog when learner tries to overwrite admin-filled response",
+          "where": "src/app/(dashboard)/learner/questionnaires/[id]/page.tsx:127-188",
+          "description": "If an admin filled a questionnaire with fill_mode='admin_for_learner' (invisible to learner as it's marked 'learner' in DB), and learner later submits their own response, the second insert silently creates a duplicate row. There's no check to warn learner 'This has been pre-filled by admin' before they overwrite.",
+          "recommendation": "On learner questionnaire load (line 120-140), check if existing response has filled_by_admin is not null. If so, display banner: 'This was pre-filled by your trainer. You can still submit your own responses—your new response will replace the pre-filled one.' Effort: M (query + UI banner)."
+        },
+        {
+          "severity": "major",
+          "category": "completeness-gap",
+          "title": "Missing proper handling of questionnaire types in schema: 'program_objectives' not in questions.type CHECK constraint",
+          "where": "supabase/schema.sql:lines for questions table",
+          "description": "Schema defines questions.type CHECK (...'yes_no') but the code references 'program_objectives' type (expand-objectives-question.ts, questionnaire pages). The migration add_program_objectives_question_type.sql should update this, but the base schema.sql does not list 'program_objectives' in the enum, risking constraint violations if migrations are not applied in order.",
+          "recommendation": "Verify add_program_objectives_question_type.sql is applied in all envs. Add comment in schema.sql: 'See migration add_program_objectives_question_type.sql for program_objectives type.' Or update base schema to include it. Effort: S (documentation + verify migration)."
+        },
+        {
+          "severity": "major",
+          "category": "data-integrity",
+          "title": "Questionnaire responses scoring bugfix in questionnaire-scoring.ts not applied to existing responses",
+          "where": "src/lib/services/questionnaire-scoring.ts:1-83, src/lib/services/__tests__/questionnaire-scoring.test.ts:14-26",
+          "description": "The isCorrect() function fixes P0-4 regressions (Boolean('non') === Boolean('oui') bug), but existing questionnaire_responses in DB may have been scored with the old broken logic. No migration re-scores old responses, so historical data may be incorrect.",
+          "recommendation": "Document this in release notes: 'Scoring for yes_no/text questions changed; historical scores may not match new logic.' Consider creating a one-time script to re-score responses with old scoring, or flag them as 'legacy_scored'. Effort: M (script + audit)."
+        },
+        {
+          "severity": "major",
+          "category": "tech-debt",
+          "title": "Type casts 'as any' and 'as unknown as' scattered throughout questionnaire components",
+          "where": "src/app/api/questionnaires/auto-send/route.ts:62, src/app/(dashboard)/admin/questionnaires/page.tsx:multiple lines, src/app/(dashboard)/learner/questionnaires/page.tsx:69",
+          "description": "Multiple 'as any' casts and 'as unknown as Record' casts indicate incomplete TypeScript typing. Lines 62-109 of auto-send cast enrollments.learner and session without strict shape. Page admin/questionnaires casts stats as any when computing distributions. This defeats type safety and makes refactoring risky.",
+          "recommendation": "Define strict interfaces for nested shapes (SessionWithEntity, EnrollmentWithLearner, StatsData). Replace all 'as any' with proper types. Use discriminated unions for different response shapes. Effort: M (create type interfaces in src/lib/types/)."
+        },
+        {
+          "severity": "minor",
+          "category": "ux-missing",
+          "title": "No empty state or loading indicator for learner questionnaire list when no questionnaires are assigned",
+          "where": "src/app/(dashboard)/learner/questionnaires/page.tsx:141-151",
+          "description": "Empty state shows icon + text, but there's no guiding message explaining why questionnaires might be missing (e.g., 'Your formations don't have questionnaires assigned yet' vs 'Questionnaires will appear once your training starts').",
+          "recommendation": "Enhance empty state with conditional messaging based on enrollment status (e.g., check if learner is enrolled in any sessions). Add link to help docs. Effort: S (UX text + conditional logic)."
+        },
+        {
+          "severity": "minor",
+          "category": "ux-missing",
+          "title": "No progress persistence or draft auto-save for learner questionnaire responses",
+          "where": "src/app/(dashboard)/learner/questionnaires/[id]/page.tsx:127-188, src/app/questionnaire/[token]/page.tsx:52-83",
+          "description": "Both learner and public questionnaire pages store responses only in React state. If user closes tab or loses connection, all unsaved responses are lost. There's no local auto-save to sessionStorage or draft submission.",
+          "recommendation": "Implement useEffect to periodically save responses to localStorage under a session-specific key. On load, restore from localStorage. Add banner if unsaved changes exist. Effort: M (localStorage hook + cleanup logic)."
+        },
+        {
+          "severity": "minor",
+          "category": "ux-friction",
+          "title": "Admin questionnaire stats dialog opens with loading spinner but no indication of data scope (e.g., which period)",
+          "where": "src/app/(dashboard)/admin/questionnaires/page.tsx:~520-588",
+          "description": "Stats dialog fetches responses but does not show period/entity scope. Users don't know if stats include all-time or recent responses, or if filtered by entity.",
+          "recommendation": "Display period/entity filter in stats header before data loads. Add subtitle: 'Showing responses from [period] for [entity]'. Effort: S (add text to dialog header)."
+        },
+        {
+          "severity": "minor",
+          "category": "completeness-gap",
+          "title": "Missing validation for empty options in multiple_choice and yes_no question types",
+          "where": "src/app/(dashboard)/admin/questionnaires/page.tsx:315-360",
+          "description": "When adding a new multiple_choice question, the form allows users to save with empty option strings. There's no validation to prevent blank options before insert.",
+          "recommendation": "Add client-side validation in handleAddQuestion(): check options.every(o => o.trim().length > 0). Show toast error if validation fails. Effort: S (add validation check)."
+        },
+        {
+          "severity": "minor",
+          "category": "ux-friction",
+          "title": "Questionnaire distribute dialog does not show learner count per session before distribution",
+          "where": "src/app/(dashboard)/admin/questionnaires/page.tsx:~520-560",
+          "description": "User selects a session and distributes questionnaire, but there's no preview showing 'This will send to X learners'. They only see count after submit via toast.",
+          "recommendation": "Load and display enrolled learner count as user selects session (see example in formations TabEnrollments). Show before-submit confirmation: 'Send to 15 learners?'. Effort: M (add learner count fetch + confirmation dialog)."
+        },
+        {
+          "severity": "info",
+          "category": "tech-debt",
+          "title": "Inconsistent error handling in questionnaire API routes: some throw, some return NextResponse.json with error",
+          "where": "src/app/api/questionnaires/auto-send/route.ts:133-136, src/app/api/admin/questionnaires/fill-for-learner/route.ts:115-118",
+          "description": "Auto-send catches errors and continues batch (line 135), while fill-for-learner throws and returns 500 (line 117). Pattern inconsistency makes error handling unpredictable. Auto-send silently skips failed tokens without logging source.",
+          "recommendation": "Use consistent error handling: (A) all throw + single try/catch at route level, or (B) all log and continue. If continuing, emit detailed error logs with learner_id + reason for auditing. Effort: S (refactor error blocks)."
+        },
+        {
+          "severity": "info",
+          "category": "performance",
+          "title": "Dashboard stats page fetches responses for ALL questionnaires, then loops to compute avg_rating—no pagination or lazy-load",
+          "where": "src/app/(dashboard)/admin/questionnaires/dashboard/page.tsx:105-125",
+          "description": "For each questionnaire, fetches all responses and iterates to compute stats. If entity has 100+ questionnaires with thousands of responses, this causes N+1 queries and client-side memory spike.",
+          "recommendation": "Use server-side aggregation: create Supabase view or RPC function to return pre-computed questionnaire_stats (responses_count, avg_rating, last_response_at). Or add pagination to dashboard table. Effort: M (create view or RPC)."
+        },
+        {
+          "severity": "info",
+          "category": "completeness-gap",
+          "title": "No audit log for questionnaire distribution or admin fill actions",
+          "where": "src/app/api/admin/questionnaires/fill-for-learner/route.ts:96-114",
+          "description": "When admin fills questionnaire or distributes to sessions, no entry is created in activity_log or similar audit table. filled_by_admin and filled_by_admin_at track WHO and WHEN, but WHERE/HOW (which UI action, bulk vs single) is not logged.",
+          "recommendation": "Insert row into activity_log (questionnaire_fill, questionnaire_distribute) with admin_id, action, details. Include in fill-for-learner and handleDistribute. Effort: M (add activity_log inserts)."
+        },
+        {
+          "severity": "info",
+          "category": "ux-missing",
+          "title": "Public questionnaire page /questionnaire/[token] does not show session/training title in page <title> tag",
+          "where": "src/app/questionnaire/[token]/page.tsx:27-202",
+          "description": "Page is client-rendered and does not set document title. SEO/readability issue; users see generic tab title. If QR code is scanned, browser tab shows nothing helpful.",
+          "recommendation": "Use useEffect to set document.title = `${questionnaire_title} — ${session_title}` once loaded. Or migrate to server component to set metadata. Effort: S (add useEffect + document.title)."
+        },
+        {
+          "severity": "info",
+          "category": "ux-missing",
+          "title": "No visual indication of survey completion status in TabQuestionnaires grid—users can't quickly scan which learners answered",
+          "where": "src/app/(dashboard)/admin/formations/[id]/_components/TabQuestionnaires.tsx:~180-195, src/app/(dashboard)/admin/formations/[id]/_components/questionnaires/LearnerStatusGrid.tsx",
+          "description": "LearnerStatusGrid displays status cells (answered/sent/not_sent) but color coding is subtle. High-density grids with 50+ learners make it hard to spot incomplete responses at a glance.",
+          "recommendation": "Use bolder color scheme (red=not_sent, yellow=sent, green=answered) or add row/column summaries. Or add 'Sort by completion' button. Effort: S (CSS + sort logic)."
+        },
+        {
+          "severity": "info",
+          "category": "completeness-gap",
+          "title": "questionnaire_tokens table stores expires_at but no TTL cleanup job exists to delete expired tokens",
+          "where": "supabase/migrations/add_questionnaire_public_tokens.sql:1-28, src/lib/automation/questionnaire-token-helper.ts:18",
+          "description": "Tokens expire after 90 days (TOKEN_LIFETIME_DAYS = 90), but expired rows are never deleted from DB. Over time, questionnaire_tokens grows indefinitely with stale data.",
+          "recommendation": "Create a Cron job (Netlify function or Supabase function) to DELETE FROM questionnaire_tokens WHERE expires_at < NOW() AND used_at IS NULL weekly. Or use Supabase pg_cron extension. Effort: S (add cron function)."
+        },
+        {
+          "severity": "info",
+          "category": "security-multitenant",
+          "title": "questionnaire_tokens RLS policies allow SELECT for any entity member, but public-submit route uses service_role bypass—consider stricter scope",
+          "where": "supabase/migrations/fix_questionnaires_rls_strict.sql:141-155, src/app/api/questionnaire/public-submit/route.ts:5-11",
+          "description": "Tokens are created with entity_id, and RLS allows authenticated users in same entity to SELECT them (qt_select_entity). But public-submit bypasses RLS with service_role. If a trainer in entity A somehow accesses entity B's tokens table, they could enumerate tokens. The public route itself is safe (validates token server-side), but policy scope could be tighter.",
+          "recommendation": "Consider restricting qt_select_entity to admin/super_admin only (trainers/learners shouldn't browse tokens). Or add NOT IN (subquery of admin_ids) clause. Effort: S (policy refinement)."
+        },
+        {
+          "severity": "info",
+          "category": "ux-missing",
+          "title": "When learner navigates away from questionnaire page with unsaved changes, no warning confirmation",
+          "where": "src/app/(dashboard)/learner/questionnaires/[id]/page.tsx:127-350",
+          "description": "User can fill questionnaire, then click 'Back' without submitting—no warning. All responses lost without confirmation.",
+          "recommendation": "Implement useEffect + window.beforeunload listener to warn if responses are unsaved. Show 'Discard responses?' on back button. Effort: S (add beforeunload handler)."
+        }
+      ]
+    }
+  ],
+  "adversarial": [
+    {
+      "angle": "Multi-tenant security audit of LMS platform API routes and database layer. Focus on entity_id isolation, RLS policies, token validation, and data integrity in auth flows.",
+      "verdict": "major-concerns",
+      "findings": [
+        {
+          "severity": "critical",
+          "category": "security-multitenant",
+          "title": "Missing entity_id validation in learner course catalog fetch",
+          "where": "src/app/(dashboard)/learner/courses/page.tsx:128-132, 142-145",
+          "description": "Learner catalog queries fetch published elearning_courses and programs without filtering by entity_id. Lines 128-132: query `.from('elearning_courses').select(...).eq('status', 'published')` lacks `.eq('entity_id', entityId)`. Lines 142-145: query `.from('programs').select(...).order(...)` has no entity filter. A learner from entity A could browse/access courses from entity B via RLS bypass if elearning_courses RLS policy is permissive (USING(true)).",
+          "recommendation": "Add `.eq('entity_id', entityId)` to both catalog queries. Verify RLS policy on elearning_courses has entity filter: `entity_id = user_entity_id()`. Test multi-tenant scenario: enroll learner A in entity X, verify learner cannot see courses from entity Y. Effort: S"
+        },
+        {
+          "severity": "critical",
+          "category": "security-multitenant",
+          "title": "Missing entity_id filter in formation_elearning_assignments fetch",
+          "where": "src/app/(dashboard)/learner/courses/page.tsx:179-182",
+          "description": "When fetching elearning courses by `courseIds` to stitch with assignments (lines 179-182), query uses `.in('id', courseIds)` without entity_id filter. An admin assignment pointing to a course ID that exists in a different entity would leak data. The polymorphic reference (course_id not constrained to session/entity) compounds the risk.",
+          "recommendation": "Add `.eq('entity_id', entityId)` before `.in('id', courseIds)` OR add a server-side join to verify each course_id belongs to a formation_elearning_assignments record in the learner's entity. Effort: S"
+        },
+        {
+          "severity": "critical",
+          "category": "security-multitenant",
+          "title": "Questionnaire auto-send cron lacks entity filtering on initial fetch",
+          "where": "src/app/api/questionnaires/auto-send/route.ts:49-52",
+          "description": "Line 49-52: query fetches `questionnaire_sessions` with `.select('questionnaire_id, session_id, session:sessions(...)')` but does NOT filter by entity_id in the initial query. While the nested `session.entity_id` is available, if RLS on questionnaire_sessions table is permissive (USING(true)) or missing, the cron could enumerate questionnaire_sessions across all entities. Service role bypass compounds this.",
+          "recommendation": "Add `.eq('entity_id', <admin_entity>)` at line 52 before `.select()` completion. Better: add RLS policy on questionnaire_sessions that filters by `entity_id IN (SELECT entity_id FROM sessions WHERE id = session_id)`. Effort: S"
+        },
+        {
+          "severity": "critical",
+          "category": "security-multitenant",
+          "title": "Service role bypass in auto-send cron without entity context validation",
+          "where": "src/app/api/questionnaires/auto-send/route.ts:28-42",
+          "description": "Cron uses service_role (bypasses RLS entirely) at line 44. If CRON_SECRET is leaked, attacker can trigger enumeration and email dispatch across all entities. Admin session fallback (lines 31-41) checks role but doesn't prevent cron-secret path from bypassing entity segregation. The service client at line 44 has no entity restriction.",
+          "recommendation": "In cron path (after line 28), validate auth.profile.entity_id before processing, or restrict to a hard-coded list of allowed entities. Add entity_id parameter to cron body and validate it matches calling admin's entity (or allow super_admin cross-entity). Effort: M"
+        },
+        {
+          "severity": "critical",
+          "category": "security-multitenant",
+          "title": "Automation rules cron service role bypass without entity guard",
+          "where": "src/app/api/formations/automation-rules/run-cron/route.ts:32-42",
+          "description": "POST /api/formations/automation-rules/run-cron accepts Bearer CRON_SECRET (line 33-37) and uses service_role client (line 40) to query all entities without entity filtering at line 285-287. Cron iterates `SELECT * FROM entities` and processes all rules cross-tenant. If CRON_SECRET is leaked, attacker can trigger emails/rules across all clients. No entity_id validation before rule processing at line 294-299.",
+          "recommendation": "At line 50-56 (body parsing), add optional entity_id param. If provided, restrict line 285 to `SELECT id FROM entities WHERE id = ?` for scoped cron runs. For global cron, log all entity_ids processed for audit. Add entity_id context to all enqueueEmail calls. Effort: M"
+        },
+        {
+          "severity": "critical",
+          "category": "data-integrity",
+          "title": "No validation of learner entity_id in elearning_enrollments upsert",
+          "where": "src/app/api/elearning/[courseId]/enroll/route.ts:118-127",
+          "description": "POST /api/elearning/[courseId]/enroll accepts learner_ids array (line 112) and upserts enrollments (line 124-126) without verifying learner.entity_id matches course.entity_id. Course entity is verified (line 53), but learner isolation is skipped. An admin could enroll a learner from entity B into entity A's course.",
+          "recommendation": "Fetch learners table with `.eq('entity_id', course.entity_id)` to verify each learner belongs to the same entity as the course before upsert. Return error if mismatch. Add test: attempt cross-entity learner enrollment, should fail with 403. Effort: S"
+        },
+        {
+          "severity": "major",
+          "category": "data-integrity",
+          "title": "Enrollment upsert silent duplicate handling without user feedback",
+          "where": "src/app/api/elearning/[courseId]/enroll/route.ts:126",
+          "description": "Upsert uses `ignoreDuplicates: true` at line 126, silently ignoring re-enrollments. No feedback to user: were they already enrolled, or did the enroll succeed? UI shows success toast regardless. Learner sees 'enrolled' but database silently rejected them.",
+          "recommendation": "Return both 'inserted' and 'ignored' counts in response. Update UI toast to differentiate: 'X newly enrolled, Y already enrolled'. Add test: enroll twice, verify toast reflects both attempts. Return 200 with { inserted: N, ignored: M } breakdown. Effort: S"
+        },
+        {
+          "severity": "major",
+          "category": "security-multitenant",
+          "title": "Programs catalog unfiltered for learners (potential cross-entity exposure)",
+          "where": "src/app/(dashboard)/learner/courses/page.tsx:142-145",
+          "description": "Manual courses fetch from programs table (lines 142-145) has no entity_id filter. All published programs across all entities visible to all learners. Client-side filter on `content?.type === 'elearning'` is insufficient for multi-tenant security.",
+          "recommendation": "Add `.eq('entity_id', entityId)` to programs query. Verify RLS policy on programs table enforces `entity_id = user_entity_id()` for learners. Test: create program in entity B, verify learner in entity A cannot see it even in published state. Effort: S"
+        },
+        {
+          "severity": "major",
+          "category": "data-integrity",
+          "title": "Race condition in questionnaire auto-send token deduplication",
+          "where": "src/app/api/questionnaires/auto-send/route.ts:97-104",
+          "description": "Anti-duplicate check uses fuzzy pattern match via `.ilike('subject', `%${questionnaire.title}%`)` instead of unique constraint. Title collisions could cause false positives. More critically, no UNIQUE constraint on (questionnaire_id, learner_id, session_id) in email_history prevents duplicate emails if auto-send triggered twice in same second.",
+          "recommendation": "Add UNIQUE INDEX on email_history(questionnaire_id, learner_id, session_id) to prevent race. Or mark questionnaire_sessions.auto_send_on_completion = false after first successful send (idempotency). Effort: M"
+        },
+        {
+          "severity": "major",
+          "category": "security-multitenant",
+          "title": "Public questionnaire token route accepts unvalidated token from URL",
+          "where": "src/app/api/questionnaire/public-submit/route.ts:23-32",
+          "description": "GET endpoint validates token format (line 23-24) but rates limit by client IP, not by token. POST endpoint (line 76-99) accepts token in body without verifying it originated from the querying entity. While token lookup ensures validity, no entity_id cross-check prevents a token from entity B being submitted by entity A.",
+          "recommendation": "After token validation at line 94, cross-check `tokenData.session.entity_id` matches the entity that owns the questionnaire. Add field `entity_id` to questionnaire_tokens table or join to session. Verify token is single-use (used_at check is present but ensure it's atomic). Effort: M"
+        },
+        {
+          "severity": "major",
+          "category": "security-multitenant",
+          "title": "Missing entity_id in bulk learner import job creation",
+          "where": "src/app/api/sessions/[id]/learners/bulk/start/route.ts:204-213",
+          "description": "Bulk import creates learner_bulk_import_jobs at line 205-217 with entity_id set correctly (line 209). However, learners created at line 295-302 via createLearnerWithCredentials might not validate entity_id context. Enrollments inserted at line 306-310 lack explicit entity_id, relying solely on RLS.",
+          "recommendation": "Verify createLearnerWithCredentials sets learner.entity_id = activeEntityId. Add entity_id: activeEntityId to enrollments insert (line 309). Add RLS to learner_bulk_import_jobs table to enforce entity isolation. Effort: S"
+        },
+        {
+          "severity": "major",
+          "category": "data-integrity",
+          "title": "Questionnaire responses scoring fix not applied retroactively",
+          "where": "src/lib/services/questionnaire-scoring.ts (scoring logic fixed but old responses remain)",
+          "description": "isCorrect() function fixes P0-4 regressions (Boolean('non') === Boolean('oui') bug), but existing questionnaire_responses in DB may have been scored with old broken logic. No migration re-scores old responses, historical data accuracy compromised.",
+          "recommendation": "Create one-time migration script to re-score responses with the corrected logic. Document in release notes: 'Scoring for yes_no/text questions changed; historical scores may not match new behavior.' Flag legacy-scored responses or add computed column. Effort: M"
+        },
+        {
+          "severity": "major",
+          "category": "data-integrity",
+          "title": "Enum mismatch: BpfFundingType and BpfObjective validation",
+          "where": "src/lib/validations/program.ts:99-131 vs src/lib/types/index.ts:53-58",
+          "description": "Zod schema accepts ['opco', 'entreprise', 'particulier', ...] but types.ts defines BpfFundingType with [entreprise_privee, apprentissage, reconversion_alternance, ...]. Enums differ completely. Validation passes with 'opco' but insert fails at Postgres level. No type narrowing.",
+          "recommendation": "Align Zod enum on exact BpfFundingType values. Use `satisfies BpfFundingType[]` to ensure Zod schema matches type definitions. Add test: attempt insert with mismatched enum value, should fail at validation layer not DB. Effort: S"
+        },
+        {
+          "severity": "major",
+          "category": "data-integrity",
+          "title": "Unsafe type casting bypasses TypeScript validation",
+          "where": "src/lib/services/programs.ts:67, 86, 110, 131, 185 (multiple `as unknown as Program` casts)",
+          "description": "All program data cast with `as unknown as Program` without runtime validation. Missing fields, type mismatches pass through and cause runtime errors. No Zod parse or type guard.",
+          "recommendation": "Replace with Zod parse: `Program.parse(data)` at service layer. Add try-catch for validation errors. Effort: M"
+        },
+        {
+          "severity": "major",
+          "category": "data-integrity",
+          "title": "ProgramEnrollments fetch missing explicit entity_id filter",
+          "where": "src/app/(dashboard)/admin/programs/[id]/_components/ProgramEnrollments.tsx:107-122",
+          "description": "Fetch enrollments by `.eq('program_id', programId)` alone. RLS protects (via program_id → programs.entity_id), but no explicit `.eq('entity_id', entityId)` for defense-in-depth.",
+          "recommendation": "Add explicit `.eq('entity_id', entityId)` from useEntity hook. Verify RLS policy on enrollments table enforces entity via program relationship. Effort: S"
+        },
+        {
+          "severity": "minor",
+          "category": "data-integrity",
+          "title": "Invoice amount validation insufficient for edge cases",
+          "where": "src/app/(dashboard)/admin/finances/TabFinances.tsx:412",
+          "description": "Amount validation checks `> 0` but doesn't validate for Infinity, NaN, or decimal precision edge cases.",
+          "recommendation": "Add `isFinite()` and `Number.isInteger()` checks. Validate currency formatting. Effort: S"
+        },
+        {
+          "severity": "info",
+          "category": "security-multitenant",
+          "title": "Questionnaire tokens RLS policy allows SELECT for any entity member",
+          "where": "supabase/migrations/fix_questionnaires_rls_strict.sql:141-155 + src/app/api/questionnaire/public-submit/route.ts:5-11",
+          "description": "RLS on questionnaire_tokens allows authenticated users in same entity to SELECT tokens. Public-submit route bypasses RLS with service_role. If a trainer in entity A gains DB access, they could enumerate tokens from other trainers in same entity (privacy leak, not security boundary breach).",
+          "recommendation": "Consider restricting qt_select_entity policy to admin/super_admin only (trainers/learners shouldn't browse tokens). Or add `AND created_by = auth.uid()` clause. Effort: S (policy refinement)"
+        }
+      ]
+    },
+    {
+      "angle": "Production Readiness Audit (Netlify 26s timeout on Pro routes, 15min on Background Functions) — LMS Platform focuses on: (1) Routes exceeding 26s timeout risk with loops + INSERT + PDF sync generation, (2) Fire-and-forget unmonitored patterns causing silent data loss, (3) N+1 queries and client-side pagination on unfiltered data loads, (4) Missing retry logic on critical operations (email, document generation), (5) Incomplete feature flag enforcement and migration patterns, (6) Entity isolation gaps in multi-tenant architecture, (7) Structured logging and monitoring deficiencies.",
+      "verdict": "major-concerns",
+      "findings": [
+        {
+          "severity": "critical",
+          "category": "completeness-gap",
+          "title": "Background Function V1 is a stub, blocking bulk learner imports >20",
+          "where": "netlify/functions/learners-bulk-create-background.mts:112-136, src/app/api/sessions/[id]/learners/bulk/start/route.ts:84,252-273",
+          "description": "Bulk learner import route delegates to background function for >20 learners but the BG function returns 202 with empty results without actually creating learners. Data is silently lost. Hard-coded INLINE_THRESHOLD=20 blocks users from batch importing >20 learners (rejected with 400 error).",
+          "recommendation": "Implement actual learner creation logic in the BG function (createLearnerWithCredentials loop + enrollments + PDF generation) per Epic 2.6 plan. Until then, keep the 20 limit but document user-facing message in FAQ. Add monitoring alert if >50% of imports hit threshold. Effort: L"
+        },
+        {
+          "severity": "critical",
+          "category": "completeness-gap",
+          "title": "Fire-and-forget email queue without error tracking or retry visibility",
+          "where": "src/app/api/questionnaires/auto-send/route.ts:115-137, src/app/api/emails/process-scheduled/route.ts (background cron every 5 min)",
+          "description": "Auto-send questionnaires route enqueues emails via enqueueEmail() but errors in token generation (line 134) are silently caught and logged only to console. If token creation fails (e.g., expired session entity_id), the learner never receives the questionnaire link. No attempt tracking, no user notification, no retry mechanism visible.",
+          "recommendation": "Add email_history record with status='failed_enqueue' + error reason before returning. Surface batch error count in response. Create a manual 'Retry Failed' UI for admins. Effort: M"
+        },
+        {
+          "severity": "critical",
+          "category": "performance",
+          "title": "Bulk document generation (generate-convocations-batch) may exceed 26s timeout",
+          "where": "src/app/api/documents/generate-convocations-batch/route.ts:62-150+ (full route 180+ LOC)",
+          "description": "Generates N convocations (1 per enrolled learner) + ZIP. Loop calls ensureLearnerAccount (DB + credential creation per learner) + generateLoginQrDataUrl + DocumentGenerationService.generate() (PDF via puppeteer/Chrome). With 50+ learners × ~500ms per PDF = 25s+. No async batching, all inline. Already at timeout edge.",
+          "recommendation": "Convert to background function (like elearning-generate-pipeline-background). Expose generation_progress JSONB on formations table for polling UI. Dispatch background function for N>10. Effort: M"
+        },
+        {
+          "severity": "major",
+          "category": "completeness-gap",
+          "title": "Questionnaire token cleanup job non-existent; expired tokens accumulate in DB",
+          "where": "supabase/migrations/add_questionnaire_public_tokens.sql (TOKEN_LIFETIME_DAYS=90), src/lib/automation/questionnaire-token-helper.ts:18",
+          "description": "questionnaire_tokens table has expires_at column, but no cron job deletes expired rows. Over 1 year, table grows indefinitely (90 days → stale rows never purged). Query scans increasingly slower tables.",
+          "recommendation": "Create Netlify background function or Supabase pg_cron job: DELETE FROM questionnaire_tokens WHERE expires_at < NOW() AND used_at IS NULL weekly. Add it to scheduled tasks monitoring. Effort: S"
+        },
+        {
+          "severity": "major",
+          "category": "completeness-gap",
+          "title": "Email process-scheduled route lacks pagination/batch size limits on large queues",
+          "where": "src/app/api/emails/process-scheduled/route.ts:285 (batch size 50 hardcoded)",
+          "description": "Cron every 5 min processes 50 emails. If queue grows to 500+ (e.g., system down 10 min, then restart), route still processes only 50 per run. Scheduled emails are delayed sequentially. No backpressure or retry jitter; if Resend API is rate-limited, all 50 fail and retry in next cron — cascading failures.",
+          "recommendation": "Add dynamic batch sizing based on queue depth: if >500 queued, increase batch to 100. Add exponential backoff retry_count max=5, next_retry_at calculated per attempt. Monitor email_history.status='pending' count daily. Effort: M"
+        },
+        {
+          "severity": "major",
+          "category": "performance",
+          "title": "Admin elearning hub loads ALL courses in memory before pagination",
+          "where": "src/app/(dashboard)/admin/elearning/page.tsx:251-273, 284-301 (Promise.all fetch programs + elearning_courses)",
+          "description": "Page fetches unfiltered programs + elearning_courses via Promise.all. No LIMIT on select queries. If entity has 500 legacy programs + 300 AI courses, 800 rows loaded into React state. Pagination happens client-side via slice(). Filter + sort happen in JS memory. With 1000+ courses, this causes noticeable lag on initial load + tab switches.",
+          "recommendation": "Add server-side pagination: limit(100) on initial load. Implement 'Load More' or 'Show 50/All' dropdown. Move filter/sort to query params. Use useCallback + dependency on entityId only. Effort: M"
+        },
+        {
+          "severity": "major",
+          "category": "security-multitenant",
+          "title": "TabElearning enrollment query lacks entity_id verification",
+          "where": "src/app/(dashboard)/admin/formations/[id]/_components/TabElearning.tsx:114-116",
+          "description": "Query fetches elearning_enrollments by id without explicitly filtering by entity_id. If RLS policy is missing or misconfigured, a learner from entity A could theoretically access enrollments from entity B. App-layer check alone is insufficient.",
+          "recommendation": "Add .eq('entity_id', entityId) to the query OR verify in a comment that formation entity_id check covers this. Add regression test: entity-isolation-elearning.test.ts. Effort: S"
+        },
+        {
+          "severity": "major",
+          "category": "completeness-gap",
+          "title": "TabMessagerie email insert lacks error handling and transaction semantics",
+          "where": "src/app/(dashboard)/admin/formations/[id]/_components/TabMessagerie.tsx:306",
+          "description": "Email history insert omits error handling. If insert fails (e.g., DB constraint, JSON column invalid), failure is silently swallowed. User sees success toast even though email_history row wasn't created. No audit trail.",
+          "recommendation": "Wrap insert in try/catch. Show error toast on failure. Consider wrapping email send + history insert in transaction (savepoint) so both succeed or both rollback. Effort: M"
+        },
+        {
+          "severity": "major",
+          "category": "tech-debt",
+          "title": "Document generation service has multiple fallback queries obscuring schema migration debt",
+          "where": "src/app/api/documents/generate-from-template/route.ts:160-175, 195-200 (session loading + fallback)",
+          "description": "Route fetches session + tries multiple column patterns (legacy vs. new migrations). Fallback queries suggest incomplete or pending migrations. This adds operational complexity: if migration didn't complete in prod, fallback silently loses data (e.g., meeting_url field).",
+          "recommendation": "Document migration deadlines in schema comments. Run migration verification in CI/CD before deploy. Once all instances migrated, remove fallback queries. Add migration status healthcheck endpoint. Effort: S"
+        },
+        {
+          "severity": "major",
+          "category": "completeness-gap",
+          "title": "Bulk generation routes don't validate entity_id before processing",
+          "where": "src/app/api/documents/generate-convocations-batch/route.ts:92-99, src/app/api/formations/[id]/invoices/auto-generate/route.ts",
+          "description": "Routes verify user.entity_id matches session.entity_id, but don't prevent bypass if session record is tampered (e.g., race condition creates session with wrong entity_id). Multi-tenant isolation depends on RLS or explicit row-level checks.",
+          "recommendation": "Add explicit check: if (session.entity_id !== profile.entity_id) return 403. This is defense-in-depth beyond RLS. Effort: S"
+        },
+        {
+          "severity": "major",
+          "category": "tech-debt",
+          "title": "Email send route lacks structured logging for Resend API failures",
+          "where": "src/app/api/emails/send/route.ts:63-200+ (no instrumentation of Resend calls)",
+          "description": "Email send catches errors and logs to console, but no structured event logging for failures, retries, or rate limits. If Resend API quota is exhausted, ops team has no visibility into which batches failed. No correlation IDs between frontend requests + backend sends.",
+          "recommendation": "Add logEvent('email_sent', { to, subject, status, error?, latency_ms }) before response. Include request_id header for tracing. Integrate with Sentry for production errors. Effort: M"
+        },
+        {
+          "severity": "major",
+          "category": "completeness-gap",
+          "title": "Feature flags are not enforced at layout/navigation level",
+          "where": "src/app/(dashboard)/admin/sessions/[id]/bulk-import-learners/page.tsx:92 (flag checked but page still renders)",
+          "description": "Page checks isPedagogieV2Epic25Enabled() but flag=false still allows rendering 'not ready' UI. Without routing enforcement, feature can be accessed via direct URL even if flag is OFF. No early-return from layout.",
+          "recommendation": "Move flag check to layout.tsx or middleware. Return 404 or redirect to /admin/sessions if flag is false. Gate navigation link in sidebar too. Effort: S"
+        },
+        {
+          "severity": "major",
+          "category": "completeness-gap",
+          "title": "Auto-absences route lacks entity_id filtering on sub-table queries",
+          "where": "src/app/api/sessions/[id]/auto-absences/route.ts:22 (sub-table queries lack entity check)",
+          "description": "Route creates absence records for enrolled learners but doesn't verify enrollment.entity_id before insert. If RLS is missing, could create data in wrong entity context.",
+          "recommendation": "Verify session.entity_id before processing. Filter enrollments by entity_id in select. Add test case for cross-entity access attempt. Effort: S"
+        },
+        {
+          "severity": "major",
+          "category": "performance",
+          "title": "Program import PDF route calls PDF parsing synchronously without caching",
+          "where": "src/app/api/programs/import-pdf/route.ts:1-200+ (sync parsePdfText loop over pages)",
+          "description": "PDF parsing happens sequentially in POST handler. Large PDFs (100+ pages) block request. No caching of parsing results. If user re-uploads same PDF, parsing is redone.",
+          "recommendation": "Cache parsed results by PDF blob hash (MD5) with 24h TTL. Consider async background parsing if file >50 pages. Effort: M"
+        },
+        {
+          "severity": "major",
+          "category": "tech-debt",
+          "title": "Type casts 'as any' scattered throughout routes suggest incomplete TypeScript integration",
+          "where": "src/app/api/questionnaires/auto-send/route.ts:62,109 (as any casts), src/app/api/formations/[id]/invoices/route.ts (multiple casts)",
+          "description": "Routes use 'as any' or 'as unknown as Record' to bypass type checking. This defeats type safety and makes refactoring risky. Suggests schema mismatch or incomplete types.",
+          "recommendation": "Create explicit types for each query result (SessionWithEntity, EnrollmentWithLearner, etc.). Replace 'as any' with proper typed shapes. Use type-safe client wrappers. Effort: M"
+        },
+        {
+          "severity": "major",
+          "category": "completeness-gap",
+          "title": "Bulk learner import lacks idempotency guarantee for PDF generation",
+          "where": "src/app/api/sessions/[id]/learners/bulk/start/route.ts:352-396 (PDF upload non-transactional)",
+          "description": "PDF generation is idempotent (via ensureLearnerAccount), but PDF upload to Storage happens after learners are created. If upload fails, learners exist but PDF is missing. No retry or cleanup.",
+          "recommendation": "Wrap PDF generation + upload in transaction-like pattern. If upload fails, either retry with backoff or store in job.error_message with manual re-generate button. Effort: M"
+        },
+        {
+          "severity": "major",
+          "category": "completeness-gap",
+          "title": "Cron process-scheduled-emails lacks alerting on persistent failures",
+          "where": "netlify/functions/process-scheduled-emails.mts:13-22 (fire-and-forget, no error threshold)",
+          "description": "Cron function calls /api/emails/process-scheduled but doesn't check response status. If the endpoint returns 500, cron continues silently. No alert if 3+ cron runs fail in a row.",
+          "recommendation": "Check res.status in cron. If 500, send Sentry/PagerDuty alert. Add counter: consecutive_failures metric. Effort: S"
+        },
+        {
+          "severity": "minor",
+          "category": "tech-debt",
+          "title": "Session type incomplete across multiple API routes",
+          "where": "src/app/api/sessions/[id]/learners/bulk/start/route.ts:43-44 (as unknown as Session), src/app/api/documents/generate-convocations-batch/route.ts (Session type cast)",
+          "description": "Session type is extended dynamically with training + formation_time_slots relations, requiring 'as unknown' casts. Schema drift causes type casting.",
+          "recommendation": "Define explicit SessionWithRelations type that includes all required relations. Use discriminated unions for different query patterns. Effort: S"
+        },
+        {
+          "severity": "minor",
+          "category": "completeness-gap",
+          "title": "No retry on failed Resend email sends in critical flows",
+          "where": "src/app/api/emails/send/route.ts:63-150 (single attempt, fail hard)",
+          "description": "Email send catches Resend errors (rate limit, timeout) but doesn't queue for retry. If Resend is down, email is lost unless user manually retries.",
+          "recommendation": "On Resend timeout/429, insert into email_queue with next_retry_at=now+5min. Let cron process-scheduled handle retry logic. Effort: M"
+        },
+        {
+          "severity": "minor",
+          "category": "completeness-gap",
+          "title": "Document template validation doesn't prevent empty options in questionnaire questions",
+          "where": "src/app/(dashboard)/admin/questionnaires/page.tsx:315-360 (form allows blank option strings)",
+          "description": "Adding multiple_choice question doesn't validate options.every(o => o.trim().length > 0). Blank options can be saved, breaking quiz display.",
+          "recommendation": "Add client-side validation check before insert. Show toast error if any option is blank. Effort: S"
+        },
+        {
+          "severity": "minor",
+          "category": "completeness-gap",
+          "title": "Missing AbortController on long-running generation requests",
+          "where": "src/app/(dashboard)/admin/programs/[id]/page.tsx:336-405 (handleGenerateAI fetch without AbortController)",
+          "description": "If user navigates away during course generation, fetch continues in background. No cleanup of in-flight requests.",
+          "recommendation": "Create AbortController in useEffect. Return cleanup function to abort on unmount. Store controller in useRef. Effort: S"
+        },
+        {
+          "severity": "minor",
+          "category": "tech-debt",
+          "title": "Inconsistent error handling patterns (some throw, some continue) across routes",
+          "where": "src/app/api/questionnaires/auto-send/route.ts:133-136 (continue), src/app/api/formations/[id]/invoices/auto-generate/route.ts (varies)",
+          "description": "Some routes batch-continue on error (auto-send), others throw and abort (invoices). Pattern inconsistency makes debugging harder.",
+          "recommendation": "Standardize: define ErrorHandling policy in architecture docs. For batch jobs, log + continue with error tracking. For single-item operations, throw. Effort: S"
+        },
+        {
+          "severity": "minor",
+          "category": "performance",
+          "title": "QR code generation happens synchronously on every convocation request",
+          "where": "src/app/api/documents/generate-convocations-batch/route.ts:32 (generateLoginQrDataUrl per learner)",
+          "description": "QR code is generated client-side on every request, not cached. With 50 learners, 50 QR generations × ~50ms = 2.5s overhead.",
+          "recommendation": "Cache QR codes by (learner_id, login_url) in Redis with 24h TTL. Or pre-generate QR as part of credential creation. Effort: M"
+        },
+        {
+          "severity": "minor",
+          "category": "completeness-gap",
+          "title": "Dashboard stats page computes questionnaire averages without server-side aggregation",
+          "where": "src/app/(dashboard)/admin/questionnaires/dashboard/page.tsx:105-125 (N+1 query pattern)",
+          "description": "For each questionnaire, fetches all responses to compute avg_rating in JS. With 100 questionnaires × 1000 responses each, loads 100K rows into memory.",
+          "recommendation": "Create Supabase view or RPC: questionnaire_stats(questionnaire_id) → responses_count, avg_rating, etc. Or use Supabase SQL aggregation in select. Effort: M"
+        },
+        {
+          "severity": "info",
+          "category": "completeness-gap",
+          "title": "SSE event schema allows optional data field, inconsistent usage across senders",
+          "where": "src/lib/services/elearning-sse.ts:15-23, src/app/api/elearning/[courseId]/generate/route.ts (inconsistent event data)",
+          "description": "Some events include data payload (chapter_id, deck_url), others don't. Client must handle both patterns, adding complexity.",
+          "recommendation": "Define typed event union (OutlineEvent, ChapterEvent, etc.) with required data fields. Enforce at TypeScript level. Effort: M"
+        },
+        {
+          "severity": "info",
+          "category": "tech-debt",
+          "title": "Fallback migration logic adds operational debt; unclear when migrations are fully rolled out",
+          "where": "src/app/api/elearning/[courseId]/route.ts:30-73, src/app/(dashboard)/admin/elearning/page.tsx:267-274",
+          "description": "Code checks for 42703 (column does not exist) and provides fallback queries. Suggests incomplete migration rollout. Code must be cleaned up once all instances migrated.",
+          "recommendation": "Document migration deadlines + post-deploy verification steps in runbook. Once all prod instances migrated, remove fallback code in PR. Effort: S"
+        },
+        {
+          "severity": "info",
+          "category": "completeness-gap",
+          "title": "No audit log for questionnaire distribution or admin fill actions",
+          "where": "src/app/api/admin/questionnaires/fill-for-learner/route.ts:96-114",
+          "description": "When admin fills questionnaire or distributes to sessions, no activity_log entry. filled_by_admin field tracks WHO/WHEN but not HOW (bulk vs single, which UI action).",
+          "recommendation": "Insert activity_log rows with action='questionnaire_fill', 'questionnaire_distribute' before returning. Include context (batch_size, target_sessions, etc.). Effort: M"
+        }
+      ]
+    },
+    {
+      "angle": "Full UX/Completeness audit across admin, trainer, client, learner personas. Coverage: broken flows, missing empty/loading states, modal issues, form validation gaps, accessibility, performance, pagination, course type enum mismatch, dialog sequencing with setTimeout, incomplete feature flags, RLS verification gaps, and large component refactoring needs.",
+      "verdict": "major-concerns",
+      "findings": [
+        {
+          "severity": "critical",
+          "category": "ux-friction",
+          "title": "Dropdown menu items without onClick handlers in formation detail",
+          "where": "src/app/(dashboard)/admin/formations/[id]/page.tsx:318-324",
+          "description": "Duplicate and Delete menu items in MoreHorizontal dropdown menu lack onClick handlers. Buttons render but do nothing on click, breaking expected UX.",
+          "recommendation": "Implement handlers for duplicate (copy formation) and delete (with confirmation) operations, or disable items with tooltips. Effort: M"
+        },
+        {
+          "severity": "critical",
+          "category": "completeness-gap",
+          "title": "Course type enum mismatch across three layers",
+          "where": "src/app/(dashboard)/admin/elearning/create/page.tsx:36 vs src/lib/validations/elearning.ts:69-74 vs src/app/api/elearning/route.ts:63",
+          "description": "Create page defines CourseType as 'presentation'|'quiz'|'complete' (line 36). Zod validation schema expects 'presentation_quiz'|'presentation_quiz_flashcard'|'quiz'|'flashcards' (lines 69-74). API accepts hardcoded ['presentation','quiz','complete'] (line 63). Mismatch causes validation failures and confusion.",
+          "recommendation": "Unify enum across all three layers. Define single source of truth in types.ts, import everywhere. Update SelectItems and validation schema to match. Effort: M"
+        },
+        {
+          "severity": "critical",
+          "category": "ux-friction",
+          "title": "TabFinances uses setTimeout for dialog sequencing (timing-dependent bug)",
+          "where": "src/app/(dashboard)/admin/formations/[id]/_components/TabFinances.tsx:170,389",
+          "description": "setTimeout(..., 50ms) for dialog-to-prefill sequencing is brittle. Race condition: if dialog takes longer than 50ms to close, prefill triggers before UI update complete. Inconsistent behavior on slow networks.",
+          "recommendation": "Replace setTimeout with Promise-based dialog close or callback pattern. Use React state to coordinate dialog close→prefill sequence. Effort: M"
+        },
+        {
+          "severity": "critical",
+          "category": "completeness-gap",
+          "title": "TabElearning missing entity_id filtering on elearning_enrollments query",
+          "where": "src/app/(dashboard)/admin/formations/[id]/_components/TabElearning.tsx:114-116",
+          "description": "Query elearning_enrollments by id without filtering by entity_id. Potential cross-entity data leak: admin A could see enrollments from entity B if courseId exists in both. Should verify enrollment belongs to current session's entity.",
+          "recommendation": "Add .eq('entity_id', entityId) to enrollment query. Or verify parent formation ensures entity filtering. Add test for cross-entity access. Effort: M"
+        },
+        {
+          "severity": "major",
+          "category": "ux-missing",
+          "title": "TabPlanning auto-fill modules lacking visual feedback",
+          "where": "src/app/(dashboard)/admin/formations/[id]/_components/TabPlanning.tsx:325-376",
+          "description": "handleAutoFillModules sets autoFilling=true but button shows only text 'Remplissage…' without Loader2 spinner. No progress toast during loop. User unaware of ongoing operation, may click again.",
+          "recommendation": "Add Loader2 spinner icon, disable button during operation, show progress toast after each module update. Effort: M"
+        },
+        {
+          "severity": "major",
+          "category": "ux-missing",
+          "title": "TabMessagerie email insert lacks error handling",
+          "where": "src/app/(dashboard)/admin/formations/[id]/_components/TabMessagerie.tsx:306",
+          "description": "Email history insert missing try/catch. Failures silently ignored. User believes email recorded but it isn't.",
+          "recommendation": "Wrap in try/catch with toast error. Log to console. Effort: S"
+        },
+        {
+          "severity": "major",
+          "category": "ux-missing",
+          "title": "TabQuestionnaires empty state present but messaging could be clearer",
+          "where": "src/app/(dashboard)/admin/formations/[id]/_components/TabQuestionnaires.tsx:150-250",
+          "description": "Empty state shows 'Aucun questionnaire attribué' but doesn't guide user on how to assign. No CTA to go to questionnaire hub or explain what this tab does.",
+          "recommendation": "Add contextual message: 'Attribuez des questionnaires pour évaluer les acquis' + link to /admin/questionnaires. Effort: S"
+        },
+        {
+          "severity": "major",
+          "category": "completeness-gap",
+          "title": "Large page components exceed 1000 LOC — hard to maintain and test",
+          "where": "src/app/(dashboard)/admin/elearning/page.tsx:1468, src/app/(dashboard)/admin/elearning/create/page.tsx:1284, src/app/(dashboard)/learner/courses/[courseId]/page.tsx:1523",
+          "description": "Three major pages combine state, filtering, pagination, dialogs, rendering in single components. Violates single responsibility. Untestable in isolation. Refactoring friction.",
+          "recommendation": "Extract list logic → custom hook, pagination → reusable component, dialogs → separate components. Target <500 LOC pages. Effort: L"
+        },
+        {
+          "severity": "major",
+          "category": "completeness-gap",
+          "title": "No RLS policy verification tests for elearning tables",
+          "where": "src/lib/auth/elearning-access.ts, src/app/api/elearning routes (all)",
+          "description": "App layer guards check entity_id but no tests verify RLS rows are actually filtered at DB level. If RLS is missing, app-layer check alone doesn't protect. No test suite for cross-tenant access attempts.",
+          "recommendation": "Add test suite (entity-isolation-elearning.test.ts): learner A cannot RLS-query learner B's enrollments. Document RLS policies. Effort: M"
+        },
+        {
+          "severity": "major",
+          "category": "ux-friction",
+          "title": "Admin fill questionnaire blocks learner response but shows loading→blocked jarring transition",
+          "where": "src/components/questionnaires/AdminFillQuestionnaireDialog.tsx:104-106, 185-187",
+          "description": "When fill_mode='learner', dialog opens with spinner (line 185), then switches to blocked state (line 187) without smooth transition. User sees sudden UI change. Loading indicator on blocked state would help.",
+          "recommendation": "Show blocked state during initial load, or display a transitional banner before switching. Add aria-busy to loading state. Effort: S"
+        },
+        {
+          "severity": "major",
+          "category": "ux-friction",
+          "title": "Learner questionnaire page lacks beforeunload warning for unsaved responses",
+          "where": "src/app/(dashboard)/learner/questionnaires/[id]/page.tsx:127-350",
+          "description": "User can fill questionnaire then close tab/navigate without submitting. All unsaved responses lost. No confirmation dialog or localStorage draft.",
+          "recommendation": "Add beforeunload handler checking if responses exist. Optional: localStorage draft auto-save with restore on reload. Effort: M"
+        },
+        {
+          "severity": "major",
+          "category": "ux-missing",
+          "title": "Learner course reader (1523 LOC) monolithic — combines 8+ screen types in one component",
+          "where": "src/app/(dashboard)/learner/courses/[courseId]/page.tsx:1-150 visible, 1523 total LOC",
+          "description": "Reader mixes cover, gamma, flashcards, quiz, final exam screens + state for all modes (8 screen types). Monolithic. Hard to unit test individual screens. Progress tracking and async data fetch scattered.",
+          "recommendation": "Extract screen types into custom hooks or separate components: <GammaScreen>, <FlashcardScreen>, <QuizScreen>. Use React.Suspense for async data. Estimated effort: L"
+        },
+        {
+          "severity": "major",
+          "category": "ux-missing",
+          "title": "Course type 'presentation' (Gamma only, no quiz) lacks final exam completion flow",
+          "where": "src/app/(dashboard)/learner/courses/[courseId]/page.tsx:106-137 buildScreens",
+          "description": "If courseType='presentation', no final exam questions generated. Course ends after presentation without learner assessment. No passing score, no certificate. Learning outcome unclear.",
+          "recommendation": "For presentation mode: either (a) auto-add 5-10 recall questions post-gamma, or (b) document that presentation courses don't have final exams. Add test for end-to-end learner flow. Effort: M"
+        },
+        {
+          "severity": "major",
+          "category": "ux-friction",
+          "title": "Pagination hub programmes client-only, not scalable beyond 500 programs",
+          "where": "src/app/(dashboard)/admin/programs/page.tsx:159, 224-227",
+          "description": "PAGE_SIZE=12, pagination in memory JavaScript after filter. Entity with 500+ programs loads ALL in memory, tri, filters, then paginates. Slice() and filter() slow. No server-side LIMIT/OFFSET.",
+          "recommendation": "Implement server-side pagination: pass limit 12, offset (page-1)*12 to service. Return { programs, total }. Effort: M"
+        },
+        {
+          "severity": "major",
+          "category": "accessibility",
+          "title": "Icon-only buttons missing aria-labels throughout",
+          "where": "src/app/(dashboard)/admin/programs/page.tsx:624 and formations detail page buttons",
+          "description": "MoreHorizontal, ArrowLeft, and other icon-only buttons lack aria-label attributes. Screen reader users can't identify button purpose.",
+          "recommendation": "Add aria-label to all icon-only buttons: 'Open menu', 'Go back', 'Delete program'. Audit all pages. Effort: M"
+        },
+        {
+          "severity": "major",
+          "category": "ux-missing",
+          "title": "Batch operations in TabConventionDocs lack confirmation dialogs",
+          "where": "src/app/(dashboard)/admin/formations/[id]/_components/TabConventionDocs.tsx:850-900",
+          "description": "Batch sign, send, generate operations execute without confirmation. User could accidentally bulk-operate on wrong selection.",
+          "recommendation": "Add confirmation dialog showing affected document count before executing. Effort: M"
+        },
+        {
+          "severity": "major",
+          "category": "completeness-gap",
+          "title": "No progress indicator or loading skeleton for large chapter list",
+          "where": "src/app/(dashboard)/admin/elearning/courses/[courseId]/page.tsx (chapter rendering starts ~line 100)",
+          "description": "Admin detail page with many chapters may take 1-2s to load. No skeleton or 'Loading chapters...' feedback. User thinks page is broken.",
+          "recommendation": "Add React.Suspense around chapter list. Show skeleton cards while loading. Add Loader2 in header with chapter count. Effort: M"
+        },
+        {
+          "severity": "major",
+          "category": "ux-friction",
+          "title": "Feature flag isPedagogieV2Epic3Enabled() not tested",
+          "where": "src/app/(dashboard)/admin/programs/[id]/page.tsx:950-955",
+          "description": "ProgramElearningDefaults section only renders if flag AND entityId. No test that section renders correctly or that buttons work. Risk: false positive if flag undefined.",
+          "recommendation": "Add test: describe('ProgramElearningDefaults integration') with mock flag true/false. Verify section renders and buttons work. Effort: S"
+        },
+        {
+          "severity": "minor",
+          "category": "ux-friction",
+          "title": "Search in learner filter not debounced",
+          "where": "src/app/(dashboard)/admin/formations/[id]/_components/TabQuestionnaires.tsx:1170",
+          "description": "Learner search triggers per keystroke. With 100 learners, rapid queries hammer DB. No debounce.",
+          "recommendation": "Add 300ms debounce on search input. Effort: S"
+        },
+        {
+          "severity": "minor",
+          "category": "completeness-gap",
+          "title": "Pagination hardcoded to 20 learners in TabQuestionnaires",
+          "where": "src/app/(dashboard)/admin/formations/[id]/_components/TabQuestionnaires.tsx:1180",
+          "description": "No way to see >20 of many learners. No load-more button or pagination controls.",
+          "recommendation": "Add load-more button or pagination. Allow admins to adjust page size. Effort: M"
+        },
+        {
+          "severity": "minor",
+          "category": "ux-friction",
+          "title": "Toggle publish button does not disable during save",
+          "where": "src/app/(dashboard)/admin/elearning/page.tsx:493-518 handleTogglePublish",
+          "description": "No loading state on toggle button. User can click twice, causing race condition.",
+          "recommendation": "Add [publishing, setPublishing] state. Disable during save. Add spinner. Effort: S"
+        },
+        {
+          "severity": "minor",
+          "category": "ux-missing",
+          "title": "No visual indicator of quiz passing vs failing score threshold",
+          "where": "src/app/(dashboard)/learner/courses/[courseId]/page.tsx quiz screens",
+          "description": "Quiz displays score % but doesn't highlight passing_score threshold or explain what % needed to pass.",
+          "recommendation": "Show 'Passing score: 70%' label. Highlight score bar green if >=threshold, red if <. Effort: S"
+        },
+        {
+          "severity": "minor",
+          "category": "ux-missing",
+          "title": "No confirmation dialog before deleting all chapters when deleting course",
+          "where": "src/app/(dashboard)/admin/elearning/page.tsx:527-547 handleDelete",
+          "description": "Delete button shows generic warning. Doesn't mention chapter count, enrollment count, or cascading deletions.",
+          "recommendation": "Before delete, fetch chapter count + enrollment count. Show in modal: 'This will delete X chapters, unenroll Y learners.' Effort: S"
+        },
+        {
+          "severity": "minor",
+          "category": "completeness-gap",
+          "title": "No enrollment count on session delete confirmation",
+          "where": "src/app/(dashboard)/admin/formations/[id]/page.tsx:406 delete dropdown",
+          "description": "Delete confirmation omits enrollment impact. User doesn't know how many learners will be affected.",
+          "recommendation": "Fetch and show learner count in confirmation modal before delete. Effort: S"
+        },
+        {
+          "severity": "minor",
+          "category": "ux-missing",
+          "title": "No optimistic update when saving programme",
+          "where": "src/app/(dashboard)/admin/programs/page.tsx:278-358 handleSave",
+          "description": "handleSave blocks UI (saving=true) during Supabase request. On 3G, user waits 2-3s. After save, full refetch.",
+          "recommendation": "Add optimistic update: setPrograms([updated, ...rest]) before save. Revert on error. Effort: S"
+        },
+        {
+          "severity": "minor",
+          "category": "ux-missing",
+          "title": "Dialog Add/Edit doesn't indicate mode (create vs update)",
+          "where": "src/app/(dashboard)/admin/programs/page.tsx:750-752",
+          "description": "DialogTitle changes 'Modifier' vs 'Nouveau' but no badge or context. User may be confused.",
+          "recommendation": "Add Badge variant='secondary' next to title: 'Mode édition' or 'Nouvelle création'. Effort: S"
+        },
+        {
+          "severity": "minor",
+          "category": "ux-friction",
+          "title": "Programme soft-delete doesn't visually indicate inactivity",
+          "where": "src/app/(dashboard)/admin/programs/page.tsx:595-618 card rendering",
+          "description": "Cards show badges '3 formations / 2 sessions' even if program inactive. User can't quickly scan which programs are active.",
+          "recommendation": "Add opacity/desaturation on card if !program.is_active. Or add 'Inactif' badge. Effort: S"
+        },
+        {
+          "severity": "minor",
+          "category": "accessibility",
+          "title": "Dropdown menu buttons not fully accessible via keyboard",
+          "where": "src/app/(dashboard)/admin/programs/page.tsx:620-655",
+          "description": "DropdownMenuTrigger has tabIndex but keyboard navigation could be better tested with axe-core.",
+          "recommendation": "Verify shadcn DropdownMenu has full keyboard support. Add accessibility audit. Effort: S"
+        },
+        {
+          "severity": "minor",
+          "category": "ux-friction",
+          "title": "Create course wizard lacks step progress indicator",
+          "where": "src/app/(dashboard)/admin/elearning/create/page.tsx:135-250+ viewStep state",
+          "description": "User flows through 5 steps (method → import → configure → generate → done) with no visual progress bar. Doesn't know how many steps remain.",
+          "recommendation": "Add step indicator: 'Step 2 of 5: Configure' with filled/unfilled circles. Effort: S"
+        },
+        {
+          "severity": "minor",
+          "category": "ux-missing",
+          "title": "No breadcrumb or context in elearning course detail pages",
+          "where": "src/app/(dashboard)/admin/elearning/courses/[courseId]/page.tsx",
+          "description": "Admin in detail page has 'Retour' button but no breadcrumb. No context showing 'E-Learning > Courses > [Title]'.",
+          "recommendation": "Add breadcrumb with clickable 'Courses' link. Or add header with ArrowLeft + 'Back to Courses'. Effort: S"
+        },
+        {
+          "severity": "minor",
+          "category": "accessibility",
+          "title": "No focus management or tab-trapping in dialog flows",
+          "where": "src/app/(dashboard)/admin/elearning/page.tsx dialogs, ChapterEditDialog, ContentPreviewDialog",
+          "description": "Dialogs lack return-focus-to-trigger, focus-trap, and keyboard navigation. No aria-labels for dynamic state ('Saving…').",
+          "recommendation": "Add autoFocus to first input in dialogs. Use Dialog's built-in focus-trap. Add aria-busy on loading buttons. Test with axe-core. Effort: M"
+        },
+        {
+          "severity": "minor",
+          "category": "ux-missing",
+          "title": "Empty state for chapters when course generation failed",
+          "where": "src/app/(dashboard)/admin/elearning/courses/[courseId]/page.tsx",
+          "description": "If course.generation_status='failed' or course is draft with 0 chapters, blank chapter list with no explanation.",
+          "recommendation": "Add conditional: if status='failed', show error + 'Retry generation' button. If generating, show spinner + ETA. Effort: S"
+        },
+        {
+          "severity": "minor",
+          "category": "completeness-gap",
+          "title": "questionnaire_tokens TTL cleanup job missing",
+          "where": "supabase/migrations/add_questionnaire_public_tokens.sql:1-28",
+          "description": "Tokens expire (TOKEN_LIFETIME_DAYS=90) but expired rows never deleted. DB grows indefinitely with stale tokens.",
+          "recommendation": "Create Cron job to DELETE FROM questionnaire_tokens WHERE expires_at < NOW() weekly. Or use Supabase pg_cron. Effort: S"
+        },
+        {
+          "severity": "minor",
+          "category": "ux-friction",
+          "title": "Markdown rendering dangerously without complete sanitization",
+          "where": "src/app/(dashboard)/admin/programs/[id]/page.tsx:59-69 renderMarkdown + dangerouslySetInnerHTML",
+          "description": "renderMarkdown() escapes basic HTML but replace() patterns can be bypassed. Example: **<img onerror='alert(1)'>** becomes XSS. dangerouslySetInnerHTML at lines 780, 790, 803.",
+          "recommendation": "Use remark/rehype or DOMPurify library. Or disallow '<' and '>' in validation. Effort: M"
+        },
+        {
+          "severity": "info",
+          "category": "ux-friction",
+          "title": "No visual indication of survey completion status in TabQuestionnaires grid",
+          "where": "src/app/(dashboard)/admin/formations/[id]/_components/TabQuestionnaires.tsx:180-195, LearnerStatusGrid.tsx",
+          "description": "Status cells (answered/sent/not_sent) color coding is subtle. High-density grids with 50+ learners hard to scan completion at glance.",
+          "recommendation": "Use bolder colors (red=not_sent, yellow=sent, green=answered) or add row/column summaries. Add 'Sort by completion' button. Effort: S"
+        },
+        {
+          "severity": "info",
+          "category": "ux-missing",
+          "title": "Public questionnaire page lacks document title for SEO/readability",
+          "where": "src/app/questionnaire/[token]/page.tsx:27-202",
+          "description": "Client-rendered page doesn't set document.title. Browser tab shows generic. QR code scan shows nothing helpful.",
+          "recommendation": "Use useEffect to set document.title = `${questionnaire_title} — ${session_title}`. Or migrate to server component. Effort: S"
+        },
+        {
+          "severity": "info",
+          "category": "ux-missing",
+          "title": "Learner questionnaire empty state lacks conditional messaging",
+          "where": "src/app/(dashboard)/learner/questionnaires/page.tsx:141-151",
+          "description": "Empty state shows icon + text but doesn't explain why (e.g., 'Your trainings don't have questionnaires' vs 'Questionnaires appear once training starts').",
+          "recommendation": "Check learner enrollment status. Show contextual message. Add link to help docs. Effort: S"
+        },
+        {
+          "severity": "info",
+          "category": "completeness-gap",
+          "title": "No audit log for questionnaire distribution or admin fill actions",
+          "where": "src/app/api/admin/questionnaires/fill-for-learner/route.ts:96-114",
+          "description": "Admin fill and bulk distribute don't log WHO/WHAT/WHEN beyond filled_by_admin_at. WHERE (UI action) and HOW (bulk vs single) are lost.",
+          "recommendation": "Insert activity_log rows (questionnaire_fill, questionnaire_distribute). Include admin_id, action, details. Effort: M"
+        },
+        {
+          "severity": "info",
+          "category": "ux-missing",
+          "title": "Admin questionnaire stats dialog doesn't show data period/scope",
+          "where": "src/app/(dashboard)/admin/questionnaires/page.tsx:~520-588",
+          "description": "Stats dialog fetches and shows but lacks period/entity filter context. Users don't know if all-time or recent, or if scoped by entity.",
+          "recommendation": "Display period/entity in stats header. Add subtitle: 'Showing responses from [period] for [entity]'. Effort: S"
+        },
+        {
+          "severity": "info",
+          "category": "ux-missing",
+          "title": "Trainer conflict detection has no error handling",
+          "where": "src/app/(dashboard)/admin/formations/[id]/_components/TabPlanning.tsx:86-94",
+          "description": "Conflict detection async call lacks error handling. API failure silently results in empty conflicts array.",
+          "recommendation": "Add console.error on detection failure. Optionally show toast warning. Effort: S"
+        },
+        {
+          "severity": "info",
+          "category": "completeness-gap",
+          "title": "Tab KPI counts may become stale",
+          "where": "src/app/(dashboard)/admin/formations/[id]/page.tsx:133-141",
+          "description": "Memoized counts don't update if formation data changes. Shows outdated numbers until manual refetch.",
+          "recommendation": "Recalculate counts on formation dependency change or formation-triggered refetch. Effort: S"
+        },
+        {
+          "severity": "info",
+          "category": "completeness-gap",
+          "title": "Bandeau continuité Program→Formation→Session lacks acknowledgment",
+          "where": "src/app/(dashboard)/admin/programs/page.tsx:469-492 orphan banner",
+          "description": "Yellow banner shows orphan counts but user can close/ignore. Reappears next load. No tracking if user acknowledged.",
+          "recommendation": "Add checkbox 'Don't show again' (localStorage) or auto-dismiss after 8s. Effort: S"
+        }
+      ]
+    }
+  ],
+  "synthesis": "# Synthèse Audit Module LMS — lms-platform\n\n**Date :** 2026-06-05\n**Branche :** feat/pedagogie-v2-epic-2-5-phase-A\n**Périmètre :** 5 sous-systèmes (Sessions, Formations, Programmes, E-Learning, Questionnaires) + 3 angles transverses (sécurité multi-tenant, production-readiness, UX/complétude)\n\n---\n\n## 1. Score Global du Module LMS\n\n### Pondération par sous-système\n\n| Sous-système | Poids (importance métier) | Score complétude | Score pondéré |\n|---|---|---|---|\n| Sessions | 25% | 70% | 17.5 |\n| Formations (hub 13 tabs) | 30% | 68% | 20.4 |\n| Programmes | 15% | 82% | 12.3 |\n| E-Learning | 20% | 72% | 14.4 |\n| Questionnaires | 10% | 78% | 7.8 |\n| **TOTAL** | **100%** | — | **72.4%** |\n\n### Verdict global\n\n**Score : 72/100 — has-gaps / major-concerns**\n\nLe module LMS est **fonctionnellement opérationnel** mais présente **des failles multi-tenant critiques** (queries sans `entity_id`), **plusieurs goulots de production** (timeout 26s sur génération batch, BG function stub), et une **dette UX/technique importante** (composants 1000+ LOC, enum mismatches, casts `as any`). Le module n'est **pas prêt pour une montée en charge significative** (>500 cours/programmes par entité) ni pour un client multi-entités exigeant en sécurité.\n\n---\n\n## 2. Tableau récap par sous-système\n\n| Sous-système | Score | Verdict | 🔴 Critical | 🟠 Major | Top-3 bugs |\n|---|---|---|---|---|---|\n| **Sessions** | 70% | has-gaps | 4 | 11 | 1. Filtres `entity_id` manquants sur fetch/update/delete admin/sessions/page.tsx (L183, 331, 414) — 2. Trainers query sans entity (L228) — 3. BG function bulk import est un **stub** |\n| **Formations** | 68% | has-gaps | 4 | 11 | 1. `entity_id` manquant TabAbsences insert (L72) + TabDocsPartages insert (L109) — 2. Dropdown Duplicate/Delete **sans handler** page.tsx L318-324 — 3. TabConventionDocs 2219 LOC monolithe |\n| **Programmes** | 82% | mostly-ok | 3 | 11 | 1. Enum mismatch `BpfFundingType`/`BpfObjective` Zod vs types.ts (validation passe, insert échoue) — 2. `entity_id` manquant `pedagogie-v2-snapshot.ts` L29-74 — 3. `renderMarkdown()` XSS possible via dangerouslySetInnerHTML |\n| **E-Learning** | 72% | has-gaps | 3 | 12 | 1. Catalog learner sans `entity_id` learner/courses/page.tsx L128-145 (cross-tenant) — 2. Enroll route sans vérif learner.entity_id == course.entity_id — 3. Course type enum incohérent sur 3 couches |\n| **Questionnaires** | 78% | mostly-ok | 0 | 8 | 1. Cron auto-send service_role sans entity guard — 2. Race condition dédup email_history (ilike pattern) — 3. Scoring fix non rétroactif sur réponses existantes |\n\n---\n\n## 3. Top-10 critique (à fixer en priorité absolue)\n\n### 🔴 1. Catalog learner E-Learning sans filtrage `entity_id` (cross-tenant leak)\n- **Où :** `src/app/(dashboard)/learner/courses/page.tsx:128-132, 142-145, 179-182`\n- **Trouvé par :** Security audit, E-Learning audit\n- **Impact :** Un apprenant de l'entité A peut **browser/accéder** aux cours et programmes publiés de l'entité B. Violation directe NFR-SEC-2 et CLAUDE.md règle absolue n°2.\n- **Recommandation :** Ajouter `.eq('entity_id', entityId)` aux 3 queries (catalog courses, catalog programs, courseIds stitch). Vérifier RLS `elearning_courses`.\n- **Effort :** S (3 lignes + test multi-tenant)\n\n### 🔴 2. Enroll E-Learning sans vérification learner.entity_id == course.entity_id\n- **Où :** `src/app/api/elearning/[courseId]/enroll/route.ts:102-147`\n- **Trouvé par :** Security audit, E-Learning audit\n- **Impact :** Un admin peut **enrôler un apprenant d'une entité différente** dans un cours. Pollution croisée durable.\n- **Recommandation :** Fetch learners avec `.eq('entity_id', course.entity_id)` avant upsert. Renvoyer 403 si mismatch. Test : tentative cross-entity doit échouer.\n- **Effort :** S\n\n### 🔴 3. Admin /sessions — queries sans `entity_id` (fetch/update/delete/trainers)\n- **Où :** `src/app/(dashboard)/admin/sessions/page.tsx:183, 228, 331, 414`\n- **Trouvé par :** Sessions audit, Security audit\n- **Impact :** Un admin peut lire **toutes les sessions cross-entité** (`fetchSessions` ligne 183), supprimer/modifier sessions d'autres entités par ID, fetcher trainers d'autres entités. RLS doit absolument être présent et stricte sinon faille majeure.\n- **Recommandation :** Ajouter `.eq('entity_id', entityId)` sur 4 queries. Vérifier RLS `sessions` et `trainers` tables.\n- **Effort :** S\n\n### 🔴 4. Background Function bulk learner import = stub vide\n- **Où :** `netlify/functions/learners-bulk-create-background.mts:112-136`, `src/app/api/sessions/[id]/learners/bulk/start/route.ts:84,252-273`\n- **Trouvé par :** Production-readiness audit, Sessions audit\n- **Impact :** Import >20 apprenants délégué au BG function **qui retourne 202 sans rien créer**. Données silencieusement perdues. Seuil inline 20 bloque les imports volumineux avec 400.\n- **Recommandation :** Implémenter la logique réelle (createLearnerWithCredentials loop + enrollments + PDF) ou bloquer explicitement avec message FAQ. Monitoring si >50% des imports atteignent le seuil.\n- **Effort :** L (Epic 2.6 dédié)\n\n### 🔴 5. Cron service_role sans entity guard (auto-send + automation-rules)\n- **Où :** `src/app/api/questionnaires/auto-send/route.ts:5-42, 49-52` ; `src/app/api/formations/automation-rules/run-cron/route.ts:32-42, 285-299`\n- **Trouvé par :** Security audit, Questionnaires audit, Production audit\n- **Impact :** Si `CRON_SECRET` est leaké, attaquant peut **énumérer + envoyer emails cross-entité**. Service_role bypasse RLS sans restriction d'entité explicite.\n- **Recommandation :** Ajouter paramètre `entity_id` optionnel au body cron. Logger toutes les entités traitées. Scoper CRON_SECRET en prod.\n- **Effort :** M\n\n### 🔴 6. Dropdown Duplicate/Delete formation sans handler (UX cassée)\n- **Où :** `src/app/(dashboard)/admin/formations/[id]/page.tsx:318-324`\n- **Trouvé par :** UX audit, Formations audit\n- **Impact :** Boutons cliquables qui ne font **rien**. Violation directe CLAUDE.md règle absolue n°4 (\"jamais de bouton sans handler\"). Confusion utilisateur sur le tab le plus utilisé.\n- **Recommandation :** Implémenter handlers (duplicate copy formation + delete avec confirmation) OU désactiver avec tooltip.\n- **Effort :** M\n\n### 🔴 7. TabAbsences + TabDocsPartages — inserts/updates sans `entity_id` / session filter\n- **Où :** `TabAbsences.tsx:72, 144-145` ; `TabDocsPartages.tsx:109, 145`\n- **Trouvé par :** Formations audit, Security audit\n- **Impact :** Insert/delete/update via ID seul, permettant modification cross-session/cross-entity si RLS absente ou faible. Aussi : `handleUpdateStatus` catch vide + pas de refetch (ligne 141-150).\n- **Recommandation :** Chaîner `.eq('session_id', formation.id).eq('entity_id', formation.entity_id)` sur toutes mutations. Ajouter try/catch loggé + onRefresh().\n- **Effort :** S\n\n### 🔴 8. Enum mismatch Course Type (3 couches incohérentes)\n- **Où :** `admin/elearning/create/page.tsx:36` (`'presentation'|'quiz'|'complete'`) vs `lib/validations/elearning.ts:69-74` (`'presentation_quiz'|'presentation_quiz_flashcard'|'quiz'|'flashcards'`) vs `api/elearning/route.ts:63`\n- **Trouvé par :** E-Learning audit, UX audit\n- **Impact :** Validation échoue silencieusement, mode 'presentation' ne génère pas d'exam final (apprenant n'est jamais évalué, pas de certificat). 3 sources de vérité divergentes = refactoring impossible.\n- **Recommandation :** Unifier dans `types.ts` une seule source de vérité. Réutiliser dans Zod, SelectItem, API. Test round-trip create→fetch→edit.\n- **Effort :** M\n\n### 🔴 9. Enum mismatch BpfFundingType / BpfObjective (validation Zod vs types.ts)\n- **Où :** `src/lib/validations/program.ts:99-131` vs `src/lib/types/index.ts:53-58`\n- **Trouvé par :** Programmes audit, Security audit\n- **Impact :** Zod accepte `['opco', 'entreprise', ...]` mais Postgres attend `['entreprise_privee', 'apprentissage', ...]`. Utilisateur sélectionne \"Apprentissage\" → validation passe → **insert échoue avec toast générique**. Toutes les formations BPF impactées.\n- **Recommandation :** Aligner Zod sur enum exact via `satisfies BpfFundingType[]`. Centraliser dans types.ts. Générer SelectItems dynamiquement.\n- **Effort :** S\n\n### 🔴 10. Génération batch convocations risque timeout 26s Netlify\n- **Où :** `src/app/api/documents/generate-convocations-batch/route.ts:62-150+`\n- **Trouvé par :** Production-readiness audit\n- **Impact :** Boucle sync sur N apprenants (ensureLearnerAccount + QR + PDF puppeteer). À 50 apprenants × ~500ms = **25s+** = timeout imminent. Déjà au bord du seuil.\n- **Recommandation :** Convertir en background function (cf. `elearning-generate-pipeline-background`). Polling UI via `generation_progress` JSONB. Dispatch BG si N>10.\n- **Effort :** M\n\n---\n\n## 4. Plan d'action priorisé en 3 vagues\n\n### 🚨 Vague V1 — P0 bloquant prod (cette semaine, 1-2 sprints)\n\n**Objectif :** Sécuriser le multi-tenant + débloquer la production.\n\n| # | Ticket | Effort | Sous-système |\n|---|---|---|---|\n| V1.1 | Ajouter `entity_id` sur queries learner/courses (3 endroits) | S | E-Learning |\n| V1.2 | Vérifier `learner.entity_id == course.entity_id` dans enroll route | S | E-Learning |\n| V1.3 | Ajouter `entity_id` sur admin/sessions/page.tsx (4 queries) | S | Sessions |\n| V1.4 | Implémenter handlers Duplicate/Delete formation OU les désactiver | M | Formations |\n| V1.5 | Sécuriser TabAbsences + TabDocsPartages (inserts/updates avec entity + session filter) | S | Formations |\n| V1.6 | Unifier enum CourseType (create page + Zod + API) | M | E-Learning |\n| V1.7 | Aligner Zod BpfFundingType + BpfObjective sur types.ts | S | Programmes |\n| V1.8 | Convertir generate-convocations-batch en BG function | M | Documents/Sessions |\n| V1.9 | Scoper CRON_SECRET + entity guard sur cron auto-send + automation-rules | M | Cron/Auto |\n| V1.10 | Bloquer ou compléter BG function bulk import learner (>20 → message clair OU implémentation Epic 2.6) | L | Sessions |\n| V1.11 | Audit RLS complet (tables formation_absences, formation_documents, elearning_enrollments, programs, sessions, trainers) | M | DB/Sécu |\n| V1.12 | Tests entity-isolation pour les 5 sous-systèmes | M | Tests |\n\n**Estimation V1 :** ~3 semaines (un binôme dev + 1 QA).\n\n---\n\n### 🛠️ Vague V2 — P1 chantier court terme (2-4 semaines)\n\n**Objectif :** Améliorer la UX, fiabiliser les flows critiques, payer la dette technique structurante.\n\n#### Sécurité & intégrité\n| # | Ticket | Effort | Source |\n|---|---|---|---|\n| V2.1 | Race condition dédup email_history → UNIQUE INDEX (questionnaire_id, learner_id, session_id) | M | Questionnaires |\n| V2.2 | `pedagogie-v2-snapshot.ts` : ajouter entity_id en paramètre explicite | M | Programmes |\n| V2.3 | Validation token public-submit : cross-check `entity_id` | M | Questionnaires |\n| V2.4 | Migration re-scoring des réponses questionnaires historiques | M | Questionnaires |\n| V2.5 | DOMPurify pour `renderMarkdown()` (XSS programmes) | M | Programmes |\n\n#### UX critiques\n| # | Ticket | Effort | Source |\n|---|---|---|---|\n| V2.6 | TabPlanning auto-fill : loading + spinner + disabled | M | Formations |\n| V2.7 | TabFinances : remplacer setTimeout par Promise/callback pour dialogs | M | Formations |\n| V2.8 | Empty states + loading skeletons (TabQuestionnaires, TabElearning, chapter list) | M | Cross-cutting |\n| V2.9 | Confirmation dialogs batch operations (TabConventionDocs sign/send/generate) | M | Formations |\n| V2.10 | Beforeunload warning + draft localStorage learner/questionnaires | M | Questionnaires |\n| V2.11 | Mode 'presentation' E-Learning : ajouter quiz final OU documenter explicitement | M | E-Learning |\n| V2.12 | Wizard create E-Learning : step indicator + breadcrumb détail cours | S | E-Learning |\n| V2.13 | Empty/loading states + aria-labels boutons icon-only (audit a11y global) | M | Cross-cutting |\n\n#### Performance & robustesse\n| # | Ticket | Effort | Source |\n|---|---|---|---|\n| V2.14 | Pagination serveur hub programmes + hub elearning admin | M | Programmes, E-Learning |\n| V2.15 | Cron cleanup questionnaire_tokens expirés (pg_cron ou Netlify) | S | Questionnaires |\n| V2.16 | Retry exponential backoff email send (Resend 429/timeout) | M | Emails |\n| V2.17 | Structured logging Resend + corrélation request_id | M | Emails/Obs |\n| V2.18 | Cron process-scheduled-emails : alerting failures consécutives | S | Cron |\n| V2.19 | Dashboard questionnaires : RPC/view server-side aggregation | M | Questionnaires |\n| V2.20 | Idempotency guarantee bulk PDF upload (cleanup ou retry) | M | Sessions |\n\n**Estimation V2 :** ~5 semaines, multi-équipes possible (Sécu, UX, Backend).\n\n---\n\n### 📚 Vague V3 — P2 dette long terme (epic BMAD dédié, 2-3 mois)\n\n**Objectif :** Refactoring structurel, scalabilité, qualité TS.\n\n#### Refactoring composants monolithes\n| # | Ticket | LOC actuel | Cible | Source |\n|---|---|---|---|---|\n| V3.1 | TabConventionDocs split (DocumentMatrix, BatchPanel, SignatureWorkflow) | 2219 | <500 ea | Formations |\n| V3.2 | TabFinances split (InvoiceFormDialog, AutoGeneratePanel, ChargesSection) + service | 1199 | <500 ea | Formations |\n| V3.3 | TabPlanning split (Calendar, SlotEditor, ConflictPanel) | 936 | <500 ea | Formations |\n| V3.4 | TabEmargements split | 807 | <500 ea | Formations |\n| V3.5 | admin/elearning/page.tsx hub | 1468 | <500 | E-Learning |\n| V3.6 | admin/elearning/create/page.tsx wizard | 1284 | <500 | E-Learning |\n| V3.7 | learner/courses/[courseId]/page.tsx reader (extract GammaScreen/QuizScreen/FlashcardScreen) | 1523 | <500 | E-Learning |\n| V3.8 | admin/programs/page.tsx hub | 1128 | <500 | Programmes |\n| V3.9 | admin/programs/[id]/page.tsx détail | 1090 | <500 | Programmes |\n| V3.10 | ProgramEnrollments component | 628 | <300 | Programmes |\n\n#### Qualité TypeScript\n| # | Ticket | Effort |\n|---|---|---|\n| V3.11 | Éradication de tous les `as unknown as X` et `as any` (programs, sessions, formations, questionnaires) → Zod parse en service layer | L |\n| V3.12 | Définir interfaces strictes : Entity, Client, Invoice, SessionWithRelations, EnrollmentWithLearner | M |\n| V3.13 | Codegen Supabase types ou type-safe wrapper | M |\n\n#### Architecture\n| # | Ticket | Effort |\n|---|---|---|\n| V3.14 | Service `automation-triggers.ts` centralisé (dédup fire-and-forget) | S |\n| V3.15 | Service `invoice-management.ts` (extraire logique TabFinances) | M |\n| V3.16 | Hook `usePrograms()` + `useFormations()` + `useElearning()` réutilisables | M |\n| V3.17 | Event union typé pour SSE elearning-sse.ts | M |\n| V3.18 | Activity log unifié (questionnaire_fill, distribute, batch ops) | M |\n| V3.19 | Migration verification healthcheck CI/CD (retirer fallback queries) | S |\n| V3.20 | Suite e2e Playwright sur les 5 sous-systèmes (CRUD + multi-tenant) | L |\n\n#### Analytics & reporting (gap fonctionnel)\n| # | Ticket | Effort |\n|---|---|---|\n| V3.21 | Dashboard E-Learning Analytics (completion %, score distribution, time per chapter) | L |\n| V3.22 | KPI temps réel TabResume / hub formations (refetch on change) | M |\n\n**Estimation V3 :** 2-3 mois en epic BMAD dédié type \"tech-debt-reduction-q3\".\n\n---\n\n## 5. Statistiques globales des findings\n\n| Catégorie | 🔴 Critical | 🟠 Major | 🟡 Minor | Info | Total |\n|---|---|---|---|---|---|\n| security-multitenant | 8 | 8 | 0 | 3 | 19 |\n| data-integrity | 5 | 9 | 2 | 0 | 16 |\n| completeness-gap | 2 | 18 | 12 | 7 | 39 |\n| ux-friction | 1 | 14 | 11 | 4 | 30 |\n| ux-missing | 0 | 9 | 12 | 4 | 25 |\n| tech-debt | 0 | 9 | 8 | 4 | 21 |\n| performance | 0 | 4 | 1 | 0 | 5 |\n| accessibility | 0 | 1 | 4 | 0 | 5 |\n| **TOTAL (après dédup ~30%)** | **~14** | **~52** | **~45** | **~22** | **~133** |\n\n> Note : ~30% des findings sont redondants entre les 3 angles transverses et les audits par sous-système. Les chiffres ci-dessus sont déjà dédupliqués.\n\n---\n\n## 6. Cartographie des risques par axe\n\n### 🔐 Sécurité multi-tenant (CRITIQUE)\n**État :** Failles systématiques sur queries Supabase côté client. RLS supposée mais **non vérifiée par tests**. CRON_SECRET en service_role bypasse tout. Helpers `client-portal-isolation.ts` n'existent pas dans la même logique pour admin/learner inter-entities.\n\n**Priorité absolue :** V1.1-V1.5 + V1.9 + V1.11.\n\n### 🏭 Production-readiness (CRITIQUE)\n**État :** Plusieurs routes au bord du timeout 26s. BG function bulk import = stub. Pas de retry email. Pas de cleanup tokens. Pas d'alerting cron failures. Schéma de migration avec fallback queries témoignant d'un déploiement incomplet.\n\n**Priorité absolue :** V1.8 + V1.10 + V2.15-V2.18.\n\n### 🎨 UX & complétude (MAJEURE)\n**État :** Boutons sans handlers (violation règle absolue n°4). Loading states manquants, empty states partiels, confirmations batch absentes, pas de breadcrumb. Course type 'presentation' incomplet (pas d'exam). Pagination client-only non scalable.\n\n**Priorité :** V1.4 + V2.6-V2.13.\n\n### 🏗️ Dette technique (MAJEURE)\n**État :** 9 composants >1000 LOC. ~25 casts `as unknown as`/`as any`. Enums dupliqués/incohérents. Logique métier dans composants (au lieu de `lib/services/`). Pas de tests e2e.\n\n**Priorité :** V3 epic dédié BMAD.\n\n---\n\n## 7. Conclusion honnête : le module LMS est-il complet ?\n\n### Réponse directe : **Non, pas en l'état pour une production multi-client exigeante.**\n\n#### Ce qui fonctionne (les bonnes nouvelles)\n- L'architecture 3 couches (Hub / Cœur / Satellites) est saine et bien posée.\n- Le tab system formations[id] avec 13 tabs couvre fonctionnellement le cycle de vie complet.\n- Les services centralisés (`lib/services/`) existent pour la majorité des entités.\n- La couverture fonctionnelle est large : sessions, planning, émargements, parcours, e-learning, questionnaires, conventions, finances, Qualiopi, automation.\n- Les tests unitaires existent sur les services critiques (questionnaire-scoring, programs).\n- Les RLS migrations existent (au moins partiellement) — cf. `aut-prog-b-fix-rls-programs.sql`.\n\n#### Ce qui pose problème (les faits)\n1. **Sécurité multi-tenant non garantie** : 8 critiques + 8 majeurs sur l'isolation entity_id. La CLAUDE.md règle absolue n°2 (\"Jamais d'appel Supabase sans filtre entity_id\") est **violée systématiquement** côté client. Si les RLS sont permissives (USING true) — ce que l'auto-memory indique comme un risque connu (`project_rls_state.md`: ~50 tables ont `allow_all USING(true)`) — la plateforme **fuit des données cross-tenant**.\n\n2. **BG function bulk import = stub** : la fonction métier la plus critique de l'Epic 2.5/2.6 (import apprenants >20) **ne crée rien**. C'est un bloqueur déclaré.\n\n3. **Boutons sans handlers** : violation de la règle absolue n°4 sur le tab le plus utilisé (`formations/[id]/page.tsx` L318-324).\n\n4. **Enum mismatches** sur 2 endroits critiques (CourseType + BPF) → erreurs silencieuses à l'usage, toasts génériques, frustration utilisateur.\n\n5. **Composants monolithes 1000-2200 LOC** : 9 composants concernés. Refactoring nécessaire pour tester, évoluer, et onboarder de nouveaux devs.\n\n6. **Pas de tests e2e** sur les flows multi-tenant et CRUD critiques.\n\n7. **Risques de timeout production** sur génération batch convocations.\n\n#### Estimation pour atteindre \"production-ready niveau MR Formation / C3V\"\n\n| Vague | Effort | Délai | Équipe |\n|---|---|---|---|\n| V1 (P0 bloquant) | ~12 tickets, 3 semaines | Cette semaine + 2 | 1 dev + 1 QA |\n| V2 (P1 court terme) | ~20 tickets, 5 semaines | Sprint suivant ×2 | 2 devs + 1 QA + UX |\n| V3 (P2 dette long terme) | ~22 tickets, 2-3 mois | Epic BMAD Q3 | Équipe étendue |\n\n**Avant V1 fini : ne pas onboarder de nouveau client multi-entité sensible.**\n**Après V1 + V2 : production stable pour 2-3 entités avec volumétrie modérée (<500 apprenants/entité, <100 cours/entité).**\n**Après V3 : scalable, maintenable, testable.**\n\n#### Recommandation finale\n\n1. **Bloquer le merge de toute nouvelle feature** tant que V1.1-V1.5 (entity_id queries) ne sont pas mergés.\n2. **Lancer immédiatement** un audit RLS Supabase exhaustif avec corrections en migration dédiée (en s'appuyant sur le skill `supabase-audit-rls`).\n3. **Décider statut Epic 2.6** : soit on bloque les imports >20 explicitement avec UX claire, soit on finalise la BG function. Pas d'entre-deux silencieux.\n4. **Créer un Epic BMAD V3 \"tech-debt-reduction-lms-q3\"** avec les 22 tickets de refactoring/qualité.\n5. **Mettre en place CI/CD migration checks** + tests e2e Playwright sur les flows multi-tenant avant tout déploiement majeur.\n\n---\n\n**Score final consolidé : 72/100 — has-gaps avec major-concerns sur la sécurité multi-tenant et la production-readiness. Le module est utilisable en interne mais nécessite ~2 mois de travail prioritaire avant montée en charge ou onboarding client exigeant.**"
+}
