@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 import { createUserSchema } from "@/lib/validations";
 import { logAudit } from "@/lib/audit-log";
+import { linkProfilesWithLearnersAndTrainers } from "@/lib/services/admin-users-link";
 import { NextRequest, NextResponse } from "next/server";
 
 // GET: List all users (profiles + learners + trainers) for the current entity
@@ -29,6 +30,8 @@ export async function GET() {
   const entityId = profile.entity_id;
 
   // Fetch all 3 sources in parallel
+  // Note (epic-2-5/aut-b-2) : learners/trainers sont joints par profile_id (pas email)
+  // pour supporter les apprenants sans email réel (email synthétique .local).
   const [profilesRes, learnersRes, trainersRes] = await Promise.all([
     supabase
       .from("profiles")
@@ -37,12 +40,12 @@ export async function GET() {
       .order("created_at", { ascending: false }),
     supabase
       .from("learners")
-      .select("id, first_name, last_name, email, phone, created_at")
+      .select("id, profile_id, first_name, last_name, email, phone, created_at")
       .eq("entity_id", entityId)
       .order("last_name", { ascending: true }),
     supabase
       .from("trainers")
-      .select("id, first_name, last_name, email, phone, created_at")
+      .select("id, profile_id, first_name, last_name, email, phone, created_at")
       .eq("entity_id", entityId)
       .order("last_name", { ascending: true }),
   ]);
@@ -51,15 +54,11 @@ export async function GET() {
     return NextResponse.json({ error: sanitizeDbError(profilesRes.error, "fetch users") }, { status: 500 });
   }
 
-  // Only return auth users (profiles) — learners/trainers without accounts
-  // are managed from their own dedicated pages (Apprenants, Formateurs)
-  const allUsers = (profilesRes.data ?? []).map((p) => ({
-    ...p,
-    source: "profile" as const,
-    // Enrich with learner/trainer link info
-    linked_learner: (learnersRes.data ?? []).find((l) => l.email && l.email.toLowerCase() === p.email?.toLowerCase()),
-    linked_trainer: (trainersRes.data ?? []).find((t) => t.email && t.email.toLowerCase() === p.email?.toLowerCase()),
-  }));
+  const allUsers = linkProfilesWithLearnersAndTrainers(
+    profilesRes.data ?? [],
+    learnersRes.data ?? [],
+    trainersRes.data ?? [],
+  );
 
   return NextResponse.json({ data: allUsers });
 }

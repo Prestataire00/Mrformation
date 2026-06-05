@@ -4,6 +4,7 @@ import { addDays, getISOWeek, startOfISOWeek, endOfISOWeek, format } from "date-
 import type { Session, Client, Learner, Trainer } from "@/lib/types";
 import { getLearnersForCompany, getAmountForCompany } from "@/lib/utils/formation-companies";
 import { formatTimeParis, getHourParis } from "@/lib/utils/paris-time";
+import { isSyntheticEmail } from "@/lib/utils/learner-email-synthetic";
 
 export interface ResolveContext {
   session?: Session | null;
@@ -261,7 +262,29 @@ export function resolveVariables(content: string, data: ResolveContext): string 
     "{{montant}}": montantHt > 0 ? `${montantHt.toFixed(2)}` : "[Montant HT]",
     "{{signature_apprenant}}": "[Signature apprenant]",
     "{{signature_formateur}}": "[Signature formateur]",
-    "{{email_apprenant}}": data.learner?.email || "[Email apprenant]",
+    // Pédagogie V2 Epic 2.5 — Phase B Task 12 :
+    // {{email_apprenant}} doit retourner "" si l'email est synthétique
+    // (`<username>@learner.<entity_slug>.local`), car ces emails ne sont jamais
+    // routables et ne doivent pas être affichés dans un document/email destiné
+    // à l'apprenant. Cf. src/lib/utils/learner-email-synthetic.ts.
+    "{{email_apprenant}}": (() => {
+      const learnerEmail = data.learner?.email;
+      if (!learnerEmail) return "";
+      if (isSyntheticEmail(learnerEmail)) return "";
+      return learnerEmail;
+    })(),
+    // Pédagogie V2 Epic 2.5 — Phase B Task 12 :
+    // {{identifiant_apprenant}} = `learners.username` (slug stable utilisé pour
+    // se connecter sans email), avec fallback sur l'email réel si pas de
+    // username encore (apprenants pré-Epic 2.5). Le champ `username` est ajouté
+    // par la migration `add_learner_username_credentials.sql` et n'est pas
+    // encore typé dans `Learner` — cast contrôlé via `Record<string, unknown>`.
+    "{{identifiant_apprenant}}": (() => {
+      const learner = data.learner as unknown as Record<string, unknown> | null | undefined;
+      const username = typeof learner?.username === "string" ? learner.username : "";
+      if (username) return username;
+      return data.learner?.email || "";
+    })(),
     "{{telephone_apprenant}}": data.learner?.phone || "[Téléphone apprenant]",
     "{{entreprise_contact}}": clientRepresentant,
     "{{telephone_client}}": (data.client as unknown as Record<string, string>)?.phone || "[Téléphone client]",
@@ -1640,6 +1663,7 @@ export const VARIABLE_KEYS = [
   "{{signature_apprenant}}",
   "{{signature_formateur}}",
   "{{email_apprenant}}",
+  "{{identifiant_apprenant}}",
   "{{telephone_apprenant}}",
   "{{entreprise_contact}}",
   "{{telephone_client}}",
