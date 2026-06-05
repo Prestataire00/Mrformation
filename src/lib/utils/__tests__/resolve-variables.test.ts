@@ -415,3 +415,98 @@ describe("renderUnsignedCell", () => {
     expect(html).toBe("");
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Pédagogie V2 Epic 2.5 — Phase B Task 12
+// {{identifiant_apprenant}} et durcissement {{email_apprenant}} pour ignorer
+// les emails synthétiques `<username>@learner.<entity>.local`.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("resolveVariables — {{identifiant_apprenant}} (Epic 2.5)", () => {
+  it("retourne `learner.username` quand présent (cas nominal Epic 2.5)", () => {
+    const learner = makeLearner({
+      email: "pierre.martin@example.com",
+    });
+    // `username` n'est pas dans le type TS Learner (colonne ajoutée par
+    // add_learner_username_credentials.sql). On l'ajoute via cast contrôlé.
+    (learner as unknown as Record<string, string>).username = "pierre.martin";
+
+    const result = resolveVariables("Identifiant : {{identifiant_apprenant}}", {
+      learner,
+    });
+    expect(result).toBe("Identifiant : pierre.martin");
+  });
+
+  it("fallback sur l'email réel si pas de username (apprenants pré-Epic 2.5)", () => {
+    const learner = makeLearner({ email: "pierre.martin@example.com" });
+    // pas de `username` sur ce learner
+
+    const result = resolveVariables("Identifiant : {{identifiant_apprenant}}", {
+      learner,
+    });
+    expect(result).toBe("Identifiant : pierre.martin@example.com");
+  });
+
+  it("retourne chaîne vide quand ni username ni email (pas de 'undefined')", () => {
+    const learner = makeLearner({ email: null });
+
+    const result = resolveVariables("Id:[{{identifiant_apprenant}}]", { learner });
+    expect(result).toBe("Id:[]");
+    expect(result).not.toContain("undefined");
+  });
+
+  it("learner null → chaîne vide", () => {
+    const result = resolveVariables("Id:[{{identifiant_apprenant}}]", {});
+    expect(result).toBe("Id:[]");
+  });
+});
+
+describe("resolveVariables — {{email_apprenant}} (durcissement Epic 2.5)", () => {
+  it("retourne l'email réel quand l'apprenant a un vrai email", () => {
+    const result = resolveVariables("Email : {{email_apprenant}}", {
+      learner: makeLearner({ email: "pierre.martin@example.com" }),
+    });
+    expect(result).toBe("Email : pierre.martin@example.com");
+  });
+
+  it("retourne chaîne vide quand l'email est synthétique (@learner.*.local)", () => {
+    const result = resolveVariables("Email : [{{email_apprenant}}]", {
+      learner: makeLearner({
+        email: "pierre.martin@learner.mr-formation.local",
+      }),
+    });
+    expect(result).toBe("Email : []");
+  });
+
+  it("retourne chaîne vide pour un email synthétique slug C3V", () => {
+    const result = resolveVariables("[{{email_apprenant}}]", {
+      learner: makeLearner({
+        email: "marie.dupont@learner.c3v-formation.local",
+      }),
+    });
+    expect(result).toBe("[]");
+  });
+
+  it("retourne chaîne vide quand learner.email = null (au lieu du placeholder)", () => {
+    const result = resolveVariables("[{{email_apprenant}}]", {
+      learner: makeLearner({ email: null }),
+    });
+    // Avant Phase B Task 12 : renvoyait "[Email apprenant]".
+    // Maintenant : chaîne vide, on n'expose pas de placeholder visible
+    // dans les documents officiels quand l'apprenant n'a pas d'email réel.
+    expect(result).toBe("[]");
+  });
+
+  it("learner null → chaîne vide (pas de 'undefined')", () => {
+    const result = resolveVariables("[{{email_apprenant}}]", {});
+    expect(result).toBe("[]");
+  });
+
+  it("ne confond pas un email réel contenant 'learner' avec un email synthétique", () => {
+    // Cas piège : un vrai utilisateur dont l'email contient "learner"
+    const result = resolveVariables("{{email_apprenant}}", {
+      learner: makeLearner({ email: "learner.test@example.com" }),
+    });
+    expect(result).toBe("learner.test@example.com");
+  });
+});
