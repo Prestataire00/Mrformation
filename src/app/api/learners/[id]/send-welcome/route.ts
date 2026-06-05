@@ -3,6 +3,7 @@ import { requireRole } from "@/lib/auth/require-role";
 import { Resend } from "resend";
 import { randomBytes } from "crypto";
 import QRCode from "qrcode";
+import { isSyntheticEmail } from "@/lib/utils/learner-email-synthetic";
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
@@ -25,6 +26,23 @@ export async function POST(req: NextRequest, context: RouteContext) {
       .single();
 
     if (!learner?.email) return NextResponse.json({ error: "Apprenant sans email" }, { status: 400 });
+
+    // Pédagogie V2 Epic 2.5 — garde-fou anti-envoi sur email synthétique
+    // `<username>@learner.<slug>.local`. Si l'apprenant a été créé sans email
+    // réel (cf. createLearnerWithCredentials), pas de welcome email possible :
+    // l'admin doit transmettre les credentials via le PDF côté client.
+    if (isSyntheticEmail(learner.email)) {
+      console.warn("[send-welcome] skipped synthetic email", {
+        learnerId,
+        email: learner.email,
+        reason: "synthetic_email_local_domain",
+      });
+      return NextResponse.json({
+        skipped: true,
+        reason: "synthetic_email",
+        message: "Apprenant sans email réel — credentials à transmettre via le PDF.",
+      });
+    }
 
     // Generate magic link
     const token = randomBytes(32).toString("base64url");

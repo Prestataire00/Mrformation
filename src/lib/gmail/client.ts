@@ -85,7 +85,21 @@ export async function sendGmailEmail(
     fromName?: string;
     fromEmail?: string;
   }
-): Promise<{ success: boolean; messageId?: string; error?: string }> {
+): Promise<{ success: boolean; messageId?: string; error?: string; skipped?: boolean }> {
+  // Pédagogie V2 Epic 2.5 — garde-fou anti-envoi sur domaine synthétique `.local`.
+  // Si l'apprenant n'a pas d'email réel, on a fabriqué un email synthétique
+  // <username>@learner.<entity_slug>.local pour Supabase Auth. Ce domaine n'est
+  // jamais routable (RFC 6762 mDNS), mais Gmail SMTP pourrait quand même bouncer
+  // → log warn + skip propre.
+  const { isSyntheticEmail } = await import("@/lib/utils/learner-email-synthetic");
+  if (isSyntheticEmail(to)) {
+    console.warn("[gmail] skipped synthetic email", {
+      to,
+      reason: "synthetic_email_local_domain",
+    });
+    return { success: true, skipped: true };
+  }
+
   try {
     const client = getOAuth2Client();
     client.setCredentials({ refresh_token: refreshToken });
