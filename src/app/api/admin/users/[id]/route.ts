@@ -142,9 +142,32 @@ export async function DELETE(
   const userId = params.id;
   const adminClient = createAdminClient();
 
-  // Unlink from learners/trainers first (set profile_id to null)
-  await adminClient.from("learners").update({ profile_id: null }).eq("profile_id", userId);
-  await adminClient.from("trainers").update({ profile_id: null }).eq("profile_id", userId);
+  // Unlink from learners/trainers first (set profile_id to null).
+  //
+  // Fix P0 audit RLS 2026-06-05 : sans le filtre entity_id, un admin de
+  // l'entité A pouvait unlinker des learners/trainers de l'entité B juste
+  // en devinant un profile_id (le service_role bypasse la RLS). On scope
+  // strictement par entity_id du caller — sauf pour super_admin qui peut
+  // légitimement cross-entity (cf. memory super_admin_cross_entity).
+  const isSuperAdmin = callerProfile.role === "super_admin";
+
+  let learnersUnlink = adminClient
+    .from("learners")
+    .update({ profile_id: null })
+    .eq("profile_id", userId);
+  if (!isSuperAdmin) {
+    learnersUnlink = learnersUnlink.eq("entity_id", callerProfile.entity_id);
+  }
+  await learnersUnlink;
+
+  let trainersUnlink = adminClient
+    .from("trainers")
+    .update({ profile_id: null })
+    .eq("profile_id", userId);
+  if (!isSuperAdmin) {
+    trainersUnlink = trainersUnlink.eq("entity_id", callerProfile.entity_id);
+  }
+  await trainersUnlink;
 
   // Delete from profiles (auth account too)
   const { error: profileError } = await adminClient
