@@ -1,6 +1,14 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 
-type AuditAction = "create" | "update" | "delete";
+/**
+ * Action loggée dans `activity_log`.
+ *
+ * - Actions CRUD génériques : "create" | "update" | "delete".
+ * - Actions métier namespacées sous la forme `<resource>.<verb>` (string
+ *   libre) pour distinguer un événement métier d'un simple UPDATE
+ *   (ex : `question.scoring_corrected` E1-S10 V1).
+ */
+type AuditAction = "create" | "update" | "delete" | string;
 
 interface AuditLogParams {
   supabase: SupabaseClient;
