@@ -57,7 +57,9 @@ export function SectionE({ bpf, year, entityId }: SectionEProps) {
         const totalHours = sessions.reduce((sum, s) => sum + (s.planned_hours || 0), 0);
         setAutoData({ hours: totalHours, trainers: trainerIds.size, sessions });
       }
-    } catch { /* ignore */ }
+    } catch (err) {
+      console.error("[SectionE] Erreur chargement sous-traitance:", err);
+    }
     setLoading(false);
   }, [entityId, year, supabase]);
 

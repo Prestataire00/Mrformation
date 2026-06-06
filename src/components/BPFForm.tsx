@@ -26,6 +26,7 @@ import {
   SectionF3,
   SectionF4,
   SectionG,
+  SectionH,
 } from "./bpf";
 import { computeSectionC, computeSectionD, getF3Index, isRncpIndex } from "@/lib/bpf-calculator";
 import type { SectionDResult } from "@/lib/bpf-calculator";
@@ -89,12 +90,29 @@ export function BPFForm({ title }: BPFFormProps) {
     reason: string;
     label?: string;
     applied?: boolean;
+    selected?: boolean;
   }
   const [aiLoading, setAiLoading] = useState(false);
   const [aiDialogOpen, setAiDialogOpen] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState<AISuggestion[]>([]);
   const [aiType, setAiType] = useState<string>("");
   const [aiApplying, setAiApplying] = useState(false);
+
+  // Entity BPF data (Section A + H)
+  interface EntityBPFData {
+    name: string;
+    siret?: string | null;
+    naf_code?: string | null;
+    nda_number?: string | null;
+    address?: string | null;
+    phone?: string | null;
+    email?: string | null;
+    legal_representative?: string | null;
+  }
+  const [entityData, setEntityData] = useState<EntityBPFData | null>(null);
+
+  // Date validation
+  const dateError = dateFrom && dateTo && dateFrom > dateTo ? "La date de début doit précéder la date de fin" : null;
 
   const fiscalYear = dateFrom ? new Date(dateFrom).getFullYear() : currentYear;
 
@@ -103,6 +121,17 @@ export function BPFForm({ title }: BPFFormProps) {
     setLoading(true);
 
     try {
+      // ─── Entity data (Section A + H) ───
+      const { data: entityRow } = await supabase
+        .from("entities")
+        .select("name, siret, naf_code, nda_number, address, phone, email, legal_representative")
+        .eq("id", entityId)
+        .maybeSingle();
+
+      if (entityRow) {
+        setEntityData(entityRow as EntityBPFData);
+      }
+
       // ─── Section E: Trainers (internal vs external) ───
       const { count: internalCount } = await supabase
         .from("trainers")
@@ -455,7 +484,8 @@ export function BPFForm({ title }: BPFFormProps) {
           }
         }
         setSatisfactionScore(satScore);
-      } catch {
+      } catch (err) {
+        console.error("[BPF] Erreur chargement satisfaction:", err);
         setSatisfactionScore(null);
       }
 
@@ -507,7 +537,8 @@ export function BPFForm({ title }: BPFFormProps) {
           ca: prevCA,
           satisfaction: null,
         });
-      } catch {
+      } catch (err) {
+        console.error("[BPF] Erreur chargement comparaison N-1:", err);
         setPrevYearData(null);
       }
 
@@ -580,7 +611,8 @@ export function BPFForm({ title }: BPFFormProps) {
         setFilteredTo(dateTo);
       }
     } catch (err) {
-      console.error("BPF fetch error:", err);
+      console.error("[BPF] Erreur chargement données:", err);
+      toast({ title: "Erreur de chargement", description: "Impossible de charger les données BPF. Vérifiez votre connexion.", variant: "destructive" });
     }
 
     setLoading(false);
@@ -657,7 +689,7 @@ export function BPFForm({ title }: BPFFormProps) {
         return;
       }
 
-      setAiSuggestions(result.suggestions || []);
+      setAiSuggestions((result.suggestions || []).map((s: AISuggestion) => ({ ...s, selected: true })));
       setAiDialogOpen(true);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Erreur";
@@ -671,7 +703,7 @@ export function BPFForm({ title }: BPFFormProps) {
     let applied = 0;
 
     for (const s of aiSuggestions) {
-      if (s.applied) continue;
+      if (s.applied || !s.selected) continue;
 
       try {
         if (aiType === "learner_type") {
@@ -683,7 +715,9 @@ export function BPFForm({ title }: BPFFormProps) {
         }
         s.applied = true;
         applied++;
-      } catch { /* continue */ }
+      } catch (err) {
+        console.error("[BPF] Erreur application suggestion IA:", err);
+      }
     }
 
     setAiSuggestions([...aiSuggestions]);
@@ -739,7 +773,12 @@ export function BPFForm({ title }: BPFFormProps) {
   };
 
   // ─── Export helpers ───
+  const [exportingExcel, setExportingExcel] = useState(false);
+  const [exportingPDF, setExportingPDF] = useState(false);
+
   const handleExportExcel = () => {
+    setExportingExcel(true);
+    try {
     const headers = ["Section", "Libellé", "Valeur / Stagiaires", "Heures"];
     const rows: (string | number)[][] = [];
 
@@ -768,24 +807,38 @@ export function BPFForm({ title }: BPFFormProps) {
     rows.push(["G", "Formations sous-traitées", sectionGManual.stagiaires, sectionGManual.heures]);
 
     downloadXlsx(headers, rows, `BPF_${entityName.replace(/\s+/g, "_")}_${fiscalYear}.xlsx`);
+    } catch (err) {
+      console.error("[BPF] Erreur export Excel:", err);
+      toast({ title: "Erreur export Excel", description: "Impossible de générer le fichier Excel.", variant: "destructive" });
+    } finally {
+      setExportingExcel(false);
+    }
   };
 
   const handleExportPDF = async () => {
-    const { exportBPFFullToPDF } = await import("@/lib/pdf-export");
-    exportBPFFullToPDF({
-      entityName,
-      fiscalYear,
-      dateFrom: filteredFrom,
-      dateTo: filteredTo,
-      bpf,
-      sectionC,
-      sectionD,
-      sectionGManual,
-      financialLines: FINANCIAL_LINES,
-      chargeLines: CHARGE_LINES,
-      getLineValue,
-      totalProduits: totalProduits(),
-    });
+    setExportingPDF(true);
+    try {
+      const { exportBPFFullToPDF } = await import("@/lib/pdf-export");
+      await exportBPFFullToPDF({
+        entityName,
+        fiscalYear,
+        dateFrom: filteredFrom,
+        dateTo: filteredTo,
+        bpf,
+        sectionC,
+        sectionD,
+        sectionGManual,
+        financialLines: FINANCIAL_LINES,
+        chargeLines: CHARGE_LINES,
+        getLineValue,
+        totalProduits: totalProduits(),
+      });
+    } catch (err) {
+      console.error("[BPF] Erreur export PDF:", err);
+      toast({ title: "Erreur export PDF", description: "Impossible de générer le fichier PDF.", variant: "destructive" });
+    } finally {
+      setExportingPDF(false);
+    }
   };
 
   if (loading) {
@@ -802,6 +855,8 @@ export function BPFForm({ title }: BPFFormProps) {
         title={title}
         onExportExcel={handleExportExcel}
         onExportPDF={handleExportPDF}
+        exportingExcel={exportingExcel}
+        exportingPDF={exportingPDF}
       />
 
       {/* ═══ KPI CARDS ═══ */}
@@ -886,7 +941,7 @@ export function BPFForm({ title }: BPFFormProps) {
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-semibold text-indigo-900 flex items-center gap-2 text-sm">
               <ClipboardCheck className="h-4 w-4" />
-              Vérification des données — Score : {verifications.filter((v) => v.ok).length}/{verifications.length} ({Math.round((verifications.filter((v) => v.ok).length / verifications.length) * 100)}%)
+              {Math.round((verifications.filter((v) => v.ok).length / verifications.length) * 100)}% prêt — {verifications.filter((v) => !v.ok).length} action{verifications.filter((v) => !v.ok).length > 1 ? "s" : ""} requise{verifications.filter((v) => !v.ok).length > 1 ? "s" : ""}
             </h3>
           </div>
           <div className="space-y-1.5">
@@ -917,7 +972,7 @@ export function BPFForm({ title }: BPFFormProps) {
                       </button>
                     )}
                     {!check.ok && check.link && (
-                      <Link href={check.link} className="text-xs font-medium underline hover:no-underline">
+                      <Link href={check.link} target="_blank" className="text-xs font-medium underline hover:no-underline">
                         Corriger →
                       </Link>
                     )}
@@ -929,7 +984,7 @@ export function BPFForm({ title }: BPFFormProps) {
         </div>
       )}
 
-      <SectionA entityName={entityName} />
+      <SectionA entityName={entityName} entityData={entityData} />
 
       <SectionB
         dateFrom={dateFrom}
@@ -939,6 +994,7 @@ export function BPFForm({ title }: BPFFormProps) {
         onDateFromChange={setDateFrom}
         onDateToChange={setDateTo}
         onFilter={handleFilter}
+        dateError={dateError}
       />
 
       <SectionC
@@ -955,6 +1011,38 @@ export function BPFForm({ title }: BPFFormProps) {
 
       <SectionE bpf={bpf} />
 
+      {/* ═══ BADGE COHÉRENCE F1=F3=F4 ═══ */}
+      {(() => {
+        const f1Total = bpf.f1[bpf.f1.length - 1];
+        const f3Total = bpf.f3[bpf.f3.length - 1];
+        const f4TotalStagiaires = bpf.f4.reduce((s, r) => s + r.stagiaires, 0);
+        const f4TotalHeures = bpf.f4.reduce((s, r) => s + r.heures, 0);
+
+        const stagOk = f1Total?.stagiaires === f3Total?.stagiaires && f1Total?.stagiaires === f4TotalStagiaires;
+        const heuresOk = f1Total?.heures === f3Total?.heures && f1Total?.heures === f4TotalHeures;
+        const coherent = stagOk && heuresOk;
+        // Don't show badge if all zeros (no data)
+        const hasData = (f1Total?.stagiaires || 0) > 0;
+
+        if (!hasData) return null;
+
+        return (
+          <div className={`flex items-start gap-2 p-4 rounded-xl text-sm mb-4 ${coherent ? "bg-green-50 border border-green-200 text-green-700" : "bg-red-50 border border-red-200 text-red-700"}`}>
+            {coherent ? <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0" /> : <XCircle className="h-4 w-4 mt-0.5 shrink-0" />}
+            <div>
+              <p className="font-medium">{coherent ? "Cohérence F1=F3=F4 vérifiée" : "Incohérence F1/F3/F4 détectée"}</p>
+              {!coherent && (
+                <p className="text-xs mt-1">
+                  Stagiaires — F1: {f1Total?.stagiaires}, F3: {f3Total?.stagiaires}, F4: {f4TotalStagiaires}
+                  {" | "}
+                  Heures — F1: {f1Total?.heures}, F3: {f3Total?.heures}, F4: {f4TotalHeures}
+                </p>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
       <SectionF1 bpf={bpf} />
 
       <SectionF2 bpf={bpf} />
@@ -969,6 +1057,8 @@ export function BPFForm({ title }: BPFFormProps) {
         onSectionGChange={setSectionGManual}
         onSaveG={handleSaveG}
       />
+
+      <SectionH legalRepresentative={entityData?.legal_representative} />
 
       {/* ═══ DIALOG SUGGESTIONS IA ═══ */}
       <Dialog open={aiDialogOpen} onOpenChange={setAiDialogOpen}>
@@ -985,8 +1075,20 @@ export function BPFForm({ title }: BPFFormProps) {
           ) : (
             <div className="space-y-2">
               {aiSuggestions.map((s, i) => (
-                <div key={i} className={`flex items-center justify-between px-3 py-2 rounded-lg text-sm ${s.applied ? "bg-green-50 border border-green-200" : "bg-gray-50 border border-gray-200"}`}>
-                  <div className="min-w-0">
+                <div key={i} className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm ${s.applied ? "bg-green-50 border border-green-200" : s.selected ? "bg-gray-50 border border-gray-200" : "bg-gray-50/50 border border-gray-100 opacity-60"}`}>
+                  {!s.applied && (
+                    <input
+                      type="checkbox"
+                      checked={s.selected ?? true}
+                      onChange={() => {
+                        const updated = [...aiSuggestions];
+                        updated[i] = { ...updated[i], selected: !updated[i].selected };
+                        setAiSuggestions(updated);
+                      }}
+                      className="h-4 w-4 shrink-0 rounded border-gray-300"
+                    />
+                  )}
+                  <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       {s.applied && <CheckCircle2 className="h-3.5 w-3.5 text-green-600 shrink-0" />}
                       <span className="font-medium">{s.id.slice(0, 8)}...</span>
@@ -1003,11 +1105,11 @@ export function BPFForm({ title }: BPFFormProps) {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setAiDialogOpen(false)}>Fermer</Button>
-            {aiSuggestions.some((s) => !s.applied) && (
+            {aiSuggestions.some((s) => !s.applied && s.selected) && (
               <Button onClick={handleApplyAiSuggestions} disabled={aiApplying}>
                 {aiApplying && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                 <Sparkles className="h-4 w-4 mr-2" />
-                Appliquer toutes les suggestions
+                Appliquer ({aiSuggestions.filter((s) => !s.applied && s.selected).length} sélectionnée{aiSuggestions.filter((s) => !s.applied && s.selected).length > 1 ? "s" : ""})
               </Button>
             )}
           </DialogFooter>

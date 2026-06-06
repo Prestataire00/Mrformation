@@ -9,3 +9,4 @@ export { SectionF2 } from "./SectionF2";
 export { SectionF3 } from "./SectionF3";
 export { SectionF4 } from "./SectionF4";
 export { SectionG } from "./SectionG";
+export { SectionH } from "./SectionH";
