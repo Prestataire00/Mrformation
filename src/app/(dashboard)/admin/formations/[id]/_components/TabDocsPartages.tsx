@@ -91,11 +91,7 @@ export function TabDocsPartages({ formation, onRefresh }: Props) {
         .from("formation-docs")
         .upload(filePath, file);
 
-      if (uploadError) {
-        toast({ title: "Erreur upload", description: uploadError.message, variant: "destructive" });
-        setUploading(null);
-        return;
-      }
+      if (uploadError) throw uploadError;
 
       // Get public URL
       const { data: urlData } = supabase.storage
@@ -116,14 +112,15 @@ export function TabDocsPartages({ formation, onRefresh }: Props) {
         uploaded_by: user?.id || null,
       });
 
-      if (insertError) {
-        toast({ title: "Erreur", description: insertError.message, variant: "destructive" });
-      } else {
-        toast({ title: "Document ajouté" });
-        onRefresh();
-      }
-    } catch {
-      toast({ title: "Erreur réseau", variant: "destructive" });
+      if (insertError) throw insertError;
+
+      toast({ title: "Document partagé" });
+      await onRefresh();
+    } catch (error) {
+      console.error("[TabDocsPartages] handleUpload failed:", error);
+      const message = error instanceof Error ? error.message : "Impossible d'uploader le document";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
+      return;
     } finally {
       setUploading(null);
     }
@@ -132,24 +129,28 @@ export function TabDocsPartages({ formation, onRefresh }: Props) {
   const handleDelete = async (doc: FormationDocument) => {
     setDeleting(doc.id);
 
-    // Extract file path from URL for storage deletion
+    // Extract file path from URL for storage deletion (non-blocking)
     try {
       const urlParts = doc.file_url.split("/formation-docs/");
       if (urlParts[1]) {
         await supabase.storage.from("formation-docs").remove([urlParts[1]]);
       }
-    } catch {
-      // Storage deletion failure is non-blocking
+    } catch (storageError) {
+      console.warn("[TabDocsPartages] Storage deletion failed (non-blocking):", storageError);
     }
 
-    const { error } = await supabase.from("formation_documents").delete().eq("id", doc.id);
-    setDeleting(null);
-
-    if (error) {
-      toast({ title: "Erreur", variant: "destructive" });
-    } else {
+    try {
+      const { error } = await supabase.from("formation_documents").delete().eq("id", doc.id);
+      if (error) throw error;
       toast({ title: "Document supprimé" });
-      onRefresh();
+      await onRefresh();
+    } catch (error) {
+      console.error("[TabDocsPartages] handleDelete failed:", error);
+      const message = error instanceof Error ? error.message : "Impossible de supprimer le document";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
+      return;
+    } finally {
+      setDeleting(null);
     }
   };
 
