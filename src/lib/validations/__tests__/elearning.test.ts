@@ -92,7 +92,7 @@ describe("elearningCreateConfigSchema", () => {
     title: "Formation X",
     description: "",
     objectives: "",
-    course_type: "presentation_quiz" as const,
+    course_type: "complete" as const,
     num_chapters: 5,
     final_quiz_target_count: 10,
     gamma_theme_id: "",

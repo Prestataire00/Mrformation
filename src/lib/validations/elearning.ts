@@ -66,11 +66,14 @@ export type ElearningDurationInput = z.input<typeof elearningDurationSchema>;
 
 // ── Wizard create (configuration générale) ─────────────────────────
 
+/**
+ * 3 valeurs alignées sur la contrainte DB CHECK elearning_courses.course_type
+ * (vérifié S0 06/06 — source de vérité : Supabase prod).
+ */
 export const elearningCourseTypeEnum = z.enum([
-  "presentation_quiz",
-  "presentation_quiz_flashcard",
+  "presentation",
   "quiz",
-  "flashcards",
+  "complete",
 ]);
 
 export const elearningCreateConfigSchema = z.object({
