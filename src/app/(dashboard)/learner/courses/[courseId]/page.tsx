@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
 import {
+  AlertTriangle,
   ArrowLeft,
   ArrowRight,
   BookOpen,
@@ -23,6 +24,7 @@ import {
   Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Skeleton } from "@/components/ui/skeleton";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                               */
@@ -252,6 +254,80 @@ function FlashcardCard({
 }
 
 /* ------------------------------------------------------------------ */
+/*  Chapter loading skeleton                                            */
+/* ------------------------------------------------------------------ */
+function ChapterSkeleton() {
+  return (
+    <div className="flex flex-col h-full">
+      {/* Header skeleton */}
+      <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200">
+        <div className="flex items-center gap-3">
+          <Skeleton className="w-8 h-8 rounded-lg" />
+          <div>
+            <Skeleton className="h-4 w-40 mb-1" />
+            <Skeleton className="h-3 w-16" />
+          </div>
+        </div>
+      </div>
+      {/* Content skeleton */}
+      <div className="flex-1 px-8 py-8">
+        <div className="max-w-3xl mx-auto space-y-4">
+          <Skeleton className="h-3 w-24" />
+          <Skeleton className="h-7 w-72" />
+          <div className="flex gap-2 mt-4">
+            <Skeleton className="h-6 w-20 rounded-full" />
+            <Skeleton className="h-6 w-24 rounded-full" />
+            <Skeleton className="h-6 w-16 rounded-full" />
+          </div>
+          <div className="space-y-3 mt-6">
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-5/6" />
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-4/6" />
+          </div>
+          <div className="space-y-3 mt-6">
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-3/4" />
+          </div>
+        </div>
+      </div>
+      {/* Footer skeleton */}
+      <div className="px-6 py-4 border-t border-gray-200 flex justify-end">
+        <Skeleton className="h-10 w-40 rounded-xl" />
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Chapter load error fallback                                         */
+/* ------------------------------------------------------------------ */
+function ChapterLoadError({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="flex flex-col items-center justify-center h-full px-8 text-center gap-4">
+      <div className="w-16 h-16 rounded-2xl bg-red-50 flex items-center justify-center">
+        <AlertTriangle className="h-8 w-8 text-red-500" />
+      </div>
+      <h3 className="text-lg font-semibold text-gray-900">
+        Impossible de charger le chapitre
+      </h3>
+      <p className="text-sm text-gray-500 max-w-sm">
+        Une erreur est survenue lors du chargement. Vérifiez votre connexion et réessayez.
+      </p>
+      <Button
+        onClick={onRetry}
+        variant="outline"
+        className="gap-2 rounded-xl"
+      >
+        <RotateCcw className="h-4 w-4" /> Recharger
+      </Button>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  Main component                                                      */
 /* ------------------------------------------------------------------ */
 export default function CoursePlayerPage() {
@@ -278,6 +354,11 @@ export default function CoursePlayerPage() {
 
   // Quiz navigation per chapter
   const [currentQuestionIdx, setCurrentQuestionIdx] = useState<Map<number, number>>(new Map());
+
+  // Chapter loading state (E2-S09)
+  const [isLoadingChapter, setIsLoadingChapter] = useState(false);
+  const [chapterLoadError, setChapterLoadError] = useState(false);
+  const pendingChapterTarget = useRef<number | null>(null);
 
   // Chapter navigation drawer
   const [showChapterNav, setShowChapterNav] = useState(false);
@@ -1361,16 +1442,44 @@ export default function CoursePlayerPage() {
   }
 
   /* ---------------------------------------------------------------- */
-  /*  Chapter navigation helper                                         */
+  /*  Chapter navigation helper (E2-S09: loading skeleton + error)      */
   /* ---------------------------------------------------------------- */
+  async function handleChapterChange(targetScreenIdx: number) {
+    setChapterLoadError(false);
+    setIsLoadingChapter(true);
+    pendingChapterTarget.current = targetScreenIdx;
+    try {
+      // Allow React to render the skeleton before committing the navigation
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      setCurrentIdx(targetScreenIdx);
+    } catch (error) {
+      console.error("[LearnerCourseReader] chapter navigation failed:", error);
+      setChapterLoadError(true);
+      toast({
+        title: "Erreur",
+        description: "Impossible de charger le chapitre",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingChapter(false);
+    }
+  }
+
+  function retryChapterLoad() {
+    const target = pendingChapterTarget.current;
+    if (target !== null) {
+      handleChapterChange(target);
+    }
+  }
+
   function goToChapter(chapterIdx: number) {
     // Find the gamma_chapter screen for this chapter
     const targetIdx = screens.findIndex(
       (s) => s.type === "gamma_chapter" && "chapterIdx" in s && s.chapterIdx === chapterIdx
     );
     if (targetIdx >= 0) {
-      setCurrentIdx(targetIdx);
       setShowChapterNav(false);
+      handleChapterChange(targetIdx);
     }
   }
 
@@ -1481,7 +1590,7 @@ export default function CoursePlayerPage() {
       </div>
 
       {/* Screen area */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden" aria-live="polite" aria-busy={isLoadingChapter}>
         <div className="flex-1 overflow-y-auto">
           <div className={cn(
             "min-h-full flex flex-col",
@@ -1491,7 +1600,13 @@ export default function CoursePlayerPage() {
               "flex-1 bg-white overflow-hidden flex flex-col",
               isGammaScreen ? "min-h-[600px]" : "rounded-2xl shadow-sm border border-gray-200 min-h-[500px]"
             )}>
-              {currentScreen && renderScreen(currentScreen)}
+              {isLoadingChapter ? (
+                <ChapterSkeleton />
+              ) : chapterLoadError ? (
+                <ChapterLoadError onRetry={retryChapterLoad} />
+              ) : (
+                currentScreen && renderScreen(currentScreen)
+              )}
             </div>
           </div>
         </div>
