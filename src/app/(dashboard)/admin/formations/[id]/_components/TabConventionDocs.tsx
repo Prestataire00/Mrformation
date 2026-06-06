@@ -26,6 +26,7 @@ import { resolveVariables } from "@/lib/utils/resolve-variables";
 import { validateCompanyExport, findUncoveredLearners } from "@/lib/utils/formation-companies";
 import { exportHtmlToPDF } from "@/lib/pdf-export";
 import { SubcontractingContractsPanel } from "./sections/SubcontractingContractsPanel";
+import { BatchOpsConfirmDialog } from "./BatchOpsConfirmDialog";
 import { hasBatchEndpoint, downloadBatchZip } from "@/lib/utils/batch-doc-download";
 import { sendBatchEmail, hasBatchSendEndpoint } from "@/lib/utils/batch-doc-send";
 import {
@@ -278,6 +279,11 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
 
   // h-22 : Dialog catalogue documents secondaires
   const [secondaryCatalogOpen, setSecondaryCatalogOpen] = useState(false);
+
+  // E3-S05 : Batch ops confirmation dialogs
+  const [confirmMassSend, setConfirmMassSend] = useState<{ docType: ConventionDocType } | null>(null);
+  const [confirmAssignAll, setConfirmAssignAll] = useState<{ templateId: string } | null>(null);
+  const [confirmOwner, setConfirmOwner] = useState<{ ownerType: ConventionOwnerType; ownerId: string; ownerName: string } | null>(null);
 
   // Custom doc template selections
   const [customSelections, setCustomSelections] = useState<Record<string, string>>({});
@@ -1287,10 +1293,10 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
               size="sm"
               variant="outline"
               className="h-6 text-xs gap-1"
-              onClick={() => handleConfirmAllForOwner(ownerType, ownerId)}
-              disabled={saving === `confirm-all-${ownerId}`}
+              onClick={() => setConfirmOwner({ ownerType, ownerId, ownerName })}
+              disabled={saving === `confirm-all-owner-${ownerId}`}
             >
-              {saving === `confirm-all-${ownerId}` && <Loader2 className="h-3 w-3 animate-spin" />}
+              {saving === `confirm-all-owner-${ownerId}` && <Loader2 className="h-3 w-3 animate-spin" />}
               <CheckCircle className="h-3 w-3" /> Tout figer
             </Button>
           </div>
@@ -1688,7 +1694,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
                     size="sm"
                     variant="outline"
                     className="h-6 text-xs gap-1"
-                    onClick={() => handleMassSend(docType)}
+                    onClick={() => setConfirmMassSend({ docType })}
                     disabled={isMassSending}
                   >
                     {isMassSending && <Loader2 className="h-3 w-3 animate-spin" />}
@@ -1733,7 +1739,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
               className="h-7 text-xs shrink-0"
               onClick={() => {
                 const tid = customSelections["mass-nosig"];
-                if (tid) handleAssignTemplateToAll(tid);
+                if (tid) setConfirmAssignAll({ templateId: tid });
               }}
               disabled={!customSelections["mass-nosig"] || saving === "assign-all"}
             >
@@ -2212,6 +2218,43 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
         formationId={formation.id}
         onAttributed={async () => {
           await onRefresh();
+        }}
+      />
+
+      {/* E3-S05 : Batch ops confirmation dialogs */}
+      <BatchOpsConfirmDialog
+        open={!!confirmMassSend}
+        onOpenChange={(open) => { if (!open) setConfirmMassSend(null); }}
+        title={`Envoyer ${confirmMassSend ? getDocsByType(confirmMassSend.docType).filter(d => d.is_confirmed && !d.is_sent).length : 0} document(s) par email`}
+        itemsCount={confirmMassSend ? getDocsByType(confirmMassSend.docType).filter(d => d.is_confirmed && !d.is_sent).length : 0}
+        itemsLabel="documents"
+        failureMode="partial"
+        onConfirm={async () => {
+          if (confirmMassSend) await handleMassSend(confirmMassSend.docType);
+        }}
+      />
+
+      <BatchOpsConfirmDialog
+        open={!!confirmAssignAll}
+        onOpenChange={(open) => { if (!open) setConfirmAssignAll(null); }}
+        title={`Attribuer le document à ${enrollments.filter(e => e.learner).length} apprenant(s)`}
+        itemsCount={enrollments.filter(e => e.learner).length}
+        itemsLabel="apprenants"
+        failureMode="partial"
+        onConfirm={async () => {
+          if (confirmAssignAll) await handleAssignTemplateToAll(confirmAssignAll.templateId);
+        }}
+      />
+
+      <BatchOpsConfirmDialog
+        open={!!confirmOwner}
+        onOpenChange={(open) => { if (!open) setConfirmOwner(null); }}
+        title={`Figer tous les documents de ${confirmOwner?.ownerName ?? ""}`}
+        itemsCount={confirmOwner ? getDocsForOwner(confirmOwner.ownerType, confirmOwner.ownerId).filter(d => !d.is_confirmed).length : 0}
+        itemsLabel="documents"
+        failureMode="atomic"
+        onConfirm={async () => {
+          if (confirmOwner) await handleConfirmAllForOwner(confirmOwner.ownerType, confirmOwner.ownerId);
         }}
       />
     </div>
