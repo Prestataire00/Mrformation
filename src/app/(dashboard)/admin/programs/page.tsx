@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Program, ProgramContent, ProgramVersion } from "@/lib/types";
 import {
-  fetchPrograms as fetchProgramsService,
   createProgram as createProgramService,
   updateProgram as updateProgramService,
   deleteProgram as deleteProgramService,
@@ -18,6 +17,10 @@ import {
   type ProgramUsageCounts,
   type OrphanLinkCounts,
 } from "@/lib/services/programs";
+import {
+  fetchPaginatedData,
+  type PaginatedResult,
+} from "@/lib/services/pagination";
 import {
   programHubFormSchema,
   getProgramFormErrors,
@@ -127,6 +130,9 @@ const emptyForm: ProgramFormData = {
   bpf_funding_type: "",
 };
 
+// E3-S03 : pagination serveur via fetchPaginatedData
+const PAGE_SIZE = 12;
+
 export default function ProgramsPage() {
   const supabase = createClient();
   const router = useRouter();
@@ -134,6 +140,7 @@ export default function ProgramsPage() {
   const { entityId } = useEntity();
 
   const [programs, setPrograms] = useState<Program[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   // CONT-5 audit BMAD : counts d'usage par programme pour affichage badge.
   const [usageCounts, setUsageCounts] = useState<Record<string, ProgramUsageCounts>>({});
@@ -141,6 +148,12 @@ export default function ProgramsPage() {
   const [orphanCounts, setOrphanCounts] = useState<OrphanLinkCounts | null>(null);
   const [search, setSearch] = useState("");
   const [activeFilter, setActiveFilter] = useState<"all" | "active" | "inactive">("all");
+
+  // E3-S03 : pagination serveur
+  const [currentPage, setCurrentPage] = useState(1);
+  // Debounce search pour éviter une requête par frappe
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [debouncedSearch, setDebouncedSearch] = useState("");
 
   // Add/Edit dialog
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -154,11 +167,6 @@ export default function ProgramsPage() {
   // BPF section toggle
   const [bpfSectionOpen, setBpfSectionOpen] = useState(false);
 
-  // Lot H audit BMAD : pagination client (jusqu'à ~500 programmes, au-delà
-  // il faudrait passer en LIMIT/OFFSET serveur).
-  const PAGE_SIZE = 12;
-  const [currentPage, setCurrentPage] = useState(1);
-
   // Version history dialog
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
   const [selectedProgram, setSelectedProgram] = useState<Program | null>(null);
@@ -171,63 +179,82 @@ export default function ProgramsPage() {
   const [programToDelete, setProgramToDelete] = useState<Program | null>(null);
   const [deleting, setDeleting] = useState(false);
   // Lot G audit BMAD : compte les références FK pour avertir l'utilisateur
-  // avant un DELETE qui mettrait à NULL des trainings/sessions/devis ou
-  // cascade-supprimerait des program_enrollments / program_versions.
   const [deleteCounts, setDeleteCounts] = useState<ProgramReferenceCounts | null>(null);
   const [countsLoading, setCountsLoading] = useState(false);
 
+  // Debounce search input
+  useEffect(() => {
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    searchTimeoutRef.current = setTimeout(() => {
+      setDebouncedSearch(search);
+      setCurrentPage(1);
+    }, 300);
+    return () => {
+      if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    };
+  }, [search]);
+
+  // Reset page when filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeFilter]);
+
+  // E3-S03 : fetch paginé serveur
   const fetchPrograms = useCallback(async () => {
     if (!entityId) return;
     setLoading(true);
-    // Lot A audit BMAD : passe par le service centralisé.
-    const result = await fetchProgramsService(supabase, entityId);
-    if (!result.ok) {
+
+    const offset = (currentPage - 1) * PAGE_SIZE;
+
+    // Build is_active filter for statusIn:
+    // "is_active" is boolean in DB — Supabase .in() on booleans needs special handling.
+    // We use statusIn with string values that Supabase/PostgREST converts.
+    const statusIn =
+      activeFilter === "active" ? ["true"] :
+      activeFilter === "inactive" ? ["false"] :
+      undefined;
+
+    try {
+      const result = await fetchPaginatedData<Program>(supabase, "programs", {
+        filters: {
+          entityId,
+          search: debouncedSearch || undefined,
+          searchColumn: "title",
+          ...(statusIn && { statusIn, statusColumn: "is_active" }),
+        },
+        pageSize: PAGE_SIZE,
+        offset,
+      });
+
+      setPrograms(result.data);
+      setTotalCount(result.totalCount);
+
+      // CONT-5 : charge les counts en arrière-plan (l'UI ne bloque pas).
+      if (result.data.length > 0) {
+        const ids = result.data.map((p) => p.id);
+        const counts = await fetchProgramsUsageCountsService(supabase, ids);
+        if (counts.ok) setUsageCounts(counts.countsByProgram);
+      } else {
+        setUsageCounts({});
+      }
+
+      // CONT-7 : audit orphelins (formations sans programme, sessions sans formation).
+      const orphans = await auditOrphanLinksService(supabase, entityId);
+      if (orphans.ok) setOrphanCounts(orphans.counts);
+    } catch (err) {
       toast({ title: "Erreur", description: "Impossible de charger les programmes.", variant: "destructive" });
-      setLoading(false);
-      return;
     }
-    setPrograms(result.programs);
-
-    // CONT-5 : charge les counts en arrière-plan (l'UI ne bloque pas).
-    if (result.programs.length > 0) {
-      const ids = result.programs.map((p) => p.id);
-      const counts = await fetchProgramsUsageCountsService(supabase, ids);
-      if (counts.ok) setUsageCounts(counts.countsByProgram);
-    } else {
-      setUsageCounts({});
-    }
-
-    // CONT-7 : audit orphelins (formations sans programme, sessions sans formation).
-    const orphans = await auditOrphanLinksService(supabase, entityId);
-    if (orphans.ok) setOrphanCounts(orphans.counts);
 
     setLoading(false);
-  }, [entityId, supabase, toast]);
+  }, [entityId, supabase, toast, currentPage, debouncedSearch, activeFilter]);
 
   useEffect(() => {
     fetchPrograms();
   }, [fetchPrograms]);
 
-  const filtered = programs.filter((p) => {
-    const matchSearch =
-      search === "" ||
-      p.title.toLowerCase().includes(search.toLowerCase()) ||
-      p.description?.toLowerCase().includes(search.toLowerCase()) ||
-      p.objectives?.toLowerCase().includes(search.toLowerCase());
-    const matchActive =
-      activeFilter === "all" ||
-      (activeFilter === "active" && p.is_active) ||
-      (activeFilter === "inactive" && !p.is_active);
-    return matchSearch && matchActive;
-  });
-
-  // Lot H : pagination + reset page quand les filtres changent.
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  // E3-S03 : pagination calculée côté serveur
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
   const safePage = Math.min(currentPage, totalPages);
-  const pagedFiltered = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [search, activeFilter]);
 
   const validateContent = (raw: string): boolean => {
     try {
@@ -276,13 +303,11 @@ export default function ProgramsPage() {
   };
 
   const handleSave = async () => {
-    // Lot C audit BMAD : validation Zod centralisée — remplace les checks
-    // manuels (if !title.trim() / validateContent inline) par un parse strict.
+    // Lot C audit BMAD : validation Zod centralisée
     const parsed = programHubFormSchema.safeParse(formData);
     if (!parsed.success) {
       const errors = getProgramFormErrors<ProgramHubFormInput>(parsed);
       setFormErrors(errors);
-      // Surfacer aussi l'erreur content dans son state legacy pour l'affichage existant.
       if (errors.content) setContentError(errors.content);
       toast({
         title: "Formulaire invalide",
@@ -318,8 +343,6 @@ export default function ProgramsPage() {
       return;
     }
 
-    // Lot A audit BMAD : passe par le service centralisé (entity_id filter
-    // garanti + colonnes explicites + ServiceResult typé).
     const servicePayload = {
       title: payload.title,
       description: payload.description,
@@ -388,7 +411,6 @@ export default function ProgramsPage() {
     if (!selectedProgram || !entityId) return;
     setCreatingVersion(true);
 
-    // Lot A : service centralisé (snapshot + increment).
     const result = await createProgramVersionService(
       supabase,
       selectedProgram.id,
@@ -414,7 +436,6 @@ export default function ProgramsPage() {
   const openDeleteDialog = async (program: Program) => {
     setProgramToDelete(program);
     setDeleteDialogOpen(true);
-    // Lot G : pré-charge les comptes FK pour afficher l'avertissement.
     setDeleteCounts(null);
     setCountsLoading(true);
     const result = await countProgramReferencesService(supabase, program.id);
@@ -422,8 +443,6 @@ export default function ProgramsPage() {
     setCountsLoading(false);
   };
 
-  // Lot G : soft-delete = désactiver (is_active=false) au lieu de supprimer.
-  // Recommandé quand le programme a des trainings/sessions/devis liés.
   const handleSoftDelete = async () => {
     if (!programToDelete || !entityId) return;
     setDeleting(true);
@@ -446,7 +465,6 @@ export default function ProgramsPage() {
   const handleDelete = async () => {
     if (!programToDelete || !entityId) return;
     setDeleting(true);
-    // Lot A audit BMAD : service centralisé (entity_id filter inclus).
     const result = await deleteProgramService(supabase, programToDelete.id, entityId);
     if (!result.ok) {
       toast({ title: "Erreur", description: result.error.message, variant: "destructive" });
@@ -459,13 +477,9 @@ export default function ProgramsPage() {
     setDeleting(false);
   };
 
-  const activeCount = programs.filter((p) => p.is_active).length;
-
   return (
     <div className="p-6 space-y-6">
-      {/* CONT-7 audit BMAD : bandeau de continuité — formations/sessions
-          orphelines (sans lien programme/formation). Visible seulement
-          si > 0 pour ne pas polluer l'UX quand tout est propre. */}
+      {/* CONT-7 audit BMAD : bandeau de continuité */}
       {orphanCounts && (orphanCounts.formationsWithoutProgram > 0 || orphanCounts.sessionsWithoutTraining > 0) && (
         <div className="border border-amber-200 bg-amber-50 rounded-lg p-3 flex items-start gap-3">
           <div className="text-amber-600 text-xl leading-none mt-0.5">⚠</div>
@@ -496,8 +510,8 @@ export default function ProgramsPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Programmes pédagogiques</h1>
           <p className="text-sm text-gray-500 mt-1">
-            {programs.length} programme{programs.length !== 1 ? "s" : ""} —{" "}
-            {activeCount} actif{activeCount !== 1 ? "s" : ""}
+            {totalCount} programme{totalCount !== 1 ? "s" : ""}
+            {activeFilter !== "all" && ` (filtre : ${activeFilter === "active" ? "actifs" : "inactifs"})`}
           </p>
         </div>
         <div className="flex gap-2">
@@ -550,7 +564,7 @@ export default function ProgramsPage() {
             <div key={i} className="h-52 rounded-xl bg-gray-100 animate-pulse" />
           ))}
         </div>
-      ) : filtered.length === 0 ? (
+      ) : programs.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <BookOpen className="h-12 w-12 text-gray-300 mb-3" />
           <p className="font-medium text-gray-600">Aucun programme trouvé</p>
@@ -562,7 +576,7 @@ export default function ProgramsPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {pagedFiltered.map((program) => (
+          {programs.map((program) => (
             <Card
               key={program.id}
               className={cn(
@@ -713,11 +727,11 @@ export default function ProgramsPage() {
         </div>
       )}
 
-      {/* Lot H audit BMAD : pagination si > 1 page */}
-      {!loading && filtered.length > 0 && totalPages > 1 && (
+      {/* E3-S03 : pagination serveur */}
+      {!loading && totalCount > 0 && totalPages > 1 && (
         <div className="flex items-center justify-between gap-3 pt-4">
           <p className="text-xs text-gray-500">
-            Affichage {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, filtered.length)} sur {filtered.length}
+            Affichage {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, totalCount)} sur {totalCount}
           </p>
           <div className="flex items-center gap-2">
             <Button
@@ -1047,8 +1061,7 @@ export default function ProgramsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation Dialog — Lot G audit BMAD : compte des refs FK +
-          option soft-delete pour éviter cassures silencieuses en prod. */}
+      {/* Delete Confirmation Dialog — Lot G audit BMAD */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
