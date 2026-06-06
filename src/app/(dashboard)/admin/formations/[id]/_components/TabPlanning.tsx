@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
-import { ChevronLeft, ChevronRight, Trash2, CheckCircle, AlertTriangle, Clock, Sparkles, UserX, Calendar, Download } from "lucide-react";
+import { ChevronLeft, ChevronRight, Trash2, CheckCircle, AlertTriangle, Clock, Sparkles, UserX, Calendar, Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -63,6 +63,8 @@ export function TabPlanning({ formation, onRefresh }: Props) {
   // PLAN-10 audit BMAD : Dialogs shadcn remplaçant les confirm() natifs.
   const [confirmDeleteAllOpen, setConfirmDeleteAllOpen] = useState(false);
   const [confirmMarkPlannedOpen, setConfirmMarkPlannedOpen] = useState(false);
+  // E2-S07 : loading state pour duplication de jour.
+  const [duplicating, setDuplicating] = useState(false);
 
   const timeSlots = formation.formation_time_slots || [];
 
@@ -209,15 +211,21 @@ export function TabPlanning({ formation, onRefresh }: Props) {
       return;
     }
     setDeleting(true);
-    // PLAN-4 audit BMAD : service centralisé (entity_id check).
-    const result = await deleteAllTimeSlotsForSession(supabase, formation.id, entityId);
-    if (!result.ok) {
-      toast({ title: "Erreur", description: result.error.message, variant: "destructive" });
-    } else {
+    try {
+      // PLAN-4 audit BMAD : service centralisé (entity_id check).
+      const result = await deleteAllTimeSlotsForSession(supabase, formation.id, entityId);
+      if (!result.ok) {
+        toast({ title: "Erreur", description: result.error.message, variant: "destructive" });
+        return;
+      }
       toast({ title: "Tous les créneaux supprimés" });
       await onRefresh();
+    } catch (error) {
+      console.error("[TabPlanning] handleDeleteAll failed:", error);
+      toast({ title: "Erreur", description: error instanceof Error ? error.message : "Suppression échouée", variant: "destructive" });
+    } finally {
+      setDeleting(false);
     }
-    setDeleting(false);
   };
 
   // PLAN-8 audit BMAD : duplique tous les slots du jour affiché vers
@@ -247,36 +255,42 @@ export function TabPlanning({ formation, onRefresh }: Props) {
       toast({ title: "Date invalide", variant: "destructive" });
       return;
     }
-    // Décale chaque slot du delta jour-cible − jour-source (en jours).
-    const dayMs = 24 * 60 * 60 * 1000;
-    const deltaDays = Math.round(
-      (Date.UTC(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate()) -
-        Date.UTC(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate())) /
-        dayMs,
-    );
-    const existing = timeSlots.length;
-    const inputs = slotsToday.map((s, i) => {
-      const newStart = new Date(new Date(s.start_time).getTime() + deltaDays * dayMs);
-      const newEnd = new Date(new Date(s.end_time).getTime() + deltaDays * dayMs);
-      return {
-        title: s.title,
-        start_time: newStart.toISOString(),
-        end_time: newEnd.toISOString(),
-        slot_order: existing + i + 1,
-        module_title: s.module_title,
-        module_objectives: s.module_objectives,
-        module_themes: s.module_themes,
-        module_exercises: s.module_exercises,
-      };
-    });
-    const result = await bulkCreateTimeSlots(supabase, formation.id, entityId, inputs);
-    if (!result.ok) {
-      toast({ title: "Erreur", description: result.error.message, variant: "destructive" });
-    } else {
-      toast({
-        title: `${result.count} créneau(x) dupliqué(s) vers le ${targetStr}`,
+    setDuplicating(true);
+    try {
+      // Décale chaque slot du delta jour-cible − jour-source (en jours).
+      const dayMs = 24 * 60 * 60 * 1000;
+      const deltaDays = Math.round(
+        (Date.UTC(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate()) -
+          Date.UTC(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate())) /
+          dayMs,
+      );
+      const existing = timeSlots.length;
+      const inputs = slotsToday.map((s, i) => {
+        const newStart = new Date(new Date(s.start_time).getTime() + deltaDays * dayMs);
+        const newEnd = new Date(new Date(s.end_time).getTime() + deltaDays * dayMs);
+        return {
+          title: s.title,
+          start_time: newStart.toISOString(),
+          end_time: newEnd.toISOString(),
+          slot_order: existing + i + 1,
+          module_title: s.module_title,
+          module_objectives: s.module_objectives,
+          module_themes: s.module_themes,
+          module_exercises: s.module_exercises,
+        };
       });
+      const result = await bulkCreateTimeSlots(supabase, formation.id, entityId, inputs);
+      if (!result.ok) {
+        toast({ title: "Erreur", description: result.error.message, variant: "destructive" });
+        return;
+      }
+      toast({ title: `${result.count} créneau(x) dupliqué(s) vers le ${targetStr}` });
       await onRefresh();
+    } catch (error) {
+      console.error("[TabPlanning] handleDuplicateDay failed:", error);
+      toast({ title: "Erreur", description: error instanceof Error ? error.message : "Duplication échouée", variant: "destructive" });
+    } finally {
+      setDuplicating(false);
     }
   };
 
@@ -351,32 +365,44 @@ export function TabPlanning({ formation, onRefresh }: Props) {
     }
 
     setAutoFilling(true);
-    let success = 0;
-    let failed = 0;
-    for (const a of plan.assignments) {
-      const result = await updateTimeSlot(supabase, a.slotId, formation.id, entityId, a.patch);
-      if (result.ok) success++;
-      else failed++;
-    }
-    setAutoFilling(false);
+    try {
+      let success = 0;
+      let failed = 0;
+      for (const a of plan.assignments) {
+        const result = await updateTimeSlot(supabase, a.slotId, formation.id, entityId, a.patch);
+        if (result.ok) success++;
+        else failed++;
+      }
 
-    if (failed > 0) {
+      if (failed > 0) {
+        toast({
+          title: "Auto-remplissage partiel",
+          description: `${success} créneau(x) mis à jour, ${failed} en échec.`,
+          variant: "destructive",
+        });
+      } else {
+        const extras: string[] = [];
+        if (plan.emptySlots > 0) extras.push(`${plan.emptySlots} créneau(x) sans module`);
+        if (plan.unassignedModules > 0)
+          extras.push(`${plan.unassignedModules} module(s) ignoré(s) — manque de créneaux`);
+        toast({
+          title: "Planning auto-rempli",
+          description: extras.length > 0
+            ? `${success} créneau(x) · ${extras.join(" · ")}`
+            : `${success} créneau(x) alignés sur le programme.`,
+        });
+      }
+      await onRefresh();
+    } catch (error) {
+      console.error("[TabPlanning] handleAutoFillModules failed:", error);
       toast({
-        title: "Auto-remplissage partiel",
-        description: `${success} créneau(x) mis à jour, ${failed} en échec.`,
+        title: "Erreur",
+        description: error instanceof Error ? error.message : "Auto-remplissage échoué",
         variant: "destructive",
       });
-    } else {
-      const extras: string[] = [];
-      if (plan.emptySlots > 0) extras.push(`${plan.emptySlots} créneau(x) sans module`);
-      if (plan.unassignedModules > 0)
-        extras.push(`${plan.unassignedModules} module(s) ignoré(s) — manque de créneaux`);
-      toast({
-        title: `${success} créneau(x) auto-remplis`,
-        description: extras.length > 0 ? extras.join(" · ") : "Tout est aligné sur le programme.",
-      });
+    } finally {
+      setAutoFilling(false);
     }
-    await onRefresh();
   };
 
   const handleMarkPlanned = async () => {
@@ -668,9 +694,10 @@ export function TabPlanning({ formation, onRefresh }: Props) {
                     variant="outline"
                     className="text-[11px] h-6 gap-1"
                     onClick={handleDuplicateDay}
+                    disabled={duplicating}
                     title="Recopie les créneaux de ce jour vers une autre date (titre + horaires + contenu pédagogique)"
                   >
-                    Dupliquer ce jour
+                    {duplicating ? <><Loader2 className="h-3 w-3 animate-spin" /> Duplication…</> : "Dupliquer ce jour"}
                   </Button>
                 )}
               </div>
@@ -845,9 +872,9 @@ export function TabPlanning({ formation, onRefresh }: Props) {
               disabled={autoFilling}
               title="Distribue les modules du programme sur les créneaux par ordre chronologique"
             >
-              <Sparkles className="h-3 w-3" />
+              {autoFilling ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
               {autoFilling
-                ? "Remplissage…"
+                ? "Calcul…"
                 : `Auto-remplir depuis le programme (${formation.program?.content?.modules?.length} module${(formation.program?.content?.modules?.length ?? 0) > 1 ? "s" : ""})`}
             </Button>
           )}
@@ -855,13 +882,15 @@ export function TabPlanning({ formation, onRefresh }: Props) {
             <Button size="sm" className="text-xs h-7 gap-1 bg-green-600 hover:bg-green-700 text-white"
               onClick={() => setConfirmMarkPlannedOpen(true)}
               disabled={saving}>
-              <CheckCircle className="h-3 w-3" /> Marquer comme planifiée
+              {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3" />}
+              {saving ? "Enregistrement…" : "Marquer comme planifiée"}
             </Button>
           )}
           <Button size="sm" variant="outline" className="text-xs h-7 gap-1 text-red-500 hover:text-red-600 hover:bg-red-50"
             onClick={() => setConfirmDeleteAllOpen(true)}
             disabled={deleting}>
-            <Trash2 className="h-3 w-3" /> Supprimer tous les créneaux
+            {deleting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+            {deleting ? "Suppression…" : "Supprimer tous les créneaux"}
           </Button>
         </div>
       )}
