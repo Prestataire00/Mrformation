@@ -15,17 +15,41 @@ stepsCompleted:
   - step-11-polish
   - step-12-complete
 releaseMode: phased
-status: complete
+status: complete-post-discovery-patched
 completedAt: 2026-06-06
+lastPatchedAt: 2026-06-06
+postDiscoveryPatch:
+  date: 2026-06-06
+  oqsResolved: [OQ-4, OQ-5, OQ-5bis]
+  oqsReformulated: [OQ-1]
+  oqsAdded: [OQ-8, OQ-9]
+  sectionsPatched:
+    - FR-C-01 (effort M→S, scope simplifié, 1 fichier au lieu de 4)
+    - FR-C-02 (effort S-M→L, scope élargi 3 tables × 2 colonnes × 29 valeurs)
+    - Open Questions (verdicts résolus 06/06)
+    - Statut migrations Epic 2.5 (nouvelle section)
+    - Changelog post-discovery (nouvelle section)
+    - Critères go/no-go (colonne statut 06/06)
+  hallucinationsCount: 4
+  hallucinationsDetail:
+    - audit RLS initial 8 tables CRM inventées (matin 06/06)
+    - colonne entity_id inventée sur elearning_global_flashcards (matin 06/06)
+    - Workflow patch a inventé 4 noms migrations granulaires Phase A (soir 06/06)
+    - Workflow patch a oublié crm_quotes comme 3ème table BPF (soir 06/06)
 adversarialReviews:
-  - angle: Completeness Mary (BA)
+  - angle: Completeness Mary (BA) — PRD v2
     verdict: minor-tweaks
     issues: 16
-  - angle: Executability dev solo
+  - angle: Executability dev solo — PRD v2
     verdict: major-rework
     issues: 15
     blockersResolved: 4
     blockersToOpenQuestions: 4
+  - angle: Anti-hallucination patch post-discovery
+    verdict: minor-tweaks (post-correction solo)
+    issues: 8
+    criticalsFixed: 1
+    majorsFixed: 3
 inputDocuments:
   - bmad_output/planning-artifacts/2026-06-06-product-brief-resolution-ux-articulation-lms.md
   - docs/audit-lms-module-2026-06-05.md
@@ -171,41 +195,91 @@ Cf. Brief §4 — Findings groupés par archétype. Chaque FR référence chemin
 ### Epic 1 — Promesses cassées (archétype C, ~3 semaines)
 
 #### FR-C-01 : Course type enum unification
-- **Description** : Unifier la définition du type de cours sur 3 couches (TS, Zod, API) à partir d'une source unique en Zod, afin d'éliminer les divergences créant des validations silencieuses et des inserts échoués.
-- **Avant/Après** :
-  - Avant : `CourseType = 'presentation' | 'quiz' | 'complete'` en local UI (`create/page.tsx:36`) vs Zod `['presentation_quiz', 'presentation_quiz_flashcard', 'quiz', 'flashcards']` (`elearning.ts:69-74`) — aucune valeur commune.
-  - Après : Zod = source de vérité, type TS dérivé, SelectItems générés via constante exportée.
-- **Fichiers** :
-  - `src/lib/validations/elearning.ts:69-74` : conserve `elearningCourseTypeEnum` (source de vérité)
-  - `src/lib/types/elearning.ts` (à créer ou compléter) : `export type CourseType = z.infer<typeof elearningCourseTypeEnum>` + `export const COURSE_TYPE_OPTIONS`
-  - `src/app/(dashboard)/admin/elearning/create/page.tsx:36` : remplacer type local par import
-  - `src/app/api/elearning/route.ts:63` : aligner usage
-- **Pré-requis** : audit BD (OQ-5bis ci-dessous) — confirmer absence cours legacy avec valeur `'presentation'` ou `'complete'` ; si présents → script migration data en pré-deploy.
-- **Critères d'acceptation** :
-  1. Type `CourseType` dérivé de `z.infer<typeof elearningCourseTypeEnum>` (4 valeurs : `'presentation_quiz' | 'presentation_quiz_flashcard' | 'quiz' | 'flashcards'`).
-  2. Constante `COURSE_TYPE_OPTIONS = elearningCourseTypeEnum.options.map(v => ({ value: v, label: humanizeCourseType(v) }))` exportée et consommée par les `SelectItem`.
-  3. Test round-trip : create → fetch → edit retourne type identique.
-  4. Aucun `as any` cast résiduel ; aucune valeur littérale `'presentation' | 'complete'` dans le repo (grep CI).
-  5. Test `enums-consistency.test.ts` (cf. KPI-5) vérifie cohérence `CourseType` ↔ Zod ↔ CHECK constraint DB.
-- **Effort** : M | **Risk** : Moyen (cf. R-2 — migration data si cours legacy)
 
-#### FR-C-02 : BpfFundingType enum unification
-- **Description** : Aligner l'enum `BpfFundingType` entre Zod (`program.ts`), `types.ts` et la contrainte DB (TEXT + CHECK ou ENUM postgres).
-- **Discrepancy confirmée** : `types.ts:53-58` définit 17-18 valeurs ; `program.ts:99-131` Zod n'en valide que ~9. Source de vérité = **DB CHECK constraint** (cf. `bpf-auto-calculation.sql`), à valider par OQ-5.
+> **Mise à jour post-discovery 2026-06-06** : OQ-5bis résolue en prod. Les facts ci-dessous sont VÉRIFIÉS (queries Supabase + lecture source code) :
+> - DB CHECK `elearning_courses.course_type` = **3 valeurs autorisées : `['presentation', 'quiz', 'complete']`** (source de vérité).
+> - Cours actifs en prod : `complete` ×12, `quiz` ×4, **`presentation` ×0** → ZÉRO migration data nécessaire.
+> - `src/app/(dashboard)/admin/elearning/create/page.tsx:36` : `type CourseType = "presentation" | "quiz" | "complete"` → **DÉJÀ ALIGNÉ avec DB**.
+> - `src/lib/validations/elearning.ts:69-74` : `z.enum(["presentation_quiz", "presentation_quiz_flashcard", "quiz", "flashcards"])` → **SEUL fichier désaligné** (4 valeurs hallucinées, aucune commune avec DB sauf `'quiz'`).
+
+- **Description** : Aligner l'enum Zod `elearningCourseTypeEnum` sur les 3 valeurs DB (source de vérité), et faire en sorte que tous les consommateurs (UI, API) importent un type partagé dérivé via `z.infer`. Aucune migration data, aucun changement DB.
+
 - **Avant/Après** :
-  - Avant : UI accepte "Apprentissage" mais insert Postgres échoue (toast générique) car Zod l'autorise sans que la CHECK ne l'accepte (ou inverse).
-  - Après : Zod, TS, DB CHECK alignés sur l'unique liste autoritaire DB.
-- **Fichiers** :
-  - `src/lib/types/index.ts:53-58`
-  - `src/lib/validations/program.ts:99-131`
-  - Migration éventuelle si CHECK contrainte à mettre à jour
+  - Avant : create/page.tsx aligné DB mais type LOCAL hardcodé ; Zod elearning.ts désaligné des 2 ; chaque consommateur peut diverger en silence.
+  - Après : Zod = source de vérité (3 valeurs DB), type TS exporté via `z.infer`, create/page.tsx importe ce type au lieu de le redéfinir.
+
+- **Fichiers à modifier** :
+  - `src/lib/validations/elearning.ts:69-74` — remplacer `z.enum(["presentation_quiz", "presentation_quiz_flashcard", "quiz", "flashcards"])` par `z.enum(["presentation", "quiz", "complete"] as const)`.
+  - `src/lib/types/elearning.ts` (créer si absent) — `export type CourseType = z.infer<typeof elearningCourseTypeEnum>` + `export const COURSE_TYPE_OPTIONS: Array<{value: CourseType; label: string}>` avec labels FR.
+  - `src/app/(dashboard)/admin/elearning/create/page.tsx:36` — remplacer `type CourseType = "presentation" | "quiz" | "complete"` par `import type { CourseType } from "@/lib/types/elearning"`.
+  - Vérification grep : aucune autre déclaration locale `CourseType = ...` dans le repo.
+
 - **Critères d'acceptation** :
-  1. Zod enum `satisfies BpfFundingType[]` ; TS = source dérivée si DB est ENUM, ou liste alignée manuellement si TEXT+CHECK (documenté).
-  2. Test : créer programme pour CHAQUE valeur autorisée → insert DB réussit.
-  3. SelectItems générés depuis la même source (`Object.values(BpfFundingType)`).
-  4. Toast erreur structuré ("valeur X non autorisée") si tentative insert hors liste.
-  5. Test `enums-consistency.test.ts` couvre `BpfFundingType` ↔ Zod ↔ DB.
-- **Effort** : S-M | **Risk** : Moyen (dépend résolution OQ-5)
+  1. `elearningCourseTypeEnum` contient EXACTEMENT 3 valeurs : `"presentation"`, `"quiz"`, `"complete"` (ordre alphabétique acceptable).
+  2. `export type CourseType` dérivé via `z.infer` et exporté depuis `src/lib/types/elearning.ts`.
+  3. `create/page.tsx:36` importe `CourseType` plutôt que le redéfinit (test grep CI : `grep -r "type CourseType ="` retourne uniquement `types/elearning.ts`).
+  4. Test `src/lib/__tests__/enums-consistency.test.ts` (à créer en Epic 1) : assert que les valeurs Zod égalent un tableau hardcodé `["presentation", "quiz", "complete"]` (la CHECK constraint DB n'est pas accessible runtime depuis tests ; le test garantit l'invariant côté code, l'audit OQ-5bis du 06/06 garantit l'invariant côté DB).
+  5. Round-trip OK : créer un cours via UI avec chaque valeur (`presentation`, `quiz`, `complete`) → fetch → edit affiche la même valeur sans cast.
+
+- **Effort** : **S** (réduit de M depuis le PRD v2 — la complexité était surévaluée car la DB est déjà la valeur cible et 0 migration data).
+- **Risk** : **Bas** (16 cours actifs sont tous `quiz` ou `complete`, aucun migration data nécessaire).
+
+#### FR-C-02 : BpfFundingType + BpfObjective enum unification (3 tables, 2 colonnes, 29 valeurs)
+
+> **Mise à jour post-discovery 2026-06-06** : OQ-5 résolue en prod, périmètre ÉLARGI vs PRD v2. Facts VÉRIFIÉS (queries `pg_constraint` + lecture source `validations/program.ts`) :
+> - DB CHECK `bpf_funding_type` : **3 tables alignées** (`programs`, `trainings`, **`crm_quotes`** — non mentionnée dans le PRD v2) avec **18 valeurs identiques** : `entreprise_privee, apprentissage, professionnalisation, reconversion_alternance, conge_transition, cpf, dispositif_chomeurs, non_salaries, plan_developpement, pouvoir_public_agents, instances_europeennes, etat, conseil_regional, pole_emploi, autres_publics, individuel, organisme_formation, autre`.
+> - DB CHECK `bpf_objective` : sur `programs` + `trainings` (à confirmer pour `crm_quotes`), **11 valeurs** : `rncp_6_8, rncp_5, rncp_4, rncp_3, rncp_2, rncp_cqp, certification_rs, cqp_non_enregistre, autre_pro, bilan_competences, vae`.
+> - Zod `src/lib/validations/program.ts:99-131` :
+>   - `bpf_funding_type` : 9 valeurs `[opco, entreprise, particulier, pole_emploi, cpf, region, etat, fne, autre]` — **intersection avec DB = 4** (`pole_emploi`, `cpf`, `etat`, `autre`).
+>   - `bpf_objective` : 10 valeurs `[professionnalisation, qualification, validation_acquis, bilan_competences, creation_entreprise, perfectionnement, actualisation, adaptation_poste, remise_a_niveau, decouverte]` — **intersection avec DB = 1** (`bilan_competences`).
+> - **Aucune migration data**, car la CHECK rejetait déjà tout insert utilisant les valeurs Zod hallucinées → aucune donnée legacy à migrer (à confirmer par `SELECT DISTINCT bpf_funding_type, bpf_objective FROM programs WHERE bpf_funding_type IS NOT NULL`).
+
+- **Description** : Aligner Zod sur les CHECK DB (source de vérité). Élargir le scope à 3 tables (programs + trainings + crm_quotes) et 2 colonnes (funding_type + objective). Décision produit requise sur les labels FR pour SelectItem (valeurs techniques DB ↔ libellés métier).
+
+- **Avant/Après** :
+  - Avant : Admin choisit "OPCO" dans UI → Zod valide → insert Postgres CHECK refuse → toast générique, expérience cassée. 13/18 valeurs DB inaccessibles depuis UI. Pour `bpf_objective` c'est encore pire (10/11 valeurs DB inaccessibles).
+  - Après : Zod = liste DB exhaustive, types TS exportés, SelectItem générés depuis une seule source. Toutes les valeurs DB accessibles via UI.
+
+- **Fichiers à modifier** :
+  - `src/lib/types/index.ts` (ou créer `src/lib/types/bpf.ts`) — exporter `BpfFundingType` (18 valeurs) et `BpfObjective` (11 valeurs) en `as const` tuples.
+  - `src/lib/validations/program.ts:99-131` — remplacer les 2 `z.enum(...)` actuels par les listes DB intégrales.
+  - **Vérifier** existence d'un Zod schema pour `trainings` (audit grep `validations/training*.ts`) — si présent et concerne BPF : aligner. Si absent : documenter (les API trainings utilisent peut-être Zod inline ou pas du tout pour BPF).
+  - **Vérifier** existence d'un Zod schema pour `crm_quotes` (audit grep `validations/crm-quote*.ts` ou `validations/quote*.ts`) — si présent : aligner. Sinon : note dans tech debt.
+  - `src/lib/utils/bpf-labels.ts` (créer) — table de mapping `value → labelFr` pour SelectItem :
+    ```ts
+    export const BPF_FUNDING_TYPE_LABELS: Record<BpfFundingType, string> = {
+      entreprise_privee: "Entreprise privée (plan de développement employeur)",
+      apprentissage: "Apprentissage",
+      // ... 16 autres mappings à valider produit
+    };
+    ```
+  - Pré-impl : audit `SELECT DISTINCT bpf_funding_type, bpf_objective FROM programs / trainings / crm_quotes` pour confirmer 0 migration data.
+
+- **Critères d'acceptation** :
+  1. Types TS `BpfFundingType` (18 valeurs) et `BpfObjective` (11 valeurs) exportés depuis `types/bpf.ts` (ou équivalent).
+  2. Zod `program.ts:99-131` aligné EXACTEMENT sur les valeurs DB (test : `expect(Object.values(bpfFundingTypeEnum.Values)).toEqual(BPF_FUNDING_TYPE_DB_VALUES)`).
+  3. Idem pour `bpf_objective`.
+  4. Si Zod trainings/crm_quotes existent : aligner. Sinon : décision dans le sprint (créer ou laisser inline).
+  5. `BPF_FUNDING_TYPE_LABELS` et `BPF_OBJECTIVE_LABELS` exportés avec libellés FR validés produit.
+  6. UI SelectItem (page programmes, formations, devis CRM) consomment ces constantes — fini les littéraux hardcodés.
+  7. Test `enums-consistency.test.ts` couvre les 18 + 11 valeurs (29 cas) avec snapshot.
+  8. Audit pré-impl confirme 0 donnée legacy en DB → 0 migration data.
+
+- **Open Decision produit** : 4 valeurs Zod n'ont aucun équivalent direct DB (`opco`, `entreprise`, `particulier`, `region` pour funding ; toutes les 9 autres pour objective sauf bilan_competences). Mapping recommandé proposé (à valider par toi en sprint Epic 1) :
+  | Ancienne valeur Zod | Nouvelle valeur DB recommandée |
+  |---|---|
+  | opco | `plan_developpement` (OPCO finance le plan de développement) |
+  | entreprise | `entreprise_privee` |
+  | particulier | `individuel` |
+  | region | `conseil_regional` |
+  | fne | `etat` (FNE = Fond National de l'Emploi, géré par l'État) |
+  | qualification | `rncp_5` (par défaut, sinon `rncp_4`) |
+  | validation_acquis | `vae` |
+  | creation_entreprise | `autre_pro` |
+  | perfectionnement / actualisation / adaptation_poste / remise_a_niveau / decouverte | `autre_pro` |
+
+- **Effort** : **L** (élargi de S-M depuis le PRD v2 — 3 tables × 2 colonnes × 29 valeurs + labels FR + mapping produit + audit data).
+- **Risk** : **Moyen** (mapping produit ambigu, à valider en début de sprint Epic 1).
 
 #### FR-C-03 : Dropdown Duplicate/Delete formation : handlers + confirmation + service layer
 - **Description** : Implémenter handlers `onClick` pour Duplicate et Delete dans le dropdown formations, accompagnés des helpers service-layer nécessaires (cascade delete sur 13 tabs).
@@ -625,18 +699,27 @@ Cf. Brief §9 — Risques identifiés. Mise à jour suite reviews adversariales.
 
 ## Open Questions / Decisions Pending
 
-Cf. Brief §8.A — Decision gates pré-PRD bloquants. Mise à jour post-reviews adversariales.
+Cf. Brief §8.A — Decision gates pré-PRD bloquants. Mise à jour post-reviews adversariales puis **post-discovery 2026-06-06** (queries Supabase prod exécutées par Wissam + cross-check direct code source).
+
+### OQ résolues (verrouillées par discovery 2026-06-06)
+
+| # | Question | Statut | Verdict |
+|---|---|---|---|
+| OQ-4 | Table `learner_bulk_import_jobs` en prod ? | ✅ **RÉSOLUE 2026-06-06** | Table absente initialement → migration `add_learner_bulk_import_jobs.sql` appliquée par Wissam le 2026-06-06. Vérification post-application en attente (query confirmation à exécuter en début Epic 2). |
+| OQ-5 | Type DB `bpf_funding_type` ? Valeurs ? | ✅ **RÉSOLUE 2026-06-06** | TEXT + CHECK constraint. **3 tables** alignées (`programs`, `trainings`, `crm_quotes`) avec **18 valeurs identiques** (cf. FR-C-02 réécrit). BONUS découvert : `bpf_objective` aussi mismatché (10 Zod vs 11 DB). |
+| OQ-5bis | Cours legacy avec `course_type` incompatibles ? | ✅ **RÉSOLUE 2026-06-06** | DB CHECK = 3 valeurs `['presentation', 'quiz', 'complete']`. 16 cours actifs : `complete`×12, `quiz`×4, `presentation`×0. **0 migration data**. `create/page.tsx:36` déjà aligné DB ; **SEUL fichier désaligné = `validations/elearning.ts:69-74`** (cf. FR-C-01 réécrit). |
+
+### OQ résiduelles
 
 | # | Question | Impact si non tranchée | Owner | Deadline |
 |---|---|---|---|---|
-| OQ-1 | **⚠ blocker review adversariale** — Volume max bulk import en prod : query 6 mois sur taille imports admin. Si max <50 → arch BG suffit ; si max >100 régulier → escalade queue externe | FR-A-01 ne tient pas si volumes >>100/batch ; refactor 2 sem additionnelles. Bloque kickoff Epic 2. | Wissam (query Supabase prod) | **Avant kickoff Epic 2 (S3)** |
-| OQ-2 | Volumes prod profiles/learners ±50% : `SELECT COUNT(*) FROM elearning_courses WHERE entity_id=X AND created_at > now() - interval '6 months'`. Seuil pagination 50/page reste pertinent ? Si volumes >500, étendre FR-B-01 avec search/filter optim (+1 sem) | FR-B-01 / FR-B-02 mal calibrés | Wissam (query Supabase prod) | Avant kickoff Epic 3 (S6-7) |
+| OQ-1 | Volume max bulk import en prod — **reformulée post-OQ-4** : à mesurer 4-6 sem après mise en service Epic 2 (la table jobs vient d'être créée, pas encore d'historique exploitable). Si max <50 régulier → seuil V1 100 OK ; si >100 → escalade queue externe V1.1+ | Risque arch sous-dimensionnée si volumes >>100/batch | Wissam (query DB ~M2 post-Epic 2) | Post-Epic 2 (S+4 à S+8) |
+| OQ-2 | Volumes prod profiles/learners ±50% — `SELECT role, entity_id, COUNT(*) FROM profiles GROUP BY 1,2` + count learners et enrollments par session | FR-B-01 / FR-B-02 mal calibrés | Wissam (query Supabase prod) | Avant kickoff Epic 3 (S6-7) |
 | OQ-3 | Timing exact epic RLS V2/V3 : ownership + démarrage. Si retardé >2 mois, items sécurité V1.1-V1.12 risquent d'oxyder | Items sécurité tombent du backlog ; risque Qualiopi | Wissam + Mary | Avant fin Epic 1 (S2) |
-| OQ-4 | **⚠ blocker review adversariale** — Existence table `learner_bulk_import_jobs` en DB prod : `SELECT * FROM information_schema.tables WHERE table_name='learner_bulk_import_jobs'`. Si absente, appliquer migration dev → staging → prod | Bloque kickoff FR-A-01 | Wissam (audit migrations) | **Avant kickoff Epic 2 (S3)** |
-| OQ-5 | **⚠ blocker review adversariale** — Type DB exact `bpf_funding_type` (ENUM postgres ou TEXT+CHECK ?) : `SELECT data_type FROM information_schema.columns WHERE table_name='programs' AND column_name='bpf_funding_type'`. Puis si ENUM : `SELECT pg_enum.enumlabel FROM pg_type JOIN pg_enum ON pg_type.oid=pg_enum.enumtypid WHERE typname='bpf_funding_type'` ; si TEXT+CHECK : extraire la CHECK constraint via `pg_get_constraintdef`. | FR-C-02 mal cadré si valeurs réelles divergent ; migration ratée possible | Wissam (query Supabase prod) | **Avant kickoff Epic 1 (S0)** |
-| OQ-5bis | **⚠ blocker review adversariale** — Audit cours legacy `course_type` : `SELECT DISTINCT course_type, COUNT(*) FROM elearning_courses` pour vérifier absence de `'presentation'`/`'complete'` (valeurs incompatibles avec Zod cible). Si présents → script migration data inclus dans FR-C-01. | FR-C-01 migration ratée si cours legacy non détectés | Wissam (query Supabase prod) | **Avant kickoff Epic 1 (S0)** |
 | OQ-6 | Audit indexes DB existants pour pagination : `SELECT indexname, indexdef FROM pg_indexes WHERE tablename IN ('elearning_courses', 'programs')`. Si index composite `(entity_id, status, created_at)` absent → migration à inclure dans Epic 3 | FR-B-01 / FR-B-02 risquent freeze sans index | Wissam | Avant kickoff Epic 3 (S6-7) |
 | OQ-7 | Dates vacances Wissam sur fenêtre 8 semaines : resequencing nécessaire si conflit avec Epic 1 ou Epic 2 (cf. R-7) | Risque blocage sprint complet | Wissam | Avant kickoff Epic 1 (S0) |
+| OQ-8 (nouveau) | **Mapping produit valeurs Zod legacy → DB pour BPF** : 4 valeurs `bpf_funding_type` Zod (`opco`, `entreprise`, `particulier`, `region`, `fne`) et 9 valeurs `bpf_objective` Zod sans équivalent direct DB. Tableau de correspondance proposé dans FR-C-02 (à valider/amender) | Mapping ambigu peut nécessiter UI tooltip + doc utilisateur ; impact UX faible mais à trancher avant impl | Wissam (décision produit) | Début sprint Epic 1 |
+| OQ-9 (nouveau) | **Existence Zod schemas pour `trainings` et `crm_quotes`** : `validations/training.ts` et `validations/crm-quote.ts` (ou équivalents) existent-ils ? Auditent-ils BPF ? Si oui : aligner. Si non : décider (créer ou laisser API inline) | FR-C-02 sous-spécifié sur tables 2 et 3 (programs OK) | Wissam (audit code 30 min) | Début sprint Epic 1 |
 
 ---
 
@@ -681,12 +764,58 @@ Cf. Brief §8.A — Decision gates pré-PRD bloquants. Mise à jour post-reviews
 
 Tous les **blockers** identifiés par la review 2 ont été transformés en **Open Questions explicitement étiquetées ⚠ blocker review adversariale** avec deadline avant kickoff de l'epic concerné :
 
-- OQ-1 (volumes prod bulk import) → pré-Epic 2
-- OQ-4 (table `learner_bulk_import_jobs` en prod) → pré-Epic 2
-- OQ-5 (type DB `bpf_funding_type`) → pré-Epic 1
-- OQ-5bis (audit cours legacy `course_type`) → pré-Epic 1
+- OQ-1 (volumes prod bulk import) → ~~pré-Epic 2~~ → **reformulée post-Epic 2** suite à OQ-4 résolu (cf. discovery 2026-06-06)
+- OQ-4 (table `learner_bulk_import_jobs` en prod) → ~~pré-Epic 2~~ → ✅ **RÉSOLUE 2026-06-06** (migration appliquée par Wissam)
+- OQ-5 (type DB `bpf_funding_type`) → ~~pré-Epic 1~~ → ✅ **RÉSOLUE 2026-06-06** (TEXT+CHECK, 18 valeurs, 3 tables alignées)
+- OQ-5bis (audit cours legacy `course_type`) → ~~pré-Epic 1~~ → ✅ **RÉSOLUE 2026-06-06** (DB = 3 valeurs, 16 cours actifs, 0 migration data)
 
-Aucun blocker ne reste implicite : chaque question a une query Supabase exacte, un owner (Wissam), et une deadline rattachée à un gate go/no-go d'epic.
+Aucun blocker ne reste implicite : chaque question a une query Supabase exacte, un owner (Wissam), et une deadline rattachée à un gate go/no-go d'epic. **3 sur 4 blockers verrouillés par discovery 2026-06-06.**
+
+---
+
+## Statut migrations Epic 2.5 en prod (vérifié 2026-06-06)
+
+> Cross-check direct Supabase prod sur le projet **lms-mr-formation** (project ID `zttstemfpybkjurmcxhs`) le 2026-06-06. Cette section certifie l'état des migrations qui sous-tendent les Functional Requirements de ce PRD.
+
+| Phase | Fichier migration (réel dans `supabase/migrations/`) | État en prod | Impact si non appliquée |
+|---|---|---|---|
+| **A** | `add_learner_username_credentials.sql` | ✅ Appliquée | Couvre learners.username + password_must_change + RPC `resolve_learner_email_by_username` + trigger `tg_learners_autogen_username` (vérifiés en prod le 06/06) |
+| **A** | `backfill_learner_usernames.sql` | ✅ Implicite (username remplie via trigger) | Backfill automatique sur insert/update via trigger |
+| **B** | `add_learner_credentials_bucket.sql` | ✅ Appliquée | Bucket `learner-credentials` + 4 policies storage (vérifiés le 06/06) |
+| **B** | `add_learner_bulk_import_jobs.sql` | ✅ **Appliquée le 2026-06-06 par Wissam** | Table jobs + RLS admin + trigger updated_at — débloque FR-A-01 |
+| **C** | Code (TS/React) | ✅ Mergé sur main | LoginForm switch, middleware password_must_change, regenerate-credentials, page bulk-import-learners |
+| **RLS** | `audit_rls_fix_2026_06_05.sql` | ✅ Appliquée v3 (06/06) | `generated_documents` durcie + `elearning_global_flashcards` skipped (table sans `entity_id` → TODO V1.2) |
+
+**Verdict** : toutes les migrations sous-jacentes au PRD sont en prod. Aucun blocage infra pour démarrer Epic 1.
+
+**TODO V1.2 hors scope PRD** : `elearning_global_flashcards` en prod existe sans colonne `entity_id` (audit avait halluciné cette colonne dans la migration initiale). À investiguer dans une session future :
+- Vérifier les colonnes réelles de la table : `SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='elearning_global_flashcards'`.
+- Décider stratégie d'isolation (FK indirecte ? `chapter_id → course_id → entity_id` ? Ou pas d'isolation car contenu global partagé ?).
+
+---
+
+## Changelog post-discovery 2026-06-06
+
+Documents les changements apportés au PRD v2 suite aux queries Supabase prod exécutées le 2026-06-06 (post-merge PR #201/#202 RLS + audit RLS v3 + queries OQ).
+
+| # | Section | Avant (PRD v2) | Après (PRD post-discovery) | Raison |
+|---|---|---|---|---|
+| 1 | FR-C-01 | Spec basée sur hypothèse Zod = source ; effort M ; risk migration data | Spec basée sur **DB = source** (3 valeurs vérifiées) ; effort réduit **S** ; 0 migration data (16 cours actifs en `quiz`/`complete`) | Discovery DB CHECK + cross-check source code |
+| 2 | FR-C-02 | Spec 2 tables (programs + trainings), 18 valeurs funding only ; effort S-M | Spec **3 tables** (+ `crm_quotes` découverte) + **2 colonnes** (funding 18 + objective 11) + mapping produit pour 4-9 valeurs Zod legacy ; effort **L** | Discovery `pg_constraint` (3ème table) + audit `program.ts` (objective Zod aussi désaligné, intersection avec DB = 1 valeur) |
+| 3 | OQ-4 | Blocker pré-Epic 2 | ✅ Résolue 2026-06-06 (migration `add_learner_bulk_import_jobs.sql` appliquée) | Wissam |
+| 4 | OQ-5 | Blocker pré-Epic 1 | ✅ Résolue 2026-06-06 (TEXT+CHECK, 18 valeurs, 3 tables) | Query `pg_constraint` |
+| 5 | OQ-5bis | Blocker pré-Epic 1 | ✅ Résolue 2026-06-06 (3 valeurs DB, 16 cours, 0 migration data) | Query `course_type` + cross-check `create/page.tsx` |
+| 6 | OQ-1 | Blocker pré-Epic 2 | Reformulée → post-Epic 2 (S+4 à S+8, après quelques semaines de prod active) | Pas d'historique dans `learner_bulk_import_jobs` (table fraîchement créée) |
+| 7 | OQ-8, OQ-9 (nouveaux) | — | OQ-8 mapping Zod legacy → DB BPF ; OQ-9 audit Zod trainings/crm_quotes | Discovery 2026-06-06 |
+| 8 | Statut migrations | Implicite dans Background | Section dédiée verbatim avec table 6 migrations + verdict | Anti-hallucination — état infra certifié post-discovery |
+
+**Anti-hallucination tracking** : sur ce dossier PRD, **4 hallucinations** des agents Workflow ont été détectées et corrigées :
+1. (06/06 matin) 8 tables CRM/Finance/Infra inventées dans audit RLS initial → corrigées via migration safe + détection grep schema.
+2. (06/06 matin) Colonne `entity_id` inventée sur `elearning_global_flashcards` → migration RLS v3 ajoute check `information_schema.columns`.
+3. (06/06 soir) Workflow patch PRD post-discovery a inventé 4 noms de migrations granulaires Phase A (`add_learner_username_col.sql`, etc.) qui n'existent pas → revue adversariale a détecté, patch FINAL écrit en solo avec sources vérifiées.
+4. (06/06 soir) Même Workflow a oublié `crm_quotes` comme 3ème table BPF → revue adversariale a signalé, query Supabase a confirmé, FR-C-02 élargi à 3 tables.
+
+**Leçon** : les agents BMAD sont précieux pour cadrer/écrire/dédupliquer, mais **les noms d'objets nommés (tables, colonnes, fichiers) DOIVENT être sourcés d'une recherche déterministe** (queries `information_schema` + grep code source), **jamais inférés** par un agent. Memory `audit-methodology-source-of-truth` mise à jour en conséquence.
 
 ---
 
@@ -726,8 +855,8 @@ Cf. Brief §10 — Cadrage Mary (BA BMAD).
 
 ### Critères go/no-go par epic
 
-| Epic | Go (kickoff) | No-go (escalade) |
-|---|---|---|
-| Epic 1 | OQ-5 + OQ-5bis tranchées ; R-2 mitigation validée ; OQ-7 vacances connues | Migration enum bloquante (>10% cours legacy incompatibles) |
-| Epic 2 | OQ-1 + OQ-4 tranchées ; R-1 mitigation validée ; CRON_SECRET Netlify configuré | Volumes prod >>100/batch confirmés → refactor architecture V1.1 |
-| Epic 3 | Epic 1 mergé ; OQ-6 (indexes DB) validée ou migration prête | Indexes manquants ET non-créables sans downtime |
+| Epic | Go (kickoff) | No-go (escalade) | Statut go/no-go au 2026-06-06 |
+|---|---|---|---|
+| Epic 1 | OQ-5 + OQ-5bis tranchées ; R-2 mitigation validée ; OQ-7 vacances connues ; **OQ-8 mapping BPF tranché** ; **OQ-9 Zod trainings/crm_quotes audité** | Migration enum bloquante (>10% cours legacy incompatibles) | ✅ **OQ-5/5bis résolues (discovery 06/06)** • ⏳ OQ-7 + OQ-8 + OQ-9 à trancher avant S0 |
+| Epic 2 | OQ-4 résolue + table prod confirmée ; CRON_SECRET Netlify configuré ; vérification post-migration `learner_bulk_import_jobs` | OQ-1 reformulée : ne bloque PLUS kickoff (mesure post-déploiement S+4 à S+8) | ✅ **OQ-4 résolue (migration appliquée 06/06)** • ⏳ vérif post-migration query (1 min, début Epic 2) • ⏳ CRON_SECRET à confirmer |
+| Epic 3 | Epic 1 mergé ; OQ-6 (indexes DB) validée ou migration prête ; OQ-2 (volumes pagination) tranchée | Indexes manquants ET non-créables sans downtime | ⏳ Dépend complétion Epic 1 • OQ-6 + OQ-2 à trancher avant S6 |
