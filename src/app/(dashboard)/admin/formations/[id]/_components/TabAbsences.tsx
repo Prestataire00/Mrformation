@@ -69,23 +69,28 @@ export function TabAbsences({ formation, onRefresh }: Props) {
       return;
     }
     setSaving(true);
-    const { error } = await supabase.from("formation_absences").insert({
-      session_id: formation.id,
-      learner_id: learnerId,
-      date,
-      time_slot_id: timeSlotId || null,
-      reason: reason || null,
-      status,
-      notes: notes || null,
-    });
-    setSaving(false);
-    if (error) {
-      toast({ title: "Erreur", description: error.message, variant: "destructive" });
-    } else {
-      toast({ title: "Absence ajoutée" });
+    try {
+      const { error } = await supabase.from("formation_absences").insert({
+        session_id: formation.id,
+        learner_id: learnerId,
+        date,
+        time_slot_id: timeSlotId || null,
+        reason: reason || null,
+        status,
+        notes: notes || null,
+      });
+      if (error) throw error;
+      toast({ title: "Absence créée" });
       resetForm();
       setShowAdd(false);
       await onRefresh();
+    } catch (error) {
+      console.error("[TabAbsences] handleAdd failed:", error);
+      const message = error instanceof Error ? error.message : "Impossible de créer l'absence";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
+      return;
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -96,9 +101,11 @@ export function TabAbsences({ formation, onRefresh }: Props) {
       if (error) throw error;
       toast({ title: "Absence supprimée" });
       await onRefresh();
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Impossible de supprimer";
+    } catch (error: unknown) {
+      console.error("[TabAbsences] handleDelete failed:", error);
+      const message = error instanceof Error ? error.message : "Impossible de supprimer";
       toast({ title: "Erreur", description: message, variant: "destructive" });
+      return;
     } finally {
       setDeleting(null);
     }
@@ -126,12 +133,14 @@ export function TabAbsences({ formation, onRefresh }: Props) {
         description: `${data.created} nouvelle${data.created !== 1 ? "s" : ""} absence${data.created !== 1 ? "s" : ""} créée${data.created !== 1 ? "s" : ""}, ${data.skipped} déjà existante${data.skipped !== 1 ? "s" : ""} ignorée${data.skipped !== 1 ? "s" : ""}`,
       });
       await onRefresh();
-    } catch {
+    } catch (error) {
+      console.error("[TabAbsences] handleAutoDetect failed:", error);
       toast({
         title: "Erreur",
         description: "Impossible de contacter le serveur",
         variant: "destructive",
       });
+      return;
     } finally {
       setAutoDetecting(false);
       setShowAutoDetect(false);
@@ -139,14 +148,19 @@ export function TabAbsences({ formation, onRefresh }: Props) {
   };
 
   const handleUpdateStatus = async (id: string, newStatus: string) => {
-    const { error } = await supabase
-      .from("formation_absences")
-      .update({ status: newStatus })
-      .eq("id", id);
-    if (error) {
-      toast({ title: "Erreur", variant: "destructive" });
-    } else {
+    try {
+      const { error } = await supabase
+        .from("formation_absences")
+        .update({ status: newStatus })
+        .eq("id", id);
+      if (error) throw error;
+      toast({ title: "Absence mise à jour" });
       await onRefresh();
+    } catch (error) {
+      console.error("[TabAbsences] handleUpdateStatus failed:", error);
+      const message = error instanceof Error ? error.message : "Impossible de mettre à jour";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
+      return;
     }
   };
 
