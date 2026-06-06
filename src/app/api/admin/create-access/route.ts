@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { requireRole } from "@/lib/auth/require-role";
+import { logAudit } from "@/lib/audit-log";
 
 function createAdminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -84,11 +85,26 @@ export async function POST(request: NextRequest) {
 
     // 3. Link profile to entity record.
     //
-    // Fix P0 audit RLS 2026-06-05 : sans pré-validation entity_id, un admin
-    // de l'entité A pouvait linker n'importe quel learner cross-entity à son
-    // propre profil fraîchement créé (service_role bypasse la RLS). On
-    // pré-charge le learner pour vérifier qu'il appartient bien à l'entité
-    // du caller — sauf super_admin qui peut cross-entity légitimement.
+    // Fix P0 audit RLS 2026-06-05 (PR #201) + review adversariale :
+    //   1. Pré-validation entity_id du learner cible (anti cross-tenant)
+    //   2. Defense-in-depth : second filtre .eq("entity_id", ...) sur l'UPDATE
+    //      lui-même (au cas où le SELECT et l'UPDATE seraient séparés par une
+    //      modif concurrente de learner.entity_id — race condition)
+    //   3. Splitter 404 (learner introuvable) vs 500 (erreur SQL)
+    //   4. Si linkErr après création auth user + profile, rollback applicatif
+    //      pour ne pas laisser de compte orphelin
+    //   5. logAudit explicite (auditabilité multi-tenant)
+    //   6. entity_type === "client" non supporté pour l'instant — rejet 400
+    if (entity_type === "client") {
+      return NextResponse.json(
+        {
+          error:
+            "entity_type 'client' non supporté actuellement — créer le client séparément puis utiliser entity_type 'learner'",
+        },
+        { status: 400 },
+      );
+    }
+
     if (entity_type === "learner" && entity_type_id) {
       const { data: targetLearner, error: learnerLoadErr } = await adminClient
         .from("learners")
@@ -96,10 +112,22 @@ export async function POST(request: NextRequest) {
         .eq("id", entity_type_id)
         .maybeSingle();
 
-      if (learnerLoadErr || !targetLearner) {
+      if (learnerLoadErr) {
+        return NextResponse.json(
+          { error: "Erreur lecture apprenant", details: learnerLoadErr.message },
+          { status: 500 },
+        );
+      }
+      if (!targetLearner) {
         return NextResponse.json(
           { error: "Apprenant introuvable" },
           { status: 404 },
+        );
+      }
+      if (!targetLearner.entity_id) {
+        return NextResponse.json(
+          { error: "Apprenant sans entity_id — état incohérent" },
+          { status: 500 },
         );
       }
 
@@ -111,14 +139,53 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const { error: linkErr } = await adminClient
+      // Defense-in-depth : second filtre entity_id sur l'UPDATE pour fermer
+      // la fenêtre race (cas où learner.entity_id changerait entre le SELECT
+      // ci-dessus et ce UPDATE — improbable mais gratuit).
+      let linkUpdate = adminClient
         .from("learners")
         .update({ profile_id: authUser.user.id })
         .eq("id", entity_type_id);
+      if (!isSuperAdmin) {
+        linkUpdate = linkUpdate.eq("entity_id", auth.profile.entity_id);
+      }
+      const { error: linkErr } = await linkUpdate;
 
       if (linkErr) {
         console.error("[create-access] Link learner error:", linkErr);
+        // Rollback applicatif : delete auth user + profile orphelins.
+        // Si rollback échoue, on log mais on retourne quand même 500 pour
+        // signaler l'état incohérent.
+        const { error: rollbackAuthErr } =
+          await adminClient.auth.admin.deleteUser(authUser.user.id);
+        if (rollbackAuthErr) {
+          console.error("[create-access] Rollback auth user failed:", rollbackAuthErr);
+        }
+        await adminClient.from("profiles").delete().eq("id", authUser.user.id);
+        return NextResponse.json(
+          {
+            error:
+              "Échec du lien apprenant — compte créé puis nettoyé (rollback applicatif)",
+            details: linkErr.message,
+          },
+          { status: 500 },
+        );
       }
+
+      // Audit log explicite (auditabilité multi-tenant, CLAUDE.md règle #10).
+      logAudit({
+        supabase: adminClient,
+        entityId: auth.profile.entity_id,
+        userId: auth.user.id,
+        action: "update",
+        resourceType: "learners.profile_link",
+        resourceId: entity_type_id,
+        details: {
+          profile_id: authUser.user.id,
+          target_entity_id: targetLearner.entity_id,
+          was_super_admin_action: isSuperAdmin,
+        },
+      });
     }
 
     // 4. Build login URL for QR code
