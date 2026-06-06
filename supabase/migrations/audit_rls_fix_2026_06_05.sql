@@ -1,334 +1,233 @@
 -- =============================================================================
--- Audit RLS multi-tenant LMS du 2026-06-05
+-- Audit RLS multi-tenant LMS du 2026-06-05 — VERSION CORRIGÉE 2026-06-06
 -- =============================================================================
--- Fix les 10 tables à risque résiduel post-cleanup phase 2 (mai 2026).
+-- Fix les tables à risque résiduel post-cleanup phase 2 (mai 2026).
+--
+-- ⚠ POST-MORTEM IMPORTANT — VERSION INITIALE INVALIDE :
+-- ----------------------------------------------------------------------------
+-- L'audit Workflow (BMAD adversarial) du 2026-06-05 avait identifié 10 tables
+-- à risque. Après tentative d'exécution en prod, vérification croisée avec le
+-- code source du repo montre que 8 sur 10 étaient des HALLUCINATIONS des
+-- agents d'audit — des noms plausibles inventés pour le sous-système
+-- CRM/Finance/Infra mais qui n'existent NULLE PART dans le schéma.
+--
+-- Tables hallucinées (n'existent ni dans schema.sql, ni dans aucune migration) :
+--   - sellsy_company_mappings, sellsy_contact_mappings → en réalité Sellsy est
+--     géré via colonnes JSONB sur clients/contacts existants
+--   - payment_methods, credit_notes, factoring_states → pas de modèle
+--     comptable séparé en V1, tout vit dans formation_invoices /
+--     formation_invoice_lines / affacturage_*
+--   - opportunities → en réalité crm_prospects + crm_quotes
+--   - automation_runs → en réalité crm_automation_logs +
+--     session_automation_logs
+--   - oauth_tokens → en réalité gmail_connections (déjà scoped par entity_id)
+--
+-- Tables vraiment à risque (vérifiées dans le code) :
+--   ✓ elearning_global_flashcards (defined in add-elearning-v2.sql + schema.sql)
+--   ✓ generated_documents (schema.sql:305)
+--
+-- L'audit aurait dû couvrir aussi : crm_prospects, crm_quotes,
+-- formation_invoices, formation_charges, gmail_connections, et les autres
+-- vraies tables CRM. C'est une todo pour V1.1 (audit RLS round 2 avec
+-- inventaire pg_tables réel, pas inféré).
+-- ----------------------------------------------------------------------------
 --
 -- Helpers utilisés : public.user_role(), public.user_entity_id()
 --   (SANS préfixe auth.* — cf. memory feedback_rls_helpers_public_not_auth)
 --
--- Idempotent : DROP POLICY IF EXISTS + CREATE POLICY pour chaque table.
+-- Idempotent + safe : chaque bloc est wrap dans DO $$ ... IF EXISTS ... $$
+-- pour ne PAS échouer si la table cible n'existe pas en prod (cas de
+-- elearning_global_flashcards si la migration add-elearning-v2.sql n'a
+-- jamais été exécutée).
 --
--- Référence audit : docs/audit-rls-2026-06-05.md (Section 5)
--- Référence code-bypass associé : docs/audit-rls-2026-06-05-codebypass.md
---
--- ⚠ AVANT EXÉCUTION EN PROD :
---   1. Exécuter d'abord en STAGING.
---   2. Vérifier les policies appliquées via :
---      SELECT tablename, policyname, cmd FROM pg_policies
---      WHERE tablename IN (
---        'elearning_global_flashcards','sellsy_company_mappings',
---        'sellsy_contact_mappings','payment_methods','credit_notes',
---        'factoring_states','opportunities','generated_documents',
---        'automation_runs','oauth_tokens'
---      );
---   3. Test manuel cross-tenant : admin C3V doit recevoir 0 lignes pour
---      les ressources MR Formation (et inversement).
---   4. Décision produit `payment_methods` : référentiel partagé ou par
---      entity ? (cf. bloc 4 ci-dessous, à adapter si nécessaire).
+-- Référence : docs/audit-rls-2026-06-05.md
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
--- 1. elearning_global_flashcards : ajout filtre entity_id
+-- 1. elearning_global_flashcards : ajout filtre entity_id (si table existe)
 -- -----------------------------------------------------------------------------
-DROP POLICY IF EXISTS "elearning_global_flashcards_admin_select" ON public.elearning_global_flashcards;
-DROP POLICY IF EXISTS "elearning_global_flashcards_admin_modify" ON public.elearning_global_flashcards;
-DROP POLICY IF EXISTS "elearning_global_flashcards_select" ON public.elearning_global_flashcards;
-DROP POLICY IF EXISTS "elearning_global_flashcards_modify" ON public.elearning_global_flashcards;
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_tables
+    WHERE schemaname = 'public' AND tablename = 'elearning_global_flashcards'
+  ) THEN
+    EXECUTE 'DROP POLICY IF EXISTS "elearning_global_flashcards_admin_select" ON public.elearning_global_flashcards';
+    EXECUTE 'DROP POLICY IF EXISTS "elearning_global_flashcards_admin_modify" ON public.elearning_global_flashcards';
+    EXECUTE 'DROP POLICY IF EXISTS "elearning_global_flashcards_select" ON public.elearning_global_flashcards';
+    EXECUTE 'DROP POLICY IF EXISTS "elearning_global_flashcards_modify" ON public.elearning_global_flashcards';
+    EXECUTE 'DROP POLICY IF EXISTS "allow_all" ON public.elearning_global_flashcards';
 
-CREATE POLICY "elearning_global_flashcards_select" ON public.elearning_global_flashcards
-  FOR SELECT TO authenticated
-  USING (
-    entity_id = public.user_entity_id()
-    OR public.user_role() = 'super_admin'
-  );
+    EXECUTE $POL$
+      CREATE POLICY "elearning_global_flashcards_select" ON public.elearning_global_flashcards
+        FOR SELECT TO authenticated
+        USING (
+          entity_id = public.user_entity_id()
+          OR public.user_role() = 'super_admin'
+        )
+    $POL$;
 
-CREATE POLICY "elearning_global_flashcards_modify" ON public.elearning_global_flashcards
-  FOR ALL TO authenticated
-  USING (
-    public.user_role() IN ('admin', 'super_admin')
-    AND (entity_id = public.user_entity_id() OR public.user_role() = 'super_admin')
-  )
-  WITH CHECK (
-    public.user_role() IN ('admin', 'super_admin')
-    AND (entity_id = public.user_entity_id() OR public.user_role() = 'super_admin')
-  );
+    EXECUTE $POL$
+      CREATE POLICY "elearning_global_flashcards_modify" ON public.elearning_global_flashcards
+        FOR ALL TO authenticated
+        USING (
+          public.user_role() IN ('admin', 'super_admin')
+          AND (entity_id = public.user_entity_id() OR public.user_role() = 'super_admin')
+        )
+        WITH CHECK (
+          public.user_role() IN ('admin', 'super_admin')
+          AND (entity_id = public.user_entity_id() OR public.user_role() = 'super_admin')
+        )
+    $POL$;
 
--- -----------------------------------------------------------------------------
--- 2. sellsy_company_mappings : isolation par entity
--- -----------------------------------------------------------------------------
-DROP POLICY IF EXISTS "sellsy_company_mappings_allow_all" ON public.sellsy_company_mappings;
-DROP POLICY IF EXISTS "sellsy_company_mappings_select" ON public.sellsy_company_mappings;
-DROP POLICY IF EXISTS "sellsy_company_mappings_modify" ON public.sellsy_company_mappings;
-
-CREATE POLICY "sellsy_company_mappings_select" ON public.sellsy_company_mappings
-  FOR SELECT TO authenticated
-  USING (
-    entity_id = public.user_entity_id()
-    OR public.user_role() = 'super_admin'
-  );
-
-CREATE POLICY "sellsy_company_mappings_modify" ON public.sellsy_company_mappings
-  FOR ALL TO authenticated
-  USING (
-    public.user_role() IN ('admin', 'super_admin')
-    AND (entity_id = public.user_entity_id() OR public.user_role() = 'super_admin')
-  )
-  WITH CHECK (
-    public.user_role() IN ('admin', 'super_admin')
-    AND (entity_id = public.user_entity_id() OR public.user_role() = 'super_admin')
-  );
+    RAISE NOTICE 'elearning_global_flashcards : RLS policies appliquées';
+  ELSE
+    RAISE NOTICE 'elearning_global_flashcards : table absente — skip (OK)';
+  END IF;
+END $$;
 
 -- -----------------------------------------------------------------------------
--- 3. sellsy_contact_mappings : isolation par entity
--- -----------------------------------------------------------------------------
-DROP POLICY IF EXISTS "sellsy_contact_mappings_allow_all" ON public.sellsy_contact_mappings;
-DROP POLICY IF EXISTS "sellsy_contact_mappings_select" ON public.sellsy_contact_mappings;
-DROP POLICY IF EXISTS "sellsy_contact_mappings_modify" ON public.sellsy_contact_mappings;
-
-CREATE POLICY "sellsy_contact_mappings_select" ON public.sellsy_contact_mappings
-  FOR SELECT TO authenticated
-  USING (
-    entity_id = public.user_entity_id()
-    OR public.user_role() = 'super_admin'
-  );
-
-CREATE POLICY "sellsy_contact_mappings_modify" ON public.sellsy_contact_mappings
-  FOR ALL TO authenticated
-  USING (
-    public.user_role() IN ('admin', 'super_admin')
-    AND (entity_id = public.user_entity_id() OR public.user_role() = 'super_admin')
-  )
-  WITH CHECK (
-    public.user_role() IN ('admin', 'super_admin')
-    AND (entity_id = public.user_entity_id() OR public.user_role() = 'super_admin')
-  );
-
--- -----------------------------------------------------------------------------
--- 4. payment_methods : isolation par entity
---    ⚠ DÉCISION PRODUIT REQUISE :
---      Si payment_methods est en fait un référentiel partagé (CB, virement,
---      chèque… commun aux 2 entités), supprimer ce bloc et ajouter la table
---      à la liste LEGITIMATELY PERMISSIVE du memory. Sinon, la policy
---      ci-dessous isole strictement par entity_id (par défaut sécurisé).
--- -----------------------------------------------------------------------------
-DROP POLICY IF EXISTS "payment_methods_allow_all" ON public.payment_methods;
-DROP POLICY IF EXISTS "payment_methods_select" ON public.payment_methods;
-DROP POLICY IF EXISTS "payment_methods_modify" ON public.payment_methods;
-
-CREATE POLICY "payment_methods_select" ON public.payment_methods
-  FOR SELECT TO authenticated
-  USING (
-    entity_id = public.user_entity_id()
-    OR public.user_role() = 'super_admin'
-  );
-
-CREATE POLICY "payment_methods_modify" ON public.payment_methods
-  FOR ALL TO authenticated
-  USING (
-    public.user_role() IN ('admin', 'super_admin')
-    AND (entity_id = public.user_entity_id() OR public.user_role() = 'super_admin')
-  )
-  WITH CHECK (
-    public.user_role() IN ('admin', 'super_admin')
-    AND (entity_id = public.user_entity_id() OR public.user_role() = 'super_admin')
-  );
-
--- -----------------------------------------------------------------------------
--- 5. credit_notes : ajout check entity_id via join invoice
--- -----------------------------------------------------------------------------
-DROP POLICY IF EXISTS "credit_notes_admin_only" ON public.credit_notes;
-DROP POLICY IF EXISTS "credit_notes_select" ON public.credit_notes;
-DROP POLICY IF EXISTS "credit_notes_modify" ON public.credit_notes;
-
-CREATE POLICY "credit_notes_select" ON public.credit_notes
-  FOR SELECT TO authenticated
-  USING (
-    public.user_role() = 'super_admin'
-    OR EXISTS (
-      SELECT 1 FROM public.invoices i
-      WHERE i.id = credit_notes.invoice_id
-        AND i.entity_id = public.user_entity_id()
-    )
-  );
-
-CREATE POLICY "credit_notes_modify" ON public.credit_notes
-  FOR ALL TO authenticated
-  USING (
-    public.user_role() IN ('admin', 'super_admin')
-    AND (
-      public.user_role() = 'super_admin'
-      OR EXISTS (
-        SELECT 1 FROM public.invoices i
-        WHERE i.id = credit_notes.invoice_id
-          AND i.entity_id = public.user_entity_id()
-      )
-    )
-  )
-  WITH CHECK (
-    public.user_role() IN ('admin', 'super_admin')
-    AND (
-      public.user_role() = 'super_admin'
-      OR EXISTS (
-        SELECT 1 FROM public.invoices i
-        WHERE i.id = credit_notes.invoice_id
-          AND i.entity_id = public.user_entity_id()
-      )
-    )
-  );
-
--- -----------------------------------------------------------------------------
--- 6. factoring_states : durcissement par entity_id
--- -----------------------------------------------------------------------------
-DROP POLICY IF EXISTS "factoring_states_role_only" ON public.factoring_states;
-DROP POLICY IF EXISTS "factoring_states_select" ON public.factoring_states;
-DROP POLICY IF EXISTS "factoring_states_modify" ON public.factoring_states;
-
-CREATE POLICY "factoring_states_select" ON public.factoring_states
-  FOR SELECT TO authenticated
-  USING (
-    entity_id = public.user_entity_id()
-    OR public.user_role() = 'super_admin'
-  );
-
-CREATE POLICY "factoring_states_modify" ON public.factoring_states
-  FOR ALL TO authenticated
-  USING (
-    public.user_role() IN ('admin', 'super_admin')
-    AND (entity_id = public.user_entity_id() OR public.user_role() = 'super_admin')
-  )
-  WITH CHECK (
-    public.user_role() IN ('admin', 'super_admin')
-    AND (entity_id = public.user_entity_id() OR public.user_role() = 'super_admin')
-  );
-
--- -----------------------------------------------------------------------------
--- 7. opportunities : durcir INSERT/UPDATE avec WITH CHECK
--- -----------------------------------------------------------------------------
-DROP POLICY IF EXISTS "opportunities_insert" ON public.opportunities;
-DROP POLICY IF EXISTS "opportunities_update" ON public.opportunities;
-DROP POLICY IF EXISTS "opportunities_modify" ON public.opportunities;
-
-CREATE POLICY "opportunities_insert" ON public.opportunities
-  FOR INSERT TO authenticated
-  WITH CHECK (
-    public.user_role() IN ('admin', 'super_admin', 'commercial')
-    AND (entity_id = public.user_entity_id() OR public.user_role() = 'super_admin')
-  );
-
-CREATE POLICY "opportunities_update" ON public.opportunities
-  FOR UPDATE TO authenticated
-  USING (
-    public.user_role() IN ('admin', 'super_admin', 'commercial')
-    AND (entity_id = public.user_entity_id() OR public.user_role() = 'super_admin')
-  )
-  WITH CHECK (
-    public.user_role() IN ('admin', 'super_admin', 'commercial')
-    AND (entity_id = public.user_entity_id() OR public.user_role() = 'super_admin')
-  );
-
--- -----------------------------------------------------------------------------
--- 8. generated_documents : ajout check entity_id direct (sans FK détournée)
+-- 2. generated_documents : ajout check entity_id direct + via session FK
 --    Pré-requis : la colonne entity_id existe sur generated_documents.
---    Si elle n'existe pas, voir migration séparée pour l'ajouter et la
---    backfill depuis sessions.entity_id.
+--    Si elle n'existe pas, la policy passe quand même via le EXISTS sessions.
 -- -----------------------------------------------------------------------------
-DROP POLICY IF EXISTS "generated_documents_via_session" ON public.generated_documents;
-DROP POLICY IF EXISTS "generated_documents_select" ON public.generated_documents;
-DROP POLICY IF EXISTS "generated_documents_modify" ON public.generated_documents;
+DO $$
+DECLARE
+  has_entity_id_col BOOLEAN;
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_tables
+    WHERE schemaname = 'public' AND tablename = 'generated_documents'
+  ) THEN
+    SELECT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'generated_documents'
+        AND column_name = 'entity_id'
+    ) INTO has_entity_id_col;
 
-CREATE POLICY "generated_documents_select" ON public.generated_documents
-  FOR SELECT TO authenticated
-  USING (
-    public.user_role() = 'super_admin'
-    OR entity_id = public.user_entity_id()
-    OR EXISTS (
-      SELECT 1 FROM public.sessions s
-      WHERE s.id = generated_documents.session_id
-        AND s.entity_id = public.user_entity_id()
-    )
-  );
+    EXECUTE 'DROP POLICY IF EXISTS "generated_documents_via_session" ON public.generated_documents';
+    EXECUTE 'DROP POLICY IF EXISTS "generated_documents_select" ON public.generated_documents';
+    EXECUTE 'DROP POLICY IF EXISTS "generated_documents_modify" ON public.generated_documents';
+    EXECUTE 'DROP POLICY IF EXISTS "allow_all" ON public.generated_documents';
 
-CREATE POLICY "generated_documents_modify" ON public.generated_documents
-  FOR ALL TO authenticated
-  USING (
-    public.user_role() IN ('admin', 'super_admin', 'trainer')
-    AND (
-      public.user_role() = 'super_admin'
-      OR entity_id = public.user_entity_id()
-      OR EXISTS (
-        SELECT 1 FROM public.sessions s
-        WHERE s.id = generated_documents.session_id
-          AND s.entity_id = public.user_entity_id()
-      )
-    )
-  )
-  WITH CHECK (
-    public.user_role() IN ('admin', 'super_admin', 'trainer')
-    AND (
-      public.user_role() = 'super_admin'
-      OR entity_id = public.user_entity_id()
-      OR EXISTS (
-        SELECT 1 FROM public.sessions s
-        WHERE s.id = generated_documents.session_id
-          AND s.entity_id = public.user_entity_id()
-      )
-    )
-  );
+    IF has_entity_id_col THEN
+      -- Cas idéal : entity_id direct disponible + fallback FK sessions
+      EXECUTE $POL$
+        CREATE POLICY "generated_documents_select" ON public.generated_documents
+          FOR SELECT TO authenticated
+          USING (
+            public.user_role() = 'super_admin'
+            OR entity_id = public.user_entity_id()
+            OR EXISTS (
+              SELECT 1 FROM public.sessions s
+              WHERE s.id = generated_documents.session_id
+                AND s.entity_id = public.user_entity_id()
+            )
+          )
+      $POL$;
 
--- -----------------------------------------------------------------------------
--- 9. automation_runs : ajout entity_id sur les policies admin
--- -----------------------------------------------------------------------------
-DROP POLICY IF EXISTS "automation_runs_admin" ON public.automation_runs;
-DROP POLICY IF EXISTS "automation_runs_select" ON public.automation_runs;
-DROP POLICY IF EXISTS "automation_runs_modify" ON public.automation_runs;
+      EXECUTE $POL$
+        CREATE POLICY "generated_documents_modify" ON public.generated_documents
+          FOR ALL TO authenticated
+          USING (
+            public.user_role() IN ('admin', 'super_admin', 'trainer')
+            AND (
+              public.user_role() = 'super_admin'
+              OR entity_id = public.user_entity_id()
+              OR EXISTS (
+                SELECT 1 FROM public.sessions s
+                WHERE s.id = generated_documents.session_id
+                  AND s.entity_id = public.user_entity_id()
+              )
+            )
+          )
+          WITH CHECK (
+            public.user_role() IN ('admin', 'super_admin', 'trainer')
+            AND (
+              public.user_role() = 'super_admin'
+              OR entity_id = public.user_entity_id()
+              OR EXISTS (
+                SELECT 1 FROM public.sessions s
+                WHERE s.id = generated_documents.session_id
+                  AND s.entity_id = public.user_entity_id()
+              )
+            )
+          )
+      $POL$;
 
-CREATE POLICY "automation_runs_select" ON public.automation_runs
-  FOR SELECT TO authenticated
-  USING (
-    public.user_role() = 'super_admin'
-    OR (
-      public.user_role() = 'admin'
-      AND entity_id = public.user_entity_id()
-    )
-  );
+      RAISE NOTICE 'generated_documents : RLS policies appliquées (avec entity_id direct)';
+    ELSE
+      -- Fallback : pas de colonne entity_id, on isole seulement via FK sessions
+      EXECUTE $POL$
+        CREATE POLICY "generated_documents_select" ON public.generated_documents
+          FOR SELECT TO authenticated
+          USING (
+            public.user_role() = 'super_admin'
+            OR EXISTS (
+              SELECT 1 FROM public.sessions s
+              WHERE s.id = generated_documents.session_id
+                AND s.entity_id = public.user_entity_id()
+            )
+          )
+      $POL$;
 
-CREATE POLICY "automation_runs_modify" ON public.automation_runs
-  FOR ALL TO authenticated
-  USING (
-    public.user_role() = 'super_admin'
-    OR (
-      public.user_role() = 'admin'
-      AND entity_id = public.user_entity_id()
-    )
-  )
-  WITH CHECK (
-    public.user_role() = 'super_admin'
-    OR (
-      public.user_role() = 'admin'
-      AND entity_id = public.user_entity_id()
-    )
-  );
+      EXECUTE $POL$
+        CREATE POLICY "generated_documents_modify" ON public.generated_documents
+          FOR ALL TO authenticated
+          USING (
+            public.user_role() IN ('admin', 'super_admin', 'trainer')
+            AND (
+              public.user_role() = 'super_admin'
+              OR EXISTS (
+                SELECT 1 FROM public.sessions s
+                WHERE s.id = generated_documents.session_id
+                  AND s.entity_id = public.user_entity_id()
+              )
+            )
+          )
+          WITH CHECK (
+            public.user_role() IN ('admin', 'super_admin', 'trainer')
+            AND (
+              public.user_role() = 'super_admin'
+              OR EXISTS (
+                SELECT 1 FROM public.sessions s
+                WHERE s.id = generated_documents.session_id
+                  AND s.entity_id = public.user_entity_id()
+              )
+            )
+          )
+      $POL$;
 
--- -----------------------------------------------------------------------------
--- 10. oauth_tokens : documenter explicitement la stratégie par user_id
---     (par design — OAuth est par user, pas par entity).
--- -----------------------------------------------------------------------------
-DROP POLICY IF EXISTS "oauth_tokens_self" ON public.oauth_tokens;
-
-CREATE POLICY "oauth_tokens_self" ON public.oauth_tokens
-  FOR ALL TO authenticated
-  USING (
-    user_id = auth.uid()
-    OR public.user_role() = 'super_admin'
-  )
-  WITH CHECK (
-    user_id = auth.uid()
-    OR public.user_role() = 'super_admin'
-  );
-
-COMMENT ON TABLE public.oauth_tokens IS
-  'OAuth tokens stockés par user_id (par design, pas par entity_id). RLS isole par auth.uid().';
+      RAISE NOTICE 'generated_documents : RLS policies appliquées (via sessions FK seulement, colonne entity_id absente)';
+    END IF;
+  ELSE
+    RAISE NOTICE 'generated_documents : table absente — skip (OK)';
+  END IF;
+END $$;
 
 -- =============================================================================
--- Fin migration audit_rls_fix_2026_06_05.sql
+-- BLOCS SUPPRIMÉS (audit hallucinations) — ne pas restaurer sans vérification
+-- pg_tables :
+--   ✗ sellsy_company_mappings        → utiliser clients.sellsy_id (JSONB?)
+--   ✗ sellsy_contact_mappings        → utiliser contacts.sellsy_id
+--   ✗ payment_methods                → pas de modèle dédié en V1
+--   ✗ credit_notes                   → pas de modèle dédié en V1
+--   ✗ factoring_states               → utiliser affacturage_lots/lot_invoices
+--   ✗ opportunities                  → utiliser crm_prospects + crm_quotes
+--   ✗ automation_runs                → utiliser crm_automation_logs +
+--                                       session_automation_logs
+--   ✗ oauth_tokens                   → utiliser gmail_connections
+--
+-- TODO V1.1 : refaire un audit RLS *réel* avec pg_tables comme source de
+-- vérité (pas via inférence d'agent), notamment sur :
+--   - crm_prospects, crm_quotes, crm_quote_lines, crm_campaigns
+--   - formation_invoices, formation_invoice_lines, formation_charges
+--   - affacturage_lots, affacturage_lot_invoices
+--   - gmail_connections (déjà OK probable)
+--   - session_automation_logs, crm_automation_logs, crm_automation_rules
+-- =============================================================================
+
+-- =============================================================================
+-- Fin migration audit_rls_fix_2026_06_05.sql (version corrigée 2026-06-06)
 -- =============================================================================
