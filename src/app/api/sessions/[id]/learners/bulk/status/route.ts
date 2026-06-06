@@ -1,5 +1,5 @@
 /**
- * Pédagogie V2 Epic 2.5 — TASK 10
+ * Pédagogie V2 Epic 2 — Story E2-S04
  * GET /api/sessions/[id]/learners/bulk/status?jobId=<uuid>
  *
  * Renvoie l'état courant d'un job d'import bulk lancé via POST
@@ -8,17 +8,27 @@
  *
  * Sécurité :
  *  - requireRole admin/super_admin (auth session)
- *  - vérifie que le job appartient bien à l'entité active (super_admin OK
- *    cross-entity via resolveActiveEntityId)
- *  - vérifie que le job appartient bien à la session demandée (cohérence URL)
+ *  - super_admin : entité active résolue via cookie (cross-entity safe)
+ *  - 404 (PAS 403) si le job n'existe pas OU appartient à une autre entité
+ *    → anti-énumération : ne révèle pas l'existence du job à un user d'une
+ *      autre entité (même cohérence pour mismatch session_id de l'URL).
+ *  - PAS d'exposition de `payload` (peut contenir des données learners pré-création)
+ *    ni de `created_by` (PII admin).
  *
- * Réponse :
+ * Réponse (200) :
  *   {
  *     ok: true,
- *     jobId, status, payloadCount,
- *     results: JobResults | null,
- *     pdfSignedUrl, pdfSignedUrlExpiresAt,
- *     errorMessage, createdAt, updatedAt
+ *     job: {
+ *       id,
+ *       status,
+ *       payload_count,
+ *       results,                  // JobResults | null
+ *       pdf_signed_url,
+ *       pdf_signed_url_expires_at,
+ *       error_message,
+ *       created_at,
+ *       updated_at
+ *     }
  *   }
  */
 
@@ -43,10 +53,12 @@ export async function GET(
     const { profile } = auth;
 
     const url = new URL(request.url);
-    const parsed = QuerySchema.safeParse({ jobId: url.searchParams.get("jobId") });
+    const parsed = QuerySchema.safeParse({
+      jobId: url.searchParams.get("jobId"),
+    });
     if (!parsed.success) {
       return NextResponse.json(
-        { error: "invalid_query", details: parsed.error.flatten() },
+        { error: "missing_or_invalid_job_id" },
         { status: 400 },
       );
     }
@@ -59,49 +71,52 @@ export async function GET(
     const { data: job, error } = await admin
       .from("learner_bulk_import_jobs")
       .select(
-        "id, entity_id, session_id, status, payload_count, results, pdf_path, pdf_signed_url, pdf_signed_url_expires_at, error_message, created_at, updated_at",
+        // Whitelist explicite : EXCLUT `payload` (données learners avant création)
+        // et `created_by` (PII admin). On garde `entity_id` et `session_id` pour
+        // les gardes d'isolement ci-dessous, mais on ne les renvoie pas au client.
+        "id, entity_id, session_id, status, payload_count, results, pdf_signed_url, pdf_signed_url_expires_at, error_message, created_at, updated_at",
       )
       .eq("id", jobId)
       .maybeSingle();
 
-    if (error || !job) {
+    // Anti-énumération : même réponse 404 si le job n'existe pas, s'il
+    // appartient à une autre entité, ou s'il appartient à une autre session.
+    // → empêche un admin de l'entité B de découvrir l'existence d'un job de
+    //   l'entité A en se basant sur un code HTTP différent (404 vs 403).
+    if (
+      error ||
+      !job ||
+      job.entity_id !== activeEntityId ||
+      job.session_id !== sessionId
+    ) {
       return NextResponse.json(
         { error: "job_not_found" },
         { status: 404 },
       );
     }
 
-    // Garde multi-tenant : refuse si l'entité du job diffère.
-    if (job.entity_id !== activeEntityId) {
-      return NextResponse.json(
-        { error: "job_not_in_active_entity" },
-        { status: 403 },
-      );
-    }
-
-    // Garde URL : refuse si le sessionId de l'URL ne matche pas.
-    if (job.session_id !== sessionId) {
-      return NextResponse.json(
-        { error: "job_not_for_session" },
-        { status: 403 },
-      );
-    }
-
     return NextResponse.json({
       ok: true,
-      jobId: job.id,
-      status: job.status,
-      payloadCount: job.payload_count,
-      results: job.results,
-      pdfSignedUrl: job.pdf_signed_url,
-      pdfSignedUrlExpiresAt: job.pdf_signed_url_expires_at,
-      errorMessage: job.error_message,
-      createdAt: job.created_at,
-      updatedAt: job.updated_at,
+      job: {
+        id: job.id,
+        status: job.status,
+        payload_count: job.payload_count,
+        results: job.results,
+        pdf_signed_url: job.pdf_signed_url,
+        pdf_signed_url_expires_at: job.pdf_signed_url_expires_at,
+        error_message: job.error_message,
+        created_at: job.created_at,
+        updated_at: job.updated_at,
+      },
     });
   } catch (err) {
     return NextResponse.json(
-      { error: sanitizeError(err, "GET /api/sessions/[id]/learners/bulk/status") },
+      {
+        error: sanitizeError(
+          err,
+          "GET /api/sessions/[id]/learners/bulk/status",
+        ),
+      },
       { status: 500 },
     );
   }
