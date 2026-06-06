@@ -141,26 +141,106 @@ export async function DELETE(
 
   const userId = params.id;
   const adminClient = createAdminClient();
+  const isSuperAdmin = callerProfile.role === "super_admin";
 
-  // Unlink from learners/trainers first (set profile_id to null)
-  await adminClient.from("learners").update({ profile_id: null }).eq("profile_id", userId);
-  await adminClient.from("trainers").update({ profile_id: null }).eq("profile_id", userId);
-
-  // Delete from profiles (auth account too)
-  const { error: profileError } = await adminClient
+  // Fix P0 audit RLS 2026-06-05 (PR #201) + review adversariale :
+  //   1. Pré-valider que le profile cible existe ET appartient bien à
+  //      l'entité du caller (sauf super_admin qui cross-entity légitimement).
+  //      Sans cette pré-validation, les unlink/delete renvoient un succès
+  //      avec 0 rows affected — faux positif qui masque un cross-tenant
+  //      attempt et empêche tout audit/alerte.
+  //   2. Scope les unlink learners/trainers par entity_id pour empêcher un
+  //      admin de l'entité A d'unlinker silencieusement des ressources de
+  //      l'entité B juste en devinant un profile_id.
+  //   3. Si la suppression auth.admin.deleteUser échoue, on retourne 500
+  //      (ne plus juste console.error) car le profile est déjà supprimé →
+  //      état incohérent à signaler.
+  const { data: targetProfile, error: targetProfileErr } = await adminClient
     .from("profiles")
-    .delete()
+    .select("id, entity_id")
     .eq("id", userId)
-    .eq("entity_id", callerProfile.entity_id);
+    .maybeSingle();
+
+  if (targetProfileErr) {
+    return NextResponse.json(
+      { error: sanitizeDbError(targetProfileErr, "load target profile") },
+      { status: 500 },
+    );
+  }
+  if (!targetProfile) {
+    return NextResponse.json({ error: "Profil introuvable" }, { status: 404 });
+  }
+  if (
+    !isSuperAdmin &&
+    targetProfile.entity_id !== callerProfile.entity_id
+  ) {
+    return NextResponse.json(
+      { error: "Profil rattaché à une autre entité (accès refusé)" },
+      { status: 403 },
+    );
+  }
+  const targetEntityId = targetProfile.entity_id;
+
+  // Unlink from learners/trainers (set profile_id to null).
+  // Scope par entity_id du caller pour empêcher l'unlink cross-tenant
+  // (sauf super_admin qui peut cross-entity).
+  let learnersUnlink = adminClient
+    .from("learners")
+    .update({ profile_id: null })
+    .eq("profile_id", userId);
+  if (!isSuperAdmin) {
+    learnersUnlink = learnersUnlink.eq("entity_id", callerProfile.entity_id);
+  }
+  const { error: learnersUnlinkErr } = await learnersUnlink;
+  if (learnersUnlinkErr) {
+    return NextResponse.json(
+      { error: sanitizeDbError(learnersUnlinkErr, "unlink learners") },
+      { status: 500 },
+    );
+  }
+
+  let trainersUnlink = adminClient
+    .from("trainers")
+    .update({ profile_id: null })
+    .eq("profile_id", userId);
+  if (!isSuperAdmin) {
+    trainersUnlink = trainersUnlink.eq("entity_id", callerProfile.entity_id);
+  }
+  const { error: trainersUnlinkErr } = await trainersUnlink;
+  if (trainersUnlinkErr) {
+    return NextResponse.json(
+      { error: sanitizeDbError(trainersUnlinkErr, "unlink trainers") },
+      { status: 500 },
+    );
+  }
+
+  // Delete the profile row. Pour super_admin, on n'applique pas le filtre
+  // entity_id (un super_admin a entity_id NULL sur sa ligne profiles,
+  // donc .eq("entity_id", NULL) matchait 0 rows et faisait échouer le
+  // delete silencieusement — blocker review adversariale).
+  let profileDelete = adminClient.from("profiles").delete().eq("id", userId);
+  if (!isSuperAdmin) {
+    profileDelete = profileDelete.eq("entity_id", callerProfile.entity_id);
+  }
+  const { error: profileError } = await profileDelete;
 
   if (profileError) {
     return NextResponse.json({ error: sanitizeDbError(profileError, "delete user profile") }, { status: 500 });
   }
 
-  // Delete the auth user
+  // Delete the auth user. Si l'auth deletion échoue, le profile est déjà
+  // supprimé → état incohérent qu'il faut signaler explicitement.
   const { error: authError } = await adminClient.auth.admin.deleteUser(userId);
   if (authError) {
     console.error("Failed to delete auth user:", authError.message);
+    return NextResponse.json(
+      {
+        error:
+          "Profil supprimé mais utilisateur auth persiste — état incohérent à corriger manuellement",
+        details: authError.message,
+      },
+      { status: 500 },
+    );
   }
 
   logAudit({
@@ -170,6 +250,10 @@ export async function DELETE(
     action: "delete",
     resourceType: "profiles",
     resourceId: userId,
+    details: {
+      target_entity_id: targetEntityId,
+      was_super_admin_action: isSuperAdmin,
+    },
   });
 
   return NextResponse.json({ success: true });
