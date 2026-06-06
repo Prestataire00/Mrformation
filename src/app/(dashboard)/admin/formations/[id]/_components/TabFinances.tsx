@@ -79,6 +79,11 @@ export function TabFinances({ formation, onRefresh }: Props) {
   // Picker entreprise (Story 3.6) : en INTER, on demande explicitement à l'admin
   // quelle entreprise facturer (plus de fallback arbitraire sur formation_companies[0]).
   const [companyPickerOpen, setCompanyPickerOpen] = useState(false);
+  // E2-S08 : orchestration state-driven (remplace setTimeout 50ms). Stocke le
+  // clientId à pré-remplir une fois le picker fermé. Un useEffect réagit à la
+  // fermeture du picker + à la présence d'un clientId en attente pour
+  // déclencher le pré-remplissage (sans dépendre du timing du fade-out).
+  const [pendingCompanyPrefill, setPendingCompanyPrefill] = useState<string | null>(null);
 
   // Invoice line helpers
   const addInvoiceLine = () => setInvoiceForm((f) => ({ ...f, lines: [...f.lines, { description: "", quantity: "1", unit_price: "" }] }));
@@ -167,7 +172,10 @@ export function TabFinances({ formation, onRefresh }: Props) {
     if (newType === "company" && kind === "inter") {
       setCompanyPickerOpen(true);
     } else if (newType === "company" && kind === "intra") {
-      setTimeout(() => prefillInvoiceLines("company"), 50);
+      // E2-S08 : appel direct (sans setTimeout). `prefillInvoiceLines` lit le
+      // type via l'override (1er arg) — la mise à jour de invoiceForm faite
+      // juste au-dessus n'a pas besoin d'être "vue" via closure.
+      prefillInvoiceLines("company");
     }
     // learner / financier : le préremplissage attend le choix du destinataire
     // précis (handleRecipientSelect s'en charge).
@@ -381,15 +389,26 @@ export function TabFinances({ formation, onRefresh }: Props) {
   };
 
   // Story 3.6 : appelé après que l'admin a choisi l'entreprise à facturer
-  // dans le picker (INTER). Ferme le modal puis pré-remplit la facture avec
-  // ce client_id (lookup par id, pas par name).
+  // dans le picker (INTER). E2-S08 : orchestration state-driven — on enregistre
+  // le clientId en "pending" puis on ferme le picker. Le useEffect ci-dessous
+  // détectera la fermeture du picker + le clientId pending et lancera le
+  // pré-remplissage (sans setTimeout, sans race condition).
   const handleCompanyPicked = (clientId: string) => {
+    setPendingCompanyPrefill(clientId);
     setCompanyPickerOpen(false);
-    // Délai pour permettre au modal de se fermer avant le pré-remplissage
-    setTimeout(() => {
-      prefillInvoiceLines("company", clientId);
-    }, 50);
   };
+
+  // E2-S08 : orchestration state-driven du pré-remplissage post-picker.
+  // Déclenchement : picker fermé (companyPickerOpen=false) ET clientId en
+  // attente. Reset du pending pour éviter les ré-exécutions.
+  useEffect(() => {
+    if (!companyPickerOpen && pendingCompanyPrefill) {
+      const clientId = pendingCompanyPrefill;
+      setPendingCompanyPrefill(null);
+      prefillInvoiceLines("company", clientId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [companyPickerOpen, pendingCompanyPrefill]);
 
   const handleCreateInvoice = async (isAvoir = false, parentInvoice?: Invoice) => {
     const recipientName = isAvoir && parentInvoice
