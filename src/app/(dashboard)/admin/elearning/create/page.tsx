@@ -86,6 +86,15 @@ const COURSE_TYPES = [
   },
 ];
 
+// ---------- Wizard Steps ----------
+const WIZARD_STEPS = [
+  { id: "method" as const, label: "Méthode" },
+  { id: "import" as const, label: "Source" },
+  { id: "configure" as const, label: "Configuration" },
+  { id: "generate" as const, label: "Génération" },
+  { id: "done" as const, label: "Confirmation" },
+] satisfies readonly { id: ViewStep; label: string }[];
+
 // Map color keyword strings to actual CSS colors for theme preview
 const COLOR_MAP: Record<string, string> = {
   // Basic
@@ -177,6 +186,12 @@ export default function CreateCoursePage() {
 
   // Final exam question count
   const [finalExamCount, setFinalExamCount] = useState(40);
+
+  // ---------- Wizard step indicator ----------
+  const activeSteps = method === "import"
+    ? WIZARD_STEPS
+    : WIZARD_STEPS.filter((s) => s.id !== "import");
+  const currentStepIndex = activeSteps.findIndex((s) => s.id === viewStep);
 
   // Pre-fill from program page query params
   useEffect(() => {
@@ -419,6 +434,66 @@ export default function CreateCoursePage() {
           </button>
         </div>
       )}
+
+      {/* ==================== Step Indicator ==================== */}
+      <div className="px-6 pt-4 pb-2">
+        <nav aria-label="Progression création cours" className="max-w-2xl mx-auto">
+          <div className="flex items-center justify-between">
+            {activeSteps.map((step, idx) => {
+              const isActive = idx === currentStepIndex;
+              const isCompleted = idx < currentStepIndex;
+              return (
+                <div key={step.id} className="flex items-center flex-1 last:flex-initial">
+                  <div
+                    aria-current={isActive ? "step" : undefined}
+                    className="flex flex-col items-center gap-1"
+                  >
+                    <div
+                      className={cn(
+                        "w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold border-2 transition-colors",
+                        isActive
+                          ? "bg-blue-600 border-blue-600 text-white"
+                          : isCompleted
+                            ? "bg-green-500 border-green-500 text-white"
+                            : "bg-white border-gray-300 text-gray-400"
+                      )}
+                    >
+                      {isCompleted ? (
+                        <CheckCircle2 className="h-4 w-4" />
+                      ) : (
+                        idx + 1
+                      )}
+                    </div>
+                    <span
+                      className={cn(
+                        "text-xs font-medium hidden sm:block",
+                        isActive
+                          ? "text-blue-600"
+                          : isCompleted
+                            ? "text-green-600"
+                            : "text-gray-400"
+                      )}
+                    >
+                      {step.label}
+                    </span>
+                  </div>
+                  {idx < activeSteps.length - 1 && (
+                    <div
+                      className={cn(
+                        "flex-1 h-0.5 mx-2",
+                        idx < currentStepIndex ? "bg-green-500" : "bg-gray-200"
+                      )}
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <p className="text-center text-sm text-muted-foreground mt-2">
+            Étape {currentStepIndex + 1} / {activeSteps.length}
+          </p>
+        </nav>
+      </div>
 
       {/* ==================== STEP 1: Choose Method ==================== */}
       {viewStep === "method" && (
