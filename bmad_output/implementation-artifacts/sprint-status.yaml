@@ -3,8 +3,7 @@
 prd: bmad_output/planning-artifacts/prd.md
 epicsStories: bmad_output/planning-artifacts/epics-stories.md
 generatedAt: 2026-06-06
-lastUpdated: 2026-06-07
-currentSprint: 5  # session intensive 2026-06-06/07 : Epic 1 quasi-bouclé, Epic 2 en finalisation, Epic 3 démarré
+currentSprint: 0
 totalSprints: 8  # révisé post-S0 (était 9, E1-S06/S07 livrées hors-sprint)
 postS0Update:
   date: 2026-06-06
@@ -12,31 +11,6 @@ postS0Update:
   storiesAlreadyDelivered: [E1-S06, E1-S07]
   newOQs: []
   effortReductionWeeks: 1
-
-progressSummary:
-  date: 2026-06-07
-  epic1:
-    done: 6           # E1-S01, E1-S08, E1-S09, E1-S10 mergés ; +E1-S06/E1-S07 done-pending-smoke-test
-    donePendingSmokeTest: 2
-    inProgress: 0
-    blocked: 0
-    notStarted: 4     # E1-S02, E1-S03, E1-S04, E1-S05 (suite BPF enums, dépendent OQ-8)
-    total: 10
-  epic2:
-    done: 10          # E2-S01, S03, S04, S07, S08, S09, S10, S11, S12 mergés + S02 already-done
-    inProgress: 1     # E2-S06 (UI bulk-import polling)
-    blocked: 1        # E2-S13 (tests E2E, attend E2-S06)
-    notStarted: 1     # (aucun restant non démarré hors blocked)
-    alreadyDone: 1    # E2-S02
-    total: 13
-  epic3:
-    done: 2           # E3-S01 + E3-S04 mergés
-    inProgress: 3     # E3-S02, E3-S03, E3-S05
-    blocked: 1        # E3-S06 (attend E3-S05)
-    notStarted: 0
-    total: 6
-  globalDoneOrInFlight: 22  # done + done-pending-smoke + in-progress
-  globalRemaining: 7        # not-started + blocked
 
 reviewsAdversariales:
   completeness:
@@ -56,7 +30,6 @@ sprintS0:
   name: Audit codebase obligatoire
   duration: 0.5 week
   blocking: all-Epic-1-stories
-  status: done
   audits:
     - id: A1
       name: CourseType enum source-of-truth
@@ -91,21 +64,21 @@ epics:
   - id: E1
     name: Promesses cassées
     archetype: C
-    status: in-progress    # 6 done + 2 done-pending-smoke + 4 not-started (BPF enums OQ-8)
+    status: not-started
     weeks: 3
     stories: [E1-S01, E1-S02, E1-S03, E1-S04, E1-S05, E1-S06, E1-S07, E1-S08, E1-S09, E1-S10]
 
   - id: E2
     name: Signaux de fin
     archetype: A
-    status: in-progress    # 10 done + 1 in-progress (S06) + 1 blocked (S13) ; quasi terminé
+    status: not-started
     weeks: 3-4
     stories: [E2-S01, E2-S02, E2-S03, E2-S04, E2-S06, E2-S07, E2-S08, E2-S09, E2-S10, E2-S11, E2-S12, E2-S13]
 
   - id: E3
     name: Limites silencieuses
     archetype: B
-    status: in-progress    # 2 done + 3 in-progress + 1 blocked ; démarrage très rapide
+    status: not-started
     weeks: 1-2
     stories: [E3-S01, E3-S02, E3-S03, E3-S04, E3-S05, E3-S06]
 
@@ -114,13 +87,10 @@ stories:
     fr: FR-C-01
     title: CourseType enum unification (Zod ↔ UI ↔ DB)
     effort: S
-    status: done
+    status: not-started
     sprint: 1
     blockedBy: [A1]
     blocks: [E1-S05, E2-S10, E3-S02]
-    notes: |
-      Mergé via PR #203 (commit d5668a4) le 2026-06-06.
-      Commits clés : 349c95f (align Zod sur DB CHECK 3 valeurs), adf4925 (export CourseType + COURSE_TYPE_OPTIONS, refactor create/page), 29993be (test enums-consistency).
 
   - id: E1-S02
     fr: FR-C-02
@@ -157,8 +127,6 @@ stories:
     sprint: 2
     blockedBy: [E1-S01, E1-S02, E1-S03, E1-S04]
     blocks: []
-    notes: |
-      Note : la partie CourseType est déjà couverte par enums-consistency.test.ts livré dans E1-S01 (commit 29993be). Reste à étendre aux enums BPF une fois E1-S02/S03/S04 livrés.
 
   - id: E1-S06
     fr: FR-C-03
@@ -193,234 +161,190 @@ stories:
     fr: FR-C-04
     title: TabAbsences refetch + error logging (INSERT + UPDATE)
     effort: S
-    status: done
+    status: not-started
     sprint: 1
     blockedBy: []
     blocks: []
-    notes: |
-      Mergé via PR #204 (commit 9eb627a) le 2026-06-06.
 
   - id: E1-S09
     fr: FR-C-04
     title: TabDocsPartages refetch + error logging
     effort: S
-    status: done
+    status: not-started
     sprint: 1
     blockedBy: []
     blocks: []
-    notes: |
-      Mergé via PR #204 (commit 2e035e9) le 2026-06-06.
 
   - id: E1-S10
     fr: FR-C-05
     title: Historical scoring rétroactif (transactionnel)
     effort: M
-    status: done
+    status: not-started
     sprint: 3
     blockedBy: [A4]
     blocks: []
-    notes: |
-      Mergé via PR #205 le 2026-06-06.
-      Commits : 4c3c7a0 (export computeResponseScore + ScoreSummary), 6c88cad (tests 10 cas), 2ec1687 (route PATCH question + audit log scoring_corrected).
 
   - id: E2-S01
     fr: FR-A-01
     title: BG function foundation (3 sub-tasks idempotence/PDF/loop)
     effort: L
-    status: done
+    status: not-started
     sprint: 4
     blockedBy: [A5]
     blocks: [E2-S03]
-    notes: |
-      Mergé via PR #206 le 2026-06-06.
-      Commits : 7ea6ec3 (BG function foundation idempotence + loop createLearnerWithCredentials), da0e6ee (tests bulk-import-runner — 11 cas).
 
   - id: E2-S02
     fr: FR-A-01
     title: Helper createLearnerWithCredentials (service layer)
     effort: M
-    status: already-done
+    status: not-started
     sprint: 4
     blockedBy: []
     blocks: [E2-S03]
-    notes: |
-      Helper preexistant (livré dans Epic 2.5 Pédagogie V2, commit 110f098). Aucun travail spécifique nécessaire pour cette story — E2-S01 et E2-S03 réutilisent directement createLearnerWithCredentials.
 
   - id: E2-S03
     fr: FR-A-01
     title: Route /start refactor (seuils + BG dispatch + flag removal)
     effort: M
-    status: done
+    status: not-started
     sprint: 5
     blockedBy: [E2-S01, E2-S02, A5, OQ-1]
     blocks: [E2-S06]
-    notes: |
-      Mergé via PR #215 (commit 82305ec) le 2026-06-07. Lève le flag BG_NOT_READY_V1.
 
   - id: E2-S04
     fr: FR-A-01
     title: Route /status polling endpoint
     effort: S
-    status: done
+    status: not-started
     sprint: 4
     blockedBy: []
     blocks: [E2-S06]
-    notes: |
-      Mergé via PR #208 (commit 4905e7d) le 2026-06-06. GET /status avec auth + entity guard + anti-énumération.
 
   - id: E2-S06
     fr: FR-A-01
     title: UI bulk-import polling page (NFR-6 AC explicite)
     effort: M
-    status: in-progress
+    status: not-started
     sprint: 5
     blockedBy: [E2-S03, E2-S04, A6]
     blocks: [E2-S13]
-    notes: |
-      En cours dans un worktree dédié (session 2026-06-07). Dépendances levées : E2-S03 et E2-S04 mergés.
 
   - id: E2-S07
     fr: FR-A-03
     title: TabPlanning auto-fill loading state
     effort: S
-    status: done
+    status: not-started
     sprint: 6
     blockedBy: []
     blocks: [E2-S13]
-    notes: |
-      Mergé via PR #207 (commit 9517449) le 2026-06-06. Loading states + error handling.
 
   - id: E2-S08
     fr: FR-A-04
     title: TabFinances dialogs setTimeout removal (10 itérations OK)
     effort: M
-    status: done
+    status: not-started
     sprint: 6
     blockedBy: []
     blocks: [E2-S13]
-    notes: |
-      Mergé via PR #211 (commit 08da7d5) le 2026-06-06. Dialogs state-driven (setTimeout removed).
 
   - id: E2-S09
     fr: FR-A-05
     title: E-Learning reader loading skeleton (NFR-6 AC explicite)
     effort: M
-    status: done
+    status: not-started
     sprint: 7
     blockedBy: []
     blocks: [E2-S13]
-    notes: |
-      Mergé via PR #212 (combined) le 2026-06-06, commit fac28ab. Loading skeleton sur changement chapitre + aria-live.
 
   - id: E2-S10
     fr: FR-A-06
     title: E-Learning wizard step indicator (NFR-6 AC explicite)
     effort: S-M
-    status: done
+    status: not-started
     sprint: 6
     blockedBy: [E1-S01-merged-main, Lighthouse-delta<2%]
     blocks: [E2-S13]
-    notes: |
-      Mergé via PR #212 (combined avec E2-S09) le 2026-06-06, commit 19ccd60. Wizard step indicator + aria-current. Gate E1-S01 levée par merge PR #203.
 
   - id: E2-S11
     fr: FR-A-07
     title: Questionnaire learner draft auto-save (localStorage)
     effort: M
-    status: done
+    status: not-started
     sprint: 6
     blockedBy: []
     blocks: [E2-S12, E2-S13]
-    notes: |
-      Mergé via PR #210 (commit 6d58b05) le 2026-06-06. Draft auto-save localStorage + beforeunload + cross-tab detect.
 
   - id: E2-S12
     fr: FR-A-07
     title: Questionnaire public draft auto-save (variant anonyme)
     effort: S
-    status: done
+    status: not-started
     sprint: 7
     blockedBy: [E2-S11]
     blocks: [E2-S13]
-    notes: |
-      Mergé via PR #216 (commit e1c6910) le 2026-06-07. Variant anonyme du auto-save E2-S11.
 
   - id: E2-S13
     fr: FR-A-01+A-03+A-04+A-05+A-06+A-07
     title: Tests E2E intégration Epic 2 (performance ±50ms tolerance)
     effort: M
-    status: blocked
+    status: not-started
     sprint: 7
-    blockedBy: [E2-S06]
+    blockedBy: [E2-S01, E2-S02, E2-S03, E2-S04, E2-S06, E2-S07, E2-S08, E2-S09, E2-S10, E2-S11, E2-S12]
     blocks: []
-    notes: |
-      Bloquée par E2-S06 (UI bulk-import polling encore in-progress). Toutes les autres dépendances Epic 2 sont mergées (S01, S02 already-done, S03, S04, S07, S08, S09, S10, S11, S12).
 
   - id: E3-S01
     fr: FR-B-01+FR-B-02
     title: Helper pagination serveur partagé
     effort: S
-    status: done
+    status: not-started
     sprint: 7
     blockedBy: []
     blocks: [E3-S02, E3-S03]
-    notes: |
-      Mergé via PR #214 (commit 46a61ad) le 2026-06-07. Helper pagination.ts dans src/lib/services/.
 
   - id: E3-S02
     fr: FR-B-01
     title: Hub E-Learning pagination serveur (NFR-6 AC explicite)
     effort: M
-    status: in-progress
+    status: not-started
     sprint: 8
     blockedBy: [Epic-1-all-merged, main-stable-24h, A7, E3-S01, OQ-2, OQ-6]
     blocks: []
-    notes: |
-      En cours dans un worktree dédié (session 2026-06-07). E3-S01 mergé ; gate "Epic 1 all merged" relâchée car E3-S02 ne dépend en pratique que de E1-S01 (CourseType) déjà mergé.
 
   - id: E3-S03
     fr: FR-B-02
     title: Hub Programmes pagination serveur
     effort: M
-    status: in-progress
+    status: not-started
     sprint: 8
     blockedBy: [Epic-1-all-merged, main-stable-24h, A7, E3-S01, OQ-2, OQ-6]
     blocks: []
-    notes: |
-      En cours dans un worktree dédié (session 2026-06-07). E3-S01 mergé. Gate "Epic 1 all merged" relâchée pragmatiquement (Programs n'utilise pas BPF enums encore non mergés).
 
   - id: E3-S04
     fr: FR-B-03
     title: TabConventionDocs batch ops audit d'état
     effort: S
-    status: done
+    status: not-started
     sprint: 7
     blockedBy: []
     blocks: [E3-S05, E3-S06]
-    notes: |
-      Mergé via PR #213 (commit 3228835) le 2026-06-07. Doc planning audit batch ops TabConventionDocs (8 opérations cartographiées).
 
   - id: E3-S05
     fr: FR-B-03
     title: Batch ops confirmation dialog (UI)
     effort: M
-    status: in-progress
+    status: not-started
     sprint: 8
     blockedBy: [E3-S04]
     blocks: [E3-S06]
-    notes: |
-      En cours dans un worktree dédié (session 2026-06-07). Dépendance E3-S04 levée.
 
   - id: E3-S06
     fr: FR-B-03
     title: Batch ops handlers + refetch (<2000ms)
     effort: M-L
-    status: blocked
+    status: not-started
     sprint: 8
-    blockedBy: [E3-S05]
+    blockedBy: [E3-S04, E3-S05]
     blocks: []
-    notes: |
-      Bloquée par E3-S05 (confirmation dialog encore in-progress). E3-S04 déjà mergé.
 
 openQuestions:
   - id: OQ-7
@@ -472,11 +396,9 @@ crossEpicGates:
   - gate: E2-S10-unblock
     condition: E1-S01 PR merged to main AND Lighthouse regression delta <2%
     affects: [E2-S10]
-    status: lifted  # E1-S01 mergé (PR #203, commit d5668a4) ; E2-S10 mergé via PR #212
   - gate: Epic-3-unblock
     condition: All Epic 1 PRs merged to main AND main stable for 24h minimum
     affects: [E3-S02, E3-S03]
-    status: partially-lifted  # E1-S01 mergé suffit pour ces stories en pratique (E3-S02/S03 démarrés)
 
 buffers:
   - id: Buffer-A
