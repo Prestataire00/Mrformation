@@ -1,4 +1,23 @@
+import { z } from "zod";
+import { elearningCourseTypeEnum } from "@/lib/validations/elearning";
+
 // ===== E-LEARNING COURSE TYPES =====
+
+/**
+ * Type des cours e-learning, source de vérité = DB CHECK elearning_courses.course_type.
+ * Dérivé de elearningCourseTypeEnum (Zod) via z.infer pour garantir la cohérence.
+ */
+export type CourseType = z.infer<typeof elearningCourseTypeEnum>;
+
+/**
+ * Options FR pour SelectItem (UI dropdowns/selects).
+ * Source de vérité unique pour les labels affichés aux admins.
+ */
+export const COURSE_TYPE_OPTIONS: ReadonlyArray<{ value: CourseType; label: string }> = [
+  { value: "presentation", label: "Présentation seule" },
+  { value: "quiz", label: "Quiz seul" },
+  { value: "complete", label: "Complet (présentation + quiz)" },
+];
 
 export type CourseStatus = "processing" | "draft" | "review" | "published" | "archived";
 export type GenerationStatus = "pending" | "extracting" | "generating" | "completed" | "failed";

@@ -29,11 +29,11 @@ import {
   Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { CourseType } from "@/lib/types/elearning";
 
 // ---------- Types ----------
 type CreationMethod = "generate" | "paste" | "import";
 type ImportSource = "upload" | "url";
-type CourseType = "presentation" | "quiz" | "complete";
 type ViewStep = "method" | "import" | "configure" | "generate" | "done";
 
 // ---------- Data ----------
