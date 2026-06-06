@@ -202,6 +202,11 @@ export async function POST(
     }
 
     // 7. INSERT job (status=queued).
+    //
+    // E2-S01 : on persiste `payload` (learners[] + entitySlug) pour que la
+    // Background Function puisse charger les apprenants à traiter sans
+    // dépendre de la RAM de cette route (fire-and-forget). Le payload ne
+    // contient AUCUN mot de passe (générés à la volée côté BG function).
     const { data: jobRow, error: jobErr } = await admin
       .from("learner_bulk_import_jobs")
       .insert({
@@ -211,6 +216,10 @@ export async function POST(
         idempotency_key: body.idempotencyKey,
         status: "queued",
         payload_count: body.learners.length,
+        payload: {
+          learners: body.learners,
+          entitySlug: body.entitySlug,
+        },
         results: {},
       })
       .select("id")
