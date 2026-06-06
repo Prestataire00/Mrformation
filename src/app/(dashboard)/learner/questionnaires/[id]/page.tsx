@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/components/ui/use-toast";
 import {
   ArrowLeft,
   Loader2,
@@ -66,16 +67,22 @@ export default function LearnerQuestionnaireFillPage() {
 
   const questionnaireId = params.id as string;
   const sessionId = searchParams.get("session_id");
+  const { toast } = useToast();
 
   const [questionnaire, setQuestionnaire] = useState<QuestionnaireData | null>(null);
   const [questions, setQuestions] = useState<QuestionData[]>([]);
   const [responses, setResponses] = useState<Record<string, string | number>>({});
   const [learnerId, setLearnerId] = useState<string | null>(null);
+  const [profileId, setProfileId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [readOnly, setReadOnly] = useState(false);
+  const [dirty, setDirty] = useState(false);
   const [validationErrors, setValidationErrors] = useState<Set<string>>(new Set());
+  const draftRestoredRef = useRef(false);
+
+  const draftKey = profileId ? `questionnaire_${questionnaireId}_draft_${profileId}` : null;
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -87,6 +94,8 @@ export default function LearnerQuestionnaireFillPage() {
       setLoading(false);
       return;
     }
+
+    setProfileId(user.id);
 
     // Find learner
     const { data: learner } = await supabase
@@ -168,8 +177,85 @@ export default function LearnerQuestionnaireFillPage() {
     loadData();
   }, [loadData]);
 
+  // --- Draft auto-save: restore from localStorage at mount ---
+  useEffect(() => {
+    if (!draftKey || !profileId || loading) return;
+    // Don't restore if already submitted (readOnly) or already restored
+    if (readOnly || draftRestoredRef.current) return;
+    draftRestoredRef.current = true;
+
+    const draft = localStorage.getItem(draftKey);
+    if (draft) {
+      try {
+        const parsed = JSON.parse(draft) as Record<string, string | number>;
+        setResponses(parsed);
+        setDirty(true);
+        toast({
+          title: "Brouillon restauré",
+          description: "Vos réponses précédentes ont été récupérées.",
+        });
+      } catch {
+        // Corrupt draft, remove it
+        localStorage.removeItem(draftKey);
+      }
+    }
+  }, [draftKey, profileId, loading, readOnly, toast]);
+
+  // --- Cross-tab detection: on focus, check if already submitted ---
+  useEffect(() => {
+    if (!draftKey || !learnerId || !sessionId || readOnly) return;
+
+    async function checkAlreadySubmitted() {
+      const { data: existingResponse } = await supabase
+        .from("questionnaire_responses")
+        .select("id")
+        .eq("questionnaire_id", questionnaireId)
+        .eq("session_id", sessionId!)
+        .eq("learner_id", learnerId!)
+        .maybeSingle();
+
+      if (existingResponse) {
+        localStorage.removeItem(draftKey!);
+        setReadOnly(true);
+        setDirty(false);
+        toast({
+          title: "Réponse déjà soumise",
+          description: "Ce questionnaire a été soumis via un autre onglet.",
+        });
+      }
+    }
+
+    window.addEventListener("focus", checkAlreadySubmitted);
+    return () => window.removeEventListener("focus", checkAlreadySubmitted);
+  }, [draftKey, learnerId, sessionId, questionnaireId, readOnly, supabase, toast]);
+
+  // --- Auto-save debounce 500ms ---
+  useEffect(() => {
+    if (!draftKey || !profileId || submitted || readOnly) return;
+    // Only save if user has interacted
+    if (!dirty) return;
+
+    const t = setTimeout(() => {
+      localStorage.setItem(draftKey, JSON.stringify(responses));
+    }, 500);
+    return () => clearTimeout(t);
+  }, [responses, draftKey, profileId, submitted, readOnly, dirty]);
+
+  // --- beforeunload warning ---
+  useEffect(() => {
+    function handleBeforeUnload(e: BeforeUnloadEvent) {
+      if (dirty && !submitted) {
+        e.preventDefault();
+        return "";
+      }
+    }
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [dirty, submitted]);
+
   function updateResponse(questionId: string, value: string | number) {
     setResponses((prev) => ({ ...prev, [questionId]: value }));
+    setDirty(true);
     setValidationErrors((prev) => {
       const next = new Set(prev);
       next.delete(questionId);
@@ -223,10 +309,19 @@ export default function LearnerQuestionnaireFillPage() {
     setSubmitting(false);
 
     if (error) {
-      // Show inline error
+      toast({
+        title: "Erreur",
+        description: "Impossible d'envoyer vos réponses. Veuillez réessayer.",
+        variant: "destructive",
+      });
       return;
     }
 
+    // Cleanup localStorage draft after successful submit
+    if (draftKey) {
+      localStorage.removeItem(draftKey);
+    }
+    setDirty(false);
     setSubmitted(true);
   }
 
