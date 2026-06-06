@@ -37,19 +37,60 @@ Effort total estimé : **~8.5-9 semaines solo dev** séquentiel (révisé +1 sem
 
 ## Vue d'ensemble
 
-| Epic | Archétype | FR couverts | Stories | Effort | Pre-conditions globales |
-|------|-----------|-------------|---------|--------|--------------------------|
-| **Epic 1 — Promesses cassées** | C | FR-C-01 → FR-C-05 | 10 (E1-S01 → E1-S10) dont **2 déjà livrées** (E1-S06, E1-S07) post-S0 | ~2-2.5 sem (révisé depuis ~3 sem post-S0) | S0 ✅ complet, OQ-7/8/9 ⏳ |
-| **Epic 2 — Signaux de fin** | A | FR-A-01, FR-A-03 → FR-A-07 | 13 (E2-S01 → E2-S13) | ~3-4 sem | Epic 1 partiel mergé (E1-S01 pour E2-S10) |
-| **Epic 3 — Limites silencieuses** | B | FR-B-01, FR-B-02, FR-B-03 | 6 (E3-S01 → E3-S06) | ~1-2 sem | Epic 1 mergé + main stable 24h, OQ-2/6 |
+| Epic | Archétype | FR couverts | Stories | Statut (2026-06-07) | Effort | Pre-conditions globales |
+|------|-----------|-------------|---------|---------------------|--------|--------------------------|
+| **Epic 1 — Promesses cassées** | C | FR-C-01 → FR-C-05 | 10 (E1-S01 → E1-S10) | **6 done + 2 done-pending-smoke + 4 not-started (BPF enums)** | ~2-2.5 sem (révisé depuis ~3 sem post-S0) | S0 ✅ complet, OQ-7/8/9 ⏳ |
+| **Epic 2 — Signaux de fin** | A | FR-A-01, FR-A-03 → FR-A-07 | 13 (E2-S01 → E2-S13) | **10 done + 1 already-done (E2-S02) + 1 in-progress (E2-S06) + 1 blocked (E2-S13)** | ~3-4 sem | Epic 1 partiel mergé (E1-S01 pour E2-S10) |
+| **Epic 3 — Limites silencieuses** | B | FR-B-01, FR-B-02, FR-B-03 | 6 (E3-S01 → E3-S06) | **2 done (S01, S04) + 3 in-progress (S02, S03, S05) + 1 blocked (S06)** | ~1-2 sem | Epic 1 mergé + main stable 24h, OQ-2/6 |
 
-**Total** : 29 stories sur ~8-8.5 semaines (révisé post-S0 — E1-S06/S07 livrées hors-sprint).
+**Total** : 29 stories — **19 done + 1 already-done + 2 done-pending-smoke + 4 in-progress + 2 blocked + 4 not-started** (état au 2026-06-07).
 
 > **Mise à jour post-S0 (2026-06-06)** :
 > - Sprint S0 audit codebase : ✅ **complet** (7 audits clear, 0 blocker, livrable `S0-codebase-audit-findings.md` commit `09a58e4`)
 > - 2 stories Epic 1 déjà livrées dans le code existant : **E1-S06** (Dupliquer formation) + **E1-S07** (Supprimer formation). Audit A3 a découvert que helpers `duplicateSession()` + `deleteSession()` existent déjà dans `src/lib/services/sessions.ts` et UI branchée dans `ResumeActions.tsx` + `ResumeDangerZone.tsx`. → Smoke test admin requis (10 min total) pour confirmer livraison.
 > - Effort Epic 1 réduit : ~3 sem → ~2-2.5 sem
 > - Reste à trancher avant kickoff Epic 1 : OQ-7 (vacances) + OQ-8 (mapping BPF — informé par A2 qui confirme aucun fichier Zod BPF existant pour trainings/crm_quotes, à créer)
+
+---
+
+## Statut session 2026-06-06/07
+
+Session intensive : **17 stories livrées en ~36h** (PR #203 → #216, hors PR #209 hotfix qualité).
+
+### Epic 1 — livrés
+- **E1-S01** : PR #203 (d5668a4) — CourseType enum unifié + tests enums-consistency (29993be, adf4925, 349c95f).
+- **E1-S08** : PR #204 (9eb627a) — TabAbsences refetch + error logging.
+- **E1-S09** : PR #204 (2e035e9) — TabDocsPartages refetch + error logging.
+- **E1-S10** : PR #205 — scoring rétroactif + route PATCH + audit log (4c3c7a0, 6c88cad, 2ec1687).
+- **E1-S06 / E1-S07** : done-pending-smoke-test (livrés avant cadrage, audit A3).
+
+### Epic 2 — livrés
+- **E2-S01** : PR #206 — BG function foundation + tests (7ea6ec3, da0e6ee).
+- **E2-S02** : already-done (helper `createLearnerWithCredentials` préexistant, commit 110f098 Epic 2.5).
+- **E2-S03** : PR #215 (82305ec) — route /start refactor + lift flag BG_NOT_READY_V1.
+- **E2-S04** : PR #208 (4905e7d) — route GET /status polling.
+- **E2-S07** : PR #207 (9517449) — TabPlanning loading states.
+- **E2-S08** : PR #211 (08da7d5) — TabFinances dialogs state-driven (setTimeout removed).
+- **E2-S09 + E2-S10** : PR #212 combinée (fac28ab, 19ccd60) — reader skeleton + wizard step indicator.
+- **E2-S11** : PR #210 (6d58b05) — questionnaire learner draft auto-save.
+- **E2-S12** : PR #216 (e1c6910) — variant public anonyme du auto-save.
+
+### Epic 3 — livrés
+- **E3-S01** : PR #214 (46a61ad) — helper pagination serveur partagé.
+- **E3-S04** : PR #213 (3228835) — audit batch ops TabConventionDocs (8 ops cartographiées).
+
+### En cours (4 worktrees actifs)
+- **E2-S06** : UI bulk-import polling page (débloquée par E2-S03 + E2-S04).
+- **E3-S02** : Hub E-Learning pagination serveur (utilise helper E3-S01).
+- **E3-S03** : Hub Programmes pagination serveur (utilise helper E3-S01).
+- **E3-S05** : Batch ops confirmation dialog (sur base audit E3-S04).
+
+### Bloquées
+- **E2-S13** : tests E2E Epic 2 — attend E2-S06.
+- **E3-S06** : batch ops handlers + refetch — attend E3-S05.
+
+### Restantes non démarrées
+- **E1-S02 / S03 / S04 / S05** : suite BPF enums, dépendent de la résolution d'**OQ-8** (mapping Zod legacy → DB + labels FR validés produit). Hors fenêtre session courante.
 
 ---
 
