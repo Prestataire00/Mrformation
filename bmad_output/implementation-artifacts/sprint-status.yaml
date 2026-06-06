@@ -1,210 +1,398 @@
-# generated: 2026-05-17
-# last_updated: 2026-05-17 (Epic G ajouté : stabilisation portail apprenant + magic link, 4 stories P0/P1)
-# project: lms-platform
-# project_key: NOKEY
-# tracking_system: file-system
-# story_location: /Users/wissam/Desktop/lms-platform/bmad_output/implementation-artifacts
+# bmad_output/implementation-artifacts/sprint-status.yaml
 
-# STATUS DEFINITIONS:
-# ==================
-# Epic Status:
-#   - backlog: Epic not yet started
-#   - in-progress: Epic actively being worked on
-#   - done: All stories in epic completed
-#
-# Epic Status Transitions:
-#   - backlog → in-progress: Automatically when first story is created (via create-story)
-#   - in-progress → done: Manually when all stories reach 'done' status
-#
-# Story Status:
-#   - backlog: Story only exists in epic file
-#   - ready-for-dev: Story file created in stories folder
-#   - in-progress: Developer actively working on implementation
-#   - review: Ready for code review (via Dev's code-review workflow)
-#   - done: Story completed
-#
-# Retrospective Status:
-#   - optional: Can be completed but not required
-#   - done: Retrospective has been completed
-#
-# WORKFLOW NOTES:
-# ===============
-# - Epic A déjà livré en prod (Lot A : Puppeteer Railway + DocumentGenerationService) → status 'done'
-#   confirmé par PRs #45 à #88 mergées sur main avant le démarrage du workflow BMad.
-# - Epics B/C/D/E/F = backlog (à implémenter dans PR2)
-# - Stories peuvent être travaillées en parallèle quand dépendances permettent (cf dependencies.txt)
-# - Ordre recommandé d'exécution (cf sprint plan ci-dessous) :
-#   A done → B0 // B1 (parallèles) → B2 → B3-B4-B6-B7 (parallèles) → B5 // C1 (parallèles)
-#   → C2 → C3 → D1 (parallèle avec C) → D2 → F1-F2-F3 (parallèles, après B+C OK)
-#   → E2-E3-E4 (parallèles, après B+C+D+F stables) → E1 (last, après 90j stabilité)
+prd: bmad_output/planning-artifacts/prd.md
+epicsStories: bmad_output/planning-artifacts/epics-stories.md
+generatedAt: 2026-06-06
+currentSprint: 0
+totalSprints: 9
 
-generated: 2026-05-17
-last_updated: 2026-05-21 (Epic H — fix h-22 "documents secondaires". Le BLOCKER de la code review (les 23 doc_types secondaires non rendus dans TabConventionDocs) est corrige sur la branche fix/h-22-affichage-docs-secondaires : nouvelle section "Documents secondaires" rendue dans les 2 vues (renderDocRow + actions de masse Figer / signature), insertDocs renvoie le compte reel + fallback 23505 ligne-a-ligne, attribute-secondary renvoie created reel. tsc clean + 400/400 vitest. Reste merge + smoke prod.)
-project: lms-platform
-project_key: NOKEY
-tracking_system: file-system
-story_location: /Users/wissam/Desktop/lms-platform/bmad_output/implementation-artifacts
+reviewsAdversariales:
+  completeness:
+    verdict: minor-tweaks
+    issuesMajor: 5
+    issuesMinor: 4
+    issuesNit: 2
+    statusFinal: all-resolved-in-this-version
+  antiHallucination:
+    verdict: major-rework
+    issuesBlocker: 4
+    issuesMajor: 6
+    issuesMinor: 2
+    statusFinal: blockers-converted-to-S0-audits
 
-development_status:
-  # ── Epic A : Infrastructure Moteur PDF & Service de génération (Lot A) ──
-  # ✅ DÉJÀ LIVRÉ EN PROD (PRs #45 à #88)
-  epic-a: done
-  a-1-puppeteer-sidecar-railway: done
-  a-2-document-generation-service: done
-  epic-a-retrospective: optional
+sprintS0:
+  name: Audit codebase obligatoire
+  duration: 0.5 week
+  blocking: all-Epic-1-stories
+  audits:
+    - id: A1
+      name: CourseType enum source-of-truth
+      owner: Wissam+dev
+      unblocks: [E1-S01]
+    - id: A2
+      name: Existence validations training.ts crm-quote*.ts
+      owner: dev
+      unblocks: [E1-S02, E1-S03]
+    - id: A3
+      name: Service formations vs sessions
+      owner: dev
+      unblocks: [E1-S06, E1-S07]
+    - id: A4
+      name: Schéma questionnaires (scoring rétroactif)
+      owner: dev
+      unblocks: [E1-S10]
+    - id: A5
+      name: Route /start bulk thresholds actuels
+      owner: dev
+      unblocks: [E2-S01, E2-S03]
+    - id: A6
+      name: UI bulk-import path
+      owner: dev
+      unblocks: [E2-S06]
+    - id: A7
+      name: Lignes pagination hubs E-Learning et Programs
+      owner: dev
+      unblocks: [E3-S02, E3-S03]
 
-  # ── Epic B : Schéma documents unifié & migration 11 types (Lot B) ──
-  # PR2 sous-PR 2.1 (B0) + 2.2 (B1+B2) + 2.3 (B3-B7)
-  epic-b: in-progress
-  b-0-resolve-document-variables: done  # fonction unique resolveDocumentVariables existe + utilisée par 90+ endpoints
-  b-1-migration-table-documents: done  # PR #39 mergée 2026-05-15
-  b-2-backfill-idempotent: done  # Exécuté en prod 2026-05-17 : 181 rows backfillées depuis 2277 legacy (delta 2096 = doublons template_id dédupliqués via DISTINCT ON fix PR #103). Status alignés. Rollback Niveau 1 dispo si besoin.
-  b-3-migration-conventions: done  # Bascule applicative complète : convention_entreprise + convention_intervention + contrat_sous_traitance lisent/écrivent dans `documents` (PR #105)
-  b-4-migration-attestations-certificats: done  # Bascule applicative : attestation_assiduite + certificat_realisation + 9 variantes lisent/écrivent dans `documents` (PR #105)
-  b-5-migration-emargements: done  # Bascule applicative : feuille_emargement + feuille_emargement_collectif lisent/écrivent dans `documents` (signatures legacy table conservée par design — flux sémantique distinct, voir c-2 résolution)
-  b-6-migration-docs-administratifs: done  # Bascule applicative : programme/convocation/CGV/règlement/politique lisent/écrivent dans `documents` (PR #105)
-  b-7-migration-factures-devis: done  # Bascule applicative : factures + devis via documents (quote_signatures legacy conservée par design — flux sémantique distinct CRM, voir c-2 résolution)
-  epic-b-retrospective: optional
+epics:
+  - id: E1
+    name: Promesses cassées
+    archetype: C
+    status: not-started
+    weeks: 3
+    stories: [E1-S01, E1-S02, E1-S03, E1-S04, E1-S05, E1-S06, E1-S07, E1-S08, E1-S09, E1-S10]
 
-  # ── Epic C : Signatures électroniques unifiées (Lot C) ──
-  # PR2 sous-PR 2.4
-  epic-c: in-progress
-  c-1-signature-service-unifie: done  # endpoint /api/documents/sign POST (150+ lignes, rate limit, SVG sanitize, signing_tokens)
-  c-2-migration-flux-signature: done  # résolution analytique 2026-05-17 : 2 flux par design (documents vs émargement). Voir c-2-migration-flux-signature.md
-  c-3-audit-trail-qualiopi: done  # colonnes signed_at, signature_ip, signature_user_agent, signature_method dans documents + capture dans /api/documents/sign
-  epic-c-retrospective: optional
+  - id: E2
+    name: Signaux de fin
+    archetype: A
+    status: not-started
+    weeks: 3-4
+    stories: [E2-S01, E2-S02, E2-S03, E2-S04, E2-S06, E2-S07, E2-S08, E2-S09, E2-S10, E2-S11, E2-S12, E2-S13]
 
-  # ── Epic D : Import templates par lot & autonomie Loris (Lot D) ──
-  # PR2 sous-PR 2.1 (parallèle B)
-  epic-d: done  # toutes les stories D terminées (d-1 via PR #39 + d-2 via PR #92)
-  d-1-page-admin-import-templates: done  # PR #39 mergée 2026-05-15 (avant workflow BMad formel)
-  d-2-documentation-how-to: done  # page /admin/documents/how-to créée 2026-05-17 (5 étapes + troubleshooting)
-  epic-d-retrospective: optional
+  - id: E3
+    name: Limites silencieuses
+    archetype: B
+    status: not-started
+    weeks: 1-2
+    stories: [E3-S01, E3-S02, E3-S03, E3-S04, E3-S05, E3-S06]
 
-  # ── Epic E : Hygiène, observabilité, tests (Lot E) ──
-  # PR2 sous-PR 2.6 (E1 cleanup) + transverse (E2/E3/E4)
-  epic-e: done  # 4 stories principales done + 1 résolution analytique e-1 + 1 cleanup e-1.1 done. Sous-stories e-1.2 à e-1.8 tracées en backlog optionnel.
-  e-1-suppression-jspdf-legacy: done  # résolution analytique : audit révèle 7 fichiers utility stables (3276 lignes, pas 56 imports). Scope révisé en sous-stories e-1.2 à e-1.8 par risque (low → high). Status quo recommandé tant que pas de blocker concret.
-  e-1-1-cleanup-inline-signature-pad: done  # InlineSignaturePad supprimé (~110 lignes) → SignaturePad partagé (PR #99)
-  e-1-2-migrate-qr-pdf-exports: backlog  # qr-pdf-export.ts + questionnaire-qr-pdf-export.ts (LOW risk, ~1 j-h)
-  e-1-3-migrate-pdf-export-generic: backlog  # pdf-export.ts (MED risk, ~1-2 j-h, BPF + email attachments)
-  e-1-4-migrate-invoice-pdf: backlog  # invoice-pdf-export.ts (HIGH risk, flux financier — qualif requise)
-  e-1-5-migrate-devis-pdf: backlog  # devis-pdf.ts (MED-HIGH, CGV signatures)
-  e-1-6-migrate-planning-hebdo-pdf: backlog  # planning-hebdo-pdf-export.ts (MED, signatures)
-  e-1-7-migrate-emargement-pdf: backlog  # emargement-pdf-export.ts (MED, signatures)
-  e-1-8-cleanup-package-json: backlog  # drop jspdf + jspdf-autotable + html2canvas (après e-1.2 à e-1.7 done)
-  e-2-cache-pdf-100: done  # pdf-cache.ts + DocumentGenerationService.getCachedPdf() opérationnel
-  e-3-logs-structures: done  # document_sent / document_signed / document_signature_requested / document_failed + 2 batch summaries instrumentés (PR #98) — couvre F1/F2.x/F3/C1
-  e-4-tests-e2e-snapshot: done  # 12 tests snapshot HTML (6 templates + 6 régression no-orphan) — couvre F1/F2.x/F3 (PR #100). Décision : HTML résolu plutôt que PDF binaire (moins fragile en CI)
-  epic-e-retrospective: optional
+stories:
+  - id: E1-S01
+    fr: FR-C-01
+    title: CourseType enum unification (Zod ↔ UI ↔ DB)
+    effort: S
+    status: not-started
+    sprint: 1
+    blockedBy: [A1]
+    blocks: [E1-S05, E2-S10, E3-S02]
 
-  # ── Epic F : Mass Operations (TabConventionDocs) (Lot F) ──
-  # PR2 sous-PR 2.5 — Ajouté 2026-05-17 (gap traçabilité résolu)
-  epic-f: done  # 3 stories principales + 5 extensions F2.x toutes done. Toute la matrix TabConventionDocs est server-side parallèle (download + send + signature)
-  f-1-mass-download-batch-zip: done  # helper batch-doc-download.ts + refactor TabConventionDocs.handleDownloadAllPDF (PR #93)
-  f-2-mass-send-email-batch: done  # MVP convocation : endpoint send-convocations-batch-email + helper batch-doc-send.ts + refactor handleMassSendWithPDF
-  f-2-1-send-certificats-realisation-batch-email: done  # extension F2 (PR #96, helper executeBatchEmailSend extrait)
-  f-2-2-send-attestations-assiduite-batch-email: done  # extension F2 (PR #96)
-  f-2-3-send-conventions-batch-email: done  # extension F2 company → primary contact email (PR #96)
-  f-2-4-send-emargements-individuels-batch-email: done  # extension F2 (PR #96)
-  f-2-5-send-conventions-intervention-batch-email: done  # extension F2 trainer (PR #96)
-  f-3-mass-signature-request-batch: done  # endpoint signature-request-batch + helper + 2 boutons UI (PR #97)
-  epic-f-retrospective: optional
+  - id: E1-S02
+    fr: FR-C-02
+    title: BpfFundingType enum unification (valeurs DB)
+    effort: L
+    status: not-started
+    sprint: 1
+    blockedBy: [A2, OQ-8]
+    blocks: [E1-S03, E1-S04, E1-S05, E3-S03]
 
-  # ── Epic G : Stabilisation Portail Apprenant & Magic Link ──
-  # Hot-fix epic créé 2026-05-17 suite audit BMad (cf epics-stabilisation.md)
-  # Bugs P0/P1 identifiés en prod : portail apprenant queries défaillantes + magic link cassé
-  epic-g: in-progress
-  g-1-fix-my-trainings-nested-query: done  # P0 — apprenant ne voit pas ses formations (PR #127)
-  g-2-restaurer-magic-link-pr126: done  # P0 — restauration /access/[token] + /auth/callback (PR #127)
-  g-3-fix-calendar-nested-query: done  # P1 — symétrique de g-1 sur /learner/calendar (PR #127)
-  g-4-fix-courses-profile-id: done  # P1 — courses cherche par email au lieu de profile_id (PR #127)
-  g-5-cleanup-learner-documents-static-cards: done  # P1 — supprime 3 cartes statiques en doublon (PR #128)
-  g-6-rls-infinite-recursion: done  # bonus — fix RLS 42P17 via SECURITY DEFINER (PR #129)
-  g-7-nav-404-dashboard-calendar-slots: done  # bonus — 404 dashboard + bouton manquant + calendar slots (PR #130)
-  g-8-pdf-preview-via-file-url: done  # bonus — preview PDF natif au lieu HTML brut (PR #131)
-  epic-g-retrospective: optional
+  - id: E1-S03
+    fr: FR-C-02
+    title: BpfObjective enum unification (valeurs DB)
+    effort: M
+    status: not-started
+    sprint: 2
+    blockedBy: [E1-S02]
+    blocks: [E1-S04, E1-S05]
 
-  # ── Epic H : Stabilisation Admin & PDFs Entreprise ──
-  # Hot-fix epic créé 2026-05-17 suite audit BMad super admin (cf epics-admin-pdfs-stabilisation.md)
-  # 10 bugs initiaux + 7 hot-fix ajoutés en cours (h-11 à h-17), majoritairement mergés 2026-05-18
-  epic-h: in-progress  # passé in-progress 2026-05-18 (h-13 à h-16 mergés sur main)
-  h-1-signatures-emargement-pdf: done  # P0 Qualiopi — mergé PR fix h-1/h-2 (commit ad44b30)
-  h-2-convention-signee-non-rendue: done  # P0 Qualiopi — mergé PR #134 (commit ad44b30)
-  h-3-rib-facture-invalide: done  # P0 Business — mergé PR #133 (commit 2f89012)
-  h-4-factures-filtre-entreprise: done  # P0 Business — mergé PR #133 (commit 2f89012)
-  h-5-nom-client-non-resolu: done  # P1 UX — mergé PR #132 (commit f648468)
-  h-6-unite-heures-attestation: done  # P1 UX — mergé PR #132 (commit f648468)
-  h-7-nom-entreprise-tronque: backlog  # P1 UX — facture affiche nom court au lieu de raison sociale (à reprendre)
-  h-8-programme-formation-saisie: done  # P1 Métier — mergé PR #135 (commit e404953)
-  h-9-emargement-page-par-entreprise: done  # P0 — fix racine via h-15 (SELECT client_id manquant, commit ed58e61)
-  h-10-questionnaires-acces-admin-apprenant: done  # P2 UX — mergé PR #136 (commit 556c815)
-  h-11-emargement-signature-par-slot: done  # P0 Qualiopi — sig par slot réel collectif (commit 673dcdb)
-  h-12-pdf-facture-lignes-manquantes: done  # mergé PR #139 (commit 7687c31)
-  h-13-fill-for-learner-responses-vs-answers: done  # bug colonne DB questionnaire (commit bb57d46)
-  h-14-emargement-individuel-signature-par-slot: done  # miroir h-11 sur feuille individuelle (commit 03a6894)
-  h-15-enrollments-client-id-select-manquant: done  # débloque 1 PDF par entreprise + 3 autres consommateurs (commit ed58e61)
-  h-16-signature-trainer-via-lien-signature: done  # signature trainer alignée sur client + 'Générer quand même' (commit a5bc60b)
-  h-17-acces-commerciaux-crm: review  # P0 Business — code dev terminé 2026-05-18 (tsc clean + 395/395 tests), en attente smoke prod après exécution migration SQL
-  h-18-commercial-form-stats: done  # UX consistency — card 'Commercial' dans le form de creation + stats hero (commits f5c519d + b71e8dc)
-  h-19-taches-commerciales-vues-calendar-today: done  # P2 UX — code review BMad termine 2026-05-18 : 6 patches blockers appliques (AC-3/AC-4/parseISO/CalendarView completed/formatDate/badge +N Popover), tsc clean. 22 patches pre-existants en action items dans la story.
-  h-22-documents-secondaires-attribuables-loris: in-progress  # P1 — code review BMad du flux complet (2026-05-20) : BLOCKER structurel, les 23 doc_types secondaires n'etaient rendus nulle part dans TabConventionDocs. CORRIGE 2026-05-21 sur branche fix/h-22-affichage-docs-secondaires : section "Documents secondaires" rendue dans les 2 vues (renderDocRow + actions de masse Figer / signature) ; insertDocs renvoie le compte reel + fallback 23505 ligne-a-ligne ; attribute-secondary renvoie created reel. decision-needed ownerType session resolue (conserve owner_type=company). tsc clean + 400/400 vitest. Reste : merge + smoke prod.
-  h-23-crm-prospects-hotfixes: review  # P1 — 6 sujets bundles : (1) nom prospect cliquable dans liste, (2) hardening conversion prospect→client (transaction + validation + 409 doublon + erreur explicite UI), (3) bouton "Creer prospect" sur liste (Dialog partage avec kanban), (4) Pappers UPFRONT a la creation (masquer bouton Enrichir post-creation), (5) fix search bars Tasks+Prospects (or() PostgREST casse sur espaces, search Tasks ignore prospect.company_name), (6) Communications tab = emails only (deplacer ProspectCommentsSection vers Timeline). Source : audit BMad CRM commercial Wissam 2026-05-19. Effort 4-6 j-h.
-  epic-h-retrospective: optional
+  - id: E1-S04
+    fr: FR-C-02
+    title: Labels FR BPF + UI SelectItem alignment
+    effort: S
+    status: not-started
+    sprint: 2
+    blockedBy: [E1-S02, E1-S03, OQ-8]
+    blocks: [E1-S05]
 
-  # Mises à jour post-merge :
-  # 2026-05-17 (PR #127) : g-1, g-2, g-3, g-4 mergées sur main
-  # 2026-05-17 (PR #128) : g-5 mergée
-  # 2026-05-17 (PR #129) : g-6 RLS fix mergée + SQL exécuté en prod
-  # 2026-05-17 (PR #130) : g-7 nav/calendar mergée
-  # 2026-05-17 (PR #131) : g-8 PDF preview mergée
-  # 2026-05-17 (Epic H) : 10 nouveaux bugs admin/PDFs/facturation tracés en backlog
+  - id: E1-S05
+    fr: FR-C-01+FR-C-02
+    title: Test suite enums-consistency (CI gate)
+    effort: S
+    status: not-started
+    sprint: 2
+    blockedBy: [E1-S01, E1-S02, E1-S03, E1-S04]
+    blocks: []
 
-# ──────────────────────────────────────────────────────────────────────────
-# SPRINT PLAN STRUCTURÉ (PR2 — séquencement résolvant ISSUE #1 forward dep B5→C1)
-# ──────────────────────────────────────────────────────────────────────────
-#
-# Wave 1 (séquentiel, démarre immédiatement après readiness OK) :
-#   - b-0-resolve-document-variables (parallèle avec b-1)
-#   - b-1-migration-table-documents
-#
-# Wave 2 (après wave 1) :
-#   - b-2-backfill-idempotent
-#   - d-1-page-admin-import-templates (parallèle avec b-2, dépend juste b-1)
-#
-# Wave 3 (après b-2 OK) :
-#   - b-3-migration-conventions
-#   - b-4-migration-attestations-certificats (parallèle)
-#   - b-6-migration-docs-administratifs (parallèle)
-#   - b-7-migration-factures-devis (parallèle)
-#
-# Wave 4 (après wave 3) — RÉSOLUTION ISSUE #1 :
-#   - b-5-migration-emargements (parallèle avec c-1)
-#   - c-1-signature-service-unifie (parallèle avec b-5)
-#
-# Wave 5 (après wave 4) :
-#   - c-2-migration-flux-signature (depends c-1)
-#   - d-2-documentation-how-to (depends d-1)
-#
-# Wave 6 (après wave 5) :
-#   - c-3-audit-trail-qualiopi (depends c-2)
-#   - f-1-mass-download-batch-zip (parallèle, depends a-2+b-1)
-#   - f-2-mass-send-email-batch (parallèle, depends a-2+b-1)
-#   - f-3-mass-signature-request-batch (parallèle, depends c-1+b-1)
-#
-# Wave 7 (transverse, après B+C+D+F stables) :
-#   - e-2-cache-pdf-100 (parallèle, depends a-2)
-#   - e-3-logs-structures (parallèle, depends a-2+c-1)
-#   - e-4-tests-e2e-snapshot (parallèle, depends a-2+B all)
-#
-# Wave 8 (LAST, après ≥7-90j stabilité prod sur waves 1-7) :
-#   - e-1-suppression-jspdf-legacy (drop tables legacy + delete code)
-#
-# Effort total : 25.5-33 j-h dev + 3-4 j-h QA
-# Déploiement progressif via feature flags USE_UNIFIED_DOCUMENTS_FOR_{doc_type}
-#
-# ──────────────────────────────────────────────────────────────────────────
-# BLOCKERS À TRAITER AVANT WAVE 2 (sous-PR 2.2 = b-2-backfill-idempotent) :
-#   - ISSUE #3 G1 : Volume historique → query `SELECT COUNT(*) FROM formation_convention_documents`
-#   - ISSUE #3 G2 : Plan de rollback migration data (Winston gate, ~1h doc)
-# ──────────────────────────────────────────────────────────────────────────
+  - id: E1-S06
+    fr: FR-C-03
+    title: Formation Duplicate helper + UI dropdown
+    effort: M
+    status: not-started
+    sprint: 3
+    blockedBy: [A3]
+    blocks: [E1-S07]
+
+  - id: E1-S07
+    fr: FR-C-03
+    title: Formation Delete helper + confirmation dialog
+    effort: M-L
+    status: not-started
+    sprint: 3
+    blockedBy: [E1-S06]
+    blocks: []
+
+  - id: E1-S08
+    fr: FR-C-04
+    title: TabAbsences refetch + error logging (INSERT + UPDATE)
+    effort: S
+    status: not-started
+    sprint: 1
+    blockedBy: []
+    blocks: []
+
+  - id: E1-S09
+    fr: FR-C-04
+    title: TabDocsPartages refetch + error logging
+    effort: S
+    status: not-started
+    sprint: 1
+    blockedBy: []
+    blocks: []
+
+  - id: E1-S10
+    fr: FR-C-05
+    title: Historical scoring rétroactif (transactionnel)
+    effort: M
+    status: not-started
+    sprint: 3
+    blockedBy: [A4]
+    blocks: []
+
+  - id: E2-S01
+    fr: FR-A-01
+    title: BG function foundation (3 sub-tasks idempotence/PDF/loop)
+    effort: L
+    status: not-started
+    sprint: 4
+    blockedBy: [A5]
+    blocks: [E2-S03]
+
+  - id: E2-S02
+    fr: FR-A-01
+    title: Helper createLearnerWithCredentials (service layer)
+    effort: M
+    status: not-started
+    sprint: 4
+    blockedBy: []
+    blocks: [E2-S03]
+
+  - id: E2-S03
+    fr: FR-A-01
+    title: Route /start refactor (seuils + BG dispatch + flag removal)
+    effort: M
+    status: not-started
+    sprint: 5
+    blockedBy: [E2-S01, E2-S02, A5, OQ-1]
+    blocks: [E2-S06]
+
+  - id: E2-S04
+    fr: FR-A-01
+    title: Route /status polling endpoint
+    effort: S
+    status: not-started
+    sprint: 4
+    blockedBy: []
+    blocks: [E2-S06]
+
+  - id: E2-S06
+    fr: FR-A-01
+    title: UI bulk-import polling page (NFR-6 AC explicite)
+    effort: M
+    status: not-started
+    sprint: 5
+    blockedBy: [E2-S03, E2-S04, A6]
+    blocks: [E2-S13]
+
+  - id: E2-S07
+    fr: FR-A-03
+    title: TabPlanning auto-fill loading state
+    effort: S
+    status: not-started
+    sprint: 6
+    blockedBy: []
+    blocks: [E2-S13]
+
+  - id: E2-S08
+    fr: FR-A-04
+    title: TabFinances dialogs setTimeout removal (10 itérations OK)
+    effort: M
+    status: not-started
+    sprint: 6
+    blockedBy: []
+    blocks: [E2-S13]
+
+  - id: E2-S09
+    fr: FR-A-05
+    title: E-Learning reader loading skeleton (NFR-6 AC explicite)
+    effort: M
+    status: not-started
+    sprint: 7
+    blockedBy: []
+    blocks: [E2-S13]
+
+  - id: E2-S10
+    fr: FR-A-06
+    title: E-Learning wizard step indicator (NFR-6 AC explicite)
+    effort: S-M
+    status: not-started
+    sprint: 6
+    blockedBy: [E1-S01-merged-main, Lighthouse-delta<2%]
+    blocks: [E2-S13]
+
+  - id: E2-S11
+    fr: FR-A-07
+    title: Questionnaire learner draft auto-save (localStorage)
+    effort: M
+    status: not-started
+    sprint: 6
+    blockedBy: []
+    blocks: [E2-S12, E2-S13]
+
+  - id: E2-S12
+    fr: FR-A-07
+    title: Questionnaire public draft auto-save (variant anonyme)
+    effort: S
+    status: not-started
+    sprint: 7
+    blockedBy: [E2-S11]
+    blocks: [E2-S13]
+
+  - id: E2-S13
+    fr: FR-A-01+A-03+A-04+A-05+A-06+A-07
+    title: Tests E2E intégration Epic 2 (performance ±50ms tolerance)
+    effort: M
+    status: not-started
+    sprint: 7
+    blockedBy: [E2-S01, E2-S02, E2-S03, E2-S04, E2-S06, E2-S07, E2-S08, E2-S09, E2-S10, E2-S11, E2-S12]
+    blocks: []
+
+  - id: E3-S01
+    fr: FR-B-01+FR-B-02
+    title: Helper pagination serveur partagé
+    effort: S
+    status: not-started
+    sprint: 7
+    blockedBy: []
+    blocks: [E3-S02, E3-S03]
+
+  - id: E3-S02
+    fr: FR-B-01
+    title: Hub E-Learning pagination serveur (NFR-6 AC explicite)
+    effort: M
+    status: not-started
+    sprint: 8
+    blockedBy: [Epic-1-all-merged, main-stable-24h, A7, E3-S01, OQ-2, OQ-6]
+    blocks: []
+
+  - id: E3-S03
+    fr: FR-B-02
+    title: Hub Programmes pagination serveur
+    effort: M
+    status: not-started
+    sprint: 8
+    blockedBy: [Epic-1-all-merged, main-stable-24h, A7, E3-S01, OQ-2, OQ-6]
+    blocks: []
+
+  - id: E3-S04
+    fr: FR-B-03
+    title: TabConventionDocs batch ops audit d'état
+    effort: S
+    status: not-started
+    sprint: 7
+    blockedBy: []
+    blocks: [E3-S05, E3-S06]
+
+  - id: E3-S05
+    fr: FR-B-03
+    title: Batch ops confirmation dialog (UI)
+    effort: M
+    status: not-started
+    sprint: 8
+    blockedBy: [E3-S04]
+    blocks: [E3-S06]
+
+  - id: E3-S06
+    fr: FR-B-03
+    title: Batch ops handlers + refetch (<2000ms)
+    effort: M-L
+    status: not-started
+    sprint: 8
+    blockedBy: [E3-S04, E3-S05]
+    blocks: []
+
+openQuestions:
+  - id: OQ-7
+    title: Dates vacances Wissam (contingency HANDOFF.md si vacance >1 sem en S0-S2)
+    deadline: immédiat (fin journée)
+    owner: Wissam
+    blocking: [S0, all-Epic-1]
+
+  - id: OQ-8
+    title: Mapping Zod legacy → DB BPF + labels FR validés produit
+    deadline: pré-S1
+    owner: Wissam+produit
+    blocking: [E1-S02, E1-S03, E1-S04]
+
+  - id: OQ-9
+    title: Audit fusionné dans A2 (S0)
+    deadline: S0
+    owner: dev
+    blocking: []
+    note: superseded-by-A2
+
+  - id: OQ-1
+    title: Volume max bulk import (impact INLINE_THRESHOLD final 20 ou 50)
+    deadline: pré-S4 préliminaire, post-Epic-2 ajustement
+    owner: Wissam
+    blocking: [E2-S03]
+    default: 20
+
+  - id: OQ-2
+    title: Volumes pagination réels (profils/entity, cours/entity, programmes/entity)
+    deadline: pré-S8
+    owner: Wissam
+    blocking: [E3-S02, E3-S03]
+    default: seed-200
+
+  - id: OQ-3
+    title: Timing RLS V2/V3 (helpers public.user_role à migrer vers auth.*)
+    deadline: avant fin Epic 1 (S3)
+    owner: dev
+    blocking: []
+
+  - id: OQ-6
+    title: Index DB (entity_id, status, created_at DESC) sur elearning_courses et programs
+    deadline: pré-S8
+    owner: dev
+    blocking: [E3-S02, E3-S03]
+
+crossEpicGates:
+  - gate: E2-S10-unblock
+    condition: E1-S01 PR merged to main AND Lighthouse regression delta <2%
+    affects: [E2-S10]
+  - gate: Epic-3-unblock
+    condition: All Epic 1 PRs merged to main AND main stable for 24h minimum
+    affects: [E3-S02, E3-S03]
+
+buffers:
+  - id: Buffer-A
+    week: 3.5
+    duration: 2-3j
+    purpose: PR reviews + regression tests post-Epic-1
+  - id: Buffer-B
+    week: 7.5
+    duration: 2j
+    purpose: PR reviews + integration audit post-Epic-2
+  - id: Buffer-final
+    week: 9
+    duration: 1 week
+    purpose: Tests finaux + hotfixes éventuels
