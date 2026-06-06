@@ -39,11 +39,17 @@ Effort total estimé : **~8.5-9 semaines solo dev** séquentiel (révisé +1 sem
 
 | Epic | Archétype | FR couverts | Stories | Effort | Pre-conditions globales |
 |------|-----------|-------------|---------|--------|--------------------------|
-| **Epic 1 — Promesses cassées** | C | FR-C-01 → FR-C-05 | 10 (E1-S01 → E1-S10) | ~3 sem | S0 audit codebase complet, OQ-7/8/9 résolues |
+| **Epic 1 — Promesses cassées** | C | FR-C-01 → FR-C-05 | 10 (E1-S01 → E1-S10) dont **2 déjà livrées** (E1-S06, E1-S07) post-S0 | ~2-2.5 sem (révisé depuis ~3 sem post-S0) | S0 ✅ complet, OQ-7/8/9 ⏳ |
 | **Epic 2 — Signaux de fin** | A | FR-A-01, FR-A-03 → FR-A-07 | 13 (E2-S01 → E2-S13) | ~3-4 sem | Epic 1 partiel mergé (E1-S01 pour E2-S10) |
 | **Epic 3 — Limites silencieuses** | B | FR-B-01, FR-B-02, FR-B-03 | 6 (E3-S01 → E3-S06) | ~1-2 sem | Epic 1 mergé + main stable 24h, OQ-2/6 |
 
-**Total** : 29 stories sur ~8.5-9 semaines.
+**Total** : 29 stories sur ~8-8.5 semaines (révisé post-S0 — E1-S06/S07 livrées hors-sprint).
+
+> **Mise à jour post-S0 (2026-06-06)** :
+> - Sprint S0 audit codebase : ✅ **complet** (7 audits clear, 0 blocker, livrable `S0-codebase-audit-findings.md` commit `09a58e4`)
+> - 2 stories Epic 1 déjà livrées dans le code existant : **E1-S06** (Dupliquer formation) + **E1-S07** (Supprimer formation). Audit A3 a découvert que helpers `duplicateSession()` + `deleteSession()` existent déjà dans `src/lib/services/sessions.ts` et UI branchée dans `ResumeActions.tsx` + `ResumeDangerZone.tsx`. → Smoke test admin requis (10 min total) pour confirmer livraison.
+> - Effort Epic 1 réduit : ~3 sem → ~2-2.5 sem
+> - Reste à trancher avant kickoff Epic 1 : OQ-7 (vacances) + OQ-8 (mapping BPF — informé par A2 qui confirme aucun fichier Zod BPF existant pour trainings/crm_quotes, à créer)
 
 ---
 
@@ -201,44 +207,45 @@ Avant kickoff Epic 1, **4 audits bloquants** doivent être complétés (~2-3 jou
 - **Effort** : S (1j) — **Risk** : Bas
 - **DoD** : vitest pass, snapshot stable, CI gate effectif.
 
-### E1-S06 — Formation Duplicate helper + UI dropdown
+### E1-S06 — Formation Duplicate helper + UI dropdown — ✅ DÉJÀ LIVRÉE (S0 audit A3)
+
+> **Mise à jour post-S0 (2026-06-06)** : audit A3 a confirmé que cette story est **déjà livrée dans le code existant**. Aucun dev requis, seulement un smoke test admin.
 
 - **FR mapping** : FR-C-03
 - **Persona** : admin
-- **User story** : En tant qu'admin, je veux dupliquer une formation existante via le dropdown afin de créer rapidement une variante basée sur un template.
-- **Pre-conditions** : **Audit A3 (S0) complété** — service cible et table cible tranchés (`formations` vs `sessions`). Audit FK cascade documenté.
-- **Acceptance criteria** :
-  1. **À CONFIRMER POST-AUDIT A3** : service cible (`src/lib/services/formations.ts` à créer OU `src/lib/services/sessions.ts` à étendre) expose `duplicateFormation(id, entityId): Promise<{newId}>`.
-  2. Helper copie toutes les colonnes SAUF `id` (PK nouvelle), `created_at`/`updated_at` (auto), `name`/`title` → suffixe `" (Copie)"`. Conserve `entity_id` et `created_by`.
-  3. `src/app/(dashboard)/admin/formations/[id]/page.tsx:318-324` : DropdownMenuItem "Dupliquer" reçoit `onClick` avec try/catch + toast + refetch + navigate vers nouvelle formation.
-  4. Tables/relations enfants à dupliquer (programs, sessions liées, etc.) : périmètre défini par A3.
-- **Files affected** :
-  - service formation (path tranché par A3)
-  - `src/app/(dashboard)/admin/formations/[id]/page.tsx:318-324` (modify)
-- **Effort** : M (2-3j) — **Risk** : Moyen (cascade FK à comprendre)
-- **Tests** : unit duplicate + integration fetch new formation.
-- **DoD** : tsc clean, vitest pass, toast + redirect observables.
+- **Statut** : ✅ **DONE** (livrée pré-audit, à confirmer par smoke test)
+- **État vérifié post-S0** :
+  - Helper `duplicateSession(supabase, sessionId, entityId)` existe : `src/lib/services/sessions.ts:221`
+  - UI bouton "Dupliquer" branché : `src/app/(dashboard)/admin/formations/[id]/_components/sections/ResumeActions.tsx`
+  - Table cible : `sessions` ("formation" = alias UI pour ligne de sessions, confirmé par A3 — pas de table `formations` distincte)
+  - **Note** : le dropdown ligne 318-324 du `page.tsx` cité dans l'audit initial ÉTAIT inerte, mais la fonctionnalité Dupliquer est déjà accessible via le tab Résumé (ResumeActions). Décider en smoke test si on veut AUSSI brancher le dropdown ou le retirer.
+- **Action restante** : smoke test admin (5 min)
+  1. Ouvrir une formation existante dans `/admin/formations/[id]`
+  2. Cliquer "Dupliquer" depuis le tab Résumé (ResumeActions)
+  3. Vérifier qu'une nouvelle formation est créée avec suffixe `(Copie)` et que la redirection fonctionne
+  4. Décider : retirer le dropdown inerte OU le brancher sur le même handler (1h dev)
+- **Effort restant** : 0j (déjà livré) ou 1h optionnel (cleanup dropdown)
+- **Tests existants** : à vérifier dans `src/lib/services/__tests__/sessions.test.ts`
 
-### E1-S07 — Formation Delete helper + confirmation dialog
+### E1-S07 — Formation Delete helper + confirmation dialog — ✅ DÉJÀ LIVRÉE (S0 audit A3)
+
+> **Mise à jour post-S0 (2026-06-06)** : audit A3 a confirmé que cette story est **déjà livrée dans le code existant**.
 
 - **FR mapping** : FR-C-03
 - **Persona** : admin
-- **User story** : En tant qu'admin, je veux supprimer une formation avec confirmation affichant l'impact (apprenants, documents, émargements) afin de prévenir les suppressions accidentelles.
-- **Pre-conditions** : E1-S06 mergée ; audit FK cascade pré-impl obligatoire (livrable A3 étendu) ; test sur DB clone avant prod.
-- **Acceptance criteria** :
-  1. Service formation (path A3) étend :
-     - `getFormationCascadeImpact(id, entityId): Promise<FormationCascadeImpact>` où `type FormationCascadeImpact = { enrollments_count: number; documents_count: number; absences_count: number; signatures_count: number; finances_count?: number }` (type exporté).
-     - `deleteFormationWithCascade(id, entityId): Promise<void>` (transactionnel ou RPC).
-  2. DropdownMenuItem "Supprimer" → ConfirmDialog Shadcn affichant chaque count nommé.
-  3. Confirmer → delete cascade → refetch → redirect `/admin/formations`.
-  4. Annuler → fermeture sans side effect ; aucune mutation DB.
-- **Files affected** :
-  - service formation (extend)
-  - `src/app/(dashboard)/admin/formations/[id]/page.tsx:318-324` (modify)
-  - `src/app/(dashboard)/admin/formations/page.tsx` (refetch on return)
-- **Effort** : M-L (3-5j) — **Risk** : Haut (cascade FK destructive)
-- **Tests** : unit cascade impact ; transactional delete + verify orphans absents.
-- **DoD** : tsc clean, vitest pass, delete observable + redirect, type `FormationCascadeImpact` exporté.
+- **Statut** : ✅ **DONE** (livrée pré-audit, à confirmer par smoke test)
+- **État vérifié post-S0** :
+  - Helper `deleteSession(supabase, sessionId, entityId)` existe : `src/lib/services/sessions.ts:266`
+  - UI bouton "Supprimer" branché : `src/app/(dashboard)/admin/formations/[id]/_components/sections/ResumeDangerZone.tsx`
+  - Confirmation dialog probablement intégrée à `ResumeDangerZone` (à vérifier en smoke test)
+- **Action restante** : smoke test admin (5 min)
+  1. Ouvrir une formation TEST dans `/admin/formations/[id]`
+  2. Cliquer "Supprimer" depuis le tab Résumé > zone Danger
+  3. Vérifier confirmation + delete + redirect `/admin/formations`
+  4. Vérifier que la cascade FK fonctionne (apprenants, documents, émargements supprimés ou orphelinés selon ON DELETE)
+  5. Décider : retirer le dropdown inerte OU le brancher (1h dev)
+- **Effort restant** : 0j (déjà livré) ou 1h optionnel (cleanup dropdown)
+- **Risk résiduel** : valider que le smoke test couvre les FK cascade comme prévu dans le PRD ; si gaps → créer une story patch dédiée.
 
 ### E1-S08 — TabAbsences refetch + error logging (INSERT + UPDATE)
 
@@ -671,7 +678,7 @@ Avant kickoff Epic 1, **4 audits bloquants** doivent être complétés (~2-3 jou
 | **S0** | Semaine 0 (0.5 sem) | 7 audits A1-A7 + résolution OQ-7/8/9 | Codebase audit + OQ → débloque Epic 1 | 2-3j |
 | **S1** | Semaine 1 | E1-S01, E1-S02 (démarrage), E1-S08, E1-S09 | Enums CourseType + BPF funding (kickoff) + mutations refetch indépendantes | S+L+S+S |
 | **S2** | Semaine 2 | E1-S02 (suite), E1-S03, E1-S04, E1-S05 | BPF funding (fin) + objective + labels FR + tests CI | L+M+S+S |
-| **S3** | Semaine 3 | E1-S06, E1-S07, E1-S10 | Duplicate + Delete formation + scoring rétroactif | M+M-L+M |
+| **S3** | Semaine 3 | ~~E1-S06, E1-S07~~ (livrées hors-sprint, smoke test seul) + E1-S10 | Scoring rétroactif uniquement + buffer | M (+ smoke test 10 min Dupliquer/Supprimer) |
 | **Buffer A** | Semaine 3.5 | (PR reviews + regression tests Epic 1) | Main stabilisé pré-Epic 2 | 2-3j |
 | **S4** | Semaine 4 | E2-S02, E2-S01, E2-S04 | Helper + BG function (3 sub-tasks a/b/c) + status endpoint | M+L+S |
 | **S5** | Semaine 5 | E2-S03, E2-S06 | Route /start refactor + UI polling | M+M |

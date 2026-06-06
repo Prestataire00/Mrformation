@@ -4,7 +4,13 @@ prd: bmad_output/planning-artifacts/prd.md
 epicsStories: bmad_output/planning-artifacts/epics-stories.md
 generatedAt: 2026-06-06
 currentSprint: 0
-totalSprints: 9
+totalSprints: 8  # révisé post-S0 (était 9, E1-S06/S07 livrées hors-sprint)
+postS0Update:
+  date: 2026-06-06
+  s0AuditCommit: 09a58e4
+  storiesAlreadyDelivered: [E1-S06, E1-S07]
+  newOQs: []
+  effortReductionWeeks: 1
 
 reviewsAdversariales:
   completeness:
@@ -125,20 +131,31 @@ stories:
   - id: E1-S06
     fr: FR-C-03
     title: Formation Duplicate helper + UI dropdown
-    effort: M
-    status: not-started
-    sprint: 3
-    blockedBy: [A3]
-    blocks: [E1-S07]
+    effort: 0
+    status: done-pending-smoke-test
+    sprint: 0
+    blockedBy: []
+    blocks: []
+    notes: |
+      Découverte S0 audit A3 (2026-06-06) : déjà livrée dans le code existant.
+      Helper duplicateSession() : src/lib/services/sessions.ts:221
+      UI : src/app/(dashboard)/admin/formations/[id]/_components/sections/ResumeActions.tsx
+      Action restante : smoke test admin (5 min). Optionnel : 1h cleanup dropdown inerte si retenu.
 
   - id: E1-S07
     fr: FR-C-03
     title: Formation Delete helper + confirmation dialog
-    effort: M-L
-    status: not-started
-    sprint: 3
-    blockedBy: [E1-S06]
+    effort: 0
+    status: done-pending-smoke-test
+    sprint: 0
+    blockedBy: []
     blocks: []
+    notes: |
+      Découverte S0 audit A3 (2026-06-06) : déjà livrée dans le code existant.
+      Helper deleteSession() : src/lib/services/sessions.ts:266
+      UI : src/app/(dashboard)/admin/formations/[id]/_components/sections/ResumeDangerZone.tsx
+      Action restante : smoke test admin (5 min) avec vérif FK cascade.
+      Optionnel : 1h cleanup dropdown inerte si retenu.
 
   - id: E1-S08
     fr: FR-C-04
