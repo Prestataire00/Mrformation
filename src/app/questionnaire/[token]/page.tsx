@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -33,7 +33,11 @@ export default function PublicQuestionnairePage() {
   const [responses, setResponses] = useState<Record<string, string | number>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [dirty, setDirty] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const draftRestoredRef = useRef(false);
+
+  const draftKey = `questionnaire_${token}_draft_anonymous`;
 
   useEffect(() => {
     async function load() {
@@ -49,8 +53,49 @@ export default function PublicQuestionnairePage() {
     load();
   }, [token]);
 
+  // --- Draft auto-save: restore from localStorage at mount ---
+  useEffect(() => {
+    if (loading || draftRestoredRef.current) return;
+    if (!info?.valid || submitted) return;
+    draftRestoredRef.current = true;
+
+    const draft = localStorage.getItem(draftKey);
+    if (draft) {
+      try {
+        const parsed = JSON.parse(draft) as Record<string, string | number>;
+        setResponses(parsed);
+        setDirty(true);
+      } catch {
+        localStorage.removeItem(draftKey);
+      }
+    }
+  }, [draftKey, loading, info?.valid, submitted]);
+
+  // --- Auto-save debounce 500ms ---
+  useEffect(() => {
+    if (submitted || !dirty) return;
+
+    const t = setTimeout(() => {
+      localStorage.setItem(draftKey, JSON.stringify(responses));
+    }, 500);
+    return () => clearTimeout(t);
+  }, [responses, draftKey, submitted, dirty]);
+
+  // --- beforeunload warning ---
+  useEffect(() => {
+    function handleBeforeUnload(e: BeforeUnloadEvent) {
+      if (dirty && !submitted) {
+        e.preventDefault();
+        return "";
+      }
+    }
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [dirty, submitted]);
+
   const updateResponse = (qId: string, value: string | number) => {
     setResponses(prev => ({ ...prev, [qId]: value }));
+    setDirty(true);
   };
 
   const answeredCount = info?.questions?.filter(q => responses[q.id] !== undefined && responses[q.id] !== "").length || 0;
@@ -74,6 +119,8 @@ export default function PublicQuestionnairePage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
+      localStorage.removeItem(draftKey);
+      setDirty(false);
       setSubmitted(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur lors de l'envoi");
