@@ -14,10 +14,11 @@
  *  6. Replay-protection : si un job existe déjà pour
  *     (entity_id, idempotency_key) → retourne ce job-là
  *  7. INSERT job (status=queued, payload_count=N)
- *  8. Si N ≤ 50 : boucle inline createLearnerWithCredentials + enrollments
- *     + génération PDF + upload Storage → job marqué completed
- *  9. Si N > 50 : fire-and-forget vers la Netlify Background Function
- *     `learners-bulk-create-background.mts`
+ *  8. Si N ≤ INLINE_THRESHOLD (20) : boucle inline createLearnerWithCredentials
+ *     + enrollments + génération PDF + upload Storage → job marqué completed
+ *  9. Si INLINE_THRESHOLD < N ≤ BG_MAX (100) : fire-and-forget vers la
+ *     Netlify Background Function `learners-bulk-create-background.mts`
+ * 10. Si N > BG_MAX : 400 "Volume > 100, contacter support"
  *
  * NB AUTO-ENROLL E-LEARNING (Epic 3.5) :
  *   La création INSERT enrollments est faite ici, MAIS le câblage
@@ -30,8 +31,8 @@
  *    + retour inline). results JSONB ne contient PAS les passwords.
  *  - SEC-7 : Origin-check via isCsrfMismatch
  *  - SEC-10 : resolveActiveEntityId pour super_admin cross-entity
- *  - PROD-C1 : seuil 50 inline / async pour ne pas frapper le timeout
- *    Netlify de 26s
+ *  - PROD-C1 : seuil 20 inline / 100 max async pour ne pas frapper le
+ *    timeout Netlify de 26s
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -64,7 +65,7 @@ const LearnerInputSchema = z.object({
 });
 
 const BodySchema = z.object({
-  learners: z.array(LearnerInputSchema).min(1).max(200),
+  learners: z.array(LearnerInputSchema).min(1).max(100),
   idempotencyKey: z.string().min(8).max(80),
   /**
    * Slug entité visé (mr-formation | c3v-formation). Sert à fabriquer
@@ -74,14 +75,12 @@ const BodySchema = z.object({
   entitySlug: z.enum(["mr-formation", "c3v-formation"]),
 });
 
-// Seuil au-delà duquel on délègue à la Background Function.
-// Seuil sync inline. Au-delà, la Background Function devrait prendre le relais.
-// Or la BG function V1 est un STUB qui marque silently completed sans rien créer
-// (cf. Production Review C1) — on bloque donc explicitement les imports > seuil
-// avec une 400 jusqu'à ce que la BG soit complète (V1.1). Le seuil 20 garde
-// une marge confortable sous le timeout Netlify Pro (~26s pour 20 × ~1s/learner).
+// Seuil au-delà duquel on délègue à la Background Function Netlify.
+// ≤ INLINE_THRESHOLD : traitement synchrone dans cette route.
+// INLINE_THRESHOLD < N ≤ BG_MAX : dispatch vers BG function (fire-and-forget).
+// N > BG_MAX : rejeté avec 400.
 const INLINE_THRESHOLD = 20;
-const BG_NOT_READY_V1 = true;
+const BG_MAX = 100;
 
 // ──────────────────────────────────────────────────────────────────────
 // Types résultats job (sans passwords — SEC-9)
@@ -253,36 +252,35 @@ export async function POST(
     const jobId = jobRow.id;
 
     // 8. Routage sync / async selon le seuil.
-    //
-    // V1 : la Background Function est un STUB (silently completed sans rien
-    // créer). Pour éviter la perte silencieuse de données, on bloque
-    // explicitement les imports au-delà du seuil avec une 400.
-    // À retirer en V1.1 quand la BG sera complète.
-    if (body.learners.length > INLINE_THRESHOLD) {
-      if (BG_NOT_READY_V1) {
-        // Marque le job en failed pour traçabilité audit.
-        await admin
-          .from("learner_bulk_import_jobs")
-          .update({
-            status: "failed",
-            error_message: `bulk_too_large_v1: max ${INLINE_THRESHOLD} learners per request, got ${body.learners.length}`,
-          })
-          .eq("id", jobId);
-        return NextResponse.json(
-          {
-            error: `Pour cette V1, l'import en bulk est limité à ${INLINE_THRESHOLD} apprenants par requête. Veuillez splitter votre liste (la prochaine version supportera des imports plus larges via Background Function).`,
-            code: "bulk_too_large_v1",
-            maxLearners: INLINE_THRESHOLD,
-            attempted: body.learners.length,
-            jobId,
-          },
-          { status: 400 },
-        );
-      }
+    const N = body.learners.length;
+
+    // 8.0 N > BG_MAX → rejet immédiat.
+    if (N > BG_MAX) {
+      await admin
+        .from("learner_bulk_import_jobs")
+        .update({
+          status: "failed",
+          error_message: `bulk_exceeds_max: max ${BG_MAX} learners, got ${N}`,
+        })
+        .eq("id", jobId);
+      return NextResponse.json(
+        {
+          error: `Volume trop important (${N} apprenants). Maximum autorisé : ${BG_MAX}. Contactez le support pour un import en masse.`,
+          code: "bulk_exceeds_max",
+          maxLearners: BG_MAX,
+          attempted: N,
+          jobId,
+        },
+        { status: 400 },
+      );
+    }
+
+    // 8.1 INLINE_THRESHOLD < N ≤ BG_MAX → dispatch vers BG function.
+    if (N > INLINE_THRESHOLD) {
       return await dispatchToBackground(jobId);
     }
 
-    // 8.a Inline (≤ 50 apprenants).
+    // 8.2 N ≤ INLINE_THRESHOLD → traitement inline synchrone.
     await admin
       .from("learner_bulk_import_jobs")
       .update({ status: "running" })
@@ -445,11 +443,13 @@ export async function POST(
 // ──────────────────────────────────────────────────────────────────────
 
 /**
- * Fire-and-forget : déclenche la Netlify Background Function en repassant
- * `Bearer CRON_SECRET`. La BG function répond 202 immédiatement.
+ * Dispatch vers la Netlify Background Function en passant `Bearer CRON_SECRET`.
  *
- * On retourne tout de suite `queued` côté UI ; le client polera ensuite
+ * On retourne immédiatement `queued` côté UI ; le client polera ensuite
  * GET /api/sessions/[id]/learners/bulk/status pour suivre la progression.
+ *
+ * Si le fetch échoue (5xx, réseau) : le job reste 'queued' et on retourne
+ * 200 avec un champ `error` pour que l'UI puisse informer l'admin.
  */
 async function dispatchToBackground(jobId: string): Promise<NextResponse> {
   const cronSecret = process.env.CRON_SECRET;
@@ -461,25 +461,35 @@ async function dispatchToBackground(jobId: string): Promise<NextResponse> {
   }
   const baseUrl = process.env.URL || "http://localhost:8888";
   const bgUrl = `${baseUrl}/.netlify/functions/learners-bulk-create-background`;
+
+  let dispatchFailed = false;
   try {
-    // Pas de await long : on émet et on rend la main au client.
-    fetch(bgUrl, {
+    const bgRes = await fetch(bgUrl, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${cronSecret}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ jobId }),
-    }).catch((e) => {
-      console.error("[bulk/start] BG fetch failed (non-blocking):", e);
     });
+    if (!bgRes.ok) {
+      console.error(`[bulk/start] BG dispatch HTTP ${bgRes.status}`);
+      dispatchFailed = true;
+    }
   } catch (e) {
-    console.error("[bulk/start] BG dispatch threw (non-blocking):", e);
+    console.error("[bulk/start] BG dispatch failed:", e);
+    dispatchFailed = true;
   }
+
+  // Job reste 'queued' dans tous les cas — la BG function ou un retry
+  // pourra le reprendre.
   return NextResponse.json({
     ok: true,
     jobId,
     status: "queued",
     pollUrl: `/api/sessions/_/learners/bulk/status?jobId=${jobId}`,
+    ...(dispatchFailed && {
+      error: "BG dispatch failed, job remains queued for retry",
+    }),
   });
 }
