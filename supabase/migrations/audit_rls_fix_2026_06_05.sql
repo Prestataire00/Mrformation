@@ -47,40 +47,61 @@
 -- 1. elearning_global_flashcards : ajout filtre entity_id (si table existe)
 -- -----------------------------------------------------------------------------
 DO $$
+DECLARE
+  has_entity_id_col BOOLEAN;
 BEGIN
   IF EXISTS (
     SELECT 1 FROM pg_tables
     WHERE schemaname = 'public' AND tablename = 'elearning_global_flashcards'
   ) THEN
-    EXECUTE 'DROP POLICY IF EXISTS "elearning_global_flashcards_admin_select" ON public.elearning_global_flashcards';
-    EXECUTE 'DROP POLICY IF EXISTS "elearning_global_flashcards_admin_modify" ON public.elearning_global_flashcards';
-    EXECUTE 'DROP POLICY IF EXISTS "elearning_global_flashcards_select" ON public.elearning_global_flashcards';
-    EXECUTE 'DROP POLICY IF EXISTS "elearning_global_flashcards_modify" ON public.elearning_global_flashcards';
-    EXECUTE 'DROP POLICY IF EXISTS "allow_all" ON public.elearning_global_flashcards';
+    SELECT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'elearning_global_flashcards'
+        AND column_name = 'entity_id'
+    ) INTO has_entity_id_col;
 
-    EXECUTE $POL$
-      CREATE POLICY "elearning_global_flashcards_select" ON public.elearning_global_flashcards
-        FOR SELECT TO authenticated
-        USING (
-          entity_id = public.user_entity_id()
-          OR public.user_role() = 'super_admin'
-        )
-    $POL$;
+    IF has_entity_id_col THEN
+      EXECUTE 'DROP POLICY IF EXISTS "elearning_global_flashcards_admin_select" ON public.elearning_global_flashcards';
+      EXECUTE 'DROP POLICY IF EXISTS "elearning_global_flashcards_admin_modify" ON public.elearning_global_flashcards';
+      EXECUTE 'DROP POLICY IF EXISTS "elearning_global_flashcards_select" ON public.elearning_global_flashcards';
+      EXECUTE 'DROP POLICY IF EXISTS "elearning_global_flashcards_modify" ON public.elearning_global_flashcards';
+      EXECUTE 'DROP POLICY IF EXISTS "allow_all" ON public.elearning_global_flashcards';
 
-    EXECUTE $POL$
-      CREATE POLICY "elearning_global_flashcards_modify" ON public.elearning_global_flashcards
-        FOR ALL TO authenticated
-        USING (
-          public.user_role() IN ('admin', 'super_admin')
-          AND (entity_id = public.user_entity_id() OR public.user_role() = 'super_admin')
-        )
-        WITH CHECK (
-          public.user_role() IN ('admin', 'super_admin')
-          AND (entity_id = public.user_entity_id() OR public.user_role() = 'super_admin')
-        )
-    $POL$;
+      EXECUTE $POL$
+        CREATE POLICY "elearning_global_flashcards_select" ON public.elearning_global_flashcards
+          FOR SELECT TO authenticated
+          USING (
+            entity_id = public.user_entity_id()
+            OR public.user_role() = 'super_admin'
+          )
+      $POL$;
 
-    RAISE NOTICE 'elearning_global_flashcards : RLS policies appliquées';
+      EXECUTE $POL$
+        CREATE POLICY "elearning_global_flashcards_modify" ON public.elearning_global_flashcards
+          FOR ALL TO authenticated
+          USING (
+            public.user_role() IN ('admin', 'super_admin')
+            AND (entity_id = public.user_entity_id() OR public.user_role() = 'super_admin')
+          )
+          WITH CHECK (
+            public.user_role() IN ('admin', 'super_admin')
+            AND (entity_id = public.user_entity_id() OR public.user_role() = 'super_admin')
+          )
+      $POL$;
+
+      RAISE NOTICE 'elearning_global_flashcards : RLS policies appliquées (avec entity_id direct)';
+    ELSE
+      -- La table existe mais sans colonne entity_id — l'audit Workflow avait
+      -- HALLUCINÉ cette colonne. On skip pour ne pas bloquer la migration.
+      -- TODO V1.2 : investiguer la vraie stratégie d'isolation pour cette
+      -- table (FK vers learner_id, chapter_id, course_id, entity_id indirect ?).
+      -- Query d'investigation à exécuter manuellement :
+      --   SELECT column_name, data_type FROM information_schema.columns
+      --   WHERE table_schema='public' AND table_name='elearning_global_flashcards'
+      --   ORDER BY ordinal_position;
+      RAISE NOTICE 'elearning_global_flashcards : table existe mais SANS colonne entity_id — skip (TODO V1.2 : revoir stratégie isolation, cf. commentaire migration)';
+    END IF;
   ELSE
     RAISE NOTICE 'elearning_global_flashcards : table absente — skip (OK)';
   END IF;
