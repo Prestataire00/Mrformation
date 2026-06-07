@@ -71,7 +71,16 @@ export async function fetchPaginatedData<T>(
   // Filtre enum (status, course_type, etc.)
   if (filters.statusIn && filters.statusIn.length > 0) {
     const col = filters.statusColumn ?? "status";
-    query = query.in(col, filters.statusIn);
+    // Détection booléens : si toutes les valeurs sont "true"/"false" (string),
+    // on convertit en boolean JS. PostgREST n'auto-convertit pas strings→booleans
+    // sur `.in()` pour les colonnes boolean → match silencieusement vide.
+    const allBooleanStrings = filters.statusIn.every(
+      (v) => v === "true" || v === "false"
+    );
+    const values: (string | boolean)[] = allBooleanStrings
+      ? filters.statusIn.map((v) => v === "true")
+      : filters.statusIn;
+    query = query.in(col, values);
   }
 
   // Plage de dates
