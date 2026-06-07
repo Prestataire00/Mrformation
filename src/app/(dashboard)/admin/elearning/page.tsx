@@ -12,7 +12,7 @@ import {
   getElearningFormErrors,
   type ElearningHubCourseInput,
 } from "@/lib/validations/elearning";
-import { fetchPaginatedData, type PaginatedResult } from "@/lib/services/pagination";
+import { COURSE_TYPE_OPTIONS, type CourseType } from "@/lib/types/elearning";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -201,7 +201,14 @@ export default function ELearningPage() {
   const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10));
   const urlSearch = searchParams.get("search") ?? "";
   const urlStatus = (searchParams.get("status") ?? "all") as "all" | "draft" | "published";
-  const urlCourseType = searchParams.get("course_type") ?? "all";
+  // E3-S02 — type-safe course_type via union CourseType (cf. src/lib/types/elearning.ts).
+  // Valeurs autorisées (alignées DB CHECK + Zod enum) : presentation | quiz | complete | all.
+  const COURSE_TYPE_VALUES: ReadonlyArray<CourseType> = ["presentation", "quiz", "complete"];
+  const rawCourseType = searchParams.get("course_type");
+  const urlCourseType: CourseType | "all" =
+    rawCourseType && (COURSE_TYPE_VALUES as ReadonlyArray<string>).includes(rawCourseType)
+      ? (rawCourseType as CourseType)
+      : "all";
   type SortKey = "date" | "title";
   const urlSort = (searchParams.get("sort") ?? "date") as SortKey;
 
@@ -739,9 +746,11 @@ export default function ELearningPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Tous les types</SelectItem>
-            <SelectItem value="presentation">Présentation</SelectItem>
-            <SelectItem value="quiz">Quiz</SelectItem>
-            <SelectItem value="complete">Complet</SelectItem>
+            {COURSE_TYPE_OPTIONS.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>
+                {opt.label}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
         {/* Sort */}
