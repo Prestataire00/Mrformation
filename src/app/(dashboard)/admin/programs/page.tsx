@@ -26,6 +26,7 @@ import {
   getProgramFormErrors,
   type ProgramHubFormInput,
 } from "@/lib/validations/program";
+import { BPF_FUNDING_LABELS, BPF_OBJECTIVE_LABELS } from "@/lib/bpf-labels";
 import { cn, formatDate, formatDateTime, truncate } from "@/lib/utils";
 import { useEntity } from "@/contexts/EntityContext";
 import { Button } from "@/components/ui/button";
@@ -925,36 +926,9 @@ export default function ProgramsPage() {
                         <SelectValue placeholder="Sélectionner une source..." />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectGroup>
-                          <SelectLabel>Entreprises</SelectLabel>
-                          <SelectItem value="entreprise_privee">Entreprise privée</SelectItem>
-                        </SelectGroup>
-                        <SelectGroup>
-                          <SelectLabel>Fonds de formation</SelectLabel>
-                          <SelectItem value="apprentissage">Contrats d&apos;apprentissage</SelectItem>
-                          <SelectItem value="professionnalisation">Contrats de professionnalisation</SelectItem>
-                          <SelectItem value="reconversion_alternance">Reconversion / alternance</SelectItem>
-                          <SelectItem value="conge_transition">Congé / transition pro</SelectItem>
-                          <SelectItem value="cpf">CPF</SelectItem>
-                          <SelectItem value="dispositif_chomeurs">Dispositifs demandeurs d&apos;emploi</SelectItem>
-                          <SelectItem value="non_salaries">Travailleurs non-salariés</SelectItem>
-                          <SelectItem value="plan_developpement">Plan de développement</SelectItem>
-                        </SelectGroup>
-                        <SelectGroup>
-                          <SelectLabel>Pouvoirs publics</SelectLabel>
-                          <SelectItem value="pouvoir_public_agents">Pouvoirs publics (agents)</SelectItem>
-                          <SelectItem value="instances_europeennes">Instances européennes</SelectItem>
-                          <SelectItem value="etat">État</SelectItem>
-                          <SelectItem value="conseil_regional">Conseils régionaux</SelectItem>
-                          <SelectItem value="pole_emploi">Pôle emploi</SelectItem>
-                          <SelectItem value="autres_publics">Autres publics</SelectItem>
-                        </SelectGroup>
-                        <SelectGroup>
-                          <SelectLabel>Autres</SelectLabel>
-                          <SelectItem value="individuel">Particulier</SelectItem>
-                          <SelectItem value="organisme_formation">Organisme de formation</SelectItem>
-                          <SelectItem value="autre">Autre</SelectItem>
-                        </SelectGroup>
+                        {Object.entries(BPF_FUNDING_LABELS).map(([value, label]) => (
+                          <SelectItem key={value} value={value}>{label}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -969,17 +943,9 @@ export default function ProgramsPage() {
                         <SelectValue placeholder="Sélectionner un objectif..." />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="rncp_6_8">RNCP niveau 6-8 (Licence, Master, Doctorat...)</SelectItem>
-                        <SelectItem value="rncp_5">RNCP niveau 5 (BTS, DUT...)</SelectItem>
-                        <SelectItem value="rncp_4">RNCP niveau 4 (BAC pro, BT, BP...)</SelectItem>
-                        <SelectItem value="rncp_3">RNCP niveau 3 (BEP, CAP...)</SelectItem>
-                        <SelectItem value="rncp_2">RNCP niveau 2</SelectItem>
-                        <SelectItem value="rncp_cqp">CQP sans niveau de qualification</SelectItem>
-                        <SelectItem value="certification_rs">Certification / habilitation RS</SelectItem>
-                        <SelectItem value="cqp_non_enregistre">CQP non enregistré RNCP/RS</SelectItem>
-                        <SelectItem value="autre_pro">Autres formations professionnelles</SelectItem>
-                        <SelectItem value="bilan_competences">Bilans de compétences</SelectItem>
-                        <SelectItem value="vae">VAE (validation acquis expérience)</SelectItem>
+                        {Object.entries(BPF_OBJECTIVE_LABELS).map(([value, label]) => (
+                          <SelectItem key={value} value={value}>{label}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
