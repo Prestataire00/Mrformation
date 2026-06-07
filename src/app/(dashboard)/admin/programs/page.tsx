@@ -83,7 +83,7 @@ import {
   Upload,
   ChevronDown,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
 interface ProgramFormData {
@@ -133,11 +133,25 @@ const emptyForm: ProgramFormData = {
 // E3-S03 : pagination serveur via fetchPaginatedData
 const PAGE_SIZE = 12;
 
+type ActiveFilter = "all" | "active" | "inactive";
+
+const isActiveFilter = (v: string | null): v is ActiveFilter =>
+  v === "all" || v === "active" || v === "inactive";
+
 export default function ProgramsPage() {
   const supabase = createClient();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
   const { entityId } = useEntity();
+
+  // E3-S03 fix : init state depuis URL (search/page/filter) pour permettre
+  // refresh, partage de lien, navigation back/forward sans perdre l'état.
+  const initialSearch = searchParams?.get("search") ?? "";
+  const initialFilterRaw = searchParams?.get("filter") ?? "all";
+  const initialFilter: ActiveFilter = isActiveFilter(initialFilterRaw) ? initialFilterRaw : "all";
+  const initialPageRaw = parseInt(searchParams?.get("page") ?? "1", 10);
+  const initialPage = Number.isFinite(initialPageRaw) && initialPageRaw >= 1 ? initialPageRaw : 1;
 
   const [programs, setPrograms] = useState<Program[]>([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -146,14 +160,14 @@ export default function ProgramsPage() {
   const [usageCounts, setUsageCounts] = useState<Record<string, ProgramUsageCounts>>({});
   // CONT-7 audit BMAD : count des orphelins (formations/sessions sans liens).
   const [orphanCounts, setOrphanCounts] = useState<OrphanLinkCounts | null>(null);
-  const [search, setSearch] = useState("");
-  const [activeFilter, setActiveFilter] = useState<"all" | "active" | "inactive">("all");
+  const [search, setSearch] = useState(initialSearch);
+  const [activeFilter, setActiveFilter] = useState<ActiveFilter>(initialFilter);
 
   // E3-S03 : pagination serveur
-  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPage, setCurrentPage] = useState(initialPage);
   // Debounce search pour éviter une requête par frappe
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState(initialSearch);
 
   // Add/Edit dialog
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -199,6 +213,20 @@ export default function ProgramsPage() {
     setCurrentPage(1);
   }, [activeFilter]);
 
+  // E3-S03 fix : sync URL params (search/page/filter) — refresh / partage / back.
+  // router.replace ne pousse pas dans l'historique → pas de spam back-button.
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams?.toString() ?? "");
+    if (debouncedSearch) params.set("search", debouncedSearch);
+    else params.delete("search");
+    if (activeFilter !== "all") params.set("filter", activeFilter);
+    else params.delete("filter");
+    if (currentPage > 1) params.set("page", String(currentPage));
+    else params.delete("page");
+    const qs = params.toString();
+    router.replace(qs ? `/admin/programs?${qs}` : "/admin/programs", { scroll: false });
+  }, [debouncedSearch, activeFilter, currentPage, router, searchParams]);
+
   // E3-S03 : fetch paginé serveur
   const fetchPrograms = useCallback(async () => {
     if (!entityId) return;
@@ -242,6 +270,7 @@ export default function ProgramsPage() {
       const orphans = await auditOrphanLinksService(supabase, entityId);
       if (orphans.ok) setOrphanCounts(orphans.counts);
     } catch (err) {
+      console.error("[programs] fetchPaginatedData failed:", err);
       toast({ title: "Erreur", description: "Impossible de charger les programmes.", variant: "destructive" });
     }
 
