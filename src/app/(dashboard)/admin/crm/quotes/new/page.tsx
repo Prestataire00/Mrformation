@@ -12,12 +12,11 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
-  SelectGroup,
   SelectItem,
-  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { BPF_FUNDING_LABELS } from "@/lib/bpf-labels";
 import type { Program } from "@/lib/types";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -574,36 +573,9 @@ export default function NewQuotePage() {
                   <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Aucune" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">Aucune</SelectItem>
-                    <SelectGroup>
-                      <SelectLabel>Entreprises</SelectLabel>
-                      <SelectItem value="entreprise_privee">Entreprise privée</SelectItem>
-                    </SelectGroup>
-                    <SelectGroup>
-                      <SelectLabel>Fonds de formation</SelectLabel>
-                      <SelectItem value="apprentissage">Contrats d&apos;apprentissage</SelectItem>
-                      <SelectItem value="professionnalisation">Contrats de professionnalisation</SelectItem>
-                      <SelectItem value="reconversion_alternance">Reconversion / alternance</SelectItem>
-                      <SelectItem value="conge_transition">Congé / transition pro</SelectItem>
-                      <SelectItem value="cpf">CPF</SelectItem>
-                      <SelectItem value="dispositif_chomeurs">Dispositifs demandeurs d&apos;emploi</SelectItem>
-                      <SelectItem value="non_salaries">Travailleurs non-salariés</SelectItem>
-                      <SelectItem value="plan_developpement">Plan de développement</SelectItem>
-                    </SelectGroup>
-                    <SelectGroup>
-                      <SelectLabel>Pouvoirs publics</SelectLabel>
-                      <SelectItem value="pouvoir_public_agents">Pouvoirs publics (agents)</SelectItem>
-                      <SelectItem value="instances_europeennes">Instances européennes</SelectItem>
-                      <SelectItem value="etat">État</SelectItem>
-                      <SelectItem value="conseil_regional">Conseils régionaux</SelectItem>
-                      <SelectItem value="pole_emploi">Pôle emploi</SelectItem>
-                      <SelectItem value="autres_publics">Autres publics</SelectItem>
-                    </SelectGroup>
-                    <SelectGroup>
-                      <SelectLabel>Autres</SelectLabel>
-                      <SelectItem value="individuel">Particulier</SelectItem>
-                      <SelectItem value="organisme_formation">Organisme de formation</SelectItem>
-                      <SelectItem value="autre">Autre</SelectItem>
-                    </SelectGroup>
+                    {Object.entries(BPF_FUNDING_LABELS).map(([value, label]) => (
+                      <SelectItem key={value} value={value}>{label}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
