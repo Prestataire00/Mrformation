@@ -1,0 +1,67 @@
+
+══════════════════════════════════════════════════════════════════════
+🚀 Loris Import — Mode EXECUTE
+══════════════════════════════════════════════════════════════════════
+Tables ciblées : ['clients', 'learners', 'trainings_sessions', 'formation_trainers', 'enrollments', 'crm_quotes', 'formation_invoices']
+Entity MR FORMATION : f8acea54-71ab-4a22-8cf3-4e7170543bf1
+
+📥 Récupération des lookups existants...
+  📋 Fetch clients existants...
+  📋 Fetch learners existants...
+  📋 Fetch trainers existants...
+  📋 Fetch trainings existants...
+  📋 Fetch sessions existantes...
+  → 12 clients, 17 learners, 204 trainers, 14 trainings, 10 sessions
+
+
+──────────────────────────────────────────────────────────────────────
+📂 CLIENTS
+──────────────────────────────────────────────────────────────────────
+  → 226 à insérer, 12 skippés (déjà existants)
+  ✅ inserted=226 | errors=0
+
+──────────────────────────────────────────────────────────────────────
+📂 LEARNERS
+──────────────────────────────────────────────────────────────────────
+  → 2151 à insérer, 34 skippés doublons, 0 invalides
+  ✅ inserted=1951 | errors=2
+  Sample error : {'batch_start': 1100, 'status': 400, 'body': '{"code":"23502","details":"Failing row contains (e601dd12-8563-4200-a059-83daff3b971c, null, null, f8acea54-71ab-4a22-8cf3-4e7170543bf1, null, J.DENIS, null, null, null, 2026-06-07 22:23:00.770246+00, salarie, null, null, null, null, null, null, null, null, null, null, null, null, null, f, f, null, null, loris-learner-e34512fb653e2b48, {\\"Sessions\\": 1, \\"Date de création\\": \\"2026-05-26\\"}).","hint":null,"message":"null value in column \\"first_name\\" of relation \\"learners\\" violates not-null c'}
+
+──────────────────────────────────────────────────────────────────────
+📂 TRAININGS + SESSIONS
+──────────────────────────────────────────────────────────────────────
+  Trainings → 86 à insérer (6 doublons)
+  ✅ trainings inserted=86 | errors=0
+  Sessions → 128 à insérer (1 doublons)
+  ✅ sessions inserted=128 | errors=0
+
+──────────────────────────────────────────────────────────────────────
+📂 FORMATION_TRAINERS
+──────────────────────────────────────────────────────────────────────
+  → 0 à insérer, 125 skippés (no match session/trainer), 0 doublons
+  ✅ inserted=0 | errors=0
+
+──────────────────────────────────────────────────────────────────────
+📂 ENROLLMENTS
+──────────────────────────────────────────────────────────────────────
+  → 946 à insérer, 106 skippés (no match session/learner), 37 doublons
+  ✅ inserted=0 | errors=10
+  Sample : {'batch_start': 0, 'status': 400, 'body': '{"code":"23514","details":"Failing row contains (b402383a-8795-4372-bff2-72960057fd6a, 08564317-6bfb-4ef4-9b08-16bf2f3f6cfb, 8f9a0f59-c0e2-4ee4-991b-39ec0d650643, null, enrolled, 0, 2026-06-07 22:23:02.747125+00, null, null, null, null, null, loris-enr-10aac6fb9067defe, {\\"loris_formateurs\\": \\"MARGUERIE Morgane\\", \\"loris_date_creation\\":...).","hint":null,"message":"new row for relation \\"enrollments\\" violates check constraint \\"enrollments_status_check\\""}'}
+
+──────────────────────────────────────────────────────────────────────
+📂 CRM_QUOTES
+──────────────────────────────────────────────────────────────────────
+  → 181 devis à insérer
+  ✅ inserted=0 | errors=2
+  Sample : {'batch_start': 0, 'status': 400, 'body': '{"code":"22P02","details":null,"hint":null,"message":"invalid input syntax for type integer: \\"M-FAC-0\\""}'}
+
+──────────────────────────────────────────────────────────────────────
+📂 FORMATION_INVOICES
+──────────────────────────────────────────────────────────────────────
+  → 98 factures à insérer, 72 skippées (no session/recipient match)
+  ✅ inserted=0 | errors=1
+  Sample : {'batch_start': 0, 'status': 400, 'body': '{"code":"23502","details":"Failing row contains (2fbec23b-392f-454b-b49e-e8de4c995d34, f8acea54-71ab-4a22-8cf3-4e7170543bf1, 2c682d18-f045-4b66-a80f-2c133e472b1b, company, 29460090-a9a7-4751-ba67-b315289f9cee, UNICIL - 13006, 1900.00, LORIS, 1000, paid, 2025-05-14, 2025-02-03 00:00:00+00, Loris Facture — mode=virement, f, null, 2026-06-07 22:23:04.047533+00, 2026-06-07 22:23:04.047533+00, f, null, null, null, 2026, f, 0, null, FAC-25-0, null, null, null, null, null, t, null, loris, null, null, n'}
+
+══════════════════════════════════════════════════════════════════════
+📊 Rapport écrit : /Users/wissam/Desktop/lms-platform/scripts/import-loris/last_import_report.json
+══════════════════════════════════════════════════════════════════════

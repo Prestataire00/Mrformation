@@ -1,0 +1,14 @@
+{
+  "mode": "EXECUTE",
+  "started_at": "2026-06-07T22:30:53.455738Z",
+  "tables": {
+    "crm_quotes": {
+      "total_rows": 181,
+      "to_insert": 181,
+      "inserted": 181,
+      "errors": 0,
+      "error_samples": []
+    }
+  },
+  "ended_at": "2026-06-07T22:30:53.775408Z"
+}

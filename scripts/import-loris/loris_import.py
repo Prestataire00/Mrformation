@@ -1,0 +1,974 @@
+#!/usr/bin/env python3
+"""
+Import Loris XLSX → Supabase (MR FORMATION uniquement)
+
+Voir scripts/import-loris/README.md pour l'usage complet.
+"""
+
+import argparse
+import hashlib
+import json
+import re
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from datetime import datetime
+from pathlib import Path
+
+from openpyxl import load_workbook
+
+# ── Config ────────────────────────────────────────────────────────────────
+
+MR_ENTITY_ID = "f8acea54-71ab-4a22-8cf3-4e7170543bf1"
+DOWNLOADS = Path.home() / "Downloads"
+REPORT_PATH = Path(__file__).parent / "last_import_report.json"
+
+FILES = {
+    "clients": "Clients.xlsx",
+    "learners": "Apprenants.xlsx",
+    "trainings_sessions": "Suivi de l'activité.xlsx",
+    "formation_trainers": "Suivi de l'activité des formateurs.xlsx",
+    "enrollments": "Suivi de l'activité des stagaires.xlsx",
+    "crm_quotes": "Suivi des devis.xlsx",
+    "formation_invoices": "Suivi des factures.xlsx",
+}
+
+TABLE_ORDER = [
+    "clients",
+    "learners",
+    "trainings_sessions",
+    "formation_trainers",
+    "enrollments",
+    "crm_quotes",
+    "formation_invoices",
+]
+
+# Mapping conventionnel pour les colonnes Loris vs colonnes DB (gap → loris_metadata)
+
+# ── Env loader ────────────────────────────────────────────────────────────
+
+def load_env():
+    env = {}
+    env_path = Path(__file__).parent.parent.parent / ".env.local"
+    if not env_path.exists():
+        sys.exit(f"❌ .env.local introuvable à {env_path}")
+    for line in env_path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        env[k.strip()] = v.strip().strip('"').strip("'")
+    return env
+
+
+ENV = load_env()
+SUPABASE_URL = ENV.get("NEXT_PUBLIC_SUPABASE_URL", "").rstrip("/")
+SERVICE_ROLE = ENV.get("SUPABASE_SERVICE_ROLE_KEY", "")
+if not SUPABASE_URL or not SERVICE_ROLE:
+    sys.exit("❌ NEXT_PUBLIC_SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY manquant")
+
+
+# ── REST helpers ──────────────────────────────────────────────────────────
+
+def _req(method, path, params=None, body=None, prefer=None):
+    url = f"{SUPABASE_URL}/rest/v1/{path}"
+    if params:
+        url += "?" + urllib.parse.urlencode(params, quote_via=urllib.parse.quote)
+    headers = {
+        "apikey": SERVICE_ROLE,
+        "Authorization": f"Bearer {SERVICE_ROLE}",
+    }
+    if body is not None:
+        headers["Content-Type"] = "application/json"
+    if prefer:
+        headers["Prefer"] = prefer
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(url, data=data, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(req) as r:
+            raw = r.read()
+            if not raw:
+                return None
+            return json.loads(raw)
+    except urllib.error.HTTPError as e:
+        body_txt = e.read().decode(errors="replace")
+        return {"_error": True, "status": e.code, "body": body_txt}
+
+
+def rest_get(table, **params):
+    return _req("GET", table, params=params)
+
+
+def rest_post(table, rows, prefer="return=representation"):
+    return _req("POST", table, body=rows, prefer=prefer)
+
+
+# ── XLSX → dicts ──────────────────────────────────────────────────────────
+
+def read_xlsx(filename):
+    path = DOWNLOADS / filename
+    if not path.exists():
+        return None, []
+    wb = load_workbook(str(path), read_only=True, data_only=True)
+    ws = wb.active
+    rows = list(ws.iter_rows(values_only=True))
+    if not rows:
+        return None, []
+    headers = [(str(h).strip() if h is not None else f"col_{i}") for i, h in enumerate(rows[0])]
+    data = []
+    for row in rows[1:]:
+        d = {}
+        for i, val in enumerate(row):
+            if i < len(headers):
+                d[headers[i]] = val
+        if any(v is not None and str(v).strip() for v in d.values()):
+            data.append(d)
+    wb.close()
+    return headers, data
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────
+
+def stable_external_id(prefix, *parts):
+    """Hash stable des champs clés pour idempotence (16 hex chars)."""
+    h = hashlib.sha256("|".join(str(p or "") for p in parts).encode()).hexdigest()[:16]
+    return f"loris-{prefix}-{h}"
+
+
+def norm(v):
+    """Normalise une valeur : strip + None si vide ou tiret."""
+    if v is None:
+        return None
+    s = str(v).strip()
+    if not s or s in ("-", "—", "N/A", "NA"):
+        return None
+    return s
+
+
+def to_date(v):
+    """Convertit en YYYY-MM-DD string."""
+    if v is None:
+        return None
+    if isinstance(v, datetime):
+        return v.strftime("%Y-%m-%d")
+    s = str(v).strip()
+    # Already YYYY-MM-DD
+    if re.match(r"^\d{4}-\d{2}-\d{2}", s):
+        return s[:10]
+    # DD/MM/YYYY
+    m = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{4})", s)
+    if m:
+        d, mo, y = m.groups()
+        return f"{y}-{int(mo):02d}-{int(d):02d}"
+    return None
+
+
+def to_decimal(v):
+    """Convertit en float (gère '1,200.00 EUR', '500', etc.)."""
+    if v is None:
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    s = str(v).strip()
+    if not s:
+        return None
+    s = re.sub(r"[^\d.,\-]", "", s)
+    if not s:
+        return None
+    # If both . and ,, last separator decides decimal
+    if "." in s and "," in s:
+        if s.rfind(",") > s.rfind("."):
+            s = s.replace(".", "").replace(",", ".")
+        else:
+            s = s.replace(",", "")
+    elif "," in s:
+        s = s.replace(",", ".")
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def split_name(full):
+    """Sépare 'NOM Prénom' (NOM en majuscules) → (first, last). Tolère noms 1-mot
+    en mettant le nom complet dans last_name et un placeholder dans first_name
+    (la colonne DB exige first_name NOT NULL)."""
+    if not full:
+        return None, None
+    full = full.strip()
+    parts = full.split()
+    if len(parts) == 1:
+        # Un seul token (ex: "J.DENIS", "MARTINEAU") — préserver dans last_name
+        return "—", parts[0]
+    # If first token is all-uppercase, treat as last name
+    if parts and parts[0].isupper() and len(parts[0]) > 1:
+        last = parts[0]
+        first = " ".join(parts[1:])
+    else:
+        first = parts[0]
+        last = " ".join(parts[1:])
+    return first, last
+
+
+# ── MAPPERS ───────────────────────────────────────────────────────────────
+
+def map_client(row, idx):
+    name = norm(row.get("Nom")) or f"Client Loris {idx}"
+    email = norm(row.get("Email"))
+    metadata_keys = [
+        "Représenté par", "Fonction du représentant", "TVA", "APE",
+        "OPCO", "Numéro d'adhérent à l'OPCO", "Effective de l'entreprise",
+        "IDCC", "NACE",
+        "Contact 2", "Email 2", "Contact 3", "Email 3",
+        "Contact 4", "Email 4", "Contact 5", "Email 5",
+    ]
+    metadata = {k: row[k] for k in metadata_keys if norm(row.get(k))}
+    ext_id = norm(row.get("ID Externe")) or stable_external_id("client", name, email or "")
+    return {
+        "entity_id": MR_ENTITY_ID,
+        "company_name": name,
+        "phone": norm(row.get("Tel")),
+        "email": email,
+        "address": norm(row.get("Adresse")),
+        "siret": norm(row.get("SIRET")),
+        "postal_code": norm(row.get("Code postal")),
+        "notes": norm(row.get("Description")),
+        "opco": norm(row.get("OPCO")),
+        "loris_external_id": ext_id,
+        "loris_metadata": metadata,
+    }
+
+
+def map_learner(row, idx, clients_by_name):
+    nom_field = norm(row.get("Nom"))
+    first, last = split_name(nom_field)
+    if not first and not last:
+        return None
+    email = norm(row.get("Email"))
+    entreprise = norm(row.get("Entreprise"))
+    client_id = clients_by_name.get(entreprise.lower()) if entreprise else None
+
+    # birth fields
+    birth_date = to_date(row.get("Date de naissance"))
+    birth_city = norm(row.get("Ville de naissance"))
+
+    # sex mapping
+    sex_raw = norm(row.get("Sexe"))
+    gender = None
+    if sex_raw:
+        sx = sex_raw.lower()
+        if sx.startswith("h") or sx.startswith("m"):
+            gender = "M"
+        elif sx.startswith("f"):
+            gender = "F"
+
+    metadata_keys = [
+        "Sessions", "Département de naissance", "Pays de naissance",
+        "Description", "Statut", "Fonction", "Profession", "Profession 2",
+        "Raison Sociale", "Reconnaissance Travailleur Handicapé",
+        "Catégorie socio-professionnelle", "Nature du contrat de travail",
+        "Salaire Horaire Brut", "Date de création",
+    ]
+    metadata = {k: row[k] for k in metadata_keys if norm(row.get(k))}
+    if entreprise and not client_id:
+        metadata["_unmatched_entreprise"] = entreprise
+
+    ext_id = norm(row.get("ID Externe")) or stable_external_id(
+        "learner", first or "", last or "", email or ""
+    )
+
+    return {
+        "entity_id": MR_ENTITY_ID,
+        "client_id": client_id,
+        "first_name": first,
+        "last_name": last,
+        "email": email,
+        "phone": norm(row.get("Tel")),
+        "job_title": norm(row.get("Fonction")),
+        "address": norm(row.get("Adresse")),
+        "birth_date": birth_date,
+        "birth_city": birth_city,
+        "gender": gender,
+        "social_security_number": norm(row.get("No. Sécurité Sociale")),
+        "loris_external_id": ext_id,
+        "loris_metadata": metadata,
+    }
+
+
+def map_training_from_session(row):
+    """Extrait une training (formation au sens catalogue) depuis une ligne 'Suivi de l'activité'."""
+    title = norm(row.get("Nom de la formation"))
+    if not title:
+        return None
+    duration_h = None
+    hours_raw = row.get("Heures prévues")
+    if isinstance(hours_raw, str) and ":" in hours_raw:
+        parts = hours_raw.split(":")
+        duration_h = int(parts[0]) if parts[0].isdigit() else None
+    metadata = {
+        "loris_inter_intra": norm(row.get("Inter/Intra/Autre")),
+    }
+    metadata = {k: v for k, v in metadata.items() if v}
+    return {
+        "entity_id": MR_ENTITY_ID,
+        "title": title,
+        "duration_hours": duration_h,
+        "is_active": True,
+        "loris_external_id": stable_external_id("training", title),
+        "loris_metadata": metadata,
+    }
+
+
+def map_session(row, idx, trainings_by_title):
+    title = norm(row.get("Nom de la formation"))
+    if not title:
+        return None
+    training_id = trainings_by_title.get(title.lower())
+
+    start_date = to_date(row.get("Date de début de la formation"))
+    end_date = to_date(row.get("Date de fin de la formation"))
+    amount_ht = to_decimal(row.get("Montant HT"))
+    charges = to_decimal(row.get("Charges HT"))
+    location = norm(row.get("Emplacement"))
+
+    status_raw = (norm(row.get("Statut")) or "").lower()
+    if "planif" in status_raw:
+        status_db = "planned"
+    elif "termin" in status_raw or "achev" in status_raw:
+        status_db = "completed"
+    elif "cours" in status_raw:
+        status_db = "in_progress"
+    else:
+        status_db = "planned"
+
+    metadata = {
+        "loris_apprenants_text": norm(row.get("Apprenants")),
+        "loris_entreprises_text": norm(row.get("Entreprises")),
+        "loris_formateurs_text": norm(row.get("Formateurs")),
+        "loris_financeurs": norm(row.get("Financeurs")),
+        "loris_manager": norm(row.get("Manager")),
+        "loris_charges_ht": charges,
+        "loris_facture": norm(row.get("Facturé")),
+        "loris_inter_intra": norm(row.get("Inter/Intra/Autre")),
+        "loris_date_achevement": to_date(row.get("Date d'achèvement de la formation")),
+    }
+    metadata = {k: v for k, v in metadata.items() if v is not None}
+
+    return {
+        "entity_id": MR_ENTITY_ID,
+        "training_id": training_id,
+        "title": title,
+        "start_date": start_date,
+        "end_date": end_date,
+        "status": status_db,
+        "location": location,
+        "price": amount_ht,
+        "total_price": amount_ht,
+        "loris_external_id": stable_external_id("session", title, start_date or ""),
+        "loris_metadata": metadata,
+    }
+
+
+def map_formation_trainer(row, sessions_by_title_date, trainers_by_name):
+    formateur_name = norm(row.get("Formateur"))
+    title = norm(row.get("Formation"))
+    if not formateur_name or not title:
+        return None
+    start_date = to_date(row.get("Date de début"))
+    session_id = sessions_by_title_date.get((title.lower(), start_date))
+    trainer_id = trainers_by_name.get(formateur_name.lower())
+    if not session_id or not trainer_id:
+        return {
+            "_skip_reason": f"no_session_or_trainer (session={session_id}, trainer={trainer_id})",
+            "_meta": {"formateur": formateur_name, "title": title, "start_date": start_date},
+        }
+    # Parse hours "07h00" → 7
+    def parse_hours(s):
+        if not s:
+            return None
+        m = re.match(r"^(\d+)h(\d+)?", str(s))
+        if m:
+            return int(m.group(1)) + (int(m.group(2)) / 60 if m.group(2) else 0)
+        return None
+    tarif = to_decimal(row.get("Tarif"))
+    par = norm(row.get("Par")) or ""
+    rate_field = "daily_rate" if "jour" in par.lower() else "hourly_rate"
+
+    payload = {
+        "session_id": session_id,
+        "trainer_id": trainer_id,
+        "role": "formateur",
+        "hours_done": parse_hours(row.get("Heures réalisées")),
+        "loris_external_id": stable_external_id("ft", title, formateur_name, start_date or ""),
+        "loris_metadata": {
+            "loris_par": par,
+            "loris_heures_prevues": norm(row.get("Heures prévues")),
+        },
+    }
+    if tarif is not None:
+        payload[rate_field] = tarif
+    return payload
+
+
+def map_enrollment(row, sessions_by_title, learners_by_name):
+    formation = norm(row.get("Formation"))
+    nom = norm(row.get("Nom"))
+    if not formation or not nom:
+        return None
+    session_id = sessions_by_title.get(formation.lower())
+    learner_id = learners_by_name.get(nom.lower())
+    if not session_id or not learner_id:
+        return {
+            "_skip_reason": f"no_session_or_learner (session={session_id}, learner={learner_id})",
+            "_meta": {"formation": formation, "nom": nom},
+        }
+    completion_raw = norm(row.get("Heures réalisées"))
+    # CHECK constraint enrollments.status : ('registered','confirmed','cancelled','completed')
+    status_db = "completed" if completion_raw and completion_raw != "00:00:00" else "registered"
+    abandon = norm(row.get("Abandon/Absences non justifiées sans reprise"))
+    if abandon:
+        status_db = "cancelled"
+
+    metadata = {
+        "loris_heures_prevues": norm(row.get("Heures prévues")),
+        "loris_heures_realisees": completion_raw,
+        "loris_elearning_start": to_date(row.get("Date de début de l'e-learning")),
+        "loris_elearning_end": to_date(row.get("Date de fin de l'e-learning")),
+        "loris_heures_elearning": norm(row.get("Heures réalisées en e-learning")),
+        "loris_notes": norm(row.get("Notes")),
+        "loris_formateurs": norm(row.get("Formateurs")),
+        "loris_date_creation": to_date(row.get("Date de Création")),
+        "loris_abandon": abandon,
+    }
+    metadata = {k: v for k, v in metadata.items() if v is not None}
+
+    price = to_decimal(row.get("Prix total"))
+    payload = {
+        "session_id": session_id,
+        "learner_id": learner_id,
+        "status": status_db,
+        "individual_price": price,
+        "loris_external_id": stable_external_id("enr", formation, nom),
+        "loris_metadata": metadata,
+    }
+    return payload
+
+
+def map_crm_quote(row, idx, clients_by_name):
+    reference = norm(row.get("Numéro")) or f"LORIS-DEVIS-{idx}"
+    destinataire = norm(row.get("Destinataire"))
+    client_id = clients_by_name.get(destinataire.lower()) if destinataire else None
+
+    # CHECK constraint crm_quotes.status : ('draft','sent','accepted','rejected','expired')
+    status_raw = (norm(row.get("Statut")) or "").lower()
+    if "accept" in status_raw:
+        status_db = "accepted"
+    elif "retard" in status_raw or "expir" in status_raw:
+        status_db = "expired"
+    elif "envoy" in status_raw:
+        status_db = "sent"
+    elif "refus" in status_raw:
+        status_db = "rejected"
+    else:
+        status_db = "draft"
+
+    amount = to_decimal(row.get("Montant"))
+    date_created = to_date(row.get("Date"))
+    valid_until = to_date(row.get("Date d'échéance"))
+
+    metadata = {
+        "loris_destinataire": destinataire,
+        "loris_nom_prospect": norm(row.get("Nom du prospect")),
+        "loris_type": norm(row.get("Type")),
+        "loris_status_raw": norm(row.get("Statut")),
+    }
+    metadata = {k: v for k, v in metadata.items() if v is not None}
+
+    # quote_number est INTEGER en DB — on utilise idx (la reference texte est dans `reference`)
+    return {
+        "entity_id": MR_ENTITY_ID,
+        "reference": reference,
+        "quote_number": 900000 + idx,  # plage haute pour ne pas collisionner les vrais devis
+        "client_id": client_id,
+        "amount": amount,
+        "status": status_db,
+        "valid_until": valid_until,
+        "created_at": date_created + "T00:00:00Z" if date_created else None,
+        "loris_external_id": stable_external_id("quote", reference),
+        "loris_metadata": metadata,
+    }
+
+
+def map_formation_invoice(row, idx, sessions_by_title, clients_by_name):
+    reference = norm(row.get("Numéro")) or f"LORIS-FAC-{idx}"
+    destinataire = norm(row.get("Destinataire")) or norm(row.get("Client"))
+    formation_title = norm(row.get("Nom de la formation"))
+
+    session_id = sessions_by_title.get(formation_title.lower()) if formation_title else None
+    if not session_id:
+        return {
+            "_skip_reason": f"no_session for formation '{formation_title}'",
+            "_meta": {"reference": reference, "destinataire": destinataire},
+        }
+
+    amount = to_decimal(row.get("Montant"))
+    status_raw = (norm(row.get("Statut")) or "").lower()
+    if "pay" in status_raw:
+        status_db = "paid"
+    elif "retard" in status_raw:
+        status_db = "late"
+    elif "envoy" in status_raw or "sent" in status_raw:
+        status_db = "sent"
+    elif "annul" in status_raw:
+        status_db = "cancelled"
+    else:
+        status_db = "pending"
+
+    # Recipient mapping : guess if it's a learner (no entreprise match) or company
+    client_id = clients_by_name.get(destinataire.lower()) if destinataire else None
+    recipient_type = "company" if client_id else "learner"
+    recipient_id = client_id  # if recipient_type=learner and no id, this will fail — fallback to placeholder UUID
+    recipient_name = destinataire or "Inconnu"
+
+    if recipient_id is None:
+        return {
+            "_skip_reason": f"no_recipient_id for '{destinataire}' (type={recipient_type})",
+            "_meta": {"reference": reference, "destinataire": destinataire, "amount": amount},
+        }
+
+    # number + global_number sont INTEGER NOT NULL — plages hautes pour ne pas collisionner
+    payload = {
+        "entity_id": MR_ENTITY_ID,
+        "session_id": session_id,
+        "recipient_type": recipient_type,
+        "recipient_id": recipient_id,
+        "recipient_name": recipient_name,
+        "amount": amount or 0,
+        "prefix": "LORIS",
+        "number": 900000 + idx,        # unique per import — plage haute
+        "global_number": 900000 + idx,  # NOT NULL ajouté par migration add_invoice_global_numbering
+        "status": status_db,
+        "due_date": to_date(row.get("Date d'échéance")),
+        "paid_at": (to_date(row.get("Date de paiement")) + "T00:00:00Z") if to_date(row.get("Date de paiement")) else None,
+        "external_reference": reference,
+        "external_source": "loris",
+        "is_external": True,
+        "notes": f"Loris {norm(row.get('Type')) or 'Facture'} — mode={norm(row.get('Mode de paiement')) or 'n/a'}",
+    }
+    return payload
+
+
+# ── Import orchestrator ───────────────────────────────────────────────────
+
+def fetch_existing_lookups():
+    """Récupère les mappings name → id depuis Supabase pour matching."""
+    out = {}
+
+    print("  📋 Fetch clients existants...")
+    rows = rest_get("clients", select="id,company_name,email,loris_external_id",
+                    **{"entity_id": f"eq.{MR_ENTITY_ID}"})
+    rows = rows if isinstance(rows, list) else []
+    out["clients_by_name"] = {r["company_name"].lower(): r["id"] for r in rows if r.get("company_name")}
+    out["clients_by_email"] = {r["email"].lower(): r["id"] for r in rows if r.get("email")}
+    out["clients_by_loris_id"] = {r["loris_external_id"]: r["id"] for r in rows if r.get("loris_external_id")}
+
+    print("  📋 Fetch learners existants...")
+    rows = rest_get("learners", select="id,first_name,last_name,email,loris_external_id",
+                    **{"entity_id": f"eq.{MR_ENTITY_ID}"})
+    rows = rows if isinstance(rows, list) else []
+    out["learners_by_email"] = {r["email"].lower(): r["id"] for r in rows if r.get("email")}
+    out["learners_by_loris_id"] = {r["loris_external_id"]: r["id"] for r in rows if r.get("loris_external_id")}
+    out["learners_by_name"] = {}
+    for r in rows:
+        name_key = f"{r.get('last_name') or ''} {r.get('first_name') or ''}".strip().lower()
+        if name_key:
+            out["learners_by_name"][name_key] = r["id"]
+
+    print("  📋 Fetch trainers existants...")
+    rows = rest_get("trainers", select="id,first_name,last_name",
+                    **{"entity_id": f"eq.{MR_ENTITY_ID}"})
+    rows = rows if isinstance(rows, list) else []
+    out["trainers_by_name"] = {}
+    for r in rows:
+        name_key = f"{r.get('last_name') or ''} {r.get('first_name') or ''}".strip().lower()
+        if name_key:
+            out["trainers_by_name"][name_key] = r["id"]
+        name_key2 = f"{r.get('first_name') or ''} {r.get('last_name') or ''}".strip().lower()
+        if name_key2:
+            out["trainers_by_name"][name_key2] = r["id"]
+
+    print("  📋 Fetch trainings existants...")
+    rows = rest_get("trainings", select="id,title,loris_external_id",
+                    **{"entity_id": f"eq.{MR_ENTITY_ID}"})
+    rows = rows if isinstance(rows, list) else []
+    out["trainings_by_title"] = {r["title"].lower(): r["id"] for r in rows if r.get("title")}
+    out["trainings_by_loris_id"] = {r["loris_external_id"]: r["id"] for r in rows if r.get("loris_external_id")}
+
+    print("  📋 Fetch sessions existantes...")
+    rows = rest_get("sessions", select="id,title,start_date,loris_external_id",
+                    **{"entity_id": f"eq.{MR_ENTITY_ID}"})
+    rows = rows if isinstance(rows, list) else []
+    out["sessions_by_title"] = {r["title"].lower(): r["id"] for r in rows if r.get("title")}
+    out["sessions_by_title_date"] = {}
+    for r in rows:
+        if r.get("title"):
+            out["sessions_by_title_date"][(r["title"].lower(), r.get("start_date"))] = r["id"]
+    out["sessions_by_loris_id"] = {r["loris_external_id"]: r["id"] for r in rows if r.get("loris_external_id")}
+
+    return out
+
+
+def insert_batch(table, rows, dry_run, batch_size=100):
+    """Insert with auto-batching. Returns (inserted_ids, errors)."""
+    if dry_run:
+        return [], []
+    inserted = []
+    errors = []
+    for i in range(0, len(rows), batch_size):
+        batch = rows[i : i + batch_size]
+        result = rest_post(table, batch)
+        if isinstance(result, dict) and result.get("_error"):
+            errors.append({"batch_start": i, "status": result["status"], "body": result["body"][:500]})
+        elif isinstance(result, list):
+            inserted.extend(result)
+    return inserted, errors
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--dry-run", action="store_true", help="Analyse seule, n'écrit rien")
+    parser.add_argument("--execute", action="store_true", help="Exécute pour de vrai")
+    parser.add_argument("--tables", default="all", help="liste comma-séparée ou 'all'")
+    args = parser.parse_args()
+
+    if not args.dry_run and not args.execute:
+        sys.exit("❌ Précise --dry-run ou --execute")
+    if args.dry_run and args.execute:
+        sys.exit("❌ --dry-run et --execute mutuellement exclusifs")
+
+    dry = args.dry_run
+    selected = TABLE_ORDER if args.tables == "all" else args.tables.split(",")
+
+    mode = "DRY-RUN" if dry else "EXECUTE"
+    print(f"\n{'═'*70}\n🚀 Loris Import — Mode {mode}\n{'═'*70}")
+    print(f"Tables ciblées : {selected}")
+    print(f"Entity MR FORMATION : {MR_ENTITY_ID}\n")
+
+    # 1. Lookups initiaux
+    print("📥 Récupération des lookups existants...")
+    lk = fetch_existing_lookups()
+    print(f"  → {len(lk['clients_by_name'])} clients, {len(lk['learners_by_name'])} learners, "
+          f"{len(lk['trainers_by_name'])} trainers, {len(lk['trainings_by_title'])} trainings, "
+          f"{len(lk['sessions_by_title'])} sessions\n")
+
+    report = {"mode": mode, "started_at": datetime.utcnow().isoformat() + "Z", "tables": {}}
+
+    # 2. CLIENTS
+    if "clients" in selected:
+        print(f"\n{'─'*70}\n📂 CLIENTS\n{'─'*70}")
+        headers, data = read_xlsx(FILES["clients"])
+        if not data:
+            print(f"  ⚠️  {FILES['clients']} introuvable ou vide")
+        else:
+            to_insert, skipped_dup = [], 0
+            seen_ext = set()
+            for idx, row in enumerate(data):
+                payload = map_client(row, idx)
+                if not payload.get("company_name"):
+                    continue
+                # Dedup : existing in DB OR already seen in batch
+                if payload["loris_external_id"] in lk["clients_by_loris_id"]:
+                    skipped_dup += 1
+                    continue
+                if payload["email"] and payload["email"].lower() in lk["clients_by_email"]:
+                    skipped_dup += 1
+                    continue
+                if payload["company_name"].lower() in lk["clients_by_name"]:
+                    skipped_dup += 1
+                    continue
+                if payload["loris_external_id"] in seen_ext:
+                    skipped_dup += 1
+                    continue
+                seen_ext.add(payload["loris_external_id"])
+                to_insert.append(payload)
+
+            print(f"  → {len(to_insert)} à insérer, {skipped_dup} skippés (déjà existants)")
+            inserted, errors = insert_batch("clients", to_insert, dry)
+            print(f"  ✅ inserted={len(inserted)} | errors={len(errors)}")
+            if errors:
+                print(f"  Sample error : {errors[0]}")
+            # Refresh lookups
+            for r in inserted:
+                if r.get("company_name"):
+                    lk["clients_by_name"][r["company_name"].lower()] = r["id"]
+                if r.get("loris_external_id"):
+                    lk["clients_by_loris_id"][r["loris_external_id"]] = r["id"]
+            report["tables"]["clients"] = {
+                "total_rows": len(data),
+                "to_insert": len(to_insert),
+                "skipped_duplicates": skipped_dup,
+                "inserted": len(inserted),
+                "errors": len(errors),
+                "error_samples": errors[:3],
+            }
+
+    # 3. LEARNERS
+    if "learners" in selected:
+        print(f"\n{'─'*70}\n📂 LEARNERS\n{'─'*70}")
+        headers, data = read_xlsx(FILES["learners"])
+        if not data:
+            print(f"  ⚠️  {FILES['learners']} introuvable")
+        else:
+            to_insert, skipped_dup, skipped_invalid = [], 0, 0
+            seen_ext = set()
+            for idx, row in enumerate(data):
+                payload = map_learner(row, idx, lk["clients_by_name"])
+                if not payload:
+                    skipped_invalid += 1
+                    continue
+                if payload["loris_external_id"] in lk["learners_by_loris_id"]:
+                    skipped_dup += 1
+                    continue
+                if payload["email"] and payload["email"].lower() in lk["learners_by_email"]:
+                    skipped_dup += 1
+                    continue
+                name_key = f"{payload.get('last_name') or ''} {payload.get('first_name') or ''}".strip().lower()
+                if name_key and name_key in lk["learners_by_name"]:
+                    skipped_dup += 1
+                    continue
+                if payload["loris_external_id"] in seen_ext:
+                    skipped_dup += 1
+                    continue
+                seen_ext.add(payload["loris_external_id"])
+                to_insert.append(payload)
+
+            print(f"  → {len(to_insert)} à insérer, {skipped_dup} skippés doublons, {skipped_invalid} invalides")
+            inserted, errors = insert_batch("learners", to_insert, dry)
+            print(f"  ✅ inserted={len(inserted)} | errors={len(errors)}")
+            if errors:
+                print(f"  Sample error : {errors[0]}")
+            for r in inserted:
+                name_key = f"{r.get('last_name') or ''} {r.get('first_name') or ''}".strip().lower()
+                if name_key:
+                    lk["learners_by_name"][name_key] = r["id"]
+                if r.get("loris_external_id"):
+                    lk["learners_by_loris_id"][r["loris_external_id"]] = r["id"]
+            report["tables"]["learners"] = {
+                "total_rows": len(data),
+                "to_insert": len(to_insert),
+                "skipped_duplicates": skipped_dup,
+                "skipped_invalid": skipped_invalid,
+                "inserted": len(inserted),
+                "errors": len(errors),
+                "error_samples": errors[:3],
+            }
+
+    # 4. TRAININGS + SESSIONS (depuis Suivi activité)
+    if "trainings_sessions" in selected:
+        print(f"\n{'─'*70}\n📂 TRAININGS + SESSIONS\n{'─'*70}")
+        headers, data = read_xlsx(FILES["trainings_sessions"])
+        if not data:
+            print(f"  ⚠️  {FILES['trainings_sessions']} introuvable")
+        else:
+            # Trainings : unique par title
+            trainings_dedup = {}
+            for row in data:
+                t = map_training_from_session(row)
+                if t and t["title"].lower() not in trainings_dedup:
+                    trainings_dedup[t["title"].lower()] = t
+
+            to_insert_t = []
+            skipped_dup_t = 0
+            for t in trainings_dedup.values():
+                if t["title"].lower() in lk["trainings_by_title"]:
+                    skipped_dup_t += 1
+                    continue
+                to_insert_t.append(t)
+            print(f"  Trainings → {len(to_insert_t)} à insérer ({skipped_dup_t} doublons)")
+            inserted_t, errors_t = insert_batch("trainings", to_insert_t, dry)
+            print(f"  ✅ trainings inserted={len(inserted_t)} | errors={len(errors_t)}")
+            if errors_t:
+                print(f"  Sample : {errors_t[0]}")
+            for r in inserted_t:
+                if r.get("title"):
+                    lk["trainings_by_title"][r["title"].lower()] = r["id"]
+
+            # Sessions : 1 par ligne du fichier (peut avoir plusieurs sessions pour la même training)
+            to_insert_s, skipped_dup_s = [], 0
+            seen_ext = set()
+            for idx, row in enumerate(data):
+                s = map_session(row, idx, lk["trainings_by_title"])
+                if not s:
+                    continue
+                if s["loris_external_id"] in lk["sessions_by_loris_id"]:
+                    skipped_dup_s += 1
+                    continue
+                key = (s["title"].lower(), s.get("start_date"))
+                if key in lk["sessions_by_title_date"]:
+                    skipped_dup_s += 1
+                    continue
+                if s["loris_external_id"] in seen_ext:
+                    skipped_dup_s += 1
+                    continue
+                seen_ext.add(s["loris_external_id"])
+                to_insert_s.append(s)
+            print(f"  Sessions → {len(to_insert_s)} à insérer ({skipped_dup_s} doublons)")
+            inserted_s, errors_s = insert_batch("sessions", to_insert_s, dry)
+            print(f"  ✅ sessions inserted={len(inserted_s)} | errors={len(errors_s)}")
+            if errors_s:
+                print(f"  Sample : {errors_s[0]}")
+            for r in inserted_s:
+                if r.get("title"):
+                    lk["sessions_by_title"][r["title"].lower()] = r["id"]
+                    lk["sessions_by_title_date"][(r["title"].lower(), r.get("start_date"))] = r["id"]
+                if r.get("loris_external_id"):
+                    lk["sessions_by_loris_id"][r["loris_external_id"]] = r["id"]
+
+            report["tables"]["trainings_sessions"] = {
+                "total_rows": len(data),
+                "trainings_inserted": len(inserted_t),
+                "trainings_skipped": skipped_dup_t,
+                "trainings_errors": len(errors_t),
+                "sessions_inserted": len(inserted_s),
+                "sessions_skipped": skipped_dup_s,
+                "sessions_errors": len(errors_s),
+                "error_samples": (errors_t + errors_s)[:3],
+            }
+
+    # 5. FORMATION_TRAINERS
+    if "formation_trainers" in selected:
+        print(f"\n{'─'*70}\n📂 FORMATION_TRAINERS\n{'─'*70}")
+        headers, data = read_xlsx(FILES["formation_trainers"])
+        if not data:
+            print(f"  ⚠️  {FILES['formation_trainers']} introuvable")
+        else:
+            to_insert, skipped_match, skipped_dup = [], 0, 0
+            seen_ext = set()
+            for row in data:
+                p = map_formation_trainer(row, lk["sessions_by_title_date"], lk["trainers_by_name"])
+                if not p:
+                    continue
+                if "_skip_reason" in p:
+                    skipped_match += 1
+                    continue
+                if p["loris_external_id"] in seen_ext:
+                    skipped_dup += 1
+                    continue
+                seen_ext.add(p["loris_external_id"])
+                to_insert.append(p)
+            print(f"  → {len(to_insert)} à insérer, {skipped_match} skippés (no match session/trainer), {skipped_dup} doublons")
+            inserted, errors = insert_batch("formation_trainers", to_insert, dry)
+            print(f"  ✅ inserted={len(inserted)} | errors={len(errors)}")
+            if errors:
+                print(f"  Sample : {errors[0]}")
+            report["tables"]["formation_trainers"] = {
+                "total_rows": len(data),
+                "to_insert": len(to_insert),
+                "skipped_no_match": skipped_match,
+                "skipped_duplicates": skipped_dup,
+                "inserted": len(inserted),
+                "errors": len(errors),
+                "error_samples": errors[:3],
+            }
+
+    # 6. ENROLLMENTS
+    if "enrollments" in selected:
+        print(f"\n{'─'*70}\n📂 ENROLLMENTS\n{'─'*70}")
+        headers, data = read_xlsx(FILES["enrollments"])
+        if not data:
+            print(f"  ⚠️  {FILES['enrollments']} introuvable")
+        else:
+            to_insert, skipped_match, skipped_dup = [], 0, 0
+            seen_ext = set()
+            for row in data:
+                p = map_enrollment(row, lk["sessions_by_title"], lk["learners_by_name"])
+                if not p:
+                    continue
+                if "_skip_reason" in p:
+                    skipped_match += 1
+                    continue
+                if p["loris_external_id"] in seen_ext:
+                    skipped_dup += 1
+                    continue
+                seen_ext.add(p["loris_external_id"])
+                to_insert.append(p)
+            print(f"  → {len(to_insert)} à insérer, {skipped_match} skippés (no match session/learner), {skipped_dup} doublons")
+            inserted, errors = insert_batch("enrollments", to_insert, dry)
+            print(f"  ✅ inserted={len(inserted)} | errors={len(errors)}")
+            if errors:
+                print(f"  Sample : {errors[0]}")
+            report["tables"]["enrollments"] = {
+                "total_rows": len(data),
+                "to_insert": len(to_insert),
+                "skipped_no_match": skipped_match,
+                "skipped_duplicates": skipped_dup,
+                "inserted": len(inserted),
+                "errors": len(errors),
+                "error_samples": errors[:3],
+            }
+
+    # 7. CRM_QUOTES
+    if "crm_quotes" in selected:
+        print(f"\n{'─'*70}\n📂 CRM_QUOTES\n{'─'*70}")
+        headers, data = read_xlsx(FILES["crm_quotes"])
+        if not data:
+            print(f"  ⚠️  {FILES['crm_quotes']} introuvable")
+        else:
+            to_insert = []
+            for idx, row in enumerate(data):
+                p = map_crm_quote(row, idx, lk["clients_by_name"])
+                if p:
+                    to_insert.append(p)
+            print(f"  → {len(to_insert)} devis à insérer")
+            inserted, errors = insert_batch("crm_quotes", to_insert, dry)
+            print(f"  ✅ inserted={len(inserted)} | errors={len(errors)}")
+            if errors:
+                print(f"  Sample : {errors[0]}")
+            report["tables"]["crm_quotes"] = {
+                "total_rows": len(data),
+                "to_insert": len(to_insert),
+                "inserted": len(inserted),
+                "errors": len(errors),
+                "error_samples": errors[:3],
+            }
+
+    # 8. FORMATION_INVOICES
+    if "formation_invoices" in selected:
+        print(f"\n{'─'*70}\n📂 FORMATION_INVOICES\n{'─'*70}")
+        headers, data = read_xlsx(FILES["formation_invoices"])
+        if not data:
+            print(f"  ⚠️  {FILES['formation_invoices']} introuvable")
+        else:
+            to_insert, skipped_match = [], 0
+            for idx, row in enumerate(data):
+                p = map_formation_invoice(row, idx, lk["sessions_by_title"], lk["clients_by_name"])
+                if not p:
+                    continue
+                if "_skip_reason" in p:
+                    skipped_match += 1
+                    continue
+                to_insert.append(p)
+            print(f"  → {len(to_insert)} factures à insérer, {skipped_match} skippées (no session/recipient match)")
+            inserted, errors = insert_batch("formation_invoices", to_insert, dry)
+            print(f"  ✅ inserted={len(inserted)} | errors={len(errors)}")
+            if errors:
+                print(f"  Sample : {errors[0]}")
+            report["tables"]["formation_invoices"] = {
+                "total_rows": len(data),
+                "to_insert": len(to_insert),
+                "skipped_no_match": skipped_match,
+                "inserted": len(inserted),
+                "errors": len(errors),
+                "error_samples": errors[:3],
+            }
+
+    # Final report
+    report["ended_at"] = datetime.utcnow().isoformat() + "Z"
+    REPORT_PATH.write_text(json.dumps(report, indent=2, ensure_ascii=False, default=str))
+    print(f"\n{'═'*70}\n📊 Rapport écrit : {REPORT_PATH}\n{'═'*70}")
+
+
+if __name__ == "__main__":
+    main()

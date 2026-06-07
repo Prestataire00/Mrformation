@@ -1,0 +1,44 @@
+
+══════════════════════════════════════════════════════════════════════
+🚀 Loris Import — Mode EXECUTE
+══════════════════════════════════════════════════════════════════════
+Tables ciblées : ['learners', 'enrollments', 'crm_quotes', 'formation_invoices']
+Entity MR FORMATION : f8acea54-71ab-4a22-8cf3-4e7170543bf1
+
+📥 Récupération des lookups existants...
+  📋 Fetch clients existants...
+  📋 Fetch learners existants...
+  📋 Fetch trainers existants...
+  📋 Fetch trainings existants...
+  📋 Fetch sessions existantes...
+  → 237 clients, 991 learners, 204 trainers, 100 trainings, 101 sessions
+
+
+──────────────────────────────────────────────────────────────────────
+📂 LEARNERS
+──────────────────────────────────────────────────────────────────────
+  → 282 à insérer, 1903 skippés doublons, 0 invalides
+  ✅ inserted=282 | errors=0
+
+──────────────────────────────────────────────────────────────────────
+📂 ENROLLMENTS
+──────────────────────────────────────────────────────────────────────
+  → 886 à insérer, 165 skippés (no match session/learner), 38 doublons
+  ✅ inserted=886 | errors=0
+
+──────────────────────────────────────────────────────────────────────
+📂 CRM_QUOTES
+──────────────────────────────────────────────────────────────────────
+  → 181 devis à insérer
+  ✅ inserted=0 | errors=2
+  Sample : {'batch_start': 0, 'status': 400, 'body': '{"code":"23514","details":"Failing row contains (a7284253-509f-435c-aa87-5af61d8fb882, f8acea54-71ab-4a22-8cf3-4e7170543bf1, M-FAC-0, null, null, 3225.00, late, 2025-06-14, null, null, 2025-05-14 00:00:00+00, 20.00, null, null, null, null, Conformément à l\'article L. 441-6 du Code de Commerce, les pé..., null, null, null, null, 2026-06-07 22:30:31.174196+00, null, 900000, 2026, 1, null, null, direct, null, 0, null, null, null, null, null, null, null, loris-quote-77ef66da43e6d1d7, {\\"loris_type\\"'}
+
+──────────────────────────────────────────────────────────────────────
+📂 FORMATION_INVOICES
+──────────────────────────────────────────────────────────────────────
+  → 98 factures à insérer, 72 skippées (no session/recipient match)
+  ✅ inserted=98 | errors=0
+
+══════════════════════════════════════════════════════════════════════
+📊 Rapport écrit : /Users/wissam/Desktop/lms-platform/scripts/import-loris/last_import_report.json
+══════════════════════════════════════════════════════════════════════
