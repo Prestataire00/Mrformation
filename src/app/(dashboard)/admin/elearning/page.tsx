@@ -280,7 +280,7 @@ export default function ELearningPage() {
 
     // ── AI courses — server-side pagination (E3-S02) ────────────────────
     const aiSelectWithProgram = "id, entity_id, title, description, status, generation_status, estimated_duration_minutes, created_at, updated_at, program_id, course_type, program:programs(id, title), elearning_chapters(id)";
-    const aiSelectFallback = "id, entity_id, title, description, status, generation_status, estimated_duration_minutes, created_at, updated_at, course_type, elearning_chapters(id)";
+    const aiSelectFallback = "id, entity_id, title, description, status, generation_status, estimated_duration_minutes, created_at, updated_at, elearning_chapters(id)";
 
     const offset = (page - 1) * PAGE_SIZE;
 
@@ -315,7 +315,22 @@ export default function ELearningPage() {
 
     let aiRes = aiResInitial;
     if (aiRes.error && (aiRes.error as { code?: string }).code === "42703") {
-      aiRes = (await buildAiQuery(aiSelectFallback)) as unknown as typeof aiResInitial;
+      // Column missing (e.g. course_type or program_id) — retry without them
+      // and skip the course_type filter to avoid a second 42703.
+      let q = supabase
+        .from("elearning_courses")
+        .select(aiSelectFallback, { count: "exact" })
+        .eq("entity_id", entityId);
+      if (urlSearch) q = q.ilike("title", `%${urlSearch}%`);
+      if (urlStatus !== "all") q = q.eq("status", urlStatus);
+      // Skip course_type filter — column may not exist
+      if (urlSort === "title") {
+        q = q.order("title", { ascending: true });
+      } else {
+        q = q.order("updated_at", { ascending: false });
+      }
+      q = q.range(offset, offset + PAGE_SIZE - 1);
+      aiRes = (await q) as unknown as typeof aiResInitial;
     }
 
     if (programsRes.error) {
@@ -779,16 +794,16 @@ export default function ELearningPage() {
             <BookOpen className="h-10 w-10 text-gray-300" />
           </div>
           <p className="font-semibold text-gray-600 text-lg">
-            {urlSearch || urlStatus !== "all"
+            {urlSearch || urlStatus !== "all" || urlCourseType !== "all"
               ? "Aucun cours trouvé"
               : "Créez votre premier cours e-learning"}
           </p>
           <p className="text-sm text-gray-400 mt-1 max-w-sm">
-            {urlSearch || urlStatus !== "all"
+            {urlSearch || urlStatus !== "all" || urlCourseType !== "all"
               ? "Essayez de modifier vos filtres de recherche."
               : "Ajoutez des modules vidéo, des documents PDF ou des quiz interactifs à vos cours."}
           </p>
-          {!urlSearch && urlStatus === "all" && (
+          {!urlSearch && urlStatus === "all" && urlCourseType === "all" && (
             <div className="flex items-center gap-3 mt-6">
               <Link
                 href="/admin/elearning/create"
@@ -981,7 +996,7 @@ export default function ELearningPage() {
           <div className="flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-purple-500" />
             <h2 className="text-sm font-semibold text-gray-700">Cours générés par IA</h2>
-            <span className="text-xs text-gray-400">({aiCourses.length})</span>
+            <span className="text-xs text-gray-400">({aiTotalCount})</span>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {aiCourses.map((course) => {
