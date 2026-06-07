@@ -169,11 +169,11 @@ export default async (req: Request) => {
         error: null,
       });
       const ex = await callRoute(`/api/elearning/${courseId}/generate/exam`);
-      // Tolérant : si la route n'existe pas encore (404), on continue sans
-      // bloquer — l'admin pourra générer l'examen manuellement après.
-      if (!ex.ok && ex.status !== 404) {
-        console.warn(`[elearning-bg] exam failed (${ex.status}) — skipping`);
+      if (!ex.ok) {
+        throw new Error(`exam failed (${ex.status}): ${JSON.stringify(ex.data)}`);
       }
+      const examCount = (ex.data.question_count as number) ?? 0;
+      console.log(`[elearning-bg] exam done course=${courseId} questions=${examCount}`);
     }
 
     // ============== Étape 5 : gamma (optionnel) ==============
