@@ -35,15 +35,50 @@ Effort total estimé : **~8.5-9 semaines solo dev** séquentiel (révisé +1 sem
 
 ---
 
+## Chantier BPF rapport Cerfa (externe, hors PRD principal)
+
+> **Cross-check 2026-06-07** : un chantier BPF parallèle a été livré par Wissam (commit `25657fe`, co-auteur Claude Opus 4.6) sur un périmètre DISJOINT du PRD principal. Cette section référence ce chantier pour traçabilité — il ne remplace PAS les stories E1-S02 → E1-S05 du PRD principal.
+
+- **PRD** : `bmad_output/planning-artifacts/prd-bpf-audit-amelioration.md`
+- **Epics & stories** : `bmad_output/planning-artifacts/epics-bpf-audit-amelioration.md`
+- **Commit** : `25657fe`
+- **Date** : 2026-06-07
+- **Co-auteur IA** : Claude Opus 4.6
+- **Périmètre** : 3 epics / 17 stories, traités en parallèle.
+
+### Epics du chantier
+
+| Epic | Nom | Stories |
+|------|-----|---------|
+| **Epic 1** | Fiabilisation des pipelines de données BPF | S1.1 Section C produits financiers — S1.2 Section D charges — S1.3 Section E formateurs — S1.4 Section F1 stagiaires statut — S1.5 Section F3 objectifs BPF — S1.6 Section F4 spécialités NSF — S1.7 Erreurs globales + rafraîchissement |
+| **Epic 2** | Conformité Cerfa et guidage admin | S2.1 Section A dynamique (entities) — S2.2 Section H dirigeant — S2.3 Badge cohérence F1=F3=F4 — S2.4 Validation dates exercice comptable — S2.5 Score complétude + liens correctifs |
+| **Epic 3** | Classification IA améliorée et exports fiables | S3.1 Sélection individuelle suggestions IA — S3.2 Gestion erreurs classification IA — S3.3 Loading state exports PDF/Excel — S3.4 Saisie + sauvegarde Section G — S3.5 KPI synthétiques + comparaison N-1 |
+
+### Périmètre disjoint — verdict overlap
+
+- **Fichiers** : **AUCUN overlap**. Le chantier 25657fe touche `src/components/BPFForm.tsx`, les sous-composants `src/components/bpf/*`, `src/lib/bpf-calculator.ts` (logique + tests), `supabase/migrations/add_entity_bpf_columns.sql` (colonnes identité Cerfa sur `entities`). Les stories E1-S02 → S05 ciblent `src/lib/validations/program.ts`, futurs `validations/trainings.ts` et `validations/crm-quotes.ts`, futur `src/lib/bpf-labels.ts`, `src/lib/__tests__/enums-consistency.test.ts`.
+- **Concept** : **partial-overlap**. Les deux chantiers traitent le DOMAINE BPF mais sur des SURFACES distinctes (page rapport BPF annuel vs fiche programme/trainings/crm_quotes). Le chantier externe DÉPEND néanmoins de la cohérence Zod↔DB que E1-S02 doit corriger : sans ce refactor, les formulaires `programs/page.tsx` restent cassés et alimentent `BPFForm.tsx` avec des données vides.
+- **Décision** : ne PAS agréger le chantier dans le `progressSummary.epic1` du PRD principal. Le suivi est tenu en parallèle dans `sprint-status.yaml` (clé `externalWorkstream`).
+
+### Risque de drift inter-chantiers
+
+> Le chantier 25657fe touche `src/components/BPFForm.tsx` et `src/lib/bpf-calculator.ts`. Toute modification de `program.ts` dans E1-S02 doit vérifier que le refactor n'introduit pas de régression sur les imports `OBJECTIVE_TO_F3_INDEX` / `FUNDING_TO_LINE` consommés indirectement par les 22 tests Vitest ajoutés en 25657fe (`bpf-calculator.test.ts`). Pour la même raison, idéal de livrer E1-S02 et E1-S05 en TDD pour détecter immédiatement toute désynchronisation.
+
+**Recommandation opérationnelle** : exécuter `npm run test -- bpf-calculator` après chaque modification de `program.ts` ou des enums BPF.
+
+---
+
 ## Vue d'ensemble
 
 | Epic | Archétype | FR couverts | Stories | Statut (2026-06-07) | Effort | Pre-conditions globales |
 |------|-----------|-------------|---------|---------------------|--------|--------------------------|
-| **Epic 1 — Promesses cassées** | C | FR-C-01 → FR-C-05 | 10 (E1-S01 → E1-S10) | **6 done + 2 done-pending-smoke + 4 not-started (BPF enums)** | ~2-2.5 sem (révisé depuis ~3 sem post-S0) | S0 ✅ complet, OQ-7/8/9 ⏳ |
+| **Epic 1 — Promesses cassées** | C | FR-C-01 → FR-C-05 | 10 (E1-S01 → E1-S10) | **6 done + 2 done-pending-smoke + 3 not-started (E1-S02/S04/S05 BPF enums) + 1 removed-OBE (E1-S03)** | ~2-2.5 sem (révisé depuis ~3 sem post-S0) | S0 ✅ complet, OQ-7 ⏳, OQ-8 partial-resolved 2026-06-07 |
 | **Epic 2 — Signaux de fin** | A | FR-A-01, FR-A-03 → FR-A-07 | 13 (E2-S01 → E2-S13) | **10 done + 1 already-done (E2-S02) + 1 in-progress (E2-S06) + 1 blocked (E2-S13)** | ~3-4 sem | Epic 1 partiel mergé (E1-S01 pour E2-S10) |
 | **Epic 3 — Limites silencieuses** | B | FR-B-01, FR-B-02, FR-B-03 | 6 (E3-S01 → E3-S06) | **2 done (S01, S04) + 3 in-progress (S02, S03, S05) + 1 blocked (S06)** | ~1-2 sem | Epic 1 mergé + main stable 24h, OQ-2/6 |
 
-**Total** : 29 stories — **19 done + 1 already-done + 2 done-pending-smoke + 4 in-progress + 2 blocked + 4 not-started** (état au 2026-06-07).
+**Total PRD principal** : 29 stories — **19 done + 1 already-done + 2 done-pending-smoke + 4 in-progress + 2 blocked + 3 not-started + 1 removed-OBE** (état au 2026-06-07).
+
+**Chantier BPF externe (parallèle)** : 17 stories (3 epics) en in-progress, commit `25657fe`. Voir section "Chantier BPF rapport Cerfa" ci-dessus. NON agrégé dans les compteurs du PRD principal — périmètres disjoints.
 
 > **Mise à jour post-S0 (2026-06-06)** :
 > - Sprint S0 audit codebase : ✅ **complet** (7 audits clear, 0 blocker, livrable `S0-codebase-audit-findings.md` commit `09a58e4`)
@@ -90,7 +125,13 @@ Session intensive : **17 stories livrées en ~36h** (PR #203 → #216, hors PR #
 - **E3-S06** : batch ops handlers + refetch — attend E3-S05.
 
 ### Restantes non démarrées
-- **E1-S02 / S03 / S04 / S05** : suite BPF enums, dépendent de la résolution d'**OQ-8** (mapping Zod legacy → DB + labels FR validés produit). Hors fenêtre session courante.
+- **E1-S02 / S04 / S05** : suite BPF enums, dépendent partiellement d'**OQ-8** (labels FR validés produit). OQ-8 partial-resolved côté DB le 2026-06-07 (CHECK constraints canoniques déjà en place via `supabase/migrations/bpf-auto-calculation.sql`). Scope E1-S02 ajusté (cf. cross-check chantier 25657fe). Hors fenêtre session courante.
+
+### Retirée (OBE)
+- **E1-S03** : retirée le 2026-06-07 — la migration `supabase/migrations/bpf-auto-calculation.sql` définit déjà les CHECK CONSTRAINTs canoniques (18 funding + 11 objective) sur les tables programs / trainings / crm_quotes. Aucune migration DB supplémentaire requise. La détection future est désormais responsabilité de E1-S05 (tests enums-consistency étendus BPF).
+
+### Chantier BPF externe (parallèle, hors PRD principal)
+- **Commit 25657fe** (2026-06-07) : 17 stories sur 3 epics traitent la page rapport BPF annuel (pipelines Sections C/D/E/F1/F3/F4, identité Cerfa A/H sur entities, badges cohérence, classification IA, exports). Périmètre disjoint des stories E1-S02 → S05 du PRD principal. Voir section "Chantier BPF rapport Cerfa" en début de document.
 
 ---
 
@@ -173,12 +214,22 @@ Avant kickoff Epic 1, **4 audits bloquants** doivent être complétés (~2-3 jou
 - **Tests** : `src/lib/__tests__/enums-consistency.test.ts` (créé en E1-S05) ; integration create/fetch course.
 - **DoD** : tsc clean, vitest pass, build OK, valeurs alignées Zod/UI/DB.
 
-### E1-S02 — BpfFundingType enum unification (valeurs DB)
+### E1-S02 — BpfFundingType enum unification (valeurs DB) — still-todo (scope ajusté 2026-06-07)
 
+> **Cross-check chantier BPF externe (commit 25657fe — 2026-06-07)** : `program.ts` existe mais ses enums BPF sont obsolètes (9 funding legacy au lieu de 18 ; 10 objective legacy au lieu de 11). Le chantier Wissam NE touche AUCUN fichier sous `src/lib/validations/`. Scope ajusté ci-dessous, story toujours nécessaire.
+
+- **Statut** : **still-todo** (scope ajusté)
 - **FR mapping** : FR-C-02
 - **Persona** : admin
 - **User story** : En tant qu'admin, je veux sélectionner n'importe quel type de financement BPF (toutes les valeurs DB) et que l'insert réussisse sans CHECK constraint error.
-- **Pre-conditions** : Audit A2 complété (training.ts/crm-quote*.ts existence confirmée/infirmée) ; OQ-8 (mapping Zod legacy → DB + labels FR) résolue.
+- **Pre-conditions** : Audit A2 complété (training.ts/crm-quote*.ts existence confirmée/infirmée) ; OQ-8 partial-resolved (DB OK 2026-06-07) — reste labels FR validés produit.
+- **Scope ajusté (post cross-check 25657fe)** :
+  1. Extraire `BPF_FUNDING_TYPE_VALUES` (18) et `BPF_OBJECTIVE_VALUES` (11) dans `src/lib/bpf-enums.ts` (source unique) — ou réutiliser celles déjà présentes dans `bpf-calculator.ts` via `OBJECTIVE_TO_F3_INDEX` / `FUNDING_TO_LINE`.
+  2. Refactor `src/lib/validations/program.ts` : remplacer les 9 funding + 10 objective legacy par `z.enum()` basés sur ces constantes.
+  3. Créer `src/lib/validations/trainings.ts` avec schéma Zod incluant `bpf_funding_type` / `bpf_objective`.
+  4. Créer `src/lib/validations/crm-quotes.ts` idem.
+  5. Mettre à jour `admin/programs/page.tsx` (programHubFormSchema), `admin/trainings/[id]/page.tsx` et `admin/crm/quotes/new/page.tsx` pour consommer ces nouveaux schémas et débloquer la sauvegarde des valeurs canonical (`entreprise_privee`, `rncp_6_8`, etc.) aujourd'hui cassée.
+- **Risque drift** : toute modif de `program.ts` doit vérifier qu'elle n'introduit pas de régression sur les imports `OBJECTIVE_TO_F3_INDEX` / `FUNDING_TO_LINE` consommés indirectement par les 22 tests Vitest ajoutés en 25657fe (`bpf-calculator.test.ts`).
 - **Acceptance criteria** :
   1. Nouveau fichier `src/lib/types/bpf.ts` exporte `BpfFundingType` tuple `as const` avec les **valeurs DB exactes** (liste à figer post-OQ-8). Valeurs documentées : `entreprise_privee, apprentissage, professionnalisation, reconversion_alternance, conge_transition, cpf, dispositif_chomeurs, non_salaries, plan_developpement, pouvoir_public_agents, instances_europeennes, etat, conseil_regional, pole_emploi, autres_publics, individuel, organisme_formation, autre` (18 valeurs — **à vérifier en début sprint** via `SELECT con FROM pg_constraint WHERE conname LIKE '%bpf_funding%'`).
   2. `src/lib/validations/program.ts` `bpf_funding_type` `z.enum` remplace valeurs Zod legacy par valeurs DB.
@@ -193,12 +244,16 @@ Avant kickoff Epic 1, **4 audits bloquants** doivent être complétés (~2-3 jou
 - **Tests** : enums-consistency snapshot 18 valeurs ; integration program create/fetch.
 - **DoD** : tsc clean, vitest pass, query DB legacy = 0.
 
-### E1-S03 — BpfObjective enum unification (valeurs DB)
+### E1-S03 — BpfObjective enum unification (valeurs DB) — RETIRÉE (OBE 2026-06-07)
 
-- **FR mapping** : FR-C-02
-- **Persona** : admin
-- **User story** : En tant qu'admin, je veux sélectionner n'importe quel objectif BPF (toutes les valeurs DB) et que l'insert réussisse sans CHECK constraint error.
-- **Pre-conditions** : E1-S02 mergée (types/bpf.ts) ; OQ-8 et A2 résolues.
+> **Cross-check chantier BPF externe (commit 25657fe — 2026-06-07)** : story retirée. La migration `supabase/migrations/bpf-auto-calculation.sql` (lignes 34-69) définit DÉJÀ les CHECK CONSTRAINTs canoniques (18 funding + 11 objective) sur les tables `programs`, `trainings` et `crm_quotes`. **OQ-8 résolu de facto côté DB**. Aucune migration DB supplémentaire requise. La migration `add_entity_bpf_columns.sql` du commit 25657fe ajoute uniquement 7 colonnes TEXT plates sur `entities` (siret, naf_code, nda_number, address, phone, email, legal_representative) — périmètre orthogonal qui ne remet rien en cause.
+
+- **Statut** : **removed (obe-removed)** — date 2026-06-07
+- **Justification clôture** : voir `supabase/migrations/bpf-auto-calculation.sql` lignes 34-69 (CHECK constraints canoniques en place). Toute future divergence sera détectée par E1-S05 (tests enums-consistency étendus aux BPF), pas par une nouvelle migration.
+- **FR mapping** (historique) : FR-C-02
+- **Persona** (historique) : admin
+- **User story** (historique) : En tant qu'admin, je veux sélectionner n'importe quel objectif BPF (toutes les valeurs DB) et que l'insert réussisse sans CHECK constraint error.
+- **Pre-conditions** (historique) : E1-S02 mergée (types/bpf.ts) ; OQ-8 et A2 résolues.
 - **Acceptance criteria** :
   1. `src/lib/types/bpf.ts` étendu avec `BpfObjective` tuple `as const`. Valeurs documentées : `rncp_6_8, rncp_5, rncp_4, rncp_3, rncp_2, rncp_cqp, certification_rs, cqp_non_enregistre, autre_pro, bilan_competences, vae` (11 valeurs — **à vérifier en début sprint** via pg_constraint).
   2. `src/lib/validations/program.ts` `bpf_objective` `z.enum` remplace valeurs Zod legacy par valeurs DB.
@@ -211,12 +266,20 @@ Avant kickoff Epic 1, **4 audits bloquants** doivent être complétés (~2-3 jou
 - **Tests** : enums-consistency snapshot 11 valeurs ; integration.
 - **DoD** : tsc clean, vitest pass.
 
-### E1-S04 — Labels FR BPF + UI SelectItem alignment
+### E1-S04 — Labels FR BPF + UI SelectItem alignment — still-todo (inchangé)
 
+> **Cross-check chantier BPF externe (commit 25657fe — 2026-06-07)** : aucun fichier `src/lib/bpf-labels.ts` n'existe. Les labels FR sont dupliqués entre `bpf-calculator.ts` (`BPF_FUNDING_LABELS` / `BPF_OBJECTIVE_LABELS` exportés mais NON consommés par les UI) et les `<SelectItem>` hard-codés dans `src/app/(dashboard)/admin/programs/page.tsx` (lignes 925-957 et 972-982) et `src/app/(dashboard)/admin/crm/quotes/new/page.tsx`. Le chantier Wissam 25657fe NE crée pas `bpf-labels.ts` et NE refactore pas ces `<SelectItem>`. Story toujours strictement nécessaire.
+
+- **Statut** : **still-todo** (inchangé)
 - **FR mapping** : FR-C-02
 - **Persona** : admin
 - **User story** : En tant qu'admin, je veux lire des libellés FR clairs pour chaque type/objectif BPF (ex. "Apprentissage", "RNCP Niveau 6-8") plutôt que des identifiants techniques.
-- **Pre-conditions** : E1-S02 + E1-S03 mergées ; OQ-8 (labels FR validés produit).
+- **Pre-conditions** : E1-S02 mergée ; OQ-8 partial-resolved (labels FR validés produit restent à valider).
+- **Scope d'exécution** :
+  1. Créer `src/lib/bpf-labels.ts` exportant `BPF_FUNDING_LABELS` et `BPF_OBJECTIVE_LABELS` comme source unique (idéalement en déplaçant les définitions actuelles de `bpf-calculator.ts` vers ce nouveau fichier puis en ré-exportant depuis `bpf-calculator.ts` pour rétrocompatibilité).
+  2. Refactor `admin/programs/page.tsx` et `admin/crm/quotes/new/page.tsx` pour mapper les `<SelectItem>` depuis ces constantes (boucle `.map()` sur les entries du label record).
+  3. Vérifier que `BPFForm.tsx` et les sous-composants `SectionA-H` consomment aussi ces labels (cohérence d'affichage).
+  4. Ajouter un test enums-consistency étendu vérifiant que toutes les clés des LABELS sont incluses dans les VALUES (pas de label orphelin).
 - **Acceptance criteria** :
   1. Nouveau fichier `src/lib/utils/bpf-labels.ts` exporte :
      - `BPF_FUNDING_TYPE_LABELS: Record<BpfFundingType, string>` (1 label FR par valeur, validé produit).
@@ -230,12 +293,15 @@ Avant kickoff Epic 1, **4 audits bloquants** doivent être complétés (~2-3 jou
 - **Tests** : unit test : chaque clé enum a un label non-vide.
 - **DoD** : labels validés produit, grep clean.
 
-### E1-S05 — Test suite enums-consistency (CI gate)
+### E1-S05 — Test suite enums-consistency (CI gate) — still-todo (urgent)
 
+> **Cross-check chantier BPF externe (commit 25657fe — 2026-06-07)** : `enums-consistency.test.ts` existe (livré en E1-S01 commit 29993be) mais ne couvre QUE le triplet CourseType ↔ Zod elearning ↔ DB (lignes 1-22). Aucun test ne valide actuellement les triangles BpfFundingType ↔ Zod program.ts ↔ DB CHECK ni BpfObjective. Le chantier Wissam ajoute 22 tests Vitest sur `bpf-calculator` (logique d'agrégation `computeSectionC/D`, `getF3Index`, `isRncpIndex`, `getFundingLineKey`) mais ces tests ne croisent PAS les enums Zod↔DB. Story toujours nécessaire et URGENTE : aurait détecté la divergence critique actuelle (9 valeurs legacy dans `program.ts` vs 18 canonical en DB).
+
+- **Statut** : **still-todo** (urgent — aurait détecté la divergence actuelle)
 - **FR mapping** : FR-C-01 + FR-C-02
 - **Persona** : CI/dev
 - **User story** : En tant qu'auto-test CI, je veux vérifier qu'aucune enum applicative ne diverge entre Zod, TS et DB CHECK afin de prévenir les mismatches avant merge.
-- **Pre-conditions** : E1-S01 → E1-S04 mergées.
+- **Pre-conditions** : E1-S01 mergée ; E1-S02 et E1-S04 idéalement livrées avant (sinon test échoue immédiatement) — ou approche TDD où le test rouge guide E1-S02.
 - **Acceptance criteria** :
   1. Nouveau fichier `src/lib/__tests__/enums-consistency.test.ts` couvre :
      - `CourseType` : N valeurs ordonnées alphabétiquement (N figé par A1).
