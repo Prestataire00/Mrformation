@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
 import { isPedagogieV2Epic1Enabled } from "@/lib/feature-flags";
@@ -12,6 +12,7 @@ import {
   getElearningFormErrors,
   type ElearningHubCourseInput,
 } from "@/lib/validations/elearning";
+import { COURSE_TYPE_OPTIONS, type CourseType } from "@/lib/types/elearning";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -193,17 +194,55 @@ export default function ELearningPage() {
   const { toast } = useToast();
   const router = useRouter();
 
+  const searchParams = useSearchParams();
+
+  // ── URL-driven pagination state (E3-S02 server pagination) ────────────
+  const PAGE_SIZE = 50;
+  const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10));
+  const urlSearch = searchParams.get("search") ?? "";
+  const urlStatus = (searchParams.get("status") ?? "all") as "all" | "draft" | "published";
+  // E3-S02 — type-safe course_type via union CourseType (cf. src/lib/types/elearning.ts).
+  // Valeurs autorisées (alignées DB CHECK + Zod enum) : presentation | quiz | complete | all.
+  const COURSE_TYPE_VALUES: ReadonlyArray<CourseType> = ["presentation", "quiz", "complete"];
+  const rawCourseType = searchParams.get("course_type");
+  const urlCourseType: CourseType | "all" =
+    rawCourseType && (COURSE_TYPE_VALUES as ReadonlyArray<string>).includes(rawCourseType)
+      ? (rawCourseType as CourseType)
+      : "all";
+  type SortKey = "date" | "title";
+  const urlSort = (searchParams.get("sort") ?? "date") as SortKey;
+
+  // Local search input for immediate UI feedback (debounced to URL)
+  const [searchInput, setSearchInput] = useState(urlSearch);
+
+  const updateParams = useCallback(
+    (updates: Record<string, string | null>) => {
+      const params = new URLSearchParams(searchParams.toString());
+      for (const [key, value] of Object.entries(updates)) {
+        if (
+          value === null ||
+          value === "" ||
+          (key === "status" && value === "all") ||
+          (key === "course_type" && value === "all") ||
+          (key === "sort" && value === "date") ||
+          (key === "page" && value === "1")
+        ) {
+          params.delete(key);
+        } else {
+          params.set(key, value);
+        }
+      }
+      const qs = params.toString();
+      router.push(qs ? `?${qs}` : "/admin/elearning", { scroll: false });
+    },
+    [searchParams, router]
+  );
+
   const [courses, setCourses] = useState<Course[]>([]);
   const [aiCourses, setAiCourses] = useState<AICourse[]>([]);
+  const [aiTotalCount, setAiTotalCount] = useState(0);
+  const [aiHasMore, setAiHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "draft" | "published">("all");
-  // EL-7 audit BMAD : tri + pagination client.
-  type SortKey = "date" | "title" | "chapters";
-  const [sortBy, setSortBy] = useState<SortKey>("date");
-  const PAGE_SIZE = 12;
-  const [pageProgram, setPageProgram] = useState(1);
-  const [pageAi, setPageAi] = useState(1);
 
   // Course editor dialog
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -224,18 +263,9 @@ export default function ELearningPage() {
     if (!entityId) return;
     setLoading(true);
 
-    // Fetch both program-based and AI-generated courses in parallel
-    const aiSelectWithProgram = "id, entity_id, title, description, status, generation_status, estimated_duration_minutes, created_at, updated_at, program_id, program:programs(id, title), elearning_chapters(id)";
-    const aiSelectFallback = "id, entity_id, title, description, status, generation_status, estimated_duration_minutes, created_at, updated_at, elearning_chapters(id)";
-
-    // Pédagogie V2 Epic 1 : quand le flag est ON, on cesse d'afficher
-    // le chemin legacy "programs.content.type='elearning'". On évite donc
-    // aussi de lancer la requête correspondante (économie de bande passante
-    // Supabase + cohérence avec le rendu UI conditionné par le même flag).
     const epic1Enabled = isPedagogieV2Epic1Enabled();
 
-    // Référence pour inférer le type retourné par la query programs (utilisé
-    // pour fabriquer un fallback typé sans `any` quand flag ON).
+    // ── Legacy programs (behind feature flag, no server pagination) ──────
     const programsLegacyQuery = () =>
       supabase
         .from("programs")
@@ -248,29 +278,44 @@ export default function ELearningPage() {
       error: null,
     } as unknown as ProgramsRes;
 
+    // ── AI courses — server-side pagination (E3-S02) ────────────────────
+    const aiSelectWithProgram = "id, entity_id, title, description, status, generation_status, estimated_duration_minutes, created_at, updated_at, program_id, course_type, program:programs(id, title), elearning_chapters(id)";
+    const aiSelectFallback = "id, entity_id, title, description, status, generation_status, estimated_duration_minutes, created_at, updated_at, course_type, elearning_chapters(id)";
+
+    const offset = (page - 1) * PAGE_SIZE;
+
+    const buildAiQuery = (selectStr: string) => {
+      let q = supabase
+        .from("elearning_courses")
+        .select(selectStr, { count: "exact" })
+        .eq("entity_id", entityId);
+
+      if (urlSearch) {
+        q = q.ilike("title", `%${urlSearch}%`);
+      }
+      if (urlStatus !== "all") {
+        q = q.eq("status", urlStatus);
+      }
+      if (urlCourseType !== "all") {
+        q = q.eq("course_type", urlCourseType);
+      }
+      if (urlSort === "title") {
+        q = q.order("title", { ascending: true });
+      } else {
+        q = q.order("updated_at", { ascending: false });
+      }
+      q = q.range(offset, offset + PAGE_SIZE - 1);
+      return q;
+    };
+
     const [programsRes, aiResInitial] = await Promise.all([
       epic1Enabled ? Promise.resolve(emptyProgramsRes) : programsLegacyQuery(),
-      supabase
-        .from("elearning_courses")
-        // ELE-1 audit BMAD : on join le programme source (program_id +
-        // titre) pour afficher un badge "Issu du programme X" sur la card.
-        .select(aiSelectWithProgram)
-        .eq("entity_id", entityId)
-        .order("updated_at", { ascending: false }),
+      buildAiQuery(aiSelectWithProgram),
     ]);
 
-    // Fallback si la migration link-program-training-elearning.sql n'a pas
-    // été exécutée en prod (code Postgres 42703 = column does not exist).
-    // On retombe sur un SELECT sans program_id ni l'embed program, perdant
-    // juste le badge "Issu du programme X" sur les cards.
     let aiRes = aiResInitial;
     if (aiRes.error && (aiRes.error as { code?: string }).code === "42703") {
-      const fallbackRes = await supabase
-        .from("elearning_courses")
-        .select(aiSelectFallback)
-        .eq("entity_id", entityId)
-        .order("updated_at", { ascending: false });
-      aiRes = fallbackRes as unknown as typeof aiResInitial;
+      aiRes = (await buildAiQuery(aiSelectFallback)) as unknown as typeof aiResInitial;
     }
 
     if (programsRes.error) {
@@ -281,7 +326,6 @@ export default function ELearningPage() {
       });
     }
 
-    // Filter only e-learning programs (content.type === "elearning")
     const eLearningCourses = ((programsRes.data as Course[]) || []).filter(
       (p) =>
         p.content &&
@@ -290,8 +334,7 @@ export default function ELearningPage() {
     );
 
     setCourses(eLearningCourses);
-    // Supabase retourne `program` comme array (relation FK) ; on l'aplatit
-    // côté client en single | null pour le typage AICourse.
+
     type AICourseRaw = Omit<AICourse, "program"> & { program: { id: string; title: string }[] | { id: string; title: string } | null };
     const rawAi = (aiRes.data as unknown as AICourseRaw[]) || [];
     const flattened: AICourse[] = rawAi.map((c) => ({
@@ -299,71 +342,51 @@ export default function ELearningPage() {
       program: Array.isArray(c.program) ? (c.program[0] ?? null) : c.program,
     }));
     setAiCourses(flattened);
+    setAiTotalCount(aiRes.count ?? 0);
+    setAiHasMore(offset + PAGE_SIZE < (aiRes.count ?? 0));
     setLoading(false);
-  }, [entityId]);
+  }, [entityId, page, urlSearch, urlStatus, urlCourseType, urlSort]);
 
   useEffect(() => {
     fetchCourses();
   }, [fetchCourses]);
 
-  // ── Filtering ──────────────────────────────────────────────────────────────
-
-  const filtered = courses
-    .filter((c) => {
-      const matchSearch =
-        search === "" ||
-        c.title.toLowerCase().includes(search.toLowerCase()) ||
-        c.description?.toLowerCase().includes(search.toLowerCase());
-      const courseStatus = c.content?.status ?? "draft";
-      const matchStatus =
-        statusFilter === "all" || courseStatus === statusFilter;
-      return matchSearch && matchStatus;
-    })
-    .sort((a, b) => {
-      // EL-7 audit BMAD : tri par clé sélectionnée.
-      if (sortBy === "title") return a.title.localeCompare(b.title);
-      if (sortBy === "chapters") {
-        return (b.content?.modules?.length ?? 0) - (a.content?.modules?.length ?? 0);
-      }
-      return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
-    });
-
-  // ── Stats ──────────────────────────────────────────────────────────────────
-
-  // Filter AI courses
-  const filteredAiCourses = aiCourses
-    .filter((c) => {
-      const matchSearch =
-        search === "" ||
-        c.title.toLowerCase().includes(search.toLowerCase()) ||
-        c.description?.toLowerCase().includes(search.toLowerCase());
-      const matchStatus =
-        statusFilter === "all" ||
-        (statusFilter === "published" && c.status === "published") ||
-        (statusFilter === "draft" && c.status !== "published");
-      return matchSearch && matchStatus;
-    })
-    .sort((a, b) => {
-      if (sortBy === "title") return a.title.localeCompare(b.title);
-      if (sortBy === "chapters") {
-        return (b.elearning_chapters?.length ?? 0) - (a.elearning_chapters?.length ?? 0);
-      }
-      return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
-    });
-
-  // EL-7 audit BMAD : pagination client par section. Reset à page 1 quand
-  // les filtres ou le tri changent.
+  // ── Debounced search sync to URL ──────────────────────────────────────
   useEffect(() => {
-    setPageProgram(1);
-    setPageAi(1);
-  }, [search, statusFilter, sortBy]);
+    const t = setTimeout(() => {
+      if (searchInput !== urlSearch) {
+        updateParams({ search: searchInput || null, page: "1" });
+      }
+    }, 400);
+    return () => clearTimeout(t);
+  }, [searchInput]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const totalPagesProgram = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const totalPagesAi = Math.max(1, Math.ceil(filteredAiCourses.length / PAGE_SIZE));
-  const safePageProgram = Math.min(pageProgram, totalPagesProgram);
-  const safePageAi = Math.min(pageAi, totalPagesAi);
-  const pagedProgram = filtered.slice((safePageProgram - 1) * PAGE_SIZE, safePageProgram * PAGE_SIZE);
-  const pagedAi = filteredAiCourses.slice((safePageAi - 1) * PAGE_SIZE, safePageAi * PAGE_SIZE);
+  // Sync URL → local input when navigating back/forward
+  useEffect(() => {
+    setSearchInput(urlSearch);
+  }, [urlSearch]);
+
+  // ── Legacy programs: client-side filter (no pagination, behind feature flag) ──
+  const filtered = useMemo(() =>
+    courses
+      .filter((c) => {
+        const matchSearch =
+          urlSearch === "" ||
+          c.title.toLowerCase().includes(urlSearch.toLowerCase()) ||
+          c.description?.toLowerCase().includes(urlSearch.toLowerCase());
+        const courseStatus = c.content?.status ?? "draft";
+        const matchStatus = urlStatus === "all" || courseStatus === urlStatus;
+        return matchSearch && matchStatus;
+      })
+      .sort((a, b) => {
+        if (urlSort === "title") return a.title.localeCompare(b.title);
+        return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+      }),
+    [courses, urlSearch, urlStatus, urlSort]
+  );
+
+  // ── AI courses: server-side paginated (E3-S02) ───
+  const totalPagesAi = Math.max(1, Math.ceil(aiTotalCount / PAGE_SIZE));
 
   // Pédagogie V2 Epic 1 : flag lu une seule fois par render. Lorsqu'il est
   // ON, les cours legacy (programs.content.type='elearning') sont masqués
@@ -371,7 +394,7 @@ export default function ELearningPage() {
   // n'est pas exécuté non plus (cf. fetchCourses).
   const epic1Enabled = isPedagogieV2Epic1Enabled();
 
-  const totalCourses = (epic1Enabled ? 0 : courses.length) + aiCourses.length;
+  const totalCourses = (epic1Enabled ? 0 : courses.length) + aiTotalCount;
   const publishedCourses =
     (epic1Enabled ? 0 : courses.filter((c) => c.content?.status === "published").length) +
     aiCourses.filter((c) => c.status === "published").length;
@@ -695,8 +718,8 @@ export default function ELearningPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
           <Input
             placeholder="Rechercher un cours..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             className="pl-9"
           />
         </div>
@@ -704,10 +727,10 @@ export default function ELearningPage() {
           {(["all", "published", "draft"] as const).map((f) => (
             <button
               key={f}
-              onClick={() => setStatusFilter(f)}
+              onClick={() => updateParams({ status: f, page: "1" })}
               className={cn(
                 "px-3 py-1.5 text-sm rounded-md transition-colors",
-                statusFilter === f
+                urlStatus === f
                   ? "bg-white shadow-sm text-gray-900 font-medium"
                   : "text-gray-500 hover:text-gray-700"
               )}
@@ -716,15 +739,28 @@ export default function ELearningPage() {
             </button>
           ))}
         </div>
-        {/* EL-7 audit BMAD : tri (date / titre / nb chapitres) */}
-        <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortKey)}>
+        {/* Course type filter (E3-S02) */}
+        <Select value={urlCourseType} onValueChange={(v) => updateParams({ course_type: v, page: "1" })}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Type de cours" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Tous les types</SelectItem>
+            {COURSE_TYPE_OPTIONS.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {/* Sort */}
+        <Select value={urlSort} onValueChange={(v) => updateParams({ sort: v, page: "1" })}>
           <SelectTrigger className="w-[200px]">
             <SelectValue placeholder="Trier par" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="date">Date (récent → ancien)</SelectItem>
             <SelectItem value="title">Titre (A → Z)</SelectItem>
-            <SelectItem value="chapters">Nb chapitres (max → min)</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -736,23 +772,23 @@ export default function ELearningPage() {
             <div key={i} className="h-60 rounded-xl bg-gray-100 animate-pulse" />
           ))}
         </div>
-      ) : (epic1Enabled && filteredAiCourses.length === 0) ||
-          (!epic1Enabled && filtered.length === 0 && filteredAiCourses.length === 0) ? (
+      ) : (epic1Enabled && aiCourses.length === 0) ||
+          (!epic1Enabled && filtered.length === 0 && aiCourses.length === 0) ? (
         <div className="flex flex-col items-center justify-center py-24 text-center">
           <div className="w-20 h-20 rounded-2xl bg-gray-100 flex items-center justify-center mb-4">
             <BookOpen className="h-10 w-10 text-gray-300" />
           </div>
           <p className="font-semibold text-gray-600 text-lg">
-            {search || statusFilter !== "all"
+            {urlSearch || urlStatus !== "all"
               ? "Aucun cours trouvé"
               : "Créez votre premier cours e-learning"}
           </p>
           <p className="text-sm text-gray-400 mt-1 max-w-sm">
-            {search || statusFilter !== "all"
+            {urlSearch || urlStatus !== "all"
               ? "Essayez de modifier vos filtres de recherche."
               : "Ajoutez des modules vidéo, des documents PDF ou des quiz interactifs à vos cours."}
           </p>
-          {!search && statusFilter === "all" && (
+          {!urlSearch && urlStatus === "all" && (
             <div className="flex items-center gap-3 mt-6">
               <Link
                 href="/admin/elearning/create"
@@ -780,7 +816,7 @@ export default function ELearningPage() {
               <span className="text-xs text-gray-400">({filtered.length})</span>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {pagedProgram.map((course) => {
+          {filtered.map((course) => {
             const modules = course.content?.modules ?? [];
             const status = course.content?.status ?? "draft";
             const duration = totalDuration(modules);
@@ -933,38 +969,22 @@ export default function ELearningPage() {
             );
           })}
             </div>
-            {/* EL-7 audit BMAD : pagination programmes */}
-            {totalPagesProgram > 1 && (
-              <div className="flex items-center justify-between gap-3 pt-2">
-                <p className="text-xs text-gray-500">
-                  Affichage {(safePageProgram - 1) * PAGE_SIZE + 1}–{Math.min(safePageProgram * PAGE_SIZE, filtered.length)} sur {filtered.length}
-                </p>
-                <div className="flex items-center gap-2">
-                  <Button size="sm" variant="outline" onClick={() => setPageProgram((p) => Math.max(1, p - 1))} disabled={safePageProgram <= 1}>
-                    Précédent
-                  </Button>
-                  <span className="text-xs text-gray-600">Page {safePageProgram} / {totalPagesProgram}</span>
-                  <Button size="sm" variant="outline" onClick={() => setPageProgram((p) => Math.min(totalPagesProgram, p + 1))} disabled={safePageProgram >= totalPagesProgram}>
-                    Suivant
-                  </Button>
-                </div>
-              </div>
-            )}
+            {/* Legacy programs: no pagination (behind feature flag) */}
           </div>
         )}
         </>
       ) : null}
 
       {/* ── AI-Generated Courses ─────────────────────────────────────────── */}
-      {!loading && filteredAiCourses.length > 0 && (
+      {!loading && aiCourses.length > 0 && (
         <div className="space-y-4">
           <div className="flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-purple-500" />
             <h2 className="text-sm font-semibold text-gray-700">Cours générés par IA</h2>
-            <span className="text-xs text-gray-400">({filteredAiCourses.length})</span>
+            <span className="text-xs text-gray-400">({aiCourses.length})</span>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {pagedAi.map((course) => {
+            {aiCourses.map((course) => {
               const chaptersCount = course.elearning_chapters?.length ?? 0;
               const isPublished = course.status === "published";
               const isProcessing = course.generation_status === "generating" || course.generation_status === "extracting";
@@ -1076,18 +1096,18 @@ export default function ELearningPage() {
               );
             })}
           </div>
-          {/* EL-7 audit BMAD : pagination AI courses */}
+          {/* E3-S02: server-side pagination AI courses */}
           {totalPagesAi > 1 && (
             <div className="flex items-center justify-between gap-3 pt-2">
               <p className="text-xs text-gray-500">
-                Affichage {(safePageAi - 1) * PAGE_SIZE + 1}–{Math.min(safePageAi * PAGE_SIZE, filteredAiCourses.length)} sur {filteredAiCourses.length}
+                Affichage {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, aiTotalCount)} sur {aiTotalCount}
               </p>
               <div className="flex items-center gap-2">
-                <Button size="sm" variant="outline" onClick={() => setPageAi((p) => Math.max(1, p - 1))} disabled={safePageAi <= 1}>
+                <Button size="sm" variant="outline" onClick={() => updateParams({ page: String(page - 1) })} disabled={page <= 1}>
                   Précédent
                 </Button>
-                <span className="text-xs text-gray-600">Page {safePageAi} / {totalPagesAi}</span>
-                <Button size="sm" variant="outline" onClick={() => setPageAi((p) => Math.min(totalPagesAi, p + 1))} disabled={safePageAi >= totalPagesAi}>
+                <span className="text-xs text-gray-600">Page {page} / {totalPagesAi}</span>
+                <Button size="sm" variant="outline" onClick={() => updateParams({ page: String(page + 1) })} disabled={!aiHasMore}>
                   Suivant
                 </Button>
               </div>
