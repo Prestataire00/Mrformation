@@ -28,15 +28,13 @@ import { exportHtmlToPDF } from "@/lib/pdf-export";
 import { SubcontractingContractsPanel } from "./sections/SubcontractingContractsPanel";
 import { BatchOpsConfirmDialog } from "./BatchOpsConfirmDialog";
 import { hasBatchEndpoint, downloadBatchZip } from "@/lib/utils/batch-doc-download";
-import { sendBatchEmail, hasBatchSendEndpoint } from "@/lib/utils/batch-doc-send";
+import { hasBatchSendEndpoint } from "@/lib/utils/batch-doc-send";
 import {
   hasBatchSignatureRequestEndpoint,
-  requestBatchSignatures,
 } from "@/lib/utils/batch-doc-signature-request";
 import {
   getDocKeysForSession,
   insertDocs,
-  upsertDocsIgnoreDuplicates,
   markDocConfirmed,
   unmarkDocConfirmed,
   markDocSent,
@@ -44,6 +42,10 @@ import {
   updateDocsForOwner,
   getTemplateById,
   getLatestSignatureForDoc,
+  batchSendEmailWithRefetch,
+  batchRequestSignaturesWithRefetch,
+  batchConfirmDocumentsWithRefetch,
+  batchAssignTemplateToLearnersWithRefetch,
   type OwnerType,
 } from "@/lib/services/documents-store";
 import { cn } from "@/lib/utils";
@@ -771,22 +773,22 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
   const handleMassSendWithPDF = async (ownerType: ConventionOwnerType, docType: string) => {
     const key = `${ownerType}-${docType}`;
     setMassSending(key);
-
-    // Toutes les routes batch sont server-side après Stories F1.x/F2.x.
-    // BATCH_SEND_ENDPOINTS_BY_DOC_TYPE couvre les 21+ doc_types — la boucle
-    // client-side (800 ms × N) a été retirée.
     try {
-      const res = await sendBatchEmail({ docType, sessionId: formation.id });
-      if (res.failureCount > 0) {
-        const sample = res.errors.slice(0, 3).map((e) => `${e.learnerName} (${e.error})`).join(", ");
+      const result = await batchSendEmailWithRefetch(
+        supabase,
+        { docType, sessionId: formation.id },
+        onRefresh,
+      );
+      if (result.failureCount > 0) {
+        const sample = result.errors.slice(0, 3).map((e) => `${e.itemLabel ?? e.itemId} (${e.error})`).join(", ");
         toast({
-          title: `${res.successCount}/${res.totalRequested} ${DOC_LABELS_PLURAL[docType] ?? docType} envoyés`,
-          description: `${res.failureCount} échec(s) : ${sample}${res.errors.length > 3 ? "…" : ""}`,
+          title: `${result.successCount}/${result.totalRequested} ${DOC_LABELS_PLURAL[docType] ?? docType} envoyés`,
+          description: `${result.failureCount} échec(s) : ${sample}${result.errors.length > 3 ? "…" : ""}`,
         });
       } else {
         toast({
-          title: `${res.successCount} ${DOC_LABELS_PLURAL[docType] ?? docType} envoyés`,
-          description: `Envoyé en ${(res.latencyMs / 1000).toFixed(1)}s`,
+          title: `${result.successCount} ${DOC_LABELS_PLURAL[docType] ?? docType} envoyés`,
+          description: `Envoyé en ${((result.latencyMs ?? 0) / 1000).toFixed(1)}s`,
         });
       }
     } catch (err) {
@@ -795,9 +797,9 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
         description: err instanceof Error ? err.message : String(err),
         variant: "destructive",
       });
+    } finally {
+      setMassSending(null);
     }
-    setMassSending(null);
-    await onRefresh();
   };
 
   // ===== MASS DOWNLOAD PDF =====
@@ -876,17 +878,21 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     }
     setMassRequestingSig(docType);
     try {
-      const res = await requestBatchSignatures({ docType, sessionId: formation.id });
-      if (res.failureCount > 0) {
-        const sample = res.errors.slice(0, 3).map((e) => `${e.ownerName} (${e.error})`).join(", ");
+      const result = await batchRequestSignaturesWithRefetch(
+        supabase,
+        { docType, sessionId: formation.id },
+        onRefresh,
+      );
+      if (result.failureCount > 0) {
+        const sample = result.errors.slice(0, 3).map((e) => `${e.itemLabel ?? e.itemId} (${e.error})`).join(", ");
         toast({
-          title: `${res.successCount}/${res.totalRequested} demandes de signature envoyées`,
-          description: `${res.failureCount} échec(s) : ${sample}${res.errors.length > 3 ? "…" : ""}`,
+          title: `${result.successCount}/${result.totalRequested} demandes de signature envoyées`,
+          description: `${result.failureCount} échec(s) : ${sample}${result.errors.length > 3 ? "…" : ""}`,
         });
       } else {
         toast({
-          title: `${res.successCount} demandes de signature envoyées`,
-          description: `Envoyé en ${(res.latencyMs / 1000).toFixed(1)}s — liens valides 30 jours`,
+          title: `${result.successCount} demandes de signature envoyées`,
+          description: `Envoyé en ${((result.latencyMs ?? 0) / 1000).toFixed(1)}s — liens valides 30 jours`,
         });
       }
     } catch (err) {
@@ -895,9 +901,9 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
         description: err instanceof Error ? err.message : String(err),
         variant: "destructive",
       });
+    } finally {
+      setMassRequestingSig(null);
     }
-    setMassRequestingSig(null);
-    await onRefresh();
   };
 
   // Mass confirm all docs of a type (B1 — entity_id via updateDocsByDocType)
@@ -906,22 +912,28 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
   // un doc_type est partagé). Cf audit BMAD #2.
   const handleMassConfirm = async (docType: ConventionDocType, ownerType?: OwnerType) => {
     setSaving(`mass-confirm-${docType}`);
-    const result = await updateDocsByDocType(
-      supabase, formation.entity_id, formation.id, docType,
-      { status: "generated", generated_at: new Date().toISOString() },
-      { onlyStatus: "draft", ownerType },
-    );
-    setSaving(null);
-    if (!result.ok) {
-      toast({ title: "Erreur", description: result.error.message, variant: "destructive" });
-      return;
+    try {
+      const result = await batchConfirmDocumentsWithRefetch(
+        supabase,
+        { entityId: formation.entity_id, sessionId: formation.id, docType, ownerType },
+        onRefresh,
+      );
+      if (!result.success && result.errors.length > 0) {
+        toast({ title: "Erreur", description: result.errors[0].error, variant: "destructive" });
+      } else if (result.successCount === 0) {
+        toast({ title: `Aucun document à figer (déjà tous figés ?)` });
+      } else {
+        toast({ title: `${result.successCount} document(s) figé(s)` });
+      }
+    } catch (err) {
+      toast({
+        title: "Erreur figeage batch",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(null);
     }
-    if (result.updated === 0) {
-      toast({ title: `Aucun document à figer (déjà tous figés ?)` });
-    } else {
-      toast({ title: `${result.updated} document(s) figé(s)` });
-    }
-    await onRefresh();
   };
 
   // Mass send all confirmed docs of a type
@@ -1016,6 +1028,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
   };
 
   // Assign template to all learners
+  // FIX B3 (E3-S06) : toast succès uniquement si upsert réussit (était hors try/catch)
   const handleAssignTemplateToAll = async (templateId: string) => {
     if (!templateId) return;
     if (!entity?.id) {
@@ -1024,30 +1037,38 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     }
     const template = templates.find((t) => t.id === templateId);
     setSaving("assign-all");
-    const rows = enrollments
-      .filter((e) => e.learner)
-      .map((e) => ({
-        entity_id: entity.id,
-        session_id: formation.id,
-        doc_type: "custom" as const,
-        owner_type: "learner" as const,
-        owner_id: e.learner!.id,
-        template_id: templateId,
-        custom_label: template?.name || "Document personnalisé",
-        requires_signature: false,
-      }));
-    if (rows.length > 0) {
-      try {
-        await upsertDocsIgnoreDuplicates(supabase, rows);
-      } catch (err: unknown) {
-        console.error("[handleAssignTemplateToAll] upsert failed:", err);
-        const message = err instanceof Error ? err.message : "Échec de l'attribution";
-        toast({ title: "Erreur", description: message, variant: "destructive" });
+    try {
+      const result = await batchAssignTemplateToLearnersWithRefetch(
+        supabase,
+        {
+          entityId: entity.id,
+          sessionId: formation.id,
+          templateId,
+          templateName: template?.name || "Document personnalisé",
+          enrollments,
+        },
+        onRefresh,
+      );
+      if (result.success) {
+        toast({ title: `${result.successCount} document(s) attribué(s) aux apprenants` });
+      } else if (result.errors.length > 0) {
+        toast({
+          title: "Erreur attribution batch",
+          description: result.errors[0].error,
+          variant: "destructive",
+        });
+      } else {
+        toast({ title: "Aucun apprenant à attribuer" });
       }
+    } catch (err) {
+      toast({
+        title: "Erreur attribution",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(null);
     }
-    setSaving(null);
-    toast({ title: "Document attribué à tous les apprenants" });
-    await onRefresh();
   };
 
   // Send document for electronic signature via /api/documents/sign-request

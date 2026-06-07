@@ -20,7 +20,10 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { FormationConventionDocument, DocumentTemplate } from "@/lib/types";
+import type { BatchError, BatchResult } from "@/lib/types/batch-operations";
 import { mapStatusToFlags } from "@/lib/utils/document-status";
+import { sendBatchEmail } from "@/lib/utils/batch-doc-send";
+import { requestBatchSignatures } from "@/lib/utils/batch-doc-signature-request";
 
 // ─── Types internes ─────────────────────────────────────────────────────
 
@@ -517,4 +520,257 @@ export async function getDocById(
     signer_email: meta.signer_email ?? null,
     signer_name: meta.signer_name ?? null,
   };
+}
+
+// ─── Batch Operations with Refetch (E3-S06) ────────────────────────────
+
+const BATCH_LOG_PREFIX = "[BatchOperation]";
+
+function formatBatchError(err: unknown, itemId: string, label?: string): BatchError {
+  return {
+    itemId,
+    itemLabel: label,
+    error: err instanceof Error ? err.message : String(err),
+    code: (err as { code?: string } | undefined)?.code,
+    timestamp: new Date().toISOString(),
+  };
+}
+
+function logBatchError(op: string, error: BatchError): void {
+  console.error(`${BATCH_LOG_PREFIX} ${op} — ${error.itemLabel ?? error.itemId}: ${error.error}`);
+}
+
+/**
+ * Envoie batch emails pour un docType et rafraîchit l'UI.
+ * Encapsule sendBatchEmail() + refetch atomiquement.
+ */
+export async function batchSendEmailWithRefetch(
+  _supabase: SupabaseClient,
+  args: { docType: string; sessionId: string },
+  onRefresh: () => Promise<void>,
+): Promise<BatchResult> {
+  const t0 = Date.now();
+  try {
+    const res = await sendBatchEmail({ docType: args.docType, sessionId: args.sessionId });
+    const latencyMs = Date.now() - t0;
+
+    const errors: BatchError[] = res.errors.map((e) =>
+      formatBatchError(new Error(e.error), e.learnerId, e.learnerName),
+    );
+    errors.forEach((e) => logBatchError("SendEmail", e));
+
+    const t1 = Date.now();
+    await onRefresh();
+    const refetchLatencyMs = Date.now() - t1;
+
+    if (refetchLatencyMs > 2000) {
+      console.warn(`${BATCH_LOG_PREFIX} SendEmail refetch took ${refetchLatencyMs}ms (>2000ms)`);
+    }
+
+    return {
+      success: res.successCount > 0,
+      totalRequested: res.totalRequested,
+      successCount: res.successCount,
+      failureCount: res.failureCount,
+      errors,
+      latencyMs,
+      refetchLatencyMs,
+    };
+  } catch (err) {
+    console.error(`${BATCH_LOG_PREFIX} SendEmail — fatal:`, err);
+    return {
+      success: false,
+      totalRequested: 0,
+      successCount: 0,
+      failureCount: 1,
+      errors: [formatBatchError(err, "batch")],
+      latencyMs: Date.now() - t0,
+    };
+  }
+}
+
+/**
+ * Lance batch signature requests pour un docType et rafraîchit l'UI.
+ */
+export async function batchRequestSignaturesWithRefetch(
+  _supabase: SupabaseClient,
+  args: { docType: string; sessionId: string },
+  onRefresh: () => Promise<void>,
+): Promise<BatchResult> {
+  const t0 = Date.now();
+  try {
+    const res = await requestBatchSignatures({ docType: args.docType, sessionId: args.sessionId });
+    const latencyMs = Date.now() - t0;
+
+    const errors: BatchError[] = res.errors.map((e) =>
+      formatBatchError(new Error(e.error), e.docId, e.ownerName),
+    );
+    errors.forEach((e) => logBatchError("RequestSignatures", e));
+
+    const t1 = Date.now();
+    await onRefresh();
+    const refetchLatencyMs = Date.now() - t1;
+
+    if (refetchLatencyMs > 2000) {
+      console.warn(`${BATCH_LOG_PREFIX} RequestSignatures refetch took ${refetchLatencyMs}ms (>2000ms)`);
+    }
+
+    return {
+      success: res.successCount > 0,
+      totalRequested: res.totalRequested,
+      successCount: res.successCount,
+      failureCount: res.failureCount,
+      errors,
+      latencyMs,
+      refetchLatencyMs,
+    };
+  } catch (err) {
+    console.error(`${BATCH_LOG_PREFIX} RequestSignatures — fatal:`, err);
+    return {
+      success: false,
+      totalRequested: 0,
+      successCount: 0,
+      failureCount: 1,
+      errors: [formatBatchError(err, "batch")],
+      latencyMs: Date.now() - t0,
+    };
+  }
+}
+
+/**
+ * Fige (confirme) tous les documents d'un docType et rafraîchit l'UI.
+ */
+export async function batchConfirmDocumentsWithRefetch(
+  supabase: SupabaseClient,
+  args: { entityId: string; sessionId: string; docType: string; ownerType?: OwnerType },
+  onRefresh: () => Promise<void>,
+): Promise<BatchResult> {
+  const t0 = Date.now();
+  try {
+    const result = await updateDocsByDocType(
+      supabase,
+      args.entityId,
+      args.sessionId,
+      args.docType,
+      { status: "generated", generated_at: new Date().toISOString() },
+      { onlyStatus: "draft", ownerType: args.ownerType },
+    );
+    const latencyMs = Date.now() - t0;
+
+    if (!result.ok) {
+      const error = formatBatchError(new Error(result.error.message), "batch", args.docType);
+      logBatchError("ConfirmDocuments", error);
+      return {
+        success: false,
+        totalRequested: 0,
+        successCount: 0,
+        failureCount: 1,
+        errors: [error],
+        latencyMs,
+      };
+    }
+
+    const t1 = Date.now();
+    await onRefresh();
+    const refetchLatencyMs = Date.now() - t1;
+
+    if (refetchLatencyMs > 2000) {
+      console.warn(`${BATCH_LOG_PREFIX} ConfirmDocuments refetch took ${refetchLatencyMs}ms (>2000ms)`);
+    }
+
+    return {
+      success: result.updated > 0,
+      totalRequested: result.updated,
+      successCount: result.updated,
+      failureCount: 0,
+      errors: [],
+      latencyMs,
+      refetchLatencyMs,
+    };
+  } catch (err) {
+    console.error(`${BATCH_LOG_PREFIX} ConfirmDocuments — fatal:`, err);
+    return {
+      success: false,
+      totalRequested: 0,
+      successCount: 0,
+      failureCount: 1,
+      errors: [formatBatchError(err, "batch")],
+      latencyMs: Date.now() - t0,
+    };
+  }
+}
+
+/**
+ * Attribue un template custom à tous les apprenants et rafraîchit l'UI.
+ * FIX B3 : toast succès uniquement si upsert réussit (était hors try/catch).
+ */
+export async function batchAssignTemplateToLearnersWithRefetch(
+  supabase: SupabaseClient,
+  args: {
+    entityId: string;
+    sessionId: string;
+    templateId: string;
+    templateName: string;
+    enrollments: Array<{ learner?: { id: string; first_name?: string; last_name?: string } | null }>;
+  },
+  onRefresh: () => Promise<void>,
+): Promise<BatchResult> {
+  const t0 = Date.now();
+  const rows = args.enrollments
+    .filter((e): e is { learner: { id: string; first_name?: string; last_name?: string } } => !!e.learner)
+    .map((e) => ({
+      entity_id: args.entityId,
+      session_id: args.sessionId,
+      doc_type: "custom" as const,
+      owner_type: "learner" as const,
+      owner_id: e.learner.id,
+      template_id: args.templateId,
+      custom_label: args.templateName || "Document personnalisé",
+      requires_signature: false,
+    }));
+
+  if (rows.length === 0) {
+    return {
+      success: false,
+      totalRequested: 0,
+      successCount: 0,
+      failureCount: 0,
+      errors: [],
+      latencyMs: Date.now() - t0,
+    };
+  }
+
+  try {
+    await upsertDocsIgnoreDuplicates(supabase, rows);
+    const latencyMs = Date.now() - t0;
+
+    const t1 = Date.now();
+    await onRefresh();
+    const refetchLatencyMs = Date.now() - t1;
+
+    if (refetchLatencyMs > 2000) {
+      console.warn(`${BATCH_LOG_PREFIX} AssignTemplate refetch took ${refetchLatencyMs}ms (>2000ms)`);
+    }
+
+    return {
+      success: true,
+      totalRequested: rows.length,
+      successCount: rows.length,
+      failureCount: 0,
+      errors: [],
+      latencyMs,
+      refetchLatencyMs,
+    };
+  } catch (err) {
+    const error = formatBatchError(err, "batch", args.templateName);
+    logBatchError("AssignTemplate", error);
+    return {
+      success: false,
+      totalRequested: rows.length,
+      successCount: 0,
+      failureCount: rows.length,
+      errors: [error],
+      latencyMs: Date.now() - t0,
+    };
+  }
 }
