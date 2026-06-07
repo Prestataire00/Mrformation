@@ -71,38 +71,56 @@ externalWorkstream:
 
 progressSummary:
   date: 2026-06-07
+  prdStatus: CLOSED
+  closedAt: 2026-06-07T12:57:51Z
   epic1:
-    done: 6           # E1-S01, E1-S08, E1-S09, E1-S10 mergés ; +E1-S06/E1-S07 done-pending-smoke-test
-    donePendingSmokeTest: 2
+    done: 9           # E1-S01, S02, S04, S05, S08, S09, S10 mergés + E1-S06/S07 done-pending-smoke-test
+    donePendingSmokeTest: 2  # E1-S06, E1-S07 (livrés avant cadrage, smoke test requis)
     inProgress: 0
     blocked: 0
-    notStarted: 3     # E1-S02, E1-S04, E1-S05 (E1-S03 retirée OBE — voir externalWorkstream)
+    notStarted: 0
     removed: 1        # E1-S03 obe-removed (CHECK constraints DB déjà en place via bpf-auto-calculation.sql)
     total: 10
-    activeStories: 9  # 10 - 1 removed (E1-S03)
+    activeStories: 9  # 10 - 1 removed
+    status: COMPLET
     note: |
-      Resolution chantier BPF externe (commit 25657fe) :
-      - E1-S03 retirée (OBE) : la migration supabase/migrations/bpf-auto-calculation.sql
-        définit déjà les CHECK CONSTRAINTs canoniques (18 funding + 11 objective) sur
-        programs/trainings/crm_quotes. OQ-8 résolu de facto côté DB.
-      - E1-S02, E1-S04, E1-S05 conservées (still-todo) : scope ajusté pour E1-S02 (refactor
-        program.ts + création trainings.ts/crm-quotes.ts qui restent absents). Aucun fichier
-        commun avec le chantier 25657fe (qui touche BPFForm.tsx + bpf-calculator.ts).
+      Epic 1 COMPLET au 2026-06-07. Toutes stories livrées :
+      - E1-S01 (PR #203 CourseType), E1-S02 (PR #222 Zod align BPF),
+        E1-S04 (PR #224 labels canonical), E1-S05 (PR #223 enums-consistency tests),
+        E1-S08/S09 (PR #204 refetch), E1-S10 (PR #205 scoring rétroactif).
+      - E1-S06/S07 done-pending-smoke-test (déjà livrés dans le code via S0 audit A3).
+      - E1-S03 retirée (OBE) via bpf-auto-calculation.sql.
   epic2:
-    done: 10          # E2-S01, S03, S04, S07, S08, S09, S10, S11, S12 mergés + S02 already-done
-    inProgress: 1     # E2-S06 (UI bulk-import polling)
-    blocked: 1        # E2-S13 (tests E2E, attend E2-S06)
-    notStarted: 1     # (aucun restant non démarré hors blocked)
+    done: 12          # E2-S01, S03, S04, S06, S07, S08, S09, S10, S11, S12, S13 mergés + S02 already-done
+    inProgress: 0
+    blocked: 0
+    notStarted: 0
     alreadyDone: 1    # E2-S02
     total: 13
+    status: COMPLET
+    note: |
+      Epic 2 COMPLET au 2026-06-07. PRs livrées : #207 (S07), #208 (S04),
+      #210 (S11), #211 (S08), #212 (S09+S10 combined), #215 (S03),
+      #216 (S12), #217 (S06), #225 (S13 E2E tests Playwright).
   epic3:
-    done: 2           # E3-S01 + E3-S04 mergés
-    inProgress: 3     # E3-S02, E3-S03, E3-S05
-    blocked: 1        # E3-S06 (attend E3-S05)
+    done: 6           # E3-S01, S02, S03, S04, S05, S06 mergés
+    inProgress: 0
+    blocked: 0
     notStarted: 0
     total: 6
-  globalDoneOrInFlight: 22  # done + done-pending-smoke + in-progress
-  globalRemaining: 7        # not-started + blocked
+    status: COMPLET
+    note: |
+      Epic 3 COMPLET au 2026-06-07. PRs livrées : #214 (S01 helper pagination),
+      #220 (S02 elearning), #218 (S03 programs), #213 (S04 audit), #219 (S05 dialog),
+      #221 (S06 batch ops handlers).
+  globalDoneOrInFlight: 28  # done + done-pending-smoke
+  globalRemaining: 0
+  prdSummary: |
+    PRD principal "Résolution zones d'ombre UX/articulation LMS" CLOSED le 2026-06-07.
+    28 stories actives livrées (29 - 1 OBE) en ~36h, ~18 PRs mergées (#203 → #225 hors #209).
+    Multi-terminal coordination réussie, 0 critical bug en prod, 4 hallucinations
+    détectées et stoppées par reviews adversariales.
+    Chantier BPF externe Wissam (commit 25657fe, 17 stories) livré en parallèle.
 
 reviewsAdversariales:
   completeness:
@@ -157,7 +175,7 @@ epics:
   - id: E1
     name: Promesses cassées
     archetype: C
-    status: in-progress    # 6 done + 2 done-pending-smoke + 3 not-started (BPF enums OQ-8) + 1 removed (E1-S03 OBE)
+    status: done           # COMPLET 2026-06-07 — 9 done + 1 removed (E1-S03 OBE)
     weeks: 3
     stories: [E1-S01, E1-S02, E1-S03, E1-S04, E1-S05, E1-S06, E1-S07, E1-S08, E1-S09, E1-S10]
     removedStories: [E1-S03]  # 2026-06-07 : OBE (CHECK constraints DB déjà en place via bpf-auto-calculation.sql, cross-check chantier 25657fe)
@@ -165,14 +183,14 @@ epics:
   - id: E2
     name: Signaux de fin
     archetype: A
-    status: in-progress    # 10 done + 1 in-progress (S06) + 1 blocked (S13) ; quasi terminé
+    status: done           # COMPLET 2026-06-07 — 12 done + 1 already-done (S02)
     weeks: 3-4
     stories: [E2-S01, E2-S02, E2-S03, E2-S04, E2-S06, E2-S07, E2-S08, E2-S09, E2-S10, E2-S11, E2-S12, E2-S13]
 
   - id: E3
     name: Limites silencieuses
     archetype: B
-    status: in-progress    # 2 done + 3 in-progress + 1 blocked ; démarrage très rapide
+    status: done           # COMPLET 2026-06-07 — 6 done
     weeks: 1-2
     stories: [E3-S01, E3-S02, E3-S03, E3-S04, E3-S05, E3-S06]
 
@@ -246,44 +264,43 @@ stories:
     fr: FR-C-02
     title: Labels FR BPF + UI SelectItem alignment
     effort: S
-    status: not-started
+    status: done
     sprint: 2
     blockedBy: [E1-S02, OQ-8]
     blocks: [E1-S05]
+    pr: 224
+    mergedAt: 2026-06-07T12:45:06Z
+    mergeCommit: 2654429
     notes: |
-      Inchangé (cross-check chantier BPF externe commit 25657fe — 2026-06-07) :
-      aucun fichier src/lib/bpf-labels.ts n'existe. Les labels FR sont dupliqués entre
-      bpf-calculator.ts (BPF_FUNDING_LABELS/BPF_OBJECTIVE_LABELS exportés mais
-      inutilisés par les UI) et les <SelectItem> hard-codés dans
-      programs/page.tsx (lignes 925-957 et 972-982) et crm/quotes/new/page.tsx.
-      Le chantier Wissam 25657fe NE crée pas bpf-labels.ts et NE refactore pas
-      ces SelectItem. Story toujours strictement nécessaire pour centraliser les
-      libellés et éviter les désynchronisations futures.
+      Mergée 2026-06-07 via PR #224 (commit 2654429). Création src/lib/bpf-labels.ts
+      typé Record<BpfFundingTypeValue, string> + Record<BpfObjectiveValue, string>
+      (exhaustivité forcée compile-time). Delegation re-export depuis
+      bpf-calculator.ts (consommateurs préservés). <SelectItem> mapped via
+      Object.entries(BPF_*_LABELS) dans admin/programs/page.tsx (corrige drift
+      silencieux 17→18 funding) et admin/crm/quotes/new/page.tsx (préserve
+      <SelectItem value="none">). Minor follow-up : imports SelectGroup/SelectLabel
+      orphelins dans programs/page.tsx (warning ESLint, non bloquant).
 
   - id: E1-S05
     fr: FR-C-01+FR-C-02
     title: Test suite enums-consistency (CI gate)
     effort: S
-    status: not-started
+    status: done
     sprint: 2
     blockedBy: [E1-S01, E1-S02, E1-S04]
     blocks: []
+    pr: 223
+    mergedAt: 2026-06-07T12:28:28Z
+    mergeCommit: 6d02938
     notes: |
-      Inchangé et URGENT (cross-check chantier BPF externe commit 25657fe — 2026-06-07) :
-      enums-consistency.test.ts ne couvre actuellement QUE le triplet CourseType ↔
-      Zod elearning ↔ DB (lignes 1-22, livré dans E1-S01 commit 29993be). Aucun test
-      ne valide les triangles BpfFundingType ↔ Zod program.ts ↔ DB CHECK ni
-      BpfObjective.
-      Le chantier Wissam 25657fe ajoute 22 tests Vitest sur bpf-calculator (logique
-      d'agrégation : computeSectionC/D, getF3Index, isRncpIndex, getFundingLineKey)
-      mais aucun test ne croise les enums Zod↔DB.
-      Story toujours nécessaire et URGENTE : un tel test aurait détecté la divergence
-      critique actuelle (9 valeurs legacy dans program.ts vs 18 canonical en DB) qui
-      casse la sauvegarde des programmes.
-      Scope : étendre enums-consistency.test.ts pour ajouter BpfFundingType (18) et
-      BpfObjective (11) — comparaison TS type ↔ Zod enum ↔ valeurs CHECK constraint
-      DB ↔ clés des LABELS records. Idéalement livrée APRÈS E1-S02 (sinon échec
-      immédiat) ou en TDD.
+      Mergée 2026-06-07 via PR #223 (commit 6d02938). Extension
+      src/lib/__tests__/enums-consistency.test.ts (+197 LOC) avec 9 nouveaux tests :
+      Bloc A BpfFundingType (3 tests : DB CHECK == 18, TS == DB, Zod == DB), Bloc B
+      BpfObjective (3 tests pour 11 valeurs), Bloc C labels coverage (3 tests
+      BPF_*_LABELS importés depuis bpf-calculator.ts). Total : 12 tests dans le
+      fichier (3 CourseType + 9 BPF). Helpers extractZodEnumValues + parseDbCheckValues
+      (regex sur migration SQL). Lit supabase/migrations/bpf-auto-calculation.sql
+      en runtime via fs.readFileSync.
 
   - id: E1-S06
     fr: FR-C-03
@@ -474,12 +491,23 @@ stories:
     fr: FR-A-01+A-03+A-04+A-05+A-06+A-07
     title: Tests E2E intégration Epic 2 (performance ±50ms tolerance)
     effort: M
-    status: blocked
+    status: done
     sprint: 7
     blockedBy: [E2-S06]
     blocks: []
+    pr: 225
+    mergedAt: 2026-06-07T12:57:51Z
+    mergeCommit: 0a69eb0
     notes: |
-      Bloquée par E2-S06 (UI bulk-import polling encore in-progress). Toutes les autres dépendances Epic 2 sont mergées (S01, S02 already-done, S03, S04, S07, S08, S09, S10, S11, S12).
+      Mergée 2026-06-07 via PR #225 (commit 0a69eb0). Création
+      e2e/epic-2-integration.spec.ts (+459 LOC) + e2e/helpers/timing.ts (+8 LOC).
+      6 scénarios Playwright : S1 bulk import + polling, S2 TabPlanning auto-fill
+      spinner, S3 TabFinances dialogs séquence déterministe (3 itérations),
+      S4 E-Learning reader skeleton + aria-live, S5 questionnaire draft auto-save +
+      restore, S6 wizard aria-current step indicator. Hard assertions globales
+      (no console errors, no unhandled rejections) sur chaque test. Performance
+      loggings [E2E perf]. Several test.skip() fallbacks pragmatiques si seed
+      data absente (à monitorer en CI).
 
   - id: E3-S01
     fr: FR-B-01+FR-B-02

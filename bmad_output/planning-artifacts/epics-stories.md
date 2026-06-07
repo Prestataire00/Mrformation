@@ -72,11 +72,11 @@ Effort total estimé : **~8.5-9 semaines solo dev** séquentiel (révisé +1 sem
 
 | Epic | Archétype | FR couverts | Stories | Statut (2026-06-07) | Effort | Pre-conditions globales |
 |------|-----------|-------------|---------|---------------------|--------|--------------------------|
-| **Epic 1 — Promesses cassées** | C | FR-C-01 → FR-C-05 | 10 (E1-S01 → E1-S10) | **6 done + 2 done-pending-smoke + 3 not-started (E1-S02/S04/S05 BPF enums) + 1 removed-OBE (E1-S03)** | ~2-2.5 sem (révisé depuis ~3 sem post-S0) | S0 ✅ complet, OQ-7 ⏳, OQ-8 partial-resolved 2026-06-07 |
-| **Epic 2 — Signaux de fin** | A | FR-A-01, FR-A-03 → FR-A-07 | 13 (E2-S01 → E2-S13) | **10 done + 1 already-done (E2-S02) + 1 in-progress (E2-S06) + 1 blocked (E2-S13)** | ~3-4 sem | Epic 1 partiel mergé (E1-S01 pour E2-S10) |
-| **Epic 3 — Limites silencieuses** | B | FR-B-01, FR-B-02, FR-B-03 | 6 (E3-S01 → E3-S06) | **2 done (S01, S04) + 3 in-progress (S02, S03, S05) + 1 blocked (S06)** | ~1-2 sem | Epic 1 mergé + main stable 24h, OQ-2/6 |
+| **Epic 1 — Promesses cassées** | C | FR-C-01 → FR-C-05 | 10 (E1-S01 → E1-S10) | **✅ COMPLET — 7 done + 2 done-pending-smoke + 1 removed-OBE (E1-S03)** | ~2-2.5 sem | livré 2026-06-07 |
+| **Epic 2 — Signaux de fin** | A | FR-A-01, FR-A-03 → FR-A-07 | 13 (E2-S01 → E2-S13) | **✅ COMPLET — 12 done + 1 already-done (E2-S02)** | ~3-4 sem | livré 2026-06-07 |
+| **Epic 3 — Limites silencieuses** | B | FR-B-01, FR-B-02, FR-B-03 | 6 (E3-S01 → E3-S06) | **✅ COMPLET — 6 done** | ~1-2 sem | livré 2026-06-07 |
 
-**Total PRD principal** : 29 stories — **19 done + 1 already-done + 2 done-pending-smoke + 4 in-progress + 2 blocked + 3 not-started + 1 removed-OBE** (état au 2026-06-07).
+**Total PRD principal** : 29 stories — **28 done/done-pending-smoke + 1 removed-OBE** (état au 2026-06-07). **🏁 PRD CLOSED**.
 
 **Chantier BPF externe (parallèle)** : 17 stories (3 epics) en in-progress, commit `25657fe`. Voir section "Chantier BPF rapport Cerfa" ci-dessus. NON agrégé dans les compteurs du PRD principal — périmètres disjoints.
 
@@ -85,6 +85,30 @@ Effort total estimé : **~8.5-9 semaines solo dev** séquentiel (révisé +1 sem
 > - 2 stories Epic 1 déjà livrées dans le code existant : **E1-S06** (Dupliquer formation) + **E1-S07** (Supprimer formation). Audit A3 a découvert que helpers `duplicateSession()` + `deleteSession()` existent déjà dans `src/lib/services/sessions.ts` et UI branchée dans `ResumeActions.tsx` + `ResumeDangerZone.tsx`. → Smoke test admin requis (10 min total) pour confirmer livraison.
 > - Effort Epic 1 réduit : ~3 sem → ~2-2.5 sem
 > - Reste à trancher avant kickoff Epic 1 : OQ-7 (vacances) + OQ-8 (mapping BPF — informé par A2 qui confirme aucun fichier Zod BPF existant pour trainings/crm_quotes, à créer)
+
+---
+
+## 🏁 PRD principal CLOSED — 2026-06-07
+
+**Toutes les stories Epic 1 + Epic 2 + Epic 3 sont livrées et mergées sur main.** Dernière PR : #225 (E2-S13 tests E2E Playwright) mergée à 12:57:51 UTC.
+
+### Récapitulatif livraison (session 2026-06-06 → 07)
+- **~18 PRs mergées** (#203 → #225 hors #209 hotfix qualité)
+- **~36h de session intensive** en multi-terminal coordonné (jusqu'à 4 worktrees parallèles)
+- **0 critical bug** en prod
+- **4 hallucinations** détectées et stoppées par reviews adversariales paranoïaques
+- **+ chantier BPF externe Wissam** (commit `25657fe`, 17 stories — page rapport BPF annuel Cerfa) livré en parallèle
+
+### Stories livrées en fin de session (post-mise à jour BMAD précédente)
+- **E1-S02** : PR #222 (d0845cc) — Zod align BPF enums (program + trainings + crm-quotes)
+- **E1-S04** : PR #224 (2654429) — Labels canonical via bpf-labels.ts + SelectItem refactor
+- **E1-S05** : PR #223 (6d02938) — Test suite enums-consistency BPF (TS ↔ Zod ↔ DB CHECK)
+- **E2-S13** : PR #225 (0a69eb0) — Tests E2E Playwright Epic 2 (6 scénarios + perf assertions)
+
+### Suite (hors PRD principal)
+- Smoke test admin sur E1-S06 / E1-S07 (Dupliquer / Supprimer formation) — 10 min, à planifier
+- Follow-ups mineurs documentés dans les notes des stories E1-S04 (imports SelectGroup/SelectLabel orphelins) et E2-S13 (monitoring taux test.skip en CI)
+- 17 stories du chantier BPF externe Wissam (epic-bpf-audit-amelioration) à finaliser séparément si certaines restent ouvertes
 
 ---
 
