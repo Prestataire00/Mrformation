@@ -103,11 +103,11 @@ describe("programHubFormSchema", () => {
     }
   });
 
-  it("accepte les enum BPF valides", () => {
+  it("accepte les enum BPF valides (valeurs canonical)", () => {
     const result = programHubFormSchema.safeParse({
       ...validHubForm,
-      bpf_objective: "qualification",
-      bpf_funding_type: "opco",
+      bpf_objective: "rncp_6_8",
+      bpf_funding_type: "entreprise_privee",
     });
     expect(result.success).toBe(true);
   });

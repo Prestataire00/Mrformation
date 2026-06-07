@@ -19,6 +19,7 @@
  */
 
 import { z } from "zod";
+import { BPF_FUNDING_TYPE_VALUES, BPF_OBJECTIVE_VALUES } from "@/lib/bpf-enums";
 
 // ── Schémas auxiliaires ────────────────────────────────────────────
 
@@ -98,36 +99,11 @@ export const programHubFormSchema = z.object({
   is_apprenticeship: z.boolean(),
   bpf_objective: z.preprocess(
     emptyToNull,
-    z
-      .enum([
-        "professionnalisation",
-        "qualification",
-        "validation_acquis",
-        "bilan_competences",
-        "creation_entreprise",
-        "perfectionnement",
-        "actualisation",
-        "adaptation_poste",
-        "remise_a_niveau",
-        "decouverte",
-      ])
-      .nullable(),
+    z.enum(BPF_OBJECTIVE_VALUES).nullable(),
   ),
   bpf_funding_type: z.preprocess(
     emptyToNull,
-    z
-      .enum([
-        "opco",
-        "entreprise",
-        "particulier",
-        "pole_emploi",
-        "cpf",
-        "region",
-        "etat",
-        "fne",
-        "autre",
-      ])
-      .nullable(),
+    z.enum(BPF_FUNDING_TYPE_VALUES).nullable(),
   ),
 });
 
