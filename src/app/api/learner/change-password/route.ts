@@ -85,6 +85,10 @@ export async function POST(request: NextRequest) {
       .update({
         password_must_change: false,
         first_login_at: learner.first_login_at ?? new Date().toISOString(),
+        // RGPD : purge le temp_password en clair une fois que l'apprenant a
+        // défini son propre mot de passe. La convention papier devient
+        // obsolète à ce moment-là (comportement attendu).
+        temp_password: null,
       })
       .eq("id", learner.id);
 
