@@ -88,7 +88,7 @@ export default function TabIdentite({ learner, editing, onSave, saving, clientOp
 
   const set = (key: string, val: string) => setForm((f) => ({ ...f, [key]: val }));
   const meta = learner.loris_metadata;
-  const rthValue = metaVal(meta, "Reconnaissance Travailleur Handicape");
+  const rthValue = metaVal(meta, "Reconnaissance Travailleur Handicapé");
   const maskedSSN = learner.social_security_number
     ? learner.social_security_number.replace(/.(?=.{4})/g, "*")
     : null;
@@ -233,7 +233,7 @@ export default function TabIdentite({ learner, editing, onSave, saving, clientOp
           <DataRow label="Statut" value={metaVal(meta, "Statut")} />
           <DataRow label="Fonction" value={metaVal(meta, "Fonction")} />
           <div className="flex justify-between py-1">
-            <span className="text-gray-400 text-sm">Reconnaissance Travailleur Handicape</span>
+            <span className="text-gray-400 text-sm">Reconnaissance Travailleur Handicapé</span>
             {rthValue ? (
               <Badge className={rthValue.toLowerCase() === "oui" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}>
                 {rthValue}
