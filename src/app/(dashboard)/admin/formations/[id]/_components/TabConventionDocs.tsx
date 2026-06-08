@@ -770,10 +770,46 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     return { name: "Propriétaire inconnu", email: null };
   };
 
+  // P4a : auto-create accès des apprenants sans compte avant opération convention
+  const ensureAccessBeforeConvention = async (clientId?: string): Promise<void> => {
+    try {
+      const res = await fetch(`/api/sessions/${formation.id}/ensure-learner-access`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(clientId ? { client_id: clientId } : {}),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.created > 0) {
+          toast({
+            title: `${data.created} accès créés automatiquement`,
+            description: "Les apprenants sans compte ont reçu identifiant + mot de passe (intégrés dans le document).",
+          });
+        }
+        if (data.failed > 0) {
+          toast({
+            title: "Attention",
+            description: `${data.failed} apprenants n'ont pas pu être activés — le document sera généré sans leurs credentials.`,
+            variant: "destructive",
+          });
+        }
+      } else {
+        console.warn("[TabConventionDocs] ensure-learner-access failed, continuing without new access");
+      }
+    } catch (err) {
+      console.warn("[TabConventionDocs] ensure-learner-access error:", err);
+    }
+  };
+
   const handleMassSendWithPDF = async (ownerType: ConventionOwnerType, docType: string) => {
     const key = `${ownerType}-${docType}`;
     setMassSending(key);
     try {
+      // P4a : auto-create accès pour les apprenants avant envoi
+      if (ownerType === "learner" || ownerType === "company") {
+        await ensureAccessBeforeConvention();
+      }
+
       const result = await batchSendEmailWithRefetch(
         supabase,
         { docType, sessionId: formation.id },
@@ -913,6 +949,11 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
   const handleMassConfirm = async (docType: ConventionDocType, ownerType?: OwnerType) => {
     setSaving(`mass-confirm-${docType}`);
     try {
+      // P4a : auto-create accès avant figeage documents (si learner/company scope)
+      if (!ownerType || ownerType === "learner" || ownerType === "company" || ownerType === "session") {
+        await ensureAccessBeforeConvention();
+      }
+
       const result = await batchConfirmDocumentsWithRefetch(
         supabase,
         { entityId: formation.entity_id, sessionId: formation.id, docType, ownerType },
