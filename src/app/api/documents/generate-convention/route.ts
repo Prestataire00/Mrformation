@@ -31,6 +31,7 @@ import {
   DocumentGenerationService,
   createDefaultEngine,
 } from "@/lib/services/document-generation";
+import { buildCredentialsSectionHtml } from "@/lib/services/credentials-qr";
 import type { Session, Client } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
@@ -132,8 +133,44 @@ export async function POST(request: NextRequest) {
       client: client as unknown as Client,
       entity,
     };
-    const resolvedHtml = resolveDocumentVariables(CONVENTION_ENTREPRISE_HTML, context);
+    let resolvedHtml = resolveDocumentVariables(CONVENTION_ENTREPRISE_HTML, context);
     const resolvedFooter = resolveDocumentVariables(CONVENTION_FOOTER_TEMPLATE, context);
+
+    // ── P3 Credentials : embed username + temp_password + QR code ────────
+    // Filtrer les apprenants de ce client dans la session
+    const clientEnrollments = ((session as Record<string, unknown>).enrollments as Array<{
+      client_id?: string;
+      learner?: {
+        first_name?: string;
+        last_name?: string;
+        username?: string | null;
+        temp_password?: string | null;
+        profile_id?: string | null;
+        first_login_at?: string | null;
+      };
+    }>) || [];
+    const clientLearners = clientEnrollments
+      .filter((e) => e.client_id === body.clientId && e.learner)
+      .map((e) => e.learner!);
+
+    const entitySlug = entity?.slug ?? undefined;
+    const credentialsHtml = await buildCredentialsSectionHtml(clientLearners, entitySlug);
+
+    if (credentialsHtml) {
+      // Inject after Article 2 (effectif formé) — before Article 3
+      const article3Marker = '<h2>Article 3';
+      const insertIdx = resolvedHtml.indexOf(article3Marker);
+      if (insertIdx > -1) {
+        resolvedHtml = resolvedHtml.slice(0, insertIdx) + credentialsHtml + "\n\n  " + resolvedHtml.slice(insertIdx);
+      } else {
+        // Fallback: append before signature block
+        const sigMarker = '<div class="signature-block">';
+        const sigIdx = resolvedHtml.indexOf(sigMarker);
+        if (sigIdx > -1) {
+          resolvedHtml = resolvedHtml.slice(0, sigIdx) + credentialsHtml + "\n\n  " + resolvedHtml.slice(sigIdx);
+        }
+      }
+    }
 
     // ── Génération PDF via nouvelle infra ─────────────────────────────────
     const engine = createDefaultEngine();
