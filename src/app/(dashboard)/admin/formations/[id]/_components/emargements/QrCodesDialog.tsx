@@ -124,7 +124,7 @@ export function QrCodesDialog({
                   </div>
                 )}
                 <p className="text-xs text-amber-700">
-                  Si <code>enrollments_count = 0</code> mais que vous voyez l&apos;apprenant en bas de la page, c&apos;est un problème de session_id ou de RLS service_role. Si <code>enrollments_with_learner</code> est inférieur à <code>enrollments_count</code>, la jointure FK <code>learners</code> est cassée.
+                  Si le compteur est à 0 mais que vous voyez l&apos;apprenant en bas de la page, contactez le support. Si le compteur d&apos;apprenants liés est inférieur au total, certains apprenants ne sont pas correctement rattachés à la session.
                 </p>
               </div>
             )}

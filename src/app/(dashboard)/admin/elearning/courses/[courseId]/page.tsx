@@ -485,7 +485,7 @@ export default function CourseEditorPage() {
               onClick={handleRegenerate}
               disabled={regenerating}
               className="gap-2 text-amber-700 border-amber-300 hover:bg-amber-50"
-              title="Relance le pipeline IA en plusieurs appels courts (évite le timeout Netlify)"
+              title="Relance la génération IA en plusieurs étapes (évite les délais d'attente trop longs)"
             >
               {regenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
               {regenerating ? (regenerateStep ?? "Régénération…") : "Régénérer le cours"}
