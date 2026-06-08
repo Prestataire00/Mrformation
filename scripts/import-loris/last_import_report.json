@@ -1,14 +1,24 @@
 {
   "mode": "EXECUTE",
-  "started_at": "2026-06-07T22:30:53.455738Z",
+  "started_at": "2026-06-08T07:45:30.162856Z",
   "tables": {
-    "crm_quotes": {
-      "total_rows": 181,
-      "to_insert": 181,
-      "inserted": 181,
+    "enrollments": {
+      "total_rows": 1089,
+      "to_insert": 140,
+      "skipped_no_match": 0,
+      "skipped_duplicates": 949,
+      "inserted": 140,
+      "errors": 0,
+      "error_samples": []
+    },
+    "formation_invoices": {
+      "total_rows": 170,
+      "to_insert": 72,
+      "skipped_no_match": 0,
+      "inserted": 72,
       "errors": 0,
       "error_samples": []
     }
   },
-  "ended_at": "2026-06-07T22:30:53.775408Z"
+  "ended_at": "2026-06-08T07:45:31.743640Z"
 }

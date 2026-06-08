@@ -191,6 +191,18 @@ def to_decimal(v):
         return None
 
 
+def norm_name(s):
+    """Normalise un nom pour matching : lowercase, espaces multiples → 1, NFD strip accents."""
+    if s is None:
+        return ""
+    import unicodedata
+    s = str(s).strip().lower()
+    s = re.sub(r"\s+", " ", s)
+    s = unicodedata.normalize("NFD", s)
+    s = "".join(c for c in s if unicodedata.category(c) != "Mn")
+    return s
+
+
 def split_name(full):
     """Sépare 'NOM Prénom' (NOM en majuscules) → (first, last). Tolère noms 1-mot
     en mettant le nom complet dans last_name et un placeholder dans first_name
@@ -248,7 +260,7 @@ def map_learner(row, idx, clients_by_name):
         return None
     email = norm(row.get("Email"))
     entreprise = norm(row.get("Entreprise"))
-    client_id = clients_by_name.get(entreprise.lower()) if entreprise else None
+    client_id = clients_by_name.get(norm_name(entreprise)) if entreprise else None
 
     # birth fields
     birth_date = to_date(row.get("Date de naissance"))
@@ -325,7 +337,7 @@ def map_session(row, idx, trainings_by_title):
     title = norm(row.get("Nom de la formation"))
     if not title:
         return None
-    training_id = trainings_by_title.get(title.lower())
+    training_id = trainings_by_title.get(norm_name(title))
 
     start_date = to_date(row.get("Date de début de la formation"))
     end_date = to_date(row.get("Date de fin de la formation"))
@@ -371,14 +383,15 @@ def map_session(row, idx, trainings_by_title):
     }
 
 
-def map_formation_trainer(row, sessions_by_title_date, trainers_by_name):
+def map_formation_trainer(row, sessions_by_title, trainers_by_name):
+    """Note: matching session par TITLE ONLY (la date dans Suivi formateurs diffère parfois de Suivi activité)."""
     formateur_name = norm(row.get("Formateur"))
     title = norm(row.get("Formation"))
     if not formateur_name or not title:
         return None
     start_date = to_date(row.get("Date de début"))
-    session_id = sessions_by_title_date.get((title.lower(), start_date))
-    trainer_id = trainers_by_name.get(formateur_name.lower())
+    session_id = sessions_by_title.get(norm_name(title))
+    trainer_id = trainers_by_name.get(norm_name(formateur_name))
     if not session_id or not trainer_id:
         return {
             "_skip_reason": f"no_session_or_trainer (session={session_id}, trainer={trainer_id})",
@@ -394,21 +407,22 @@ def map_formation_trainer(row, sessions_by_title_date, trainers_by_name):
         return None
     tarif = to_decimal(row.get("Tarif"))
     par = norm(row.get("Par")) or ""
-    rate_field = "daily_rate" if "jour" in par.lower() else "hourly_rate"
+    is_daily = "jour" in par.lower()
 
+    # PostgREST batch insert exige des keys identiques — toujours fournir les 2 colonnes
     payload = {
         "session_id": session_id,
         "trainer_id": trainer_id,
         "role": "formateur",
         "hours_done": parse_hours(row.get("Heures réalisées")),
+        "hourly_rate": tarif if (tarif is not None and not is_daily) else None,
+        "daily_rate": tarif if (tarif is not None and is_daily) else None,
         "loris_external_id": stable_external_id("ft", title, formateur_name, start_date or ""),
         "loris_metadata": {
             "loris_par": par,
             "loris_heures_prevues": norm(row.get("Heures prévues")),
         },
     }
-    if tarif is not None:
-        payload[rate_field] = tarif
     return payload
 
 
@@ -417,8 +431,8 @@ def map_enrollment(row, sessions_by_title, learners_by_name):
     nom = norm(row.get("Nom"))
     if not formation or not nom:
         return None
-    session_id = sessions_by_title.get(formation.lower())
-    learner_id = learners_by_name.get(nom.lower())
+    session_id = sessions_by_title.get(norm_name(formation))
+    learner_id = learners_by_name.get(norm_name(nom))
     if not session_id or not learner_id:
         return {
             "_skip_reason": f"no_session_or_learner (session={session_id}, learner={learner_id})",
@@ -459,7 +473,7 @@ def map_enrollment(row, sessions_by_title, learners_by_name):
 def map_crm_quote(row, idx, clients_by_name):
     reference = norm(row.get("Numéro")) or f"LORIS-DEVIS-{idx}"
     destinataire = norm(row.get("Destinataire"))
-    client_id = clients_by_name.get(destinataire.lower()) if destinataire else None
+    client_id = clients_by_name.get(norm_name(destinataire)) if destinataire else None
 
     # CHECK constraint crm_quotes.status : ('draft','sent','accepted','rejected','expired')
     status_raw = (norm(row.get("Statut")) or "").lower()
@@ -506,7 +520,7 @@ def map_formation_invoice(row, idx, sessions_by_title, clients_by_name):
     destinataire = norm(row.get("Destinataire")) or norm(row.get("Client"))
     formation_title = norm(row.get("Nom de la formation"))
 
-    session_id = sessions_by_title.get(formation_title.lower()) if formation_title else None
+    session_id = sessions_by_title.get(norm_name(formation_title)) if formation_title else None
     if not session_id:
         return {
             "_skip_reason": f"no_session for formation '{formation_title}'",
@@ -527,7 +541,7 @@ def map_formation_invoice(row, idx, sessions_by_title, clients_by_name):
         status_db = "pending"
 
     # Recipient mapping : guess if it's a learner (no entreprise match) or company
-    client_id = clients_by_name.get(destinataire.lower()) if destinataire else None
+    client_id = clients_by_name.get(norm_name(destinataire)) if destinataire else None
     recipient_type = "company" if client_id else "learner"
     recipient_id = client_id  # if recipient_type=learner and no id, this will fail — fallback to placeholder UUID
     recipient_name = destinataire or "Inconnu"
@@ -570,21 +584,25 @@ def fetch_existing_lookups():
     rows = rest_get("clients", select="id,company_name,email,loris_external_id",
                     **{"entity_id": f"eq.{MR_ENTITY_ID}"})
     rows = rows if isinstance(rows, list) else []
-    out["clients_by_name"] = {r["company_name"].lower(): r["id"] for r in rows if r.get("company_name")}
-    out["clients_by_email"] = {r["email"].lower(): r["id"] for r in rows if r.get("email")}
+    out["clients_by_name"] = {norm_name(r["company_name"]): r["id"] for r in rows if r.get("company_name")}
+    out["clients_by_email"] = {norm_name(r["email"]): r["id"] for r in rows if r.get("email")}
     out["clients_by_loris_id"] = {r["loris_external_id"]: r["id"] for r in rows if r.get("loris_external_id")}
 
     print("  📋 Fetch learners existants...")
     rows = rest_get("learners", select="id,first_name,last_name,email,loris_external_id",
                     **{"entity_id": f"eq.{MR_ENTITY_ID}"})
     rows = rows if isinstance(rows, list) else []
-    out["learners_by_email"] = {r["email"].lower(): r["id"] for r in rows if r.get("email")}
+    out["learners_by_email"] = {norm_name(r["email"]): r["id"] for r in rows if r.get("email")}
     out["learners_by_loris_id"] = {r["loris_external_id"]: r["id"] for r in rows if r.get("loris_external_id")}
     out["learners_by_name"] = {}
     for r in rows:
-        name_key = f"{r.get('last_name') or ''} {r.get('first_name') or ''}".strip().lower()
-        if name_key:
-            out["learners_by_name"][name_key] = r["id"]
+        fn = r.get("first_name") or ""
+        ln = r.get("last_name") or ""
+        # Multiple variants for fuzzy matching
+        for variant in [f"{ln} {fn}", f"{fn} {ln}", ln, fn]:
+            k = norm_name(variant)
+            if k:
+                out["learners_by_name"][k] = r["id"]
 
     print("  📋 Fetch trainers existants...")
     rows = rest_get("trainers", select="id,first_name,last_name",
@@ -592,43 +610,49 @@ def fetch_existing_lookups():
     rows = rows if isinstance(rows, list) else []
     out["trainers_by_name"] = {}
     for r in rows:
-        name_key = f"{r.get('last_name') or ''} {r.get('first_name') or ''}".strip().lower()
-        if name_key:
-            out["trainers_by_name"][name_key] = r["id"]
-        name_key2 = f"{r.get('first_name') or ''} {r.get('last_name') or ''}".strip().lower()
-        if name_key2:
-            out["trainers_by_name"][name_key2] = r["id"]
+        fn = r.get("first_name") or ""
+        ln = r.get("last_name") or ""
+        for variant in [f"{ln} {fn}", f"{fn} {ln}", ln, fn]:
+            k = norm_name(variant)
+            if k:
+                out["trainers_by_name"][k] = r["id"]
 
     print("  📋 Fetch trainings existants...")
     rows = rest_get("trainings", select="id,title,loris_external_id",
                     **{"entity_id": f"eq.{MR_ENTITY_ID}"})
     rows = rows if isinstance(rows, list) else []
-    out["trainings_by_title"] = {r["title"].lower(): r["id"] for r in rows if r.get("title")}
+    out["trainings_by_title"] = {norm_name(r["title"]): r["id"] for r in rows if r.get("title")}
     out["trainings_by_loris_id"] = {r["loris_external_id"]: r["id"] for r in rows if r.get("loris_external_id")}
 
     print("  📋 Fetch sessions existantes...")
     rows = rest_get("sessions", select="id,title,start_date,loris_external_id",
                     **{"entity_id": f"eq.{MR_ENTITY_ID}"})
     rows = rows if isinstance(rows, list) else []
-    out["sessions_by_title"] = {r["title"].lower(): r["id"] for r in rows if r.get("title")}
+    # sessions_by_title : first session matching (assouplit le matching par date)
+    out["sessions_by_title"] = {}
     out["sessions_by_title_date"] = {}
     for r in rows:
         if r.get("title"):
-            out["sessions_by_title_date"][(r["title"].lower(), r.get("start_date"))] = r["id"]
+            k = norm_name(r["title"])
+            out["sessions_by_title"].setdefault(k, r["id"])
+            out["sessions_by_title_date"][(k, r.get("start_date"))] = r["id"]
     out["sessions_by_loris_id"] = {r["loris_external_id"]: r["id"] for r in rows if r.get("loris_external_id")}
 
     return out
 
 
-def insert_batch(table, rows, dry_run, batch_size=100):
+def insert_batch(table, rows, dry_run, batch_size=100, ignore_duplicates=False):
     """Insert with auto-batching. Returns (inserted_ids, errors)."""
     if dry_run:
         return [], []
     inserted = []
     errors = []
+    prefer = "return=representation"
+    if ignore_duplicates:
+        prefer += ",resolution=ignore-duplicates"
     for i in range(0, len(rows), batch_size):
         batch = rows[i : i + batch_size]
-        result = rest_post(table, batch)
+        result = rest_post(table, batch, prefer=prefer)
         if isinstance(result, dict) and result.get("_error"):
             errors.append({"batch_start": i, "status": result["status"], "body": result["body"][:500]})
         elif isinstance(result, list):
@@ -682,10 +706,10 @@ def main():
                 if payload["loris_external_id"] in lk["clients_by_loris_id"]:
                     skipped_dup += 1
                     continue
-                if payload["email"] and payload["email"].lower() in lk["clients_by_email"]:
+                if payload["email"] and norm_name(payload["email"]) in lk["clients_by_email"]:
                     skipped_dup += 1
                     continue
-                if payload["company_name"].lower() in lk["clients_by_name"]:
+                if norm_name(payload["company_name"]) in lk["clients_by_name"]:
                     skipped_dup += 1
                     continue
                 if payload["loris_external_id"] in seen_ext:
@@ -702,7 +726,7 @@ def main():
             # Refresh lookups
             for r in inserted:
                 if r.get("company_name"):
-                    lk["clients_by_name"][r["company_name"].lower()] = r["id"]
+                    lk["clients_by_name"][norm_name(r["company_name"])] = r["id"]
                 if r.get("loris_external_id"):
                     lk["clients_by_loris_id"][r["loris_external_id"]] = r["id"]
             report["tables"]["clients"] = {
@@ -731,10 +755,10 @@ def main():
                 if payload["loris_external_id"] in lk["learners_by_loris_id"]:
                     skipped_dup += 1
                     continue
-                if payload["email"] and payload["email"].lower() in lk["learners_by_email"]:
+                if payload["email"] and norm_name(payload["email"]) in lk["learners_by_email"]:
                     skipped_dup += 1
                     continue
-                name_key = f"{payload.get('last_name') or ''} {payload.get('first_name') or ''}".strip().lower()
+                name_key = norm_name(f"{payload.get('last_name') or ''} {payload.get('first_name') or ''}")
                 if name_key and name_key in lk["learners_by_name"]:
                     skipped_dup += 1
                     continue
@@ -750,7 +774,7 @@ def main():
             if errors:
                 print(f"  Sample error : {errors[0]}")
             for r in inserted:
-                name_key = f"{r.get('last_name') or ''} {r.get('first_name') or ''}".strip().lower()
+                name_key = norm_name(f"{r.get('last_name') or ''} {r.get('first_name') or ''}")
                 if name_key:
                     lk["learners_by_name"][name_key] = r["id"]
                 if r.get("loris_external_id"):
@@ -776,13 +800,13 @@ def main():
             trainings_dedup = {}
             for row in data:
                 t = map_training_from_session(row)
-                if t and t["title"].lower() not in trainings_dedup:
-                    trainings_dedup[t["title"].lower()] = t
+                if t and norm_name(t["title"]) not in trainings_dedup:
+                    trainings_dedup[norm_name(t["title"])] = t
 
             to_insert_t = []
             skipped_dup_t = 0
             for t in trainings_dedup.values():
-                if t["title"].lower() in lk["trainings_by_title"]:
+                if norm_name(t["title"]) in lk["trainings_by_title"]:
                     skipped_dup_t += 1
                     continue
                 to_insert_t.append(t)
@@ -793,7 +817,7 @@ def main():
                 print(f"  Sample : {errors_t[0]}")
             for r in inserted_t:
                 if r.get("title"):
-                    lk["trainings_by_title"][r["title"].lower()] = r["id"]
+                    lk["trainings_by_title"][norm_name(r["title"])] = r["id"]
 
             # Sessions : 1 par ligne du fichier (peut avoir plusieurs sessions pour la même training)
             to_insert_s, skipped_dup_s = [], 0
@@ -805,7 +829,7 @@ def main():
                 if s["loris_external_id"] in lk["sessions_by_loris_id"]:
                     skipped_dup_s += 1
                     continue
-                key = (s["title"].lower(), s.get("start_date"))
+                key = (norm_name(s["title"]), s.get("start_date"))
                 if key in lk["sessions_by_title_date"]:
                     skipped_dup_s += 1
                     continue
@@ -821,8 +845,8 @@ def main():
                 print(f"  Sample : {errors_s[0]}")
             for r in inserted_s:
                 if r.get("title"):
-                    lk["sessions_by_title"][r["title"].lower()] = r["id"]
-                    lk["sessions_by_title_date"][(r["title"].lower(), r.get("start_date"))] = r["id"]
+                    lk["sessions_by_title"][norm_name(r["title"])] = r["id"]
+                    lk["sessions_by_title_date"][(norm_name(r["title"]), r.get("start_date"))] = r["id"]
                 if r.get("loris_external_id"):
                     lk["sessions_by_loris_id"][r["loris_external_id"]] = r["id"]
 
@@ -844,22 +868,66 @@ def main():
         if not data:
             print(f"  ⚠️  {FILES['formation_trainers']} introuvable")
         else:
-            to_insert, skipped_match, skipped_dup = [], 0, 0
-            seen_ext = set()
+            # Bootstrap : créer les trainers Loris manquants en bulk avant le mapping
+            loris_trainers = set()
             for row in data:
-                p = map_formation_trainer(row, lk["sessions_by_title_date"], lk["trainers_by_name"])
+                fn = norm(row.get("Formateur"))
+                if fn:
+                    loris_trainers.add(fn)
+            missing = [t for t in loris_trainers if norm_name(t) not in lk["trainers_by_name"]]
+            if missing:
+                print(f"  🔧 Bootstrap : {len(missing)} trainers Loris à créer en pré-import")
+                trainer_payloads = []
+                for name in missing:
+                    first, last = split_name(name)
+                    trainer_payloads.append({
+                        "entity_id": MR_ENTITY_ID,
+                        "first_name": first or "—",
+                        "last_name": last or name,
+                        "type": "external",
+                    })
+                if not dry:
+                    inserted_trainers, errs = insert_batch("trainers", trainer_payloads, dry)
+                    for r in inserted_trainers:
+                        fn = r.get("first_name") or ""
+                        ln = r.get("last_name") or ""
+                        for variant in [f"{ln} {fn}", f"{fn} {ln}", ln, fn]:
+                            k = norm_name(variant)
+                            if k:
+                                lk["trainers_by_name"][k] = r["id"]
+                    print(f"  ✅ Bootstrap trainers : {len(inserted_trainers)} créés, {len(errs)} errs")
+                    if errs:
+                        print(f"    Sample : {errs[0]}")
+
+            # Fetch existing (session_id, trainer_id) pour dedup persistant
+            existing_ft = rest_get("formation_trainers", select="session_id,trainer_id,loris_external_id")
+            existing_pairs = {(r["session_id"], r["trainer_id"]) for r in (existing_ft if isinstance(existing_ft, list) else [])}
+            existing_ext_ft = {r["loris_external_id"] for r in (existing_ft if isinstance(existing_ft, list) else []) if r.get("loris_external_id")}
+            print(f"  ℹ️  {len(existing_pairs)} (session,trainer) pairs déjà en DB")
+
+            to_insert, skipped_match, skipped_dup, skipped_existing = [], 0, 0, 0
+            seen_ext = set()
+            seen_pairs = set()
+            for row in data:
+                p = map_formation_trainer(row, lk["sessions_by_title"], lk["trainers_by_name"])
                 if not p:
                     continue
                 if "_skip_reason" in p:
                     skipped_match += 1
                     continue
-                if p["loris_external_id"] in seen_ext:
+                pair = (p["session_id"], p["trainer_id"])
+                ext = p["loris_external_id"]
+                if ext in seen_ext or ext in existing_ext_ft:
                     skipped_dup += 1
                     continue
-                seen_ext.add(p["loris_external_id"])
+                if pair in seen_pairs or pair in existing_pairs:
+                    skipped_existing += 1
+                    continue
+                seen_ext.add(ext)
+                seen_pairs.add(pair)
                 to_insert.append(p)
-            print(f"  → {len(to_insert)} à insérer, {skipped_match} skippés (no match session/trainer), {skipped_dup} doublons")
-            inserted, errors = insert_batch("formation_trainers", to_insert, dry)
+            print(f"  → {len(to_insert)} à insérer, {skipped_match} no-match, {skipped_dup} doublons loris, {skipped_existing} pairs (session,trainer) déjà liées")
+            inserted, errors = insert_batch("formation_trainers", to_insert, dry, ignore_duplicates=True)
             print(f"  ✅ inserted={len(inserted)} | errors={len(errors)}")
             if errors:
                 print(f"  Sample : {errors[0]}")
@@ -880,6 +948,45 @@ def main():
         if not data:
             print(f"  ⚠️  {FILES['enrollments']} introuvable")
         else:
+            # Bootstrap : créer les learners Loris manquants (référencés dans Suivi stagiaires mais absents de Apprenants.xlsx)
+            referenced_names = {norm(r.get("Nom")) for r in data if norm(r.get("Nom"))}
+            missing_learners = [n for n in referenced_names if norm_name(n) not in lk["learners_by_name"]]
+            if missing_learners:
+                print(f"  🔧 Bootstrap : {len(missing_learners)} learners Loris manquants à créer")
+                bootstrap_payloads = []
+                seen_bs = set()
+                for name in missing_learners:
+                    first, last = split_name(name)
+                    ext = stable_external_id("learner", first or "", last or "", "")
+                    if ext in seen_bs or ext in lk["learners_by_loris_id"]:
+                        continue
+                    seen_bs.add(ext)
+                    bootstrap_payloads.append({
+                        "entity_id": MR_ENTITY_ID,
+                        "first_name": first or "—",
+                        "last_name": last or name,
+                        "loris_external_id": ext,
+                        "loris_metadata": {"_bootstrap_from_enrollments": True},
+                    })
+                if bootstrap_payloads and not dry:
+                    bs_inserted, bs_errs = insert_batch("learners", bootstrap_payloads, dry)
+                    for r in bs_inserted:
+                        fn = r.get("first_name") or ""
+                        ln = r.get("last_name") or ""
+                        for v in [f"{ln} {fn}", f"{fn} {ln}", ln, fn]:
+                            k = norm_name(v)
+                            if k:
+                                lk["learners_by_name"][k] = r["id"]
+                    print(f"  ✅ Bootstrap learners : {len(bs_inserted)} créés, {len(bs_errs)} errs")
+                    if bs_errs:
+                        print(f"    Sample : {bs_errs[0]}")
+
+            # Fetch existing loris_external_id pour dedup persistant
+            existing = rest_get("enrollments", select="loris_external_id",
+                                **{"loris_external_id": "not.is.null"})
+            existing_ext = {r["loris_external_id"] for r in (existing if isinstance(existing, list) else []) if r.get("loris_external_id")}
+            print(f"  ℹ️  {len(existing_ext)} enrollments loris-tagged déjà en DB")
+
             to_insert, skipped_match, skipped_dup = [], 0, 0
             seen_ext = set()
             for row in data:
@@ -889,10 +996,11 @@ def main():
                 if "_skip_reason" in p:
                     skipped_match += 1
                     continue
-                if p["loris_external_id"] in seen_ext:
+                ext = p["loris_external_id"]
+                if ext in seen_ext or ext in existing_ext:
                     skipped_dup += 1
                     continue
-                seen_ext.add(p["loris_external_id"])
+                seen_ext.add(ext)
                 to_insert.append(p)
             print(f"  → {len(to_insert)} à insérer, {skipped_match} skippés (no match session/learner), {skipped_dup} doublons")
             inserted, errors = insert_batch("enrollments", to_insert, dry)
@@ -941,7 +1049,59 @@ def main():
         if not data:
             print(f"  ⚠️  {FILES['formation_invoices']} introuvable")
         else:
-            to_insert, skipped_match = [], 0
+            # Récupère le MAX(global_number) existant pour éviter collision
+            existing = rest_get("formation_invoices",
+                                select="global_number",
+                                order="global_number.desc.nullslast",
+                                limit="1",
+                                **{"entity_id": f"eq.{MR_ENTITY_ID}"})
+            max_gn = 0
+            if isinstance(existing, list) and existing and existing[0].get("global_number"):
+                max_gn = existing[0]["global_number"]
+            offset_gn = max(max_gn + 1, 900000)
+            print(f"  ℹ️  Offset global_number : {offset_gn} (max existant = {max_gn})")
+
+            # Bootstrap : créer les recipients manquants (financeurs/OPCO/etc.) en tant que clients
+            referenced_recipients = set()
+            for row in data:
+                rec = norm(row.get("Destinataire")) or norm(row.get("Client"))
+                if rec:
+                    referenced_recipients.add(rec)
+            missing_recipients = [r for r in referenced_recipients if norm_name(r) not in lk["clients_by_name"]]
+            if missing_recipients:
+                print(f"  🔧 Bootstrap : {len(missing_recipients)} recipients (financeurs/OPCO) à créer comme clients")
+                bs_payloads = []
+                seen_bs = set()
+                for name in missing_recipients:
+                    ext = stable_external_id("client", name, "")
+                    if ext in seen_bs or ext in lk["clients_by_loris_id"]:
+                        continue
+                    seen_bs.add(ext)
+                    bs_payloads.append({
+                        "entity_id": MR_ENTITY_ID,
+                        "company_name": name,
+                        "loris_external_id": ext,
+                        "loris_metadata": {"_bootstrap_from_invoices": True, "_role": "financeur_ou_opco"},
+                    })
+                if bs_payloads and not dry:
+                    bs_inserted, bs_errs = insert_batch("clients", bs_payloads, dry)
+                    for r in bs_inserted:
+                        if r.get("company_name"):
+                            lk["clients_by_name"][norm_name(r["company_name"])] = r["id"]
+                        if r.get("loris_external_id"):
+                            lk["clients_by_loris_id"][r["loris_external_id"]] = r["id"]
+                    print(f"  ✅ Bootstrap clients : {len(bs_inserted)} créés, {len(bs_errs)} errs")
+                    if bs_errs:
+                        print(f"    Sample : {bs_errs[0]}")
+
+            # Set existing references to skip duplicates by external_reference
+            existing_refs = rest_get("formation_invoices",
+                                     select="external_reference",
+                                     **{"entity_id": f"eq.{MR_ENTITY_ID}",
+                                        "external_source": "eq.loris"})
+            ref_set = {r["external_reference"] for r in (existing_refs if isinstance(existing_refs, list) else []) if r.get("external_reference")}
+
+            to_insert, skipped_match, skipped_dup = [], 0, 0
             for idx, row in enumerate(data):
                 p = map_formation_invoice(row, idx, lk["sessions_by_title"], lk["clients_by_name"])
                 if not p:
@@ -949,8 +1109,14 @@ def main():
                 if "_skip_reason" in p:
                     skipped_match += 1
                     continue
+                if p.get("external_reference") and p["external_reference"] in ref_set:
+                    skipped_dup += 1
+                    continue
+                # Override number + global_number avec offset unique
+                p["number"] = offset_gn + idx
+                p["global_number"] = offset_gn + idx
                 to_insert.append(p)
-            print(f"  → {len(to_insert)} factures à insérer, {skipped_match} skippées (no session/recipient match)")
+            print(f"  → {len(to_insert)} factures à insérer, {skipped_match} skippées (no match), {skipped_dup} doublons (déjà importé)")
             inserted, errors = insert_batch("formation_invoices", to_insert, dry)
             print(f"  ✅ inserted={len(inserted)} | errors={len(errors)}")
             if errors:

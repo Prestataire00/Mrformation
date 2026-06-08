@@ -1,0 +1,39 @@
+
+══════════════════════════════════════════════════════════════════════
+🚀 Loris Import — Mode EXECUTE
+══════════════════════════════════════════════════════════════════════
+Tables ciblées : ['formation_trainers', 'formation_invoices', 'enrollments']
+Entity MR FORMATION : f8acea54-71ab-4a22-8cf3-4e7170543bf1
+
+📥 Récupération des lookups existants...
+  📋 Fetch clients existants...
+  📋 Fetch learners existants...
+  📋 Fetch trainers existants...
+  📋 Fetch trainings existants...
+  📋 Fetch sessions existantes...
+  → 235 clients, 3442 learners, 407 trainers, 100 trainings, 101 sessions
+
+
+──────────────────────────────────────────────────────────────────────
+📂 FORMATION_TRAINERS
+──────────────────────────────────────────────────────────────────────
+  → 124 à insérer, 0 skippés (no match session/trainer), 1 doublons
+  ✅ inserted=0 | errors=2
+  Sample : {'batch_start': 0, 'status': 409, 'body': '{"code":"23505","details":"Key (session_id, trainer_id)=(006a1553-8176-4e65-97d5-1f24b64502c3, 8147bd64-66c9-40fb-a49e-7979ffaeb3b2) already exists.","hint":null,"message":"duplicate key value violates unique constraint \\"formation_trainers_session_id_trainer_id_key\\""}'}
+
+──────────────────────────────────────────────────────────────────────
+📂 ENROLLMENTS
+──────────────────────────────────────────────────────────────────────
+  → 644 à insérer, 410 skippés (no match session/learner), 35 doublons
+  ✅ inserted=644 | errors=0
+
+──────────────────────────────────────────────────────────────────────
+📂 FORMATION_INVOICES
+──────────────────────────────────────────────────────────────────────
+  ℹ️  Offset global_number : 900104 (max existant = 900103)
+  → 0 factures à insérer, 72 skippées (no match), 98 doublons (déjà importé)
+  ✅ inserted=0 | errors=0
+
+══════════════════════════════════════════════════════════════════════
+📊 Rapport écrit : /Users/wissam/Desktop/lms-platform/scripts/import-loris/last_import_report.json
+══════════════════════════════════════════════════════════════════════
