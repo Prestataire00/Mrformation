@@ -76,6 +76,7 @@ import { useEntity } from "@/contexts/EntityContext";
 import { cn, formatDate, getInitials, STATUS_COLORS, SESSION_STATUS_LABELS } from "@/lib/utils";
 import type { Client, Contact, ClientStatus } from "@/lib/types";
 
+import { CredentialsCardInline } from "@/components/credentials/CredentialsCardInline";
 import TasksSection from "./_components/TasksSection";
 import CommentsSection from "./_components/CommentsSection";
 import EmailSection from "./_components/EmailSection";
@@ -2115,22 +2116,14 @@ export default function ClientDetailPage() {
             <DialogDescription>Les identifiants ont été envoyés par email. Conservez le mot de passe ci-dessous.</DialogDescription>
           </DialogHeader>
           {accessCredentials && (
-            <div className="space-y-3 py-2">
-              <div className="p-3 bg-gray-50 rounded-lg space-y-2 text-sm">
-                <div className="flex justify-between"><span className="text-muted-foreground">Email</span><span className="font-medium">{accessCredentials.email}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Mot de passe</span><span className="font-mono font-bold text-lg">{accessCredentials.password}</span></div>
-              </div>
-              <Button
-                variant="outline"
-                className="w-full gap-1.5"
-                onClick={() => {
-                  navigator.clipboard.writeText(`Email: ${accessCredentials.email}\nMot de passe: ${accessCredentials.password}`);
-                  toast({ title: "Identifiants copiés" });
-                }}
-              >
-                Copier les identifiants
-              </Button>
-            </div>
+            <CredentialsCardInline
+              credentials={{
+                email: accessCredentials.email,
+                password: accessCredentials.password,
+                login_url: accessCredentials.login_url,
+              }}
+              onCopy={() => toast({ title: "Identifiants copiés" })}
+            />
           )}
           <DialogFooter>
             <Button onClick={() => setAccessDialogOpen(false)}>Fermer</Button>
