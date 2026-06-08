@@ -39,6 +39,11 @@ export interface LearnerFull {
   learner_type: string | null;
   loris_metadata: Record<string, string | number | null> | null;
   loris_external_id: string | null;
+  username: string | null;
+  temp_password: string | null;
+  synthetic_email_used: boolean;
+  password_must_change: boolean;
+  first_login_at: string | null;
   created_at: string;
   avatar_url: string | null;
   clients: { company_name: string } | null;
@@ -119,6 +124,7 @@ export default function LearnerDetailPage() {
           "id, entity_id, first_name, last_name, email, phone, client_id, profile_id, " +
           "job_title, birth_date, birth_city, gender, nationality, address, city, postal_code, " +
           "social_security_number, education_level, learner_type, loris_metadata, loris_external_id, " +
+          "username, temp_password, synthetic_email_used, password_must_change, first_login_at, " +
           "created_at, welcome_email_sent_at, " +
           "clients(company_name)"
         )
@@ -292,7 +298,7 @@ export default function LearnerDetailPage() {
           </TabsContent>
 
           <TabsContent value="acces">
-            <TabAcces learner={learner} />
+            <TabAcces learner={learner} onRefresh={fetchLearner} />
           </TabsContent>
         </Tabs>
       </div>
