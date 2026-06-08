@@ -109,16 +109,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ── Charge client + entity en parallèle (sans filtre entity_id sur
-    // client : le lien formation_companies suffit comme preuve d'accès)
-    const [{ data: client }, entity] = await Promise.all([
+    // ── Charge client + entity + slug en parallèle (sans filtre entity_id
+    // sur client : le lien formation_companies suffit comme preuve d'accès).
+    // `loadEntitySettings` ne retourne PAS le slug → fetch séparé pour le QR.
+    const [{ data: client }, entity, { data: entityRow }] = await Promise.all([
       supabase
         .from("clients")
         .select("*, contacts(*)")
         .eq("id", body.clientId)
         .single(),
       loadEntitySettings(supabase, profile.entity_id),
+      supabase
+        .from("entities")
+        .select("slug")
+        .eq("id", profile.entity_id)
+        .single(),
     ]);
+    const entitySlug = (entityRow?.slug as string | undefined) ?? undefined;
 
     if (!client) {
       return NextResponse.json(
@@ -153,7 +160,6 @@ export async function POST(request: NextRequest) {
       .filter((e) => e.client_id === body.clientId && e.learner)
       .map((e) => e.learner!);
 
-    const entitySlug = entity?.slug ?? undefined;
     const credentialsHtml = await buildCredentialsSectionHtml(clientLearners, entitySlug);
 
     if (credentialsHtml) {
