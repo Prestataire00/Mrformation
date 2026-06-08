@@ -68,9 +68,9 @@ const CREATION_METHODS = [
 const COURSE_TYPES = [
   {
     id: "presentation" as CourseType,
-    title: "Présentation Gamma",
+    title: "Présentation",
     icon: Presentation,
-    description: "Slides interactives générées par Gamma AI",
+    description: "Slides interactives générées par IA",
   },
   {
     id: "quiz" as CourseType,
@@ -82,7 +82,7 @@ const COURSE_TYPES = [
     id: "complete" as CourseType,
     title: "Cours complet",
     icon: GraduationCap,
-    description: "Présentation Gamma + Quiz + Examen final",
+    description: "Présentation + Quiz + Examen final",
   },
 ];
 
@@ -409,7 +409,7 @@ export default function CreateCoursePage() {
     setViewStep("done");
     toast({
       title: "Cours e-learning généré !",
-      description: "Présentations Gamma, quiz et flashcards sont prêts.",
+      description: "Présentations, quiz et flashcards sont prêts.",
     });
   };
 
@@ -814,7 +814,7 @@ export default function CreateCoursePage() {
                         <Palette className="h-4 w-4 text-purple-500" />
                         Style visuel (optionnel)
                       </p>
-                      <p className="text-xs text-gray-400 mt-1">Choisissez les couleurs et polices de vos présentations Gamma</p>
+                      <p className="text-xs text-gray-400 mt-1">Choisissez les couleurs et polices de vos présentations</p>
                     </div>
                     {themesLoading ? (
                       <div className="flex items-center justify-center gap-2 text-sm text-gray-400 py-4">
@@ -1141,7 +1141,7 @@ export default function CreateCoursePage() {
                     <Palette className="h-4 w-4 text-purple-500" />
                     Style visuel (optionnel)
                   </p>
-                  <p className="text-xs text-gray-400 mt-1">Choisissez les couleurs et polices de vos présentations Gamma</p>
+                  <p className="text-xs text-gray-400 mt-1">Choisissez les couleurs et polices de vos présentations</p>
                 </div>
                 {themesLoading ? (
                   <div className="flex items-center justify-center gap-2 text-sm text-gray-400 py-4">
@@ -1253,11 +1253,11 @@ export default function CreateCoursePage() {
             <div className="bg-gradient-to-r from-violet-50 to-purple-50 border border-violet-200 rounded-2xl p-5 space-y-3">
               <p className="text-sm font-semibold text-violet-700 flex items-center gap-2">
                 <Sparkles className="h-4 w-4" />
-                Ce que Gamma AI va générer :
+                Ce que l'IA va générer :
               </p>
               <ul className="text-sm text-violet-600 space-y-1.5 ml-6 list-disc">
                 {courseType !== "quiz" && (
-                  <li><strong>Présentations Gamma</strong> — de belles slides interactives par chapitre</li>
+                  <li><strong>Présentations</strong> — de belles slides interactives par chapitre</li>
                 )}
                 {courseType !== "presentation" && (
                   <>
@@ -1320,17 +1320,17 @@ export default function CreateCoursePage() {
                 Cours e-learning généré avec succès !
               </h2>
               <p className="text-gray-500 mt-2">
-                Présentations Gamma, quiz interactifs, flashcards et examen final sont prêts.
+                Présentations, quiz interactifs, flashcards et examen final sont prêts.
               </p>
             </div>
 
             <div className="bg-gradient-to-r from-violet-50 to-purple-50 border border-violet-200 rounded-2xl p-5">
               <p className="text-sm text-violet-700 font-semibold flex items-center gap-2 justify-center">
                 <Sparkles className="h-4 w-4" />
-                Les présentations Gamma sont intégrées dans chaque chapitre
+                Les présentations sont intégrées dans chaque chapitre
               </p>
               <p className="text-xs text-violet-600 mt-2">
-                Les apprenants verront les slides Gamma, puis les quiz et flashcards interactifs pour dynamiser chaque chapitre.
+                Les apprenants verront les slides, puis les quiz et flashcards interactifs pour dynamiser chaque chapitre.
               </p>
             </div>
 
