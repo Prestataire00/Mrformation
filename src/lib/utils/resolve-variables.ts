@@ -1636,7 +1636,7 @@ export async function loadEntitySettings(
   const { data, error } = await supabase
     .from("entities")
     .select(
-      "name, siret, nda, address, postal_code, city, email, phone, website, president_name, president_title, signature_text, stamp_url, signature_url, logo_url",
+      "name, slug, siret, nda, address, postal_code, city, email, phone, website, president_name, president_title, signature_text, stamp_url, signature_url, logo_url",
     )
     .eq("id", entityId)
     .maybeSingle();

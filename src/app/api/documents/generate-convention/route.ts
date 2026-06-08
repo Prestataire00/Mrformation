@@ -31,6 +31,7 @@ import {
   DocumentGenerationService,
   createDefaultEngine,
 } from "@/lib/services/document-generation";
+import { buildCredentialsSectionHtml } from "@/lib/services/credentials-qr";
 import type { Session, Client } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
@@ -108,16 +109,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ── Charge client + entity en parallèle (sans filtre entity_id sur
-    // client : le lien formation_companies suffit comme preuve d'accès)
-    const [{ data: client }, entity] = await Promise.all([
+    // ── Charge client + entity + slug en parallèle (sans filtre entity_id
+    // sur client : le lien formation_companies suffit comme preuve d'accès).
+    // `loadEntitySettings` ne retourne PAS le slug → fetch séparé pour le QR.
+    const [{ data: client }, entity, { data: entityRow }] = await Promise.all([
       supabase
         .from("clients")
         .select("*, contacts(*)")
         .eq("id", body.clientId)
         .single(),
       loadEntitySettings(supabase, profile.entity_id),
+      supabase
+        .from("entities")
+        .select("slug")
+        .eq("id", profile.entity_id)
+        .single(),
     ]);
+    const entitySlug = (entityRow?.slug as string | undefined) ?? undefined;
 
     if (!client) {
       return NextResponse.json(
@@ -132,8 +140,43 @@ export async function POST(request: NextRequest) {
       client: client as unknown as Client,
       entity,
     };
-    const resolvedHtml = resolveDocumentVariables(CONVENTION_ENTREPRISE_HTML, context);
+    let resolvedHtml = resolveDocumentVariables(CONVENTION_ENTREPRISE_HTML, context);
     const resolvedFooter = resolveDocumentVariables(CONVENTION_FOOTER_TEMPLATE, context);
+
+    // ── P3 Credentials : embed username + temp_password + QR code ────────
+    // Filtrer les apprenants de ce client dans la session
+    const clientEnrollments = ((session as Record<string, unknown>).enrollments as Array<{
+      client_id?: string;
+      learner?: {
+        first_name?: string;
+        last_name?: string;
+        username?: string | null;
+        temp_password?: string | null;
+        profile_id?: string | null;
+        first_login_at?: string | null;
+      };
+    }>) || [];
+    const clientLearners = clientEnrollments
+      .filter((e) => e.client_id === body.clientId && e.learner)
+      .map((e) => e.learner!);
+
+    const credentialsHtml = await buildCredentialsSectionHtml(clientLearners, entitySlug);
+
+    if (credentialsHtml) {
+      // Inject after Article 2 (effectif formé) — before Article 3
+      const article3Marker = '<h2>Article 3';
+      const insertIdx = resolvedHtml.indexOf(article3Marker);
+      if (insertIdx > -1) {
+        resolvedHtml = resolvedHtml.slice(0, insertIdx) + credentialsHtml + "\n\n  " + resolvedHtml.slice(insertIdx);
+      } else {
+        // Fallback: append before signature block
+        const sigMarker = '<div class="signature-block">';
+        const sigIdx = resolvedHtml.indexOf(sigMarker);
+        if (sigIdx > -1) {
+          resolvedHtml = resolvedHtml.slice(0, sigIdx) + credentialsHtml + "\n\n  " + resolvedHtml.slice(sigIdx);
+        }
+      }
+    }
 
     // ── Génération PDF via nouvelle infra ─────────────────────────────────
     const engine = createDefaultEngine();
