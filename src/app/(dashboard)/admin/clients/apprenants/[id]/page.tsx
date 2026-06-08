@@ -61,7 +61,7 @@ export interface SessionEnrollment {
 export interface ElearningEnrollment {
   id: string;
   status: string;
-  progress: number;
+  completion_rate: number;
   elearning_courses: {
     id: string;
     title: string;
@@ -157,7 +157,7 @@ export default function LearnerDetailPage() {
       // E-learning enrollments
       const { data: enrollData } = await supabase
         .from("elearning_enrollments")
-        .select("id, status, progress, elearning_courses(id, title, estimated_duration_minutes)")
+        .select("id, status, completion_rate, elearning_courses(id, title, estimated_duration_minutes)")
         .eq("learner_id", learnerId);
       setElearning((enrollData as unknown as ElearningEnrollment[]) ?? []);
 

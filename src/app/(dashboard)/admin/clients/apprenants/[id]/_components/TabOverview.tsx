@@ -49,7 +49,7 @@ interface SessionEnrollment {
 interface ElearningEnrollment {
   id: string;
   status: string;
-  progress: number;
+  completion_rate: number;
   elearning_courses: {
     id: string;
     title: string;
@@ -167,7 +167,7 @@ export default function TabOverview({ learner, sessions, elearning }: TabOvervie
                   <Badge className={cn("text-xs", statusColor(e.status))}>{statusLabel(e.status)}</Badge>
                 </div>
                 <div className="mt-2 bg-gray-100 rounded-full h-1.5">
-                  <div className="bg-[#374151] h-1.5 rounded-full transition-all" style={{ width: `${e.progress ?? 0}%` }} />
+                  <div className="bg-[#374151] h-1.5 rounded-full transition-all" style={{ width: `${e.completion_rate ?? 0}%` }} />
                 </div>
               </div>
             ))}

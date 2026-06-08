@@ -40,7 +40,6 @@ interface LearnerFull {
 interface Document {
   id: string;
   doc_type: string;
-  label: string | null;
   status: string;
   file_url: string | null;
   created_at: string;
@@ -85,7 +84,7 @@ export default function TabDocuments({ learner }: TabDocumentsProps) {
     try {
       const { data, error } = await supabase
         .from("documents")
-        .select("id, doc_type, label, status, file_url, created_at")
+        .select("id, doc_type, status, file_url, created_at")
         .eq("owner_type", "learner")
         .eq("owner_id", learner.id)
         .eq("entity_id", entityId)
@@ -135,7 +134,6 @@ export default function TabDocuments({ learner }: TabDocumentsProps) {
               <thead>
                 <tr className="border-b text-left text-xs text-gray-400 uppercase tracking-wider">
                   <th className="pb-2 pr-4">Type</th>
-                  <th className="pb-2 pr-4">Libelle</th>
                   <th className="pb-2 pr-4">Date</th>
                   <th className="pb-2 pr-4">Statut</th>
                   <th className="pb-2 text-right">Action</th>
@@ -150,7 +148,6 @@ export default function TabDocuments({ learner }: TabDocumentsProps) {
                         {doc.doc_type}
                       </span>
                     </td>
-                    <td className="py-2 pr-4 text-gray-700">{doc.label || "\u2014"}</td>
                     <td className="py-2 pr-4 text-gray-500">{formatDate(doc.created_at)}</td>
                     <td className="py-2 pr-4">
                       <Badge className={docStatusColor(doc.status)}>{docStatusLabel(doc.status)}</Badge>

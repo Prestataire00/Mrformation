@@ -22,7 +22,7 @@ interface SessionEnrollment {
 interface ElearningEnrollment {
   id: string;
   status: string;
-  progress: number;
+  completion_rate: number;
   elearning_courses: {
     id: string;
     title: string;
@@ -139,10 +139,10 @@ export default function TabParcours({ sessions, elearning }: TabParcoursProps) {
                   <div className="mt-2">
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-[10px] text-gray-400">Progression</span>
-                      <span className="text-[10px] text-gray-500 font-medium">{e.progress ?? 0}%</span>
+                      <span className="text-[10px] text-gray-500 font-medium">{e.completion_rate ?? 0}%</span>
                     </div>
                     <div className="bg-gray-100 rounded-full h-1.5">
-                      <div className="bg-[#374151] h-1.5 rounded-full transition-all" style={{ width: `${e.progress ?? 0}%` }} />
+                      <div className="bg-[#374151] h-1.5 rounded-full transition-all" style={{ width: `${e.completion_rate ?? 0}%` }} />
                     </div>
                   </div>
                 </div>
