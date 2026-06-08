@@ -32,7 +32,6 @@ interface LearnerFull {
   loris_metadata: Record<string, string | number | null> | null;
   loris_external_id: string | null;
   created_at: string;
-  updated_at: string;
   avatar_url: string | null;
   clients: { company_name: string } | null;
   welcome_email_sent_at: string | null;

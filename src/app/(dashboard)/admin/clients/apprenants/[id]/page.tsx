@@ -40,7 +40,6 @@ export interface LearnerFull {
   loris_metadata: Record<string, string | number | null> | null;
   loris_external_id: string | null;
   created_at: string;
-  updated_at: string;
   avatar_url: string | null;
   clients: { company_name: string } | null;
   welcome_email_sent_at: string | null;
@@ -120,7 +119,7 @@ export default function LearnerDetailPage() {
           "id, entity_id, first_name, last_name, email, phone, client_id, profile_id, " +
           "job_title, birth_date, birth_city, gender, nationality, address, city, postal_code, " +
           "social_security_number, education_level, learner_type, loris_metadata, loris_external_id, " +
-          "created_at, updated_at, welcome_email_sent_at, " +
+          "created_at, welcome_email_sent_at, " +
           "clients(company_name)"
         )
         .eq("id", learnerId)

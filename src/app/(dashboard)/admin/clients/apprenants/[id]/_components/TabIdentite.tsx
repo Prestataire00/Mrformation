@@ -24,7 +24,7 @@ interface LearnerFull {
   postal_code: string | null; social_security_number: string | null;
   education_level: string | null; learner_type: string | null;
   loris_metadata: Record<string, string | number | null> | null;
-  loris_external_id: string | null; created_at: string; updated_at: string;
+  loris_external_id: string | null; created_at: string;
   avatar_url: string | null; clients: { company_name: string } | null;
   welcome_email_sent_at: string | null;
 }
