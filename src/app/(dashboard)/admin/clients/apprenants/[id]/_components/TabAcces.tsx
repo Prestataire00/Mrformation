@@ -1,103 +1,133 @@
 "use client";
 
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Key, Mail, ShieldCheck, ShieldOff, User } from "lucide-react";
-
-interface LearnerFull {
-  id: string;
-  entity_id: string;
-  first_name: string;
-  last_name: string;
-  email: string | null;
-  phone: string | null;
-  client_id: string | null;
-  profile_id: string | null;
-  job_title: string | null;
-  birth_date: string | null;
-  birth_city: string | null;
-  gender: "M" | "F" | "autre" | null;
-  nationality: string | null;
-  address: string | null;
-  city: string | null;
-  postal_code: string | null;
-  social_security_number: string | null;
-  education_level: string | null;
-  learner_type: string | null;
-  loris_metadata: Record<string, string | number | null> | null;
-  loris_external_id: string | null;
-  created_at: string;
-  avatar_url: string | null;
-  clients: { company_name: string } | null;
-  welcome_email_sent_at: string | null;
-}
+import { Key, KeyRound, Mail, ShieldCheck, ShieldOff, User } from "lucide-react";
+import CredentialsCard, { type CredentialsData } from "@/components/credentials/CredentialsCard";
+import CreateAccessButton from "@/components/credentials/CreateAccessButton";
+import SyntheticEmailBanner from "@/components/credentials/SyntheticEmailBanner";
+import type { LearnerFull } from "../page";
 
 interface TabAccesProps {
   learner: LearnerFull;
+  onRefresh: () => Promise<void>;
 }
 
 const formatDate = (d: string | null | undefined) =>
   d ? new Date(d).toLocaleDateString("fr-FR") : "\u2014";
 
-export default function TabAcces({ learner }: TabAccesProps) {
+export default function TabAcces({ learner, onRefresh }: TabAccesProps) {
+  const [createdCredentials, setCreatedCredentials] = useState<CredentialsData | null>(null);
   const hasAccess = !!learner.profile_id;
-  const emailSent = !!learner.welcome_email_sent_at;
+
+  // No account, no just-created credentials → show creation CTA
+  if (!hasAccess && !createdCredentials) {
+    return (
+      <div className="space-y-4">
+        <Card>
+          <CardContent className="p-8 text-center space-y-4">
+            <KeyRound className="h-10 w-10 mx-auto text-gray-300" />
+            <div>
+              <p className="text-sm font-medium text-gray-600">
+                Aucun accès plateforme créé pour cet apprenant.
+              </p>
+              <p className="text-xs text-gray-400 mt-1">
+                {learner.email
+                  ? "Un accès sera créé avec son email existant."
+                  : "Un email synthétique sera généré automatiquement (l'apprenant se connectera avec son identifiant)."}
+              </p>
+            </div>
+            <CreateAccessButton
+              learnerId={learner.id}
+              learnerHasEmail={!!learner.email}
+              onSuccess={(creds) => {
+                setCreatedCredentials(creds);
+                onRefresh();
+              }}
+            />
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
+      {/* Synthetic email warning */}
+      {(createdCredentials?.synthetic_email_used || learner.synthetic_email_used) && (
+        <SyntheticEmailBanner email={createdCredentials?.email ?? learner.email} />
+      )}
+
+      {/* Credentials card */}
+      <CredentialsCard
+        learnerId={learner.id}
+        inlineCredentials={createdCredentials}
+        onRegenerate={onRefresh}
+      />
+
+      {/* Account status info */}
       <Card>
-        <CardHeader>
+        <CardHeader className="pb-3">
           <CardTitle className="text-sm">Statut du compte</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-3">
           <div className="flex items-center gap-3">
-            <div className={`h-10 w-10 rounded-full flex items-center justify-center ${hasAccess ? "bg-green-100" : "bg-gray-100"}`}>
-              {hasAccess ? <ShieldCheck className="h-5 w-5 text-green-600" /> : <ShieldOff className="h-5 w-5 text-gray-400" />}
+            <div className={`h-10 w-10 rounded-full flex items-center justify-center ${hasAccess || createdCredentials ? "bg-green-100" : "bg-gray-100"}`}>
+              {hasAccess || createdCredentials
+                ? <ShieldCheck className="h-5 w-5 text-green-600" />
+                : <ShieldOff className="h-5 w-5 text-gray-400" />}
             </div>
             <div>
               <p className="text-sm font-medium">
-                {hasAccess ? "Compte actif" : "Aucun compte plateforme"}
+                {hasAccess || createdCredentials ? "Compte actif" : "Aucun compte plateforme"}
               </p>
               <p className="text-xs text-gray-400">
-                {hasAccess ? "L'apprenant peut se connecter a la plateforme" : "Aucun acces n'a ete cree pour cet apprenant"}
+                {hasAccess || createdCredentials
+                  ? "L\u2019apprenant peut se connecter \u00e0 la plateforme"
+                  : "Aucun acc\u00e8s n\u2019a \u00e9t\u00e9 cr\u00e9\u00e9"}
               </p>
             </div>
           </div>
 
-          <div className="border-t pt-4 space-y-3">
+          <div className="border-t pt-3 space-y-2">
+            {learner.username && (
+              <div className="flex items-center justify-between py-1">
+                <span className="text-sm text-gray-400 flex items-center gap-1.5">
+                  <User className="h-3.5 w-3.5" /> Username
+                </span>
+                <span className="text-sm text-gray-700 font-mono">{learner.username}</span>
+              </div>
+            )}
+
             <div className="flex items-center justify-between py-1">
               <span className="text-sm text-gray-400 flex items-center gap-1.5">
                 <Key className="h-3.5 w-3.5" /> Identifiant profile
               </span>
               <span className="text-sm text-gray-700 font-mono">
-                {learner.profile_id ? learner.profile_id.slice(0, 8) + "..." : "\u2014"}
+                {learner.profile_id ? learner.profile_id.slice(0, 8) + "\u2026" : "\u2014"}
               </span>
-            </div>
-
-            <div className="flex items-center justify-between py-1">
-              <span className="text-sm text-gray-400 flex items-center gap-1.5">
-                <User className="h-3.5 w-3.5" /> Email de connexion
-              </span>
-              <span className="text-sm text-gray-700">{learner.email || "\u2014"}</span>
             </div>
 
             <div className="flex items-center justify-between py-1">
               <span className="text-sm text-gray-400 flex items-center gap-1.5">
                 <Mail className="h-3.5 w-3.5" /> Email de bienvenue
               </span>
-              {emailSent ? (
+              {learner.welcome_email_sent_at ? (
                 <Badge className="bg-green-100 text-green-700">
-                  Envoye le {formatDate(learner.welcome_email_sent_at)}
+                  Envoy\u00e9 le {formatDate(learner.welcome_email_sent_at)}
                 </Badge>
               ) : (
-                <Badge variant="outline" className="text-gray-400">Non envoye</Badge>
+                <Badge variant="outline" className="text-gray-400">Non envoy\u00e9</Badge>
               )}
             </div>
 
-            <div className="flex items-center justify-between py-1">
-              <span className="text-sm text-gray-400">Compte cree le</span>
-              <span className="text-sm text-gray-700">{formatDate(learner.created_at)}</span>
-            </div>
+            {learner.first_login_at && (
+              <div className="flex items-center justify-between py-1">
+                <span className="text-sm text-gray-400">Premi\u00e8re connexion</span>
+                <span className="text-sm text-gray-700">{formatDate(learner.first_login_at)}</span>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
