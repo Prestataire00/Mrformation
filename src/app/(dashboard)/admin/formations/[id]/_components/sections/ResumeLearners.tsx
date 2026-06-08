@@ -319,10 +319,10 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
         </div>
         <div className="flex flex-wrap gap-2">
           <Button size="sm" onClick={() => setDialogOpen(true)}>
-            <Plus className="h-4 w-4 mr-1" /> Ajouter un Apprenant
+            <Plus className="h-4 w-4 mr-1" /> Apprenant existant
           </Button>
           <Button size="sm" variant="outline" onClick={() => setCreateDialogOpen(true)}>
-            <UserPlus className="h-4 w-4 mr-1" /> Créer un apprenant
+            <UserPlus className="h-4 w-4 mr-1" /> Nouvel apprenant
           </Button>
           <Button size="sm" variant="outline" onClick={handleExportExcel}>
             <Download className="h-4 w-4 mr-1" /> Exporter (CSV)
@@ -369,7 +369,7 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Ajouter un Apprenant</DialogTitle>
+            <DialogTitle>Rattacher un apprenant existant</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             {formationKind === "unset" && (
@@ -432,7 +432,7 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
       <Dialog open={createDialogOpen} onOpenChange={(open) => { setCreateDialogOpen(open); if (!open) { setNewFirstName(""); setNewLastName(""); setNewEmail(""); setNewLearnerClientId(""); } }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Créer un apprenant</DialogTitle>
+            <DialogTitle>Créer et rattacher un nouvel apprenant</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             {formationKind === "unset" && (
