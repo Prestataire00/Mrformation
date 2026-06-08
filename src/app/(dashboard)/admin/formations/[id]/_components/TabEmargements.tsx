@@ -22,6 +22,7 @@ import { isValidAdminBulkSignature } from "@/lib/utils/validate-bulk-signature";
 import { HeroStatsAndWorkflow } from "./emargements/HeroStatsAndWorkflow";
 import { CompanyFilter } from "./emargements/CompanyFilter";
 import { QrCodesDialog, type SlotTokensResponse } from "./emargements/QrCodesDialog";
+import { LearnerAccessBadge } from "@/components/credentials/LearnerAccessBadge";
 import { SingleSignDialog, type SignDialogState } from "./emargements/SingleSignDialog";
 import { BulkSignDialog, type BulkSignDialogState, initialBulkSignState } from "./emargements/BulkSignDialog";
 
@@ -529,7 +530,9 @@ export function TabEmargements({ formation, onRefresh }: Props) {
     slotSignatures: Signature[],
     slot: FormationTimeSlot,
     past: boolean,
-    label?: string
+    label?: string,
+    profileId?: string | null,
+    syntheticEmailUsed?: boolean,
   ) => {
     const sig = slotSignatures.find(
       s => s.signer_id === personId && s.signer_type === signerType
@@ -539,6 +542,9 @@ export function TabEmargements({ formation, onRefresh }: Props) {
         <div className="flex items-center gap-2">
           <span className="font-medium">{personName}</span>
           {label && <span className="text-xs text-muted-foreground">({label})</span>}
+          {signerType === "learner" && (
+            <LearnerAccessBadge profileId={profileId} syntheticEmailUsed={syntheticEmailUsed} iconOnly />
+          )}
         </div>
         <div className="flex items-center gap-1.5">
           {sig ? (
@@ -763,7 +769,9 @@ export function TabEmargements({ formation, onRefresh }: Props) {
                       "learner",
                       slotSignatures,
                       slot,
-                      past
+                      past,
+                      undefined,
+                      learner.profile_id,
                     );
                   })}
                   {enrollments.length === 0 && trainers.length === 0 && (
