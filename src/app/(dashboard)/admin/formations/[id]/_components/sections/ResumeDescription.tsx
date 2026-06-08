@@ -61,11 +61,13 @@ export function ResumeDescription({ formation, onRefresh }: Props) {
         </div>
       ) : (
         <div>
-          <p className="text-sm whitespace-pre-wrap">
-            {formation.description || "Aucune description"}
-          </p>
+          {formation.description ? (
+            <p className="text-sm whitespace-pre-wrap">{formation.description}</p>
+          ) : (
+            <p className="text-sm text-gray-400 italic">Aucune description</p>
+          )}
           <Button size="sm" variant="outline" className="mt-3" onClick={() => setEditing(true)}>
-            Modifier
+            {formation.description ? "Modifier" : "Ajouter une description"}
           </Button>
         </div>
       )}
