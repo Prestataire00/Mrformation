@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 import type { Session, FormationElearningAssignment } from "@/lib/types";
+import { LearnerAccessBadge } from "@/components/credentials/LearnerAccessBadge";
 import {
   getAssignableElearningCourses,
   type AssignableCourse,
@@ -360,8 +361,9 @@ export function TabElearning({ formation, onRefresh }: Props) {
                   className="grid grid-cols-[1fr_180px_100px_auto_40px] gap-2 px-4 py-2.5 items-center text-sm cursor-pointer hover:bg-muted/20 transition-colors"
                   onClick={() => toggleExpanded(learner.id)}
                 >
-                  <span className="font-medium truncate">
+                  <span className="font-medium truncate flex items-center gap-1.5">
                     {learner.first_name} {learner.last_name}
+                    <LearnerAccessBadge profileId={learner.profile_id} iconOnly />
                   </span>
                   {/* Step 3 — title from unified list first */}
                   <span className="text-xs text-muted-foreground truncate">
