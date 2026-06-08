@@ -106,7 +106,7 @@ export function TabResume({ formation, onRefresh }: TabResumeProps) {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <ResumeProgramme formation={formation} />
+              <ResumeProgramme formation={formation} onRefresh={onRefresh} />
             </CardContent>
           </Card>
 
