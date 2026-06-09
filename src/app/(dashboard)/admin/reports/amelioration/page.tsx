@@ -12,6 +12,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { useConfirmDialog } from "@/hooks/useConfirmDialog";
 
 interface Amelioration {
   id: string;
@@ -32,6 +33,7 @@ const EMPTY_FORM = {
 
 export default function AmeliorationPage() {
   const { toast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirmDialog();
   const [items, setItems] = useState<Amelioration[]>([]);
   const [addOpen, setAddOpen] = useState(false);
   const [form, setForm] = useState({ ...EMPTY_FORM });
@@ -64,8 +66,9 @@ export default function AmeliorationPage() {
     toast({ title: "Modifié", description: "L'amélioration a été mise à jour." });
   };
 
-  const handleDelete = (id: string) => {
-    if (!confirm("Supprimer cette amélioration ?")) return;
+  const handleDelete = async (id: string) => {
+    const ok = await confirm({ title: "Supprimer ?", description: "Supprimer cette amélioration ? Cette action est irréversible." });
+    if (!ok) return;
     setItems((prev) => prev.filter((i) => i.id !== id));
     toast({ title: "Supprimé" });
   };
@@ -252,6 +255,7 @@ export default function AmeliorationPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <ConfirmDialog />
     </div>
   );
 }

@@ -37,6 +37,7 @@ import { DomainToggle } from "@/components/automation/DomainToggle";
 import { CrmRuleWizard } from "@/components/automation/CrmRuleWizard";
 import { CrmRuleTemplates } from "@/components/automation/CrmRuleTemplates";
 import { DryRunDialog } from "@/components/automation/DryRunDialog";
+import { useConfirmDialog } from "@/hooks/useConfirmDialog";
 
 interface AutomationRule {
   id: string;
@@ -60,6 +61,7 @@ const ACTION_TYPE_LABELS: Record<string, { label: string; color: string }> = {
 export default function CrmAutomationsPage() {
   const { toast } = useToast();
   const { entityId } = useEntity();
+  const { confirm, ConfirmDialog } = useConfirmDialog();
   const [rules, setRules] = useState<AutomationRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
@@ -126,7 +128,8 @@ export default function CrmAutomationsPage() {
   };
 
   const handleDelete = async (rule: AutomationRule) => {
-    if (!confirm(`Supprimer la règle "${rule.name}" ?`)) return;
+    const ok = await confirm({ title: "Supprimer ?", description: `Supprimer la règle "${rule.name}" ? Cette action est irréversible.` });
+    if (!ok) return;
     setDeletingId(rule.id);
     try {
       const res = await fetch("/api/crm/automations", {
@@ -428,6 +431,7 @@ export default function CrmAutomationsPage() {
           domain="crm"
         />
       )}
+      <ConfirmDialog />
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { Plus, Search, Trash2, X, Check, Download, Loader2 } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast";
 import { downloadXlsx } from "@/lib/export-xlsx";
 import Link from "next/link";
+import { useConfirmDialog } from "@/hooks/useConfirmDialog";
 
 interface Financeur {
   id: string;
@@ -46,6 +47,7 @@ export default function FinanceursPage() {
   const supabase = createClient();
   const { entityId } = useEntity();
   const { toast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirmDialog();
 
   const [financeurs, setFinanceurs] = useState<Financeur[]>([]);
   const [loading, setLoading] = useState(true);
@@ -150,7 +152,8 @@ export default function FinanceursPage() {
 
   /* ---- Delete ---- */
   const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Supprimer ${name} ?`)) return;
+    const ok = await confirm({ title: "Supprimer ?", description: `Supprimer ${name} ? Cette action est irréversible.` });
+    if (!ok) return;
     const { error } = await supabase.from("financeurs").delete().eq("id", id);
     if (error) {
       toast({ title: "Erreur", description: error.message, variant: "destructive" });
@@ -402,6 +405,7 @@ export default function FinanceursPage() {
           </table>
         </div>
       )}
+      <ConfirmDialog />
     </div>
   );
 }

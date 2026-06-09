@@ -25,6 +25,7 @@ import { RuleAuditSheet } from "@/components/automation/RuleAuditSheet";
 import { EditRuleDialog, type EditableRule } from "@/components/automation/EditRuleDialog";
 import { useNextRuns } from "@/components/automation/useNextRuns";
 import { TRIGGER_LABELS } from "@/lib/automation/compute-events";
+import { useConfirmDialog } from "@/hooks/useConfirmDialog";
 
 interface Rule {
   id: string;
@@ -54,6 +55,7 @@ export default function AutomationPage() {
   const { toast } = useToast();
   const supabase = createClient();
   const { entity } = useEntity();
+  const { confirm, ConfirmDialog } = useConfirmDialog();
   const searchParams = useSearchParams();
   const initialTab = searchParams.get("tab") || "overview";
 
@@ -102,7 +104,8 @@ export default function AutomationPage() {
   };
 
   const handleDelete = async (rule: Rule) => {
-    if (!confirm(`Supprimer la règle "${rule.name || rule.trigger_type}" ?`)) return;
+    const ok = await confirm({ title: "Supprimer ?", description: `Supprimer la règle "${rule.name || rule.trigger_type}" ? Cette action est irréversible.` });
+    if (!ok) return;
     const { error } = await supabase
       .from("formation_automation_rules")
       .delete()
@@ -387,6 +390,7 @@ export default function AutomationPage() {
           ruleName={auditTarget.ruleName}
         />
       )}
+      <ConfirmDialog />
     </div>
   );
 }

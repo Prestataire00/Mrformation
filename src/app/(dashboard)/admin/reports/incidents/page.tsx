@@ -11,6 +11,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { useConfirmDialog } from "@/hooks/useConfirmDialog";
 
 type Statut = "Ouvert" | "Clos";
 type Source = "Entreprise" | "Apprenant" | "Formateur";
@@ -57,6 +58,7 @@ const EMPTY_FORM: Omit<Incident, "id"> = {
 
 export default function IncidentsPage() {
   const { toast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirmDialog();
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [addOpen, setAddOpen] = useState(false);
   const [form, setForm] = useState({ ...EMPTY_FORM });
@@ -94,8 +96,9 @@ export default function IncidentsPage() {
     toast({ title: "Modifié", description: "L'incident a été mis à jour." });
   };
 
-  const handleDelete = (id: string, nom: string) => {
-    if (!confirm(`Supprimer l'incident "${nom}" ?`)) return;
+  const handleDelete = async (id: string, nom: string) => {
+    const ok = await confirm({ title: "Supprimer ?", description: `Supprimer l'incident "${nom}" ? Cette action est irréversible.` });
+    if (!ok) return;
     setIncidents((prev) => prev.filter((i) => i.id !== id));
     toast({ title: "Supprimé" });
   };
@@ -411,6 +414,7 @@ export default function IncidentsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <ConfirmDialog />
     </div>
   );
 }
