@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useToast } from "@/components/ui/use-toast";
 import {
   CalendarDays,
   MapPin,
@@ -38,16 +39,18 @@ const MODE_LABELS: Record<string, string> = {
 
 export default function ClientFormationsPage() {
   const supabase = createClient();
+  const { toast } = useToast();
   const [sessions, setSessions] = useState<FormationSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "upcoming" | "in_progress" | "completed">("all");
 
   const fetchData = useCallback(async () => {
     setLoading(true);
+    try {
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) { setLoading(false); return; }
 
     const { data: client } = await supabase
       .from("clients")
@@ -119,8 +122,13 @@ export default function ClientFormationsPage() {
     }) as FormationSession[];
 
     setSessions(mapped);
-    setLoading(false);
-  }, [supabase]);
+    } catch (err) {
+      console.error("[ClientFormations] fetch error:", err);
+      toast({ title: "Erreur de chargement", description: "Impossible de charger vos formations.", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  }, [supabase, toast]);
 
   useEffect(() => {
     fetchData();
