@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Search, ChevronLeft, ChevronRight } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { useEntity } from "@/contexts/EntityContext";
+import { sanitizeSearchInput } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -59,8 +60,9 @@ export default function ApprenantsProfilesPage() {
         .eq("entity_id", entityId)
         .order("last_name", { ascending: true });
 
-      if (search.trim()) {
-        query = query.or(`first_name.ilike.%${search.trim()}%,last_name.ilike.%${search.trim()}%,email.ilike.%${search.trim()}%`);
+      const safe = sanitizeSearchInput(search);
+      if (safe) {
+        query = query.or(`first_name.ilike.%${safe}%,last_name.ilike.%${safe}%,email.ilike.%${safe}%`);
       }
 
       if (accessFilter === "with") {
