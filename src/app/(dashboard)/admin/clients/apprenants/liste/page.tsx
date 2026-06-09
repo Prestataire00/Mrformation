@@ -41,7 +41,6 @@ export default function ApprenantsListePage() {
   const [viewMode, setViewMode] = useState<"list" | "cards">("list");
   const [nameFilter, setNameFilter] = useState("");
   const [companyFilter, setCompanyFilter] = useState("");
-  const [sessionsMin, setSessionsMin] = useState("");
   const [debouncedName, setDebouncedName] = useState("");
   const [debouncedCompany, setDebouncedCompany] = useState("");
 
@@ -96,11 +95,13 @@ export default function ApprenantsListePage() {
   }, [companyFilter]);
 
   const fetchLearners = useCallback(async () => {
+    if (!entityId) return;
     setLoading(true);
     try {
       let query = supabase
         .from("learners")
         .select("id, first_name, last_name, email, phone, client_id, clients(company_name)", { count: "exact" })
+        .eq("entity_id", entityId)
         .order("last_name", { ascending: true });
 
       if (debouncedName.trim()) {
@@ -119,7 +120,7 @@ export default function ApprenantsListePage() {
     } finally {
       setLoading(false);
     }
-  }, [supabase, debouncedName, page, toast]);
+  }, [supabase, debouncedName, page, toast, entityId]);
 
   useEffect(() => { fetchLearners(); }, [fetchLearners]);
 
@@ -207,9 +208,7 @@ export default function ApprenantsListePage() {
       )
     : learners;
 
-  const displayLearners = sessionsMin.trim()
-    ? filteredLearners.filter((l) => (l.sessions_count ?? 0) >= parseInt(sessionsMin))
-    : filteredLearners;
+  const displayLearners = filteredLearners;
 
   return (
     <div className="p-6">
@@ -279,16 +278,6 @@ export default function ApprenantsListePage() {
               className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#374151] w-52"
             />
           </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">Plus que... sessions</label>
-            <input
-              type="number"
-              placeholder="Ex: 3"
-              value={sessionsMin}
-              onChange={(e) => setSessionsMin(e.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#374151] w-32"
-            />
-          </div>
         </div>
       </div>
 
@@ -347,7 +336,11 @@ export default function ApprenantsListePage() {
                               className="rounded border-gray-300"
                             />
                           </td>
-                          <td className="px-4 py-3 font-medium text-gray-800">{fullName}</td>
+                          <td className="px-4 py-3 font-medium">
+                            <Link href={`/admin/clients/apprenants/${learner.id}`} className="text-[#374151] hover:underline">
+                              {fullName}
+                            </Link>
+                          </td>
                           <td className="px-4 py-3 text-gray-600">{learner.clients?.company_name ?? "—"}</td>
                           <td className="px-4 py-3 text-gray-600">{learner.phone ?? "—"}</td>
                           <td className="px-4 py-3 text-gray-600 truncate max-w-[200px]">{learner.email}</td>
@@ -367,7 +360,7 @@ export default function ApprenantsListePage() {
                                 href={`/admin/clients/apprenants/${learner.id}`}
                                 className="text-[#374151] hover:underline text-xs font-medium"
                               >
-                                Modifier
+                                Voir
                               </Link>
                               <Link
                                 href={`/admin/crm/quotes/new?learner_name=${encodeURIComponent(fullName)}`}
