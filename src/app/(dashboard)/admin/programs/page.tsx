@@ -83,6 +83,8 @@ import {
   Eye,
   Upload,
   ChevronDown,
+  Sparkles,
+  Loader2 as Loader2Icon,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -193,6 +195,10 @@ export default function ProgramsPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [programToDelete, setProgramToDelete] = useState<Program | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // AI extract from document
+  const aiFileInputRef = useRef<HTMLInputElement>(null);
+  const [aiExtracting, setAiExtracting] = useState(false);
   // Lot G audit BMAD : compte les références FK pour avertir l'utilisateur
   const [deleteCounts, setDeleteCounts] = useState<ProgramReferenceCounts | null>(null);
   const [countsLoading, setCountsLoading] = useState(false);
@@ -308,6 +314,78 @@ export default function ProgramsPage() {
     setFormErrors({});
     setBpfSectionOpen(false);
     setDialogOpen(true);
+  };
+
+  const handleAiExtractForNewProgram = async (file: File) => {
+    setAiExtracting(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/programs/ai-extract", { method: "POST", body: fd });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || `Erreur ${res.status}`);
+
+      const e = result.extracted;
+      // Build content JSON from modules
+      const modules = Array.isArray(e.modules)
+        ? e.modules.map((m: { title: string; duration_hours: number | null; topics: string }, i: number) => ({
+            title: m.title || `Module ${i + 1}`,
+            duration_hours: m.duration_hours,
+            topics: m.topics ? m.topics.split("\n").filter(Boolean) : [],
+          }))
+        : [];
+
+      const contentObj = {
+        modules,
+        target_audience: e.target_audience || undefined,
+        prerequisites: e.prerequisites || undefined,
+        team_description: e.team_description || undefined,
+        evaluation_methods: e.evaluation_methods ? e.evaluation_methods.split("\n").filter(Boolean) : undefined,
+        pedagogical_resources: e.pedagogical_resources ? e.pedagogical_resources.split("\n").filter(Boolean) : undefined,
+        certification: (e.certification_results || e.certification_terms || e.certification_details)
+          ? {
+              results: e.certification_results || undefined,
+              terms: e.certification_terms || undefined,
+              details: e.certification_details || undefined,
+            }
+          : undefined,
+      };
+
+      setEditingProgram(null);
+      setFormData({
+        ...emptyForm,
+        title: e.title || "",
+        description: e.description || "",
+        objectives: e.objectives || "",
+        content: JSON.stringify(contentObj, null, 2),
+        duration_hours: e.duration_hours != null ? String(e.duration_hours) : "",
+        duration_days: e.duration_days != null ? String(e.duration_days) : "",
+        location: e.location || "",
+        specialty: e.specialty || "",
+        diploma: e.diploma || "",
+        cpf_eligible: e.cpf_eligible === true,
+      });
+      setFormErrors({});
+      setContentError("");
+      setBpfSectionOpen(false);
+      setDialogOpen(true);
+
+      const moduleCount = modules.length;
+      toast({
+        title: "Programme extrait depuis le document",
+        description: `${moduleCount} module${moduleCount > 1 ? "s" : ""} détecté${moduleCount > 1 ? "s" : ""}. Vérifiez et ajustez avant d'enregistrer.`,
+      });
+    } catch (err) {
+      console.error("[ProgramsPage] ai-extract failed:", err);
+      toast({
+        title: "Extraction échouée",
+        description: err instanceof Error ? err.message : "Erreur inconnue",
+        variant: "destructive",
+      });
+    } finally {
+      setAiExtracting(false);
+      if (aiFileInputRef.current) aiFileInputRef.current.value = "";
+    }
   };
 
   const openEditDialog = (program: Program) => {
@@ -545,6 +623,25 @@ export default function ProgramsPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <input
+            ref={aiFileInputRef}
+            type="file"
+            accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleAiExtractForNewProgram(file);
+            }}
+          />
+          <Button
+            variant="outline"
+            className="gap-2 text-violet-700 border-violet-200 hover:bg-violet-50"
+            disabled={aiExtracting}
+            onClick={() => aiFileInputRef.current?.click()}
+          >
+            {aiExtracting ? <Loader2Icon className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+            {aiExtracting ? "Extraction IA..." : "Nouveau depuis document"}
+          </Button>
           <Link href="/admin/programs/import">
             <Button variant="outline" className="gap-2">
               <Upload className="h-4 w-4" />
