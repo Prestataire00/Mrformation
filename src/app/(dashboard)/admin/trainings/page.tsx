@@ -56,8 +56,11 @@ import {
   Briefcase,
   Shield,
   Download,
+  ChevronRight,
 } from "lucide-react";
 import Link from "next/link";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { partitionSessions } from "@/lib/utils/session-grouping";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -167,6 +170,10 @@ export default function FormationsPage() {
   // View mode
   const [viewMode, setViewMode] = useState<"grid" | "kanban">("grid");
 
+  // Plis des sessions closes (mode regroupé) — repliés par défaut à chaque visite.
+  const [showCompleted, setShowCompleted] = useState(false);
+  const [showCancelled, setShowCancelled] = useState(false);
+
   // Delete
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [sessionToDelete, setSessionToDelete] = useState<SessionCard | null>(null);
@@ -273,6 +280,13 @@ export default function FormationsPage() {
     const matchMode = modeFilter === "all" || s.mode === modeFilter;
     return matchSearch && matchStatus && matchMode;
   });
+
+  // Le regroupement Actives / plis ne s'applique qu'en vue par défaut :
+  // filtre « Tous les statuts » ET aucune recherche. Dès qu'on filtre ou
+  // qu'on cherche, on veut une grille plate pour tout voir d'un coup.
+  const isGroupedView =
+    viewMode === "grid" && statusFilter === "all" && debouncedSearch.trim() === "";
+  const { active, completed, cancelled } = partitionSessions(filtered);
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -730,9 +744,53 @@ export default function FormationsPage() {
         </div>
       ) : (
         /* ═══ VUE CARDS ═══ */
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map((session) => renderCard(session))}
-        </div>
+        isGroupedView ? (
+          <div className="space-y-6">
+            {/* Sessions actives — toujours visibles, en grandes cartes */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {active.map((session) => renderCard(session))}
+            </div>
+            {active.length === 0 && (
+              <p className="text-sm text-gray-400 py-4">Aucune formation active.</p>
+            )}
+
+            {/* Pli des sessions terminées */}
+            {completed.length > 0 && (
+              <Collapsible open={showCompleted} onOpenChange={setShowCompleted}>
+                <CollapsibleTrigger className="flex items-center gap-2 text-sm font-semibold text-gray-700 hover:text-gray-900 py-1">
+                  <ChevronRight className={cn("h-4 w-4 transition-transform", showCompleted && "rotate-90")} />
+                  Terminées
+                  <Badge variant="outline" className="text-[10px]">{completed.length}</Badge>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pt-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {completed.map((session) => renderCard(session))}
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+            )}
+
+            {/* Pli des sessions annulées */}
+            {cancelled.length > 0 && (
+              <Collapsible open={showCancelled} onOpenChange={setShowCancelled}>
+                <CollapsibleTrigger className="flex items-center gap-2 text-sm font-semibold text-gray-700 hover:text-gray-900 py-1">
+                  <ChevronRight className={cn("h-4 w-4 transition-transform", showCancelled && "rotate-90")} />
+                  Annulées
+                  <Badge variant="outline" className="text-[10px]">{cancelled.length}</Badge>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pt-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {cancelled.map((session) => renderCard(session))}
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+            )}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filtered.map((session) => renderCard(session))}
+          </div>
+        )
       )}
 
       {/* ══════════════════════════════════════════════════════════════════════ */}
