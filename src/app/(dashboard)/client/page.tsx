@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useToast } from "@/components/ui/use-toast";
 import {
   Card,
   CardContent,
@@ -81,6 +82,7 @@ interface ClientWithDetails extends Client {
 
 export default function ClientPage() {
   const supabase = createClient();
+  const { toast } = useToast();
 
   const [loading, setLoading] = useState(true);
   const [client, setClient] = useState<ClientWithDetails | null>(null);
@@ -259,7 +261,8 @@ export default function ClientPage() {
         setProgramEnrollments((progEnrolls as unknown as typeof programEnrollments) ?? []);
       }
     } catch (err) {
-      console.error("ClientPage fetch error:", err);
+      console.error("[ClientPortal] fetch error:", err);
+      toast({ title: "Erreur de chargement", description: "Impossible de charger vos données. Rechargez la page.", variant: "destructive" });
     } finally {
       setLoading(false);
     }

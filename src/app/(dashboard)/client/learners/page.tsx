@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useToast } from "@/components/ui/use-toast";
 import {
   Users,
   Mail,
@@ -27,38 +28,45 @@ interface LearnerWithEnrollments {
 
 export default function ClientLearnersPage() {
   const supabase = createClient();
+  const { toast } = useToast();
   const [learners, setLearners] = useState<LearnerWithEnrollments[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) { setLoading(false); return; }
 
-    // Find the client linked to this profile
-    const { data: client } = await supabase
-      .from("clients")
-      .select("id")
-      .eq("profile_id", user.id)
-      .single();
+      // Find the client linked to this profile
+      const { data: client } = await supabase
+        .from("clients")
+        .select("id")
+        .eq("profile_id", user.id)
+        .single();
 
-    if (!client) {
+      if (!client) {
+        setLoading(false);
+        return;
+      }
+
+      const { data } = await supabase
+        .from("learners")
+        .select("id, first_name, last_name, email, phone, job_title, enrollments(id, status)")
+        .eq("client_id", client.id)
+        .order("last_name");
+
+      setLearners((data as LearnerWithEnrollments[]) ?? []);
+    } catch (err) {
+      console.error("[ClientLearners] fetch error:", err);
+      toast({ title: "Erreur de chargement", description: "Impossible de charger vos apprenants.", variant: "destructive" });
+    } finally {
       setLoading(false);
-      return;
     }
-
-    const { data } = await supabase
-      .from("learners")
-      .select("id, first_name, last_name, email, phone, job_title, enrollments(id, status)")
-      .eq("client_id", client.id)
-      .order("last_name");
-
-    setLearners((data as LearnerWithEnrollments[]) ?? []);
-    setLoading(false);
-  }, [supabase]);
+  }, [supabase, toast]);
 
   useEffect(() => {
     fetchData();

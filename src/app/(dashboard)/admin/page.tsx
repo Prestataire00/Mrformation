@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { SlidersHorizontal, Clock, PenLine, ClipboardList, FileText, Receipt } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
+import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
 import {
   AdminAlerts,
@@ -44,6 +45,7 @@ function getCookie(name: string): string | null {
 export default function AdminDashboardPage() {
   const supabase = createClient();
   const { entityId } = useEntity();
+  const { toast } = useToast();
   const isSuperAdmin = getCookie("user_role") === "super_admin";
 
   const year = new Date().getFullYear();
@@ -160,21 +162,27 @@ export default function AdminDashboardPage() {
   // ── orchestrateur ─────────────────────────────────────────────────────────
   async function fetchAll() {
     setLoading(true);
-    // Fetch admin name
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      const { data: profile } = await supabase.from("profiles").select("first_name").eq("id", user.id).single();
-      if (profile?.first_name) setAdminFirstName(profile.first_name);
+    try {
+      // Fetch admin name
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase.from("profiles").select("first_name").eq("id", user.id).single();
+        if (profile?.first_name) setAdminFirstName(profile.first_name);
+      }
+      await Promise.all([
+        fetchKPIs(),
+        fetchAlerts(),
+        fetchOverdueTasks(),
+        fetchActivities(),
+        fetchUpcoming(),
+        fetchExtraKPIs(),
+      ]);
+    } catch (err) {
+      console.error("[Dashboard] fetchAll failed:", err);
+      toast({ title: "Erreur de chargement", description: "Impossible de charger le tableau de bord. Rechargez la page.", variant: "destructive" });
+    } finally {
+      setLoading(false);
     }
-    await Promise.all([
-      fetchKPIs(),
-      fetchAlerts(),
-      fetchOverdueTasks(),
-      fetchActivities(),
-      fetchUpcoming(),
-      fetchExtraKPIs(),
-    ]);
-    setLoading(false);
   }
 
   // ── KPIs supplémentaires ───────────────────────────────────────────────────
