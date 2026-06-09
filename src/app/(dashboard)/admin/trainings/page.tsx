@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, type ReactNode } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
@@ -56,8 +56,11 @@ import {
   Briefcase,
   Shield,
   Download,
+  ChevronRight,
 } from "lucide-react";
 import Link from "next/link";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { partitionSessions } from "@/lib/utils/session-grouping";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -137,6 +140,41 @@ const MODE_CONFIG: Record<string, { label: string; icon: typeof MapPin }> = {
   hybride:    { label: "Hybride",    icon: Monitor },
 };
 
+// ── CollapsibleSection ────────────────────────────────────────────────────────
+// Composant local réutilisé pour les plis "Terminées" et "Annulées".
+// Reçoit les sessions déjà filtrées et un renderCard pour éviter les
+// problèmes de portée (renderCard est une closure interne à la page).
+
+function CollapsibleSection({
+  label,
+  sessions,
+  open,
+  onOpenChange,
+  renderCard,
+}: {
+  label: string;
+  sessions: SessionCard[];
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  renderCard: (session: SessionCard) => ReactNode;
+}) {
+  if (sessions.length === 0) return null;
+  return (
+    <Collapsible open={open} onOpenChange={onOpenChange}>
+      <CollapsibleTrigger className="flex items-center gap-2 text-sm font-semibold text-gray-700 hover:text-gray-900 py-1">
+        <ChevronRight className={cn("h-4 w-4 transition-transform", open && "rotate-90")} />
+        {label}
+        <Badge variant="outline" className="text-[10px]">{sessions.length}</Badge>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="pt-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {sessions.map((s) => renderCard(s))}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 export default function FormationsPage() {
@@ -166,6 +204,10 @@ export default function FormationsPage() {
 
   // View mode
   const [viewMode, setViewMode] = useState<"grid" | "kanban">("grid");
+
+  // Plis des sessions closes (mode regroupé) — repliés par défaut à chaque visite.
+  const [showCompleted, setShowCompleted] = useState(false);
+  const [showCancelled, setShowCancelled] = useState(false);
 
   // Delete
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -274,9 +316,116 @@ export default function FormationsPage() {
     return matchSearch && matchStatus && matchMode;
   });
 
+  // Le regroupement Actives / plis ne s'applique qu'en vue par défaut :
+  // filtre « Tous les statuts » ET aucune recherche. Dès qu'on filtre ou
+  // qu'on cherche, on veut une grille plate pour tout voir d'un coup.
+  const isGroupedView =
+    viewMode === "grid" &&
+    statusFilter === "all" &&
+    modeFilter === "all" &&
+    debouncedSearch.trim() === "";
+  const { active, completed, cancelled } = partitionSessions(filtered);
+
   // ── Helpers ────────────────────────────────────────────────────────────────
 
   const getEnrollmentCount = (s: SessionCard) => s.enrollments?.length ?? 0;
+
+  // Rendu d'une carte de session. Helper interne (pas un fichier séparé) car
+  // il dépend des setters d'état de la page (suppression). Réutilisé par la
+  // grille active et par les plis terminées/annulées → évite la duplication.
+  function renderCard(session: SessionCard) {
+    const statusCfg = STATUS_CONFIG[session.status] ?? { label: session.status, color: "bg-gray-100 text-gray-600" };
+    const modeCfg = MODE_CONFIG[session.mode] ?? { label: session.mode, icon: MapPin };
+    const ModeIcon = modeCfg.icon;
+    const enrollCount = getEnrollmentCount(session);
+
+    return (
+      <Link key={session.id} href={`/admin/formations/${session.id}`}>
+        <Card className="overflow-hidden transition-shadow hover:shadow-md cursor-pointer">
+          <CardHeader className="pb-2 pt-3 px-4">
+            <div className="flex items-start justify-between gap-2">
+              <h3 className="font-semibold text-gray-900 text-sm leading-tight line-clamp-2 flex-1 min-w-0">
+                {session.title}
+              </h3>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild onClick={(e) => e.preventDefault()}>
+                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0 flex-shrink-0">
+                    <MoreHorizontal className="h-3.5 w-3.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem asChild>
+                    <Link href={`/admin/formations/${session.id}`} className="gap-2">
+                      <BookOpen className="h-4 w-4" />
+                      Gérer
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={(e) => { e.preventDefault(); setSessionToDelete(session); setDeleteDialogOpen(true); }}
+                    className="gap-2 text-red-600 focus:text-red-600"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Supprimer
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </CardHeader>
+
+          <CardContent className="space-y-2 pb-3 px-4">
+            <div className="flex items-center gap-1.5 text-xs text-gray-500">
+              <CalendarDays className="h-3 w-3 text-gray-400" />
+              <span>{formatDate(session.start_date)} — {formatDate(session.end_date)}</span>
+            </div>
+
+            {session.location && (
+              <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                <MapPin className="h-3 w-3 text-gray-400" />
+                <span className="truncate">{session.location}</span>
+              </div>
+            )}
+
+            {/* CONT-3 audit BMAD : afficher le programme source pour
+                donner du contexte sans devoir ouvrir la fiche. */}
+            {session.program?.title && (
+              <div className="flex items-center gap-1.5 text-xs text-purple-700">
+                <BookOpen className="h-3 w-3 text-purple-500" />
+                <span className="truncate font-medium">{session.program.title}</span>
+              </div>
+            )}
+
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <Badge className={cn("text-[10px] border-0 font-medium", statusCfg.color)}>
+                {statusCfg.label}
+              </Badge>
+              <Badge variant="outline" className="text-[10px] font-medium gap-1">
+                <ModeIcon className="h-3 w-3" />
+                {modeCfg.label}
+              </Badge>
+              {session.is_subcontracted && (
+                <Badge variant="outline" className="text-[10px] font-medium gap-1 border-purple-300 text-purple-700">
+                  <Briefcase className="h-3 w-3" /> S-T
+                </Badge>
+              )}
+              {(session.qualiopi_score ?? 0) > 0 && (
+                <span className={cn("inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full",
+                  (session.qualiopi_score ?? 0) >= 67 ? "bg-green-100 text-green-700" :
+                  (session.qualiopi_score ?? 0) >= 34 ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"
+                )}>
+                  <Shield className="h-2.5 w-2.5" /> {session.qualiopi_score}%
+                </span>
+              )}
+              <div className="flex items-center gap-1 text-[10px] text-gray-400 ml-auto">
+                <Users className="h-3 w-3" />
+                {enrollCount}{session.max_participants ? `/${session.max_participants}` : ""}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </Link>
+    );
+  }
 
   // ── Open inline create form ─────────────────────────────────────────────
 
@@ -633,101 +782,40 @@ export default function FormationsPage() {
         </div>
       ) : (
         /* ═══ VUE CARDS ═══ */
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map((session) => {
-            const statusCfg = STATUS_CONFIG[session.status] ?? { label: session.status, color: "bg-gray-100 text-gray-600" };
-            const modeCfg = MODE_CONFIG[session.mode] ?? { label: session.mode, icon: MapPin };
-            const ModeIcon = modeCfg.icon;
-            const enrollCount = getEnrollmentCount(session);
+        isGroupedView ? (
+          <div className="space-y-6">
+            {/* Sessions actives — toujours visibles, en grandes cartes */}
+            {active.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {active.map((session) => renderCard(session))}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-400 py-4">Aucune formation active.</p>
+            )}
 
-            return (
-              <Link key={session.id} href={`/admin/formations/${session.id}`}>
-                <Card className="overflow-hidden transition-shadow hover:shadow-md cursor-pointer">
-                  <CardHeader className="pb-2 pt-3 px-4">
-                    <div className="flex items-start justify-between gap-2">
-                      <h3 className="font-semibold text-gray-900 text-sm leading-tight line-clamp-2 flex-1 min-w-0">
-                        {session.title}
-                      </h3>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild onClick={(e) => e.preventDefault()}>
-                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0 flex-shrink-0">
-                            <MoreHorizontal className="h-3.5 w-3.5" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem asChild>
-                            <Link href={`/admin/formations/${session.id}`} className="gap-2">
-                              <BookOpen className="h-4 w-4" />
-                              Gérer
-                            </Link>
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            onClick={(e) => { e.preventDefault(); setSessionToDelete(session); setDeleteDialogOpen(true); }}
-                            className="gap-2 text-red-600 focus:text-red-600"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                            Supprimer
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  </CardHeader>
+            {/* Pli des sessions terminées */}
+            <CollapsibleSection
+              label="Terminées"
+              sessions={completed}
+              open={showCompleted}
+              onOpenChange={setShowCompleted}
+              renderCard={renderCard}
+            />
 
-                  <CardContent className="space-y-2 pb-3 px-4">
-                    <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                      <CalendarDays className="h-3 w-3 text-gray-400" />
-                      <span>{formatDate(session.start_date)} — {formatDate(session.end_date)}</span>
-                    </div>
-
-                    {session.location && (
-                      <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                        <MapPin className="h-3 w-3 text-gray-400" />
-                        <span className="truncate">{session.location}</span>
-                      </div>
-                    )}
-
-                    {/* CONT-3 audit BMAD : afficher le programme source pour
-                        donner du contexte sans devoir ouvrir la fiche. */}
-                    {session.program?.title && (
-                      <div className="flex items-center gap-1.5 text-xs text-purple-700">
-                        <BookOpen className="h-3 w-3 text-purple-500" />
-                        <span className="truncate font-medium">{session.program.title}</span>
-                      </div>
-                    )}
-
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <Badge className={cn("text-[10px] border-0 font-medium", statusCfg.color)}>
-                        {statusCfg.label}
-                      </Badge>
-                      <Badge variant="outline" className="text-[10px] font-medium gap-1">
-                        <ModeIcon className="h-3 w-3" />
-                        {modeCfg.label}
-                      </Badge>
-                      {session.is_subcontracted && (
-                        <Badge variant="outline" className="text-[10px] font-medium gap-1 border-purple-300 text-purple-700">
-                          <Briefcase className="h-3 w-3" /> S-T
-                        </Badge>
-                      )}
-                      {(session.qualiopi_score ?? 0) > 0 && (
-                        <span className={cn("inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full",
-                          (session.qualiopi_score ?? 0) >= 67 ? "bg-green-100 text-green-700" :
-                          (session.qualiopi_score ?? 0) >= 34 ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"
-                        )}>
-                          <Shield className="h-2.5 w-2.5" /> {session.qualiopi_score}%
-                        </span>
-                      )}
-                      <div className="flex items-center gap-1 text-[10px] text-gray-400 ml-auto">
-                        <Users className="h-3 w-3" />
-                        {enrollCount}{session.max_participants ? `/${session.max_participants}` : ""}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </Link>
-            );
-          })}
-        </div>
+            {/* Pli des sessions annulées */}
+            <CollapsibleSection
+              label="Annulées"
+              sessions={cancelled}
+              open={showCancelled}
+              onOpenChange={setShowCancelled}
+              renderCard={renderCard}
+            />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filtered.map((session) => renderCard(session))}
+          </div>
+        )
       )}
 
       {/* ══════════════════════════════════════════════════════════════════════ */}
