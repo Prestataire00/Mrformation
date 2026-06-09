@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -12,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/components/ui/use-toast";
 import {
   Loader2,
   Save,
@@ -19,6 +21,8 @@ import {
   Trash2,
   ChevronDown,
   ChevronUp,
+  Upload,
+  Sparkles,
 } from "lucide-react";
 
 const BRAND = "#374151";
@@ -73,13 +77,115 @@ export function EditProgramDialog({
   onSave,
   saving,
 }: EditProgramDialogProps) {
+  const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [extracting, setExtracting] = useState(false);
+
+  const handleAiExtract = async (file: File) => {
+    setExtracting(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/api/programs/ai-extract", {
+        method: "POST",
+        body: formData,
+      });
+      const result = await res.json();
+
+      if (!res.ok) {
+        throw new Error(result.error || `Erreur ${res.status}`);
+      }
+
+      const e = result.extracted;
+
+      // Pre-fill the form with extracted data (only overwrite non-empty fields)
+      setEditForm((prev) => ({
+        ...prev,
+        title: e.title || prev.title,
+        description: e.description || prev.description,
+        objectives: e.objectives || prev.objectives,
+        duration_hours: e.duration_hours != null ? String(e.duration_hours) : prev.duration_hours,
+        duration_days: e.duration_days != null ? String(e.duration_days) : prev.duration_days,
+        location: e.location || prev.location,
+        specialty: e.specialty || prev.specialty,
+        diploma: e.diploma || prev.diploma,
+        cpf_eligible: typeof e.cpf_eligible === "boolean" ? e.cpf_eligible : prev.cpf_eligible,
+        target_audience: e.target_audience || prev.target_audience,
+        prerequisites: e.prerequisites || prev.prerequisites,
+        team_description: e.team_description || prev.team_description,
+        evaluation_methods: e.evaluation_methods || prev.evaluation_methods,
+        pedagogical_resources: e.pedagogical_resources || prev.pedagogical_resources,
+        certification_results: e.certification_results || prev.certification_results,
+        certification_terms: e.certification_terms || prev.certification_terms,
+        certification_details: e.certification_details || prev.certification_details,
+      }));
+
+      // Pre-fill modules if extracted
+      if (Array.isArray(e.modules) && e.modules.length > 0) {
+        setEditModules(
+          e.modules.map((m: { title: string; duration_hours: number | null; topics: string }, i: number) => ({
+            id: i + 1,
+            title: m.title || "",
+            duration_hours: m.duration_hours != null ? String(m.duration_hours) : "",
+            topics: m.topics || "",
+          })),
+        );
+      }
+
+      const moduleCount = Array.isArray(e.modules) ? e.modules.length : 0;
+      toast({
+        title: "Programme extrait",
+        description: `${moduleCount} module${moduleCount > 1 ? "s" : ""} détecté${moduleCount > 1 ? "s" : ""}. Vérifiez et ajustez les champs.`,
+      });
+    } catch (err) {
+      console.error("[EditProgramDialog] ai-extract failed:", err);
+      toast({
+        title: "Extraction échouée",
+        description: err instanceof Error ? err.message : "Erreur inconnue",
+        variant: "destructive",
+      });
+    } finally {
+      setExtracting(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
   return (
     <>
+      {/* Hidden file input for AI extract */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) handleAiExtract(file);
+        }}
+      />
+
       {/* ── Edit Dialog ─────────────────────────────────────────────────────── */}
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Modifier le programme</DialogTitle>
+            <DialogTitle className="flex items-center justify-between">
+              <span>Modifier le programme</span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-1.5 text-xs text-violet-700 border-violet-200 hover:bg-violet-50"
+                disabled={extracting}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {extracting ? (
+                  <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Extraction IA...</>
+                ) : (
+                  <><Sparkles className="h-3.5 w-3.5" /> Remplir depuis un document</>
+                )}
+              </Button>
+            </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4 py-2">
