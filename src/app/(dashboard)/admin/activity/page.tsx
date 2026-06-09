@@ -18,7 +18,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { formatDateTime, getInitials, ROLE_LABELS } from "@/lib/utils";
+import { formatDateTime, getInitials, ROLE_LABELS, sanitizeSearchInput } from "@/lib/utils";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -171,7 +171,7 @@ export default function ActivityPage() {
       let q = supabase
         .from("profiles")
         .select("id, first_name, last_name, role")
-        .or(`first_name.ilike.%${debouncedUserSearch}%,last_name.ilike.%${debouncedUserSearch}%`)
+        .or(`first_name.ilike.%${sanitizeSearchInput(debouncedUserSearch)}%,last_name.ilike.%${sanitizeSearchInput(debouncedUserSearch)}%`)
         .limit(10);
       if (entityId) q = q.eq("entity_id", entityId);
 

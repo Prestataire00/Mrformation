@@ -296,7 +296,7 @@ export default function LearnerDocumentsPage() {
             ) : (
               <div
                 className="prose prose-sm max-w-none overflow-y-auto"
-                dangerouslySetInnerHTML={{ __html: previewDoc.html }}
+                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(previewDoc.html) }}
               />
             )}
             <DialogFooter>

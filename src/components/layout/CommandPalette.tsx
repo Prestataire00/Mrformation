@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { useEntity } from "@/contexts/EntityContext";
 import {
   CommandDialog, CommandInput, CommandList, CommandEmpty,
   CommandGroup, CommandItem, CommandSeparator,
@@ -25,6 +26,7 @@ export function CommandPalette() {
   const [results, setResults] = useState<SearchResults>({ sessions: [], clients: [], learners: [], trainers: [] });
   const router = useRouter();
   const supabase = createClient();
+  const { entityId } = useEntity();
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -38,17 +40,20 @@ export function CommandPalette() {
   }, []);
 
   useEffect(() => {
-    if (!query || query.length < 2) {
+    if (!query || query.length < 2 || !entityId) {
       setResults({ sessions: [], clients: [], learners: [], trainers: [] });
       return;
     }
     const timer = setTimeout(async () => {
-      const q = `%${query}%`;
+      // Sanitize query for PostgREST .or() — escape special characters
+      const sanitized = query.replace(/[%_,.()"'\\]/g, "");
+      if (!sanitized) return;
+      const q = `%${sanitized}%`;
       const [s, c, l, t] = await Promise.all([
-        supabase.from("sessions").select("id, title, status").ilike("title", q).limit(5),
-        supabase.from("clients").select("id, company_name").ilike("company_name", q).limit(5),
-        supabase.from("learners").select("id, first_name, last_name, email").or(`first_name.ilike.${q},last_name.ilike.${q}`).limit(5),
-        supabase.from("trainers").select("id, first_name, last_name").or(`first_name.ilike.${q},last_name.ilike.${q}`).limit(5),
+        supabase.from("sessions").select("id, title, status").eq("entity_id", entityId).ilike("title", q).limit(5),
+        supabase.from("clients").select("id, company_name").eq("entity_id", entityId).ilike("company_name", q).limit(5),
+        supabase.from("learners").select("id, first_name, last_name, email").eq("entity_id", entityId).or(`first_name.ilike.${q},last_name.ilike.${q}`).limit(5),
+        supabase.from("trainers").select("id, first_name, last_name").eq("entity_id", entityId).or(`first_name.ilike.${q},last_name.ilike.${q}`).limit(5),
       ]);
       setResults({
         sessions: s.data || [],
@@ -58,7 +63,7 @@ export function CommandPalette() {
       });
     }, 200);
     return () => clearTimeout(timer);
-  }, [query, supabase]);
+  }, [query, supabase, entityId]);
 
   const go = useCallback((path: string) => {
     setOpen(false);

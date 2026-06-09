@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import DOMPurify from "dompurify";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
 import {
@@ -838,7 +839,7 @@ export default function CoursePlayerPage() {
                   {ch.content_html ? (
                     <div
                       className="prose prose-sm max-w-none text-gray-700"
-                      dangerouslySetInnerHTML={{ __html: ch.content_html }}
+                      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(ch.content_html) }}
                     />
                   ) : ch.summary ? (
                     <p className="text-gray-700 leading-relaxed">{ch.summary}</p>

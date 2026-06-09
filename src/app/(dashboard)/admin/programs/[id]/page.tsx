@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import DOMPurify from "dompurify";
 import { useEntity } from "@/contexts/EntityContext";
 import { formatDate } from "@/lib/utils";
 import type { Program, ProgramContent } from "@/lib/types";
@@ -57,7 +58,7 @@ import { EditProgramDialog, type EditModule, type EditFormState } from "./_compo
 
 // ── Simple markdown → HTML (bold, italic, lists, line breaks) ─────────────────
 function renderMarkdown(text: string): string {
-  return text
+  const html = text
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -66,6 +67,7 @@ function renderMarkdown(text: string): string {
     .replace(/^- (.+)$/gm, "<li>$1</li>")
     .replace(/(<li>.*<\/li>\n?)+/g, (match) => `<ul class="list-disc list-inside space-y-1 my-2">${match}</ul>`)
     .replace(/\n/g, "<br />");
+  return DOMPurify.sanitize(html);
 }
 
 // ── Split description into "Jour" blocks for grid layout ─────────────────────

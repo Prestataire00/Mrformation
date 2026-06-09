@@ -7,6 +7,7 @@ import { Download, Search, ChevronLeft, ChevronRight } from "lucide-react";
 import { downloadXlsx } from "@/lib/export-xlsx";
 import { useToast } from "@/components/ui/use-toast";
 import { useEntity } from "@/contexts/EntityContext";
+import { sanitizeSearchInput } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -51,8 +52,9 @@ export default function TrainersListePage() {
         .eq("entity_id", entityId)
         .order("last_name", { ascending: true });
 
-      if (search.trim()) {
-        query = query.or(`first_name.ilike.%${search.trim()}%,last_name.ilike.%${search.trim()}%,email.ilike.%${search.trim()}%`);
+      const safe = sanitizeSearchInput(search);
+      if (safe) {
+        query = query.or(`first_name.ilike.%${safe}%,last_name.ilike.%${safe}%,email.ilike.%${safe}%`);
       }
 
       const from = (page - 1) * PAGE_SIZE;

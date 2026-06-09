@@ -121,3 +121,11 @@ export const TASK_PRIORITY_COLORS: Record<string, string> = {
   medium: "bg-yellow-100 text-yellow-800",
   high: "bg-red-100 text-red-800",
 };
+
+/**
+ * Sanitize user input before interpolation into PostgREST .or() / .ilike() DSL strings.
+ * Strips characters that could alter the filter semantics (commas, dots, parens, quotes, backslashes, wildcards).
+ */
+export function sanitizeSearchInput(input: string): string {
+  return input.replace(/[%_,.()"'\\]/g, "").trim();
+}

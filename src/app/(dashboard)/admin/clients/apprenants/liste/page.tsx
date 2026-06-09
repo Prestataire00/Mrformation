@@ -5,7 +5,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Download, ChevronLeft, ChevronRight, Plus, Loader2, Mail } from "lucide-react";
 import { downloadXlsx } from "@/lib/export-xlsx";
-import { cn } from "@/lib/utils";
+import { cn, sanitizeSearchInput } from "@/lib/utils";
 import { useToast } from "@/components/ui/use-toast";
 import { useEntity } from "@/contexts/EntityContext";
 import { Button } from "@/components/ui/button";
@@ -105,7 +105,8 @@ export default function ApprenantsListePage() {
         .order("last_name", { ascending: true });
 
       if (debouncedName.trim()) {
-        query = query.or(`first_name.ilike.%${debouncedName.trim()}%,last_name.ilike.%${debouncedName.trim()}%`);
+        const safe = sanitizeSearchInput(debouncedName);
+        if (safe) query = query.or(`first_name.ilike.%${safe}%,last_name.ilike.%${safe}%`);
       }
 
       const from = (page - 1) * PAGE_SIZE;
