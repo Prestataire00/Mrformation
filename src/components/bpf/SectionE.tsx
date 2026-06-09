@@ -8,11 +8,14 @@ import { RefreshCw, Download, ChevronDown } from "lucide-react";
 import Link from "next/link";
 import { exportToCSV } from "@/lib/utils/export-csv";
 import { BPFData } from "./types";
+import { EditableCell } from "./EditableCell";
 
 interface SectionEProps {
   bpf: BPFData;
   year?: number;
   entityId?: string;
+  overrides?: Record<string, Record<string, number>>;
+  onOverride?: (key: string, value: number | null) => void;
 }
 
 interface SubSession {
@@ -23,7 +26,7 @@ interface SubSession {
   trainerNames: string[];
 }
 
-export function SectionE({ bpf, year, entityId }: SectionEProps) {
+export function SectionE({ bpf, year, entityId, overrides, onOverride }: SectionEProps) {
   const supabase = createClient();
   const [autoData, setAutoData] = useState<{ hours: number; trainers: number; sessions: SubSession[] } | null>(null);
   const [loading, setLoading] = useState(false);
@@ -91,16 +94,32 @@ export function SectionE({ bpf, year, entityId }: SectionEProps) {
         <tbody>
           <tr className="border-t border-gray-300">
             <td className="py-3 text-gray-700">Personnes de votre organisme dispensant des heures de formation</td>
-            <td className="py-3 text-gray-800 font-medium">{bpf.personnesInternes.nombre}</td>
-            <td className="py-3 text-gray-800 font-medium">{bpf.personnesInternes.heures}</td>
+            <td className="py-3 text-gray-800 font-medium">
+              {onOverride ? (
+                <EditableCell value={bpf.personnesInternes.nombre} override={overrides?.internes?.nombre} onOverride={(val) => onOverride("internes_nombre", val)} />
+              ) : bpf.personnesInternes.nombre}
+            </td>
+            <td className="py-3 text-gray-800 font-medium">
+              {onOverride ? (
+                <EditableCell value={bpf.personnesInternes.heures} override={overrides?.internes?.heures} onOverride={(val) => onOverride("internes_heures", val)} />
+              ) : bpf.personnesInternes.heures}
+            </td>
           </tr>
           <tr className="border-t border-gray-200">
             <td className="py-3 text-gray-700">
               Personnes extérieures (sous-traitance)
               {autoData && <Badge variant="outline" className="ml-2 text-[10px] text-blue-600 border-blue-200">auto-calculé</Badge>}
             </td>
-            <td className="py-3 text-gray-800 font-medium">{displayExtNombre}</td>
-            <td className="py-3 text-gray-800 font-medium">{displayExtHeures}</td>
+            <td className="py-3 text-gray-800 font-medium">
+              {onOverride ? (
+                <EditableCell value={displayExtNombre} override={overrides?.externes?.nombre} onOverride={(val) => onOverride("externes_nombre", val)} />
+              ) : displayExtNombre}
+            </td>
+            <td className="py-3 text-gray-800 font-medium">
+              {onOverride ? (
+                <EditableCell value={displayExtHeures} override={overrides?.externes?.heures} onOverride={(val) => onOverride("externes_heures", val)} />
+              ) : displayExtHeures}
+            </td>
           </tr>
         </tbody>
       </table>
