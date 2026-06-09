@@ -359,11 +359,6 @@ export default function ProgramsPage() {
         objectives: e.objectives || "",
         content: JSON.stringify(contentObj, null, 2),
         duration_hours: e.duration_hours != null ? String(e.duration_hours) : "",
-        duration_days: e.duration_days != null ? String(e.duration_days) : "",
-        location: e.location || "",
-        specialty: e.specialty || "",
-        diploma: e.diploma || "",
-        cpf_eligible: e.cpf_eligible === true,
       });
       setFormErrors({});
       setContentError("");
