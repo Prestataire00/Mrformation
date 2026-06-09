@@ -1,10 +1,13 @@
 import { FINANCIAL_LINES } from "./types";
+import { EditableCell } from "./EditableCell";
 
 interface SectionCProps {
   sectionC: Record<string, number>;
   getLineValue: (key: string) => number;
   totalProduits: number;
   fmtEur: (val: number) => string;
+  overrides?: Record<string, number>;
+  onOverride?: (key: string, value: number | null) => void;
 }
 
 export function SectionC({
@@ -12,6 +15,8 @@ export function SectionC({
   getLineValue,
   totalProduits,
   fmtEur,
+  overrides,
+  onOverride,
 }: SectionCProps) {
   return (
     <div className="bg-[#e0f5f8] rounded-xl p-6 mb-4">
@@ -26,20 +31,33 @@ export function SectionC({
       <p className="text-sm text-gray-700 mb-4">Produits provenant :</p>
 
       <div className="space-y-2">
-        {FINANCIAL_LINES.map((line) => (
-          <div
-            key={line.key}
-            className="flex items-start justify-between gap-4"
-            style={{ paddingLeft: line.indent ? `${line.indent * 24}px` : undefined }}
-          >
-            <p className={`text-sm text-gray-700 flex-1 ${line.bold ? "font-semibold" : ""}`}>
-              {line.label}
-            </p>
-            <span className="text-sm text-gray-700 whitespace-nowrap shrink-0">
-              {fmtEur(getLineValue(line.key))}
-            </span>
-          </div>
-        ))}
+        {FINANCIAL_LINES.map((line) => {
+          const calculated = getLineValue(line.key);
+          const override = overrides?.[line.key];
+          return (
+            <div
+              key={line.key}
+              className="flex items-start justify-between gap-4"
+              style={{ paddingLeft: line.indent ? `${line.indent * 24}px` : undefined }}
+            >
+              <p className={`text-sm text-gray-700 flex-1 ${line.bold ? "font-semibold" : ""}`}>
+                {line.label}
+              </p>
+              <span className="text-sm text-gray-700 whitespace-nowrap shrink-0">
+                {onOverride ? (
+                  <EditableCell
+                    value={calculated}
+                    override={override}
+                    onOverride={(val) => onOverride(line.key, val)}
+                    suffix="EUR"
+                  />
+                ) : (
+                  fmtEur(calculated)
+                )}
+              </span>
+            </div>
+          );
+        })}
       </div>
 
       <div className="mt-4 pt-3 border-t border-gray-300">

@@ -60,6 +60,9 @@ export function BPFForm({ title }: BPFFormProps) {
   const [sectionD, setSectionD] = useState<Record<string, number>>({});
   const [sectionGManual, setSectionGManual] = useState<{ stagiaires: number; heures: number }>({ stagiaires: 0, heures: 0 });
 
+  // BPF overrides (manual corrections per section)
+  const [overrides, setOverrides] = useState<Record<string, unknown>>({});
+
   // KPI & satisfaction
   const [satisfactionScore, setSatisfactionScore] = useState<number | null>(null);
   const [totalStagiaires, setTotalStagiaires] = useState(0);
@@ -438,6 +441,10 @@ export function BPFForm({ title }: BPFFormProps) {
       const gManual = { stagiaires: gData.stagiaires || 0, heures: gData.heures || 0 };
       setSectionGManual(gManual);
 
+      // Load overrides
+      const loadedOverrides = finData ? ((finData.overrides as Record<string, unknown>) || {}) : {};
+      setOverrides(loadedOverrides);
+
       // ─── KPI totals ───
       const kpiStagiaires = totalF1Learners;
       const kpiHeures = totalF1Hours;
@@ -751,6 +758,46 @@ export function BPFForm({ title }: BPFFormProps) {
     }
   };
 
+  // ─── Override handler ───
+  const handleOverride = async (section: string, key: string, value: number | null) => {
+    if (!entityId) return;
+
+    const updated = { ...overrides };
+    const sectionData = { ...(updated[section] as Record<string, unknown> || {}) };
+
+    if (value === null) {
+      delete sectionData[key];
+    } else {
+      sectionData[key] = value;
+    }
+
+    if (Object.keys(sectionData).length === 0) {
+      delete updated[section];
+    } else {
+      updated[section] = sectionData;
+    }
+
+    setOverrides(updated);
+
+    try {
+      const { error } = await supabase
+        .from("bpf_financial_data")
+        .upsert(
+          {
+            entity_id: entityId,
+            fiscal_year: fiscalYear,
+            overrides: updated,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "entity_id,fiscal_year" }
+        );
+      if (error) throw error;
+    } catch (err) {
+      console.error("[BPF] handleOverride failed:", err);
+      toast({ title: "Erreur", description: "Impossible de sauvegarder la correction.", variant: "destructive" });
+    }
+  };
+
   const fmtEur = (val: number) => `${(val || 0).toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} EUR`;
 
   const getLineValue = (key: string): number => {
@@ -1002,14 +1049,22 @@ export function BPFForm({ title }: BPFFormProps) {
         getLineValue={getLineValue}
         totalProduits={totalProduits()}
         fmtEur={fmtEur}
+        overrides={(overrides.section_c as Record<string, number>) || undefined}
+        onOverride={(key, val) => handleOverride("section_c", key, val)}
       />
 
       <SectionD
         sectionD={sectionD}
         fmtEur={fmtEur}
+        overrides={(overrides.section_d as Record<string, number>) || undefined}
+        onOverride={(key, val) => handleOverride("section_d", key, val)}
       />
 
-      <SectionE bpf={bpf} />
+      <SectionE
+        bpf={bpf}
+        overrides={(overrides.section_e as Record<string, Record<string, number>>) || undefined}
+        onOverride={(key, val) => handleOverride("section_e", key, val)}
+      />
 
       {/* ═══ BADGE COHÉRENCE F1=F3=F4 ═══ */}
       {(() => {
@@ -1043,13 +1098,25 @@ export function BPFForm({ title }: BPFFormProps) {
         );
       })()}
 
-      <SectionF1 bpf={bpf} />
+      <SectionF1
+        bpf={bpf}
+        overrides={(overrides.section_f1 as Record<string, Record<string, number>>) || undefined}
+        onOverride={(key, val) => handleOverride("section_f1", key, val)}
+      />
 
       <SectionF2 bpf={bpf} />
 
-      <SectionF3 bpf={bpf} />
+      <SectionF3
+        bpf={bpf}
+        overrides={(overrides.section_f3 as Record<string, Record<string, number>>) || undefined}
+        onOverride={(key, val) => handleOverride("section_f3", key, val)}
+      />
 
-      <SectionF4 bpf={bpf} />
+      <SectionF4
+        bpf={bpf}
+        overrides={(overrides.section_f4 as Record<string, Record<string, number>>) || undefined}
+        onOverride={(key, val) => handleOverride("section_f4", key, val)}
+      />
 
       <SectionG
         editingFinancial={true}

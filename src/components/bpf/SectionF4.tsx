@@ -1,10 +1,13 @@
 import { BPFData } from "./types";
+import { EditableCell } from "./EditableCell";
 
 interface SectionF4Props {
   bpf: BPFData;
+  overrides?: Record<string, Record<string, number>>;
+  onOverride?: (key: string, value: number | null) => void;
 }
 
-export function SectionF4({ bpf }: SectionF4Props) {
+export function SectionF4({ bpf, overrides, onOverride }: SectionF4Props) {
   return (
     <div className="bg-[#e0f5f8] rounded-xl p-6 mb-4">
       <h2 className="font-bold text-gray-900 text-base mb-4">
@@ -26,13 +29,39 @@ export function SectionF4({ bpf }: SectionF4Props) {
               </td>
             </tr>
           ) : (
-            bpf.f4.map((row, i) => (
-              <tr key={i} className="border-t border-gray-200">
-                <td className="py-2 px-3 text-gray-700">{row.code}</td>
-                <td className="py-2 px-3 text-gray-800 font-medium">{row.stagiaires}</td>
-                <td className="py-2 px-3 text-gray-800 font-medium">{row.heures}</td>
-              </tr>
-            ))
+            bpf.f4.map((row, i) => {
+              const rowKey = `f4_${i}`;
+              const stagOverride = (overrides?.[rowKey] as Record<string, number>)?.stagiaires ?? (overrides?.[`${rowKey}_stagiaires`] as unknown as number);
+              const heuresOverride = (overrides?.[rowKey] as Record<string, number>)?.heures ?? (overrides?.[`${rowKey}_heures`] as unknown as number);
+
+              return (
+                <tr key={i} className="border-t border-gray-200">
+                  <td className="py-2 px-3 text-gray-700">{row.code}</td>
+                  <td className="py-2 px-3 text-gray-800 font-medium">
+                    {onOverride ? (
+                      <EditableCell
+                        value={row.stagiaires}
+                        override={typeof stagOverride === "number" ? stagOverride : undefined}
+                        onOverride={(val) => onOverride(`${rowKey}_stagiaires`, val)}
+                      />
+                    ) : (
+                      row.stagiaires
+                    )}
+                  </td>
+                  <td className="py-2 px-3 text-gray-800 font-medium">
+                    {onOverride ? (
+                      <EditableCell
+                        value={row.heures}
+                        override={typeof heuresOverride === "number" ? heuresOverride : undefined}
+                        onOverride={(val) => onOverride(`${rowKey}_heures`, val)}
+                      />
+                    ) : (
+                      row.heures
+                    )}
+                  </td>
+                </tr>
+              );
+            })
           )}
         </tbody>
       </table>
