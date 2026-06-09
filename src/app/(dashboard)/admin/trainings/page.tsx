@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, type ReactNode } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
@@ -139,6 +139,41 @@ const MODE_CONFIG: Record<string, { label: string; icon: typeof MapPin }> = {
   distanciel: { label: "Distanciel", icon: Wifi },
   hybride:    { label: "Hybride",    icon: Monitor },
 };
+
+// ── CollapsibleSection ────────────────────────────────────────────────────────
+// Composant local réutilisé pour les plis "Terminées" et "Annulées".
+// Reçoit les sessions déjà filtrées et un renderCard pour éviter les
+// problèmes de portée (renderCard est une closure interne à la page).
+
+function CollapsibleSection({
+  label,
+  sessions,
+  open,
+  onOpenChange,
+  renderCard,
+}: {
+  label: string;
+  sessions: SessionCard[];
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  renderCard: (session: SessionCard) => ReactNode;
+}) {
+  if (sessions.length === 0) return null;
+  return (
+    <Collapsible open={open} onOpenChange={onOpenChange}>
+      <CollapsibleTrigger className="flex items-center gap-2 text-sm font-semibold text-gray-700 hover:text-gray-900 py-1">
+        <ChevronRight className={cn("h-4 w-4 transition-transform", open && "rotate-90")} />
+        {label}
+        <Badge variant="outline" className="text-[10px]">{sessions.length}</Badge>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="pt-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {sessions.map((s) => renderCard(s))}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
 
 // ── Page ───────────────────────────────────────────────────────────────────────
 
@@ -285,7 +320,10 @@ export default function FormationsPage() {
   // filtre « Tous les statuts » ET aucune recherche. Dès qu'on filtre ou
   // qu'on cherche, on veut une grille plate pour tout voir d'un coup.
   const isGroupedView =
-    viewMode === "grid" && statusFilter === "all" && debouncedSearch.trim() === "";
+    viewMode === "grid" &&
+    statusFilter === "all" &&
+    modeFilter === "all" &&
+    debouncedSearch.trim() === "";
   const { active, completed, cancelled } = partitionSessions(filtered);
 
   // ── Helpers ────────────────────────────────────────────────────────────────
@@ -747,44 +785,31 @@ export default function FormationsPage() {
         isGroupedView ? (
           <div className="space-y-6">
             {/* Sessions actives — toujours visibles, en grandes cartes */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {active.map((session) => renderCard(session))}
-            </div>
-            {active.length === 0 && (
+            {active.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {active.map((session) => renderCard(session))}
+              </div>
+            ) : (
               <p className="text-sm text-gray-400 py-4">Aucune formation active.</p>
             )}
 
             {/* Pli des sessions terminées */}
-            {completed.length > 0 && (
-              <Collapsible open={showCompleted} onOpenChange={setShowCompleted}>
-                <CollapsibleTrigger className="flex items-center gap-2 text-sm font-semibold text-gray-700 hover:text-gray-900 py-1">
-                  <ChevronRight className={cn("h-4 w-4 transition-transform", showCompleted && "rotate-90")} />
-                  Terminées
-                  <Badge variant="outline" className="text-[10px]">{completed.length}</Badge>
-                </CollapsibleTrigger>
-                <CollapsibleContent className="pt-3">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {completed.map((session) => renderCard(session))}
-                  </div>
-                </CollapsibleContent>
-              </Collapsible>
-            )}
+            <CollapsibleSection
+              label="Terminées"
+              sessions={completed}
+              open={showCompleted}
+              onOpenChange={setShowCompleted}
+              renderCard={renderCard}
+            />
 
             {/* Pli des sessions annulées */}
-            {cancelled.length > 0 && (
-              <Collapsible open={showCancelled} onOpenChange={setShowCancelled}>
-                <CollapsibleTrigger className="flex items-center gap-2 text-sm font-semibold text-gray-700 hover:text-gray-900 py-1">
-                  <ChevronRight className={cn("h-4 w-4 transition-transform", showCancelled && "rotate-90")} />
-                  Annulées
-                  <Badge variant="outline" className="text-[10px]">{cancelled.length}</Badge>
-                </CollapsibleTrigger>
-                <CollapsibleContent className="pt-3">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {cancelled.map((session) => renderCard(session))}
-                  </div>
-                </CollapsibleContent>
-              </Collapsible>
-            )}
+            <CollapsibleSection
+              label="Annulées"
+              sessions={cancelled}
+              open={showCancelled}
+              onOpenChange={setShowCancelled}
+              renderCard={renderCard}
+            />
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
