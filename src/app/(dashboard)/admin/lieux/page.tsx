@@ -10,6 +10,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { useConfirmDialog } from "@/hooks/useConfirmDialog";
 
 interface Venue {
   id: string;
@@ -100,6 +101,7 @@ function saveVenues(venues: Venue[]) {
 
 export default function LieuxPage() {
   const { toast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirmDialog();
   const [venues, setVenues] = useState<Venue[]>([]);
   const [search, setSearch] = useState("");
   const [editItem, setEditItem] = useState<Venue | null>(null);
@@ -149,8 +151,9 @@ export default function LieuxPage() {
     toast({ title: "Modifié", description: "Le lieu a été mis à jour." });
   };
 
-  const handleDelete = (id: string, name: string) => {
-    if (!confirm(`Supprimer "${name}" ?`)) return;
+  const handleDelete = async (id: string, name: string) => {
+    const ok = await confirm({ title: "Supprimer ?", description: `Supprimer "${name}" ? Cette action est irréversible.` });
+    if (!ok) return;
     const updated = venues.filter((v) => v.id !== id);
     setVenues(updated);
     saveVenues(updated);
@@ -339,6 +342,7 @@ export default function LieuxPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <ConfirmDialog />
     </div>
   );
 }

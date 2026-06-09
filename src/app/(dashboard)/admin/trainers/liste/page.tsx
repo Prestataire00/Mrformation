@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import type { Trainer as TrainerFull } from "@/lib/types";
 import { TrainersViewSwitcher } from "../_components/TrainersViewSwitcher";
+import { useConfirmDialog } from "@/hooks/useConfirmDialog";
 
 // Lot C audit BMAD : utilise le type global Trainer via Pick (SELECT
 // partiel des 8 colonnes affichées). Avant : interface locale qui faisait
@@ -32,6 +33,7 @@ export default function TrainersListePage() {
   const supabase = createClient();
   const { toast } = useToast();
   const { entityId } = useEntity();
+  const { confirm, ConfirmDialog } = useConfirmDialog();
 
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -112,7 +114,8 @@ export default function TrainersListePage() {
   };
 
   const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Supprimer ${name} ?`)) return;
+    const ok = await confirm({ title: "Supprimer ?", description: `Supprimer ${name} ? Cette action est irréversible.` });
+    if (!ok) return;
     if (!entityId) {
       toast({ title: "Entité non chargée", variant: "destructive" });
       return;
@@ -374,6 +377,7 @@ export default function TrainersListePage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <ConfirmDialog />
     </div>
   );
 }

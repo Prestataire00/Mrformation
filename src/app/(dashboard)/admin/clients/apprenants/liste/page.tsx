@@ -15,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
+import { useConfirmDialog } from "@/hooks/useConfirmDialog";
 
 interface Learner {
   id: string;
@@ -32,6 +33,7 @@ const PAGE_SIZE = 15;
 export default function ApprenantsListePage() {
   const supabase = createClient();
   const { toast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirmDialog();
 
   const [learners, setLearners] = useState<Learner[]>([]);
   const [loading, setLoading] = useState(true);
@@ -138,7 +140,8 @@ export default function ApprenantsListePage() {
   };
 
   const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Supprimer ${name} ?`)) return;
+    const ok = await confirm({ title: "Supprimer ?", description: `Supprimer ${name} ? Cette action est irréversible.` });
+    if (!ok) return;
     const { error } = await supabase.from("learners").delete().eq("id", id);
     if (error) {
       toast({ title: "Erreur", description: "Impossible de supprimer.", variant: "destructive" });
@@ -592,6 +595,7 @@ export default function ApprenantsListePage() {
           </Button>
         </div>
       )}
+      <ConfirmDialog />
     </div>
   );
 }
