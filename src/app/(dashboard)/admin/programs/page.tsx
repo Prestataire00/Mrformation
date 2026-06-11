@@ -328,10 +328,12 @@ export default function ProgramsPage() {
       const e = result.extracted;
       // Build content JSON from modules
       const modules = Array.isArray(e.modules)
-        ? e.modules.map((m: { title: string; duration_hours: number | null; topics: string }, i: number) => ({
+        ? e.modules.map((m: { title: string; duration_hours: number | null; topics: string; objectives?: string }, i: number) => ({
+            id: i + 1,
             title: m.title || `Module ${i + 1}`,
-            duration_hours: m.duration_hours,
-            topics: m.topics ? m.topics.split("\n").filter(Boolean) : [],
+            duration_hours: m.duration_hours ?? 0,
+            objectives: m.objectives ? String(m.objectives).split("\n").filter(Boolean) : [],
+            topics: m.topics ? String(m.topics).split("\n").filter(Boolean) : [],
           }))
         : [];
 
