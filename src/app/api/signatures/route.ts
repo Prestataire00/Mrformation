@@ -4,6 +4,8 @@ import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 import { logAudit } from "@/lib/audit-log";
 import { sanitizeSignatureSvg } from "@/lib/utils/sanitize-svg";
 import { isValidAdminBulkSignature } from "@/lib/utils/validate-bulk-signature";
+import { isTrainerAssignedToSession } from "@/lib/auth/trainer-session-access";
+import { isLearnerEnrolledInSession } from "@/lib/auth/learner-session-access";
 
 export async function GET(request: NextRequest) {
   const auth = await requireRole(["super_admin", "admin", "trainer", "learner"]);
@@ -95,29 +97,24 @@ export async function POST(request: NextRequest) {
 
     // Verify the user is linked to this session
     if (role === "learner") {
-      const { data: enrollment } = await auth.supabase
-        .from("enrollments")
-        .select("id")
-        .eq("session_id", session_id)
-        .eq("learner_id", userId)
-        .eq("status", "active")
-        .single();
-
-      if (!enrollment) {
+      // Résout learners.id depuis profile_id (auth.uid()) puis vérifie une
+      // inscription non annulée. `userId` est un profile_id ≠ learners.id ;
+      // le comparer à enrollments.learner_id (+ statut 'active' inexistant)
+      // était le bug P0 côté apprenant.
+      const enrolled = await isLearnerEnrolledInSession(auth.supabase, userId, session_id);
+      if (!enrolled) {
         return NextResponse.json(
           { error: "Vous n'êtes pas inscrit à cette session." },
           { status: 403 }
         );
       }
     } else if (role === "trainer") {
-      const { data: session } = await auth.supabase
-        .from("sessions")
-        .select("trainer_id")
-        .eq("id", session_id)
-        .eq("trainer_id", userId)
-        .single();
-
-      if (!session) {
+      // Résout trainers.id depuis profile_id (auth.uid()) puis vérifie
+      // l'assignation via formation_trainers (source canonique). `userId` est
+      // un profile_id, jamais un trainers.id — le comparer directement à
+      // sessions.trainer_id était le bug P0 (et sessions.trainer_id est souvent NULL).
+      const assigned = await isTrainerAssignedToSession(auth.supabase, userId, session_id);
+      if (!assigned) {
         return NextResponse.json(
           { error: "Vous n'êtes pas assigné à cette session." },
           { status: 403 }
