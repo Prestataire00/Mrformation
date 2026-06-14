@@ -278,10 +278,18 @@ export function SessionDocumentsTab({ trainerId }: { trainerId: string }) {
   };
 
   const handleDownload = async (docId: string) => {
-    const res = await fetch(`/api/trainer/documents/${docId}/file-url`);
-    if (!res.ok) throw new Error("Impossible de générer le lien");
-    const { url } = await res.json();
-    window.open(url, "_blank", "noopener,noreferrer");
+    try {
+      const res = await fetch(`/api/trainer/documents/${docId}/file-url`);
+      if (!res.ok) throw new Error("Impossible de générer le lien");
+      const { url } = await res.json();
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      toast({
+        title: "Erreur",
+        description: err instanceof Error ? err.message : "Téléchargement impossible.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleSaved = (doc: TrainerDocument) => {

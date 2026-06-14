@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { resolveTrainerSessionIds } from "@/lib/auth/trainer-session-access";
 import { useToast } from "@/components/ui/use-toast";
+import Link from "next/link";
 import {
   CalendarDays,
   MapPin,
@@ -13,6 +14,7 @@ import {
   Monitor,
   Building2,
   Wifi,
+  PenLine,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn, formatDate, SESSION_STATUS_LABELS, STATUS_COLORS } from "@/lib/utils";
@@ -185,6 +187,15 @@ export default function TrainerSessionsPage() {
                       {SESSION_STATUS_LABELS[session.status] ?? session.status}
                     </Badge>
                   </div>
+                </div>
+                {/* CTA émargement : accès direct à la feuille de signature de la session */}
+                <div className="mt-4 pt-4 border-t border-gray-100 flex justify-end">
+                  <Link
+                    href={`/trainer/sessions/${session.id}/sign`}
+                    className="inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-700"
+                  >
+                    <PenLine className="w-4 h-4" /> Émarger
+                  </Link>
                 </div>
                 {/* Pédagogie V2 Epic 5 — matrice apprenant × module
                      e-learning. Le composant s'auto-masque (return null) si
