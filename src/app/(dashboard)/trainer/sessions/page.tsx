@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { resolveTrainerSessionIds } from "@/lib/auth/trainer-session-access";
+import { useToast } from "@/components/ui/use-toast";
 import {
   CalendarDays,
   MapPin,
@@ -37,6 +39,7 @@ interface SessionWithDetails extends Omit<Session, "training" | "enrollments"> {
 
 export default function TrainerSessionsPage() {
   const supabase = createClient();
+  const { toast } = useToast();
   const [sessions, setSessions] = useState<SessionWithDetails[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "upcoming" | "completed">("all");
@@ -48,22 +51,27 @@ export default function TrainerSessionsPage() {
     } = await supabase.auth.getUser();
     if (!user) return;
 
-    const { data: trainer } = await supabase
-      .from("trainers")
-      .select("id")
-      .eq("profile_id", user.id)
-      .single();
-
-    if (!trainer) {
+    // Isolation : sessions du formateur via formation_trainers (sessions.trainer_id
+    // n'est pas fiable). Cf. cadrage espace formateur (décision formation_trainers).
+    const sessionIds = await resolveTrainerSessionIds(supabase, user.id);
+    if (sessionIds.length === 0) {
+      setSessions([]);
       setLoading(false);
       return;
     }
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("sessions")
       .select("*, training:trainings(title, duration_hours), enrollments(id)")
-      .eq("trainer_id", trainer.id)
+      .in("id", sessionIds)
       .order("start_date", { ascending: false });
+
+    if (error) {
+      toast({ title: "Erreur", description: "Impossible de charger vos sessions.", variant: "destructive" });
+      setSessions([]);
+      setLoading(false);
+      return;
+    }
 
     const now = new Date();
     const mapped = ((data as SessionWithDetails[]) ?? []).map((s) => {
@@ -78,7 +86,7 @@ export default function TrainerSessionsPage() {
     });
     setSessions(mapped);
     setLoading(false);
-  }, [supabase]);
+  }, [supabase, toast]);
 
   useEffect(() => {
     fetchData();

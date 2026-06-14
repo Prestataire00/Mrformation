@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { resolveTrainerSessionIds } from "@/lib/auth/trainer-session-access";
+import { useToast } from "@/components/ui/use-toast";
 import {
   Card,
   CardContent,
@@ -45,6 +47,7 @@ interface TrainerDocument {
 
 export default function TrainerContractsPage() {
   const supabase = createClient();
+  const { toast } = useToast();
 
   const [documents, setDocuments] = useState<TrainerDocument[]>([]);
   const [loading, setLoading] = useState(true);
@@ -64,37 +67,9 @@ export default function TrainerContractsPage() {
       return;
     }
 
-    // Find trainer by matching email or user_id
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("email")
-      .eq("id", user.id)
-      .single();
-
-    if (!profile) {
-      setLoading(false);
-      return;
-    }
-
-    // Find trainer record
-    const { data: trainer } = await supabase
-      .from("trainers")
-      .select("id")
-      .eq("email", profile.email)
-      .single();
-
-    if (!trainer) {
-      setLoading(false);
-      return;
-    }
-
-    // Get all sessions for this trainer
-    const { data: sessions } = await supabase
-      .from("sessions")
-      .select("id, title, start_date, training_id, trainings(title), clients:enrollments(client_id, clients(company_name))")
-      .eq("trainer_id", trainer.id);
-
-    const sessionIds = (sessions ?? []).map((s) => s.id);
+    // Isolation : résout le formateur par profile_id (plus de lookup fragile par
+    // email) et ses sessions via formation_trainers. Cf. cadrage espace formateur.
+    const sessionIds = await resolveTrainerSessionIds(supabase, user.id);
 
     if (sessionIds.length === 0) {
       setDocuments([]);
@@ -102,12 +77,31 @@ export default function TrainerContractsPage() {
       return;
     }
 
+    const { data: sessions, error: sessionsError } = await supabase
+      .from("sessions")
+      .select("id, title, start_date, training_id, trainings(title), clients:enrollments(client_id, clients(company_name))")
+      .in("id", sessionIds);
+
+    if (sessionsError) {
+      toast({ title: "Erreur", description: "Impossible de charger vos sessions.", variant: "destructive" });
+      setDocuments([]);
+      setLoading(false);
+      return;
+    }
+
     // Get documents linked to those sessions
-    const { data: docs } = await supabase
+    const { data: docs, error: docsError } = await supabase
       .from("generated_documents")
       .select("*")
       .in("session_id", sessionIds)
       .order("created_at", { ascending: false });
+
+    if (docsError) {
+      toast({ title: "Erreur", description: "Impossible de charger vos documents.", variant: "destructive" });
+      setDocuments([]);
+      setLoading(false);
+      return;
+    }
 
     if (docs) {
       const mapped: TrainerDocument[] = docs.map((d: Record<string, unknown>) => {
@@ -133,7 +127,7 @@ export default function TrainerContractsPage() {
     }
 
     setLoading(false);
-  }, [supabase]);
+  }, [supabase, toast]);
 
   useEffect(() => {
     fetchDocuments();

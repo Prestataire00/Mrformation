@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { resolveTrainerSessionIds } from "@/lib/auth/trainer-session-access";
 import {
   Card,
   CardContent,
@@ -180,20 +181,26 @@ export default function TrainerPage() {
         availability_notes: trainerData.availability_notes ?? "",
       });
 
-      // fetch sessions assigned to this trainer
-      const { data: sessionsData } = await supabase
-        .from("sessions")
-        .select(
+      // Isolation : sessions du formateur via formation_trainers (sessions.trainer_id
+      // n'est pas fiable). Cf. cadrage espace formateur (décision formation_trainers).
+      const sessionIds = await resolveTrainerSessionIds(supabase, user.id);
+      if (sessionIds.length === 0) {
+        setSessions([]);
+      } else {
+        const { data: sessionsData } = await supabase
+          .from("sessions")
+          .select(
+            `
+            *,
+            training:trainings(title, description, duration_hours),
+            enrollments(id)
           `
-          *,
-          training:trainings(title, description, duration_hours),
-          enrollments(id)
-        `
-        )
-        .eq("trainer_id", trainerData.id)
-        .order("start_date", { ascending: true });
+          )
+          .in("id", sessionIds)
+          .order("start_date", { ascending: true });
 
-      setSessions((sessionsData as SessionWithDetails[]) ?? []);
+        setSessions((sessionsData as SessionWithDetails[]) ?? []);
+      }
     } catch (err) {
       console.error("TrainerPage fetch error:", err);
     } finally {
