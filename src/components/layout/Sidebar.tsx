@@ -260,16 +260,15 @@ const ROLE_NAV_SECTIONS: Record<string, NavSection[]> = {
   client: clientNavSections,
 };
 
+// Le formateur n'a pas accès aux pages /admin/crm/* (bloquées par
+// PAGE_PERMISSIONS, et le CRM est hors périmètre formateur — cf. cadrage
+// espace formateur). On ne garde que les liens réellement accessibles.
 const trainerCrmNavItems: NavItem[] = [
   {
-    label: "CRM",
-    icon: TrendingUp,
+    label: "Activité",
+    icon: ClipboardList,
     children: [
-      { label: "Dashboard CRM", href: "/admin/crm", icon: BarChart3 },
-      { label: "Mes Prospects", href: "/admin/crm/prospects", icon: TrendingUp },
-      { label: "Tous les Prospects", href: "/admin/crm/prospects/liste", icon: Users },
       { label: "Mes Tâches", href: "/trainer/tasks", icon: ClipboardList },
-      { label: "Mes Devis", href: "/admin/crm/quotes", icon: FileText },
     ],
   },
 ];

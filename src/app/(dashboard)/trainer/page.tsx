@@ -315,9 +315,9 @@ export default function TrainerPage() {
             title="Accès rapides"
             actions={[
               { icon: CalendarDays, label: "Sessions cette semaine", count: weekSessionCount, href: "/trainer/planning", color: "blue" },
-              { icon: PenLine, label: "Contrats à signer", count: 0, href: "/trainer/documents", color: "amber" },
-              { icon: ClipboardCheck, label: "Évaluations", count: 0, href: "/trainer/evaluations", color: "green" },
-              { icon: FileText, label: "Documents", count: 0, href: "/trainer/documents", color: "purple" },
+              { icon: PenLine, label: "Mes contrats", href: "/trainer/contracts", color: "amber" },
+              { icon: ClipboardCheck, label: "Évaluations", href: "/trainer/evaluations", color: "green" },
+              { icon: FileText, label: "Mes documents", href: "/trainer/contracts", color: "purple" },
             ]}
           />
 
@@ -758,7 +758,7 @@ export default function TrainerPage() {
               initials: formatDate(s.start_date, "dd"),
               title: s.title,
               subtitle: `${formatDate(s.start_date)} · ${s.enrollments?.length || 0} apprenants`,
-              href: `/admin/formations/${s.id}`,
+              href: `/trainer/sessions/${s.id}/sign`,
             }))}
             emptyMessage="Aucune session à venir"
           />
