@@ -34,3 +34,33 @@ export async function isTrainerAssignedToSession(
 
   return Boolean(assignment);
 }
+
+/**
+ * Retourne les `session_id` (dédupliqués) auxquels le formateur (`profileId` =
+ * auth.uid()) est assigné, via `formation_trainers` (source canonique).
+ *
+ * À utiliser pour filtrer les listes de sessions du formateur (dashboard,
+ * planning, « mes sessions », contrats) avec `.in("id", ids)` — et NON
+ * `sessions.trainer_id`, souvent NULL. Renvoie `[]` si pas de fiche formateur
+ * ou aucune assignation (la page affiche alors un état vide).
+ */
+export async function resolveTrainerSessionIds(
+  supabase: SupabaseClient,
+  profileId: string,
+): Promise<string[]> {
+  const { data: trainer } = await supabase
+    .from("trainers")
+    .select("id")
+    .eq("profile_id", profileId)
+    .single();
+
+  if (!trainer) return [];
+
+  const { data: links } = await supabase
+    .from("formation_trainers")
+    .select("session_id")
+    .eq("trainer_id", (trainer as { id: string }).id);
+
+  const ids = ((links as Array<{ session_id: string }> | null) ?? []).map((l) => l.session_id);
+  return [...new Set(ids)];
+}
