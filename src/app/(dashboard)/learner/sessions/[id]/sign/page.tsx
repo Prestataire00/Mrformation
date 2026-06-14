@@ -313,7 +313,6 @@ export default function LearnerSignPage() {
                       label="Dessinez votre signature"
                       isSigned={false}
                       onSign={(svg) => handleSign(svg, slot.id)}
-                      onClear={() => {}}
                       disabled={signingSlot === slot.id}
                     />
                     {signingSlot === slot.id && (
@@ -371,7 +370,6 @@ export default function LearnerSignPage() {
                       label="Dessinez votre signature ci-dessous"
                       isSigned={false}
                       onSign={(svg) => handleSign(svg, "session")}
-                      onClear={() => {}}
                       disabled={signingSlot === "session"}
                     />
                     {signingSlot === "session" && (

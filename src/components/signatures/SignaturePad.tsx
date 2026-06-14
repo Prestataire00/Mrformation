@@ -9,7 +9,10 @@ export interface SignaturePadProps {
   label: string;
   isSigned: boolean;
   onSign: (svgData: string) => void;
-  onClear: () => void;
+  /** Optionnel : si absent, le bouton « Réinitialiser » (post-signature) n'est
+   *  pas affiché — utile quand l'utilisateur ne peut pas supprimer sa propre
+   *  signature (ex. formateur/apprenant : DELETE /api/signatures est admin-only). */
+  onClear?: () => void;
   disabled?: boolean;
   /** Stroke color, defaults to #1d4ed8 */
   strokeColor?: string;
@@ -62,7 +65,7 @@ export function SignaturePad({
   const handleClear = () => {
     setStrokes([]);
     setCurrentStroke([]);
-    onClear();
+    onClear?.();
   };
 
   const hasDrawing = strokes.length > 0 && strokes.some((s) => s.length > 2);
@@ -160,7 +163,7 @@ export function SignaturePad({
             </Button>
           </>
         )}
-        {isSigned && (
+        {isSigned && onClear && (
           <Button
             variant="outline"
             size="sm"
