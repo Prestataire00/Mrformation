@@ -287,12 +287,20 @@ export function CourseMaterialsTab({ trainerId }: { trainerId: string }) {
   };
 
   const handleDownloadFile = async (courseId: string, file: UploadedFile) => {
-    const res = await fetch(
-      `/api/trainer/courses/${courseId}/file-url?path=${encodeURIComponent(file.path)}`
-    );
-    if (!res.ok) throw new Error("Impossible de générer le lien");
-    const { url } = await res.json();
-    window.open(url, "_blank", "noopener,noreferrer");
+    try {
+      const res = await fetch(
+        `/api/trainer/courses/${courseId}/file-url?path=${encodeURIComponent(file.path)}`
+      );
+      if (!res.ok) throw new Error("Impossible de générer le lien");
+      const { url } = await res.json();
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      toast({
+        title: "Erreur",
+        description: err instanceof Error ? err.message : "Téléchargement impossible.",
+        variant: "destructive",
+      });
+    }
   };
 
   // Stats
