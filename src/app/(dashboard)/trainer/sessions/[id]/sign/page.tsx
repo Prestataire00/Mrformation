@@ -326,7 +326,6 @@ export default function TrainerSignPage() {
                   label="Signature formateur"
                   isSigned={false}
                   onSign={(svg) => handleSign(svg, slotId)}
-                  onClear={() => {}}
                   disabled={signingSlot === slotId}
                 />
                 {signingSlot === slotId && (
