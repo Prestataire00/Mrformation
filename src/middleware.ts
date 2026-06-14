@@ -1,6 +1,6 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { PAGE_PERMISSIONS, API_PERMISSIONS, type Role } from "@/lib/auth/permissions";
+import { PAGE_PERMISSIONS, API_PERMISSIONS, findMatchingRoles, type Role } from "@/lib/auth/permissions";
 
 export async function middleware(request: NextRequest) {
   // Bypass pour les requêtes server-to-server signées avec CRON_SECRET.
@@ -173,24 +173,16 @@ export async function middleware(request: NextRequest) {
       });
     }
 
-    // Check page routes (first match wins — PAGE_PERMISSIONS is ordered most-specific first)
-    for (const [prefix, allowedRoles] of PAGE_PERMISSIONS) {
-      if (pathname.startsWith(prefix)) {
-        if (!userRole || !allowedRoles.includes(userRole as Role)) {
-          return NextResponse.redirect(new URL("/", request.url));
-        }
-        break;
-      }
+    // Page routes (first match wins — PAGE_PERMISSIONS ordonné du plus spécifique au plus général)
+    const pageRoles = findMatchingRoles(pathname, PAGE_PERMISSIONS);
+    if (pageRoles && (!userRole || !pageRoles.includes(userRole as Role))) {
+      return NextResponse.redirect(new URL("/", request.url));
     }
 
-    // Check API routes (first match wins — API_PERMISSIONS is ordered most-specific first)
-    for (const [prefix, allowedRoles] of API_PERMISSIONS) {
-      if (pathname.startsWith(prefix)) {
-        if (!userRole || !allowedRoles.includes(userRole as Role)) {
-          return NextResponse.json({ error: "Accès non autorisé" }, { status: 403 });
-        }
-        break;
-      }
+    // API routes (first match wins — API_PERMISSIONS ordonné du plus spécifique au plus général)
+    const apiRoles = findMatchingRoles(pathname, API_PERMISSIONS);
+    if (apiRoles && (!userRole || !apiRoles.includes(userRole as Role))) {
+      return NextResponse.json({ error: "Accès non autorisé" }, { status: 403 });
     }
   }
 

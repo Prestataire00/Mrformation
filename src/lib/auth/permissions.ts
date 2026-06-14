@@ -66,6 +66,10 @@ export const API_PERMISSIONS: Array<[string, Role[]]> = [
   ["/api/pappers",                 ["super_admin", "admin", "commercial"]],
   ["/api/clients",                 ["super_admin", "admin"]],
   ["/api/trainers",                ["super_admin", "admin"]],
+  // NB ordre : `/api/trainers` (pluriel, gestion admin) AVANT `/api/trainer`
+  // (singulier, espace formateur) — le matching est first-match, sinon le
+  // singulier ombrerait le pluriel.
+  ["/api/trainer",                 ["super_admin", "admin", "trainer"]],
   ["/api/trainings",               ["super_admin", "admin"]],
 
   // ── CRM : admin + commercial + trainer (tasks) ──────────────────────────────
@@ -92,3 +96,19 @@ export const API_PERMISSIONS: Array<[string, Role[]]> = [
   ["/api/elearning",               ["super_admin", "admin", "learner"]],
 
 ];
+
+/**
+ * Résout les rôles autorisés pour un chemin via la première règle dont le
+ * préfixe matche (les tables sont ordonnées du plus spécifique au plus général).
+ * Retourne `null` si aucune règle ne matche. Source unique partagée par le
+ * middleware (PAGE_PERMISSIONS + API_PERMISSIONS).
+ */
+export function findMatchingRoles(
+  pathname: string,
+  table: Array<[string, Role[]]>,
+): Role[] | null {
+  for (const [prefix, allowedRoles] of table) {
+    if (pathname.startsWith(prefix)) return allowedRoles;
+  }
+  return null;
+}
