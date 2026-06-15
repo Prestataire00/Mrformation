@@ -132,7 +132,7 @@ export default function TrainerEvaluationsPage() {
         const { data: existingResponses } = await supabase
           .from("questionnaire_responses")
           .select("questionnaire_id, session_id")
-          .eq("learner_id", trainer.id);
+          .eq("trainer_id", trainer.id);
 
         const completedSet = new Set(
           (existingResponses ?? []).map((r) => `${r.questionnaire_id}::${r.session_id}`)
@@ -326,7 +326,7 @@ export default function TrainerEvaluationsPage() {
                     )}
                   </div>
                   {!q.is_completed && (
-                    <Link href={`/learner/questionnaires/${q.questionnaire_id}?session_id=${q.session_id}`}>
+                    <Link href={`/trainer/questionnaires/${q.questionnaire_id}/fill?session_id=${q.session_id}`}>
                       <Button variant="outline" size="sm" className="h-7 text-xs">
                         <ExternalLink className="h-3 w-3 mr-1" /> Remplir
                       </Button>
