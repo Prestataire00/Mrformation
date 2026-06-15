@@ -97,11 +97,14 @@ export default function LearnerCoursesPage() {
     // diverger entre auth.users et learners (Epic G story g-4)
     const { data: learner } = await supabase
       .from("learners")
-      .select("id")
+      .select("id, entity_id")
       .eq("profile_id", user.id)
       .maybeSingle();
 
     const currentLearnerId = learner?.id ?? null;
+    // entity_id de l'apprenant : sert à filtrer le catalogue/programmes
+    // (isolation multi-tenant — sinon fuite cross-entité, cf. audit P0).
+    const learnerEntityId = (learner as { entity_id?: string | null } | null)?.entity_id ?? null;
     setLearnerId(currentLearnerId);
 
     // Fetch enrollments only if learner record exists
@@ -129,6 +132,7 @@ export default function LearnerCoursesPage() {
       .from("elearning_courses")
       .select("id, title, description, estimated_duration_minutes, elearning_chapters(id)")
       .eq("status", "published")
+      .eq("entity_id", learnerEntityId ?? "")
       .order("created_at", { ascending: false });
 
     if (publishedCourses) {
@@ -142,6 +146,7 @@ export default function LearnerCoursesPage() {
     const { data: programs } = await supabase
       .from("programs")
       .select("id, title, description, objectives, content")
+      .eq("entity_id", learnerEntityId ?? "")
       .order("updated_at", { ascending: false });
 
     if (programs) {

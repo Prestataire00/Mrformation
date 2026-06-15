@@ -77,14 +77,11 @@ export default function LearnerSignPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // Get learner ID from profile
-    const { data: learnerData } = await supabase
-      .from("learners")
-      .select("id")
-      .eq("profile_id", user.id)
-      .single();
-
-    const lId = learnerData?.id || user.id;
+    // Les signatures apprenant sont stockées avec signer_id = profile_id
+    // (= auth.uid()), cohérent avec l'API /api/signatures et la RLS
+    // signatures_learner_read. NE PAS utiliser learners.id ici : c'était le bug
+    // P0 (mismatch → signatures jamais affichées, re-signature en 409).
+    const lId = user.id;
     setLearnerId(lId);
 
     // Load session info
