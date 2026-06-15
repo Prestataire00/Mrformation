@@ -333,7 +333,9 @@ export default function ELearningPage() {
       aiRes = (await q) as unknown as typeof aiResInitial;
     }
 
-    if (programsRes.error) {
+    if (programsRes.error || aiRes.error) {
+      // Avant : seules les erreurs programs étaient remontées et aiRes.error
+      // (hors 42703) était avalée → liste vide silencieuse (risque de doublons).
       toast({
         title: "Erreur",
         description: "Impossible de charger les cours e-learning.",
