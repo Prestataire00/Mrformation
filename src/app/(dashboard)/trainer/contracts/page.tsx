@@ -53,6 +53,7 @@ export default function TrainerContractsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [yearFilter, setYearFilter] = useState<string>("all");
+  const [page, setPage] = useState(1);
 
   const fetchDocuments = useCallback(async () => {
     setLoading(true);
@@ -133,6 +134,11 @@ export default function TrainerContractsPage() {
     fetchDocuments();
   }, [fetchDocuments]);
 
+  // Revenir à la 1re page quand la recherche/le filtre change.
+  useEffect(() => {
+    setPage(1);
+  }, [search, yearFilter]);
+
   // Get unique years from documents
   const years = Array.from(
     new Set(documents.map((d) => new Date(d.created_at).getFullYear()))
@@ -149,6 +155,12 @@ export default function TrainerContractsPage() {
       new Date(d.created_at).getFullYear().toString() === yearFilter;
     return matchSearch && matchYear;
   });
+
+  // Pagination (client) — la liste peut grossir avec le temps.
+  const PAGE_SIZE = 20;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const paged = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   return (
     <div className="p-6 space-y-6">
@@ -260,7 +272,7 @@ export default function TrainerContractsPage() {
             </div>
           ) : (
             <div className="space-y-2">
-              {filtered.map((doc) => (
+              {paged.map((doc) => (
                 <div
                   key={doc.id}
                   className="flex items-center gap-4 p-4 rounded-lg border border-gray-100 hover:bg-gray-50 transition group"
@@ -307,6 +319,31 @@ export default function TrainerContractsPage() {
                   )}
                 </div>
               ))}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between pt-3 mt-1 border-t border-gray-100">
+                  <span className="text-xs text-gray-500">
+                    Page {currentPage} / {totalPages} · {filtered.length} document{filtered.length !== 1 ? "s" : ""}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={currentPage <= 1}
+                    >
+                      Précédent
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={currentPage >= totalPages}
+                    >
+                      Suivant
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </CardContent>
