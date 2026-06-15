@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn, formatDate, SESSION_STATUS_LABELS, STATUS_COLORS } from "@/lib/utils";
 import { isPedagogieV2Epic5Enabled } from "@/lib/feature-flags";
 import CohortElearningProgress from "@/components/pedagogie-v2/CohortElearningProgress";
+import { SessionLearnersProgress } from "@/components/trainer/SessionLearnersProgress";
 import type { Session } from "@/lib/types";
 
 const MODE_LABELS: Record<string, string> = {
@@ -197,6 +198,8 @@ export default function TrainerSessionsPage() {
                     <PenLine className="w-4 h-4" /> Émarger
                   </Link>
                 </div>
+                {/* EF-3.3 — suivi présence + questionnaire des apprenants (repli, lazy). */}
+                <SessionLearnersProgress sessionId={session.id} />
                 {/* Pédagogie V2 Epic 5 — matrice apprenant × module
                      e-learning. Le composant s'auto-masque (return null) si
                      aucun e-learning attaché à la session. */}
