@@ -194,8 +194,14 @@ export function ProfilePage() {
       toast({ title: "Erreur", description: "Veuillez saisir un nouveau mot de passe.", variant: "destructive" });
       return;
     }
-    if (newPassword.length < 6) {
-      toast({ title: "Erreur", description: "Le mot de passe doit contenir au moins 6 caractères.", variant: "destructive" });
+    // Politique alignée sur la route dédiée /api/learner/change-password :
+    // ≥ 12 caractères, 1 majuscule, 1 chiffre, 1 caractère spécial.
+    const strong = newPassword.length >= 12
+      && /[A-Z]/.test(newPassword)
+      && /[0-9]/.test(newPassword)
+      && /[^A-Za-z0-9]/.test(newPassword);
+    if (!strong) {
+      toast({ title: "Mot de passe trop faible", description: "12 caractères minimum, avec au moins une majuscule, un chiffre et un caractère spécial.", variant: "destructive" });
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -205,7 +211,12 @@ export function ProfilePage() {
 
     setChangingPassword(true);
 
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    // Réinitialise le flag de changement forcé (claim JWT lu par le middleware)
+    // pour rester cohérent avec la route dédiée.
+    const { error } = await supabase.auth.updateUser({
+      password: newPassword,
+      data: { password_must_change: false },
+    });
 
     if (error) {
       toast({ title: "Erreur", description: error.message, variant: "destructive" });

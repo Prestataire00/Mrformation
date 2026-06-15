@@ -425,10 +425,10 @@ export default function LearnerPage() {
         title="Accès rapides"
         actions={[
           { icon: GraduationCap, label: "Mes formations", count: enrollments.length, href: "/learner/my-trainings", color: "blue" },
-          { icon: Monitor, label: "E-Learning", count: 0, href: "/learner/elearning", color: "green" },
-          { icon: ClipboardCheck, label: "Questionnaires", count: 0, href: "/learner/questionnaires", color: "amber", urgent: false },
-          { icon: FileText, label: "Documents", count: 0, href: "/learner/documents", color: "purple" },
-          { icon: Award, label: "Certificats", count: completedEnrollments.length, href: "/learner/certificates", color: "red" },
+          { icon: Monitor, label: "E-Learning", href: "/learner/courses", color: "green" },
+          { icon: ClipboardCheck, label: "Questionnaires", href: "/learner/questionnaires", color: "amber", urgent: false },
+          { icon: FileText, label: "Documents", href: "/learner/documents", color: "purple" },
+          { icon: Award, label: "Attestations", count: completedEnrollments.length, href: "/learner/documents", color: "red" },
         ]}
       />
 
