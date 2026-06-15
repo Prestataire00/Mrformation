@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 import { requireElearningCourse } from "@/lib/auth/elearning-access";
+import { isLearnerEnrolledInCourse } from "@/lib/elearning/enrollment-access";
 import { logAudit } from "@/lib/audit-log";
 
 export async function GET(
@@ -10,7 +11,17 @@ export async function GET(
   try {
     const access = await requireElearningCourse(params.courseId, ["admin", "super_admin", "learner"]);
     if (!access.ok) return access.error;
-    const { supabase, profile } = access;
+    const { supabase, profile, userId } = access;
+
+    // Pas de preview avant inscription (décision produit 2026-06-15) : un
+    // apprenant doit être inscrit pour ouvrir le lecteur. Admin/super_admin
+    // gardent l'accès (gestion/aperçu).
+    if (profile.role === "learner") {
+      const enrolled = await isLearnerEnrolledInCourse(supabase, userId, params.courseId);
+      if (!enrolled) {
+        return NextResponse.json({ error: "Vous n'êtes pas inscrit à ce cours." }, { status: 403 });
+      }
+    }
 
     // shallow=true returns only course + chapter counts (fast, for admin page)
     const isShallow = request.nextUrl.searchParams.get("shallow") === "true";
@@ -76,24 +87,12 @@ export async function GET(
       return NextResponse.json({ error: sanitizeDbError(error, "fetching course details") }, { status: 404 });
     }
 
-    // Strip is_correct from quiz options before returning to learners
-    if (profile.role === "learner" && data) {
-      type QuizQuestion = { options?: unknown[] };
-      type Quiz = { elearning_quiz_questions?: QuizQuestion[] };
-      type Chapter = { elearning_quizzes?: Quiz[] };
-      const courseData = data as { elearning_chapters?: Chapter[] };
-      for (const ch of courseData.elearning_chapters ?? []) {
-        for (const q of ch.elearning_quizzes?.[0]?.elearning_quiz_questions ?? []) {
-          q.options = (q.options ?? []).map((o: unknown) => {
-            if (typeof o === "object" && o !== null) {
-              const { is_correct: _removed, ...rest } = o as Record<string, unknown>;
-              return rest;
-            }
-            return o;
-          });
-        }
-      }
-    }
+    // Quiz de chapitre = formatifs : on EXPOSE is_correct pour permettre le
+    // feedback immédiat (réponse verte/rouge) côté apprenant. L'examen final,
+    // lui, reste masqué + noté côté serveur (route /api/elearning/final-exam,
+    // recompute au submit) — c'est là que l'anti-triche compte. (EF Option A,
+    // décision 2026-06-15 ; auparavant on strippait aussi le chapitre, ce qui
+    // cassait tout le feedback quiz.)
 
     // ELE-2 fix : si program_id est défini, charger le programme via une
     // 2e query (best-effort, ne fait pas échouer le fetch principal si
