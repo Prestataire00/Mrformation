@@ -25,6 +25,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "file et entity_id requis" }, { status: 400 });
     }
 
+    // Isolation : l'entity_id vient du body et l'upload passe par le service
+    // client (bypass RLS). On vérifie que l'admin agit bien pour SON entité
+    // (sinon il pourrait écrire dans le bucket d'une autre entité). super_admin
+    // est cross-entité par design.
+    if (authResult.profile.role !== "super_admin" && entityId !== authResult.profile.entity_id) {
+      return NextResponse.json({ error: "entity_id non autorisé" }, { status: 403 });
+    }
+
     if (file.type !== ALLOWED_MIME) {
       return NextResponse.json({ error: "Seuls les fichiers .docx sont acceptés" }, { status: 400 });
     }

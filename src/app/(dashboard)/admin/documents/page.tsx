@@ -606,13 +606,36 @@ export default function DocumentsPage() {
 
   const fetchClientDocs = useCallback(async () => {
     setClientDocsLoading(true);
+    // Isolation multi-tenant : client_documents n'a pas d'entity_id direct
+    // (lien via client_id). On restreint donc aux clients de l'entité courante
+    // — sinon un admin voyait les docs clients de toutes les entités (audit P1).
+    if (!entityId) {
+      setClientDocs([]);
+      setClientDocsLoading(false);
+      return;
+    }
+    const { data: entityClients } = await supabase
+      .from("clients")
+      .select("id")
+      .eq("entity_id", entityId);
+    const clientIds = (entityClients ?? []).map((c) => c.id);
+    if (clientIds.length === 0) {
+      setClientDocs([]);
+      setClientDocsLoading(false);
+      return;
+    }
     const { data, error } = await supabase
       .from("client_documents")
       .select("*, client:clients(company_name)")
+      .in("client_id", clientIds)
       .order("created_at", { ascending: false });
-    if (!error) setClientDocs((data as ClientDocument[]) || []);
+    if (error) {
+      toast({ title: "Erreur", description: "Impossible de charger les documents clients.", variant: "destructive" });
+    } else {
+      setClientDocs((data as ClientDocument[]) || []);
+    }
     setClientDocsLoading(false);
-  }, []);
+  }, [entityId]);
 
   useEffect(() => {
     fetchTemplates();
