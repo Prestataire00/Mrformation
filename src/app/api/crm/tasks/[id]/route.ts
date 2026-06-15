@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { createClient as createSupabaseClient, type User } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import {
   updateTaskSchema,
@@ -60,7 +60,7 @@ export async function PATCH(
 
     const auth = await getAuthenticatedUser(supabase);
     if ("error" in auth && auth.error) return auth.error;
-    const { user, profile } = auth as { user: any; profile: { entity_id: string; role: string } };
+    const { user, profile } = auth as { user: User; profile: { entity_id: string; role: string } };
 
     let dbClient;
     try { dbClient = createServiceClient(); } catch { dbClient = supabase; }
@@ -196,7 +196,7 @@ export async function DELETE(
 
     const auth = await getAuthenticatedUser(supabase);
     if ("error" in auth && auth.error) return auth.error;
-    const { user, profile } = auth as { user: any; profile: { entity_id: string; role: string } };
+    const { user, profile } = auth as { user: User; profile: { entity_id: string; role: string } };
 
     let dbClient;
     try { dbClient = createServiceClient(); } catch { dbClient = supabase; }

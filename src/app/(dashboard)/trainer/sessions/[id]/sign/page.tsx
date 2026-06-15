@@ -53,6 +53,14 @@ interface TimeSlot {
   slot_order: number;
 }
 
+// Forme minimale d'un apprenant joint à un enrollment (peut arriver en objet
+// ou en tableau selon la jointure Supabase).
+interface LearnerLite {
+  id: string;
+  first_name?: string | null;
+  last_name?: string | null;
+}
+
 interface SlotSignatureState {
   slotId: string;
   trainerSigned: boolean;
@@ -144,7 +152,7 @@ export default function TrainerSignPage() {
         const slotSigs = (allSigs || []).filter(s => s.time_slot_id === slot.id);
         const trainerSig = slotSigs.find(s => s.signer_id === tId && s.signer_type === "trainer");
 
-        const learnerStatuses = (enrollments || []).map((e: any) => {
+        const learnerStatuses = (enrollments || []).map((e: { learner_id: string; learner: LearnerLite | LearnerLite[] | null }) => {
           const learner = Array.isArray(e.learner) ? e.learner[0] : e.learner;
           const sig = slotSigs.find(s => s.signer_id === learner?.id && s.signer_type === "learner");
           return {
@@ -170,7 +178,7 @@ export default function TrainerSignPage() {
     } else {
       // No slots — legacy mode: single session signature
       const trainerSig = (allSigs || []).find(s => s.signer_id === tId && s.signer_type === "trainer" && !s.time_slot_id);
-      const learnerStatuses = (enrollments || []).map((e: any) => {
+      const learnerStatuses = (enrollments || []).map((e: { learner_id: string; learner: LearnerLite | LearnerLite[] | null }) => {
         const learner = Array.isArray(e.learner) ? e.learner[0] : e.learner;
         const sig = (allSigs || []).find(s => s.signer_id === learner?.id && s.signer_type === "learner" && !s.time_slot_id);
         return {
