@@ -10,6 +10,7 @@ import {
   extractCvStorageCleanPath,
   getTrainerCvStoragePath,
 } from "@/lib/trainers/cv-storage";
+import { canManageTrainerCv } from "@/lib/trainers/cv-access";
 
 interface RouteContext {
   params: { id: string };
@@ -54,22 +55,23 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       .select("role, entity_id")
       .eq("id", user.id)
       .single();
-    if (!profile || !["admin", "super_admin"].includes(profile.role)) {
+    if (!profile) {
       return NextResponse.json({ error: "Accès non autorisé" }, { status: 403 });
     }
 
-    // Défense en profondeur : trainer doit appartenir à l'entité (admin) ;
-    // super_admin bypass.
     const { data: trainerRow } = await supabase
       .from("trainers")
-      .select("entity_id, cv_url")
+      .select("entity_id, cv_url, profile_id")
       .eq("id", params.id)
       .maybeSingle();
     if (!trainerRow) {
       return NextResponse.json({ error: "Formateur introuvable" }, { status: 404 });
     }
-    if (profile.role === "admin" && trainerRow.entity_id !== profile.entity_id) {
-      return NextResponse.json({ error: "Formateur hors de l'entité" }, { status: 403 });
+
+    // Autorisation : super_admin (toute fiche), admin (sa propre entité), ou
+    // le formateur lui-même (sa propre fiche, anti-IDOR). Cf. canManageTrainerCv.
+    if (!canManageTrainerCv(profile, trainerRow, user.id)) {
+      return NextResponse.json({ error: "Accès non autorisé" }, { status: 403 });
     }
 
     const formData = await request.formData();
