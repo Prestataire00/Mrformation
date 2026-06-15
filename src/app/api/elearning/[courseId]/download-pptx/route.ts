@@ -59,11 +59,11 @@ export async function GET(
     const { url: downloadUrl, rawFields } = await exportGammaDeckFresh(generationId);
 
     if (!downloadUrl) {
+      // rawFields (réponse brute Gamma, peut contenir des métadonnées internes)
+      // loggé côté serveur uniquement — pas renvoyé au client.
+      console.error("[download-pptx] export Gamma sans URL", { generationId, rawFields });
       return NextResponse.json(
-        {
-          error: "Impossible de récupérer le lien de téléchargement PPTX depuis Gamma",
-          debug: { generationId, rawFields },
-        },
+        { error: "Impossible de récupérer le lien de téléchargement PPTX depuis Gamma", generationId },
         { status: 502 }
       );
     }

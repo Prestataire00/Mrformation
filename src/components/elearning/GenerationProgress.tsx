@@ -90,10 +90,9 @@ export default function GenerationProgress({
     let cancelled = false;
     let pollTimer: ReturnType<typeof setTimeout> | null = null;
 
+    // NB : le cas "failed" est traité dans applyProgress (on y connaît le statut
+    // antérieur de chaque étape) — pas ici.
     function stepStatusFor(target: StepKey, current: StepKey): "pending" | "active" | "done" | "error" {
-      if (current === "failed") {
-        return target === target ? "error" : "pending";
-      }
       const targetIdx = STEP_ORDER.indexOf(target);
       const currentIdx = STEP_ORDER.indexOf(current);
       if (targetIdx === -1 || currentIdx === -1) return "pending";
@@ -104,19 +103,24 @@ export default function GenerationProgress({
 
     function applyProgress(p: ProgressState) {
       setProgress(p);
-      setSteps((prev) =>
-        prev.map((s) => {
-          if (p.step === "done") return { ...s, status: "done" };
-          if (p.step === "failed") {
-            // L'étape qui a échoué = celle avec error
-            // Marque les précédentes done, l'actuelle error, les suivantes pending
-            return { ...s, status: "error", message: p.error ?? s.message };
-          }
+      setSteps((prev) => {
+        if (p.step === "done") return prev.map((s) => ({ ...s, status: "done" as const }));
+        if (p.step === "failed") {
+          // Garde les étapes déjà terminées en "done", marque la PREMIÈRE étape
+          // non terminée en "error" (celle qui a échoué), les suivantes "pending".
+          const failedIdx = prev.findIndex((s) => s.status !== "done");
+          return prev.map((s, i) => {
+            if (s.status === "done") return s;
+            if (i === failedIdx) return { ...s, status: "error" as const, message: p.error ?? s.message };
+            return { ...s, status: "pending" as const };
+          });
+        }
+        return prev.map((s) => {
           const newStatus = stepStatusFor(s.key, p.step);
           const message = newStatus === "active" ? p.message : s.message;
           return { ...s, status: newStatus, message };
-        }),
-      );
+        });
+      });
     }
 
     async function pollOnce(): Promise<boolean> {

@@ -115,6 +115,26 @@ export async function POST(
       return NextResponse.json({ error: "learner_ids requis" }, { status: 400 });
     }
 
+    // Isolation multi-tenant : chaque learner doit appartenir à l'entité de
+    // l'admin. Sinon un admin pourrait inscrire des apprenants d'une autre
+    // entité (les learner_ids viennent du client). On rejette tout id étranger.
+    const { data: validLearners, error: learnersError } = await supabase
+      .from("learners")
+      .select("id")
+      .in("id", learner_ids)
+      .eq("entity_id", profile.entity_id);
+    if (learnersError) {
+      return NextResponse.json({ error: sanitizeDbError(learnersError, "validating learners") }, { status: 500 });
+    }
+    const validIds = new Set((validLearners ?? []).map((l) => l.id));
+    const foreignIds = (learner_ids as string[]).filter((id) => !validIds.has(id));
+    if (foreignIds.length > 0) {
+      return NextResponse.json(
+        { error: "Certains apprenants n'appartiennent pas à votre entité." },
+        { status: 403 },
+      );
+    }
+
     const enrollments = learner_ids.map((learnerId: string) => ({
       course_id: params.courseId,
       learner_id: learnerId,
