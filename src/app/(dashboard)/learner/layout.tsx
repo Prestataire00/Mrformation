@@ -23,11 +23,14 @@ export default async function LearnerLayout({ children }: { children: ReactNode 
     if (!existing) {
       const { data: profile } = await supabase
         .from("profiles")
-        .select("first_name, last_name, email, entity_id")
+        .select("first_name, last_name, email, entity_id, role")
         .eq("id", user.id)
         .single();
 
-      if (profile?.entity_id) {
+      // Ne créer le record learners QUE pour un vrai apprenant. Sinon un
+      // admin/super_admin (autorisés sur /learner par PAGE_PERMISSIONS) se
+      // verrait créer un "learner-ghost" qui pollue la table.
+      if (profile?.entity_id && profile.role === "learner") {
         await supabase.from("learners").insert({
           profile_id: user.id,
           entity_id: profile.entity_id,
