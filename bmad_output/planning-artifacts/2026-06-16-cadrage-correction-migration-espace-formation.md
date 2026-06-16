@@ -83,3 +83,35 @@ Livrable : un rapport chiffré (SQL de diagnostic) qui dimensionne chaque trou.
 
 ## 6. Suite (workflow BMAD)
 Cadrage → plan d'implémentation **par lot** (writing-plans), **Lot 0 (diagnostic) en tête** — il oriente le dimensionnement et révèle l'ampleur réelle avant d'écrire quoi que ce soit. Scripts dry-run-first, joués par l'admin.
+
+---
+
+## 7. RÉSULTATS (clôture — 2026-06-16)
+
+### Cause racine confirmée (≠ hypothèse initiale)
+Le diagnostic a invalidé l'hypothèse « matching par nom raté » :
+1. **`Apprenants.xlsx` → colonne `Entreprise` VIDE** à l'import initial → 0 donnée à matcher → **2603/2603 apprenants orphelins** (pas un problème de matching flou).
+2. **`map_session` n'écrivait jamais `planned_hours`** + aucun `formation_time_slots` → trigger `trg_recompute_planned_hours` à 0 → **128/128 sessions sans planning**.
+3. **`formation_companies` jamais peuplé** → section « Entreprises liées » vide.
+4. Effet de bord : **doublons** (387 noms d'apprenants / 981 fiches ; 3 paires de clients).
+
+### Clé pivot retenue
+Le client a fourni de nouveaux fichiers porteurs d'un **`Code formation`** commun. Validé en dry-run :
+- `Code formation → session` : **129/129 (100 %)**.
+- `Entreprise/Client → clients` : **100 % exact** (63/63).
+- **120/128 sessions INTRA** (1 entreprise) → rattachement déterministe ; **8 INTER** (2-4 entreprises).
+
+### Lots livrés (prod, idempotents, dry-run-first)
+| Lot | Effet | PR |
+|-----|-------|-----|
+| 0 — Diagnostic | SQL read-only + script `reconcile_code_formation.py` | #268, #269 |
+| 1 — `client_id` | 1126 apprenants + 961 inscriptions rattachés (vs 0) | #270, #272 |
+| 1b — `formation_companies` | 141 liens → 129 sessions ont leur(s) entreprise(s) | #273 |
+| 2 — Créneaux | 912 `formation_time_slots` → 128/128 sessions planifiées (`planned_hours` recalculé) | #271 |
+
+Outillage : `scripts/import-loris/{reconcile_code_formation,apply_client_id,apply_creneaux,apply_formation_companies}.py` (dry-run par défaut, `--apply` pour écrire).
+
+### Reliquats (hors périmètre « additif d'abord »)
+- **8 sessions INTER** : entreprise liée à la formation OK, mais badge *apprenant↔entreprise* indéterminé sans export listant l'entreprise par apprenant.
+- **Dédup** apprenants (387 noms / 981 fiches) + clients (3 paires : MOSANE, VALLEE DES BAUX, RIOU BLANC) → lot séparé décidé ultérieurement.
+- ~38 inscriptions (homonymes / sans fiche) — liées à la dédup.
