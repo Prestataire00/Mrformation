@@ -3,6 +3,8 @@
  * Utilisé pour la génération de contenu pédagogique et l'assistance à la création de programmes.
  */
 
+import { withRetry } from "@/lib/ai/with-retry";
+
 const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
 
 function getApiKey(): string {
@@ -28,34 +30,47 @@ export interface OpenAIResponse {
  */
 export async function chatCompletion(
   messages: ChatMessage[],
-  options?: { model?: string; temperature?: number; max_tokens?: number; timeout?: number }
+  options?: { model?: string; temperature?: number; max_tokens?: number; timeout?: number; json?: boolean }
 ): Promise<OpenAIResponse> {
   const apiKey = getApiKey();
-  const { model = "gpt-4o-mini", temperature = 0.7, max_tokens = 2000, timeout = 90000 } = options || {};
+  const { model = "gpt-4o-mini", temperature = 0.7, max_tokens = 2000, timeout = 90000, json = false } = options || {};
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeout);
+  return withRetry(async () => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeout);
+    try {
+      const response = await fetch(OPENAI_API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages,
+          temperature,
+          max_tokens,
+          ...(json ? { response_format: { type: "json_object" } } : {}),
+        }),
+        signal: controller.signal,
+      });
 
-  const response = await fetch(OPENAI_API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({ model, messages, temperature, max_tokens }),
-    signal: controller.signal,
-  }).finally(() => clearTimeout(timer));
+      if (!response.ok) {
+        const body = await response.text();
+        const err = new Error(`OpenAI ${response.status}: ${body.slice(0, 300)}`) as Error & { status: number };
+        err.status = response.status;
+        throw err;
+      }
 
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(`OpenAI API error (${response.status}): ${error.error?.message || "Unknown error"}`);
-  }
-
-  const data = await response.json();
-  return {
-    content: data.choices[0]?.message?.content || "",
-    usage: data.usage,
-  };
+      const data = await response.json();
+      return {
+        content: data.choices[0]?.message?.content || "",
+        usage: data.usage,
+      };
+    } finally {
+      clearTimeout(timer);
+    }
+  }, { retries: 3, baseDelayMs: 600 });
 }
 
 /**
@@ -150,7 +165,7 @@ Réponds UNIQUEMENT en JSON valide (pas de markdown, pas de commentaires) avec c
       { role: "system", content: "Tu es un assistant spécialisé en formation professionnelle. Tu réponds UNIQUEMENT en JSON valide." },
       { role: "user", content: prompt },
     ],
-    { model: "gpt-4o-mini", temperature: 0.7, max_tokens: 3000 }
+    { model: "gpt-4o-mini", temperature: 0.7, max_tokens: 3000, json: true }
   );
 
   // Parse JSON from response (handle potential markdown wrapping)
@@ -265,7 +280,7 @@ Règles :
 - Les objectifs doivent être mesurables (verbes d'action)`,
       },
     ],
-    { model: "gpt-4o-mini", temperature: 0.4, max_tokens: 3000 }
+    { model: "gpt-4o-mini", temperature: 0.4, max_tokens: 3000, json: true }
   );
 
   return parseJsonResponse<CourseOutline>(result.content);
@@ -339,7 +354,7 @@ Règles :
     // 3-4 sections de 150-200 mots). Si la génération continue de
     // timeouter, basculer sur Background Functions Netlify (15min) ou
     // refactor en sous-routes section-par-section.
-    { model: "gpt-4o-mini", temperature: 0.5, max_tokens: 1800 }
+    { model: "gpt-4o-mini", temperature: 0.5, max_tokens: 1800, json: true }
   );
 
   return parseJsonResponse<GeneratedChapterContent>(result.content);
@@ -414,7 +429,7 @@ Règles :
     // N flashcards en 1 call peut être longue ; on reste à 3000 (suffit
     // pour ~10 questions + ~20 flashcards), si plus de chapitres on
     // peut splitter en sous-lots côté client.
-    { model: "gpt-4o-mini", temperature: 0.4, max_tokens: 3000 }
+    { model: "gpt-4o-mini", temperature: 0.4, max_tokens: 3000, json: true }
   );
 
   return parseJsonResponse<GeneratedQuizData>(result.content);
@@ -525,7 +540,7 @@ RÈGLES STRICTES:
 - NE PAS générer de questions sans objective_ref ou sans citations`,
       },
     ],
-    { model: "gpt-4o-mini", temperature: 0.5, max_tokens: 4000 }
+    { model: "gpt-4o-mini", temperature: 0.5, max_tokens: 4000, json: true }
   );
 
   return parseJsonResponse<GeneratedFinalExamBatch>(result.content);
@@ -596,7 +611,7 @@ Règles:
 - citations: extrait court (max 80 car.) du source`,
       },
     ],
-    { model: "gpt-4o-mini", temperature: 0.5, max_tokens: 4000 }
+    { model: "gpt-4o-mini", temperature: 0.5, max_tokens: 4000, json: true }
   );
 
   return parseJsonResponse<GeneratedGlobalFlashcardsBatch>(result.content);
@@ -701,7 +716,7 @@ RÈGLES STRICTES:
 - Total: 15-30 slides pour ce lot`,
       },
     ],
-    { model: "gpt-4o-mini", temperature: 0.5, max_tokens: 8000 }
+    { model: "gpt-4o-mini", temperature: 0.5, max_tokens: 8000, json: true }
   );
 
   return parseJsonResponse<GeneratedSlideSpecBatch>(result.content);
