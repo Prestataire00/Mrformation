@@ -87,6 +87,8 @@ export const API_PERMISSIONS: Array<[string, Role[]]> = [
 
   // ── Tous les rôles authentifiés ────────────────────────────────────────────
   ["/api/documents",               ["super_admin", "admin", "commercial", "trainer", "client", "learner"]],
+  // Endpoint partagé signed-URL (contrôle rôle+entité dans le handler).
+  ["/api/storage",                 ["super_admin", "admin", "commercial", "trainer"]],
 
   // ── E-learning : sous-règles spécifiques en premier, catch-all en dernier ──
   ["/api/elearning/final-exam",    ["super_admin", "admin", "learner"]],

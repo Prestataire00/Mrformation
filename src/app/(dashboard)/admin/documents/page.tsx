@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { fetchSignedDocUrl } from "@/lib/storage/fetch-signed-doc-url";
 import { useEntity } from "@/contexts/EntityContext";
 import { DocumentTemplate, GeneratedDocument, Session, Client, Learner } from "@/lib/types";
 import { cn, formatDate, formatDateTime, truncate } from "@/lib/utils";
@@ -1045,7 +1046,12 @@ export default function DocumentsPage() {
 
   const handleDownload = async (doc: GeneratedDocumentFull) => {
     if (doc.file_url) {
-      window.open(doc.file_url, "_blank");
+      try {
+        const url = await fetchSignedDocUrl("generated_documents", doc.id);
+        window.open(url, "_blank", "noopener,noreferrer");
+      } catch (err) {
+        toast({ title: "Erreur", description: err instanceof Error ? err.message : "Téléchargement impossible.", variant: "destructive" });
+      }
     } else if (doc.content) {
       if (isHtmlContent(doc.content)) {
         await exportHtmlToPDF(doc.name, doc.content, doc.name);
@@ -1677,7 +1683,14 @@ export default function DocumentsPage() {
                                   variant="outline"
                                   size="sm"
                                   className="h-8 gap-1.5 text-xs"
-                                  onClick={() => window.open(doc.file_url!, "_blank")}
+                                  onClick={async () => {
+                                    try {
+                                      const url = await fetchSignedDocUrl("client_documents", doc.id);
+                                      window.open(url, "_blank", "noopener,noreferrer");
+                                    } catch (err) {
+                                      toast({ title: "Erreur", description: err instanceof Error ? err.message : "Téléchargement impossible.", variant: "destructive" });
+                                    }
+                                  }}
                                 >
                                   <ExternalLink className="h-3.5 w-3.5" />
                                   Ouvrir
