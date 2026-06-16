@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/select";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { TrainersViewSwitcher } from "./_components/TrainersViewSwitcher";
+import TrainerCredentialsAction from "@/components/credentials/TrainerCredentialsAction";
 import {
   Plus, Sparkles, Briefcase, Loader2,
   Search,
@@ -363,9 +364,12 @@ export default function TrainersPage() {
               {trainers.length} formateur{trainers.length > 1 ? "s" : ""}
             </p>
           </div>
-          <Button onClick={openAddDialog} variant="secondary" className="bg-white text-gray-800 hover:bg-gray-100">
-            <Plus className="h-4 w-4 mr-1.5" /> Nouveau formateur
-          </Button>
+          <div className="flex items-center gap-2">
+            <TrainerCredentialsAction onComplete={fetchTrainers} />
+            <Button onClick={openAddDialog} variant="secondary" className="bg-white text-gray-800 hover:bg-gray-100">
+              <Plus className="h-4 w-4 mr-1.5" /> Nouveau formateur
+            </Button>
+          </div>
         </div>
         <div className="flex gap-2">
           <div className="flex-1 relative">
