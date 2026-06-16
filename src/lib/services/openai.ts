@@ -4,6 +4,7 @@
  */
 
 import { withRetry } from "@/lib/ai/with-retry";
+import { wrapUserData } from "@/lib/ai/sanitize-prompt";
 
 const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
 
@@ -278,9 +279,7 @@ export async function generateCourseOutline(
         content: `Analyse le document suivant et génère un plan de cours e-learning structuré.
 
 DOCUMENT SOURCE :
----
-${truncated}
----
+${wrapUserData("document_source", truncated)}
 
 Génère un JSON avec cette structure exacte :
 {
@@ -352,9 +351,7 @@ CHAPITRE À RÉDIGER :
 - Concepts clés : ${keyConcepts.join(", ")}
 
 CONTENU SOURCE À TRANSFORMER :
----
-${truncatedSource}
----
+${wrapUserData("document_source", truncatedSource)}
 
 Génère un JSON avec cette structure :
 {
