@@ -326,10 +326,10 @@ export async function generateChapterContent(
   courseTitle: string,
   courseObjectives: string
 ): Promise<GeneratedChapterContent> {
-  // Fix 504 Netlify Pro (26s) : 80k → 50k → 30k. Compromise qualité
-  // mais nécessaire pour rester sous le timeout. Si le user veut un
-  // contexte plus large, il faut basculer sur Background Functions.
-  const truncatedSource = relevantSourceText.substring(0, 30000);
+  // Borne relâchée car BG 15 min (plus de contrainte 504) :
+  // 80k → 50k → 30k (ancienne limite timeout) → 60000 chars (contexte riche).
+  // 60 000 reste borné (anti-coût) mais suffisant pour la qualité pédagogique.
+  const truncatedSource = relevantSourceText.substring(0, 60000);
 
   const result = await chatCompletion(
     [
@@ -379,11 +379,10 @@ Règles :
 - Contenu détaillé (200-300 mots par section, pas plus)`,
       },
     ],
-    // Fix 504 Netlify Pro (26s) : 4000 → 2500 → 1800 tokens (≈ 1300 mots,
-    // 3-4 sections de 150-200 mots). Si la génération continue de
-    // timeouter, basculer sur Background Functions Netlify (15min) ou
-    // refactor en sous-routes section-par-section.
-    { model: "gpt-4o", temperature: 0.5, max_tokens: 1800, json: true }
+    // Borne relâchée car BG 15 min (plus de contrainte 504) :
+    // 4000 → 2500 → 1800 (ancienne limite timeout) → 3000 tokens.
+    // 3000 reste borné (anti-coût) — suffit pour 5-6 sections de 250-300 mots.
+    { model: "gpt-4o", temperature: 0.5, max_tokens: 3000, json: true }
   );
 
   return parseJsonResponse<GeneratedChapterContent>(result.content, chapterContentSchema as ZodType<GeneratedChapterContent>);
