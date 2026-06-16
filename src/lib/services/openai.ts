@@ -383,7 +383,7 @@ Règles :
     // 3-4 sections de 150-200 mots). Si la génération continue de
     // timeouter, basculer sur Background Functions Netlify (15min) ou
     // refactor en sous-routes section-par-section.
-    { model: "gpt-4o-mini", temperature: 0.5, max_tokens: 1800, json: true }
+    { model: "gpt-4o", temperature: 0.5, max_tokens: 1800, json: true }
   );
 
   return parseJsonResponse<GeneratedChapterContent>(result.content, chapterContentSchema as ZodType<GeneratedChapterContent>);
@@ -569,7 +569,7 @@ RÈGLES STRICTES:
 - NE PAS générer de questions sans objective_ref ou sans citations`,
       },
     ],
-    { model: "gpt-4o-mini", temperature: 0.5, max_tokens: 4000, json: true }
+    { model: "gpt-4o", temperature: 0.5, max_tokens: 4000, json: true }
   );
 
   return parseJsonResponse<GeneratedFinalExamBatch>(result.content, finalExamBatchSchema as ZodType<GeneratedFinalExamBatch>);
@@ -815,7 +815,7 @@ Enrichis ce contenu en gardant la même structure mais en ajoutant beaucoup plus
 Format : Markdown structuré avec titres H2/H3, listes, tableaux, exemples.`,
       },
     ],
-    { model: "gpt-4o-mini", temperature: 0.5, max_tokens: 3000 }
+    { model: "gpt-4o", temperature: 0.5, max_tokens: 3000 }
   );
 
   const enrichedWordCount = result.content.trim().split(/\s+/).length;
