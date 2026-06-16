@@ -117,8 +117,11 @@ def main():
             skipped["inter"] += 1
             continue
         cids = client_by_name.get(rec.norm_name(next(iter(ents))), [])
-        if len(cids) == 1:
-            code_to_client[code] = cids[0]
+        if len(cids) >= 1:
+            # 1 candidat → direct. Plusieurs candidats = doublons clients (même nom normalisé,
+            # ex. casse/accents) → on choisit une fiche canonique déterministe (min id).
+            # Sûr car ce sont des doublons du même établissement (dédup clients = lot différé).
+            code_to_client[code] = sorted(cids)[0]
         else:
             skipped["no_client_in_db"] += 1
 
