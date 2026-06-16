@@ -11,6 +11,7 @@
  */
 
 import { z } from "zod";
+import { ELEARNING_LIMITS } from "@/lib/elearning/limits";
 
 const emptyToNull = (v: unknown) => (v === "" || v === undefined ? null : v);
 const stringToNumber = (v: unknown) => {
@@ -81,7 +82,7 @@ export const elearningCreateConfigSchema = z.object({
   description: z.preprocess(emptyToNull, z.string().max(5000).nullable()),
   objectives: z.preprocess(emptyToNull, z.string().max(5000).nullable()),
   course_type: elearningCourseTypeEnum,
-  num_chapters: z.number().int().min(1).max(20),
+  num_chapters: z.number().int().min(ELEARNING_LIMITS.chapters.min).max(ELEARNING_LIMITS.chapters.max),
   final_quiz_target_count: z.number().int().min(0).max(50),
   gamma_theme_id: z.preprocess(emptyToNull, z.string().max(255).nullable()),
 });
