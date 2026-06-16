@@ -35,6 +35,9 @@ type ProgressPatch = {
   percent: number;
   message: string;
   error?: string | null;
+  // IDs des chapitres ayant échoué (à régénérer ultérieurement). Présent dès
+  // qu'au moins un chapitre rate, conservé jusqu'à la progression finale.
+  failed_chapters?: string[];
 };
 
 const BASE_URL = process.env.URL || "http://localhost:3000";
@@ -130,20 +133,46 @@ export default async (req: Request) => {
     });
 
     // ============== Étape 2 : chapters (5-12s × N) ==============
-    for (let i = 0; i < chapterIds.length; i++) {
-      const pct = 15 + Math.round(((i + 1) / chapterIds.length) * 50); // 15 → 65
+    // CAS A (route /generate/chapter idempotente par chapter_id) : on génère
+    // les chapitres par LOTS PARALLÈLES bornés (concurrence 3) au lieu d'une
+    // série stricte — chaque appel cible explicitement son chapter_id, deux
+    // appels concurrents touchent donc des lignes distinctes. Le BG dispose de
+    // ~15 min, pas de la contrainte 504 des routes.
+    //
+    // Politique de résilience (anti-504) :
+    //   - Un chapitre raté n'interrompt PAS le cours : il est collecté dans
+    //     failedChapters et on poursuit.
+    //   - Si TOUS les chapitres échouent → on fait échouer le cours (catch).
+    //   - Si seuls certains échouent → on continue vers quiz/exam/gamma et on
+    //     expose failed_chapters dans la progression finale pour régénération.
+    const CONCURRENCY = 3;
+    let done = 0;
+    const failedChapters: string[] = [];
+    for (let start = 0; start < chapterIds.length; start += CONCURRENCY) {
+      const batch = chapterIds.slice(start, start + CONCURRENCY);
+      const settled = await Promise.allSettled(
+        batch.map((id) => callRoute(`/api/elearning/${courseId}/generate/chapter`, { chapter_id: id })),
+      );
+      settled.forEach((res, k) => {
+        const ok = res.status === "fulfilled" && res.value.ok;
+        if (!ok) failedChapters.push(batch[k]);
+      });
+      done += batch.length;
+      const pct = 15 + Math.round((done / chapterIds.length) * 50); // 15 → 65
       await writeProgress(courseId, {
         step: "chapters",
-        current: i + 1,
+        current: done,
         total: chapterIds.length,
         percent: pct,
-        message: `Chapitre ${i + 1}/${chapterIds.length}…`,
+        message: `Chapitres ${done}/${chapterIds.length}${failedChapters.length ? ` (${failedChapters.length} à régénérer)` : ""}…`,
         error: null,
+        ...(failedChapters.length ? { failed_chapters: [...failedChapters] } : {}),
       });
-      const ch = await callRoute(`/api/elearning/${courseId}/generate/chapter`, { chapter_id: chapterIds[i] });
-      if (!ch.ok) {
-        throw new Error(`chapter ${i + 1} failed (${ch.status}): ${JSON.stringify(ch.data)}`);
-      }
+    }
+
+    // Échec global UNIQUEMENT si aucun chapitre n'a abouti.
+    if (failedChapters.length === chapterIds.length) {
+      throw new Error(`Tous les chapitres ont échoué (${chapterIds.length})`);
     }
 
     // ============== Étape 3 : quiz + flashcards (8-15s) ==============
@@ -193,11 +222,16 @@ export default async (req: Request) => {
     }
 
     // ============== Done ==============
+    // En cas d'échec partiel chapitres, on conserve failed_chapters dans la
+    // progression finale pour permettre une régénération ciblée côté admin.
     await writeProgress(courseId, {
       step: "done",
       percent: 100,
-      message: "Cours généré avec succès",
+      message: failedChapters.length
+        ? `Cours généré (${failedChapters.length} chapitre(s) à régénérer)`
+        : "Cours généré avec succès",
       error: null,
+      ...(failedChapters.length ? { failed_chapters: [...failedChapters] } : {}),
     }, "completed");
 
     const duration = Date.now() - new Date(startedAt).getTime();
