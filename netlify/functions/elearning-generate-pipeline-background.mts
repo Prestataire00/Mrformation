@@ -185,8 +185,8 @@ export default async (req: Request) => {
         error: null,
       });
       const gm = await callRoute(`/api/elearning/${courseId}/generate/gamma`);
-      // Idem : tolérant aux 404 (route à venir) ou aux erreurs Gamma
-      // tierces (clé API, quota) — on laisse l'admin re-générer manuellement.
+      // Tolérant aux erreurs Gamma tierces (clé API, quota) — la route répond
+      // toujours 200 + { ok: true } ; le 404 reste un filet de sécurité legacy.
       if (!gm.ok && gm.status !== 404) {
         console.warn(`[elearning-bg] gamma failed (${gm.status}) — skipping`);
       }
