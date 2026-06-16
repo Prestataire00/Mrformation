@@ -131,6 +131,19 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Paramètres manquants" }, { status: 400 });
   }
 
+  // Isolation : la session doit appartenir à l'entité de l'admin avant de lire
+  // les réponses via le service role (sinon IDOR cross-entité). super_admin = cross.
+  if (auth.profile.role !== "super_admin") {
+    const { data: ownSession } = await auth.supabase
+      .from("sessions")
+      .select("entity_id")
+      .eq("id", session_id)
+      .maybeSingle();
+    if (!ownSession || ownSession.entity_id !== auth.profile.entity_id) {
+      return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
+    }
+  }
+
   const supabase = getServiceSupabase();
 
   const { data } = await supabase
