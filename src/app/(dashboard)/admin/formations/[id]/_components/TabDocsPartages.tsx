@@ -6,6 +6,7 @@ import { Upload, Trash2, FileText, Loader2, FolderOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/use-toast";
+import { fetchSignedDocUrl } from "@/lib/storage/fetch-signed-doc-url";
 import type { Session, FormationDocument, FormationDocCategory } from "@/lib/types";
 
 interface Props {
@@ -167,19 +168,31 @@ export function TabDocsPartages({ formation, onRefresh }: Props) {
     e.target.value = "";
   };
 
+  const handleOpenDoc = async (doc: FormationDocument) => {
+    try {
+      const url = await fetchSignedDocUrl("formation_documents", doc.id);
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      toast({
+        title: "Erreur",
+        description: err instanceof Error ? err.message : "Téléchargement impossible.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const renderDocList = (docs: FormationDocument[], uploadKey: string) => (
     <div className="space-y-2">
       {docs.map((doc) => (
         <div key={doc.id} className="flex items-center justify-between p-2 bg-muted/30 rounded-lg">
-          <a
-            href={doc.file_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 text-sm hover:underline flex-1 min-w-0"
+          <button
+            type="button"
+            onClick={() => handleOpenDoc(doc)}
+            className="flex items-center gap-2 text-sm hover:underline flex-1 min-w-0 text-left"
           >
             <FileText className="h-4 w-4 shrink-0 text-blue-600" />
             <span className="truncate">{doc.file_name}</span>
-          </a>
+          </button>
           <Button
             size="icon"
             variant="ghost"
