@@ -108,9 +108,9 @@ describe("elearningCreateConfigSchema", () => {
     ).toBe(false);
   });
 
-  it("rejette num_chapters hors plage [1, 20]", () => {
-    expect(elearningCreateConfigSchema.safeParse({ ...valid, num_chapters: 0 }).success).toBe(false);
-    expect(elearningCreateConfigSchema.safeParse({ ...valid, num_chapters: 21 }).success).toBe(false);
+  it("rejette num_chapters hors plage [2, 12]", () => {
+    expect(elearningCreateConfigSchema.safeParse({ ...valid, num_chapters: 1 }).success).toBe(false);
+    expect(elearningCreateConfigSchema.safeParse({ ...valid, num_chapters: 13 }).success).toBe(false);
   });
 });
 

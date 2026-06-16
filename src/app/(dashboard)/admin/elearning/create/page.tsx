@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { CourseType } from "@/lib/types/elearning";
+import { ELEARNING_LIMITS } from "@/lib/elearning/limits";
 
 // ---------- Types ----------
 type CreationMethod = "generate" | "paste" | "import";
@@ -182,7 +183,7 @@ export default function CreateCoursePage() {
   const [themeSearch, setThemeSearch] = useState("");
 
   // Chapter count
-  const [numChapters, setNumChapters] = useState(5);
+  const [numChapters, setNumChapters] = useState<number>(ELEARNING_LIMITS.chapters.default);
 
   // Final exam question count
   const [finalExamCount, setFinalExamCount] = useState(40);
@@ -759,21 +760,21 @@ export default function CreateCoursePage() {
                         <BookOpen className="h-4 w-4 text-blue-500" />
                         Nombre de chapitres
                       </p>
-                      <p className="text-xs text-gray-400 mt-0.5">Entre 2 et 8 chapitres (recommandé : 4-6)</p>
+                      <p className="text-xs text-gray-400 mt-0.5">Entre {ELEARNING_LIMITS.chapters.min} et {ELEARNING_LIMITS.chapters.max} chapitres (recommandé : 4-6)</p>
                     </div>
                     <span className="text-2xl font-bold text-blue-600">{numChapters}</span>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="text-xs text-gray-400 w-4 text-center">2</span>
+                    <span className="text-xs text-gray-400 w-4 text-center">{ELEARNING_LIMITS.chapters.min}</span>
                     <input
                       type="range"
-                      min={2}
-                      max={8}
+                      min={ELEARNING_LIMITS.chapters.min}
+                      max={ELEARNING_LIMITS.chapters.max}
                       value={numChapters}
                       onChange={(e) => setNumChapters(Number(e.target.value))}
                       className="flex-1 h-2 bg-gray-200 rounded-full appearance-none cursor-pointer accent-blue-600 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-600 [&::-webkit-slider-thumb]:shadow-md"
                     />
-                    <span className="text-xs text-gray-400 w-4 text-center">8</span>
+                    <span className="text-xs text-gray-400 w-4 text-center">{ELEARNING_LIMITS.chapters.max}</span>
                   </div>
                 </div>
 
@@ -1086,21 +1087,21 @@ export default function CreateCoursePage() {
                     <BookOpen className="h-4 w-4 text-blue-500" />
                     Nombre de chapitres
                   </p>
-                  <p className="text-xs text-gray-400 mt-0.5">Entre 2 et 8 chapitres (recommandé : 4-6)</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Entre {ELEARNING_LIMITS.chapters.min} et {ELEARNING_LIMITS.chapters.max} chapitres (recommandé : 4-6)</p>
                 </div>
                 <span className="text-2xl font-bold text-blue-600">{numChapters}</span>
               </div>
               <div className="flex items-center gap-3">
-                <span className="text-xs text-gray-400 w-4 text-center">2</span>
+                <span className="text-xs text-gray-400 w-4 text-center">{ELEARNING_LIMITS.chapters.min}</span>
                 <input
                   type="range"
-                  min={2}
-                  max={8}
+                  min={ELEARNING_LIMITS.chapters.min}
+                  max={ELEARNING_LIMITS.chapters.max}
                   value={numChapters}
                   onChange={(e) => setNumChapters(Number(e.target.value))}
                   className="flex-1 h-2 bg-gray-200 rounded-full appearance-none cursor-pointer accent-blue-600 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-600 [&::-webkit-slider-thumb]:shadow-md"
                 />
-                <span className="text-xs text-gray-400 w-4 text-center">8</span>
+                <span className="text-xs text-gray-400 w-4 text-center">{ELEARNING_LIMITS.chapters.max}</span>
               </div>
             </div>
 

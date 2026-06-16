@@ -19,6 +19,7 @@ import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 import { verifyCronAuth } from "@/lib/cron-auth";
 import { requireElearningCourse } from "@/lib/auth/elearning-access";
 import { generateCourseOutline } from "@/lib/services/openai";
+import { ELEARNING_LIMITS } from "@/lib/elearning/limits";
 
 export const maxDuration = 60;
 
@@ -56,7 +57,10 @@ export async function POST(
       );
     }
 
-    const maxChapters = Math.min(Math.max(course.num_chapters || 5, 2), 12);
+    const maxChapters = Math.min(
+      Math.max(course.num_chapters || ELEARNING_LIMITS.chapters.default, ELEARNING_LIMITS.chapters.min),
+      ELEARNING_LIMITS.chapters.max,
+    );
 
     // 1. Génère l'outline OpenAI.
     const outline = await generateCourseOutline(course.extracted_text, maxChapters);
