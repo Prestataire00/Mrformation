@@ -277,11 +277,15 @@ export default function ProgramDetailPage() {
     if (!program) return;
     setSaving(true);
 
+    // Préserve les champs du module existant non éditables dans le dialog
+    // (objectives, day_number, slot, animation_items) — sinon ils étaient
+    // silencieusement effacés à chaque save (dégradation du rendu PDF).
+    const originalModules = ((program.content as ProgramMeta).modules ?? []) as Array<Record<string, unknown>>;
     const modules = editModules.map((mod, idx) => ({
+      ...originalModules[idx],
       id: mod.id || idx + 1,
       title: mod.title,
       duration_hours: mod.duration_hours ? parseFloat(mod.duration_hours) : undefined,
-      objectives: [] as string[],
       topics: mod.topics ? mod.topics.split("\n").filter(Boolean) : [],
     }));
 

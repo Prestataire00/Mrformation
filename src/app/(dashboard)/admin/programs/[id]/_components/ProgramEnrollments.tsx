@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
+import { useEntity } from "@/contexts/EntityContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -79,6 +80,7 @@ interface Props {
 export default function ProgramEnrollments({ programId, modules }: Props) {
   const supabase = createClient();
   const { toast } = useToast();
+  const { entityId } = useEntity();
 
   const [enrollments, setEnrollments] = useState<EnrolledLearner[]>([]);
   const [loading, setLoading] = useState(true);
@@ -135,10 +137,15 @@ export default function ProgramEnrollments({ programId, modules }: Props) {
 
     const enrolledIds = enrollments.map((e) => e.learner_id);
 
-    const { data } = await supabase
+    // Isolation : ne proposer QUE les apprenants de l'entité courante (sinon un
+    // admin pourrait inscrire un apprenant d'une autre entité — program_enrollments
+    // n'a pas d'entity_id, l'isolation passe donc par le filtrage de la liste).
+    let learnersQuery = supabase
       .from("learners")
       .select("id, first_name, last_name, email, client_id, clients(company_name)")
       .order("last_name");
+    if (entityId) learnersQuery = learnersQuery.eq("entity_id", entityId);
+    const { data } = await learnersQuery;
 
     const all = (data as unknown as AvailableLearner[]) ?? [];
     setAvailableLearners(all.filter((l) => !enrolledIds.includes(l.id)));
