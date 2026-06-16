@@ -4,6 +4,7 @@
  */
 
 import { withRetry } from "@/lib/ai/with-retry";
+import { wrapUserData } from "@/lib/ai/sanitize-prompt";
 
 const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
 
@@ -278,9 +279,7 @@ export async function generateCourseOutline(
         content: `Analyse le document suivant et génère un plan de cours e-learning structuré.
 
 DOCUMENT SOURCE :
----
-${truncated}
----
+${wrapUserData("document_source", truncated)}
 
 Génère un JSON avec cette structure exacte :
 {
@@ -326,10 +325,10 @@ export async function generateChapterContent(
   courseTitle: string,
   courseObjectives: string
 ): Promise<GeneratedChapterContent> {
-  // Fix 504 Netlify Pro (26s) : 80k → 50k → 30k. Compromise qualité
-  // mais nécessaire pour rester sous le timeout. Si le user veut un
-  // contexte plus large, il faut basculer sur Background Functions.
-  const truncatedSource = relevantSourceText.substring(0, 30000);
+  // Borne relâchée car BG 15 min (plus de contrainte 504) :
+  // 80k → 50k → 30k (ancienne limite timeout) → 60000 chars (contexte riche).
+  // 60 000 reste borné (anti-coût) mais suffisant pour la qualité pédagogique.
+  const truncatedSource = relevantSourceText.substring(0, 60000);
 
   const result = await chatCompletion(
     [
@@ -352,9 +351,7 @@ CHAPITRE À RÉDIGER :
 - Concepts clés : ${keyConcepts.join(", ")}
 
 CONTENU SOURCE À TRANSFORMER :
----
-${truncatedSource}
----
+${wrapUserData("document_source", truncatedSource)}
 
 Génère un JSON avec cette structure :
 {
@@ -379,11 +376,10 @@ Règles :
 - Contenu détaillé (200-300 mots par section, pas plus)`,
       },
     ],
-    // Fix 504 Netlify Pro (26s) : 4000 → 2500 → 1800 tokens (≈ 1300 mots,
-    // 3-4 sections de 150-200 mots). Si la génération continue de
-    // timeouter, basculer sur Background Functions Netlify (15min) ou
-    // refactor en sous-routes section-par-section.
-    { model: "gpt-4o-mini", temperature: 0.5, max_tokens: 1800, json: true }
+    // Borne relâchée car BG 15 min (plus de contrainte 504) :
+    // 4000 → 2500 → 1800 (ancienne limite timeout) → 3000 tokens.
+    // 3000 reste borné (anti-coût) — suffit pour 5-6 sections de 250-300 mots.
+    { model: "gpt-4o", temperature: 0.5, max_tokens: 3000, json: true }
   );
 
   return parseJsonResponse<GeneratedChapterContent>(result.content, chapterContentSchema as ZodType<GeneratedChapterContent>);
@@ -569,7 +565,7 @@ RÈGLES STRICTES:
 - NE PAS générer de questions sans objective_ref ou sans citations`,
       },
     ],
-    { model: "gpt-4o-mini", temperature: 0.5, max_tokens: 4000, json: true }
+    { model: "gpt-4o", temperature: 0.5, max_tokens: 4000, json: true }
   );
 
   return parseJsonResponse<GeneratedFinalExamBatch>(result.content, finalExamBatchSchema as ZodType<GeneratedFinalExamBatch>);
@@ -815,7 +811,7 @@ Enrichis ce contenu en gardant la même structure mais en ajoutant beaucoup plus
 Format : Markdown structuré avec titres H2/H3, listes, tableaux, exemples.`,
       },
     ],
-    { model: "gpt-4o-mini", temperature: 0.5, max_tokens: 3000 }
+    { model: "gpt-4o", temperature: 0.5, max_tokens: 3000 }
   );
 
   const enrichedWordCount = result.content.trim().split(/\s+/).length;
