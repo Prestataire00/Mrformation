@@ -574,17 +574,24 @@ export default function DocumentsPage() {
 
   const fetchGeneratedDocs = useCallback(async () => {
     setDocsLoading(true);
+    // Isolation multi-tenant (RGPD Lot A) : filtre serveur par entity_id
+    // (remplace l'ancien filtre client-side partiel via template.entity_id, qui
+    // laissait fuiter/ratait les docs sans template).
+    if (!entityId) {
+      setGeneratedDocs([]);
+      setDocsLoading(false);
+      return;
+    }
     const { data, error } = await supabase
       .from("generated_documents")
       .select("*, template:document_templates(name, type, entity_id), session:sessions(title, trainer:trainers(first_name, last_name)), client:clients(company_name), learner:learners(first_name, last_name)")
+      .eq("entity_id", entityId)
       .order("created_at", { ascending: false });
     if (error) {
       console.error("fetchGeneratedDocs error:", error);
       toast({ title: "Erreur", description: "Impossible de charger les documents.", variant: "destructive" });
     } else {
-      const all = (data as GeneratedDocumentFull[]) || [];
-      const filtered = entityId ? all.filter((d) => d.template?.entity_id === entityId) : all;
-      setGeneratedDocs(filtered);
+      setGeneratedDocs((data as GeneratedDocumentFull[]) || []);
     }
     setDocsLoading(false);
   }, [entityId]);
@@ -995,6 +1002,8 @@ export default function DocumentsPage() {
       name: generateForm.name.trim(),
       content: finalContent,
       file_url: null,
+      // Isolation multi-tenant (RGPD Lot A) : pose entity_id à la création.
+      entity_id: entityId,
     }).select("id").single();
 
     if (error) {
