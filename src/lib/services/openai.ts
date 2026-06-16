@@ -215,14 +215,43 @@ import type {
   GeneratedGlobalFlashcardsBatch,
   GeneratedSlideSpecBatch,
 } from "@/lib/types/elearning";
+import type { ZodType } from "zod";
+import {
+  outlineSchema,
+  chapterContentSchema,
+  quizDataSchema,
+  finalExamBatchSchema,
+} from "@/lib/validations/elearning-ai";
 
-/** Helper to parse JSON from OpenAI response (strips markdown fences) */
-function parseJsonResponse<T>(content: string): T {
+/** Helper to parse JSON from OpenAI response (strips markdown fences).
+ *  Si un schéma Zod est fourni, valide la structure et lève une erreur
+ *  typée (code "AI_SCHEMA") plutôt que de laisser passer un objet malformé.
+ */
+function parseJsonResponse<T>(content: string, schema?: ZodType<T>): T {
   let jsonStr = content.trim();
   if (jsonStr.startsWith("```")) {
     jsonStr = jsonStr.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
   }
-  return JSON.parse(jsonStr) as T;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonStr);
+  } catch {
+    const e = new Error("Réponse IA non-JSON") as Error & { code: string };
+    e.code = "AI_JSON_PARSE";
+    throw e;
+  }
+  if (schema) {
+    const r = schema.safeParse(parsed);
+    if (!r.success) {
+      const e = new Error(
+        `Sortie IA invalide: ${r.error.issues.map((i) => i.path.join(".")).join(", ")}`
+      ) as Error & { code: string };
+      e.code = "AI_SCHEMA";
+      throw e;
+    }
+    return r.data;
+  }
+  return parsed as T;
 }
 
 /**
@@ -283,7 +312,7 @@ Règles :
     { model: "gpt-4o-mini", temperature: 0.4, max_tokens: 3000, json: true }
   );
 
-  return parseJsonResponse<CourseOutline>(result.content);
+  return parseJsonResponse<CourseOutline>(result.content, outlineSchema as ZodType<CourseOutline>);
 }
 
 /**
@@ -357,7 +386,7 @@ Règles :
     { model: "gpt-4o-mini", temperature: 0.5, max_tokens: 1800, json: true }
   );
 
-  return parseJsonResponse<GeneratedChapterContent>(result.content);
+  return parseJsonResponse<GeneratedChapterContent>(result.content, chapterContentSchema as ZodType<GeneratedChapterContent>);
 }
 
 /**
@@ -432,7 +461,7 @@ Règles :
     { model: "gpt-4o-mini", temperature: 0.4, max_tokens: 3000, json: true }
   );
 
-  return parseJsonResponse<GeneratedQuizData>(result.content);
+  return parseJsonResponse<GeneratedQuizData>(result.content, quizDataSchema as ZodType<GeneratedQuizData>);
 }
 
 // ============================================================
@@ -543,7 +572,7 @@ RÈGLES STRICTES:
     { model: "gpt-4o-mini", temperature: 0.5, max_tokens: 4000, json: true }
   );
 
-  return parseJsonResponse<GeneratedFinalExamBatch>(result.content);
+  return parseJsonResponse<GeneratedFinalExamBatch>(result.content, finalExamBatchSchema as ZodType<GeneratedFinalExamBatch>);
 }
 
 // ============================================================
