@@ -11,8 +11,7 @@ Matching facture DB ↔ ligne source :
 
 DRY-RUN par défaut ; --apply pour écrire.
 """
-import argparse, importlib.util, json, urllib.request
-from collections import defaultdict
+import argparse, importlib.util, json, re, urllib.request
 from pathlib import Path
 _spec = importlib.util.spec_from_file_location("rec", Path(__file__).parent / "reconcile_code_formation.py")
 rec = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(rec)
@@ -61,39 +60,44 @@ def main():
         z = sx.get(rec.stable_external_id("session", t or "", d or ""))
         if c and z: code2sid[c] = z["id"]
 
+    # rows_fac : lecture identique à l'import (même ordre) → index fiable pour les réf de repli.
     rows_fac = rec.read_xlsx(F_FACTURES)
     ref2code = {}
-    content2codes = defaultdict(set)
     for r in rows_fac:
         code = rec.norm(r.get("Code formation"))
-        if not code: continue
         ref = rec.norm(r.get("Numéro"))
-        if ref: ref2code[ref] = code
-        dest = rec.norm(r.get("Destinataire")) or rec.norm(r.get("Client"))
-        content2codes[ckey(r.get("Montant"), dest, rec.to_date(r.get("Date d'échéance")))].add(code)
+        if ref and code: ref2code[ref] = code
+
+    def src_match(row, dbf):
+        """Garde-fou : la ligne source[idx] correspond-elle à la facture DB (montant+destinataire) ?"""
+        dest = rec.norm_name(rec.norm(row.get("Destinataire")) or rec.norm(row.get("Client")) or "")
+        return (int(round(to_num(row.get("Montant")))) == int(round(to_num(dbf.get("amount"))))
+                and dest == rec.norm_name(dbf.get("recipient_name") or ""))
 
     updates = []
-    stats = {"deja_ok": 0, "par_ref": 0, "par_contenu": 0, "contenu_ambigu": 0, "sans_match": 0, "code_sans_session": 0, "non_loris": 0}
+    stats = {"deja_ok": 0, "par_ref": 0, "par_index": 0, "index_mismatch": 0, "code_sans_session": 0, "non_loris": 0}
     for f in inv:
         if f.get("external_source") != "loris": stats["non_loris"] += 1; continue
-        ref = f.get("external_reference")
+        ref = f.get("external_reference") or ""
         code = ref2code.get(ref) if ref else None
         via = "ref"
-        if not code:  # repli contenu (factures sans Numéro)
-            codes = content2codes.get(ckey(f.get("amount"), f.get("recipient_name"), f.get("due_date")))
-            if not codes: stats["sans_match"] += 1; continue
-            if len(codes) > 1: stats["contenu_ambigu"] += 1; continue
-            code = next(iter(codes)); via = "contenu"
+        if not code:  # réf de repli LORIS-FAC-{idx} → match par index (ordre préservé) + garde-fou contenu
+            m = re.match(r"^LORIS-FAC-(\d+)$", ref)
+            if not m: stats["index_mismatch"] += 1; continue
+            idx = int(m.group(1))
+            if idx >= len(rows_fac) or not src_match(rows_fac[idx], f):
+                stats["index_mismatch"] += 1; continue
+            code = rec.norm(rows_fac[idx].get("Code formation")); via = "index"
         sid = code2sid.get(code)
         if not sid: stats["code_sans_session"] += 1; continue
         if f["session_id"] == sid: stats["deja_ok"] += 1
         else:
-            updates.append((f["id"], sid)); stats["par_ref" if via == "ref" else "par_contenu"] += 1
+            updates.append((f["id"], sid)); stats["par_ref" if via == "ref" else "par_index"] += 1
 
     print(f"Factures loris : {sum(1 for f in inv if f.get('external_source') == 'loris')}")
     print(f"  déjà sur la bonne session : {stats['deja_ok']}")
-    print(f"  À RÉATTRIBUER : {len(updates)} (par réf={stats['par_ref']}, par contenu={stats['par_contenu']})")
-    print(f"  non traitées : contenu ambigu={stats['contenu_ambigu']}, sans match={stats['sans_match']}, code sans session={stats['code_sans_session']}, non-loris={stats['non_loris']}")
+    print(f"  À RÉATTRIBUER : {len(updates)} (par réf Numéro={stats['par_ref']}, par index={stats['par_index']})")
+    print(f"  non traitées : index non aligné={stats['index_mismatch']}, code sans session={stats['code_sans_session']}, non-loris={stats['non_loris']}")
 
     if not args.apply:
         print("\n[DRY-RUN] Aucune écriture."); return
