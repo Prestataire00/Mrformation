@@ -102,7 +102,7 @@ interface SessionFormData {
   meeting_url: string;
   mode: "presentiel" | "distanciel" | "hybride";
   type: "inter" | "intra";
-  status: "upcoming" | "in_progress" | "completed" | "cancelled";
+  status: "planned" | "upcoming" | "in_progress" | "completed" | "cancelled";
   max_participants: string;
   trainer_id: string;
   is_public: boolean;

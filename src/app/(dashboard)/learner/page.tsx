@@ -263,7 +263,7 @@ export default function LearnerPage() {
   );
 
   const completedEnrollments = enrollments.filter(
-    (e) => e.status === "completed" || e.session?.status === "completed"
+    (e) => e.status !== "cancelled" && (e.status === "completed" || e.session?.status === "completed")
   );
 
   const totalHours = completedEnrollments.reduce(
@@ -428,7 +428,7 @@ export default function LearnerPage() {
           { icon: Monitor, label: "E-Learning", href: "/learner/courses", color: "green" },
           { icon: ClipboardCheck, label: "Questionnaires", href: "/learner/questionnaires", color: "amber", urgent: false },
           { icon: FileText, label: "Documents", href: "/learner/documents", color: "purple" },
-          { icon: Award, label: "Attestations", count: completedEnrollments.length, href: "/learner/documents", color: "red" },
+          { icon: Award, label: "Attestations", href: "/learner/documents", color: "red" },
         ]}
       />
 
