@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
+import { invoiceDisplayRef } from "@/lib/utils/invoice-display-ref";
 import { Download, Loader2, MoreHorizontal, Eye, CheckCircle, Pencil, ExternalLink, Building2 } from "lucide-react";
 import { SkeletonTable, SkeletonStats } from "@/components/ui/skeleton-rows";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +26,7 @@ interface InvoiceRow {
   recipient_name: string;
   amount: number;
   reference: string;
+  external_reference: string | null;
   status: string;
   due_date: string | null;
   is_avoir: boolean;
@@ -89,7 +91,7 @@ export default function SuiviFacturesPage() {
     try {
       const { data } = await supabase
         .from("formation_invoices")
-        .select("id, session_id, recipient_type, recipient_id, recipient_name, amount, reference, status, due_date, is_avoir, created_at, prefix, number")
+        .select("id, session_id, recipient_type, recipient_id, recipient_name, amount, reference, external_reference, status, due_date, is_avoir, created_at, prefix, number")
         .eq("entity_id", entityId)
         .order("created_at", { ascending: false });
 
@@ -170,7 +172,7 @@ export default function SuiviFacturesPage() {
   const handleDownload = () => {
     const headers = ["Référence", "Formation", "Destinataire", "Type", "Montant", "Statut", "Échéance", "Date création"];
     const rows = filtered.map((inv) => [
-      inv.reference,
+      invoiceDisplayRef(inv),
       inv.session_title,
       inv.recipient_name,
       TYPE_LABELS[inv.recipient_type] || inv.recipient_type,
@@ -295,7 +297,7 @@ export default function SuiviFacturesPage() {
                         href={`/admin/formations/${inv.session_id}?tab=finances`}
                         className="text-[#374151] hover:underline"
                       >
-                        {inv.reference}
+                        {invoiceDisplayRef(inv)}
                       </Link>
                       {inv.is_avoir && (
                         <Badge variant="outline" className="ml-2 text-xs border-purple-300 text-purple-600">Avoir</Badge>
