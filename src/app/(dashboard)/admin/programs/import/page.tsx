@@ -174,8 +174,6 @@ export default function ImportProgramPage() {
         .eq("entity_id", entityId)
         .order("title");
 
-      console.log("[Import] Programs fetched:", programs?.length, "error:", progError);
-
       if (progError) {
         setError("Erreur chargement programmes: " + progError.message);
         setLoading(false);
@@ -188,16 +186,13 @@ export default function ImportProgramPage() {
       }));
 
       // 3. Match title client-side
-      console.log("[Import] PDF title:", JSON.stringify(parsed.title));
       let bestMatch: MatchResult | null = null;
       for (const p of allPrograms) {
         const score = titleSimilarity(parsed.title, p.title);
-        console.log("[Import] vs", JSON.stringify(p.title), "score:", score);
         if (!bestMatch || score > bestMatch.score) {
           bestMatch = { id: p.id, title: p.title, score };
         }
       }
-      console.log("[Import] Best match:", bestMatch);
 
       const importResult: ImportResult = {
         parsed,
