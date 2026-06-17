@@ -1863,6 +1863,13 @@ export default function ClientDetailPage() {
                       {g.session.title} <span className="text-gray-400 font-normal">· {new Date(g.session.start_date).toLocaleDateString("fr-FR")} · {g.docs.length} doc(s)</span>
                     </summary>
                     <div className="border-t divide-y">
+                      {/* Les PDF sont générés à la demande sur la fiche formation → on y renvoie pour télécharger. */}
+                      <Link
+                        href={`/admin/formations/${g.session.id}`}
+                        className="flex items-center justify-end gap-1 px-3 py-2 text-xs font-medium text-violet-600 hover:bg-violet-50"
+                      >
+                        Ouvrir la formation pour télécharger →
+                      </Link>
                       {g.docs.map((d) => (
                         <div key={d.id} className="flex items-center gap-3 px-3 py-2 text-sm">
                           <span className="flex-1 min-w-0 truncate">{d.typeLabel} <span className="text-gray-400">— {d.recipientLabel}</span></span>
@@ -1870,7 +1877,7 @@ export default function ClientDetailPage() {
                           {d.fileUrl ? (
                             <a href={d.fileUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-violet-600 hover:underline shrink-0">Télécharger</a>
                           ) : (
-                            <span className="text-xs text-gray-300 shrink-0">—</span>
+                            <Link href={`/admin/formations/${g.session.id}`} className="text-xs text-violet-600 hover:underline shrink-0">Voir</Link>
                           )}
                         </div>
                       ))}
