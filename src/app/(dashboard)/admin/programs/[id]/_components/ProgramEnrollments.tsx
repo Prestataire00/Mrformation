@@ -256,8 +256,6 @@ export default function ProgramEnrollments({ programId, modules }: Props) {
       })
       .eq("id", selectedEnrollment.id);
 
-    // Refresh local state
-    const updatedProgress = (progressRows ?? []).map((r) => r) as unknown as EnrolledLearner["module_progress"];
     // Re-fetch to get clean data
     await fetchEnrollments();
 

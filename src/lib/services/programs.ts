@@ -344,6 +344,127 @@ export async function countProgramReferences(
   };
 }
 
+// ── Créer une session depuis un programme ─────────────────────────────────────
+
+/**
+ * Données du programme transmises au service pour créer la formation de rattachement.
+ * On évite de transmettre l'objet Program entier (couplage trop fort) ; seuls
+ * les champs réellement écrits dans `trainings` sont requis.
+ */
+export interface CreateSessionFromProgramInput {
+  /** Champs programme — alimentent la formation (training) de rattachement. */
+  programId: string;
+  entityId: string;
+  programTitle: string;
+  durationHours: number | null;
+  price: number | null;
+  nsfCode: string | null;
+  nsfLabel: string | null;
+  bpfObjective: string | null;
+  bpfFundingType: string | null;
+  /** Champs session — saisis dans le dialog. */
+  startDate: string;
+  endDate: string;
+  mode: "presentiel" | "distanciel" | "hybride";
+  location: string | null;
+  trainerId: string | null;
+}
+
+/**
+ * Crée une session liée à un programme en s'assurant qu'une formation
+ * (training) de rattachement existe — idempotente côté training :
+ *
+ *  1. Cherche un training déjà lié à ce programme + entity_id.
+ *  2. Si aucun → l'insère.
+ *  3. Insert la session sur ce training.
+ *
+ * Note d'idempotence (non-atomique) : si l'insert session échoue après que
+ * le training a été créé, le training persisté est réutilisable au prochain
+ * appel — pas de doublon. Les deux opérations étant séquentielles sans
+ * transaction Postgres côté client, c'est le meilleur compromis possible avec
+ * supabase-js.
+ */
+export async function createSessionFromProgram(
+  supabase: SupabaseClient,
+  input: CreateSessionFromProgramInput,
+): Promise<ServiceResult<{ sessionId: string }>> {
+  // ── 1. Find-or-create training ──────────────────────────────────────────────
+  const { data: existingTrainings, error: fetchError } = await supabase
+    .from("trainings")
+    .select("id")
+    .eq("program_id", input.programId)
+    .eq("entity_id", input.entityId)
+    .limit(1);
+
+  if (fetchError) {
+    return { ok: false, error: { message: fetchError.message, code: fetchError.code } };
+  }
+
+  let trainingId: string;
+
+  if (existingTrainings && existingTrainings.length > 0) {
+    trainingId = (existingTrainings[0] as { id: string }).id;
+  } else {
+    const { data: newTraining, error: trainingError } = await supabase
+      .from("trainings")
+      .insert({
+        entity_id: input.entityId,
+        title: input.programTitle,
+        program_id: input.programId,
+        duration_hours: input.durationHours ?? null,
+        price_per_person: input.price ?? null,
+        nsf_code: input.nsfCode ?? null,
+        nsf_label: input.nsfLabel ?? null,
+        bpf_objective: input.bpfObjective ?? null,
+        bpf_funding_type: input.bpfFundingType ?? null,
+        is_active: true,
+      })
+      .select("id")
+      .single();
+
+    if (trainingError || !newTraining) {
+      return {
+        ok: false,
+        error: {
+          message: trainingError?.message ?? "Impossible de créer la formation.",
+          code: trainingError?.code,
+        },
+      };
+    }
+    trainingId = (newTraining as { id: string }).id;
+  }
+
+  // ── 2. Insert session ───────────────────────────────────────────────────────
+  const { data: newSession, error: sessionError } = await supabase
+    .from("sessions")
+    .insert({
+      entity_id: input.entityId,
+      training_id: trainingId,
+      program_id: input.programId,
+      title: input.programTitle,
+      start_date: input.startDate,
+      end_date: input.endDate,
+      mode: input.mode,
+      location: input.location ?? null,
+      status: "upcoming",
+      trainer_id: input.trainerId ?? null,
+    })
+    .select("id")
+    .single();
+
+  if (sessionError || !newSession) {
+    return {
+      ok: false,
+      error: {
+        message: sessionError?.message ?? "Impossible de créer la session.",
+        code: sessionError?.code,
+      },
+    };
+  }
+
+  return { ok: true, sessionId: (newSession as { id: string }).id };
+}
+
 /**
  * Crée une nouvelle version : snapshot l'état actuel dans program_versions
  * puis incrémente le numéro de version sur le programme. Pas atomique côté

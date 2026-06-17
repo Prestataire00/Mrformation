@@ -10,7 +10,13 @@ import type { Program, ProgramContent } from "@/lib/types";
 import {
   fetchProgramById as fetchProgramByIdService,
   updateProgram as updateProgramService,
+  createSessionFromProgram,
 } from "@/lib/services/programs";
+import {
+  programCreateSessionSchema,
+  getProgramFormErrors,
+  type ProgramCreateSessionInput,
+} from "@/lib/validations/program";
 import {
   ArrowLeft,
   Loader2,
@@ -433,85 +439,62 @@ export default function ProgramDetailPage() {
   // ── Create session from program ─────────────────────────────────────────────
   async function handleCreateSession() {
     if (!program) return;
-    if (!sessionForm.startDate || !sessionForm.endDate) {
-      toast({ title: "Erreur", description: "Les dates de début et de fin sont requises.", variant: "destructive" });
+
+    // Validate via Zod schema — remplace la validation manuelle
+    const parseResult = programCreateSessionSchema.safeParse({
+      title: program.title,
+      startDate: sessionForm.startDate,
+      endDate: sessionForm.endDate,
+      location: sessionForm.location,
+      mode: sessionForm.mode,
+      trainerId: sessionForm.trainerId,
+    });
+
+    if (!parseResult.success) {
+      const errors = getProgramFormErrors<ProgramCreateSessionInput>(parseResult);
+      const firstMessage =
+        errors.startDate ??
+        errors.endDate ??
+        errors.mode ??
+        errors.location ??
+        errors.trainerId ??
+        errors.title ??
+        "Données invalides.";
+      toast({ title: "Erreur de validation", description: firstMessage, variant: "destructive" });
       return;
     }
+
+    const validated = parseResult.data;
+
     setCreatingSession(true);
 
     try {
-      // 1. Check if a training already exists for this program
-      const { data: existingTrainings, error: fetchError } = await supabase
-        .from("trainings")
-        .select("id")
-        .eq("program_id", program.id)
-        .eq("entity_id", program.entity_id)
-        .limit(1);
+      const result = await createSessionFromProgram(supabase, {
+        programId: program.id,
+        entityId: program.entity_id,
+        programTitle: program.title,
+        durationHours: program.duration_hours ?? null,
+        price: program.price ?? null,
+        nsfCode: program.nsf_code ?? null,
+        nsfLabel: program.nsf_label ?? null,
+        bpfObjective: program.bpf_objective ?? null,
+        bpfFundingType: program.bpf_funding_type ?? null,
+        startDate: validated.startDate,
+        endDate: validated.endDate,
+        mode: validated.mode,
+        location: validated.location ?? null,
+        trainerId: validated.trainerId ?? null,
+      });
 
-      if (fetchError) {
-        toast({ title: "Erreur", description: fetchError.message, variant: "destructive" });
-        setCreatingSession(false);
-        return;
-      }
-
-      let trainingId: string;
-
-      if (existingTrainings && existingTrainings.length > 0) {
-        trainingId = existingTrainings[0].id;
-      } else {
-        // 2. Create a training from this program
-        const { data: newTraining, error: trainingError } = await supabase
-          .from("trainings")
-          .insert({
-            entity_id: program.entity_id,
-            title: program.title,
-            program_id: program.id,
-            duration_hours: program.duration_hours || null,
-            price_per_person: program.price || null,
-            nsf_code: program.nsf_code || null,
-            nsf_label: program.nsf_label || null,
-            bpf_objective: program.bpf_objective || null,
-            bpf_funding_type: program.bpf_funding_type || null,
-            is_active: true,
-          })
-          .select("id")
-          .single();
-
-        if (trainingError || !newTraining) {
-          toast({ title: "Erreur", description: trainingError?.message || "Impossible de créer la formation.", variant: "destructive" });
-          setCreatingSession(false);
-          return;
-        }
-        trainingId = newTraining.id;
-      }
-
-      // 3. Create the session
-      const { data: newSession, error: sessionError } = await supabase
-        .from("sessions")
-        .insert({
-          entity_id: program.entity_id,
-          training_id: trainingId,
-          program_id: program.id,
-          title: program.title,
-          start_date: sessionForm.startDate,
-          end_date: sessionForm.endDate,
-          mode: sessionForm.mode,
-          location: sessionForm.location || null,
-          status: "upcoming",
-          trainer_id: sessionForm.trainerId || null,
-        })
-        .select("id")
-        .single();
-
-      if (sessionError || !newSession) {
-        toast({ title: "Erreur", description: sessionError?.message || "Impossible de créer la session.", variant: "destructive" });
+      if (!result.ok) {
+        toast({ title: "Erreur", description: result.error.message, variant: "destructive" });
         setCreatingSession(false);
         return;
       }
 
       toast({ title: "Session créée avec succès" });
       setSessionDialogOpen(false);
-      router.push(`/admin/formations/${newSession.id}`);
+      router.push(`/admin/formations/${result.sessionId}`);
     } catch (err) {
       console.error("Session creation error:", err);
       toast({ title: "Erreur", description: "Une erreur inattendue est survenue.", variant: "destructive" });

@@ -239,11 +239,7 @@ export async function POST(request: NextRequest) {
       buffer = buffer.subarray(pdfHeaderIdx);
     }
     const pdfData = await pdf(buffer);
-    console.log("[PDF Import] Raw text (first 500):", JSON.stringify(pdfData.text.substring(0, 500)));
     const parsed = parsePdfText(pdfData.text);
-    console.log("[PDF Import] Parsed title:", JSON.stringify(parsed.title));
-    console.log("[PDF Import] Duration:", parsed.duration_hours, "h /", parsed.duration_days, "j");
-    console.log("[PDF Import] Modules:", parsed.modules.length);
 
     if (!parsed.title) {
       return NextResponse.json(
