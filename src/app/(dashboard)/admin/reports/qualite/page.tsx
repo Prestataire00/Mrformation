@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { pickDefaultQualityYear } from "@/lib/reports/quality-default-year";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
 import { ChevronLeft, ChevronRight, Download, Loader2, FileText, BarChart3, Shield, RefreshCw, AlertTriangle } from "lucide-react";
@@ -129,7 +130,8 @@ export default function SuiviQualitePage() {
   const supabase = useMemo(() => createClient(), []);
   const { entityId } = useEntity();
   const { toast } = useToast();
-  const [year, setYear] = useState<number>(2026);
+  const [year, setYear] = useState<number>(new Date().getFullYear());
+  const didInitYear = useRef(false);
   const dateFrom = `${year}-01-01`;
   const dateTo = `${year}-12-31`;
   const [searchName, setSearchName] = useState("");
@@ -138,6 +140,28 @@ export default function SuiviQualitePage() {
   const [rows, setRows] = useState<QualiteRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
+
+  // Initialise l'année par défaut sur l'année la plus fournie (1er chargement uniquement)
+  useEffect(() => {
+    if (didInitYear.current || !entityId) return;
+    didInitYear.current = true;
+    (async () => {
+      const { data } = await supabase
+        .from("quality_scores")
+        .select("year, eval_preformation, eval_pendant, eval_postformation, satisfaction_chaud, satisfaction_froid")
+        .eq("entity_id", entityId);
+      if (!data) return;
+      const byYear = new Map<number, number>();
+      for (const r of data as Record<string, unknown>[]) {
+        const y = r.year as number;
+        const hasData = ["eval_preformation", "eval_pendant", "eval_postformation", "satisfaction_chaud", "satisfaction_froid"]
+          .some((c) => r[c] !== null && r[c] !== undefined);
+        byYear.set(y, (byYear.get(y) ?? 0) + (hasData ? 1 : 0));
+      }
+      const years = Array.from(byYear.entries()).map(([yr, dataCount]) => ({ year: yr, dataCount }));
+      setYear(pickDefaultQualityYear(years, new Date().getFullYear()));
+    })();
+  }, [entityId, supabase]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -602,6 +626,22 @@ export default function SuiviQualitePage() {
       ) : (
         /* ─── TABLE VIEW ─── */
         <>
+          {/* Bandeau évaluations non renseignées */}
+          {rows.length > 0 && rows.every((r) => r.eval_preformation == null && r.eval_pendant == null && r.eval_postformation == null) && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800 mb-3">
+              Les évaluations (préformation / pendant / postformation) ne sont pas encore renseignées pour cette période.
+            </div>
+          )}
+
+          {/* Résumé satisfaction */}
+          {rows.length > 0 && (
+            <div className="flex flex-wrap gap-x-8 gap-y-1 text-sm mb-3">
+              <span>Satisfaction à chaud : <strong>{(() => { const v = avg(rows.map((r) => r.satisfaction_chaud).filter((x): x is number => x != null)); return v != null ? `${v.toFixed(1)} %` : "—"; })()}</strong></span>
+              <span>Satisfaction à froid : <strong>{(() => { const v = avg(rows.map((r) => r.satisfaction_froid).filter((x): x is number => x != null)); return v != null ? `${v.toFixed(1)} %` : "—"; })()}</strong></span>
+              <span className="text-gray-500">{rows.filter((r) => r.satisfaction_chaud != null || r.satisfaction_froid != null).length} formation(s) évaluée(s)</span>
+            </div>
+          )}
+
           <div className="bg-white border border-gray-200 rounded-xl overflow-x-auto mb-8">
             <table className="w-full text-xs whitespace-nowrap">
               <thead>
@@ -637,18 +677,22 @@ export default function SuiviQualitePage() {
                           <td className="px-3 py-2.5 text-center text-gray-600">{row.annee}</td>
                           {visibleColumns.map((col) => {
                             const val = row[col.key];
-                            const { text, bg } = fmtCell(val);
+                            const { bg } = fmtCell(val);
                             return (
                               <td key={col.key} className={`px-3 py-2.5 text-center ${bg}`}>
-                                {text}
+                                {val === null || val === undefined
+                                  ? <span title="Pas encore de réponse" className="text-gray-300">—</span>
+                                  : `${val.toFixed(1)} %`}
                               </td>
                             );
                           })}
                           {[mEval, mSat, mGen].map((val, i) => {
-                            const { text, bg } = fmtCell(val);
+                            const { bg } = fmtCell(val);
                             return (
                               <td key={i} className={`px-3 py-2.5 text-center font-medium ${bg}`}>
-                                {text}
+                                {val === null || val === undefined
+                                  ? <span title="Pas encore de réponse" className="text-gray-300">—</span>
+                                  : `${val.toFixed(1)} %`}
                               </td>
                             );
                           })}
@@ -661,10 +705,12 @@ export default function SuiviQualitePage() {
                       <td className="px-3 py-3"></td>
                       {visibleColumns.map((col) => {
                         const val = colAverages[col.key];
-                        const { text, bg } = fmtCell(val);
+                        const { bg } = fmtCell(val);
                         return (
                           <td key={col.key} className={`px-3 py-3 text-center ${bg}`}>
-                            {text}
+                            {val === null || val === undefined
+                              ? <span title="Pas encore de réponse" className="text-gray-300">—</span>
+                              : `${val.toFixed(1)} %`}
                           </td>
                         );
                       })}
@@ -677,10 +723,12 @@ export default function SuiviQualitePage() {
                         );
                         const allGenAvg = avg([allEvalAvg, allSatAvg]);
                         return [allEvalAvg, allSatAvg, allGenAvg].map((val, i) => {
-                          const { text, bg } = fmtCell(val);
+                          const { bg } = fmtCell(val);
                           return (
                             <td key={i} className={`px-3 py-3 text-center ${bg}`}>
-                              {text}
+                              {val === null || val === undefined
+                                ? <span title="Pas encore de réponse" className="text-gray-300">—</span>
+                                : `${val.toFixed(1)} %`}
                             </td>
                           );
                         });
