@@ -42,6 +42,7 @@ import {
   createDefaultEngine,
 } from "@/lib/services/document-generation";
 import { convertDocxToPdfWithVariables } from "@/lib/services/docx-converter";
+import { toSignedStorageUrl } from "@/lib/storage/sign-storage-url";
 import { loadClientsWithContacts } from "@/lib/services/load-client";
 import { loadSessionAggregates } from "@/lib/services/load-session-aggregates";
 import { loadEvaluationResults } from "@/lib/services/load-evaluation-results";
@@ -537,7 +538,8 @@ export async function batchSendDocsEmail(
         //     C'est exactement ce que fait email-attachments-resolver.ts:buildAutoVariables()
         if (customDocxUrl) {
           const variables = getResolvedVariablesMap(ctx);
-          const pdf = await convertDocxToPdfWithVariables(customDocxUrl, variables);
+          // Bucket privé (RGPD) → URL signée pour le converter externe.
+          const pdf = await convertDocxToPdfWithVariables(await toSignedStorageUrl(supabase, customDocxUrl), variables);
           return pdf.buffer;
         }
 

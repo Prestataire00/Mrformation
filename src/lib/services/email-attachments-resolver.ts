@@ -13,6 +13,7 @@ import type { EmailAttachmentDescriptor } from "@/lib/services/email-queue";
 import { renderSystemTemplate } from "@/lib/templates/registry";
 import { generatePdfFromFragment } from "@/lib/services/pdf-generator";
 import { convertDocxToPdfWithVariables } from "@/lib/services/docx-converter";
+import { toSignedStorageUrl } from "@/lib/storage/sign-storage-url";
 import {
   getResolvedVariablesMap,
   loadEntitySettings,
@@ -95,7 +96,9 @@ async function resolveOne(
 ): Promise<ResolvedAttachment | null> {
   // Cas 1 : fichier déjà uploadé (URL Storage signée par exemple) — joint tel quel
   if (desc.type === "file_url") {
-    const response = await fetch(desc.url);
+    // Bucket privé (RGPD) → URL signée pour pouvoir fetch.
+    const signedUrl = await toSignedStorageUrl(supabase, desc.url);
+    const response = await fetch(signedUrl);
     if (!response.ok) throw new Error(`HTTP ${response.status} fetching ${desc.url}`);
     const buffer = Buffer.from(await response.arrayBuffer());
     return { filename: desc.filename, content: buffer };
@@ -104,7 +107,7 @@ async function resolveOne(
   // Cas 2 : .docx personnalisé uploadé par l'admin (avec ou sans variables)
   // → docxtemplater (variables) + CloudConvert (LibreOffice → PDF fidèle)
   if (desc.type === "uploaded_docx") {
-    const pdf = await convertDocxToPdfWithVariables(desc.url, desc.variables);
+    const pdf = await convertDocxToPdfWithVariables(await toSignedStorageUrl(supabase, desc.url), desc.variables);
     // Si filename fourni n'est pas .pdf, on remplace l'extension
     const baseName = desc.filename.replace(/\.docx?$/i, "");
     return {
@@ -131,7 +134,7 @@ async function resolveOne(
   const defaultOverride = await findDefaultOverride(supabase, desc);
   if (defaultOverride) {
     const variables = await buildAutoVariables(supabase, desc);
-    const pdf = await convertDocxToPdfWithVariables(defaultOverride.source_docx_url, variables);
+    const pdf = await convertDocxToPdfWithVariables(await toSignedStorageUrl(supabase, defaultOverride.source_docx_url), variables);
     const filenameSlug = (FILENAME_LABELS[desc.type] ?? desc.type).toLowerCase().replace(/[^a-z0-9]+/g, "-");
     return {
       filename: `${filenameSlug}.pdf`,
