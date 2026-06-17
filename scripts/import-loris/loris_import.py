@@ -523,12 +523,17 @@ def map_crm_quote(row, idx, clients_by_name):
     }
 
 
-def map_formation_invoice(row, idx, sessions_by_title, clients_by_name):
+def map_formation_invoice(row, idx, sessions_by_title, clients_by_name, code_to_session=None):
     reference = norm(row.get("Numéro")) or f"LORIS-FAC-{idx}"
     destinataire = norm(row.get("Destinataire")) or norm(row.get("Client"))
     formation_title = norm(row.get("Nom de la formation"))
 
-    session_id = sessions_by_title.get(norm_name(formation_title)) if formation_title else None
+    # Matching session : par Code formation (fiable, désambiguïse les titres identiques),
+    # repli sur le titre si le code est absent/non résolu. (Fix factures mal attribuées.)
+    code = norm(row.get("Code formation"))
+    session_id = code_to_session.get(code) if (code and code_to_session) else None
+    if not session_id and formation_title:
+        session_id = sessions_by_title.get(norm_name(formation_title))
     if not session_id:
         return {
             "_skip_reason": f"no_session for formation '{formation_title}'",
@@ -1135,7 +1140,7 @@ def main():
 
             to_insert, skipped_match, skipped_dup = [], 0, 0
             for idx, row in enumerate(data):
-                p = map_formation_invoice(row, idx, lk["sessions_by_title"], lk["clients_by_name"])
+                p = map_formation_invoice(row, idx, lk["sessions_by_title"], lk["clients_by_name"], lk.get("code_to_session"))
                 if not p:
                     continue
                 if "_skip_reason" in p:
