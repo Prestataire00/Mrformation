@@ -383,14 +383,17 @@ def map_session(row, idx, trainings_by_title):
     }
 
 
-def map_formation_trainer(row, sessions_by_title, trainers_by_name):
-    """Note: matching session par TITLE ONLY (la date dans Suivi formateurs diffère parfois de Suivi activité)."""
+def map_formation_trainer(row, sessions_by_title, trainers_by_name, code_to_session=None):
+    """Matching session par Code formation (désambiguïse les titres identiques), repli sur le titre."""
     formateur_name = norm(row.get("Formateur"))
     title = norm(row.get("Formation"))
     if not formateur_name or not title:
         return None
     start_date = to_date(row.get("Date de début"))
-    session_id = sessions_by_title.get(norm_name(title))
+    code = norm(row.get("Code formation"))
+    session_id = code_to_session.get(code) if (code and code_to_session) else None
+    if not session_id:
+        session_id = sessions_by_title.get(norm_name(title))
     trainer_id = trainers_by_name.get(norm_name(formateur_name))
     if not session_id or not trainer_id:
         return {
@@ -426,12 +429,17 @@ def map_formation_trainer(row, sessions_by_title, trainers_by_name):
     return payload
 
 
-def map_enrollment(row, sessions_by_title, learners_by_name):
+def map_enrollment(row, sessions_by_title, learners_by_name, code_to_session=None):
     formation = norm(row.get("Formation"))
     nom = norm(row.get("Nom"))
     if not formation or not nom:
         return None
-    session_id = sessions_by_title.get(norm_name(formation))
+    # Matching session : par Code formation (fiable, désambiguïse les titres identiques),
+    # repli sur le titre si le code est absent/non résolu. (Fix bug d'inscriptions mal attribuées.)
+    code = norm(row.get("Code formation"))
+    session_id = code_to_session.get(code) if (code and code_to_session) else None
+    if not session_id:
+        session_id = sessions_by_title.get(norm_name(formation))
     learner_id = learners_by_name.get(norm_name(nom))
     if not session_id or not learner_id:
         return {
@@ -637,6 +645,20 @@ def fetch_existing_lookups():
             out["sessions_by_title"].setdefault(k, r["id"])
             out["sessions_by_title_date"][(k, r.get("start_date"))] = r["id"]
     out["sessions_by_loris_id"] = {r["loris_external_id"]: r["id"] for r in rows if r.get("loris_external_id")}
+
+    # code_to_session : Code formation (fichier activité) → session_id, via extid (titre+date début).
+    # Construit depuis les sessions DÉJÀ en base ; complété au fil des insertions de sessions (cf. boucle).
+    out["code_to_session"] = {}
+    _sh, _sdata = read_xlsx(FILES["trainings_sessions"])
+    for _row in (_sdata or []):
+        _code = norm(_row.get("Code formation"))
+        _title = norm(_row.get("Nom de la formation"))
+        _start = to_date(_row.get("Date de début de la formation"))
+        if not _code or not _title:
+            continue
+        _sid = out["sessions_by_loris_id"].get(stable_external_id("session", _title, _start or ""))
+        if _sid:
+            out["code_to_session"][_code] = _sid
 
     return out
 
@@ -849,6 +871,16 @@ def main():
                     lk["sessions_by_title_date"][(norm_name(r["title"]), r.get("start_date"))] = r["id"]
                 if r.get("loris_external_id"):
                     lk["sessions_by_loris_id"][r["loris_external_id"]] = r["id"]
+            # Compléter code_to_session avec les sessions du fichier (fraîchement insérées ou existantes).
+            for row in data:
+                _code = norm(row.get("Code formation"))
+                _title = norm(row.get("Nom de la formation"))
+                _start = to_date(row.get("Date de début de la formation"))
+                if not _code or not _title:
+                    continue
+                _sid = lk["sessions_by_loris_id"].get(stable_external_id("session", _title, _start or ""))
+                if _sid:
+                    lk["code_to_session"][_code] = _sid
 
             report["tables"]["trainings_sessions"] = {
                 "total_rows": len(data),
@@ -909,7 +941,7 @@ def main():
             seen_ext = set()
             seen_pairs = set()
             for row in data:
-                p = map_formation_trainer(row, lk["sessions_by_title"], lk["trainers_by_name"])
+                p = map_formation_trainer(row, lk["sessions_by_title"], lk["trainers_by_name"], lk.get("code_to_session"))
                 if not p:
                     continue
                 if "_skip_reason" in p:
@@ -990,7 +1022,7 @@ def main():
             to_insert, skipped_match, skipped_dup = [], 0, 0
             seen_ext = set()
             for row in data:
-                p = map_enrollment(row, lk["sessions_by_title"], lk["learners_by_name"])
+                p = map_enrollment(row, lk["sessions_by_title"], lk["learners_by_name"], lk.get("code_to_session"))
                 if not p:
                     continue
                 if "_skip_reason" in p:
