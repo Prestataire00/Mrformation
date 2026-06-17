@@ -25,6 +25,7 @@ import {
   Users,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import CommercialDashboardBanner from "./_components/CommercialDashboardBanner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -79,9 +80,6 @@ export default function SuiviCommercialPage() {
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
-  // KPIs
-  const [kpis, setKpis] = useState({ total: 0, calls: 0, emails: 0, relances: 0 });
-
   // Filters
   const [filterType, setFilterType] = useState("");
   const [filterDateFrom, setFilterDateFrom] = useState("");
@@ -111,29 +109,6 @@ export default function SuiviCommercialPage() {
   // Delete confirmation
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
-
-  // ── Fetch KPIs ──────────────────────────────────────────────────────────
-
-  const fetchKpis = useCallback(async () => {
-    if (!entityId) return;
-    const now = new Date();
-    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-
-    const { data } = await supabase
-      .from("crm_commercial_actions")
-      .select("action_type")
-      .eq("entity_id", entityId)
-      .gte("created_at", firstDay);
-
-    if (data) {
-      setKpis({
-        total: data.length,
-        calls: data.filter((a) => a.action_type === "call").length,
-        emails: data.filter((a) => a.action_type === "email").length,
-        relances: data.filter((a) => a.action_type === "relance").length,
-      });
-    }
-  }, [supabase, entityId]);
 
   // ── Fetch current user + my prospects ──────────────────────────────────
 
@@ -226,9 +201,8 @@ export default function SuiviCommercialPage() {
   useEffect(() => {
     if (entityId === undefined) return;
     fetchActions(0, false);
-    fetchKpis();
     fetchMyData();
-  }, [entityId, fetchActions, fetchKpis, fetchMyData]);
+  }, [entityId, fetchActions, fetchMyData]);
 
   // ── Fetch prospects for dialog ──────────────────────────────────────────
 
@@ -264,7 +238,6 @@ export default function SuiviCommercialPage() {
         setDialogOpen(false);
         setNewAction({ action_type: "call", prospect_id: "", subject: "", content: "" });
         fetchActions(0, false);
-        fetchKpis();
       }
     } catch {
       // silent
@@ -283,7 +256,6 @@ export default function SuiviCommercialPage() {
       setActions((prev) => prev.filter((a) => a.id !== deleteId));
       setTotalCount((c) => c - 1);
       setDeleteId(null);
-      fetchKpis();
     } catch {
       // silent
     } finally {
@@ -314,30 +286,8 @@ export default function SuiviCommercialPage() {
         <span>Suivi Commercial</span>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[
-          { label: "Actions ce mois", value: kpis.total, icon: Activity, color: "#374151" },
-          { label: "Appels", value: kpis.calls, icon: Phone, color: "#22c55e" },
-          { label: "Emails", value: kpis.emails, icon: Mail, color: "#8b5cf6" },
-          { label: "Relances", value: kpis.relances, icon: RefreshCw, color: "#f97316" },
-        ].map((kpi) => (
-          <Card key={kpi.label} className="bg-white border border-gray-200 shadow-sm">
-            <CardContent className="p-4 flex items-center gap-3">
-              <div
-                className="h-10 w-10 rounded-lg flex items-center justify-center"
-                style={{ backgroundColor: kpi.color + "1A" }}
-              >
-                <kpi.icon className="h-5 w-5" style={{ color: kpi.color }} />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-gray-800">{kpi.value}</p>
-                <p className="text-xs text-gray-500">{kpi.label}</p>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      {/* KPI Banner */}
+      <CommercialDashboardBanner />
 
       {/* Tabs: Mon activité / Équipe */}
       <Tabs defaultValue="my-activity">
