@@ -24,7 +24,12 @@ export function InvoiceRow({ invoice, ...handlers }: Props) {
   return (
     <div className="flex items-center gap-3 py-2.5 border-b border-gray-100 last:border-0">
       <span className="font-mono text-xs text-muted-foreground w-24 shrink-0">
-        {invoice.reference}
+        {/* Factures importées (réf. synthétique LORIS-…) : afficher leur vrai numéro d'origine
+            (external_reference = Numéro du fichier, ex. FAC-25-0). Les factures créées dans
+            l'app gardent leur référence générée. */}
+        {invoice.reference?.startsWith("LORIS") && invoice.external_reference
+          ? invoice.external_reference
+          : invoice.reference}
       </span>
       <span className="flex-1 min-w-0 flex items-center gap-1.5">
         <span className="font-medium text-sm text-gray-900 truncate">
