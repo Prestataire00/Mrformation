@@ -9,6 +9,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { downloadXlsx } from "@/lib/export-xlsx";
 import { exportTableToPDF } from "@/lib/pdf-export";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { mergeQualityRows } from "@/lib/reports/merge-quality-rows";
 
 // ─── Types ───────────────────────────────────────────
 
@@ -184,31 +185,29 @@ export default function SuiviQualitePage() {
         // Continue to fallback — table may not exist yet
       }
 
-      if (qualityScores && qualityScores.length > 0) {
-        const mapped: QualiteRow[] = qualityScores.map((qs: Record<string, unknown>) => ({
-          id: qs.id as string,
-          formation: qs.formation as string,
-          annee: qs.year as number,
-          month: (qs.month as string) || `${qs.year}-01`,
-          eval_preformation: qs.eval_preformation as number | null,
-          eval_pendant: qs.eval_pendant as number | null,
-          eval_postformation: qs.eval_postformation as number | null,
-          auto_eval_pre: qs.auto_eval_pre as number | null,
-          auto_eval_post: qs.auto_eval_post as number | null,
-          satisfaction_chaud: qs.satisfaction_chaud as number | null,
-          satisfaction_froid: qs.satisfaction_froid as number | null,
-          quest_financeurs: qs.quest_financeurs as number | null,
-          quest_formateurs: qs.quest_formateurs as number | null,
-          quest_managers: qs.quest_managers as number | null,
-          quest_entreprises: qs.quest_entreprises as number | null,
-          autres_quest: qs.autres_quest as number | null,
-        }));
-        setRows(mapped);
-        setLoading(false);
-        return;
-      }
+      // 1b. Map pre-computed scores (no early-return — always compute live too)
+      const precomputedRows: QualiteRow[] = (qualityScores ?? []).map((qs: Record<string, unknown>) => ({
+        id: qs.id as string,
+        formation: qs.formation as string,
+        annee: qs.year as number,
+        month: (qs.month as string) || `${qs.year}-01`,
+        eval_preformation: qs.eval_preformation as number | null,
+        eval_pendant: qs.eval_pendant as number | null,
+        eval_postformation: qs.eval_postformation as number | null,
+        auto_eval_pre: qs.auto_eval_pre as number | null,
+        auto_eval_post: qs.auto_eval_post as number | null,
+        satisfaction_chaud: qs.satisfaction_chaud as number | null,
+        satisfaction_froid: qs.satisfaction_froid as number | null,
+        quest_financeurs: qs.quest_financeurs as number | null,
+        quest_formateurs: qs.quest_formateurs as number | null,
+        quest_managers: qs.quest_managers as number | null,
+        quest_entreprises: qs.quest_entreprises as number | null,
+        autres_quest: qs.autres_quest as number | null,
+      }));
 
-      // 2. Fallback: compute live from sessions + questionnaire_responses
+      // 2. Always compute live from sessions + questionnaire_responses
+      let liveRows: QualiteRow[] = [];
+
       let query = supabase
         .from("sessions")
         .select("id, title, start_date, training:trainings(title)")
@@ -222,105 +221,107 @@ export default function SuiviQualitePage() {
       const { data: sessions, error: sessionsError } = await query;
 
       if (sessionsError) {
-        throw new Error(`Erreur chargement sessions: ${sessionsError.message}`);
-      }
+        console.error("[Qualité] Erreur chargement sessions:", sessionsError);
+        // Non-blocking: continue with liveRows = []
+      } else if (sessions && sessions.length > 0) {
+        const sessionIds = sessions.map((s) => s.id as string);
 
-      if (!sessions || sessions.length === 0) {
-        setRows([]);
-        setLoading(false);
-        return;
-      }
+        const { data: responses, error: respError } = await supabase
+          .from("questionnaire_responses")
+          .select("session_id, responses, questionnaire:questionnaires(type, quality_indicator_type, questions(id, type))")
+          .in("session_id", sessionIds);
 
-      const sessionIds = sessions.map((s) => s.id as string);
+        if (respError) {
+          console.error("[Qualité] Erreur questionnaire_responses:", respError);
+        }
 
-      const { data: responses, error: respError } = await supabase
-        .from("questionnaire_responses")
-        .select("session_id, responses, questionnaire:questionnaires(type, quality_indicator_type, questions(id, type))")
-        .in("session_id", sessionIds);
+        const scoreMap: Record<string, Record<string, number[]>> = {};
 
-      if (respError) {
-        console.error("[Qualité] Erreur questionnaire_responses:", respError);
-      }
+        if (responses) {
+          for (const resp of responses) {
+            const sessionId = resp.session_id as string;
+            if (!sessionId) continue;
 
-      const scoreMap: Record<string, Record<string, number[]>> = {};
+            const questionnaire = Array.isArray(resp.questionnaire)
+              ? (resp.questionnaire as Record<string, unknown>[])[0]
+              : (resp.questionnaire as Record<string, unknown> | null);
 
-      if (responses) {
-        for (const resp of responses) {
-          const sessionId = resp.session_id as string;
-          if (!sessionId) continue;
+            // Use quality_indicator_type if set, otherwise fallback to questionnaire.type mapping
+            const indicatorType =
+              (questionnaire?.quality_indicator_type as string | null) ||
+              TYPE_TO_INDICATOR[questionnaire?.type as string] ||
+              null;
+            if (!indicatorType) continue;
 
-          const questionnaire = Array.isArray(resp.questionnaire)
-            ? (resp.questionnaire as Record<string, unknown>[])[0]
-            : (resp.questionnaire as Record<string, unknown> | null);
+            const questions = (questionnaire?.questions as { id: string; type: string }[]) || [];
+            const ratingQuestionIds = new Set(questions.filter((q) => q.type === "rating").map((q) => q.id));
 
-          // Use quality_indicator_type if set, otherwise fallback to questionnaire.type mapping
-          const indicatorType =
-            (questionnaire?.quality_indicator_type as string | null) ||
-            TYPE_TO_INDICATOR[questionnaire?.type as string] ||
-            null;
-          if (!indicatorType) continue;
+            const answersObj = (resp.responses as Record<string, unknown>) || {};
+            const ratingValues: number[] = [];
 
-          const questions = (questionnaire?.questions as { id: string; type: string }[]) || [];
-          const ratingQuestionIds = new Set(questions.filter((q) => q.type === "rating").map((q) => q.id));
+            for (const [qId, answer] of Object.entries(answersObj)) {
+              if (ratingQuestionIds.size > 0 && !ratingQuestionIds.has(qId)) continue;
+              const num = typeof answer === "number" ? answer : parseFloat(String(answer));
+              if (!isNaN(num) && num >= 1 && num <= 5) {
+                ratingValues.push(num);
+              }
+            }
 
-          const answersObj = (resp.responses as Record<string, unknown>) || {};
-          const ratingValues: number[] = [];
+            if (ratingValues.length > 0) {
+              const avgRating = ratingValues.reduce((a, b) => a + b, 0) / ratingValues.length;
+              const percentage = ((avgRating - 1) / 4) * 100; // scale 1-5 → 0-100%
 
-          for (const [qId, answer] of Object.entries(answersObj)) {
-            if (ratingQuestionIds.size > 0 && !ratingQuestionIds.has(qId)) continue;
-            const num = typeof answer === "number" ? answer : parseFloat(String(answer));
-            if (!isNaN(num) && num >= 1 && num <= 5) {
-              ratingValues.push(num);
+              if (!scoreMap[sessionId]) scoreMap[sessionId] = {};
+              if (!scoreMap[sessionId][indicatorType]) scoreMap[sessionId][indicatorType] = [];
+              scoreMap[sessionId][indicatorType].push(Math.min(100, Math.max(0, percentage)));
             }
           }
-
-          if (ratingValues.length > 0) {
-            const avgRating = ratingValues.reduce((a, b) => a + b, 0) / ratingValues.length;
-            const percentage = ((avgRating - 1) / 4) * 100; // scale 1-5 → 0-100%
-
-            if (!scoreMap[sessionId]) scoreMap[sessionId] = {};
-            if (!scoreMap[sessionId][indicatorType]) scoreMap[sessionId][indicatorType] = [];
-            scoreMap[sessionId][indicatorType].push(Math.min(100, Math.max(0, percentage)));
-          }
         }
+
+        liveRows = sessions.map((s: Record<string, unknown>) => {
+          const training = Array.isArray(s.training)
+            ? (s.training as { title: string }[])[0]
+            : (s.training as { title: string } | null);
+          const formationName = training?.title || (s.title as string) || "Sans titre";
+          const startDate = new Date(s.start_date as string);
+          const sessionId = s.id as string;
+          const scores = scoreMap[sessionId] || {};
+
+          const getScore = (k: string): number | null => {
+            const vals = scores[k];
+            if (!vals || vals.length === 0) return null;
+            return vals.reduce((a, b) => a + b, 0) / vals.length;
+          };
+
+          return {
+            id: sessionId,
+            formation: formationName,
+            annee: startDate.getFullYear(),
+            month: `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, "0")}`,
+            eval_preformation: getScore("eval_preformation"),
+            eval_pendant: getScore("eval_pendant"),
+            eval_postformation: getScore("eval_postformation"),
+            auto_eval_pre: getScore("auto_eval_pre"),
+            auto_eval_post: getScore("auto_eval_post"),
+            satisfaction_chaud: getScore("satisfaction_chaud"),
+            satisfaction_froid: getScore("satisfaction_froid"),
+            quest_financeurs: getScore("quest_financeurs"),
+            quest_formateurs: getScore("quest_formateurs"),
+            quest_managers: getScore("quest_managers"),
+            quest_entreprises: getScore("quest_entreprises"),
+            autres_quest: getScore("autres_quest"),
+          };
+        });
       }
 
-      const mapped: QualiteRow[] = sessions.map((s: Record<string, unknown>) => {
-        const training = Array.isArray(s.training)
-          ? (s.training as { title: string }[])[0]
-          : (s.training as { title: string } | null);
-        const formationName = training?.title || (s.title as string) || "Sans titre";
-        const startDate = new Date(s.start_date as string);
-        const sessionId = s.id as string;
-        const scores = scoreMap[sessionId] || {};
-
-        const getScore = (key: string): number | null => {
-          const vals = scores[key];
-          if (!vals || vals.length === 0) return null;
-          return vals.reduce((a, b) => a + b, 0) / vals.length;
-        };
-
-        return {
-          id: sessionId,
-          formation: formationName,
-          annee: startDate.getFullYear(),
-          month: `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, "0")}`,
-          eval_preformation: getScore("eval_preformation"),
-          eval_pendant: getScore("eval_pendant"),
-          eval_postformation: getScore("eval_postformation"),
-          auto_eval_pre: getScore("auto_eval_pre"),
-          auto_eval_post: getScore("auto_eval_post"),
-          satisfaction_chaud: getScore("satisfaction_chaud"),
-          satisfaction_froid: getScore("satisfaction_froid"),
-          quest_financeurs: getScore("quest_financeurs"),
-          quest_formateurs: getScore("quest_formateurs"),
-          quest_managers: getScore("quest_managers"),
-          quest_entreprises: getScore("quest_entreprises"),
-          autres_quest: getScore("autres_quest"),
-        };
-      });
-
-      setRows(mapped);
+      // 3. Merge: live is the base; fill null indicators from precomputed; keep historical-only precomputed rows
+      type QualiteRowLiteCompat = QualiteRow & { [key: string]: unknown };
+      setRows(
+        mergeQualityRows(
+          liveRows as QualiteRowLiteCompat[],
+          precomputedRows as QualiteRowLiteCompat[],
+        ) as QualiteRow[],
+      );
     } catch (error) {
       console.error("[Qualité] fetchData failed:", error);
       const message = error instanceof Error ? error.message : "Erreur inconnue";
