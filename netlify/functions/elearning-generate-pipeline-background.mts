@@ -175,7 +175,10 @@ export default async (req: Request) => {
       throw new Error(`Tous les chapitres ont échoué (${chapterIds.length})`);
     }
 
-    // ============== Étape 3 : quiz + flashcards (8-15s) ==============
+    // ============== Étape 3 : quiz + flashcards — PAR CHAPITRE (anti-504) ==============
+    // Un appel par chapitre (petit, < 26s) au lieu d'un seul gros appel pour tous
+    // (qui dépassait la limite des fonctions Netlify → 504). Tolérant : un quiz raté
+    // n'interrompt pas le cours.
     if (courseType !== "presentation") {
       await writeProgress(courseId, {
         step: "quiz",
@@ -183,9 +186,25 @@ export default async (req: Request) => {
         message: "Génération des quiz et flashcards…",
         error: null,
       });
-      const qz = await callRoute(`/api/elearning/${courseId}/generate/quiz`);
-      if (!qz.ok) {
-        throw new Error(`quiz failed (${qz.status}): ${JSON.stringify(qz.data)}`);
+      const quizChapterIds = chapterIds.filter((id) => !failedChapters.includes(id));
+      const QUIZ_CONCURRENCY = 3;
+      let quizFailed = 0;
+      for (let start = 0; start < quizChapterIds.length; start += QUIZ_CONCURRENCY) {
+        const batch = quizChapterIds.slice(start, start + QUIZ_CONCURRENCY);
+        const settled = await Promise.allSettled(
+          batch.map((id) => callRoute(`/api/elearning/${courseId}/generate/quiz`, { chapter_id: id })),
+        );
+        settled.forEach((res) => {
+          if (res.status === "rejected" || !res.value?.ok) quizFailed++;
+        });
+        const qdone = Math.min(start + batch.length, quizChapterIds.length);
+        await writeProgress(courseId, {
+          step: "quiz", percent: 70 + Math.round((qdone / Math.max(1, quizChapterIds.length)) * 8),
+          message: `Quiz ${qdone}/${quizChapterIds.length}…`, error: null,
+        });
+      }
+      if (quizFailed) {
+        console.warn(`[elearning-bg] quiz: ${quizFailed}/${quizChapterIds.length} chapitre(s) en échec (non bloquant)`);
       }
     }
 
@@ -199,10 +218,12 @@ export default async (req: Request) => {
       });
       const ex = await callRoute(`/api/elearning/${courseId}/generate/exam`);
       if (!ex.ok) {
-        throw new Error(`exam failed (${ex.status}): ${JSON.stringify(ex.data)}`);
+        // Non bloquant : un cours reste utilisable sans examen final.
+        console.warn(`[elearning-bg] exam failed (${ex.status}) — non bloquant`);
+      } else {
+        const examCount = (ex.data.question_count as number) ?? 0;
+        console.log(`[elearning-bg] exam done course=${courseId} questions=${examCount}`);
       }
-      const examCount = (ex.data.question_count as number) ?? 0;
-      console.log(`[elearning-bg] exam done course=${courseId} questions=${examCount}`);
     }
 
     // ============== Étape 5 : gamma (optionnel) ==============
