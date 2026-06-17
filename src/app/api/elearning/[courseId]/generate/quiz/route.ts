@@ -59,19 +59,26 @@ export async function POST(
   }
 
   try {
+    // Optionnel : { chapter_id } → quiz généré pour CE chapitre seulement.
+    // Le pipeline appelle la route par chapitre pour rester sous la limite ~26s
+    // des fonctions Netlify (un seul appel pour tous les chapitres = 504).
+    const body = await request.json().catch(() => ({} as { chapter_id?: string }));
+    const onlyChapterId = (body as { chapter_id?: string }).chapter_id;
+
     // service_role en mode cron (BG function n'a pas de cookies Supabase),
     // client server classique sinon.
     const { createClient, createServiceRoleClient } = await import("@/lib/supabase/server");
     const supabase = isCron ? createServiceRoleClient() : createClient();
 
-    // Charge cours + chapitres.
+    // Charge cours + chapitres (un seul si chapter_id fourni).
+    let chaptersQuery = supabase
+      .from("elearning_chapters")
+      .select("id, title, summary, key_concepts, order_index")
+      .eq("course_id", params.courseId);
+    if (onlyChapterId) chaptersQuery = chaptersQuery.eq("id", onlyChapterId);
     const [{ data: course }, { data: chapters }] = await Promise.all([
       supabase.from("elearning_courses").select("title").eq("id", params.courseId).single(),
-      supabase
-        .from("elearning_chapters")
-        .select("id, title, summary, key_concepts, order_index")
-        .eq("course_id", params.courseId)
-        .order("order_index"),
+      chaptersQuery.order("order_index"),
     ]);
 
     if (!course) {
