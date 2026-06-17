@@ -80,6 +80,7 @@ import { CredentialsCardInline } from "@/components/credentials/CredentialsCardI
 import TasksSection from "./_components/TasksSection";
 import CommentsSection from "./_components/CommentsSection";
 import EmailSection from "./_components/EmailSection";
+import { groupFormationDocsBySession, type RawFormationDoc, type SessionDocGroup } from "@/lib/documents/group-formation-docs";
 
 // ---- Types ----
 const STATUS_LABELS: Record<ClientStatus, string> = {
@@ -183,6 +184,21 @@ const EMPTY_CONTACT_FORM: ContactFormData = {
   is_primary: false,
 };
 
+// ---- Formation doc type labels ----
+const FORMATION_DOC_TYPE_LABELS: Record<string, string> = {
+  convention_formation: "Convention de formation",
+  convention: "Convention",
+  attestation_assiduite: "Attestation d'assiduité",
+  attestation_competences: "Attestation de compétences",
+  certificat_realisation: "Certificat de réalisation",
+  convocation: "Convocation",
+  feuille_emargement: "Feuille d'émargement",
+  programme_formation: "Programme de formation",
+  reglement_interieur: "Règlement intérieur",
+  cgv: "CGV",
+};
+const docTypeLabel = (t: string) => FORMATION_DOC_TYPE_LABELS[t] ?? t.replace(/_/g, " ");
+
 // ---- Page ----
 export default function ClientDetailPage() {
   const params = useParams();
@@ -238,6 +254,7 @@ export default function ClientDetailPage() {
 
   // Documents
   const [documents, setDocuments] = useState<ClientDocument[]>([]);
+  const [formationDocGroups, setFormationDocGroups] = useState<SessionDocGroup[]>([]);
   const [docDialogOpen, setDocDialogOpen] = useState(false);
   const [docForm, setDocForm] = useState({ name: "", type: "contract", notes: "" });
   const [savingDoc, setSavingDoc] = useState(false);
@@ -269,7 +286,6 @@ export default function ClientDetailPage() {
       fetchSessions(),
       fetchActivity(),
       fetchDocuments(),
-      fetchFormationDocs(),
     ]);
     setLoading(false);
   }
@@ -513,39 +529,38 @@ export default function ClientDetailPage() {
     }
   }, [supabase, clientId]);
 
-  // Formation convention documents for this client
-  const [formationDocs, setFormationDocs] = useState<Array<{ id: string; doc_type: string; is_confirmed: boolean; is_sent: boolean; is_signed: boolean; session_id: string; session_title: string; created_at: string }>>([]);
-
-  const fetchFormationDocs = useCallback(async () => {
-    // Table unifiée `documents` : status='generated'|'sent'|'signed' → flags is_*
-    const { data } = await supabase
+  const fetchFormationDocuments = useCallback(async () => {
+    if (!entityId) return;
+    const sessionIds = sessions.map((s) => s.id);
+    const learnerIds = learners.map((l) => l.id);
+    if (sessionIds.length === 0) { setFormationDocGroups([]); return; }
+    const base = () => supabase
       .from("documents")
-      .select("id, doc_type, status, source_id, created_at")
+      .select("id, doc_type, source_id, owner_type, owner_id, file_url, status, created_at")
+      .eq("entity_id", entityId)
       .eq("source_table", "sessions")
-      .eq("owner_type", "company")
-      .eq("owner_id", clientId);
-    if (data && data.length > 0) {
-      // Fetch session titles
-      const sessionIds = [...new Set(data.map((d: { source_id: string }) => d.source_id))];
-      const { data: sessionsData } = await supabase
-        .from("sessions")
-        .select("id, title")
-        .in("id", sessionIds);
-      const titleMap: Record<string, string> = {};
-      for (const s of sessionsData || []) titleMap[s.id] = s.title;
-      // Adapter shape vers legacy (is_confirmed/is_sent/is_signed dérivés du status)
-      setFormationDocs(data.map((d) => ({
-        id: d.id as string,
-        doc_type: d.doc_type as string,
-        is_confirmed: d.status !== "draft",
-        is_sent: d.status === "sent" || d.status === "signed",
-        is_signed: d.status === "signed",
-        session_id: d.source_id as string,
-        created_at: d.created_at as string,
-        session_title: titleMap[d.source_id as string] || "Formation",
-      })));
-    }
-  }, [supabase, clientId]);
+      .in("source_id", sessionIds);
+    const [{ data: companyDocs }, { data: learnerDocs }] = await Promise.all([
+      base().eq("owner_type", "company").eq("owner_id", clientId),
+      learnerIds.length > 0
+        ? base().eq("owner_type", "learner").in("owner_id", learnerIds)
+        : Promise.resolve({ data: [] as RawFormationDoc[] }),
+    ]);
+    const all = [...((companyDocs ?? []) as RawFormationDoc[]), ...((learnerDocs ?? []) as RawFormationDoc[])];
+    const learnersById = new Map(learners.map((l) => [l.id, { id: l.id, first_name: l.first_name, last_name: l.last_name }]));
+    setFormationDocGroups(
+      groupFormationDocsBySession(
+        all,
+        sessions.map((s) => ({ id: s.id, title: s.title, start_date: s.start_date })),
+        learnersById,
+        docTypeLabel,
+      ),
+    );
+  }, [supabase, entityId, clientId, sessions, learners]);
+
+  useEffect(() => {
+    void fetchFormationDocuments();
+  }, [fetchFormationDocuments]);
 
   const [docFile, setDocFile] = useState<File | null>(null);
 
@@ -1832,36 +1847,39 @@ export default function ClientDetailPage() {
 
         {/* ════ Tab: Documents ════ */}
         <TabsContent value="documents" className="mt-6 space-y-6">
-          {/* Documents des formations (lecture seule) */}
-          {formationDocs.length > 0 && (
+          {/* Documents de formation (groupés par session) */}
+          {formationDocGroups.length > 0 ? (
             <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base font-semibold">Documents des formations</CardTitle>
-                <CardDescription>{formationDocs.length} document{formationDocs.length > 1 ? "s" : ""} générés depuis les fiches formation</CardDescription>
+              <CardHeader>
+                <CardTitle>Documents de formation</CardTitle>
+                <CardDescription>
+                  {formationDocGroups.reduce((n, g) => n + g.docs.length, 0)} document(s) générés sur {formationDocGroups.length} formation(s)
+                </CardDescription>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-1.5">
-                  {formationDocs.map((fd) => (
-                    <div key={fd.id} className="flex items-center justify-between py-2 border-b last:border-b-0 text-sm">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <FileText className="h-3.5 w-3.5 text-gray-400 shrink-0" />
-                        <span className="font-medium truncate">{(DOC_TYPE_LABELS as Record<string, string>)[fd.doc_type] || fd.doc_type}</span>
-                        <span className="text-xs text-muted-foreground truncate">— {fd.session_title}</span>
-                      </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        {fd.is_signed && <Badge className="text-[10px] bg-green-100 text-green-700 border-0">Signé</Badge>}
-                        {fd.is_sent && !fd.is_signed && <Badge className="text-[10px] bg-blue-100 text-blue-700 border-0">Envoyé</Badge>}
-                        {fd.is_confirmed && !fd.is_sent && <Badge className="text-[10px] bg-gray-100 text-gray-600 border-0">Confirmé</Badge>}
-                        <Link href={`/admin/formations/${fd.session_id}`}>
-                          <Button variant="ghost" size="sm" className="h-6 text-xs">Voir</Button>
-                        </Link>
-                      </div>
+              <CardContent className="space-y-3">
+                {formationDocGroups.map((g) => (
+                  <details key={g.session.id} className="rounded-lg border">
+                    <summary className="px-3 py-2 cursor-pointer text-sm font-semibold text-gray-700 hover:bg-gray-50">
+                      {g.session.title} <span className="text-gray-400 font-normal">· {new Date(g.session.start_date).toLocaleDateString("fr-FR")} · {g.docs.length} doc(s)</span>
+                    </summary>
+                    <div className="border-t divide-y">
+                      {g.docs.map((d) => (
+                        <div key={d.id} className="flex items-center gap-3 px-3 py-2 text-sm">
+                          <span className="flex-1 min-w-0 truncate">{d.typeLabel} <span className="text-gray-400">— {d.recipientLabel}</span></span>
+                          <span className="text-xs text-gray-400 shrink-0">{new Date(d.createdAt).toLocaleDateString("fr-FR")}</span>
+                          {d.fileUrl ? (
+                            <a href={d.fileUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-violet-600 hover:underline shrink-0">Télécharger</a>
+                          ) : (
+                            <span className="text-xs text-gray-300 shrink-0">—</span>
+                          )}
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  </details>
+                ))}
               </CardContent>
             </Card>
-          )}
+          ) : null}
 
           {/* Documents uploadés (CRUD) */}
           <Card>
