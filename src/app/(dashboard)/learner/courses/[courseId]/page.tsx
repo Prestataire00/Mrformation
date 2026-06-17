@@ -460,21 +460,24 @@ export default function CoursePlayerPage() {
       if (scoreJson.data) setBestScore(scoreJson.data);
     } catch { /* ignore */ }
 
-    // Enrollment
+    // Enrollment — résolution par profile_id (cohérent avec la liste /learner/courses
+    // et l'API de contenu). Avant : matching par email, fragile si learners.email
+    // ≠ email de connexion (emails synthétiques/migrés) → progression non sauvegardée.
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
-      const { data: profile } = await supabase.from("profiles").select("email").eq("id", user.id).single();
-      if (profile?.email) {
-        const { data: learner } = await supabase.from("learners").select("id").eq("email", profile.email).single();
-        if (learner) {
-          const { data: enrollment } = await supabase
-            .from("elearning_enrollments")
-            .select("id")
-            .eq("course_id", courseId)
-            .eq("learner_id", learner.id)
-            .single();
-          if (enrollment) setEnrollmentId(enrollment.id);
-        }
+      const { data: learner } = await supabase
+        .from("learners")
+        .select("id")
+        .eq("profile_id", user.id)
+        .maybeSingle();
+      if (learner) {
+        const { data: enrollment } = await supabase
+          .from("elearning_enrollments")
+          .select("id")
+          .eq("course_id", courseId)
+          .eq("learner_id", learner.id)
+          .maybeSingle();
+        if (enrollment) setEnrollmentId(enrollment.id);
       }
     }
     setLoading(false);
