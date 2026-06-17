@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/require-role";
 import { convertDocxToPdfWithVariables } from "@/lib/services/docx-converter";
 import { computeCacheKey, getCachedPdf, setCachedPdf } from "@/lib/services/pdf-cache";
+import { toSignedStorageUrl } from "@/lib/storage/sign-storage-url";
 
 /**
  * GET /api/documents/preview-docx?url=<docx_url>
@@ -58,7 +59,10 @@ export async function GET(request: NextRequest) {
     }
 
     console.log(`[preview-docx] Cache MISS (${cacheKey.slice(0, 8)}) — generating`);
-    const pdf = await convertDocxToPdfWithVariables(docxUrl, null);
+    // Bucket privé (RGPD) : le converter externe ne peut pas fetch l'URL publique →
+    // on lui passe une URL signée temporaire.
+    const fetchableUrl = await toSignedStorageUrl(auth.supabase, docxUrl);
+    const pdf = await convertDocxToPdfWithVariables(fetchableUrl, null);
 
     // Sauvegarde best-effort
     setCachedPdf(auth.supabase, auth.profile.entity_id, cacheKey, pdf.buffer).catch(() => { /* silent */ });

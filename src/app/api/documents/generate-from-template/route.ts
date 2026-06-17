@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireRole } from "@/lib/auth/require-role";
 import { sanitizeError } from "@/lib/api-error";
 import { convertDocxToPdfWithVariables } from "@/lib/services/docx-converter";
+import { toSignedStorageUrl } from "@/lib/storage/sign-storage-url";
 import { generatePdfFromFragment } from "@/lib/services/pdf-generator";
 import { computeCacheKey, getCachedPdf, setCachedPdf } from "@/lib/services/pdf-cache";
 import { getSystemTemplate, renderSystemTemplate } from "@/lib/templates/registry";
@@ -272,7 +273,9 @@ export async function POST(request: NextRequest) {
             { status: 400 }
           );
         }
-        const result = await convertDocxToPdfWithVariables(template.source_docx_url, finalVars);
+        // Bucket privé (RGPD) : URL signée pour que le converter externe puisse fetch le .docx.
+        const fetchableDocxUrl = await toSignedStorageUrl(createServiceClient(), template.source_docx_url);
+        const result = await convertDocxToPdfWithVariables(fetchableDocxUrl, finalVars);
         pdfBase64 = result.base64;
         sizeBytes = result.sizeBytes;
       } else {
