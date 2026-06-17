@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 import { formatCurrency } from "@/lib/utils";
+import { invoiceDisplayRef } from "@/lib/utils/invoice-display-ref";
 import type { Session } from "@/lib/types";
 
 
@@ -666,7 +667,7 @@ export function TabFinances({ formation, onRefresh }: Props) {
       entityBankBic: strOrNull("bank_bic"),
       entityBankBeneficiary: strOrNull("bank_beneficiary"),
       entityPenaltyText: strOrNull("invoice_penalty_text"),
-      reference: inv.reference,
+      reference: invoiceDisplayRef(inv),
       createdAt: inv.created_at,
       dueDate: inv.due_date,
       status: inv.status,
@@ -713,7 +714,7 @@ export function TabFinances({ formation, onRefresh }: Props) {
     try {
       const pdfData = await buildPdfDataWithLines(inv);
       await downloadInvoicePDF(pdfData);
-      toast({ title: `PDF ${inv.reference} téléchargé` });
+      toast({ title: `PDF ${invoiceDisplayRef(inv)} téléchargé` });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Erreur PDF";
       toast({ title: "Génération PDF impossible", description: message, variant: "destructive" });
@@ -756,11 +757,11 @@ export function TabFinances({ formation, onRefresh }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           to: email,
-          subject: `${inv.is_avoir ? "Avoir" : "Facture"} ${inv.reference} — ${formation.title}`,
-          body: `Bonjour,\n\nVeuillez trouver ci-joint ${inv.is_avoir ? "l'avoir" : "la facture"} ${inv.reference} relative à la formation "${formation.title}".\n\nCordialement,\nL'équipe formation`,
+          subject: `${inv.is_avoir ? "Avoir" : "Facture"} ${invoiceDisplayRef(inv)} — ${formation.title}`,
+          body: `Bonjour,\n\nVeuillez trouver ci-joint ${inv.is_avoir ? "l'avoir" : "la facture"} ${invoiceDisplayRef(inv)} relative à la formation "${formation.title}".\n\nCordialement,\nL'équipe formation`,
           session_id: formation.id,
           attachments: [{
-            filename: `${inv.reference}.pdf`,
+            filename: `${invoiceDisplayRef(inv)}.pdf`,
             content: base64,
             type: "application/pdf",
           }],
@@ -773,7 +774,7 @@ export function TabFinances({ formation, onRefresh }: Props) {
         .update({ status: "sent", updated_at: new Date().toISOString() })
         .eq("id", inv.id);
 
-      toast({ title: `Facture ${inv.reference} envoyée par email` });
+      toast({ title: `Facture ${invoiceDisplayRef(inv)} envoyée par email` });
       fetchData();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Erreur d'envoi";
