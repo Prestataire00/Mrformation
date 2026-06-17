@@ -53,8 +53,8 @@ export const MODE_LABELS: Record<string, string> = {
 export const DEFAULT_WIDGET_CONFIG: WidgetConfigItem[] = [
   { id: "alerts",      label: "Alertes et notifications",   visible: true,  order: 0 },
   { id: "kpis",        label: "Indicateurs clés (KPIs)",    visible: true,  order: 1 },
-  { id: "activity",    label: "Activités récentes",         visible: true,  order: 3 },
-  { id: "calendar",    label: "Calendrier des sessions",    visible: true,  order: 4 },
+  { id: "activity",    label: "Activités récentes",         visible: false, order: 3 },
+  { id: "calendar",    label: "Calendrier des sessions",    visible: false, order: 4 },
   { id: "upcoming",    label: "Sessions à venir",           visible: true,  order: 5 },
   { id: "quickaccess", label: "Accès rapide",               visible: true,  order: 6 },
 ];
@@ -62,8 +62,8 @@ export const DEFAULT_WIDGET_CONFIG: WidgetConfigItem[] = [
 export const DEFAULT_KPI_CONFIG: KpiConfigItem[] = [
   { id: "clients_actifs",         label: "Clients Actifs",             visible: true,  order: 0 },
   { id: "nouveaux_apprenants",    label: "Apprenants Inscrits",        visible: true,  order: 1 },
-  { id: "sessions_en_cours",      label: "Formations En Cours",        visible: true,  order: 2 },
-  { id: "sessions_terminees",     label: "Formations Terminées",       visible: true,  order: 3 },
+  { id: "sessions_en_cours",      label: "Formations En Cours",        visible: false, order: 2 },
+  { id: "sessions_terminees",     label: "Formations Terminées",       visible: false, order: 3 },
   { id: "ca_realise",             label: "CA Réalisé",                 visible: true,  order: 4 },
   { id: "ca_previsionnel",        label: "CA Prévisionnel",            visible: true,  order: 5 },
   { id: "taux_completion",        label: "Taux de Complétion",         visible: false, order: 6 },
