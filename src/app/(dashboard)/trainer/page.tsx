@@ -54,7 +54,7 @@ import {
   isAfter,
 } from "date-fns";
 import { HeroCard, QuickActionCards, MiniCalendar, PriorityList } from "@/components/dashboard-home";
-import { FileText, ClipboardCheck } from "lucide-react";
+import { ClipboardCheck } from "lucide-react";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -324,7 +324,6 @@ export default function TrainerPage() {
               { icon: CalendarDays, label: "Sessions cette semaine", count: weekSessionCount, href: "/trainer/planning", color: "blue" },
               { icon: PenLine, label: "Mes contrats", href: "/trainer/contracts", color: "amber" },
               { icon: ClipboardCheck, label: "Évaluations", href: "/trainer/evaluations", color: "green" },
-              { icon: FileText, label: "Mes documents", href: "/trainer/contracts", color: "purple" },
             ]}
           />
 
@@ -472,7 +471,7 @@ export default function TrainerPage() {
                             {session.max_participants ? ` / ${session.max_participants}` : ""}
                           </span>
                         </div>
-                        {(session.status === "in_progress" || session.status === "completed") && (
+                        {(session.status === "planned" || session.status === "in_progress" || session.status === "completed") && (
                           <Link
                             href={`/trainer/sessions/${session.id}/sign`}
                             className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-800 transition-colors mt-1"
@@ -733,7 +732,7 @@ export default function TrainerPage() {
                           </p>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
-                          {(session.status === "in_progress" || session.status === "completed") && (
+                          {(session.status === "planned" || session.status === "in_progress" || session.status === "completed") && (
                             <Link href={`/trainer/sessions/${session.id}/sign`}>
                               <PenLine className="h-3.5 w-3.5 text-blue-600 hover:text-blue-800" />
                             </Link>
