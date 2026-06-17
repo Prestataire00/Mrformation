@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { computeRevenueFromInvoices } from "@/lib/dashboard/revenue";
 import { SlidersHorizontal, Clock, PenLine, ClipboardList, FileText, Receipt } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
@@ -59,6 +60,7 @@ export default function AdminDashboardPage() {
   const [doneSessions,   setDoneSessions]   = useState(0);
   const [caRealise,      setCaRealise]      = useState(0);
   const [caPrevisionnel, setCaPrevisionnel] = useState(0);
+  const [overdueInvoices, setOverdueInvoices] = useState(0);
 
   // Alertes bilans manquants + tâches en retard
   const [alerts,         setAlerts]         = useState<MissingReportAlert[]>([]);
@@ -237,14 +239,6 @@ export default function AdminDashboardPage() {
     setNbQuestionnaireResponses(qrCount ?? 0);
   }
 
-  // ── Helper : extraire le montant HT depuis le champ notes d'un prospect ──
-  function extractAmount(notes: string | null): number {
-    if (!notes) return 0;
-    const match = notes.match(/Montant HT[^:]*:\s*([\d\s.,]+)/);
-    if (!match) return 0;
-    return parseFloat(match[1].replace(/\s/g, "").replace(",", ".")) || 0;
-  }
-
   // ── KPIs ──────────────────────────────────────────────────────────────────
   async function fetchKPIs() {
     const yearStart = `${year}-01-01`;
@@ -281,96 +275,36 @@ export default function AdminDashboardPage() {
       .lte("end_date", yearEnd + "T23:59:59");
     if (entityId) doneQ = doneQ.eq("entity_id", entityId);
 
-    // Prospects gagnés dans l'année (CA Réalisé = montant HT depuis notes)
-    let wonProspectsQ = supabase
-      .from("crm_prospects")
-      .select("id, notes, created_at")
-      .eq("status", "won")
-      .gte("created_at", yearStart)
-      .lte("created_at", yearEnd + "T23:59:59");
-    if (entityId) wonProspectsQ = wonProspectsQ.eq("entity_id", entityId);
-
-    // Prospects en pipeline dans l'année (pour CA prévisionnel)
-    let pipelineQ = supabase
-      .from("crm_prospects")
-      .select("id, notes, status, created_at")
-      .in("status", ["contacted", "qualified", "proposal"])
-      .gte("created_at", yearStart)
-      .lte("created_at", yearEnd + "T23:59:59");
-    if (entityId) pipelineQ = pipelineQ.eq("entity_id", entityId);
-
-    // Prospects gagnés année N-1 (tendances)
-    const prevYear = year - 1;
-    let wonN1Q = supabase
-      .from("crm_prospects")
-      .select("id, notes")
-      .eq("status", "won")
-      .gte("created_at", `${prevYear}-01-01`)
-      .lte("created_at", `${prevYear}-12-31T23:59:59`);
-    if (entityId) wonN1Q = wonN1Q.eq("entity_id", entityId);
-
-    // Prospects gagnés année N-2 (tendances)
-    const prevYear2 = year - 2;
-    let wonN2Q = supabase
-      .from("crm_prospects")
-      .select("id, notes")
-      .eq("status", "won")
-      .gte("created_at", `${prevYear2}-01-01`)
-      .lte("created_at", `${prevYear2}-12-31T23:59:59`);
-    if (entityId) wonN2Q = wonN2Q.eq("entity_id", entityId);
-
     const [
       { count: cCount },
       { count: lCount },
       { count: oCount },
       { count: dCount },
-      { data: wonData },
-      { data: pipelineData },
-      { data: wonN1Data },
-      { data: wonN2Data },
-    ] = await Promise.all([clientsQ, learnersQ, ongoingQ, doneQ, wonProspectsQ, pipelineQ, wonN1Q, wonN2Q]);
+    ] = await Promise.all([clientsQ, learnersQ, ongoingQ, doneQ]);
 
     setActiveClients(cCount ?? 0);
     setNewLearners(lCount ?? 0);
     setOngoingSessions(oCount ?? 0);
     setDoneSessions(dCount ?? 0);
 
-    // CA Réalisé = somme des Montant HT des prospects gagnés de l'année
-    const totalRealise = (wonData ?? []).reduce(
-      (sum, p) => sum + extractAmount(p.notes), 0
-    );
-    setCaRealise(Math.round(totalRealise));
+    // CA depuis les factures (source fiable ; remplace l'ancien parsing des notes CRM).
+    let invoicesQ = supabase
+      .from("formation_invoices")
+      .select("amount, status, paid_at, created_at");
+    if (entityId) invoicesQ = invoicesQ.eq("entity_id", entityId);
+    const { data: invoices } = await invoicesQ;
+    const { realise, previsionnel } = computeRevenueFromInvoices(invoices ?? [], year);
+    setCaRealise(realise);
+    setCaPrevisionnel(previsionnel);
 
-    // CA historique pour tendances
-    const caHistN1 = (wonN1Data ?? []).reduce((sum, p) => sum + extractAmount(p.notes), 0);
-    const caHistN2 = (wonN2Data ?? []).reduce((sum, p) => sum + extractAmount(p.notes), 0);
-
-    // Pipeline pondéré par probabilité de conversion
-    const pipelineValue = (pipelineData ?? []).reduce((sum, p) => {
-      const amount = extractAmount(p.notes);
-      const weight = p.status === "proposal" ? 0.6 : p.status === "qualified" ? 0.3 : 0.1;
-      return sum + amount * weight;
-    }, 0);
-
-    // CA Prévisionnel basé sur les tendances inter-annuelles
-    let previsionnel: number;
-    if (caHistN1 > 0 && caHistN2 > 0) {
-      // 2 ans d'historique : projection par taux de croissance
-      const growthRate = (caHistN1 - caHistN2) / caHistN2;
-      const trendProjection = Math.round(caHistN1 * (1 + growthRate));
-      previsionnel = Math.max(trendProjection, totalRealise + pipelineValue);
-    } else if (caHistN1 > 0) {
-      // 1 an d'historique : extrapolation au prorata de l'avancement annuel
-      const currentMonth = new Date().getMonth() + 1;
-      const yearProgress = currentMonth / 12;
-      const annualized = yearProgress > 0 ? Math.round(totalRealise / yearProgress) : 0;
-      const trendProjection = Math.max(caHistN1, annualized);
-      previsionnel = Math.max(trendProjection, totalRealise + pipelineValue);
-    } else {
-      // Pas d'historique : CA réalisé + pipeline pondéré
-      previsionnel = totalRealise + pipelineValue;
-    }
-    setCaPrevisionnel(Math.round(previsionnel));
+    // Factures en retard (vrai compte)
+    let lateInvQ = supabase
+      .from("formation_invoices")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "late");
+    if (entityId) lateInvQ = lateInvQ.eq("entity_id", entityId);
+    const { count: lateCount } = await lateInvQ;
+    setOverdueInvoices(lateCount ?? 0);
   }
 
   // ── Alertes bilans manquants ───────────────────────────────────────────────
@@ -454,7 +388,7 @@ export default function AdminDashboardPage() {
         trainers ( first_name, last_name )
       `)
       .gte("start_date", now)
-      .in("status", ["upcoming", "in_progress"])
+      .in("status", ["planned", "upcoming", "in_progress"])
       .order("start_date", { ascending: true })
       .limit(5);
     if (entityId) q = q.eq("entity_id", entityId);
@@ -599,7 +533,7 @@ export default function AdminDashboardPage() {
       <AdminHero
         firstName={adminFirstName || "Admin"}
         ongoingSessions={ongoingSessions}
-        attentionCount={overdueTasks.length + alerts.length}
+        attentionCount={overdueTasks.length + alerts.length + overdueInvoices}
       />
 
       {/* ═══ KPI Cards ═══ */}
@@ -628,7 +562,7 @@ export default function AdminDashboardPage() {
             items={[
               { id: "overdue-tasks", icon: Clock, label: "Tâches en retard", count: overdueTasks.length, href: "/admin/crm/tasks", severity: "urgent" },
               { id: "missing-reports", icon: FileText, label: "Bilans manquants", count: alerts.length, href: "/admin/reports/qualite", severity: "warning" },
-              { id: "overdue-invoices", icon: Receipt, label: "Factures en retard", count: 0, href: "/admin/reports/factures?status=late", severity: "urgent" },
+              { id: "overdue-invoices", icon: Receipt, label: "Factures en retard", count: overdueInvoices, href: "/admin/reports/factures?status=late", severity: "urgent" },
             ]}
           />
 
