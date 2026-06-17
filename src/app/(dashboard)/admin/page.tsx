@@ -9,7 +9,6 @@ import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
 import {
   AdminAlerts,
-  AdminOverdueTasks,
   AdminKPICards,
   AdminRecentActivity,
   AdminSessionCalendar,
@@ -565,11 +564,6 @@ export default function AdminDashboardPage() {
               { id: "overdue-invoices", icon: Receipt, label: "Factures en retard", count: overdueInvoices, href: "/admin/reports/factures?status=late", severity: "urgent" },
             ]}
           />
-
-          {/* Alertes détaillées */}
-          {isWidgetVisible("alerts") && overdueTasks.length > 0 && (
-            <AdminOverdueTasks overdueTasks={overdueTasks} />
-          )}
 
           {/* Activités récentes */}
           {isWidgetVisible("activity") && (

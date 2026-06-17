@@ -82,26 +82,32 @@ export function AdminKPICards({
   }
 
   return (
-    <div className={cn("grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4")}>
-      {visibleKpis.map((kpi) => (
-        <Card key={kpi.id} className="bg-white border border-gray-200 shadow-sm">
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className={cn("rounded-full p-3 shrink-0", kpi.bg)} style={(kpi as {bgStyle?: CSSProperties}).bgStyle}>
-              {kpi.icon}
-            </div>
-            <div className="min-w-0">
-              <p className={cn("font-bold text-gray-800", kpi.format === "currency" ? "text-lg lg:text-xl" : "text-3xl")}>
-                {kpi.format === "currency"
-                  ? formatCurrency(Number(kpi.value))
-                  : kpi.format === "percent"
-                  ? `${kpi.value}%`
-                  : kpi.value}
-              </p>
-              <p className="text-xs text-gray-500 mt-0.5">{kpi.label}</p>
-            </div>
-          </CardContent>
-        </Card>
-      ))}
+    <div>
+      <div className={cn("grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4")}>
+        {visibleKpis.map((kpi) => (
+          <Card key={kpi.id} className="bg-white border border-gray-200 shadow-sm">
+            <CardContent className="flex items-center gap-3 p-4">
+              <div className={cn("rounded-full p-3 shrink-0", kpi.bg)} style={(kpi as {bgStyle?: CSSProperties}).bgStyle}>
+                {kpi.icon}
+              </div>
+              <div className="min-w-0">
+                <p className={cn("font-bold text-gray-800", kpi.format === "currency" ? "text-lg lg:text-xl" : "text-3xl")}>
+                  {kpi.format === "currency"
+                    ? formatCurrency(Number(kpi.value))
+                    : kpi.format === "percent"
+                    ? `${kpi.value}%`
+                    : kpi.value}
+                </p>
+                <p className="text-xs text-gray-500 mt-0.5">{kpi.label}</p>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+      <div className="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-sm text-gray-500 px-1">
+        <span><strong className="text-gray-800">{ongoingSessions}</strong> formation{ongoingSessions > 1 ? "s" : ""} en cours</span>
+        <span><strong className="text-gray-800">{doneSessions}</strong> terminée{doneSessions > 1 ? "s" : ""} {year}</span>
+      </div>
     </div>
   );
 }
