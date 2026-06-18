@@ -893,11 +893,21 @@ export default function PlanningPage() {
                 <button
                   key={mode}
                   onClick={() => {
-                    setViewMode(mode);
-                    // When switching to week/day, keep current date aligned
                     if (mode === "month") {
+                      // Vue Mois : on se cale sur le 1er du mois affiché (la grille surligne aujourd'hui).
                       setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth(), 1));
+                    } else if (viewMode === "month") {
+                      // On quitte la vue Mois (où currentDate = 1er du mois) pour Jour/Semaine :
+                      // se caler sur aujourd'hui si le mois affiché est le mois courant, sinon garder
+                      // le 1er du mois affiché. (Bascule Semaine↔Jour : on préserve le jour sélectionné.)
+                      const viewingCurrentMonth =
+                        currentDate.getFullYear() === today.getFullYear() &&
+                        currentDate.getMonth() === today.getMonth();
+                      if (viewingCurrentMonth) {
+                        setCurrentDate(new Date(today.getFullYear(), today.getMonth(), today.getDate()));
+                      }
                     }
+                    setViewMode(mode);
                   }}
                   className={cn(
                     "flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-colors",
