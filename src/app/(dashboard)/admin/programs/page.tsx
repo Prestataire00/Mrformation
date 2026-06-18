@@ -843,7 +843,7 @@ export default function ProgramsPage() {
                   onClick={() => openHistoryDialog(program)}
                 >
                   <GitBranch className="h-3.5 w-3.5" />
-                  Nouvelle version
+                  Historique des versions
                 </Button>
               </CardContent>
             </Card>
