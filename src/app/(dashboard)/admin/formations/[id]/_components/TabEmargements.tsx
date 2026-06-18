@@ -263,12 +263,13 @@ export function TabEmargements({ formation, onRefresh }: Props) {
 
       // Send to each trainer
       let sent = 0;
+      let failed = 0;
       for (const ft of trainers) {
         const trainer = ft.trainer;
         if (!trainer?.email) continue;
 
         try {
-          await fetch("/api/emails/send", {
+          const res = await fetch("/api/emails/send", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -279,19 +280,36 @@ export function TabEmargements({ formation, onRefresh }: Props) {
               trainer_id: trainer.id,
             }),
           });
-          sent++;
+          if (res.ok) {
+            sent++;
+          } else {
+            failed++;
+          }
         } catch {
-          // continue
+          failed++;
         }
       }
 
-      toast({
-        title: sent > 0 ? "Email(s) envoyé(s)" : "Erreur",
-        description: sent > 0
-          ? `${sent} email(s) envoyé(s) aux formateurs`
-          : "Aucun formateur avec email trouvé",
-        variant: sent > 0 ? "default" : "destructive",
-      });
+      if (sent > 0 && failed === 0) {
+        toast({
+          title: "Email(s) envoyé(s)",
+          description: `${sent} email(s) envoyé(s) aux formateurs`,
+        });
+      } else if (sent > 0 && failed > 0) {
+        toast({
+          title: "Envoi partiel",
+          description: `${sent} email(s) envoyé(s), ${failed} échec(s)`,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Erreur",
+          description: failed > 0
+            ? `${failed} échec(s) d'envoi`
+            : "Aucun formateur avec email trouvé",
+          variant: "destructive",
+        });
+      }
     } catch {
       toast({ title: "Erreur réseau", variant: "destructive" });
     } finally {

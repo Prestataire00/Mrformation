@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/components/ui/use-toast";
 import { resolveVariables } from "@/lib/utils/resolve-variables";
+import { toUtcIsoFromParisTime } from "@/lib/timezone";
 import type {
   Session, EmailTemplate, EmailHistory, EmailRecipientType,
 } from "@/lib/types";
@@ -266,6 +267,14 @@ export function TabMessagerie({ formation, onRefresh }: Props) {
 
     const isSchedule = dialogMode === "schedule_template" || dialogMode === "schedule_libre";
 
+    if (isSchedule && (!scheduleDate || !scheduleTime)) {
+      toast({
+        title: "Date et heure requises pour programmer",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setSending(true);
     let successCount = 0;
     let failCount = 0;
@@ -311,9 +320,9 @@ export function TabMessagerie({ formation, onRefresh }: Props) {
           body,
           status: "pending",
           sent_by: user?.id || null,
-          sent_at: scheduleDate && scheduleTime
-            ? `${scheduleDate}T${scheduleTime}:00`
-            : new Date().toISOString(),
+          // Heure murale Paris → ISO UTC (DST-safe). Le guard plus haut
+          // garantit que scheduleDate/scheduleTime sont renseignés.
+          sent_at: toUtcIsoFromParisTime(scheduleDate, scheduleTime),
           session_id: formation.id,
           recipient_type: recipient.type,
           recipient_id: recipient.id,
@@ -645,17 +654,19 @@ export function TabMessagerie({ formation, onRefresh }: Props) {
             {isSchedule && (
               <div className="flex gap-3">
                 <div className="flex-1">
-                  <Label>Date d&apos;envoi</Label>
+                  <Label>Date d&apos;envoi *</Label>
                   <Input
                     type="date"
+                    required
                     value={scheduleDate}
                     onChange={(e) => setScheduleDate(e.target.value)}
                   />
                 </div>
                 <div className="flex-1">
-                  <Label>Heure d&apos;envoi</Label>
+                  <Label>Heure d&apos;envoi *</Label>
                   <Input
                     type="time"
+                    required
                     value={scheduleTime}
                     onChange={(e) => setScheduleTime(e.target.value)}
                   />

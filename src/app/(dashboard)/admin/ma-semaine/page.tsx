@@ -148,12 +148,16 @@ export default function MaSemainePage() {
   const handleTriggerNow = async (event: TimelineEvent) => {
     setActing(event.id);
     try {
-      await fetch("/api/formations/automation-rules/trigger-event", {
+      const res = await fetch("/api/formations/automation-rules/trigger-event", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ session_id: event.session_id, rule_id: event.rule_id }),
       });
-      toast({ title: "Exécution lancée" });
+      if (res.ok) {
+        toast({ title: "Exécution lancée" });
+      } else {
+        toast({ title: "Erreur", description: "L'exécution a échoué", variant: "destructive" });
+      }
     } catch {
       toast({ title: "Erreur", variant: "destructive" });
     }
@@ -252,7 +256,7 @@ export default function MaSemainePage() {
                 return (
                   <div key={day} className={cn("rounded-lg border p-2 min-h-[120px]", isToday ? "border-blue-300 bg-blue-50/50" : "border-gray-200")}>
                     <p className={cn("text-[10px] font-semibold uppercase mb-1", isToday ? "text-blue-700" : "text-gray-400")}>
-                      {new Date(day + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "short", day: "numeric" })}
+                      {new Date(day + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", timeZone: "Europe/Paris" })}
                     </p>
                     {dayEvents.length === 0 ? (
                       <p className="text-[10px] text-gray-300 mt-4 text-center">—</p>

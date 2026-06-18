@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import {
-  FileText, Download, Trash2, Loader2, ExternalLink, BookOpen,
+  FileText, Download, Trash2, Loader2, BookOpen,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -208,14 +208,7 @@ export function TabProgramme({ formation, onRefresh }: Props) {
                   className="bg-teal-500 hover:bg-teal-600 text-white"
                   onClick={() => router.push(`/admin/programs/${program.id}`)}
                 >
-                  <FileText className="h-4 w-4 mr-2" /> Détails du programme
-                </Button>
-                <Button
-                  variant="default"
-                  className="bg-teal-500 hover:bg-teal-600 text-white"
-                  onClick={() => router.push(`/admin/programs/${program.id}`)}
-                >
-                  <ExternalLink className="h-4 w-4 mr-2" /> Fichiers du programme
+                  <FileText className="h-4 w-4 mr-2" /> Voir le programme
                 </Button>
                 <Button
                   variant="default"

@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 import type { Session, FormationElearningAssignment } from "@/lib/types";
+import { formatDate } from "@/lib/utils";
 import { LearnerAccessBadge } from "@/components/credentials/LearnerAccessBadge";
 import {
   getAssignableElearningCourses,
@@ -262,6 +263,7 @@ export function TabElearning({ formation, onRefresh }: Props) {
         .eq("id", assignmentId)
         .eq("session_id", formation.id);
       if (error) throw error;
+      toast({ title: isCompleted ? "Validation admin activée" : "Validation admin retirée" });
       await onRefresh();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Impossible de mettre à jour";
@@ -521,8 +523,8 @@ export function TabElearning({ formation, onRefresh }: Props) {
                           <span className="font-medium text-foreground">
                             {resolveTitle(assignment)}
                           </span>
-                          {assignment.start_date && ` — Du ${assignment.start_date}`}
-                          {assignment.end_date && ` au ${assignment.end_date}`}
+                          {assignment.start_date && ` — Du ${formatDate(assignment.start_date)}`}
+                          {assignment.end_date && ` au ${formatDate(assignment.end_date)}`}
                         </p>
                         {/* Step 3 — real progression line for AI courses */}
                         {enrollmentProgress && (

@@ -34,6 +34,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
 import { Loader2, Save, Trash2 } from "lucide-react";
 import { updateTimeSlot, deleteTimeSlot } from "@/lib/services/time-slots";
+import { toUtcIsoFromParisTime } from "@/lib/timezone";
 import type { FormationTimeSlot } from "@/lib/types";
 
 interface Props {
@@ -77,20 +78,11 @@ function isoToLocalInput(iso: string): string {
 }
 
 function localInputToIso(local: string): string {
-  // Interprète l'input comme heure locale Europe/Paris, retourne ISO UTC.
-  // Approche pragmatique : crée une Date locale puis applique l'offset Paris.
+  // Interprète l'input datetime-local comme heure murale Europe/Paris et
+  // retourne l'ISO UTC. Délègue à toUtcIsoFromParisTime (DST-safe via
+  // date-fns-tz) au lieu d'un offset codé en dur, faux aux changements d'heure.
   const [datePart, timePart] = local.split("T");
-  const [y, m, d] = datePart.split("-").map(Number);
-  const [hh, mm] = timePart.split(":").map(Number);
-  // Helper : retourne offset Europe/Paris en minutes pour une date donnée
-  const offsetMinutes = (() => {
-    const probe = new Date(Date.UTC(y, m - 1, d, hh, mm));
-    // En janvier : +60, en juillet : +120 (heure d'été)
-    const month = m;
-    return month >= 4 && month <= 10 ? 120 : 60;
-  })();
-  const utcMs = Date.UTC(y, m - 1, d, hh, mm) - offsetMinutes * 60_000;
-  return new Date(utcMs).toISOString();
+  return toUtcIsoFromParisTime(datePart, timePart);
 }
 
 export function SlotEditDialog({ slot, onClose, onRefresh, entityId }: Props) {
