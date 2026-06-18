@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { z } from "zod";
 import { createClient } from "@/lib/supabase/client";
 import {
   Card,
@@ -237,6 +238,7 @@ export default function LearnerPage() {
   const [saving, setSaving] = useState(false);
   const [learner, setLearner] = useState<LearnerWithDetails | null>(null);
   const [editingProfile, setEditingProfile] = useState(false);
+  const [profileErrors, setProfileErrors] = useState<Record<string, string>>({});
   const [profileForm, setProfileForm] = useState<ProfileForm>({
     first_name: "",
     last_name: "",
@@ -328,8 +330,29 @@ export default function LearnerPage() {
 
   // ── profile update ──────────────────────────────────────────────────────────
 
+  const profileSchema = z.object({
+    first_name: z.string().min(1, "Prénom requis"),
+    last_name: z.string().min(1, "Nom requis"),
+    email: z.string().email("Email invalide"),
+  });
+
   const handleSaveProfile = async () => {
     if (!learner) return;
+
+    const result = profileSchema.safeParse(profileForm);
+    if (!result.success) {
+      const errors: Record<string, string> = {};
+      for (const issue of result.error.issues) {
+        const field = issue.path[0];
+        if (typeof field === "string" && !errors[field]) {
+          errors[field] = issue.message;
+        }
+      }
+      setProfileErrors(errors);
+      return;
+    }
+    setProfileErrors({});
+
     setSaving(true);
     try {
       const { error } = await supabase
@@ -375,6 +398,7 @@ export default function LearnerPage() {
       phone: learner.phone ?? "",
       job_title: learner.job_title ?? "",
     });
+    setProfileErrors({});
     setEditingProfile(false);
   };
 
@@ -671,6 +695,9 @@ export default function LearnerPage() {
                   ) : (
                     <p className="text-sm">{learner.first_name || "—"}</p>
                   )}
+                  {editingProfile && profileErrors.first_name && (
+                    <p className="text-sm text-destructive mt-1">{profileErrors.first_name}</p>
+                  )}
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">Nom</Label>
@@ -684,6 +711,9 @@ export default function LearnerPage() {
                     />
                   ) : (
                     <p className="text-sm">{learner.last_name || "—"}</p>
+                  )}
+                  {editingProfile && profileErrors.last_name && (
+                    <p className="text-sm text-destructive mt-1">{profileErrors.last_name}</p>
                   )}
                 </div>
               </div>
@@ -710,6 +740,9 @@ export default function LearnerPage() {
                       "—"
                     )}
                   </p>
+                )}
+                {editingProfile && profileErrors.email && (
+                  <p className="text-sm text-destructive mt-1">{profileErrors.email}</p>
                 )}
               </div>
 
