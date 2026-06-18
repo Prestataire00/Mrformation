@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -42,6 +42,7 @@ export default function ApprenantsProfilesPage() {
   const router = useRouter();
 
   const [learners, setLearners] = useState<Learner[]>([]);
+  const [companies, setCompanies] = useState<Array<{ id: string; company_name: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [companyFilter, setCompanyFilter] = useState("all");
@@ -71,6 +72,11 @@ export default function ApprenantsProfilesPage() {
         query = query.is("profile_id", null);
       }
 
+      // Filtre entreprise côté serveur (inclus dans le count → cohérent avec la pagination)
+      if (companyFilter !== "all") {
+        query = query.eq("client_id", companyFilter);
+      }
+
       const from = (page - 1) * PAGE_SIZE;
       query = query.range(from, from + PAGE_SIZE - 1);
 
@@ -83,29 +89,25 @@ export default function ApprenantsProfilesPage() {
     } finally {
       setLoading(false);
     }
-  }, [supabase, search, page, accessFilter, toast, entityId]);
+  }, [supabase, search, page, accessFilter, companyFilter, toast, entityId]);
 
   useEffect(() => { fetchLearners(); }, [fetchLearners]);
+
+  // Liste complète des entreprises (pour un filtre cohérent, pas limité à la page courante)
+  useEffect(() => {
+    if (!entityId) return;
+    supabase
+      .from("clients")
+      .select("id, company_name")
+      .eq("entity_id", entityId)
+      .order("company_name", { ascending: true })
+      .then(({ data }) => setCompanies(data ?? []));
+  }, [supabase, entityId]);
 
   // Clear selection on filter/page change
   useEffect(() => { setSelectedIds(new Set()); }, [search, page, accessFilter, companyFilter]);
 
-  const uniqueCompanies = useMemo(() => {
-    const companies = learners
-      .map((l) => l.clients?.company_name)
-      .filter((c): c is string => !!c);
-    return [...new Set(companies)].sort();
-  }, [learners]);
-
-  const filteredLearners = useMemo(() => {
-    if (companyFilter === "all") return learners;
-    return learners.filter((l) => l.clients?.company_name === companyFilter);
-  }, [learners, companyFilter]);
-
-  const selectableLearners = useMemo(
-    () => filteredLearners.filter((l) => !l.profile_id),
-    [filteredLearners],
-  );
+  const selectableLearners = learners.filter((l) => !l.profile_id);
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -209,24 +211,24 @@ export default function ApprenantsProfilesPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Toutes les entreprises</SelectItem>
-            {uniqueCompanies.map((company) => (
-              <SelectItem key={company} value={company}>{company}</SelectItem>
+            {companies.map((company) => (
+              <SelectItem key={company.id} value={company.id}>{company.company_name}</SelectItem>
             ))}
           </SelectContent>
         </Select>
         <Select value={accessFilter} onValueChange={(v) => { setAccessFilter(v as "all" | "with" | "without"); setPage(1); }}>
           <SelectTrigger className="h-8 w-[160px] text-xs">
-            <SelectValue placeholder="Acc\u00e8s" />
+            <SelectValue placeholder="Accès" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Tous</SelectItem>
-            <SelectItem value="with">Avec acc\u00e8s</SelectItem>
-            <SelectItem value="without">Sans acc\u00e8s</SelectItem>
+            <SelectItem value="with">Avec accès</SelectItem>
+            <SelectItem value="without">Sans accès</SelectItem>
           </SelectContent>
         </Select>
         {selectableLearners.length > 0 && (
           <Button size="sm" variant="outline" className="text-xs h-8" onClick={toggleSelectAll}>
-            {selectedIds.size === selectableLearners.length ? "D\u00e9s\u00e9lectionner tout" : `S\u00e9lectionner tout sans acc\u00e8s (${selectableLearners.length})`}
+            {selectedIds.size === selectableLearners.length ? "Désélectionner tout" : `Sélectionner tout sans accès (${selectableLearners.length})`}
           </Button>
         )}
       </div>
@@ -236,14 +238,14 @@ export default function ApprenantsProfilesPage() {
         <div className="flex justify-center py-20">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#374151] border-t-transparent" />
         </div>
-      ) : filteredLearners.length === 0 ? (
+      ) : learners.length === 0 ? (
         <div className="text-center py-20 text-gray-400">
-          <p className="text-lg font-medium">Aucun apprenant trouv\u00e9</p>
-          <p className="text-sm mt-1">Modifiez vos crit\u00e8res de recherche ou ajoutez des apprenants.</p>
+          <p className="text-lg font-medium">Aucun apprenant trouvé</p>
+          <p className="text-sm mt-1">Modifiez vos critères de recherche ou ajoutez des apprenants.</p>
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-          {filteredLearners.map((learner) => {
+          {learners.map((learner) => {
             const hasAccess = !!learner.profile_id;
             const isSelected = selectedIds.has(learner.id);
 
@@ -260,7 +262,7 @@ export default function ApprenantsProfilesPage() {
                     <Checkbox
                       checked={isSelected}
                       onCheckedChange={() => toggleSelect(learner.id)}
-                      aria-label={`S\u00e9lectionner ${learner.first_name} ${learner.last_name}`}
+                      aria-label={`Sélectionner ${learner.first_name} ${learner.last_name}`}
                     />
                   ) : (
                     <div className="h-4 w-4" /> // spacer
@@ -282,7 +284,7 @@ export default function ApprenantsProfilesPage() {
                       {hasAccess ? (
                         <Badge className="bg-green-100 text-green-700 text-[9px] shrink-0">Actif</Badge>
                       ) : (
-                        <Badge variant="outline" className="text-gray-400 text-[9px] shrink-0">Sans acc\u00e8s</Badge>
+                        <Badge variant="outline" className="text-gray-400 text-[9px] shrink-0">Sans accès</Badge>
                       )}
                     </div>
                     {learner.clients?.company_name ? (
@@ -312,10 +314,10 @@ export default function ApprenantsProfilesPage() {
         <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg px-6 py-3 flex items-center justify-between z-40">
           <div className="flex items-center gap-3">
             <span className="text-sm font-medium text-gray-700">
-              {selectedIds.size} apprenant{selectedIds.size > 1 ? "s" : ""} s\u00e9lectionn\u00e9{selectedIds.size > 1 ? "s" : ""}
+              {selectedIds.size} apprenant{selectedIds.size > 1 ? "s" : ""} sélectionné{selectedIds.size > 1 ? "s" : ""}
             </span>
             <Button size="sm" variant="ghost" className="text-xs" onClick={() => setSelectedIds(new Set())}>
-              D\u00e9s\u00e9lectionner
+              Désélectionner
             </Button>
           </div>
           {selectedIds.size <= 100 ? (

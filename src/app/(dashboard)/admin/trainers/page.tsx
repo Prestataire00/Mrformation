@@ -386,7 +386,17 @@ export default function TrainersPage() {
             {aiSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Sparkles className="h-4 w-4 mr-1.5" /> Recherche IA</>}
           </Button>
         </div>
-        {aiMode && <p className="text-xs text-white/60 mt-2">✨ Résultats classés par pertinence IA</p>}
+        {aiMode && (
+          <button
+            type="button"
+            onClick={() => { setAiMode(false); setSearch(""); fetchTrainers(); }}
+            className="text-xs text-white/60 hover:text-white mt-2 inline-flex items-center gap-1 underline-offset-2 hover:underline"
+            title="Quitter la recherche IA"
+          >
+            ✨ Résultats classés par pertinence IA
+            <X className="h-3 w-3" />
+          </button>
+        )}
       </div>
 
       {/* Filtres compacts */}
