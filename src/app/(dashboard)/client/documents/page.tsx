@@ -65,7 +65,7 @@ export default function ClientDocumentsPage() {
     );
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Documents</h1>
         <p className="text-sm text-muted-foreground mt-1">
@@ -173,7 +173,14 @@ export default function ClientDocumentsPage() {
         </CardHeader>
         <CardContent>
           <div className="text-sm text-muted-foreground italic py-4 text-center">
-            Disponible prochainement. En attendant, contactez votre organisme.
+            Disponible prochainement. En attendant,{" "}
+            <a
+              href="mailto:acces.prestataires@i-a-infinity.com"
+              className="text-primary underline not-italic"
+            >
+              contactez votre organisme
+            </a>
+            .
           </div>
         </CardContent>
       </Card>
