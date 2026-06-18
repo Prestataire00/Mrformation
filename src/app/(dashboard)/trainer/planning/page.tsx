@@ -158,7 +158,7 @@ export default function TrainerPlanningPage() {
                     <p className="font-medium truncate">{session.title}</p>
                     <p className="text-blue-600 flex items-center gap-1 mt-0.5">
                       <Clock className="w-3 h-3" />
-                      {format(parseISO(session.start_date), "HH:mm")}
+                      {new Date(session.start_date).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })}
                     </p>
                     {session.location && (
                       <p className="text-blue-600 flex items-center gap-1 mt-0.5">

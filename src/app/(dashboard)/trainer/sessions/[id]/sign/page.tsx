@@ -132,17 +132,23 @@ export default function TrainerSignPage() {
     setTimeSlots(slotList);
 
     // Load all signatures for this session
-    const { data: allSigs } = await supabase
+    const { data: allSigs, error: sigsError } = await supabase
       .from("signatures")
       .select("id, signer_id, signer_type, signature_data, signed_at, time_slot_id")
       .eq("session_id", sessionId);
 
     // Load enrollments
-    const { data: enrollments } = await supabase
+    const { data: enrollments, error: enrollmentsError } = await supabase
       .from("enrollments")
       .select("learner_id, learner:learners(id, first_name, last_name)")
       .eq("session_id", sessionId)
       .in("status", ["registered", "confirmed"]);
+
+    // Remonter une erreur de chargement plutôt qu'afficher des compteurs
+    // "0/0" trompeurs si signatures/enrollments échouent.
+    if (sigsError || enrollmentsError) {
+      toast({ variant: "destructive", title: "Erreur de chargement" });
+    }
 
     // Build state per slot
     const stateMap = new Map<string, SlotSignatureState>();
@@ -198,7 +204,7 @@ export default function TrainerSignPage() {
 
     setSlotStates(stateMap);
     setLoading(false);
-  }, [sessionId]);
+  }, [sessionId, supabase, toast]);
 
   useEffect(() => {
     loadData();
@@ -382,7 +388,7 @@ export default function TrainerSignPage() {
   };
 
   return (
-    <div className="p-6 max-w-2xl mx-auto space-y-6">
+    <div className="max-w-2xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
         <Button variant="ghost" size="sm" onClick={() => router.back()}>
