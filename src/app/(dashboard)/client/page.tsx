@@ -322,8 +322,7 @@ export default function ClientPage() {
           { icon: Users, label: "Apprenants inscrits", count: learners.length, href: "/client/learners", color: "blue" },
           { icon: GraduationCap, label: "Formations en cours", count: inProgressSessions.length, href: "/client/formations", color: "green" },
           { icon: CalendarDays, label: "Formations à venir", count: upcomingSessions.length, href: "/client/formations", color: "amber" },
-          // 3 documents légaux disponibles (CGV, RGPD, règlement)
-          { icon: FileText, label: "Documents", count: 3, href: "/client/documents", color: "purple" },
+          { icon: FileText, label: "Documents", href: "/client/documents", color: "purple" },
         ]}
       />
 

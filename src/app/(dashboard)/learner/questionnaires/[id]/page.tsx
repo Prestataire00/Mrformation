@@ -290,7 +290,25 @@ export default function LearnerQuestionnaireFillPage() {
   }
 
   async function handleSubmit() {
-    if (!validate()) return;
+    if (!validate()) {
+      toast({
+        variant: "destructive",
+        title: "Veuillez répondre aux questions obligatoires",
+      });
+      // Scroll vers la 1re question en erreur (ordre d'affichage)
+      const firstInvalid = questions.find((q) => {
+        if (!q.is_required) return false;
+        const val = responses[q.id];
+        return val === undefined || val === "" || val === 0;
+      });
+      if (firstInvalid) {
+        const el = document.querySelector(
+          `[data-question-id="${firstInvalid.id}"]`
+        );
+        el?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+      return;
+    }
     if (!learnerId || !sessionId) return;
 
     setSubmitting(true);
@@ -423,6 +441,7 @@ export default function LearnerQuestionnaireFillPage() {
           return (
             <div
               key={question.id}
+              data-question-id={question.id}
               className={cn(
                 "bg-white border rounded-xl p-5 transition-colors",
                 hasError ? "border-red-300 bg-red-50/30" : "border-gray-200"

@@ -6,13 +6,13 @@ import { useToast } from "@/components/ui/use-toast";
 import {
   CalendarDays,
   MapPin,
-  Clock,
   Loader2,
   BookOpen,
-  CheckCircle,
   Users,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { cn, formatDate, STATUS_COLORS, SESSION_STATUS_LABELS } from "@/lib/utils";
 import {
   filterEnrollmentsByLearnerIds,
@@ -142,7 +142,7 @@ export default function ClientFormationsPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
     );
   }
@@ -151,8 +151,8 @@ export default function ClientFormationsPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Formations</h1>
-          <p className="text-gray-500 text-sm mt-1">
+          <h1 className="text-2xl font-bold text-foreground">Formations</h1>
+          <p className="text-muted-foreground text-sm mt-1">
             Suivi des formations de vos collaborateurs
           </p>
         </div>
@@ -160,33 +160,31 @@ export default function ClientFormationsPage() {
 
       <div className="flex gap-2 mb-6">
         {(["all", "upcoming", "in_progress", "completed"] as const).map((f) => (
-          <button
+          <Button
             key={f}
+            size="sm"
+            variant={filter === f ? "default" : "outline"}
             onClick={() => setFilter(f)}
-            className={cn(
-              "px-3 py-1.5 rounded-lg text-sm font-medium transition-colors",
-              filter === f
-                ? "bg-blue-100 text-blue-700"
-                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-            )}
           >
             {f === "all" ? "Toutes" : f === "upcoming" ? "À venir" : f === "in_progress" ? "En cours" : "Terminées"}
-          </button>
+          </Button>
         ))}
       </div>
 
       {filtered.length === 0 ? (
-        <div className="text-center py-20 text-gray-400">
+        <div className="text-center py-20 text-muted-foreground">
           <BookOpen className="w-12 h-12 mx-auto mb-3 opacity-40" />
           {filter !== "all" && sessions.length > 0 ? (
             <>
               <p className="font-medium">Aucune formation dans cette catégorie</p>
-              <button
+              <Button
+                variant="link"
+                size="sm"
                 onClick={() => setFilter("all")}
-                className="mt-3 text-sm font-medium text-blue-700 hover:underline"
+                className="mt-2"
               >
                 Voir toutes les formations
-              </button>
+              </Button>
             </>
           ) : (
             <p className="font-medium">Aucune formation</p>
@@ -195,41 +193,41 @@ export default function ClientFormationsPage() {
       ) : (
         <div className="space-y-3">
           {filtered.map((session) => (
-            <div
-              key={session.id}
-              className="bg-white border border-gray-200 rounded-xl p-5"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-semibold text-gray-900">{session.title}</h3>
-                  {session.training && (
-                    <p className="text-gray-500 text-sm">{session.training.title}</p>
-                  )}
-                  <div className="flex flex-wrap items-center gap-4 mt-2 text-sm text-gray-500">
-                    <span className="flex items-center gap-1.5">
-                      <Clock className="w-3.5 h-3.5" />
-                      {formatDate(session.start_date)}
-                    </span>
-                    {session.location && (
-                      <span className="flex items-center gap-1.5">
-                        <MapPin className="w-3.5 h-3.5" />
-                        {session.location}
-                      </span>
+            <Card key={session.id}>
+              <CardContent className="p-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-semibold text-foreground">{session.title}</h3>
+                    {session.training && (
+                      <p className="text-muted-foreground text-sm">{session.training.title}</p>
                     )}
-                    <span className="flex items-center gap-1.5">
-                      <Users className="w-3.5 h-3.5" />
-                      {session.enrolled_learners} collaborateur{session.enrolled_learners !== 1 ? "s" : ""}
-                    </span>
+                    <div className="flex flex-wrap items-center gap-4 mt-2 text-sm text-muted-foreground">
+                      <span className="flex items-center gap-1.5">
+                        <CalendarDays className="w-3.5 h-3.5" />
+                        {formatDate(session.start_date)}
+                        {session.end_date ? ` — ${formatDate(session.end_date)}` : ""}
+                      </span>
+                      {session.location && (
+                        <span className="flex items-center gap-1.5">
+                          <MapPin className="w-3.5 h-3.5" />
+                          {session.location}
+                        </span>
+                      )}
+                      <span className="flex items-center gap-1.5">
+                        <Users className="w-3.5 h-3.5" />
+                        {session.enrolled_learners} collaborateur{session.enrolled_learners !== 1 ? "s" : ""}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Badge className="text-xs">{MODE_LABELS[session.mode] ?? session.mode}</Badge>
+                    <Badge className={cn("text-xs", STATUS_COLORS[session.status])}>
+                      {SESSION_STATUS_LABELS[session.status] ?? session.status}
+                    </Badge>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <Badge className="text-xs">{MODE_LABELS[session.mode] ?? session.mode}</Badge>
-                  <Badge className={cn("text-xs", STATUS_COLORS[session.status])}>
-                    {SESSION_STATUS_LABELS[session.status] ?? session.status}
-                  </Badge>
-                </div>
-              </div>
-            </div>
+              </CardContent>
+            </Card>
           ))}
         </div>
       )}

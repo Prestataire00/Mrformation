@@ -586,7 +586,7 @@ export default function LearnerCalendarPage() {
       </Card>
 
       {/* Selected day detail panel */}
-      {selectedDaySessions.length > 0 && (
+      {calSelectedDay && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
@@ -602,6 +602,9 @@ export default function LearnerCalendarPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
+            {selectedDaySessions.length === 0 ? (
+              <p className="text-sm text-gray-400 py-2">Aucune session ce jour-là</p>
+            ) : (
             <div className="space-y-3">
               {selectedDaySessions.map((s) => (
                 <div key={s.id} className="rounded-lg border p-4 space-y-2 hover:bg-gray-50/50 transition-colors">
@@ -651,6 +654,7 @@ export default function LearnerCalendarPage() {
                 </div>
               ))}
             </div>
+            )}
           </CardContent>
         </Card>
       )}

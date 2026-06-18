@@ -449,7 +449,7 @@ export default function LearnerCoursesPage() {
       )}
 
       {/* Manual courses — programs table */}
-      {manualCourses.length > 0 && (
+      {!loading && manualCourses.length > 0 && (
         <div className="space-y-4 pt-4 border-t border-gray-200">
           <div>
             <h2 className="text-lg font-bold text-gray-900">Cours & Supports</h2>
@@ -491,32 +491,45 @@ export default function LearnerCoursesPage() {
                   {/* Module list (collapsible) */}
                   {modules.length > 0 && (
                     <div className="space-y-1.5">
-                      {(isExpanded ? modules : modules.slice(0, 2)).map((mod) => (
-                        <a
-                          key={mod.id}
-                          href={mod.content_url || "#"}
-                          target={mod.content_url ? "_blank" : undefined}
-                          rel="noopener noreferrer"
-                          className={cn(
-                            "flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors",
-                            mod.content_url
-                              ? "bg-gray-50 hover:bg-[#374151]/10 text-gray-700 hover:text-[#374151] cursor-pointer"
-                              : "bg-gray-50 text-gray-400 cursor-default"
-                          )}
-                        >
-                          {mod.content_type === "video" ? (
+                      {(isExpanded ? modules : modules.slice(0, 2)).map((mod) => {
+                        const icon =
+                          mod.content_type === "video" ? (
                             <Video className="h-3.5 w-3.5 text-purple-500 shrink-0" />
                           ) : mod.content_type === "quiz" ? (
                             <HelpCircle className="h-3.5 w-3.5 text-amber-500 shrink-0" />
                           ) : (
                             <FileText className="h-3.5 w-3.5 text-blue-500 shrink-0" />
-                          )}
-                          <span className="flex-1 truncate">{mod.title || "Module sans titre"}</span>
-                          {mod.content_url && (
+                          );
+
+                        if (!mod.content_url) {
+                          return (
+                            <div
+                              key={mod.id}
+                              className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium bg-gray-50 text-gray-400"
+                            >
+                              {icon}
+                              <span className="flex-1 truncate">{mod.title || "Module sans titre"}</span>
+                              <Badge variant="outline" className="shrink-0 text-[10px] font-normal text-gray-500">
+                                Bientôt disponible
+                              </Badge>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <a
+                            key={mod.id}
+                            href={mod.content_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors bg-gray-50 hover:bg-[#374151]/10 text-gray-700 hover:text-[#374151] cursor-pointer"
+                          >
+                            {icon}
+                            <span className="flex-1 truncate">{mod.title || "Module sans titre"}</span>
                             <ExternalLink className="h-3 w-3 shrink-0 opacity-50" />
-                          )}
-                        </a>
-                      ))}
+                          </a>
+                        );
+                      })}
                       {modules.length > 2 && (
                         <button
                           onClick={() => setExpandedManual(isExpanded ? null : course.id)}
@@ -535,7 +548,7 @@ export default function LearnerCoursesPage() {
       )}
 
       {/* Catalogue — published AI courses not yet enrolled */}
-      {catalogue.length > 0 && (
+      {!loading && catalogue.length > 0 && (
         <div className="space-y-4 pt-4 border-t border-gray-200">
           <div>
             <h2 className="text-lg font-bold text-gray-900">Catalogue des formations disponibles</h2>
