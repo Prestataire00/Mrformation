@@ -374,7 +374,7 @@ export function ProfilePage() {
           <div className="space-y-1.5">
             <label className="text-sm font-medium text-gray-700 flex items-center gap-1.5">
               <MapPin className="w-3.5 h-3.5" />
-              Adresse complète<span className="text-red-500">*</span>
+              Adresse complète
             </label>
             <input
               type="text"
@@ -424,7 +424,7 @@ export function ProfilePage() {
                   type={showPassword ? "text" : "password"}
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="Minimum 6 caractères"
+                  placeholder="12 caractères min., 1 majuscule, 1 chiffre, 1 spécial"
                   className="w-full px-3 py-2 pr-10 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#374151]"
                 />
                 <button

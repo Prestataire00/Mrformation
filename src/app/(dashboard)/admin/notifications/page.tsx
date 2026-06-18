@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/components/ui/use-toast";
 import type { CrmNotification } from "@/lib/types";
 
 const NOTIFICATION_ICONS: Record<string, React.ElementType> = {
@@ -52,6 +53,7 @@ const PAGE_SIZE = 50;
 
 export default function NotificationsPage() {
   const router = useRouter();
+  const { toast } = useToast();
   const [notifications, setNotifications] = useState<CrmNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
@@ -75,11 +77,11 @@ export default function NotificationsPage() {
         setTotalCount(json.total_count ?? 0);
       }
     } catch {
-      // Silently fail
+      toast({ title: "Erreur", description: "Impossible de charger les notifications", variant: "destructive" });
     } finally {
       setLoading(false);
     }
-  }, [filter]);
+  }, [filter, toast]);
 
   useEffect(() => {
     fetchNotifications(0, false);
@@ -97,7 +99,7 @@ export default function NotificationsPage() {
       );
       setUnreadCount((c) => Math.max(0, c - 1));
     } catch {
-      // Silently fail
+      toast({ title: "Erreur", description: "Impossible de marquer la notification comme lue", variant: "destructive" });
     }
   }
 
@@ -111,7 +113,7 @@ export default function NotificationsPage() {
       setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
       setUnreadCount(0);
     } catch {
-      // Silently fail
+      toast({ title: "Erreur", description: "Impossible de tout marquer comme lu", variant: "destructive" });
     }
   }
 

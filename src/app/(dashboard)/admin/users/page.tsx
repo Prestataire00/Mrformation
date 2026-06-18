@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useEntity } from "@/contexts/EntityContext";
 import { useToast } from "@/components/ui/use-toast";
+import { useConfirmDialog } from "@/hooks/useConfirmDialog";
 import { Badge } from "@/components/ui/badge";
 
 interface UserProfile {
@@ -119,6 +120,7 @@ export default function UsersPage() {
   // Email dialog
   const { entityId } = useEntity();
   const { toast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirmDialog();
   const [emailUserDialog, setEmailUserDialog] = useState(false);
   const [emailUserTarget, setEmailUserTarget] = useState<UserProfile | null>(null);
   const [emailUserForm, setEmailUserForm] = useState({ subject: "", body: "", templateId: "" });
@@ -250,6 +252,7 @@ export default function UsersPage() {
       return;
     }
 
+    toast({ title: "Mot de passe modifié" });
     setPasswordModal(null);
     setNewPassword("");
     setConfirmPassword("");
@@ -339,14 +342,31 @@ export default function UsersPage() {
 
   async function handleDelete(u: UserProfile) {
     if (!canDeleteUser(u)) return;
-    if (!confirm(`Supprimer le compte utilisateur de ${u.first_name} ${u.last_name} ?\n\nCela supprime uniquement l'accès à la plateforme. Les fiches formateur/apprenant/entreprise ne seront pas affectées.`)) return;
+    const ok = await confirm({
+      title: "Supprimer cet utilisateur ?",
+      description: `Supprimer le compte utilisateur de ${u.first_name} ${u.last_name} ? Cela supprime uniquement l'accès à la plateforme. Les fiches formateur/apprenant/entreprise ne seront pas affectées.`,
+    });
+    if (!ok) return;
     setDeleting(u.id);
 
-    // Only delete auth profile — never delete learners/trainers/clients directly
-    await fetch(`/api/admin/users/${u.id}`, { method: "DELETE" });
-
-    setUsers((prev) => prev.filter((x) => x.id !== u.id));
-    setDeleting(null);
+    try {
+      // Only delete auth profile — never delete learners/trainers/clients directly
+      const res = await fetch(`/api/admin/users/${u.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json.error || "Suppression impossible");
+      }
+      setUsers((prev) => prev.filter((x) => x.id !== u.id));
+      toast({ title: "Utilisateur supprimé" });
+    } catch (err) {
+      toast({
+        title: "Erreur",
+        description: err instanceof Error ? err.message : "Suppression impossible",
+        variant: "destructive",
+      });
+    } finally {
+      setDeleting(null);
+    }
   }
 
   const ROLE_ORDER: Record<string, number> = { super_admin: 0, admin: 1, commercial: 2, trainer: 3, client: 4, learner: 5 };
@@ -1024,6 +1044,8 @@ export default function UsersPage() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog />
     </div>
   );
 }
