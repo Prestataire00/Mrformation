@@ -107,6 +107,7 @@ export default function LearnerMyTrainingsPage() {
   const [currentLearnerId, setCurrentLearnerId] = useState<string | null>(null);
   const [programEnrollments, setProgramEnrollments] = useState<ProgramEnrollmentData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [profileMissing, setProfileMissing] = useState(false);
 
   useEffect(() => {
     loadMyTrainings();
@@ -147,6 +148,7 @@ export default function LearnerMyTrainingsPage() {
 
     if (learnerError || !learnerData) {
       console.error("[my-trainings] learner fetch error:", learnerError);
+      setProfileMissing(true);
       setLoading(false);
       return;
     }
@@ -329,6 +331,20 @@ export default function LearnerMyTrainingsPage() {
       case "hybride": return "Hybride";
       default: return "Présentiel";
     }
+  }
+
+  if (profileMissing) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-3">
+        <GraduationCap className="h-12 w-12 text-muted-foreground" />
+        <p className="text-lg font-medium text-muted-foreground">
+          Profil apprenant non configuré
+        </p>
+        <p className="text-sm text-muted-foreground">
+          Contactez votre administrateur pour configurer votre profil apprenant.
+        </p>
+      </div>
+    );
   }
 
   return (

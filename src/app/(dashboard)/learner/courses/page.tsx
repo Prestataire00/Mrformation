@@ -128,12 +128,16 @@ export default function LearnerCoursesPage() {
 
     // Catalogue — published AI courses not yet enrolled (always shown)
     const enrolledIds = enrolledData.map((e) => e.course_id);
-    const { data: publishedCourses } = await supabase
+    const { data: publishedCourses, error: catalogueError } = await supabase
       .from("elearning_courses")
       .select("id, title, description, estimated_duration_minutes, elearning_chapters(id)")
       .eq("status", "published")
       .eq("entity_id", learnerEntityId ?? "")
       .order("created_at", { ascending: false });
+
+    if (catalogueError) {
+      toast({ variant: "destructive", title: "Erreur de chargement" });
+    }
 
     if (publishedCourses) {
       const notEnrolled = (publishedCourses as PublishedCourse[]).filter(
@@ -143,11 +147,15 @@ export default function LearnerCoursesPage() {
     }
 
     // Manual courses from programs table (always shown)
-    const { data: programs } = await supabase
+    const { data: programs, error: programsError } = await supabase
       .from("programs")
       .select("id, title, description, objectives, content")
       .eq("entity_id", learnerEntityId ?? "")
       .order("updated_at", { ascending: false });
+
+    if (programsError) {
+      toast({ variant: "destructive", title: "Erreur de chargement" });
+    }
 
     if (programs) {
       const publishedPrograms = (programs as ManualCourse[]).filter(
@@ -241,7 +249,7 @@ export default function LearnerCoursesPage() {
   });
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex items-center gap-2 text-sm">
         <Link href="/learner" className="text-[#374151] hover:underline">
           Accueil

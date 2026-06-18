@@ -11,6 +11,7 @@ import {
   Loader2,
   Download,
   CalendarPlus,
+  GraduationCap,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -48,10 +49,24 @@ interface CalendarSession {
   training_title: string | null;
   start_date: string;
   end_date: string;
-  start_hour: string;
+  /** Heure de début formatée Europe/Paris (ex. "09:00"), ou null si inconnue. */
+  start_hour: string | null;
   location: string | null;
   mode: string;
   trainer_name: string | null;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Time helpers                                                        */
+/* ------------------------------------------------------------------ */
+/** Formate une heure en Europe/Paris (ex. "09:00"). null si valeur absente. */
+function formatParisHour(value: string | null | undefined): string | null {
+  if (!value) return null;
+  return new Date(value).toLocaleTimeString("fr-FR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Europe/Paris",
+  });
 }
 
 /* ------------------------------------------------------------------ */
@@ -127,6 +142,7 @@ export default function LearnerCalendarPage() {
   const today = new Date();
 
   const [loading, setLoading] = useState(true);
+  const [profileMissing, setProfileMissing] = useState(false);
   const [sessions, setSessions] = useState<CalendarSession[]>([]);
   const [learnerId, setLearnerId] = useState<string | null>(null);
 
@@ -162,6 +178,7 @@ export default function LearnerCalendarPage() {
 
     if (learnerError || !learnerData) {
       console.error("[calendar] learner fetch error:", learnerError);
+      setProfileMissing(true);
       setLoading(false);
       return;
     }
@@ -210,7 +227,7 @@ export default function LearnerCalendarPage() {
             training_title: trainingTitle,
             start_date: slot.start_time,
             end_date: slot.end_time,
-            start_hour: String(new Date(slot.start_time).getHours()),
+            start_hour: formatParisHour(slot.start_time),
             location: s.location,
             mode: s.mode,
             trainer_name: trainerName,
@@ -223,7 +240,7 @@ export default function LearnerCalendarPage() {
           training_title: trainingTitle,
           start_date: s.start_date,
           end_date: s.end_date,
-          start_hour: s.start_date ? String(new Date(s.start_date).getHours()) : "9",
+          start_hour: formatParisHour(s.start_date),
           location: s.location,
           mode: s.mode,
           trainer_name: trainerName,
@@ -247,6 +264,7 @@ export default function LearnerCalendarPage() {
   function getSessionsForHour(dateStr: string, hour: number) {
     return sessions.filter((s) => {
       if (s.start_date.slice(0, 10) !== dateStr) return false;
+      if (!s.start_hour) return false;
       return parseInt(s.start_hour, 10) === hour;
     });
   }
@@ -301,13 +319,27 @@ export default function LearnerCalendarPage() {
     );
   }
 
+  if (profileMissing) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-3">
+        <GraduationCap className="h-12 w-12 text-muted-foreground" />
+        <p className="text-lg font-medium text-muted-foreground">
+          Profil apprenant non configuré
+        </p>
+        <p className="text-sm text-muted-foreground">
+          Contactez votre administrateur pour configurer votre profil apprenant.
+        </p>
+      </div>
+    );
+  }
+
   const todayStr = new Date().toISOString().slice(0, 10);
 
   // Selected day sessions for detail panel
   const selectedDaySessions = getSessionsForDate(calSelectedDay);
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm">
         <Link href="/learner" className="text-[#374151] hover:underline">Accueil</Link>
@@ -414,9 +446,9 @@ export default function LearnerCalendarPage() {
                               key={s.id}
                               className="text-[10px] rounded px-1 py-0.5 truncate font-medium"
                               style={{ backgroundColor: BRAND_LIGHT, color: "#0e7c8a" }}
-                              title={`${s.start_hour}h — ${s.training_title || s.title}`}
+                              title={`${s.start_hour ?? "—"} — ${s.training_title || s.title}`}
                             >
-                              <span className="font-bold">{s.start_hour}h</span> {s.training_title || s.title}
+                              <span className="font-bold">{s.start_hour ?? "—"}</span> {s.training_title || s.title}
                             </div>
                           ))}
                           {daySessions.length > 3 && (
@@ -531,9 +563,9 @@ export default function LearnerCalendarPage() {
                               key={s.id}
                               className="block truncate rounded px-1 py-0.5 text-[10px] font-medium leading-tight"
                               style={{ backgroundColor: BRAND_LIGHT, color: "#0e7c8a" }}
-                              title={`${s.start_hour}h — ${s.training_title || s.title}`}
+                              title={`${s.start_hour ?? "—"} — ${s.training_title || s.title}`}
                             >
-                              <span className="font-bold">{s.start_hour}</span>{" "}
+                              <span className="font-bold">{s.start_hour ?? "—"}</span>{" "}
                               {s.training_title || s.title}
                             </div>
                           ))}
@@ -586,7 +618,7 @@ export default function LearnerCalendarPage() {
                   </div>
 
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
-                    <span>{s.start_hour}h — {new Date(s.end_date).getHours()}h</span>
+                    <span>{s.start_hour ?? "—"} — {formatParisHour(s.end_date) ?? "—"}</span>
                     {s.location && (
                       <span className="flex items-center gap-1">
                         <MapPin className="h-3 w-3" />{s.location}

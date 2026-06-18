@@ -180,7 +180,10 @@ function CertificateCard({ enrollment }: { enrollment: EnrollmentWithSession }) 
   if (!session) return null;
 
   return (
-    <div className="rounded-lg border border-green-200 bg-green-50 p-4 space-y-2">
+    <Link
+      href="/learner/documents"
+      className="block rounded-lg border border-green-200 bg-green-50 p-4 space-y-2 hover:bg-green-100/70 transition-colors"
+    >
       <div className="flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-100">
           <Award className="h-5 w-5 text-green-600" />
@@ -220,7 +223,7 @@ function CertificateCard({ enrollment }: { enrollment: EnrollmentWithSession }) 
           <Progress value={100} className="h-2 bg-green-200 [&>div]:bg-green-500" />
         </div>
       )}
-    </div>
+    </Link>
   );
 }
 
@@ -869,6 +872,7 @@ export default function LearnerPage() {
               id: e.id,
               title: e.session?.title || "Formation",
               subtitle: "Téléchargeable",
+              href: "/learner/documents",
               badge: { label: "Terminé", color: "bg-green-100 text-green-700" },
             }))}
             emptyMessage="Aucun certificat"
