@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
 import { useToast } from "@/components/ui/use-toast";
+import { useConfirmDialog } from "@/hooks/useConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -45,6 +46,7 @@ export default function SequencesPage() {
   const supabase = createClient();
   const { entityId } = useEntity();
   const { toast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirmDialog();
 
   const [sequences, setSequences] = useState<Sequence[]>([]);
   const [loading, setLoading] = useState(true);
@@ -139,31 +141,65 @@ export default function SequencesPage() {
     if (!name.trim() || !entityId) return;
     setSaving(true);
 
+    let saveError: { message: string } | null = null;
+
     if (editingId) {
-      await supabase.from("crm_sequences").update({ name: name.trim(), description: description.trim() || null }).eq("id", editingId);
-      await supabase.from("crm_sequence_steps").delete().eq("sequence_id", editingId);
-      if (steps.length > 0) {
-        await supabase.from("crm_sequence_steps").insert(steps.map(s => ({ ...s, sequence_id: editingId })));
+      const { error: updErr } = await supabase.from("crm_sequences").update({ name: name.trim(), description: description.trim() || null }).eq("id", editingId);
+      saveError = updErr;
+      if (!saveError) {
+        const { error: delErr } = await supabase.from("crm_sequence_steps").delete().eq("sequence_id", editingId);
+        saveError = delErr;
+      }
+      if (!saveError && steps.length > 0) {
+        const { error: insErr } = await supabase.from("crm_sequence_steps").insert(steps.map(s => ({ ...s, sequence_id: editingId })));
+        saveError = insErr;
       }
     } else {
-      const { data: seq } = await supabase
+      const { data: seq, error: insSeqErr } = await supabase
         .from("crm_sequences")
         .insert({ entity_id: entityId, name: name.trim(), description: description.trim() || null })
         .select("id")
         .single();
-      if (seq && steps.length > 0) {
-        await supabase.from("crm_sequence_steps").insert(steps.map(s => ({ ...s, sequence_id: seq.id })));
+      saveError = insSeqErr;
+      if (!saveError && seq && steps.length > 0) {
+        const { error: insStepsErr } = await supabase.from("crm_sequence_steps").insert(steps.map(s => ({ ...s, sequence_id: seq.id })));
+        saveError = insStepsErr;
       }
     }
 
     setSaving(false);
+
+    if (saveError) {
+      toast({
+        title: "Erreur",
+        description: "La séquence n'a pas pu être enregistrée.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setDialogOpen(false);
     fetchSequences();
     toast({ title: editingId ? "Séquence mise à jour" : "Séquence créée" });
   }
 
   async function handleDelete(id: string) {
-    await supabase.from("crm_sequences").delete().eq("id", id);
+    const ok = await confirm({
+      title: "Supprimer cette séquence ?",
+      description: "Cette action est irréversible. Les étapes associées seront également supprimées.",
+      confirmLabel: "Supprimer",
+    });
+    if (!ok) return;
+
+    const { error } = await supabase.from("crm_sequences").delete().eq("id", id);
+    if (error) {
+      toast({
+        title: "Erreur",
+        description: "La séquence n'a pas pu être supprimée.",
+        variant: "destructive",
+      });
+      return;
+    }
     fetchSequences();
     toast({ title: "Séquence supprimée" });
   }
@@ -198,13 +234,19 @@ export default function SequencesPage() {
       next_action_at: nextAction.toISOString(),
     });
 
-    if (error?.code === "23505") {
-      toast({ title: "Ce prospect est déjà inscrit dans cette séquence", variant: "destructive" });
-    } else {
-      toast({ title: "Prospect inscrit dans la séquence" });
-      setEnrollOpen(false);
-      fetchSequences();
+    if (error) {
+      toast({
+        title: error.code === "23505"
+          ? "Ce prospect est déjà inscrit dans cette séquence"
+          : "L'inscription a échoué",
+        variant: "destructive",
+      });
+      return;
     }
+
+    toast({ title: "Prospect inscrit dans la séquence" });
+    setEnrollOpen(false);
+    fetchSequences();
   }
 
   return (
@@ -389,6 +431,8 @@ export default function SequencesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog />
     </div>
   );
 }
