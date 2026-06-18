@@ -241,6 +241,13 @@ export default function TrainerQuestionnaireFillPage() {
         Retour aux evaluations
       </Link>
 
+      {!sessionId && (
+        <div className="mb-6 px-4 py-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          Lien incomplet : ce questionnaire doit être ouvert depuis une session.
+        </div>
+      )}
+
       {readOnly && (
         <div className="mb-6 px-4 py-3 rounded-lg bg-green-50 border border-green-200 text-green-700 text-sm flex items-center gap-2">
           <CheckCircle2 className="w-4 h-4 shrink-0" />
@@ -283,7 +290,7 @@ export default function TrainerQuestionnaireFillPage() {
             <p className="text-xs text-gray-400">
               Les champs marques d&apos;un <span className="text-red-500">*</span> sont obligatoires
             </p>
-            <Button onClick={handleSubmit} disabled={submitting} className="gap-2">
+            <Button onClick={handleSubmit} disabled={submitting || !sessionId} className="gap-2">
               {submitting ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />

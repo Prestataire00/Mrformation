@@ -178,6 +178,12 @@ export default function TrainerPlanningPage() {
       </div>
 
       {/* Sessions list below */}
+      {weekSessions.length === 0 && (
+        <p className="mt-6 text-sm text-gray-500 text-center">
+          Aucune session planifiée cette semaine.
+        </p>
+      )}
+
       {weekSessions.length > 0 && (
         <div className="mt-6">
           <h2 className="text-sm font-semibold text-gray-700 mb-3">
