@@ -11,9 +11,9 @@ import {
   Search,
   GraduationCap,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Card, CardContent } from "@/components/ui/card";
 import { getInitials } from "@/lib/utils";
 
 interface LearnerWithEnrollments {
@@ -86,7 +86,7 @@ export default function ClientLearnersPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
     );
   }
@@ -95,15 +95,15 @@ export default function ClientLearnersPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Mes Apprenants</h1>
-          <p className="text-gray-500 text-sm mt-1">
+          <h1 className="text-2xl font-bold text-foreground">Mes Apprenants</h1>
+          <p className="text-muted-foreground text-sm mt-1">
             {learners.length} apprenant{learners.length !== 1 ? "s" : ""} rattaché{learners.length !== 1 ? "s" : ""}
           </p>
         </div>
       </div>
 
       <div className="relative mb-6">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
         <Input
           placeholder="Rechercher par nom, email, poste..."
           value={search}
@@ -113,7 +113,7 @@ export default function ClientLearnersPage() {
       </div>
 
       {filtered.length === 0 ? (
-        <div className="text-center py-20 text-gray-400">
+        <div className="text-center py-20 text-muted-foreground">
           <Users className="w-12 h-12 mx-auto mb-3 opacity-40" />
           <p className="font-medium">Aucun apprenant</p>
         </div>
@@ -125,42 +125,41 @@ export default function ClientLearnersPage() {
             ).length;
 
             return (
-              <div
-                key={learner.id}
-                className="bg-white border border-gray-200 rounded-xl p-4"
-              >
-                <div className="flex items-center gap-3">
-                  <Avatar className="h-10 w-10">
-                    <AvatarFallback className="bg-blue-100 text-blue-700 font-semibold text-sm">
-                      {getInitials(learner.first_name, learner.last_name)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-gray-900 text-sm truncate">
-                      {learner.first_name} {learner.last_name}
-                    </p>
-                    {learner.job_title && (
-                      <p className="text-xs text-gray-500 flex items-center gap-1 truncate">
-                        <Briefcase className="w-3 h-3 shrink-0" />
-                        {learner.job_title}
+              <Card key={learner.id}>
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <Avatar className="h-10 w-10">
+                      <AvatarFallback className="bg-primary/10 text-primary font-semibold text-sm">
+                        {getInitials(learner.first_name, learner.last_name)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-foreground text-sm truncate">
+                        {learner.first_name} {learner.last_name}
+                      </p>
+                      {learner.job_title && (
+                        <p className="text-xs text-muted-foreground flex items-center gap-1 truncate">
+                          <Briefcase className="w-3 h-3 shrink-0" />
+                          {learner.job_title}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="mt-3 space-y-1.5">
+                    {learner.email && (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                        <Mail className="w-3 h-3" />
+                        {learner.email}
                       </p>
                     )}
-                  </div>
-                </div>
-
-                <div className="mt-3 space-y-1.5">
-                  {learner.email && (
-                    <p className="text-xs text-gray-500 flex items-center gap-1.5">
-                      <Mail className="w-3 h-3" />
-                      {learner.email}
+                    <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                      <GraduationCap className="w-3 h-3" />
+                      {activeEnrollments} formation{activeEnrollments !== 1 ? "s" : ""}
                     </p>
-                  )}
-                  <p className="text-xs text-gray-500 flex items-center gap-1.5">
-                    <GraduationCap className="w-3 h-3" />
-                    {activeEnrollments} formation{activeEnrollments !== 1 ? "s" : ""}
-                  </p>
-                </div>
-              </div>
+                  </div>
+                </CardContent>
+              </Card>
             );
           })}
         </div>
