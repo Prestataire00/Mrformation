@@ -142,7 +142,13 @@ export default function TrainerSessionsPage() {
       {filtered.length === 0 ? (
         <div className="text-center py-20 text-gray-400">
           <CalendarDays className="w-12 h-12 mx-auto mb-3 opacity-40" />
-          <p className="font-medium">Aucune session</p>
+          <p className="font-medium">
+            {filter === "upcoming"
+              ? "Aucune session à venir"
+              : filter === "completed"
+              ? "Aucune session terminée"
+              : "Aucune session"}
+          </p>
         </div>
       ) : (
         <div className="space-y-3">

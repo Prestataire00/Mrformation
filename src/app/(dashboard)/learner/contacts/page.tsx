@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { GraduationCap } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                               */
@@ -46,6 +47,7 @@ export default function LearnerContactsPage() {
   const supabase = createClient();
 
   const [loading, setLoading] = useState(true);
+  const [profileMissing, setProfileMissing] = useState(false);
   const [trainers, setTrainers] = useState<TrainerContact[]>([]);
   const [entity, setEntity] = useState<EntityContact | null>(null);
 
@@ -60,7 +62,7 @@ export default function LearnerContactsPage() {
       .eq("profile_id", user.id)
       .maybeSingle();
 
-    if (!learner) { setLoading(false); return; }
+    if (!learner) { setProfileMissing(true); setLoading(false); return; }
 
     // Fetch enrollments with session & trainer info
     const { data: enrollments } = await supabase
@@ -127,8 +129,22 @@ export default function LearnerContactsPage() {
     );
   }
 
+  if (profileMissing) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-3">
+        <GraduationCap className="h-12 w-12 text-muted-foreground" />
+        <p className="text-lg font-medium text-muted-foreground">
+          Profil apprenant non configuré
+        </p>
+        <p className="text-sm text-muted-foreground">
+          Contactez votre administrateur pour configurer votre profil apprenant.
+        </p>
+      </div>
+    );
+  }
+
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm">
         <Link href="/learner" className="text-[#374151] hover:underline">Accueil</Link>

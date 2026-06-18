@@ -4,12 +4,13 @@ import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   Star, Loader2, BarChart3, ClipboardList, CheckCircle, Clock,
-  ExternalLink,
+  ExternalLink, AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { useToast } from "@/components/ui/use-toast";
 import Link from "next/link";
 
 interface SessionResult {
@@ -32,14 +33,17 @@ interface TrainerQuestionnaire {
 
 export default function TrainerEvaluationsPage() {
   const supabase = createClient();
+  const { toast } = useToast();
 
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [sessionResults, setSessionResults] = useState<SessionResult[]>([]);
   const [trainerQuests, setTrainerQuests] = useState<TrainerQuestionnaire[]>([]);
   const [trainerId, setTrainerId] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
+    setLoadError(false);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -161,11 +165,12 @@ export default function TrainerEvaluationsPage() {
         setTrainerQuests(quests);
       }
     } catch {
-      // silently fail
+      setLoadError(true);
+      toast({ variant: "destructive", title: "Erreur de chargement" });
     } finally {
       setLoading(false);
     }
-  }, [supabase]);
+  }, [supabase, toast]);
 
   useEffect(() => {
     fetchData();
@@ -196,6 +201,20 @@ export default function TrainerEvaluationsPage() {
     );
   }
 
+  if (loadError) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-center">
+        <AlertCircle className="h-8 w-8 text-destructive mb-3" />
+        <p className="text-sm text-muted-foreground mb-4">
+          Impossible de charger vos évaluations.
+        </p>
+        <Button variant="outline" onClick={() => fetchData()}>
+          Réessayer
+        </Button>
+      </div>
+    );
+  }
+
   // Global stats
   const totalResponses = sessionResults.reduce((sum, s) => sum + s.response_count, 0);
   const allRatings = sessionResults.filter((s) => s.average_rating !== null);
@@ -205,7 +224,7 @@ export default function TrainerEvaluationsPage() {
   const pendingQuests = trainerQuests.filter((q) => !q.is_completed).length;
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Mes Évaluations</h1>
         <p className="text-sm text-muted-foreground mt-1">

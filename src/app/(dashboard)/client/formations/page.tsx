@@ -178,14 +178,26 @@ export default function ClientFormationsPage() {
       {filtered.length === 0 ? (
         <div className="text-center py-20 text-gray-400">
           <BookOpen className="w-12 h-12 mx-auto mb-3 opacity-40" />
-          <p className="font-medium">Aucune formation</p>
+          {filter !== "all" && sessions.length > 0 ? (
+            <>
+              <p className="font-medium">Aucune formation dans cette catégorie</p>
+              <button
+                onClick={() => setFilter("all")}
+                className="mt-3 text-sm font-medium text-blue-700 hover:underline"
+              >
+                Voir toutes les formations
+              </button>
+            </>
+          ) : (
+            <p className="font-medium">Aucune formation</p>
+          )}
         </div>
       ) : (
         <div className="space-y-3">
           {filtered.map((session) => (
             <div
               key={session.id}
-              className="bg-white border border-gray-200 rounded-xl p-5 hover:shadow-sm transition-shadow"
+              className="bg-white border border-gray-200 rounded-xl p-5"
             >
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1 min-w-0">

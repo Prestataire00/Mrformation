@@ -13,6 +13,7 @@ import {
   AlertCircle,
   ChevronRight,
   Calendar,
+  GraduationCap,
 } from "lucide-react";
 
 type QuestionnaireType = "satisfaction" | "evaluation" | "survey";
@@ -47,6 +48,7 @@ export default function LearnerQuestionnairesPage() {
 
   const [questionnaires, setQuestionnaires] = useState<LearnerQuestionnaire[]>([]);
   const [loading, setLoading] = useState(true);
+  const [profileMissing, setProfileMissing] = useState(false);
 
   useEffect(() => {
     loadQuestionnaires();
@@ -77,6 +79,7 @@ export default function LearnerQuestionnairesPage() {
 
     if (learnerError || !learnerData) {
       console.error("[questionnaires] learner fetch error:", learnerError);
+      setProfileMissing(true);
       setLoading(false);
       return;
     }
@@ -186,6 +189,20 @@ export default function LearnerQuestionnairesPage() {
       month: "short",
       year: "numeric",
     });
+  }
+
+  if (profileMissing) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-3">
+        <GraduationCap className="h-12 w-12 text-muted-foreground" />
+        <p className="text-lg font-medium text-muted-foreground">
+          Profil apprenant non configuré
+        </p>
+        <p className="text-sm text-muted-foreground">
+          Contactez votre administrateur pour configurer votre profil apprenant.
+        </p>
+      </div>
+    );
   }
 
   return (

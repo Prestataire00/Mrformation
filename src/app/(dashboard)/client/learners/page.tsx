@@ -127,7 +127,7 @@ export default function ClientLearnersPage() {
             return (
               <div
                 key={learner.id}
-                className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-sm transition-shadow"
+                className="bg-white border border-gray-200 rounded-xl p-4"
               >
                 <div className="flex items-center gap-3">
                   <Avatar className="h-10 w-10">

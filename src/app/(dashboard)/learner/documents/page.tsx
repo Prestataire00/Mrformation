@@ -6,6 +6,7 @@ import { FileText, Loader2, Eye, CheckCircle, Clock, Download } from "lucide-rea
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/components/ui/use-toast";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -51,6 +52,7 @@ interface SessionGroup {
 export default function LearnerDocumentsPage() {
   const supabase = createClient();
   const { entity } = useEntity();
+  const { toast } = useToast();
   const entityName = entity?.name || "MR FORMATION";
 
   const [groups, setGroups] = useState<SessionGroup[]>([]);
@@ -142,11 +144,11 @@ export default function LearnerDocumentsPage() {
 
       setGroups(Array.from(groupMap.values()));
     } catch {
-      // silently fail
+      toast({ variant: "destructive", title: "Impossible de charger les documents" });
     } finally {
       setLoading(false);
     }
-  }, [supabase]);
+  }, [supabase, toast]);
 
   useEffect(() => {
     fetchDocuments();
@@ -209,7 +211,7 @@ export default function LearnerDocumentsPage() {
   }
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Mes Documents</h1>
         <p className="text-sm text-muted-foreground mt-1">
