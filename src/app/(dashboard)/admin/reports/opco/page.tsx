@@ -118,8 +118,9 @@ export default function OpcoPage() {
   const totalEnCoursMontant = kpis.enCours.reduce((s, r) => s + (r.amount_requested || r.amount || 0), 0);
   const totalAccordeMontant = kpis.acceptees.reduce((s, r) => s + (r.amount_granted || r.amount || 0), 0);
   const totalRefuseMontant = kpis.refusees.reduce((s, r) => s + (r.amount_requested || r.amount || 0), 0);
-  const tauxAcceptation = rows.length > 0
-    ? Math.round((kpis.acceptees.length / rows.filter((r) => ["acceptee", "partielle", "refusee"].includes(r.status)).length) * 100) || 0
+  const decidees = rows.filter((r) => ["acceptee", "partielle", "refusee"].includes(r.status)).length;
+  const tauxAcceptation = decidees > 0
+    ? Math.round((kpis.acceptees.length / decidees) * 100)
     : 0;
 
   const handleExport = () => {

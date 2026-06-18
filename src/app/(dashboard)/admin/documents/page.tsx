@@ -824,7 +824,6 @@ export default function DocumentsPage() {
       source_docx_path: templateForm.source_docx_path,
     };
 
-    console.log("[saveTemplate] payload", payload, "entityId", entityId);
     if (editingTemplate) {
       const { error } = await supabase.from("document_templates").update(payload).eq("id", editingTemplate.id);
       if (error) {
@@ -842,7 +841,6 @@ export default function DocumentsPage() {
         setSaving(false);
         return;
       }
-      console.log("[saveTemplate] INSERT OK", inserted);
       toast({ title: "Modèle créé", description: `ID: ${inserted?.id?.slice(0, 8)}...` });
     }
     setSaving(false);

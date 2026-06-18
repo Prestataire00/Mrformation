@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
+import { useToast } from "@/components/ui/use-toast";
 import {
   Search,
   Plus,
@@ -152,6 +153,7 @@ export default function CrmProspectsPage() {
   const supabase = createClient();
   const router = useRouter();
   const { entityId } = useEntity();
+  const { toast } = useToast();
 
   const [prospects,        setProspects]         = useState<CrmProspect[]>([]);
   const [loading,          setLoading]           = useState(true);
@@ -372,6 +374,11 @@ export default function CrmProspectsPage() {
     const { data: inserted, error } = await supabase.from("crm_prospects").insert([payload]).select("id").single();
     if (error) {
       console.error("handleAdd error:", error);
+      toast({
+        title: "Erreur",
+        description: "Le prospect n'a pas pu être ajouté.",
+        variant: "destructive",
+      });
     } else {
       // Auto-create "Premier contact" task + calculate score
       if (inserted && entityId) {
@@ -385,6 +392,7 @@ export default function CrmProspectsPage() {
       setAddOpen(false);
       setForm(EMPTY_FORM);
       fetchProspects();
+      toast({ title: "Prospect ajouté" });
     }
     setSaving(false);
   }
@@ -431,10 +439,16 @@ export default function CrmProspectsPage() {
       .eq("id", editingProspect.id);
     if (error) {
       console.error("handleEdit error:", error);
+      toast({
+        title: "Erreur",
+        description: "Les modifications n'ont pas pu être enregistrées.",
+        variant: "destructive",
+      });
     } else {
       setEditOpen(false);
       setEditingProspect(null);
       fetchProspects();
+      toast({ title: "Prospect mis à jour" });
     }
     setSaving(false);
   }
@@ -444,6 +458,13 @@ export default function CrmProspectsPage() {
     const { error } = await supabase.from("crm_prospects").delete().eq("id", id);
     if (error) {
       console.error("handleDelete error:", error);
+      toast({
+        title: "Erreur",
+        description: "Le prospect n'a pas pu être supprimé.",
+        variant: "destructive",
+      });
+    } else {
+      toast({ title: "Prospect supprimé" });
     }
     setDeleteConfirmId(null);
     fetchProspects();

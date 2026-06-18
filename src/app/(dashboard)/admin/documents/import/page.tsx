@@ -181,7 +181,7 @@ export default function DocumentsImportPage() {
             guide d&apos;utilisation
           </a>{" "}
           pour la création d&apos;un template Word avec variables{" "}
-          <code>{`{{xxx}}`}</code>.
+          <code>{`[%...%]`}</code>.
         </p>
       </div>
 

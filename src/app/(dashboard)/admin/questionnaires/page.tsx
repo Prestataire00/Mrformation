@@ -59,6 +59,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { exportToPDF } from "@/lib/pdf-export";
+import { useConfirmDialog } from "@/hooks/useConfirmDialog";
 import Link from "next/link";
 
 type QuestionnaireType = "satisfaction" | "evaluation" | "survey";
@@ -152,6 +153,7 @@ export default function QuestionnairesPage() {
   const supabase = createClient();
   const { toast } = useToast();
   const { entityId } = useEntity();
+  const { confirm, ConfirmDialog } = useConfirmDialog();
 
   const [questionnaires, setQuestionnaires] = useState<QuestionnaireWithStats[]>([]);
   const [loading, setLoading] = useState(true);
@@ -292,6 +294,7 @@ export default function QuestionnairesPage() {
   const handleToggleActive = async (q: QuestionnaireWithStats) => {
     const { error } = await supabase.from("questionnaires").update({ is_active: !q.is_active }).eq("id", q.id);
     if (error) { toast({ title: "Erreur", description: error.message, variant: "destructive" }); return; }
+    toast({ title: q.is_active ? "Questionnaire désactivé" : "Questionnaire activé" });
     await fetchQuestionnaires();
   };
 
@@ -350,9 +353,18 @@ export default function QuestionnairesPage() {
   };
 
   const handleDeleteQuestion = async (questionId: string) => {
+    const ok = await confirm({
+      title: "Supprimer la question ?",
+      description: "Cette question sera définitivement supprimée du questionnaire. Cette action est irréversible.",
+      confirmLabel: "Supprimer",
+      variant: "destructive",
+    });
+    if (!ok) return;
+
     const { error } = await supabase.from("questions").delete().eq("id", questionId);
     if (error) { toast({ title: "Erreur", description: error.message, variant: "destructive" }); return; }
     setQuestions((prev) => prev.filter((q) => q.id !== questionId));
+    toast({ title: "Question supprimée" });
     await fetchQuestionnaires();
   };
 
@@ -416,10 +428,25 @@ export default function QuestionnairesPage() {
     [newQuestions[idx], newQuestions[swapIdx]] = [newQuestions[swapIdx], newQuestions[idx]];
     setQuestions(newQuestions);
 
-    await Promise.all([
-      supabase.from("questions").update({ order_index: newQuestions[idx].order_index }).eq("id", newQuestions[idx].id),
-      supabase.from("questions").update({ order_index: newQuestions[swapIdx].order_index }).eq("id", newQuestions[swapIdx].id),
-    ]);
+    try {
+      const [r1, r2] = await Promise.all([
+        supabase.from("questions").update({ order_index: newQuestions[idx].order_index }).eq("id", newQuestions[idx].id),
+        supabase.from("questions").update({ order_index: newQuestions[swapIdx].order_index }).eq("id", newQuestions[swapIdx].id),
+      ]);
+      if (r1.error || r2.error) throw r1.error || r2.error;
+    } catch (err) {
+      toast({
+        title: "Erreur",
+        description: err instanceof Error ? err.message : "Impossible de réordonner les questions.",
+        variant: "destructive",
+      });
+      // Resync depuis la base après l'échec de la mutation optimiste
+      if (selectedQ) {
+        const { data } = await supabase.from("questions").select("*").eq("questionnaire_id", selectedQ.id).order("order_index");
+        setQuestions((data as Question[]) || []);
+      }
+      await fetchQuestionnaires();
+    }
   };
 
   // Distribute
@@ -558,7 +585,7 @@ export default function QuestionnairesPage() {
 
       if ("avg" in stats) {
         content += `   Moyenne: ${(stats as any).avg.toFixed(1)} / 5 (${(stats as any).count} réponses)\n`;
-        content += `   Distribution: ${(stats as any).distribution.map((c: number, i: number) => `${i + 1}& =${c}`).join(", ")}\n`;
+        content += `   Distribution: ${(stats as any).distribution.map((c: number, i: number) => `${i + 1} étoile(s): ${c}`).join(", ")}\n`;
       } else if ("counts" in stats) {
         const s = stats as any;
         Object.entries(s.counts as Record<string, number>).forEach(([key, count]) => {
@@ -1388,6 +1415,8 @@ export default function QuestionnairesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog />
     </div>
   );
 }

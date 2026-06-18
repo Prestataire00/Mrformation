@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
 import { Filter, Download, Loader2 } from "lucide-react";
 import { downloadXlsx } from "@/lib/export-xlsx";
+import { formatCurrency } from "@/lib/utils";
 
 interface CommercialRow {
   id: string;
@@ -182,7 +183,7 @@ export default function SuiviCommercialPage() {
       fmtEur(r.montant_ht_non_confirme), fmtEur(r.montant_ht_confirme),
       r.etape_tunnel, r.statut_crm, r.source_lead,
     ]);
-    dataRows.push(["Totals", "", "", "", fmtEur(totalNonConfirme), fmtEur(totalConfirme), "", "", ""]);
+    dataRows.push(["Total", "", "", "", fmtEur(totalNonConfirme), fmtEur(totalConfirme), "", "", ""]);
     downloadXlsx(headers, dataRows, "suivi_commercial.xlsx");
   };
 
@@ -283,8 +284,8 @@ export default function SuiviCommercialPage() {
                       <td className="px-3 py-2.5 text-gray-700">{row.commercial}</td>
                       <td className="px-3 py-2.5 text-gray-800 font-medium">{row.nom_lead}</td>
                       <td className="px-3 py-2.5 text-[#374151]">{row.contact}</td>
-                      <td className="px-3 py-2.5 text-right text-gray-700">{fmtEur(row.montant_ht_non_confirme)}</td>
-                      <td className="px-3 py-2.5 text-right text-gray-700">{fmtEur(row.montant_ht_confirme)}</td>
+                      <td className="px-3 py-2.5 text-right text-gray-700">{formatCurrency(row.montant_ht_non_confirme)}</td>
+                      <td className="px-3 py-2.5 text-right text-gray-700">{formatCurrency(row.montant_ht_confirme)}</td>
                       <td className="px-3 py-2.5">
                         <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${ETAPE_COLORS[row.etape_tunnel] || "bg-gray-100 text-gray-500"}`}>
                           {row.etape_tunnel}
@@ -304,9 +305,9 @@ export default function SuiviCommercialPage() {
                   ))}
                   {/* Totals row */}
                   <tr className="bg-gray-50 border-t-2 border-gray-300 font-semibold">
-                    <td className="px-3 py-3 text-gray-800" colSpan={4}>Totals</td>
-                    <td className="px-3 py-3 text-right text-gray-800">{fmtEur(totalNonConfirme)}</td>
-                    <td className="px-3 py-3 text-right text-gray-800">{fmtEur(totalConfirme)}</td>
+                    <td className="px-3 py-3 text-gray-800" colSpan={4}>Total</td>
+                    <td className="px-3 py-3 text-right text-gray-800">{formatCurrency(totalNonConfirme)}</td>
+                    <td className="px-3 py-3 text-right text-gray-800">{formatCurrency(totalConfirme)}</td>
                     <td colSpan={3}></td>
                   </tr>
                 </>

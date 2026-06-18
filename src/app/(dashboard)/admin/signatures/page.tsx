@@ -48,6 +48,7 @@ import {
 } from "lucide-react";
 import QRCode from "qrcode";
 import { downloadQRCodesPDF, type QRSlotData } from "@/lib/qr-pdf-export";
+import { useConfirmDialog } from "@/hooks/useConfirmDialog";
 
 // ──────────────────────────────────────────────
 // Types
@@ -236,8 +237,9 @@ function SignaturePad({ label, isSigned, onSign, onClear, disabled }: SignatureP
 
 export default function SignaturesPage() {
   const supabase = createClient();
-  const { entityId } = useEntity();
+  const { entityId, entity } = useEntity();
   const { toast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirmDialog();
 
   const [sessions, setSessions] = useState<SessionFull[]>([]);
   const [allSignatures, setAllSignatures] = useState<SignatureFull[]>([]);
@@ -421,6 +423,16 @@ export default function SignaturesPage() {
   // ── Remove a signature ──
   const removeSignature = async (signerId: string, signerType: "learner" | "trainer") => {
     if (!selectedSession) return;
+
+    const ok = await confirm({
+      title: "Réinitialiser la signature ?",
+      description:
+        "Cette signature d'émargement (preuve Qualiopi) sera définitivement supprimée. Cette action est irréversible.",
+      confirmLabel: "Réinitialiser",
+      variant: "destructive",
+    });
+    if (!ok) return;
+
     setSaving(signerId);
 
     const { error } = await supabase
@@ -438,6 +450,7 @@ export default function SignaturesPage() {
         delete next[signerId];
         return next;
       });
+      toast({ title: "Signature supprimée" });
       await fetchSignatures();
     }
     setSaving(null);
@@ -602,7 +615,7 @@ export default function SignaturesPage() {
       await downloadQRCodesPDF({
         sessionTitle: selectedSession.title,
         trainingTitle: null,
-        entityName: "MR FORMATION",
+        entityName: entity?.name ?? "",
         location: selectedSession.location || null,
         baseUrl,
         slots: pdfSlots,
@@ -1274,6 +1287,8 @@ export default function SignaturesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog />
     </div>
   );
 }

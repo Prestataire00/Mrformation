@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Plus, Download, Filter } from "lucide-react";
+import { Plus, Download, RotateCcw } from "lucide-react";
 import { downloadXlsx } from "@/lib/export-xlsx";
+import { formatDate } from "@/lib/utils";
 import { useToast } from "@/components/ui/use-toast";
 import {
   Dialog,
@@ -180,8 +181,11 @@ export default function AmeliorationPage() {
             <label className="block text-xs text-gray-500 mb-1">Date de fin</label>
             <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#374151]" />
           </div>
-          <button className="text-white px-4 py-2 rounded-lg text-sm font-medium uppercase flex items-center gap-1" style={{ background: "#374151" }}>
-            <Filter className="h-4 w-4" /> Filtrer
+          <button
+            onClick={() => { setDateFrom(""); setDateTo(""); }}
+            className="border border-gray-300 text-gray-600 px-4 py-2 rounded-lg text-sm font-medium uppercase flex items-center gap-1 hover:bg-gray-50"
+          >
+            <RotateCcw className="h-4 w-4" /> Réinitialiser
           </button>
         </div>
       </div>
@@ -214,7 +218,7 @@ export default function AmeliorationPage() {
             ) : (
               filtered.map((item) => (
                 <tr key={item.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                  <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{item.date}</td>
+                  <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{formatDate(item.date)}</td>
                   <td className="px-4 py-3 text-gray-700 max-w-[200px] truncate" title={item.description}>{item.description}</td>
                   <td className="px-4 py-3 text-gray-600 max-w-[180px] truncate" title={item.action_taken}>{item.action_taken || "—"}</td>
                   <td className="px-4 py-3 text-gray-600 max-w-[150px] truncate" title={item.result}>{item.result || "—"}</td>

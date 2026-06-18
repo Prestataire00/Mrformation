@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
+import { useToast } from "@/components/ui/use-toast";
 import Link from "next/link";
 import {
   Activity,
@@ -74,6 +75,7 @@ const PAGE_SIZE = 30;
 export default function SuiviCommercialPage() {
   const supabase = createClient();
   const { entityId } = useEntity();
+  const { toast } = useToast();
 
   // Data
   const [actions, setActions] = useState<CrmCommercialAction[]>([]);
@@ -190,12 +192,16 @@ export default function SuiviCommercialPage() {
           setTotalCount(json.meta?.total ?? 0);
         }
       } catch {
-        // silent
+        toast({
+          title: "Erreur de chargement",
+          description: "Impossible de charger le journal des actions.",
+          variant: "destructive",
+        });
       } finally {
         setLoading(false);
       }
     },
-    [entityId, filterType, filterDateFrom, filterDateTo, filterSearch]
+    [entityId, filterType, filterDateFrom, filterDateTo, filterSearch, toast]
   );
 
   useEffect(() => {
@@ -238,9 +244,20 @@ export default function SuiviCommercialPage() {
         setDialogOpen(false);
         setNewAction({ action_type: "call", prospect_id: "", subject: "", content: "" });
         fetchActions(0, false);
+        toast({ title: "Action enregistrée" });
+      } else {
+        toast({
+          title: "Erreur",
+          description: "L'action n'a pas pu être enregistrée.",
+          variant: "destructive",
+        });
       }
     } catch {
-      // silent
+      toast({
+        title: "Erreur",
+        description: "L'action n'a pas pu être enregistrée.",
+        variant: "destructive",
+      });
     } finally {
       setSaving(false);
     }
@@ -257,7 +274,12 @@ export default function SuiviCommercialPage() {
       setTotalCount((c) => c - 1);
       setDeleteId(null);
     } catch {
-      // silent
+      toast({
+        title: "Erreur",
+        description: "La suppression a échoué.",
+        variant: "destructive",
+      });
+      fetchActions(0, false);
     } finally {
       setDeleting(false);
     }

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { exportToCSV } from "@/lib/utils/export-csv";
@@ -11,7 +10,6 @@ import {
   Plus,
   Search,
   Download,
-  Pencil,
   Trash2,
   Eye,
   Globe,
@@ -113,7 +111,6 @@ interface StatusCounts {
 export default function ClientsPage() {
   const supabase = createClient();
   const { toast } = useToast();
-  const router = useRouter();
 
   const { entityId } = useEntity();
   const [clients, setClients] = useState<ClientWithCount[]>([]);
@@ -261,7 +258,9 @@ export default function ClientsPage() {
     if (!selectedClient) return;
     setDeleting(true);
     try {
-      const { error } = await supabase.from("clients").delete().eq("id", selectedClient.id);
+      let deleteQuery = supabase.from("clients").delete().eq("id", selectedClient.id);
+      if (entityId) deleteQuery = deleteQuery.eq("entity_id", entityId);
+      const { error } = await deleteQuery;
       if (error) throw error;
 
       toast({ title: "Client supprimé", description: `${selectedClient.company_name} a été supprimé.` });
@@ -600,10 +599,6 @@ export default function ClientsPage() {
                                   <Eye className="h-4 w-4" />
                                   Voir le détail
                                 </Link>
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => router.push(`/admin/clients/${client.id}`)} className="gap-2">
-                                <Pencil className="h-4 w-4" />
-                                Modifier
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem

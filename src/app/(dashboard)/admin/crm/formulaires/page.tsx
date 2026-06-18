@@ -491,7 +491,7 @@ export default function FormulairesPage() {
                     <div className="flex items-center gap-1">
                       <button onClick={() => openAssign(q)} className="text-[10px] text-gray-500 hover:text-gray-700 px-1.5 py-0.5 rounded hover:bg-gray-100">Attribuer</button>
                       <button onClick={() => openSend(q)} className="text-[10px] text-[#374151] hover:underline px-1.5 py-0.5">Envoyer</button>
-                      <button onClick={() => router.push("/admin/questionnaires/dashboard")} className="text-[10px] text-gray-500 hover:text-gray-700 px-1.5 py-0.5 rounded hover:bg-gray-100">Résultats</button>
+                      <button onClick={() => router.push(`/admin/questionnaires/dashboard?questionnaire_id=${q.id}`)} className="text-[10px] text-gray-500 hover:text-gray-700 px-1.5 py-0.5 rounded hover:bg-gray-100">Résultats</button>
                       <button onClick={() => handleDuplicate(q)} className="text-[10px] text-gray-400 hover:text-gray-600 px-1.5 py-0.5" title="Dupliquer">
                         <Copy className="h-3 w-3" />
                       </button>

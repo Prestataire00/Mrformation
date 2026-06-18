@@ -39,7 +39,7 @@ export default function VariablesPage() {
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
-    toast({ title: "Copie", description: `${text} copie dans le presse-papier` });
+    toast({ title: "Copié", description: `${text} copié dans le presse-papier` });
   };
 
   return (
@@ -155,7 +155,7 @@ export default function VariablesPage() {
 
       {filtered.length === 0 && (
         <div className="text-center py-12">
-          <p className="text-gray-400">Aucune variable ne correspond a votre recherche</p>
+          <p className="text-gray-400">Aucune variable ne correspond à votre recherche</p>
         </div>
       )}
     </div>

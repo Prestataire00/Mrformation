@@ -111,6 +111,22 @@ export default function ApprenantsListePage() {
         if (safe) query = query.or(`first_name.ilike.%${safe}%,last_name.ilike.%${safe}%`);
       }
 
+      // Filtre entreprise côté serveur (inclus dans le count → cohérent avec la pagination).
+      // On résout les ids d'entreprises correspondant au texte saisi, puis on filtre par client_id.
+      if (debouncedCompany.trim()) {
+        const needle = debouncedCompany.toLowerCase();
+        const matchingIds = clients
+          .filter((c) => c.company_name.toLowerCase().includes(needle))
+          .map((c) => c.id);
+        if (matchingIds.length === 0) {
+          setLearners([]);
+          setTotal(0);
+          setLoading(false);
+          return;
+        }
+        query = query.in("client_id", matchingIds);
+      }
+
       const from = (page - 1) * PAGE_SIZE;
       query = query.range(from, from + PAGE_SIZE - 1);
 
@@ -123,7 +139,7 @@ export default function ApprenantsListePage() {
     } finally {
       setLoading(false);
     }
-  }, [supabase, debouncedName, page, toast, entityId]);
+  }, [supabase, debouncedName, debouncedCompany, clients, page, toast, entityId]);
 
   useEffect(() => { fetchLearners(); }, [fetchLearners]);
 
@@ -142,7 +158,7 @@ export default function ApprenantsListePage() {
   const handleDelete = async (id: string, name: string) => {
     const ok = await confirm({ title: "Supprimer ?", description: `Supprimer ${name} ? Cette action est irréversible.` });
     if (!ok) return;
-    const { error } = await supabase.from("learners").delete().eq("id", id);
+    const { error } = await supabase.from("learners").delete().eq("id", id).eq("entity_id", entityId);
     if (error) {
       toast({ title: "Erreur", description: "Impossible de supprimer.", variant: "destructive" });
     } else {
@@ -196,8 +212,10 @@ export default function ApprenantsListePage() {
     }
     setSendingMass(false);
     const ignored = selected.size - targets.length;
+    const failed = targets.length - sent;
     toast({
-      title: `${sent} email${sent > 1 ? "s" : ""} envoyé${sent > 1 ? "s" : ""}${ignored > 0 ? `, ${ignored} sans email ignoré${ignored > 1 ? "s" : ""}` : ""}`,
+      title: `${sent} email${sent > 1 ? "s" : ""} envoyé${sent > 1 ? "s" : ""}${failed > 0 ? `, ${failed} échec${failed > 1 ? "s" : ""}` : ""}${ignored > 0 ? `, ${ignored} sans email ignoré${ignored > 1 ? "s" : ""}` : ""}`,
+      variant: failed > 0 ? "destructive" : undefined,
     });
     setMassEmailDialog(false);
     setSelected(new Set());
@@ -206,13 +224,7 @@ export default function ApprenantsListePage() {
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
-  const filteredLearners = debouncedCompany.trim()
-    ? learners.filter((l) =>
-        l.clients?.company_name?.toLowerCase().includes(debouncedCompany.toLowerCase())
-      )
-    : learners;
-
-  const displayLearners = filteredLearners;
+  const displayLearners = learners;
 
   return (
     <div className="p-6">

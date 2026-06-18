@@ -6,6 +6,7 @@ import { useEntity } from "@/contexts/EntityContext";
 import { ChevronLeft, ChevronRight, Download, Loader2, RefreshCw } from "lucide-react";
 import { downloadXlsx } from "@/lib/export-xlsx";
 import { useToast } from "@/components/ui/use-toast";
+import { formatDate } from "@/lib/utils";
 
 interface AbsenceRow {
   id: string;
@@ -139,7 +140,7 @@ export default function AbsencesPage() {
   const handleDownload = () => {
     const headers = ["Date", "Créneau", "Formation", "Apprenant", "Motif", "Type"];
     const rows = absences.map((a) => [
-      a.date,
+      formatDate(a.date),
       a.slot_start && a.slot_end ? `${a.slot_start} - ${a.slot_end}` : "—",
       a.session_title,
       a.learner_name,
@@ -227,7 +228,7 @@ export default function AbsencesPage() {
               ) : (
                 absences.map((row) => (
                   <tr key={row.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3 text-gray-700 text-xs">{row.date}</td>
+                    <td className="px-4 py-3 text-gray-700 text-xs">{formatDate(row.date)}</td>
                     <td className="px-4 py-3 text-gray-600 text-xs">
                       {row.slot_start && row.slot_end ? `${row.slot_start} - ${row.slot_end}` : "—"}
                     </td>

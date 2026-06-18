@@ -139,7 +139,8 @@ export default function FinanceursPage() {
         city: editForm.city.trim() || null,
         postal_code: editForm.postal_code.trim() || null,
       })
-      .eq("id", editingId);
+      .eq("id", editingId)
+      .eq("entity_id", entityId);
     setSaving(false);
     if (error) {
       toast({ title: "Erreur", description: error.message, variant: "destructive" });
@@ -154,7 +155,7 @@ export default function FinanceursPage() {
   const handleDelete = async (id: string, name: string) => {
     const ok = await confirm({ title: "Supprimer ?", description: `Supprimer ${name} ? Cette action est irréversible.` });
     if (!ok) return;
-    const { error } = await supabase.from("financeurs").delete().eq("id", id);
+    const { error } = await supabase.from("financeurs").delete().eq("id", id).eq("entity_id", entityId);
     if (error) {
       toast({ title: "Erreur", description: error.message, variant: "destructive" });
       return;

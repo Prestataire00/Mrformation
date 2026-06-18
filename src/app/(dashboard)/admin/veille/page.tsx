@@ -55,6 +55,7 @@ export default function VeillePage() {
 
   // Delete confirmation
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   // AI Analysis : la dernière analyse est dérivée de la 1re note IA dans la
   // liste (ordonnée par created_at desc). Plus de localStorage : la source
@@ -129,6 +130,7 @@ export default function VeillePage() {
 
   const handleDeleteNote = async () => {
     if (!deleteId) return;
+    setDeleting(true);
     try {
       const res = await fetch(`/api/veille/notes?id=${deleteId}`, { method: "DELETE" });
       if (res.ok) {
@@ -140,6 +142,8 @@ export default function VeillePage() {
       }
     } catch {
       toast({ title: "Erreur réseau", variant: "destructive" });
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -478,8 +482,11 @@ export default function VeillePage() {
           </DialogHeader>
           <p className="text-sm text-muted-foreground">Cette action est irréversible.</p>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteId(null)}>Annuler</Button>
-            <Button variant="destructive" onClick={handleDeleteNote}>Supprimer</Button>
+            <Button variant="outline" onClick={() => setDeleteId(null)} disabled={deleting}>Annuler</Button>
+            <Button variant="destructive" onClick={handleDeleteNote} disabled={deleting}>
+              {deleting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Supprimer
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

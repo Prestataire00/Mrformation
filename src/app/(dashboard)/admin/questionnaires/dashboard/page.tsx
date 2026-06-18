@@ -7,6 +7,7 @@ import { cn, formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useToast } from "@/components/ui/use-toast";
 import {
   Select,
   SelectContent,
@@ -87,6 +88,7 @@ const CHART_COLORS = ["#374151", "#22c55e", "#f97316", "#8b5cf6", "#f59e0b", "#e
 export default function QuestionnairesDashboardPage() {
   const supabase = createClient();
   const { entityId } = useEntity();
+  const { toast } = useToast();
 
   const [stats, setStats] = useState<QuestionnaireStats[]>([]);
   const [loading, setLoading] = useState(true);
@@ -197,6 +199,10 @@ export default function QuestionnairesDashboardPage() {
 
   // Export all stats as XLSX
   const exportAllXLSX = () => {
+    if (stats.length === 0) {
+      toast({ title: "Aucune donnée à exporter", variant: "destructive" });
+      return;
+    }
     const rows = stats.map((q) => ({
       "Titre": q.title,
       "Type": TYPE_LABELS[q.type] ?? q.type,
@@ -217,6 +223,7 @@ export default function QuestionnairesDashboardPage() {
     a.download = "dashboard_questionnaires.tsv";
     a.click();
     URL.revokeObjectURL(url);
+    toast({ title: "Export téléchargé" });
   };
 
   const qualiopi_covered = QUALIOPI_INDICATORS.filter((i) => coveredIndicators.has(i.key)).length;
@@ -471,7 +478,7 @@ export default function QuestionnairesDashboardPage() {
                       </td>
                       <td className="px-4 py-3 text-center">
                         <Link
-                          href="/admin/questionnaires"
+                          href={`/admin/questionnaires?questionnaire_id=${q.id}`}
                           className="text-xs text-[#374151] hover:underline font-medium"
                         >
                           Voir résultats →

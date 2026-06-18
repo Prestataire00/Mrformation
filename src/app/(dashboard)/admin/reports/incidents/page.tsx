@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Download, Filter, Pencil, Trash2, X } from "lucide-react";
+import { Plus, Download, RotateCcw, Pencil, Trash2, X } from "lucide-react";
 import { downloadXlsx } from "@/lib/export-xlsx";
+import { formatDate } from "@/lib/utils";
 import { useToast } from "@/components/ui/use-toast";
 import {
   Dialog,
@@ -308,11 +309,11 @@ export default function IncidentsPage() {
           className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-44 focus:outline-none focus:border-[#374151]"
         />
         <button
-          className="text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5"
-          style={{ background: "#374151" }}
+          onClick={() => { setDateFrom(""); setDateTo(""); setSearchText(""); }}
+          className="border border-gray-300 text-gray-600 px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5 hover:bg-gray-50"
         >
-          <Filter className="h-4 w-4" />
-          Filtrer
+          <RotateCcw className="h-4 w-4" />
+          Réinitialiser
         </button>
       </div>
 
@@ -323,7 +324,7 @@ export default function IncidentsPage() {
             <tr className="bg-gray-50 border-b border-gray-200">
               <th className="px-4 py-3 text-left font-semibold text-gray-600">Date</th>
               <th className="px-4 py-3 text-left font-semibold text-gray-600">Nom</th>
-              <th className="px-4 py-3 text-left font-semibold text-gray-600">Status</th>
+              <th className="px-4 py-3 text-left font-semibold text-gray-600">Statut</th>
               <th className="px-4 py-3 text-left font-semibold text-gray-600">Source</th>
               <th className="px-4 py-3 text-left font-semibold text-gray-600">Sujet</th>
               <th className="px-4 py-3 text-left font-semibold text-gray-600">Gravité</th>
@@ -340,7 +341,7 @@ export default function IncidentsPage() {
             ) : (
               filtered.map((inc) => (
                 <tr key={inc.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                  <td className="px-4 py-3 text-gray-700">{inc.date}</td>
+                  <td className="px-4 py-3 text-gray-700">{formatDate(inc.date)}</td>
                   <td className="px-4 py-3 font-medium text-gray-800">{inc.nom}</td>
                   <td className="px-4 py-3">
                     <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${STATUT_COLORS[inc.statut]}`}>

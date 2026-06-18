@@ -315,11 +315,11 @@ export default function FormationDetailPage() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem className="gap-2 text-xs">
+              <DropdownMenuItem disabled className="gap-2 text-xs" title="Bientôt disponible">
                 <Copy className="h-3.5 w-3.5" /> Dupliquer la formation
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="gap-2 text-xs text-red-600 focus:text-red-600">
+              <DropdownMenuItem disabled className="gap-2 text-xs text-red-600 focus:text-red-600" title="Bientôt disponible">
                 <Trash2 className="h-3.5 w-3.5" /> Supprimer
               </DropdownMenuItem>
             </DropdownMenuContent>

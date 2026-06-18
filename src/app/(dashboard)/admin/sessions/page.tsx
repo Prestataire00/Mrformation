@@ -362,27 +362,44 @@ export default function SessionsPage() {
               // 3. Envoyer un email à chaque apprenant pour chaque questionnaire
               const siteUrl = window.location.origin;
               let sentCount = 0;
+              let failedCount = 0;
               for (const qs of qSessions) {
                 const qTitle = (qs as any).questionnaires?.title ?? "questionnaire";
                 for (const learner of learners) {
                   const l = learner as { first_name: string; last_name: string; email: string };
                   const body = `Bonjour ${l.first_name},\n\nLa session "${editingSession.title}" vient de se terminer.\n\nNous vous invitons à remplir le questionnaire suivant :\n${qTitle}\n\nAccédez à votre espace apprenant pour y répondre : ${siteUrl}/learner\n\nMerci pour votre participation.\n\nCordialement,\nL'équipe de formation`;
-                  await fetch("/api/emails/send", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      to: l.email,
-                      subject: `Questionnaire à remplir — ${editingSession.title}`,
-                      body,
-                    }),
-                  });
-                  sentCount++;
+                  try {
+                    const res = await fetch("/api/emails/send", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        to: l.email,
+                        subject: `Questionnaire à remplir — ${editingSession.title}`,
+                        body,
+                      }),
+                    });
+                    if (res.ok) {
+                      sentCount++;
+                    } else {
+                      failedCount++;
+                    }
+                  } catch {
+                    failedCount++;
+                  }
                 }
               }
-              toast({
-                title: "Questionnaires envoyés automatiquement",
-                description: `${sentCount} email${sentCount > 1 ? "s" : ""} envoyé${sentCount > 1 ? "s" : ""} à ${learners.length} apprenant${learners.length > 1 ? "s" : ""}.`,
-              });
+              if (failedCount > 0) {
+                toast({
+                  title: "Envoi des questionnaires incomplet",
+                  description: `${sentCount} email${sentCount > 1 ? "s" : ""} envoyé${sentCount > 1 ? "s" : ""}, ${failedCount} échec${failedCount > 1 ? "s" : ""}.`,
+                  variant: "destructive",
+                });
+              } else if (sentCount > 0) {
+                toast({
+                  title: "Questionnaires envoyés automatiquement",
+                  description: `${sentCount} email${sentCount > 1 ? "s" : ""} envoyé${sentCount > 1 ? "s" : ""} à ${learners.length} apprenant${learners.length > 1 ? "s" : ""}.`,
+                });
+              }
             }
           }
         } catch { /* non bloquant */ }
@@ -431,6 +448,7 @@ export default function SessionsPage() {
   const [enrollLoading, setEnrollLoading] = useState(false);
   const [enrollingLearnerId, setEnrollingLearnerId] = useState<string | null>(null);
   const [removingEnrollmentId, setRemovingEnrollmentId] = useState<string | null>(null);
+  const [enrollmentToRemove, setEnrollmentToRemove] = useState<EnrollmentWithLearner | null>(null);
   const [learnerSearch, setLearnerSearch] = useState("");
 
   const openEnrollDialog = async (session: SessionFull) => {
@@ -498,6 +516,7 @@ export default function SessionsPage() {
       }
     }
     setRemovingEnrollmentId(null);
+    setEnrollmentToRemove(null);
   };
 
   // Learners not yet enrolled in this session
@@ -663,11 +682,11 @@ export default function SessionsPage() {
                       <div className="text-xs text-gray-600 space-y-0.5">
                         <div className="flex items-center gap-1">
                           <span className="text-gray-400">Du</span>
-                          <span>{formatDate(session.start_date)}</span>
+                          <span>{formatDateTime(session.start_date)}</span>
                         </div>
                         <div className="flex items-center gap-1">
                           <span className="text-gray-400">Au</span>
-                          <span>{formatDate(session.end_date)}</span>
+                          <span>{formatDateTime(session.end_date)}</span>
                         </div>
                       </div>
                     </td>
@@ -1141,7 +1160,7 @@ export default function SessionsPage() {
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7 text-red-500 hover:text-red-700 hover:bg-red-50"
-                            onClick={() => handleRemoveEnrollment(enrollment.id)}
+                            onClick={() => setEnrollmentToRemove(enrollment)}
                             disabled={removingEnrollmentId === enrollment.id}
                           >
                             {removingEnrollmentId === enrollment.id ? (
@@ -1232,6 +1251,41 @@ export default function SessionsPage() {
             <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>Annuler</Button>
             <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
               {deleting ? "Suppression..." : "Supprimer"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Remove Enrollment Confirmation */}
+      <Dialog
+        open={enrollmentToRemove !== null}
+        onOpenChange={(open) => !open && setEnrollmentToRemove(null)}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Retirer l&apos;inscription</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-gray-600">
+            Retirer{" "}
+            <strong>
+              &quot;{enrollmentToRemove?.learner.first_name} {enrollmentToRemove?.learner.last_name}&quot;
+            </strong>{" "}
+            de cette session ? Cette action est irréversible.
+          </p>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setEnrollmentToRemove(null)}
+              disabled={removingEnrollmentId === enrollmentToRemove?.id}
+            >
+              Annuler
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => enrollmentToRemove && handleRemoveEnrollment(enrollmentToRemove.id)}
+              disabled={removingEnrollmentId === enrollmentToRemove?.id}
+            >
+              {removingEnrollmentId === enrollmentToRemove?.id ? "Retrait..." : "Retirer"}
             </Button>
           </DialogFooter>
         </DialogContent>
