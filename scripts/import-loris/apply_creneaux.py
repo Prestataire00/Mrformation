@@ -32,6 +32,8 @@ _spec = importlib.util.spec_from_file_location("rec", Path(__file__).parent / "r
 rec = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(rec)
 
+from tz_paris import paris_wallclock_to_utc_iso  # heure murale Paris → instant UTC (DST géré)
+
 REPORT_PATH = Path(__file__).parent / "apply_creneaux_report.json"
 
 
@@ -129,8 +131,8 @@ def build_slots(session_id, start_d, hours):
         em = int(round((end_h - eh) * 60))
         slots.append({
             "session_id": session_id, "title": "Matin",
-            "start_time": f"{ds}T09:00:00Z",
-            "end_time": f"{ds}T{eh:02d}:{em:02d}:00Z",
+            "start_time": paris_wallclock_to_utc_iso(ds, "09:00"),
+            "end_time": paris_wallclock_to_utc_iso(ds, f"{eh:02d}:{em:02d}"),
             "slot_order": order,
         })
         order += 1
@@ -143,8 +145,8 @@ def build_slots(session_id, start_d, hours):
             em = int(round((end_h - eh) * 60))
             slots.append({
                 "session_id": session_id, "title": "Après-midi",
-                "start_time": f"{ds}T13:00:00Z",
-                "end_time": f"{ds}T{eh:02d}:{em:02d}:00Z",
+                "start_time": paris_wallclock_to_utc_iso(ds, "13:00"),
+                "end_time": paris_wallclock_to_utc_iso(ds, f"{eh:02d}:{em:02d}"),
                 "slot_order": order,
             })
             order += 1
