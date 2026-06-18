@@ -16,7 +16,9 @@ import {
   Clock,
   BookOpen,
   Tag,
+  ArrowRight,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
@@ -343,15 +345,21 @@ function SessionDetailDialog({
           )}
         </div>
 
-        {/* Footer action */}
-        <div className="mt-4 flex justify-end">
+        {/* Footer actions */}
+        <div className="mt-4 flex items-center justify-between gap-3">
           <Link
-            href={`/admin/sessions`}
-            className="text-sm font-medium text-blue-600 hover:text-blue-700 transition-colors"
+            href="/admin/sessions"
+            className="text-sm font-medium text-gray-500 hover:text-gray-700 transition-colors"
             onClick={onClose}
           >
-            Voir toutes les sessions →
+            Toutes les sessions
           </Link>
+          <Button asChild>
+            <Link href={`/admin/formations/${session.id}`} onClick={onClose}>
+              Ouvrir la page de la session
+              <ArrowRight className="ml-1.5 h-4 w-4" />
+            </Link>
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
