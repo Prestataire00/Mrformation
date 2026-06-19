@@ -15,6 +15,7 @@ import {
   Building2,
   Wifi,
   PenLine,
+  QrCode,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn, formatDate, SESSION_STATUS_LABELS, STATUS_COLORS } from "@/lib/utils";
@@ -195,8 +196,14 @@ export default function TrainerSessionsPage() {
                     </Badge>
                   </div>
                 </div>
-                {/* CTA émargement : accès direct à la feuille de signature de la session */}
-                <div className="mt-4 pt-4 border-t border-gray-100 flex justify-end">
+                {/* CTA émargement : feuille de signature + mode présentation QR */}
+                <div className="mt-4 pt-4 border-t border-gray-100 flex justify-end gap-4">
+                  <Link
+                    href={`/trainer/sessions/${session.id}/emargement-live`}
+                    className="inline-flex items-center gap-1.5 text-sm font-medium text-emerald-600 hover:text-emerald-700"
+                  >
+                    <QrCode className="w-4 h-4" /> QR de présence
+                  </Link>
                   <Link
                     href={`/trainer/sessions/${session.id}/sign`}
                     className="inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-700"

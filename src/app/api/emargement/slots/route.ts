@@ -3,6 +3,7 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { requireRole } from "@/lib/auth/require-role";
 import { sanitizeDbError } from "@/lib/api-error";
 import { resolveActiveEntityId } from "@/lib/crm/active-entity";
+import { isTrainerAssignedToSession } from "@/lib/auth/trainer-session-access";
 
 function createServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -45,6 +46,14 @@ export async function GET(request: NextRequest) {
       { error: "Accès non autorisé à cette session" },
       { status: 403 },
     );
+  }
+
+  // Ownership formateur : un trainer ne peut accéder qu'à SES sessions.
+  if (auth.profile.role === "trainer") {
+    const assigned = await isTrainerAssignedToSession(supabase, auth.user.id, sessionId);
+    if (!assigned) {
+      return NextResponse.json({ error: "Accès refusé : vous n'êtes pas assigné à cette session" }, { status: 403 });
+    }
   }
 
   // Fetch time slots for this session
@@ -157,6 +166,14 @@ async function handlePostIndividual(
       { error: "Accès non autorisé à cette session" },
       { status: 403 }
     );
+  }
+
+  // Ownership formateur : un trainer ne peut générer les QR que pour SES sessions.
+  if (auth.profile.role === "trainer") {
+    const assigned = await isTrainerAssignedToSession(supabase, auth.user.id, session_id);
+    if (!assigned) {
+      return NextResponse.json({ error: "Accès refusé : vous n'êtes pas assigné à cette session" }, { status: 403 });
+    }
   }
 
   // 1. Fetch time slots

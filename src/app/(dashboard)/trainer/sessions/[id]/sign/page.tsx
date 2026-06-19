@@ -142,7 +142,7 @@ export default function TrainerSignPage() {
       .from("enrollments")
       .select("learner_id, learner:learners(id, first_name, last_name)")
       .eq("session_id", sessionId)
-      .in("status", ["registered", "confirmed"]);
+      .neq("status", "cancelled");
 
     // Remonter une erreur de chargement plutôt qu'afficher des compteurs
     // "0/0" trompeurs si signatures/enrollments échouent.

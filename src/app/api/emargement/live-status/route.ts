@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { requireRole } from "@/lib/auth/require-role";
+import { isTrainerAssignedToSession } from "@/lib/auth/trainer-session-access";
 
 /**
  * GET /api/emargement/live-status?session_id=...
@@ -63,6 +64,15 @@ export async function GET(request: NextRequest) {
   }
 
   const supabase = createServiceClient();
+
+  // Ownership formateur : un trainer ne peut consulter que SES sessions
+  // (assignation via formation_trainers). Admin/super_admin non concernés.
+  if (auth.profile.role === "trainer") {
+    const assigned = await isTrainerAssignedToSession(supabase, auth.user.id, sessionId);
+    if (!assigned) {
+      return NextResponse.json({ error: "Accès refusé : vous n'êtes pas assigné à cette session" }, { status: 403 });
+    }
+  }
 
   // 1. Slots de la session
   const { data: slots } = await supabase
