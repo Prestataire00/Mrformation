@@ -180,7 +180,7 @@ export const CONVOCATION_APPRENANT_HTML = `<!DOCTYPE html>
           </tr>
           <tr>
             <td style="padding: 1px 6px; font-weight: 700;">Identifiant :</td>
-            <td style="padding: 1px 6px;">[%Email de l'apprenant%]</td>
+            <td style="padding: 1px 6px;">[%Identifiant apprenant%]</td>
           </tr>
           <tr>
             <td style="padding: 1px 6px; font-weight: 700;">Mot de passe :</td>

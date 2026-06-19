@@ -102,6 +102,33 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
     });
   };
 
+  // Crée automatiquement l'accès plateforme de l'apprenant (idempotent).
+  // 409 = compte déjà existant → succès. Non bloquant : l'inscription reste
+  // acquise même si la création d'accès échoue (toast d'avertissement).
+  async function ensureLearnerAccess(learnerId: string): Promise<void> {
+    try {
+      const res = await fetch("/api/admin/create-access", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role: "learner", entity_type: "learner", entity_type_id: learnerId }),
+      });
+      if (!res.ok && res.status !== 409) {
+        const data = await res.json().catch(() => ({}));
+        toast({
+          title: "Accès non créé",
+          description: (data as { error?: string }).error || "L'apprenant est inscrit, mais son accès n'a pas pu être créé automatiquement.",
+          variant: "destructive",
+        });
+      }
+    } catch {
+      toast({
+        title: "Accès non créé",
+        description: "L'apprenant est inscrit, mais son accès n'a pas pu être créé automatiquement.",
+        variant: "destructive",
+      });
+    }
+  }
+
   const handleAdd = async () => {
     if (!selectedLearnerId) return;
 
@@ -135,14 +162,17 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
       clientId,
       status: "registered",
     });
-    setSaving(false);
     if (!result.ok) {
+      setSaving(false);
       if (result.error.code === "23505") {
         toast({ title: "Cet apprenant est déjà inscrit", variant: "destructive" });
       } else {
         toast({ title: "Erreur", description: result.error.message, variant: "destructive" });
       }
     } else {
+      // Garde le bouton désactivé pendant la création du compte (évite le double-clic).
+      await ensureLearnerAccess(selectedLearnerId);
+      setSaving(false);
       toast({ title: "Apprenant ajouté" });
       pingOnEnrollment(formation.id, selectedLearnerId);
       setDialogOpen(false);
@@ -189,6 +219,7 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
       });
       if (!result.ok) throw new Error(result.error.message);
 
+      await ensureLearnerAccess(result.learner.id);
       toast({ title: "Apprenant créé et inscrit" });
       pingOnEnrollment(formation.id, result.learner.id);
       setCreateDialogOpen(false);

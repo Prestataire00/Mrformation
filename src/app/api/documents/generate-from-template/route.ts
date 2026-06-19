@@ -22,6 +22,7 @@ import { loadClientWithContacts } from "@/lib/services/load-client";
 import { loadSessionAggregates } from "@/lib/services/load-session-aggregates";
 import { loadEvaluationResults } from "@/lib/services/load-evaluation-results";
 import { generateLoginQrDataUrl } from "@/lib/services/login-qr-code";
+import { buildLoginQrCodeDataUrl } from "@/lib/services/credentials-qr";
 import { ensureLearnerAccount } from "@/lib/services/learner-account";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import type { Session, Learner, Client, Trainer } from "@/lib/types";
@@ -382,14 +383,21 @@ export async function POST(request: NextRequest) {
         // Cf spec docs/superpowers/specs/2026-05-17-convocation-credentials-design.md
         let learnerCredentials: { email: string; tempPassword: string } | null = null;
         if (payload.doc_type === "convocation" && learnerData?.id) {
-          try {
-            const serviceClient = createServiceClient();
-            learnerCredentials = await ensureLearnerAccount(serviceClient, learnerData.id);
-          } catch (err) {
-            console.warn("[generate-from-template] ensureLearnerAccount failed:", err);
-            // Continue sans credentials : le template affichera les fallback
-            // "[Mot de passe apprenant]" → l'admin verra qu'il y a un problème
-            // et peut investiguer/relancer.
+          const persisted = learnerData as unknown as { email?: string | null; temp_password?: string | null; profile_id?: string | null };
+          if (persisted.profile_id && persisted.temp_password) {
+            // Compte déjà créé (à l'ajout de l'apprenant) → on lit le mot de passe persisté.
+            learnerCredentials = { email: persisted.email ?? "", tempPassword: persisted.temp_password };
+          } else {
+            // Garde-fou : pas encore de compte → création à la volée (apprenants à email réel).
+            try {
+              const serviceClient = createServiceClient();
+              learnerCredentials = await ensureLearnerAccount(serviceClient, learnerData.id);
+            } catch (err) {
+              console.warn("[generate-from-template] ensureLearnerAccount failed:", err);
+              // Continue sans credentials : le template affichera les fallback
+              // "[Mot de passe apprenant]" → l'admin verra qu'il y a un problème
+              // et peut investiguer/relancer.
+            }
           }
         }
 
@@ -519,10 +527,17 @@ export async function POST(request: NextRequest) {
         }
 
         // Lot H : QR code connexion pré-calculé pour convocation (async).
+        // Si l'apprenant a un username, on génère un QR pré-rempli (URL /login?prefill_username=…).
+        // Fallback sur le QR générique si pas de username.
         let loginQrCodeDataUrl: string | undefined;
         if (payload.doc_type === "convocation") {
-          const qr = await generateLoginQrDataUrl();
-          if (qr) loginQrCodeDataUrl = qr;
+          const username = (learnerData as unknown as { username?: string } | null)?.username;
+          if (username) {
+            loginQrCodeDataUrl = await buildLoginQrCodeDataUrl(username, entity?.slug ?? undefined);
+          } else {
+            const qr = await generateLoginQrDataUrl();
+            if (qr) loginQrCodeDataUrl = qr;
+          }
         }
 
         const ctx: ResolveContext = {

@@ -110,6 +110,7 @@ export interface ResolveContext {
   };
   entity?: {
     name?: string | null;  // ajouté Story B-Convention : utilisé par `{{nom_organisme}}`
+    slug?: string | null;  // ajouté Tâche 3 QR pré-rempli : préfixe l'URL de login
     siret?: string | null;
     nda?: string | null;
     address?: string | null;
@@ -1519,6 +1520,7 @@ export const ALIAS_TO_VARIABLE_KEY: Record<string, string> = {
   // === Story B-Convocation Apprenant ===
   "Nom de l'apprenant": "{{nom_apprenant}}",
   "Email de l'apprenant": "{{email_apprenant}}",
+  "Identifiant apprenant": "{{identifiant_apprenant}}",
   "Vos dates en détail": "{{dates_detail}}",
   "URL de connexion": "{{url_connexion}}",
   "Mot de passe apprenant": "{{mot_de_passe_apprenant}}",
