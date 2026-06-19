@@ -20,6 +20,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { requireRole } from "@/lib/auth/require-role";
 import { logAudit } from "@/lib/audit-log";
+import { ensureTrainerAccount } from "@/lib/services/trainer-account";
 
 function createAdminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -28,27 +29,6 @@ function createAdminClient() {
   return createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
 }
 
-function generatePassword(): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
-  let pwd = "";
-  for (let i = 0; i < 10; i++) pwd += chars.charAt(Math.floor(Math.random() * chars.length));
-  return pwd.charAt(0).toUpperCase() + pwd.slice(1, 8) + "a1";
-}
-
-function slugify(s: string): string {
-  return (s || "")
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 24) || "formateur";
-}
-
-function buildTrainerSyntheticEmail(trainer: { id: string; first_name?: string | null; last_name?: string | null }, entitySlug: string): string {
-  const name = slugify(`${trainer.last_name ?? ""}-${trainer.first_name ?? ""}`);
-  return `${name}.${trainer.id.slice(0, 8)}@trainer.${entitySlug}.local`;
-}
 
 interface TrainerLite {
   id: string;
@@ -133,81 +113,17 @@ export async function POST(request: NextRequest) {
 
     for (const trainer of targets) {
       const fullName = `${trainer.first_name ?? ""} ${trainer.last_name ?? ""}`.trim() || "Formateur";
-
-      if (trainer.profile_id) {
-        results.push({
-          trainerId: trainer.id, fullName, success: true, email: trainer.email,
-          password: null, syntheticEmailUsed: false, error: null, skipped: true,
-        });
-        continue;
-      }
-
-      const realEmail = (trainer.email ?? "").trim().toLowerCase();
-      const hasUsableEmail = !!realEmail && realEmail.includes("@") && !realEmail.endsWith(".local") && !usedEmails.has(realEmail);
-      let resolvedEmail = hasUsableEmail ? realEmail : buildTrainerSyntheticEmail(trainer, entitySlug);
-      let syntheticUsed = !hasUsableEmail;
-
-      try {
-        const password = generatePassword();
-
-        let { data: authUser, error: authError } = await adminClient.auth.admin.createUser({
-          email: resolvedEmail,
-          password,
-          email_confirm: true,
-          user_metadata: { first_name: trainer.first_name, last_name: trainer.last_name },
-        });
-
-        // Email déjà pris dans Auth → repli sur synthétique (une fois)
-        if (authError && !syntheticUsed) {
-          resolvedEmail = buildTrainerSyntheticEmail(trainer, entitySlug);
-          syntheticUsed = true;
-          ({ data: authUser, error: authError } = await adminClient.auth.admin.createUser({
-            email: resolvedEmail,
-            password,
-            email_confirm: true,
-            user_metadata: { first_name: trainer.first_name, last_name: trainer.last_name },
-          }));
-        }
-
-        if (authError || !authUser?.user) {
-          results.push({
-            trainerId: trainer.id, fullName, success: false, email: resolvedEmail,
-            password: null, syntheticEmailUsed: syntheticUsed,
-            error: authError?.message ?? "Création auth échouée", skipped: false,
-          });
-          continue;
-        }
-
-        usedEmails.add(resolvedEmail);
-
-        await adminClient.from("profiles").upsert({
-          id: authUser.user.id,
-          email: resolvedEmail,
-          first_name: trainer.first_name,
-          last_name: trainer.last_name,
-          role: "trainer",
-          entity_id: trainer.entity_id,
-          is_active: true,
-        }, { onConflict: "id" });
-
-        // Lier le compte + enregistrer l'email de connexion (réel ou synthétique)
-        await adminClient
-          .from("trainers")
-          .update({ profile_id: authUser.user.id, email: resolvedEmail })
-          .eq("id", trainer.id)
-          .eq("entity_id", trainer.entity_id);
-
-        results.push({
-          trainerId: trainer.id, fullName, success: true, email: resolvedEmail,
-          password, syntheticEmailUsed: syntheticUsed, error: null, skipped: false,
-        });
-      } catch (err) {
-        results.push({
-          trainerId: trainer.id, fullName, success: false, email: resolvedEmail,
-          password: null, syntheticEmailUsed: syntheticUsed,
-          error: err instanceof Error ? err.message : String(err), skipped: false,
-        });
-      }
+      const res = await ensureTrainerAccount(adminClient, { trainer, entitySlug, usedEmails });
+      results.push({
+        trainerId: trainer.id,
+        fullName,
+        success: res.status !== "error",
+        email: res.email,
+        password: res.password,
+        syntheticEmailUsed: res.syntheticEmailUsed,
+        error: res.error,
+        skipped: res.status === "skipped",
+      });
     }
 
     const successCount = results.filter((r) => r.success && !r.skipped).length;
