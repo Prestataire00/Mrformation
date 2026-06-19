@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { resolveTrainerSessionIds } from "@/lib/auth/trainer-session-access";
 import { useToast } from "@/components/ui/use-toast";
 import {
   Card,
@@ -58,74 +57,74 @@ export default function TrainerContractsPage() {
   const fetchDocuments = useCallback(async () => {
     setLoading(true);
 
-    // Get current user to find their trainer record
     const {
       data: { user },
     } = await supabase.auth.getUser();
-
     if (!user) {
       setLoading(false);
       return;
     }
 
-    // Isolation : résout le formateur par profile_id (plus de lookup fragile par
-    // email) et ses sessions via formation_trainers. Cf. cadrage espace formateur.
-    const sessionIds = await resolveTrainerSessionIds(supabase, user.id);
-
-    if (sessionIds.length === 0) {
+    // Résout la fiche formateur (trainers.id) depuis le profil.
+    const { data: trainer } = await supabase
+      .from("trainers")
+      .select("id")
+      .eq("profile_id", user.id)
+      .single();
+    if (!trainer) {
       setDocuments([]);
       setLoading(false);
       return;
     }
 
-    const { data: sessions, error: sessionsError } = await supabase
-      .from("sessions")
-      .select("id, title, start_date, training_id, trainings(title), clients:enrollments(client_id, clients(company_name))")
-      .in("id", sessionIds);
-
-    if (sessionsError) {
-      toast({ title: "Erreur", description: "Impossible de charger vos sessions.", variant: "destructive" });
-      setDocuments([]);
-      setLoading(false);
-      return;
-    }
-
-    // Get documents linked to those sessions
+    // Contrats du formateur : documents persistés et rattachés à SA fiche
+    // (conventions d'intervention générées en admin). Cf. add_generated_documents_trainer_id.
     const { data: docs, error: docsError } = await supabase
       .from("generated_documents")
-      .select("*")
-      .in("session_id", sessionIds)
+      .select("id, name, file_url, content, created_at, session_id")
+      .eq("trainer_id", (trainer as { id: string }).id)
       .order("created_at", { ascending: false });
 
     if (docsError) {
-      toast({ title: "Erreur", description: "Impossible de charger vos documents.", variant: "destructive" });
+      toast({ title: "Erreur", description: "Impossible de charger vos contrats.", variant: "destructive" });
       setDocuments([]);
       setLoading(false);
       return;
     }
 
-    if (docs) {
-      const mapped: TrainerDocument[] = docs.map((d: Record<string, unknown>) => {
-        const session = (sessions ?? []).find((s) => s.id === d.session_id);
-        const training = session?.trainings as { title?: string } | null;
-        // Try to get client name from enrollments
-        const enrollments = session?.clients as Array<{ clients?: { company_name?: string } }> | null;
-        const firstClient = enrollments?.[0]?.clients?.company_name ?? null;
-
-        return {
-          id: d.id as string,
-          name: d.name as string,
-          file_url: d.file_url as string | null,
-          content: d.content as string | null,
-          created_at: d.created_at as string,
-          session_id: d.session_id as string | null,
-          session_title: session?.title ?? training?.title ?? null,
-          session_start_date: session?.start_date ?? null,
-          client_name: firstClient,
-        };
-      });
-      setDocuments(mapped);
+    // Titres/dates de session pour l'affichage.
+    const sessionIds = Array.from(
+      new Set((docs ?? []).map((d) => d.session_id).filter(Boolean)),
+    ) as string[];
+    const sessionMap = new Map<string, { title: string | null; start_date: string | null }>();
+    if (sessionIds.length > 0) {
+      const { data: sessions } = await supabase
+        .from("sessions")
+        .select("id, title, start_date")
+        .in("id", sessionIds);
+      for (const s of sessions ?? []) {
+        sessionMap.set(s.id as string, {
+          title: (s.title as string) ?? null,
+          start_date: (s.start_date as string) ?? null,
+        });
+      }
     }
+
+    const mapped: TrainerDocument[] = (docs ?? []).map((d: Record<string, unknown>) => {
+      const sess = d.session_id ? sessionMap.get(d.session_id as string) : null;
+      return {
+        id: d.id as string,
+        name: d.name as string,
+        file_url: d.file_url as string | null,
+        content: d.content as string | null,
+        created_at: d.created_at as string,
+        session_id: d.session_id as string | null,
+        session_title: sess?.title ?? null,
+        session_start_date: sess?.start_date ?? null,
+        client_name: null,
+      };
+    });
+    setDocuments(mapped);
 
     setLoading(false);
   }, [supabase, toast]);

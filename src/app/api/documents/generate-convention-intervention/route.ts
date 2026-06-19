@@ -16,7 +16,7 @@
  * cette migration, les valeurs apparaîtront en `[Placeholder]`.
  */
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { sanitizeError } from "@/lib/api-error";
 import { NextRequest, NextResponse } from "next/server";
 import {
@@ -167,6 +167,33 @@ export async function POST(request: NextRequest) {
         footerTemplate: resolvedFooter,
       },
     });
+
+    // Persistance : enregistrer le contrat pour qu'il apparaisse côté formateur
+    // (page « Mes Contrats »). Idempotent (1 convention par session+formateur).
+    // N'échoue jamais la génération/preview si la persistance échoue.
+    try {
+      const admin = createServiceRoleClient();
+      const trainerName = `${ftTyped.trainer.first_name ?? ""} ${ftTyped.trainer.last_name ?? ""}`.trim() || "formateur";
+      const path = `conventions-intervention/${body.sessionId}/${body.trainerId}.pdf`;
+      await admin.storage
+        .from("formation-docs")
+        .upload(path, result.buffer, { contentType: "application/pdf", upsert: true });
+      const { data: urlData } = admin.storage.from("formation-docs").getPublicUrl(path);
+      await admin
+        .from("generated_documents")
+        .delete()
+        .eq("session_id", body.sessionId)
+        .eq("trainer_id", body.trainerId);
+      await admin.from("generated_documents").insert({
+        entity_id: profile.entity_id,
+        session_id: body.sessionId,
+        trainer_id: body.trainerId,
+        name: `Contrat de sous-traitance — ${trainerName}`,
+        file_url: urlData.publicUrl,
+      });
+    } catch (persistErr) {
+      console.error("[convention-intervention] persistance échouée:", persistErr);
+    }
 
     return NextResponse.json({
       pdfBase64: result.buffer.toString("base64"),
