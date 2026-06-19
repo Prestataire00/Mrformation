@@ -3,6 +3,7 @@ import {
   ensureTrainerAccount,
   buildTrainerSyntheticEmail,
   resetTrainerPassword,
+  listOrphanTrainerAccounts,
 } from "@/lib/services/trainer-account";
 
 /**
@@ -133,5 +134,28 @@ describe("resetTrainerPassword", () => {
 
     expect(res.ok).toBe(false);
     expect(updateUserById).not.toHaveBeenCalled();
+  });
+});
+
+describe("listOrphanTrainerAccounts", () => {
+  it("renvoie les profils 'trainer' de l'entité non reliés à une fiche", async () => {
+    const from = vi.fn()
+      .mockReturnValueOnce(
+        chainResolving({
+          data: [
+            { id: "p1", email: "a@ex.com", first_name: "A", last_name: "A" },
+            { id: "p2", email: "b@ex.com", first_name: "B", last_name: "B" },
+          ],
+          error: null,
+        }),
+      )
+      .mockReturnValueOnce(chainResolving({ data: [{ profile_id: "p2" }], error: null }));
+    const admin = { from } as never;
+
+    const res = await listOrphanTrainerAccounts(admin, "ENT-A");
+
+    expect(res.map((o) => o.id)).toEqual(["p1"]);
+    expect(from).toHaveBeenNthCalledWith(1, "profiles");
+    expect(from).toHaveBeenNthCalledWith(2, "trainers");
   });
 });
