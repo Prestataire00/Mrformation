@@ -103,6 +103,19 @@ export async function POST(request: NextRequest) {
   const auth = await requireRole(["super_admin", "admin", "trainer"]);
   if (auth.error) return auth.error;
 
+  try {
+    return await handlePostIndividual(request, auth as Exclude<typeof auth, { error: NextResponse }>);
+  } catch (err) {
+    console.error("[emargement/slots] Unhandled POST error:", err);
+    const message = err instanceof Error ? err.message : "Erreur interne";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+async function handlePostIndividual(
+  request: NextRequest,
+  auth: { error: null; user: { id: string }; profile: { id: string; role: string; entity_id: string } },
+) {
   // mode "individual" (default, comportement existant) → 1 token par learner × slot
   // mode "session" → 1 SEUL token par slot (sans learner_id), apprenant choisit son nom au scan
   const {
@@ -250,58 +263,94 @@ export async function POST(request: NextRequest) {
     formationTrainers = (ft || []) as typeof formationTrainers;
   }
 
+  // Préparer la liste des personnes (learners + trainers)
+  const validEnrollments = (enrollments || []).map((e) => {
+    const learner = Array.isArray(e.learner) ? e.learner[0] : e.learner;
+    return { enrollment: e, learner };
+  }).filter((e) => !!e.learner);
+
+  const validTrainers = formationTrainers.map((ft) => {
+    const trainer = Array.isArray(ft.trainer) ? ft.trainer[0] : ft.trainer;
+    return { ft, trainer };
+  }).filter((t) => !!t.trainer);
+
+  const personCount = validEnrollments.length + validTrainers.length;
+
   console.log("[emargement/slots] POST individual", {
     session_id,
     slots_count: slots.length,
     enrollments_count: enrollments?.length ?? 0,
+    valid_enrollments: validEnrollments.length,
     enrollment_statuses: (enrollments ?? []).map((e) => e.status),
     trainers_count: formationTrainers.length,
+    valid_trainers: validTrainers.length,
+    total_iterations: slots.length * personCount,
   });
 
-  // 4. Generate tokens for each slot x each person
+  // 4. Generate tokens — batch par slot pour éviter les timeouts Netlify.
+  // Au lieu de 1 SELECT + 1 INSERT par personne (séquentiel), on charge
+  // tous les tokens existants d'un slot en 1 query, puis on batch-insert
+  // les tokens manquants en 1 query.
   const allTokens: Record<string, { slot: typeof slots[0]; learner_tokens: unknown[]; trainer_tokens: unknown[] }> = {};
   const insertErrors: { type: "learner" | "trainer"; phase: string; code: string | undefined; message: string; details?: string; hint?: string }[] = [];
   const profileEntityId = auth.profile.entity_id;
   let firstIterationTrace: { existing_data: boolean; existing_error: string | null; insert_data: boolean; insert_error: string | null } | null = null;
 
   for (const slot of slots) {
-    const learnerTokens = [];
-    const trainerTokens = [];
+    const learnerTokens: unknown[] = [];
+    const trainerTokens: unknown[] = [];
 
-    // Learner tokens
-    for (const enrollment of (enrollments || [])) {
-      const learner = Array.isArray(enrollment.learner)
-        ? enrollment.learner[0]
-        : enrollment.learner;
-      if (!learner) continue;
+    // ── Batch-fetch tous les tokens existants pour ce slot ──
+    const { data: existingTokens, error: existingErr } = await supabase
+      .from("signing_tokens")
+      .select("*")
+      .eq("session_id", session_id)
+      .eq("time_slot_id", slot.id)
+      .is("used_at", null);
 
-      // L'index unique partiel idx_unique_active_learner_slot_token cible
-      // (session_id, time_slot_id, learner_id) WHERE used_at IS NULL — donc
-      // tokens expirés-non-utilisés bloquent encore l'insertion. On cherche
-      // tout token actif (used_at IS NULL) — peu importe expires_at — et on
-      // le refresh si nécessaire au lieu d'insérer.
-      const existingResult = await supabase
-        .from("signing_tokens")
-        .select("*")
-        .eq("session_id", session_id)
-        .eq("time_slot_id", slot.id)
-        .eq("learner_id", learner.id)
-        .eq("signer_type", "learner")
-        .is("used_at", null)
-        .order("created_at", { ascending: false })
-        .limit(1);
-      const existing = existingResult.data?.[0];
-      if (existingResult.error) {
-        insertErrors.push({ type: "learner", phase: "existing-select", code: existingResult.error.code, message: existingResult.error.message });
+    if (existingErr) {
+      insertErrors.push({ type: "learner", phase: "batch-existing-select", code: existingErr.code, message: existingErr.message });
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const existingByKey = new Map<string, Record<string, any>>();
+    for (const tok of (existingTokens || [])) {
+      const key = tok.signer_type === "trainer"
+        ? `trainer:${tok.trainer_id}`
+        : `learner:${tok.learner_id}`;
+      // Garder le plus récent (les tokens sont non-triés ici, on prend le premier trouvé)
+      if (!existingByKey.has(key)) {
+        existingByKey.set(key, tok);
+      }
+    }
+
+    // ── Learner tokens : réutiliser ou préparer les inserts ──
+    const learnerInserts: {
+      session_id: string; time_slot_id: string; enrollment_id: string;
+      learner_id: string; client_id: string | null; entity_id: string;
+      token_type: string; signer_type: string; expires_at: string;
+    }[] = [];
+    // Mapping pour rattacher les résultats du batch-insert aux learners
+    const learnerInsertMeta: { enrollment: typeof validEnrollments[0]["enrollment"]; learner: NonNullable<typeof validEnrollments[0]["learner"]> }[] = [];
+
+    for (const { enrollment, learner } of validEnrollments) {
+      const existing = existingByKey.get(`learner:${learner!.id}`);
+
+      if (!firstIterationTrace) {
+        firstIterationTrace = {
+          existing_data: !!existing,
+          existing_error: existingErr?.message ?? null,
+          insert_data: false,
+          insert_error: existing ? "n/a (reuse/refresh)" : null,
+        };
       }
 
       if (existing) {
-        // Si encore valide → reuse. Sinon → refresh expires_at (UPDATE in-place
-        // pour éviter le 23505 qui bloquerait un INSERT).
         const isStillValid = new Date(existing.expires_at) > new Date();
         if (isStillValid) {
           learnerTokens.push({ ...existing, person: learner });
         } else {
+          // Refresh expiré → UPDATE in-place
           const refreshResult = await supabase
             .from("signing_tokens")
             .update({ expires_at: expiresAt })
@@ -314,70 +363,73 @@ export async function POST(request: NextRequest) {
             insertErrors.push({ type: "learner", phase: "refresh", code: refreshResult.error?.code, message: refreshResult.error?.message ?? "refresh failed" });
           }
         }
-        if (!firstIterationTrace) {
-          firstIterationTrace = {
-            existing_data: true,
-            existing_error: null,
-            insert_data: false,
-            insert_error: isStillValid ? "n/a (reuse)" : "n/a (refreshed)",
-          };
-        }
         continue;
       }
 
-      const insertResult = await supabase
+      // Pas de token existant → préparer pour batch insert
+      learnerInserts.push({
+        session_id,
+        time_slot_id: slot.id,
+        enrollment_id: enrollment.id,
+        learner_id: learner!.id,
+        client_id: learnerToClientMap.get(learner!.id) ?? null,
+        entity_id: auth.profile.entity_id,
+        token_type: "individual",
+        signer_type: "learner",
+        expires_at: expiresAt,
+      });
+      learnerInsertMeta.push({ enrollment, learner: learner! });
+    }
+
+    // Batch insert des learner tokens manquants
+    if (learnerInserts.length > 0) {
+      const { data: inserted, error: batchErr } = await supabase
         .from("signing_tokens")
-        .insert({
-          session_id,
-          time_slot_id: slot.id,
-          enrollment_id: enrollment.id,
-          learner_id: learner.id,
-          // Story 3.4 — Tag token with client_id from enrollment (best-effort, may be null)
-          client_id: learnerToClientMap.get(learner.id) ?? null,
-          entity_id: auth.profile.entity_id,
-          token_type: "individual",
-          signer_type: "learner",
-          expires_at: expiresAt,
-        })
+        .insert(learnerInserts)
         .select();
-      const newToken = insertResult.data?.[0];
-      const error = insertResult.error;
+
+      if (batchErr) {
+        console.error("[emargement/slots] Batch learner insert failed", { code: batchErr.code, message: batchErr.message, slotId: slot.id, count: learnerInserts.length });
+        insertErrors.push({ type: "learner", phase: "batch-insert", code: batchErr.code, message: batchErr.message, details: (batchErr as { details?: string }).details, hint: (batchErr as { hint?: string }).hint });
+
+        // Fallback : insert un par un pour les cas de contrainte unique
+        for (let i = 0; i < learnerInserts.length; i++) {
+          const { data: single, error: singleErr } = await supabase
+            .from("signing_tokens")
+            .insert(learnerInserts[i])
+            .select();
+          if (singleErr) {
+            insertErrors.push({ type: "learner", phase: "fallback-insert", code: singleErr.code, message: singleErr.message });
+          } else if (single?.[0]) {
+            learnerTokens.push({ ...single[0], person: learnerInsertMeta[i].learner });
+          }
+        }
+      } else if (inserted) {
+        for (let i = 0; i < inserted.length; i++) {
+          const meta = learnerInsertMeta[i];
+          learnerTokens.push({ ...inserted[i], person: meta?.learner });
+        }
+      }
 
       if (!firstIterationTrace) {
         firstIterationTrace = {
           existing_data: false,
-          existing_error: existingResult.error?.message ?? null,
-          insert_data: !!newToken,
-          insert_error: error?.message ?? null,
+          existing_error: existingErr?.message ?? null,
+          insert_data: learnerTokens.length > 0,
+          insert_error: null,
         };
-      }
-
-      if (error) {
-        console.error("[emargement/slots] Learner token insert failed", { code: error.code, message: error.message, slotId: slot.id, learnerId: learner.id });
-        insertErrors.push({ type: "learner", phase: "insert", code: error.code, message: error.message, details: (error as { details?: string }).details, hint: (error as { hint?: string }).hint });
-      } else if (newToken) {
-        learnerTokens.push({ ...newToken, person: learner });
-      } else {
-        insertErrors.push({ type: "learner", phase: "insert-no-data", code: undefined, message: "INSERT returned no error AND no data" });
       }
     }
 
-    // Trainer tokens
-    for (const ft of formationTrainers) {
-      const trainer = Array.isArray(ft.trainer) ? ft.trainer[0] : ft.trainer;
-      if (!trainer) continue;
+    // ── Trainer tokens : même logique batch ──
+    const trainerInserts: {
+      session_id: string; time_slot_id: string; trainer_id: string;
+      entity_id: string; token_type: string; signer_type: string; expires_at: string;
+    }[] = [];
+    const trainerInsertMeta: { trainer: NonNullable<typeof validTrainers[0]["trainer"]> }[] = [];
 
-      const existingTrainerResult = await supabase
-        .from("signing_tokens")
-        .select("*")
-        .eq("session_id", session_id)
-        .eq("time_slot_id", slot.id)
-        .eq("trainer_id", trainer.id)
-        .eq("signer_type", "trainer")
-        .is("used_at", null)
-        .order("created_at", { ascending: false })
-        .limit(1);
-      const existing = existingTrainerResult.data?.[0];
+    for (const { trainer } of validTrainers) {
+      const existing = existingByKey.get(`trainer:${trainer!.id}`);
 
       if (existing) {
         const isStillValid = new Date(existing.expires_at) > new Date();
@@ -399,28 +451,45 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      const insertTrainerResult = await supabase
-        .from("signing_tokens")
-        .insert({
-          session_id,
-          time_slot_id: slot.id,
-          trainer_id: trainer.id,
-          entity_id: auth.profile.entity_id,
-          token_type: "individual",
-          signer_type: "trainer",
-          expires_at: expiresAt,
-        })
-        .select();
-      const newToken = insertTrainerResult.data?.[0];
-      const error = insertTrainerResult.error;
+      trainerInserts.push({
+        session_id,
+        time_slot_id: slot.id,
+        trainer_id: trainer!.id,
+        entity_id: auth.profile.entity_id,
+        token_type: "individual",
+        signer_type: "trainer",
+        expires_at: expiresAt,
+      });
+      trainerInsertMeta.push({ trainer: trainer! });
+    }
 
-      if (error) {
-        console.error("[emargement/slots] Trainer token insert failed", { code: error.code, message: error.message, slotId: slot.id, trainerId: trainer.id });
-        insertErrors.push({ type: "trainer", phase: "insert", code: error.code, message: error.message, details: (error as { details?: string }).details, hint: (error as { hint?: string }).hint });
-      } else if (newToken) {
-        trainerTokens.push({ ...newToken, person: trainer });
-      } else {
-        insertErrors.push({ type: "trainer", phase: "insert-no-data", code: undefined, message: "INSERT returned no error AND no data" });
+    // Batch insert des trainer tokens manquants
+    if (trainerInserts.length > 0) {
+      const { data: inserted, error: batchErr } = await supabase
+        .from("signing_tokens")
+        .insert(trainerInserts)
+        .select();
+
+      if (batchErr) {
+        console.error("[emargement/slots] Batch trainer insert failed", { code: batchErr.code, message: batchErr.message, slotId: slot.id });
+        insertErrors.push({ type: "trainer", phase: "batch-insert", code: batchErr.code, message: batchErr.message });
+
+        for (let i = 0; i < trainerInserts.length; i++) {
+          const { data: single, error: singleErr } = await supabase
+            .from("signing_tokens")
+            .insert(trainerInserts[i])
+            .select();
+          if (singleErr) {
+            insertErrors.push({ type: "trainer", phase: "fallback-insert", code: singleErr.code, message: singleErr.message });
+          } else if (single?.[0]) {
+            trainerTokens.push({ ...single[0], person: trainerInsertMeta[i].trainer });
+          }
+        }
+      } else if (inserted) {
+        for (let i = 0; i < inserted.length; i++) {
+          const meta = trainerInsertMeta[i];
+          trainerTokens.push({ ...inserted[i], person: meta?.trainer });
+        }
       }
     }
 
@@ -442,9 +511,9 @@ export async function POST(request: NextRequest) {
       slots_count: slots.length,
       enrollments_count: enrollments?.length ?? 0,
       enrollment_statuses: (enrollments ?? []).map((e) => e.status),
-      enrollments_with_learner: (enrollments ?? []).filter((e) => e.learner).length,
+      enrollments_with_learner: validEnrollments.length,
       trainers_count: formationTrainers.length,
-      trainers_with_data: formationTrainers.filter((ft) => ft.trainer).length,
+      trainers_with_data: validTrainers.length,
       enrollments_error: enrollErr?.message ?? null,
       profile_entity_id: profileEntityId ?? "MISSING",
       insert_errors: insertErrors.slice(0, 5),

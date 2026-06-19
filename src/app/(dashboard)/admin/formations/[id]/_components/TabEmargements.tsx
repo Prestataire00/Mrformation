@@ -133,17 +133,25 @@ export function TabEmargements({ formation, onRefresh }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ session_id: formation.id, include_trainers: true }),
       });
+      if (!res.ok) {
+        const text = await res.text();
+        let msg = "Impossible de générer les tokens";
+        try { msg = JSON.parse(text).error || msg; } catch { /* non-JSON response */ }
+        toast({ title: "Erreur", description: `${msg} (${res.status})`, variant: "destructive" });
+        return;
+      }
       const data: SlotTokensResponse = await res.json();
-      if (res.ok && data.slots) {
+      if (data.slots) {
         setQrSlotTokens(data);
         setQrDialog(true);
         generateQRImages(data);
         toast({ title: `${data.total_tokens} QR code(s) générés` });
       } else {
-        toast({ title: "Erreur", description: "Impossible de générer les tokens", variant: "destructive" });
+        toast({ title: "Erreur", description: "Réponse inattendue du serveur", variant: "destructive" });
       }
-    } catch {
-      toast({ title: "Erreur réseau", variant: "destructive" });
+    } catch (err) {
+      console.error("[QR] handleGenerateAllTokens error:", err);
+      toast({ title: "Erreur réseau", description: "Vérifiez votre connexion et réessayez", variant: "destructive" });
     } finally {
       setGeneratingTokens(false);
     }
@@ -164,9 +172,17 @@ export function TabEmargements({ formation, onRefresh }: Props) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ session_id: formation.id, include_trainers: true }),
         });
+        if (!res.ok) {
+          const text = await res.text();
+          let msg = "Impossible de générer les tokens";
+          try { msg = JSON.parse(text).error || msg; } catch { /* non-JSON */ }
+          toast({ title: "Erreur", description: `${msg} (${res.status})`, variant: "destructive" });
+          setExportingPdf(false);
+          return;
+        }
         tokens = await res.json();
-        if (!res.ok || !tokens?.slots) {
-          toast({ title: "Erreur", description: "Impossible de générer les tokens", variant: "destructive" });
+        if (!tokens?.slots) {
+          toast({ title: "Erreur", description: "Réponse inattendue du serveur", variant: "destructive" });
           setExportingPdf(false);
           return;
         }
@@ -228,9 +244,17 @@ export function TabEmargements({ formation, onRefresh }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ session_id: formation.id, include_trainers: true }),
       });
+      if (!res.ok) {
+        const text = await res.text();
+        let msg = "Impossible de générer les tokens";
+        try { msg = JSON.parse(text).error || msg; } catch { /* non-JSON */ }
+        toast({ title: "Erreur", description: `${msg} (${res.status})`, variant: "destructive" });
+        setSendingToTrainer(false);
+        return;
+      }
       const tokens: SlotTokensResponse = await res.json();
-      if (!res.ok || !tokens?.slots) {
-        toast({ title: "Erreur", description: "Impossible de générer les tokens", variant: "destructive" });
+      if (!tokens?.slots) {
+        toast({ title: "Erreur", description: "Réponse inattendue du serveur", variant: "destructive" });
         setSendingToTrainer(false);
         return;
       }
