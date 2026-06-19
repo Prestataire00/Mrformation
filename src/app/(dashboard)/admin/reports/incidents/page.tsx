@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Plus, Download, RotateCcw, Pencil, Trash2, X } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { Plus, Download, RotateCcw, Pencil, Trash2, X, Loader2 } from "lucide-react";
 import { downloadXlsx } from "@/lib/export-xlsx";
 import { formatDate } from "@/lib/utils";
 import { useToast } from "@/components/ui/use-toast";
@@ -13,6 +13,15 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { useConfirmDialog } from "@/hooks/useConfirmDialog";
+import { createClient } from "@/lib/supabase/client";
+import { useEntity } from "@/contexts/EntityContext";
+import {
+  listIncidents,
+  createIncident,
+  updateIncident,
+  removeIncident,
+  type QualityIncident,
+} from "@/lib/services/quality-registers";
 
 type Statut = "Ouvert" | "Clos";
 type Source = "Entreprise" | "Apprenant" | "Formateur";
@@ -31,6 +40,22 @@ interface Incident {
   formation: string;
   action_menee: string;
   date_cloture: string;
+}
+
+function toIncident(row: QualityIncident): Incident {
+  return {
+    id: row.id,
+    date: row.date,
+    nom: row.nom ?? "",
+    description: row.description ?? "",
+    statut: (row.statut as Statut) ?? "Ouvert",
+    source: (row.source as Source) ?? "Entreprise",
+    sujet: (row.sujet as Sujet) ?? "Pédagogique",
+    gravite: (row.gravite as Gravite) ?? "Faible",
+    formation: row.formation ?? "",
+    action_menee: row.action_menee ?? "",
+    date_cloture: row.date_cloture ?? "",
+  };
 }
 
 const STATUT_COLORS: Record<Statut, string> = {
@@ -57,16 +82,53 @@ const EMPTY_FORM: Omit<Incident, "id"> = {
   date_cloture: "",
 };
 
+// Convertit un Incident (UI, champs string) en input service.
+// date_cloture vide → null (colonne DATE refuse "").
+function toIncidentInput(data: Omit<Incident, "id">) {
+  return {
+    date: data.date,
+    nom: data.nom,
+    description: data.description,
+    statut: data.statut,
+    source: data.source,
+    sujet: data.sujet,
+    gravite: data.gravite,
+    formation: data.formation,
+    action_menee: data.action_menee,
+    date_cloture: data.date_cloture || null,
+  };
+}
+
 export default function IncidentsPage() {
   const { toast } = useToast();
   const { confirm, ConfirmDialog } = useConfirmDialog();
+  const { entityId } = useEntity();
+  const supabase = createClient();
   const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [loading, setLoading] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [searchText, setSearchText] = useState("");
   const [editItem, setEditItem] = useState<Incident | null>(null);
+
+  const loadIncidents = useCallback(async () => {
+    if (!entityId) return;
+    setLoading(true);
+    const { data, error } = await listIncidents(supabase, entityId);
+    if (error) {
+      toast({ title: "Erreur de chargement", description: error.message, variant: "destructive" });
+    } else {
+      setIncidents((data ?? []).map(toIncident));
+    }
+    setLoading(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entityId]);
+
+  useEffect(() => {
+    loadIncidents();
+  }, [loadIncidents]);
 
   const filtered = incidents.filter((inc) => {
     if (dateFrom && inc.date < dateFrom) return false;
@@ -78,30 +140,47 @@ export default function IncidentsPage() {
     return true;
   });
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
+    if (!entityId) return;
     if (!form.nom.trim()) {
       toast({ title: "Erreur", description: "Le nom est requis.", variant: "destructive" });
       return;
     }
-    const newInc: Incident = { id: Date.now().toString(), ...form };
-    setIncidents((prev) => [newInc, ...prev]);
+    const { error } = await createIncident(supabase, entityId, toIncidentInput(form));
+    if (error) {
+      toast({ title: "Erreur", description: error.message, variant: "destructive" });
+      return;
+    }
+    const nom = form.nom;
     setForm({ ...EMPTY_FORM });
     setAddOpen(false);
-    toast({ title: "Incident ajouté", description: `"${newInc.nom}" a été enregistré.` });
+    toast({ title: "Incident ajouté", description: `"${nom}" a été enregistré.` });
+    await loadIncidents();
   };
 
-  const handleSaveEdit = () => {
-    if (!editItem) return;
-    setIncidents((prev) => prev.map((i) => (i.id === editItem.id ? editItem : i)));
+  const handleSaveEdit = async () => {
+    if (!editItem || !entityId) return;
+    const { error } = await updateIncident(supabase, entityId, editItem.id, toIncidentInput(editItem));
+    if (error) {
+      toast({ title: "Erreur", description: error.message, variant: "destructive" });
+      return;
+    }
     setEditItem(null);
     toast({ title: "Modifié", description: "L'incident a été mis à jour." });
+    await loadIncidents();
   };
 
   const handleDelete = async (id: string, nom: string) => {
+    if (!entityId) return;
     const ok = await confirm({ title: "Supprimer ?", description: `Supprimer l'incident "${nom}" ? Cette action est irréversible.` });
     if (!ok) return;
-    setIncidents((prev) => prev.filter((i) => i.id !== id));
+    const { error } = await removeIncident(supabase, entityId, id);
+    if (error) {
+      toast({ title: "Erreur", description: error.message, variant: "destructive" });
+      return;
+    }
     toast({ title: "Supprimé" });
+    await loadIncidents();
   };
 
   const handleDownload = () => {
@@ -332,7 +411,14 @@ export default function IncidentsPage() {
             </tr>
           </thead>
           <tbody>
-            {filtered.length === 0 ? (
+            {loading ? (
+              <tr>
+                <td colSpan={7} className="px-4 py-16 text-center text-gray-400">
+                  <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
+                  <span className="text-sm">Chargement…</span>
+                </td>
+              </tr>
+            ) : filtered.length === 0 ? (
               <tr>
                 <td colSpan={7} className="px-4 py-16 text-center text-gray-400">
                   Aucun incident enregistré
