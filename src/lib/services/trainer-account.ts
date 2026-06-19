@@ -97,7 +97,7 @@ export async function ensureTrainerAccount(
 
   usedEmails.add(resolvedEmail);
 
-  await admin.from("profiles").upsert(
+  const { error: profileError } = await admin.from("profiles").upsert(
     {
       id: authUser.user.id,
       email: resolvedEmail,
@@ -109,12 +109,18 @@ export async function ensureTrainerAccount(
     },
     { onConflict: "id" },
   );
+  if (profileError) {
+    return { status: "error", email: resolvedEmail, password: null, syntheticEmailUsed: syntheticUsed, error: `profil: ${profileError.message}` };
+  }
 
-  await admin
+  const { error: linkError } = await admin
     .from("trainers")
     .update({ profile_id: authUser.user.id, email: resolvedEmail })
     .eq("id", trainer.id)
     .eq("entity_id", trainer.entity_id);
+  if (linkError) {
+    return { status: "error", email: resolvedEmail, password: null, syntheticEmailUsed: syntheticUsed, error: `lien: ${linkError.message}` };
+  }
 
   return { status: "created", email: resolvedEmail, password, syntheticEmailUsed: syntheticUsed, error: null };
 }
@@ -142,7 +148,7 @@ export async function resetTrainerPassword(
   const { error } = await admin.auth.admin.updateUserById(trainer.profile_id as string, { password });
   if (error) return { ok: false, error: error.message };
 
-  return { ok: true, email: (trainer.email as string | null) ?? null, password };
+  return { ok: true, email: (trainer.email as string | null), password };
 }
 
 export type OrphanTrainerAccount = {
@@ -172,7 +178,9 @@ export async function listOrphanTrainerAccounts(
     .eq("entity_id", entityId)
     .not("profile_id", "is", null);
 
-  const linkedIds = new Set((linked ?? []).map((r) => r.profile_id as string));
+  const linkedIds = new Set(
+    (linked ?? []).map((r) => r.profile_id).filter((id): id is string => id !== null),
+  );
   return ((profiles ?? []) as OrphanTrainerAccount[]).filter((p) => !linkedIds.has(p.id));
 }
 

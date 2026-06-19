@@ -105,6 +105,41 @@ describe("ensureTrainerAccount", () => {
     expect(res.error).toBe("boom");
     expect(from).not.toHaveBeenCalled();
   });
+
+  it("I3 — repli synthétique quand l'email réel est déjà pris dans Auth (email-already-taken retry)", async () => {
+    const createUser = vi.fn()
+      .mockResolvedValueOnce({ data: null, error: { message: "already registered" } })
+      .mockResolvedValueOnce({ data: { user: { id: "uid" } }, error: null });
+    const from = vi.fn().mockReturnValue(chainResolving({ error: null }));
+    const admin = { from, auth: { admin: { createUser } } } as never;
+
+    const res = await ensureTrainerAccount(admin, {
+      trainer: { id: "t1", entity_id: "ENT-A", first_name: "Jean", last_name: "Dupont", email: "jean@ex.com", profile_id: null },
+      entitySlug: "mr-formation",
+    });
+
+    expect(res.status).toBe("created");
+    expect(res.syntheticEmailUsed).toBe(true);
+    expect(createUser).toHaveBeenCalledTimes(2);
+    const secondCall = createUser.mock.calls[1][0] as { email: string };
+    expect(secondCall.email).toContain("@trainer.mr-formation.local");
+  });
+
+  it("m1 — usedEmails batch dedup : email réel déjà utilisé → repli synthétique", async () => {
+    const createUser = vi.fn().mockResolvedValue({ data: { user: { id: "uid" } }, error: null });
+    const from = vi.fn().mockReturnValue(chainResolving({ error: null }));
+    const admin = { from, auth: { admin: { createUser } } } as never;
+
+    const res = await ensureTrainerAccount(admin, {
+      trainer: { id: "t1", entity_id: "ENT-A", first_name: "Jean", last_name: "Dupont", email: "dup@ex.com", profile_id: null },
+      entitySlug: "mr-formation",
+      usedEmails: new Set(["dup@ex.com"]),
+    });
+
+    expect(res.syntheticEmailUsed).toBe(true);
+    const firstCall = createUser.mock.calls[0][0] as { email: string };
+    expect(firstCall.email).toContain("@trainer.mr-formation.local");
+  });
 });
 
 describe("resetTrainerPassword", () => {
