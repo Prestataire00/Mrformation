@@ -4,6 +4,8 @@ import {
   buildTrainerSyntheticEmail,
   resetTrainerPassword,
   listOrphanTrainerAccounts,
+  linkTrainerToProfile,
+  unlinkTrainerProfile,
 } from "@/lib/services/trainer-account";
 
 /**
@@ -157,5 +159,47 @@ describe("listOrphanTrainerAccounts", () => {
     expect(res.map((o) => o.id)).toEqual(["p1"]);
     expect(from).toHaveBeenNthCalledWith(1, "profiles");
     expect(from).toHaveBeenNthCalledWith(2, "trainers");
+  });
+});
+
+describe("linkTrainerToProfile", () => {
+  it("refuse un profil qui n'est pas un orphelin (et n'appelle pas update)", async () => {
+    // profiles → p1 seul ; linked → vide ⇒ orphelins = [p1]. On tente de lier p9.
+    const from = vi.fn()
+      .mockReturnValueOnce(chainResolving({ data: [{ id: "p1", email: null, first_name: null, last_name: null }], error: null }))
+      .mockReturnValueOnce(chainResolving({ data: [], error: null }));
+    const admin = { from } as never;
+
+    const res = await linkTrainerToProfile(admin, { entityId: "ENT-A", trainerId: "t1", profileId: "p9" });
+
+    expect(res.ok).toBe(false);
+    expect(from).toHaveBeenCalledTimes(2); // pas de 3e appel (update)
+  });
+
+  it("relie la fiche au profil orphelin valide", async () => {
+    const updateChain = chainResolving({ error: null });
+    const from = vi.fn()
+      .mockReturnValueOnce(chainResolving({ data: [{ id: "p1", email: null, first_name: null, last_name: null }], error: null }))
+      .mockReturnValueOnce(chainResolving({ data: [], error: null }))
+      .mockReturnValueOnce(updateChain);
+    const admin = { from } as never;
+
+    const res = await linkTrainerToProfile(admin, { entityId: "ENT-A", trainerId: "t1", profileId: "p1" });
+
+    expect(res.ok).toBe(true);
+    expect(updateChain.update).toHaveBeenCalledWith({ profile_id: "p1" });
+  });
+});
+
+describe("unlinkTrainerProfile", () => {
+  it("met profile_id à null sur la fiche", async () => {
+    const updateChain = chainResolving({ error: null });
+    const from = vi.fn().mockReturnValue(updateChain);
+    const admin = { from } as never;
+
+    const res = await unlinkTrainerProfile(admin, { entityId: "ENT-A", trainerId: "t1" });
+
+    expect(res.ok).toBe(true);
+    expect(updateChain.update).toHaveBeenCalledWith({ profile_id: null });
   });
 });
