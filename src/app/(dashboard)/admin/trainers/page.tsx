@@ -467,6 +467,15 @@ export default function TrainersPage() {
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-sm truncate group-hover:text-[#DC2626]">{trainer.first_name} {trainer.last_name}</p>
                     <p className="text-xs text-muted-foreground">{trainer.email || ""}</p>
+                    {trainer.profile_id ? (
+                      <Badge variant="outline" className="mt-1 h-5 px-1.5 text-[10px] font-normal text-emerald-700 border-emerald-200 bg-emerald-50">
+                        Compte ✓
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="mt-1 h-5 px-1.5 text-[10px] font-normal text-gray-500">
+                        Pas de compte
+                      </Badge>
+                    )}
                   </div>
                 </div>
                 {trainer.bio && <p className="text-xs text-gray-600 line-clamp-2 mb-3">{trainer.bio}</p>}
