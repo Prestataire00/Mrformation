@@ -59,6 +59,7 @@ import {
   Shield,
 } from "lucide-react";
 import { useEntity } from "@/contexts/EntityContext";
+import TrainerAccessCard from "../_components/TrainerAccessCard";
 
 type TrainerWithCompetencies = Trainer & { competencies: TrainerCompetency[] };
 
@@ -586,6 +587,21 @@ export default function TrainerProfilePage() {
 
         {/* PROFIL TAB */}
         <TabsContent value="profil" className="mt-6">
+          {trainer && (
+            <div className="mb-6">
+              <TrainerAccessCard
+                trainer={{
+                  id: trainer.id,
+                  profile_id: trainer.profile_id,
+                  email: trainer.email,
+                  first_name: trainer.first_name,
+                  last_name: trainer.last_name,
+                  entity_id: trainer.entity_id,
+                }}
+                onChanged={fetchTrainer}
+              />
+            </div>
+          )}
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Informations personnelles</CardTitle>
