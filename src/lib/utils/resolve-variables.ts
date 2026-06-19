@@ -110,6 +110,7 @@ export interface ResolveContext {
   };
   entity?: {
     name?: string | null;  // ajouté Story B-Convention : utilisé par `{{nom_organisme}}`
+    slug?: string | null;  // ajouté Tâche 3 QR pré-rempli : préfixe l'URL de login
     siret?: string | null;
     nda?: string | null;
     address?: string | null;
