@@ -144,6 +144,14 @@ export default function EmargementLivePage() {
   const allSignedLearners = active?.learners.filter((l) => l.signed) ?? [];
   const pendingLearners = active?.learners.filter((l) => !l.signed) ?? [];
 
+  // Affichage en-tête du créneau : date + plage horaire (au lieu d'un simple compteur).
+  const slotDate = active
+    ? new Date(active.slot.start_time).toLocaleDateString("fr-FR", { weekday: "long", day: "2-digit", month: "long", year: "numeric", timeZone: "Europe/Paris" })
+    : "";
+  const slotHours = active
+    ? `${new Date(active.slot.start_time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })} → ${new Date(active.slot.end_time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })}`
+    : "";
+
   // Si aucun slot n'a de token session → proposer de les générer
   const needsTokens = slots.length > 0 && slots.every((s) => !s.session_token);
 
@@ -195,15 +203,16 @@ export default function EmargementLivePage() {
           <ChevronLeft className="h-5 w-5" />
         </Button>
         <div className="text-center min-w-[300px]">
-          <p className="text-sm text-white/60">Créneau {activeSlotIdx + 1} / {slots.length}</p>
+          <p className="text-sm text-white/60 capitalize">
+            {slotDate}
+            <span className="ml-2 text-xs text-white/35 normal-case">({activeSlotIdx + 1}/{slots.length})</span>
+          </p>
           <p className="text-lg font-semibold">
-            {active?.slot.title ?? new Date(active?.slot.start_time ?? "").toLocaleDateString("fr-FR", { weekday: "long", day: "2-digit", month: "long", timeZone: "Europe/Paris" })}
+            {active?.slot.title ?? slotHours}
           </p>
-          <p className="text-sm text-white/70">
-            {new Date(active?.slot.start_time ?? "").toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })}
-            {" → "}
-            {new Date(active?.slot.end_time ?? "").toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })}
-          </p>
+          {active?.slot.title && (
+            <p className="text-sm text-white/70">{slotHours}</p>
+          )}
         </div>
         <Button
           variant="ghost"
