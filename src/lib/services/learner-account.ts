@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import crypto from "crypto";
 import { slugifyName } from "@/lib/utils/slugify-name";
-import { buildSyntheticEmail } from "@/lib/utils/learner-email-synthetic";
+import { buildSyntheticEmail, isSyntheticEmail } from "@/lib/utils/learner-email-synthetic";
 
 /**
  * Génère un mot de passe temporaire alphanumeric 12 chars sans caractères
@@ -50,8 +50,11 @@ export type LearnerCredentials = {
  * Requis : le `supabase` passé doit être un service role client (pour les
  * appels `auth.admin.*`). Voir le pattern inline dans la route appelante.
  *
- * Retourne null si l'apprenant n'a pas d'email (skip silencieux, l'admin
- * doit ajouter l'email avant de pouvoir générer une convocation).
+ * Gère les apprenants SANS email réel : un email synthétique non-routable
+ * (`<username>@learner.<slug>.local`) est généré pour satisfaire la contrainte
+ * d'unicité de Supabase Auth ; l'apprenant se connecte alors par identifiant
+ * (username) + mot de passe (résolu via /api/auth/resolve-username au login).
+ * Retourne null uniquement en cas d'échec dur (apprenant introuvable / createUser KO).
  */
 export async function ensureLearnerAccount(
   supabase: SupabaseClient,
@@ -59,28 +62,47 @@ export async function ensureLearnerAccount(
 ): Promise<LearnerCredentials | null> {
   const { data: learner } = await supabase
     .from("learners")
-    .select("id, email, first_name, last_name, profile_id, temp_password, entity_id")
+    .select("id, email, username, first_name, last_name, profile_id, temp_password, entity_id")
     .eq("id", learnerId)
     .single();
 
-  if (!learner?.email) return null;
+  if (!learner) return null;
 
   // Idempotent : si compte ET password déjà setup → réutiliser tel quel.
   // Cohérence : toutes les convocations futures du même apprenant montrent
   // le même password (sinon l'apprenant aurait à mémoriser plusieurs).
   if (learner.profile_id && learner.temp_password) {
-    return { email: learner.email, tempPassword: learner.temp_password };
+    return { email: (learner.email as string | null) ?? "", tempPassword: learner.temp_password };
+  }
+
+  // Résout l'email de connexion : réel si dispo, sinon SYNTHÉTIQUE pour les
+  // apprenants sans email (ils se connectent par identifiant + mot de passe).
+  const hasRealEmail = !!learner.email && !isSyntheticEmail(learner.email);
+  let resolvedEmail: string;
+  let syntheticEmailUsed = false;
+  if (hasRealEmail) {
+    resolvedEmail = (learner.email as string).trim().toLowerCase();
+  } else {
+    const { data: entityRow } = await supabase
+      .from("entities")
+      .select("slug")
+      .eq("id", learner.entity_id)
+      .single();
+    const entitySlug = (entityRow?.slug as string) ?? "mr-formation";
+    const username = (learner.username as string) || `apprenant-${learnerId.slice(0, 8)}`;
+    resolvedEmail = buildSyntheticEmail(username, entitySlug);
+    syntheticEmailUsed = true;
   }
 
   const password = generateTempPassword();
-  let authUserId = learner.profile_id;
+  let authUserId = learner.profile_id as string | null;
 
   if (!authUserId) {
     // Cas 1 : apprenant sans profile_id. Check si un auth user existe
     // déjà avec cet email (créé hors flow ou par un précédent run partiel).
     const { data: existingUsers } = await supabase.auth.admin.listUsers();
     const existingUser = existingUsers?.users?.find(
-      (u) => u.email?.toLowerCase() === learner.email.toLowerCase(),
+      (u) => u.email?.toLowerCase() === resolvedEmail.toLowerCase(),
     );
 
     if (existingUser) {
@@ -90,7 +112,7 @@ export async function ensureLearnerAccount(
     } else {
       // Créer un nouveau auth user avec le password
       const { data: newUser, error } = await supabase.auth.admin.createUser({
-        email: learner.email,
+        email: resolvedEmail,
         password,
         email_confirm: true,
         user_metadata: {
@@ -109,6 +131,7 @@ export async function ensureLearnerAccount(
     // Upsert le profile (le trigger Supabase peut l'avoir déjà créé via createUser).
     await supabase.from("profiles").upsert({
       id: authUserId,
+      email: resolvedEmail,
       first_name: learner.first_name,
       last_name: learner.last_name,
       role: "learner",
@@ -121,13 +144,19 @@ export async function ensureLearnerAccount(
     await supabase.auth.admin.updateUserById(authUserId, { password });
   }
 
-  // Persiste profile_id + temp_password en clair sur learners
-  await supabase
-    .from("learners")
-    .update({ profile_id: authUserId, temp_password: password })
-    .eq("id", learnerId);
+  // Persiste profile_id + temp_password (+ email synthétique si généré) sur learners.
+  const learnerUpdate: Record<string, unknown> = {
+    profile_id: authUserId,
+    temp_password: password,
+    password_must_change: true,
+  };
+  if (syntheticEmailUsed) {
+    learnerUpdate.email = resolvedEmail;
+    learnerUpdate.synthetic_email_used = true;
+  }
+  await supabase.from("learners").update(learnerUpdate).eq("id", learnerId);
 
-  return { email: learner.email, tempPassword: password };
+  return { email: resolvedEmail, tempPassword: password };
 }
 
 // ============================================================================
