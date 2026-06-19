@@ -197,6 +197,24 @@ export async function GET(request: NextRequest) {
         };
       });
 
+    // Formateurs assignés à la session (via formation_trainers) → le formateur
+    // peut aussi émarger depuis le QR de présence (token session).
+    const { data: ftRows } = await supabase
+      .from("formation_trainers")
+      .select("trainer:trainers(id, first_name, last_name)")
+      .eq("session_id", tokenData.session_id);
+    const trainers = (ftRows || [])
+      .filter((r: { trainer: unknown }) => r.trainer)
+      .map((r: { trainer: { id: string; first_name: string; last_name: string } | { id: string; first_name: string; last_name: string }[] }) => {
+        const t = Array.isArray(r.trainer) ? r.trainer[0] : r.trainer;
+        return {
+          id: t.id,
+          first_name: t.first_name,
+          last_name: t.last_name,
+          already_signed: signedTrainerIds.includes(t.id),
+        };
+      });
+
     return NextResponse.json({
       token_type: "session",
       signer_type: "learner",
@@ -212,6 +230,7 @@ export async function GET(request: NextRequest) {
       time_slot: timeSlot,
       all_slots,
       learners,
+      trainers,
     });
   } else {
     // Individual token — return the specific learner info

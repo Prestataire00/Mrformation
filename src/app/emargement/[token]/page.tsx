@@ -56,6 +56,7 @@ interface TokenData {
   session: SessionInfo;
   time_slot?: TimeSlotInfo | null;
   learners?: PersonInfo[];
+  trainers?: PersonInfo[];
   learner?: PersonInfo | null;
   trainer?: PersonInfo | null;
 }
@@ -82,6 +83,7 @@ export default function EmargementPage() {
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<TokenData | null>(null);
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
+  const [selectedIsTrainer, setSelectedIsTrainer] = useState(false);
   const [signing, setSigning] = useState(false);
   const [signed, setSigned] = useState(false);
   const [signedName, setSignedName] = useState("");
@@ -173,7 +175,8 @@ export default function EmargementPage() {
             body: JSON.stringify({
               token,
               signature_data: svgData,
-              learner_id: data?.token_type === "session" ? selectedPersonId : undefined,
+              learner_id: data?.token_type === "session" && !selectedIsTrainer ? selectedPersonId : undefined,
+              trainer_id: data?.token_type === "session" && selectedIsTrainer ? selectedPersonId : undefined,
             }),
             signal: controller.signal,
           });
@@ -227,9 +230,10 @@ export default function EmargementPage() {
         name = `${data.trainer.first_name} ${data.trainer.last_name}`;
       } else if (data?.token_type === "individual" && data.learner) {
         name = `${data.learner.first_name} ${data.learner.last_name}`;
-      } else if (data?.learners) {
-        const l = data.learners.find((l) => l.id === selectedPersonId);
-        if (l) name = `${l.first_name} ${l.last_name}`;
+      } else if (data?.token_type === "session") {
+        const pool = selectedIsTrainer ? data.trainers : data.learners;
+        const p = pool?.find((x) => x.id === selectedPersonId);
+        if (p) name = `${p.first_name} ${p.last_name}`;
       }
 
       setSignedName(name);
@@ -351,7 +355,7 @@ export default function EmargementPage() {
     ? data.trainer
     : data.token_type === "individual"
     ? data.learner
-    : data.learners?.find((l) => l.id === selectedPersonId);
+    : (selectedIsTrainer ? data.trainers : data.learners)?.find((l) => l.id === selectedPersonId);
 
   return (
     <div className="w-full max-w-lg space-y-4">
@@ -422,8 +426,8 @@ export default function EmargementPage() {
         </Card>
       )}
 
-      {/* Learner selection (session token) */}
-      {data.token_type === "session" && data.learners && !selectedPersonId && (
+      {/* Sélection (session token) : apprenants ET formateurs */}
+      {data.token_type === "session" && !selectedPersonId && (
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
@@ -435,12 +439,13 @@ export default function EmargementPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
-            {data.learners.map((learner) => (
+            {(data.learners ?? []).map((learner) => (
               <button
                 key={learner.id}
                 disabled={learner.already_signed}
                 onClick={() => {
                   setError(null);
+                  setSelectedIsTrainer(false);
                   setSelectedPersonId(learner.id);
                 }}
                 className={`w-full flex items-center justify-between p-3 rounded-lg border text-left transition-colors ${
@@ -466,6 +471,48 @@ export default function EmargementPage() {
                 )}
               </button>
             ))}
+
+            {/* Formateur(s) assigné(s) — émargement formateur depuis le même QR */}
+            {(data.trainers ?? []).length > 0 && (
+              <>
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider pt-3 pb-1">
+                  Formateur
+                </p>
+                {(data.trainers ?? []).map((trainer) => (
+                  <button
+                    key={trainer.id}
+                    disabled={trainer.already_signed}
+                    onClick={() => {
+                      setError(null);
+                      setSelectedIsTrainer(true);
+                      setSelectedPersonId(trainer.id);
+                    }}
+                    className={`w-full flex items-center justify-between p-3 rounded-lg border text-left transition-colors ${
+                      trainer.already_signed
+                        ? "bg-green-50 border-green-200 cursor-not-allowed opacity-60"
+                        : "hover:bg-indigo-50 hover:border-indigo-300 cursor-pointer"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="h-9 w-9 rounded-full bg-indigo-100 flex items-center justify-center text-sm font-semibold text-indigo-700">
+                        {trainer.first_name.charAt(0)}
+                        {trainer.last_name.charAt(0)}
+                      </div>
+                      <span className="font-medium text-gray-900">
+                        {trainer.first_name} {trainer.last_name}
+                        <span className="ml-2 text-xs text-indigo-500">(formateur)</span>
+                      </span>
+                    </div>
+                    {trainer.already_signed && (
+                      <Badge className="bg-green-100 text-green-700 text-xs gap-1">
+                        <CheckCircle2 className="h-3 w-3" />
+                        Déjà signé
+                      </Badge>
+                    )}
+                  </button>
+                ))}
+              </>
+            )}
           </CardContent>
         </Card>
       )}
@@ -493,6 +540,7 @@ export default function EmargementPage() {
                   className="text-xs text-gray-500"
                   onClick={() => {
                     setSelectedPersonId(null);
+                    setSelectedIsTrainer(false);
                     setError(null);
                   }}
                 >

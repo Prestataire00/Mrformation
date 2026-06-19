@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
   if (!allowed) return rateLimitResponse(resetAt);
 
   try {
-    const { token, signature_data, learner_id } = await request.json();
+    const { token, signature_data, learner_id, trainer_id } = await request.json();
 
     // ── Validation des inputs ──
     if (!token || typeof token !== "string") {
@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Determine the signer and signer type
-    const signerType: "learner" | "trainer" = tokenData.signer_type || "learner";
+    let signerType: "learner" | "trainer" = tokenData.signer_type || "learner";
     let signerId: string;
 
     if (signerType === "trainer" && tokenData.trainer_id) {
@@ -80,9 +80,27 @@ export async function POST(request: NextRequest) {
     } else if (tokenData.token_type === "individual") {
       // Token individuel : signer_id vient du token (anti-tampering)
       signerId = tokenData.learner_id;
+    } else if (trainer_id && typeof trainer_id === "string") {
+      // Session token — signataire FORMATEUR : trainer_id en body, vérifié via
+      // formation_trainers (le formateur doit être assigné à la session).
+      const { data: ftLink } = await supabase
+        .from("formation_trainers")
+        .select("id")
+        .eq("session_id", tokenData.session_id)
+        .eq("trainer_id", trainer_id)
+        .maybeSingle();
+
+      if (!ftLink) {
+        return NextResponse.json(
+          { error: "Vous n'êtes pas formateur de cette session" },
+          { status: 403 }
+        );
+      }
+      signerType = "trainer";
+      signerId = trainer_id;
     } else {
-      // Session token — learner_id est passé en body, MAIS on vérifie l'enrollment
-      // ce qui empêche un attaquant de signer pour un autre apprenant non-inscrit
+      // Session token — signataire APPRENANT : learner_id en body, vérifié via
+      // l'enrollment (empêche de signer pour un autre apprenant non-inscrit).
       if (!learner_id || typeof learner_id !== "string") {
         return NextResponse.json(
           { error: "Veuillez sélectionner votre nom" },
