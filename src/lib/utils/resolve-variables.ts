@@ -1519,6 +1519,7 @@ export const ALIAS_TO_VARIABLE_KEY: Record<string, string> = {
   // === Story B-Convocation Apprenant ===
   "Nom de l'apprenant": "{{nom_apprenant}}",
   "Email de l'apprenant": "{{email_apprenant}}",
+  "Identifiant apprenant": "{{identifiant_apprenant}}",
   "Vos dates en détail": "{{dates_detail}}",
   "URL de connexion": "{{url_connexion}}",
   "Mot de passe apprenant": "{{mot_de_passe_apprenant}}",
