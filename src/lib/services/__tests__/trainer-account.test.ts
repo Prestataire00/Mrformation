@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import {
   ensureTrainerAccount,
   buildTrainerSyntheticEmail,
+  resetTrainerPassword,
 } from "@/lib/services/trainer-account";
 
 /**
@@ -100,5 +101,37 @@ describe("ensureTrainerAccount", () => {
     expect(res.status).toBe("error");
     expect(res.error).toBe("boom");
     expect(from).not.toHaveBeenCalled();
+  });
+});
+
+describe("resetTrainerPassword", () => {
+  it("régénère le mot de passe via updateUserById quand la fiche a un profile_id", async () => {
+    const updateUserById = vi.fn().mockResolvedValue({ error: null });
+    const from = vi.fn().mockReturnValue(
+      chainResolving({ data: { id: "t1", entity_id: "ENT-A", email: "j@ex.com", profile_id: "p1" }, error: null }),
+    );
+    const admin = { from, auth: { admin: { updateUserById } } } as never;
+
+    const res = await resetTrainerPassword(admin, { entityId: "ENT-A", trainerId: "t1" });
+
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.email).toBe("j@ex.com");
+      expect(res.password).toEqual(expect.any(String));
+    }
+    expect(updateUserById).toHaveBeenCalledWith("p1", { password: expect.any(String) });
+  });
+
+  it("échoue sans toucher à Auth si la fiche n'a pas de profile_id", async () => {
+    const updateUserById = vi.fn();
+    const from = vi.fn().mockReturnValue(
+      chainResolving({ data: { id: "t1", entity_id: "ENT-A", email: null, profile_id: null }, error: null }),
+    );
+    const admin = { from, auth: { admin: { updateUserById } } } as never;
+
+    const res = await resetTrainerPassword(admin, { entityId: "ENT-A", trainerId: "t1" });
+
+    expect(res.ok).toBe(false);
+    expect(updateUserById).not.toHaveBeenCalled();
   });
 });
