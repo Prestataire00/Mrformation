@@ -58,7 +58,7 @@ export async function POST(_request: NextRequest, { params }: RouteContext) {
         supabase: admin, entityId: trainer.entity_id, userId: auth.user.id,
         action: "update", resourceType: "trainers.access", resourceId: trainer.id, details: { verb: "reset" },
       });
-      return NextResponse.json({ ok: true, action: "reset", email: res.email, password: res.password, synthetic_email_used: false });
+      return NextResponse.json({ ok: true, action: "reset", email: res.email, password: res.password, synthetic_email_used: (res.email ?? "").endsWith(".local") });
     }
 
     const { data: entityRow } = await admin.from("entities").select("slug").eq("id", trainer.entity_id).single();

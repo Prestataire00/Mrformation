@@ -96,8 +96,10 @@ export default function TrainerAccessCard({ trainer, onChanged }: TrainerAccessC
   const copyCredentials = () => {
     if (!result) return;
     const text = `Email: ${result.email ?? ""}\tMot de passe: ${result.password ?? ""}`;
-    navigator.clipboard.writeText(text);
-    toast({ title: "Copié", description: "Identifiants copiés dans le presse-papiers." });
+    navigator.clipboard.writeText(text).then(
+      () => toast({ title: "Copié", description: "Identifiants copiés dans le presse-papiers." }),
+      () => toast({ title: "Erreur", description: "Impossible de copier. Copiez manuellement.", variant: "destructive" }),
+    );
   };
 
   return (
