@@ -5,17 +5,14 @@ import { createClient } from "@/lib/supabase/client";
 import { resolveTrainerSessionIds } from "@/lib/auth/trainer-session-access";
 import { useToast } from "@/components/ui/use-toast";
 import {
-  CalendarDays,
   MapPin,
   Clock,
   Loader2,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { cn, formatDate, STATUS_COLORS, SESSION_STATUS_LABELS } from "@/lib/utils";
-import type { Session } from "@/lib/types";
+import { cn } from "@/lib/utils";
 import {
   startOfWeek,
   endOfWeek,
@@ -28,14 +25,25 @@ import {
 } from "date-fns";
 import { fr } from "date-fns/locale";
 
-interface SessionWithDetails extends Omit<Session, "training" | "enrollments"> {
-  training?: { title: string };
+// Un événement de planning = un CRÉNEAU (formation_time_slots), pas la session
+// entière. Une session pluri-jours (ex. 100 créneaux sur 2 mois) doit apparaître
+// sur chacun de ses créneaux, pas seulement sur sa start_date.
+interface SlotEvent {
+  id: string;
+  sessionId: string;
+  title: string;
+  location: string | null;
+  start: string; // ISO
+  end: string | null; // ISO
 }
+
+const fmtTime = (iso: string) =>
+  new Date(iso).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" });
 
 export default function TrainerPlanningPage() {
   const supabase = createClient();
   const { toast } = useToast();
-  const [sessions, setSessions] = useState<SessionWithDetails[]>([]);
+  const [events, setEvents] = useState<SlotEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [weekOffset, setWeekOffset] = useState(0);
 
@@ -51,27 +59,58 @@ export default function TrainerPlanningPage() {
     } = await supabase.auth.getUser();
     if (!user) return;
 
-    // Isolation : sessions du formateur via formation_trainers (sessions.trainer_id
-    // n'est pas fiable). Cf. cadrage espace formateur (décision formation_trainers).
     const sessionIds = await resolveTrainerSessionIds(supabase, user.id);
     if (sessionIds.length === 0) {
-      setSessions([]);
+      setEvents([]);
       setLoading(false);
       return;
     }
 
-    const { data, error } = await supabase
-      .from("sessions")
-      .select("*, training:trainings(title)")
-      .in("id", sessionIds)
-      .order("start_date", { ascending: true });
+    const [sessRes, slotRes] = await Promise.all([
+      supabase.from("sessions").select("id, title, location, start_date").in("id", sessionIds),
+      supabase
+        .from("formation_time_slots")
+        .select("id, session_id, title, start_time, end_time")
+        .in("session_id", sessionIds)
+        .order("start_time", { ascending: true }),
+    ]);
 
-    if (error) {
+    if (sessRes.error || slotRes.error) {
       toast({ title: "Erreur", description: "Impossible de charger votre planning.", variant: "destructive" });
-      setSessions([]);
-    } else {
-      setSessions((data as SessionWithDetails[]) ?? []);
+      setEvents([]);
+      setLoading(false);
+      return;
     }
+
+    const sessions = (sessRes.data ?? []) as Array<{ id: string; title: string; location: string | null; start_date: string }>;
+    const sessionMap = new Map(sessions.map((s) => [s.id, s]));
+    const slots = (slotRes.data ?? []) as Array<{ id: string; session_id: string; title: string | null; start_time: string; end_time: string | null }>;
+
+    let built: SlotEvent[];
+    if (slots.length > 0) {
+      built = slots.map((sl) => {
+        const sess = sessionMap.get(sl.session_id);
+        return {
+          id: sl.id,
+          sessionId: sl.session_id,
+          title: sl.title || sess?.title || "Session",
+          location: sess?.location ?? null,
+          start: sl.start_time,
+          end: sl.end_time,
+        };
+      });
+    } else {
+      // Repli : sessions sans créneau détaillé → 1 événement sur la date de début.
+      built = sessions.map((s) => ({
+        id: s.id,
+        sessionId: s.id,
+        title: s.title,
+        location: s.location,
+        start: s.start_date,
+        end: null,
+      }));
+    }
+    setEvents(built);
     setLoading(false);
   }, [supabase, toast]);
 
@@ -79,10 +118,9 @@ export default function TrainerPlanningPage() {
     fetchData();
   }, [fetchData]);
 
-  const weekSessions = sessions.filter((s) => {
-    const d = parseISO(s.start_date);
-    return isWithinInterval(d, { start: currentWeekStart, end: currentWeekEnd });
-  });
+  const weekEvents = events
+    .filter((e) => isWithinInterval(parseISO(e.start), { start: currentWeekStart, end: currentWeekEnd }))
+    .sort((a, b) => a.start.localeCompare(b.start));
 
   if (loading) {
     return (
@@ -123,9 +161,7 @@ export default function TrainerPlanningPage() {
       {/* Week grid */}
       <div className="grid grid-cols-7 gap-3">
         {days.map((day) => {
-          const daySessions = weekSessions.filter((s) =>
-            isSameDay(parseISO(s.start_date), day)
-          );
+          const dayEvents = weekEvents.filter((e) => isSameDay(parseISO(e.start), day));
           const isToday = isSameDay(day, now);
 
           return (
@@ -150,25 +186,25 @@ export default function TrainerPlanningPage() {
                 </p>
               </div>
               <div className="space-y-1.5">
-                {daySessions.map((session) => (
+                {dayEvents.map((ev) => (
                   <div
-                    key={session.id}
+                    key={ev.id}
                     className="bg-blue-100 text-blue-800 rounded-lg px-2 py-1.5 text-xs"
                   >
-                    <p className="font-medium truncate">{session.title}</p>
+                    <p className="font-medium truncate">{ev.title}</p>
                     <p className="text-blue-600 flex items-center gap-1 mt-0.5">
                       <Clock className="w-3 h-3" />
-                      {new Date(session.start_date).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })}
+                      {fmtTime(ev.start)}{ev.end ? `–${fmtTime(ev.end)}` : ""}
                     </p>
-                    {session.location && (
+                    {ev.location && (
                       <p className="text-blue-600 flex items-center gap-1 mt-0.5">
                         <MapPin className="w-3 h-3" />
-                        <span className="truncate">{session.location}</span>
+                        <span className="truncate">{ev.location}</span>
                       </p>
                     )}
                   </div>
                 ))}
-                {daySessions.length === 0 && (
+                {dayEvents.length === 0 && (
                   <p className="text-xs text-gray-300 text-center mt-4">—</p>
                 )}
               </div>
@@ -177,34 +213,30 @@ export default function TrainerPlanningPage() {
         })}
       </div>
 
-      {/* Sessions list below */}
-      {weekSessions.length === 0 && (
+      {/* Détail de la semaine */}
+      {weekEvents.length === 0 ? (
         <p className="mt-6 text-sm text-gray-500 text-center">
-          Aucune session planifiée cette semaine.
+          Aucun créneau planifié cette semaine.
         </p>
-      )}
-
-      {weekSessions.length > 0 && (
+      ) : (
         <div className="mt-6">
           <h2 className="text-sm font-semibold text-gray-700 mb-3">
-            Détail de la semaine ({weekSessions.length} session{weekSessions.length > 1 ? "s" : ""})
+            Détail de la semaine ({weekEvents.length} créneau{weekEvents.length > 1 ? "x" : ""})
           </h2>
           <div className="space-y-2">
-            {weekSessions.map((session) => (
+            {weekEvents.map((ev) => (
               <div
-                key={session.id}
+                key={ev.id}
                 className="flex items-center justify-between bg-white border border-gray-200 rounded-lg p-3"
               >
                 <div>
-                  <p className="font-medium text-sm text-gray-900">{session.title}</p>
+                  <p className="font-medium text-sm text-gray-900">{ev.title}</p>
                   <p className="text-xs text-gray-500">
-                    {formatDate(session.start_date)}
-                    {session.location ? ` — ${session.location}` : ""}
+                    {format(parseISO(ev.start), "EEEE d MMMM", { locale: fr })} · {fmtTime(ev.start)}
+                    {ev.end ? `–${fmtTime(ev.end)}` : ""}
+                    {ev.location ? ` — ${ev.location}` : ""}
                   </p>
                 </div>
-                <Badge className={cn("text-xs", STATUS_COLORS[session.status])}>
-                  {SESSION_STATUS_LABELS[session.status] ?? session.status}
-                </Badge>
               </div>
             ))}
           </div>
