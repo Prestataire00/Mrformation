@@ -40,6 +40,7 @@ export default function LinkExistingAccountDialog({
   const [search, setSearch] = useState("");
 
   const loadCandidates = useCallback(async () => {
+    setCandidates([]);
     setLoading(true);
     try {
       const res = await fetch(`/api/trainers/${trainerId}/access/candidates`);
@@ -124,7 +125,7 @@ export default function LinkExistingAccountDialog({
                     </p>
                     <p className="text-xs text-muted-foreground truncate">{c.email || "—"}</p>
                   </div>
-                  <Button size="sm" variant="outline" disabled={linkingId !== null} onClick={() => handleLink(c.id)}>
+                  <Button size="sm" variant="outline" className="gap-2" disabled={linkingId !== null} onClick={() => handleLink(c.id)}>
                     {linkingId === c.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
                     Relier
                   </Button>

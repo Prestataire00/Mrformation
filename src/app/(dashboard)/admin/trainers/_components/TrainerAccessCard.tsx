@@ -119,11 +119,11 @@ export default function TrainerAccessCard({ trainer, onChanged }: TrainerAccessC
               Email de connexion : <span className="font-medium text-gray-800">{trainer.email || "—"}</span>
             </p>
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" disabled={processing} onClick={handleCreateOrReset}>
+              <Button variant="outline" size="sm" className="gap-2" disabled={processing} onClick={handleCreateOrReset}>
                 {processing ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
                 Réinitialiser le mot de passe
               </Button>
-              <Button variant="outline" size="sm" disabled={processing} onClick={handleUnlink}>
+              <Button variant="outline" size="sm" className="gap-2" disabled={processing} onClick={handleUnlink}>
                 <Unlink className="h-4 w-4" /> Délier
               </Button>
             </div>
@@ -134,11 +134,11 @@ export default function TrainerAccessCard({ trainer, onChanged }: TrainerAccessC
               Ce formateur n'a pas encore d'accès à la plateforme.
             </p>
             <div className="flex flex-wrap gap-2">
-              <Button size="sm" disabled={processing} onClick={handleCreateOrReset}>
+              <Button size="sm" className="gap-2" disabled={processing} onClick={handleCreateOrReset}>
                 {processing ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
                 Créer l'accès
               </Button>
-              <Button variant="outline" size="sm" disabled={processing} onClick={() => setLinkOpen(true)}>
+              <Button variant="outline" size="sm" className="gap-2" disabled={processing} onClick={() => setLinkOpen(true)}>
                 <Link2 className="h-4 w-4" /> Relier à un compte existant
               </Button>
             </div>
@@ -173,7 +173,7 @@ export default function TrainerAccessCard({ trainer, onChanged }: TrainerAccessC
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={copyCredentials}><Copy className="h-4 w-4" /> Copier</Button>
+            <Button variant="outline" className="gap-2" onClick={copyCredentials}><Copy className="h-4 w-4" /> Copier</Button>
             <Button onClick={() => setResult(null)}>Fermer</Button>
           </DialogFooter>
         </DialogContent>
