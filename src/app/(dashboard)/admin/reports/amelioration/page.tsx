@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { Plus, Download, RotateCcw } from "lucide-react";
+import { Plus, Download, RotateCcw, Loader2 } from "lucide-react";
 import { downloadXlsx } from "@/lib/export-xlsx";
 import { formatDate } from "@/lib/utils";
 import { useToast } from "@/components/ui/use-toast";
@@ -14,6 +14,15 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { useConfirmDialog } from "@/hooks/useConfirmDialog";
+import { createClient } from "@/lib/supabase/client";
+import { useEntity } from "@/contexts/EntityContext";
+import {
+  listImprovements,
+  createImprovement,
+  updateImprovement,
+  removeImprovement,
+  type QualityImprovement,
+} from "@/lib/services/quality-registers";
 
 interface Amelioration {
   id: string;
@@ -22,6 +31,17 @@ interface Amelioration {
   action_taken: string;
   result: string;
   responsible: string;
+}
+
+function toAmelioration(row: QualityImprovement): Amelioration {
+  return {
+    id: row.id,
+    date: row.date,
+    description: row.description,
+    action_taken: row.action_taken ?? "",
+    result: row.result ?? "",
+    responsible: row.responsible ?? "",
+  };
 }
 
 const EMPTY_FORM = {
@@ -35,12 +55,32 @@ const EMPTY_FORM = {
 export default function AmeliorationPage() {
   const { toast } = useToast();
   const { confirm, ConfirmDialog } = useConfirmDialog();
+  const { entityId } = useEntity();
+  const supabase = createClient();
   const [items, setItems] = useState<Amelioration[]>([]);
+  const [loading, setLoading] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [editItem, setEditItem] = useState<Amelioration | null>(null);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+
+  const loadItems = useCallback(async () => {
+    if (!entityId) return;
+    setLoading(true);
+    const { data, error } = await listImprovements(supabase, entityId);
+    if (error) {
+      toast({ title: "Erreur de chargement", description: error.message, variant: "destructive" });
+    } else {
+      setItems((data ?? []).map(toAmelioration));
+    }
+    setLoading(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entityId]);
+
+  useEffect(() => {
+    loadItems();
+  }, [loadItems]);
 
   const filtered = items.filter((item) => {
     if (dateFrom && item.date < dateFrom) return false;
@@ -48,30 +88,52 @@ export default function AmeliorationPage() {
     return true;
   });
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
+    if (!entityId) return;
     if (!form.description.trim()) {
       toast({ title: "Erreur", description: "La description est requise.", variant: "destructive" });
       return;
     }
-    const newItem: Amelioration = { id: Date.now().toString(), ...form };
-    setItems((prev) => [newItem, ...prev]);
+    const { error } = await createImprovement(supabase, entityId, form);
+    if (error) {
+      toast({ title: "Erreur", description: error.message, variant: "destructive" });
+      return;
+    }
     setForm({ ...EMPTY_FORM });
     setAddOpen(false);
     toast({ title: "Amélioration ajoutée", description: "L'entrée a été enregistrée." });
+    await loadItems();
   };
 
-  const handleSaveEdit = () => {
-    if (!editItem) return;
-    setItems((prev) => prev.map((i) => (i.id === editItem.id ? editItem : i)));
+  const handleSaveEdit = async () => {
+    if (!editItem || !entityId) return;
+    const { error } = await updateImprovement(supabase, entityId, editItem.id, {
+      date: editItem.date,
+      description: editItem.description,
+      action_taken: editItem.action_taken,
+      result: editItem.result,
+      responsible: editItem.responsible,
+    });
+    if (error) {
+      toast({ title: "Erreur", description: error.message, variant: "destructive" });
+      return;
+    }
     setEditItem(null);
     toast({ title: "Modifié", description: "L'amélioration a été mise à jour." });
+    await loadItems();
   };
 
   const handleDelete = async (id: string) => {
+    if (!entityId) return;
     const ok = await confirm({ title: "Supprimer ?", description: "Supprimer cette amélioration ? Cette action est irréversible." });
     if (!ok) return;
-    setItems((prev) => prev.filter((i) => i.id !== id));
+    const { error } = await removeImprovement(supabase, entityId, id);
+    if (error) {
+      toast({ title: "Erreur", description: error.message, variant: "destructive" });
+      return;
+    }
     toast({ title: "Supprimé" });
+    await loadItems();
   };
 
   const handleDownloadCSV = () => {
@@ -207,7 +269,14 @@ export default function AmeliorationPage() {
             </tr>
           </thead>
           <tbody>
-            {filtered.length === 0 ? (
+            {loading ? (
+              <tr>
+                <td colSpan={6} className="px-4 py-16 text-center text-gray-400">
+                  <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
+                  <p className="text-sm">Chargement…</p>
+                </td>
+              </tr>
+            ) : filtered.length === 0 ? (
               <tr>
                 <td colSpan={6} className="px-4 py-16 text-center text-gray-400">
                   <p className="text-4xl font-bold mb-2">0</p>
