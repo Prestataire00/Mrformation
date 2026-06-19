@@ -162,15 +162,17 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
       clientId,
       status: "registered",
     });
-    setSaving(false);
     if (!result.ok) {
+      setSaving(false);
       if (result.error.code === "23505") {
         toast({ title: "Cet apprenant est déjà inscrit", variant: "destructive" });
       } else {
         toast({ title: "Erreur", description: result.error.message, variant: "destructive" });
       }
     } else {
+      // Garde le bouton désactivé pendant la création du compte (évite le double-clic).
       await ensureLearnerAccess(selectedLearnerId);
+      setSaving(false);
       toast({ title: "Apprenant ajouté" });
       pingOnEnrollment(formation.id, selectedLearnerId);
       setDialogOpen(false);
