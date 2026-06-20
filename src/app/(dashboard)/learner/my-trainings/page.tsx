@@ -304,13 +304,6 @@ export default function LearnerMyTrainingsPage() {
     });
   }
 
-  function formatTime(dateStr: string) {
-    return new Date(dateStr).toLocaleTimeString("fr-FR", {
-      hour: "2-digit",
-      minute: "2-digit",
-      timeZone: "Europe/Paris",
-    });
-  }
 
   function getSessionStatusBadge(status: string) {
     switch (status) {
@@ -539,7 +532,10 @@ export default function LearnerMyTrainingsPage() {
                                   <div className="flex items-center gap-2 text-xs text-gray-400 mt-0.5">
                                     <span className="flex items-center gap-1">
                                       <Calendar className="w-3 h-3" />
-                                      {formatDate(session.start_date)} · {formatTime(session.start_date)}
+                                      {formatDate(session.start_date)}
+                                      {session.end_date && session.end_date.slice(0, 10) !== session.start_date.slice(0, 10)
+                                        ? ` → ${formatDate(session.end_date)}`
+                                        : ""}
                                     </span>
                                     {session.location && (
                                       <span className="flex items-center gap-1">
