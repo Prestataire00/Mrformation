@@ -180,8 +180,9 @@ export default function LearnerDocumentsPage() {
           }),
         });
         const data = await res.json();
-        if (res.ok && data.pdfBase64) {
-          const bytes = Uint8Array.from(atob(data.pdfBase64), (ch) => ch.charCodeAt(0));
+        // La route renvoie le PDF dans le champ `base64` (pas `pdfBase64`).
+        if (res.ok && data.base64) {
+          const bytes = Uint8Array.from(atob(data.base64), (ch) => ch.charCodeAt(0));
           const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
           setPreviewDoc({ open: true, kind: "pdf", url, title: label });
           return;
