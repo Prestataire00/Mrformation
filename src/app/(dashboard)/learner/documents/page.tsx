@@ -165,17 +165,43 @@ export default function LearnerDocumentsPage() {
       return;
     }
 
-    // Fallback : rendu HTML du template (mise en page non fidèle mais visible
-    // tant qu'un PDF n'a pas été régénéré côté admin).
-    let htmlContent: string | null = null;
+    // 1) PDF généré par le MÊME moteur serveur que l'admin (rendu identique) :
+    //    /api/documents/generate-from-template (autorisé au learner pour SES docs).
+    if (learner) {
+      setGeneratingPdf(true);
+      try {
+        const res = await fetch("/api/documents/generate-from-template", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            doc_type: doc.template_id ? undefined : doc.doc_type,
+            template_id: doc.template_id ?? undefined,
+            context: { session_id: doc.session_id ?? undefined, learner_id: learner.id },
+          }),
+        });
+        const data = await res.json();
+        if (res.ok && data.pdfBase64) {
+          const bytes = Uint8Array.from(atob(data.pdfBase64), (ch) => ch.charCodeAt(0));
+          const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
+          setPreviewDoc({ open: true, kind: "pdf", url, title: label });
+          return;
+        }
+        console.warn("[documents] PDF serveur indisponible:", data?.error);
+      } catch (err) {
+        console.warn("[documents] génération PDF serveur échouée:", err);
+      } finally {
+        setGeneratingPdf(false);
+      }
+    }
 
+    // 2) Repli : rendu HTML stylé du template (si la génération serveur échoue).
+    let htmlContent: string | null = null;
     if (doc.template_id) {
       const { data: template } = await supabase
         .from("document_templates")
         .select("content")
         .eq("id", doc.template_id)
         .single();
-
       if (template?.content) {
         htmlContent = resolveVariables(template.content, {
           session: { title: doc.session_title, start_date: doc.session_start_date, end_date: doc.session_end_date } as any,
@@ -192,26 +218,8 @@ export default function LearnerDocumentsPage() {
         entity: entity ?? undefined,
       });
     }
-
     if (!htmlContent) return;
-
-    // Génère un VRAI PDF depuis le contenu HTML → lecteur PDF natif (iframe) +
-    // téléchargement (html2canvas + jsPDF, même moteur que l'admin). Fallback
-    // HTML si la génération échoue.
-    const safeHtml = DOMPurify.sanitize(htmlContent);
-    setGeneratingPdf(true);
-    try {
-      const { exportHtmlToPDFBase64 } = await import("@/lib/pdf-export");
-      const base64 = await exportHtmlToPDFBase64(label, safeHtml, entityName);
-      const bytes = Uint8Array.from(atob(base64), (ch) => ch.charCodeAt(0));
-      const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
-      setPreviewDoc({ open: true, kind: "pdf", url, title: label });
-    } catch (err) {
-      console.error("[documents] génération PDF échouée:", err);
-      setPreviewDoc({ open: true, kind: "html", html: safeHtml, title: label });
-    } finally {
-      setGeneratingPdf(false);
-    }
+    setPreviewDoc({ open: true, kind: "html", html: DOMPurify.sanitize(htmlContent), title: label });
   };
 
   if (loading) {
