@@ -64,6 +64,7 @@ export default function LearnerDocumentsPage() {
     | { open: true; kind: "pdf"; url: string; title: string }
     | { open: true; kind: "html"; html: string; title: string };
   const [previewDoc, setPreviewDoc] = useState<PreviewState | null>(null);
+  const [generatingPdf, setGeneratingPdf] = useState(false);
 
   const fetchDocuments = useCallback(async () => {
     setLoading(true);
@@ -194,12 +195,23 @@ export default function LearnerDocumentsPage() {
 
     if (!htmlContent) return;
 
-    setPreviewDoc({
-      open: true,
-      kind: "html",
-      html: DOMPurify.sanitize(htmlContent),
-      title: label,
-    });
+    // Génère un VRAI PDF depuis le contenu HTML → lecteur PDF natif (iframe) +
+    // téléchargement (html2canvas + jsPDF, même moteur que l'admin). Fallback
+    // HTML si la génération échoue.
+    const safeHtml = DOMPurify.sanitize(htmlContent);
+    setGeneratingPdf(true);
+    try {
+      const { exportHtmlToPDFBase64 } = await import("@/lib/pdf-export");
+      const base64 = await exportHtmlToPDFBase64(label, safeHtml, entityName);
+      const bytes = Uint8Array.from(atob(base64), (ch) => ch.charCodeAt(0));
+      const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
+      setPreviewDoc({ open: true, kind: "pdf", url, title: label });
+    } catch (err) {
+      console.error("[documents] génération PDF échouée:", err);
+      setPreviewDoc({ open: true, kind: "html", html: safeHtml, title: label });
+    } finally {
+      setGeneratingPdf(false);
+    }
   };
 
   if (loading) {
@@ -282,9 +294,29 @@ export default function LearnerDocumentsPage() {
         ))
       )}
 
-      {/* Preview Dialog — PDF natif si file_url, sinon fallback HTML */}
+      {/* Overlay de génération PDF */}
+      {generatingPdf && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-lg px-6 py-4 flex items-center gap-3 shadow-lg">
+            <Loader2 className="h-5 w-5 animate-spin text-[#374151]" />
+            <span className="text-sm text-gray-700">Génération du PDF…</span>
+          </div>
+        </div>
+      )}
+
+      {/* Preview Dialog — lecteur PDF natif (iframe) */}
       {previewDoc && (
-        <Dialog open={previewDoc.open} onOpenChange={(open) => { if (!open) setPreviewDoc(null); }}>
+        <Dialog
+          open={previewDoc.open}
+          onOpenChange={(open) => {
+            if (!open) {
+              if (previewDoc.kind === "pdf" && previewDoc.url.startsWith("blob:")) {
+                URL.revokeObjectURL(previewDoc.url);
+              }
+              setPreviewDoc(null);
+            }
+          }}
+        >
           <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
             <DialogHeader>
               <DialogTitle>{previewDoc.title}</DialogTitle>
@@ -308,13 +340,21 @@ export default function LearnerDocumentsPage() {
               {previewDoc.kind === "pdf" && (
                 <a
                   href={previewDoc.url}
-                  download
+                  download={`${previewDoc.title}.pdf`}
                   className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-[#374151] hover:bg-[#1f2937] rounded-md transition-colors"
                 >
                   <Download className="h-4 w-4" /> Télécharger
                 </a>
               )}
-              <Button variant="outline" onClick={() => setPreviewDoc(null)}>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  if (previewDoc.kind === "pdf" && previewDoc.url.startsWith("blob:")) {
+                    URL.revokeObjectURL(previewDoc.url);
+                  }
+                  setPreviewDoc(null);
+                }}
+              >
                 Fermer
               </Button>
             </DialogFooter>
