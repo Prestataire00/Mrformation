@@ -83,7 +83,7 @@ const PayloadSchema = z
   });
 
 export async function POST(request: NextRequest) {
-  const auth = await requireRole(["super_admin", "admin", "trainer"]);
+  const auth = await requireRole(["super_admin", "admin", "trainer", "learner"]);
   if (auth.error) return auth.error;
 
   let payload: z.infer<typeof PayloadSchema>;
@@ -99,6 +99,20 @@ export async function POST(request: NextRequest) {
     payload = parsed.data;
   } catch (err) {
     return NextResponse.json({ error: sanitizeError(err, "generate-from-template/payload") }, { status: 400 });
+  }
+
+  // Ownership apprenant : un learner ne peut générer QUE ses propres documents
+  // (context.learner_id = sa fiche). Garantit le même rendu PDF que l'admin sans
+  // exposer les documents d'autrui.
+  if (auth.profile.role === "learner") {
+    const { data: ownLearner } = await auth.supabase
+      .from("learners")
+      .select("id")
+      .eq("profile_id", auth.user.id)
+      .maybeSingle();
+    if (!ownLearner || !payload.context.learner_id || payload.context.learner_id !== ownLearner.id) {
+      return NextResponse.json({ error: "Accès refusé : document non rattaché à votre compte" }, { status: 403 });
+    }
   }
 
   try {
