@@ -424,6 +424,7 @@ export function ProfilePage() {
                   type={showPassword ? "text" : "password"}
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
+                  autoComplete="new-password"
                   placeholder="12 caractères min., 1 majuscule, 1 chiffre, 1 spécial"
                   className="w-full px-3 py-2 pr-10 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#374151]"
                 />
@@ -445,6 +446,7 @@ export function ProfilePage() {
                 type={showPassword ? "text" : "password"}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
+                autoComplete="new-password"
                 placeholder="Retapez le mot de passe"
                 className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#374151]"
               />

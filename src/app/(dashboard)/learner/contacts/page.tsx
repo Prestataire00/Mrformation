@@ -64,44 +64,32 @@ export default function LearnerContactsPage() {
 
     if (!learner) { setProfileMissing(true); setLoading(false); return; }
 
-    // Fetch enrollments with session & trainer info
-    const { data: enrollments } = await supabase
-      .from("enrollments")
-      .select(`
-        sessions(
-          title,
-          trainers(id, first_name, last_name, email, phone, bio)
-        )
-      `)
-      .eq("learner_id", learner.id)
-      .neq("status", "cancelled");
+    // Formateurs : la table `trainers` est filtrée par RLS aux formateurs des
+    // sessions de l'apprenant (policy trainers_learner_read, via formation_trainers).
+    // On lit donc directement — `sessions.trainer_id` n'est PAS fiable (l'assignation
+    // passe par formation_trainers).
+    const { data: trainersData } = await supabase
+      .from("trainers")
+      .select("id, first_name, last_name, email, phone, bio");
 
-    // Deduplicate trainers and collect associated sessions
-    const trainerMap = new Map<string, TrainerContact>();
-    if (enrollments) {
-      for (const e of enrollments as any[]) {
-        const s = e.sessions;
-        if (!s?.trainers) continue;
-        const t = s.trainers;
-        const existing = trainerMap.get(t.id);
-        if (existing) {
-          if (s.title && !existing.session_titles.includes(s.title)) {
-            existing.session_titles.push(s.title);
-          }
-        } else {
-          trainerMap.set(t.id, {
-            id: t.id,
-            first_name: t.first_name,
-            last_name: t.last_name,
-            email: t.email,
-            phone: t.phone,
-            bio: t.bio,
-            session_titles: s.title ? [s.title] : [],
-          });
-        }
-      }
-    }
-    setTrainers(Array.from(trainerMap.values()));
+    setTrainers(
+      ((trainersData ?? []) as Array<{
+        id: string;
+        first_name: string;
+        last_name: string;
+        email: string | null;
+        phone: string | null;
+        bio: string | null;
+      }>).map((t) => ({
+        id: t.id,
+        first_name: t.first_name,
+        last_name: t.last_name,
+        email: t.email ?? "",
+        phone: t.phone,
+        bio: t.bio,
+        session_titles: [],
+      })),
+    );
 
     // Fetch entity info
     if (learner.entity_id) {

@@ -88,7 +88,7 @@ export default function LearnerSignPage() {
     const { data: sessionData } = await supabase
       .from("sessions")
       .select(
-        "id, title, start_date, end_date, location, mode, status, duration_hours, training:trainings(title), trainer:trainers(first_name, last_name)"
+        "id, title, start_date, end_date, location, mode, status, training:trainings(title), trainer:trainers(first_name, last_name)"
       )
       .eq("id", sessionId)
       .single();

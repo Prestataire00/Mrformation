@@ -296,10 +296,13 @@ export default function LearnerDocumentsPage() {
                 className="w-full flex-1 min-h-[70vh] border border-gray-200 rounded"
               />
             ) : (
-              <div
-                className="prose prose-sm max-w-none overflow-y-auto"
-                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(previewDoc.html) }}
-              />
+              <div className="flex-1 overflow-y-auto bg-gray-100 rounded p-4">
+                <div
+                  className="prose prose-sm max-w-none bg-white mx-auto shadow-md rounded-sm"
+                  style={{ width: "210mm", maxWidth: "100%", minHeight: "297mm", padding: "20mm 18mm", boxSizing: "border-box" }}
+                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(previewDoc.html) }}
+                />
+              </div>
             )}
             <DialogFooter>
               {previewDoc.kind === "pdf" && (
