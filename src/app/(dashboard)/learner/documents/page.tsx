@@ -177,6 +177,9 @@ export default function LearnerDocumentsPage() {
             doc_type: doc.template_id ? undefined : doc.doc_type,
             template_id: doc.template_id ?? undefined,
             context: { session_id: doc.session_id ?? undefined, learner_id: learner.id },
+            // L'apprenant ne fait que CONSULTER un document figé par l'admin :
+            // on force la génération (jamais de 422 "données incomplètes" bloquant).
+            force: true,
           }),
         });
         const data = await res.json();
