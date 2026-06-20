@@ -186,9 +186,19 @@ export default function LearnerDocumentsPage() {
           setPreviewDoc({ open: true, kind: "pdf", url, title: label });
           return;
         }
-        console.warn("[documents] PDF serveur indisponible:", data?.error);
+        console.warn("[documents] PDF serveur indisponible:", res.status, data?.error);
+        toast({
+          title: "Aperçu HTML (PDF serveur indisponible)",
+          description: data?.error || `Erreur ${res.status}`,
+          variant: "destructive",
+        });
       } catch (err) {
         console.warn("[documents] génération PDF serveur échouée:", err);
+        toast({
+          title: "Aperçu HTML (PDF serveur indisponible)",
+          description: err instanceof Error ? err.message : "Erreur réseau",
+          variant: "destructive",
+        });
       } finally {
         setGeneratingPdf(false);
       }
