@@ -82,7 +82,8 @@ export const API_PERMISSIONS: Array<[string, Role[]]> = [
   ["/api/programs",                ["super_admin", "admin", "trainer"]],
 
   // ── Admin + Trainer + Learner ──────────────────────────────────────────────
-  ["/api/signatures",              ["super_admin", "admin", "trainer", "learner"]],
+  // Auto-signature apprenant retirée : l'émargement passe par /api/emargement/sign (QR).
+  ["/api/signatures",              ["super_admin", "admin", "trainer"]],
   ["/api/questionnaires",          ["super_admin", "admin", "trainer", "learner"]],
 
   // ── Tous les rôles authentifiés ────────────────────────────────────────────
