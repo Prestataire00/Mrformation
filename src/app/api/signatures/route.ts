@@ -5,10 +5,9 @@ import { logAudit } from "@/lib/audit-log";
 import { sanitizeSignatureSvg } from "@/lib/utils/sanitize-svg";
 import { isValidAdminBulkSignature } from "@/lib/utils/validate-bulk-signature";
 import { isTrainerAssignedToSession } from "@/lib/auth/trainer-session-access";
-import { isLearnerEnrolledInSession } from "@/lib/auth/learner-session-access";
 
 export async function GET(request: NextRequest) {
-  const auth = await requireRole(["super_admin", "admin", "trainer", "learner"]);
+  const auth = await requireRole(["super_admin", "admin", "trainer"]);
   if (auth.error) return auth.error;
 
   const { searchParams } = new URL(request.url);
@@ -34,7 +33,10 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await requireRole(["super_admin", "admin", "trainer", "learner"]);
+  // Auto-signature apprenant retirée : seuls admin (pour autrui) et trainer
+  // (pour lui-même) peuvent créer une signature ici. L'émargement apprenant
+  // se fait sur place via QR (/api/emargement/sign).
+  const auth = await requireRole(["super_admin", "admin", "trainer"]);
   if (auth.error) return auth.error;
 
   try {
@@ -70,9 +72,7 @@ export async function POST(request: NextRequest) {
 
     // Determine signer_type from role
     let signerType: "learner" | "trainer";
-    if (role === "learner") {
-      signerType = "learner";
-    } else if (role === "trainer") {
+    if (role === "trainer") {
       signerType = "trainer";
     } else if (["admin", "super_admin"].includes(role)) {
       // Admin signe pour quelqu'un d'autre : DOIT fournir bodySignerId + bodySignerType
@@ -96,19 +96,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify the user is linked to this session
-    if (role === "learner") {
-      // Résout learners.id depuis profile_id (auth.uid()) puis vérifie une
-      // inscription non annulée. `userId` est un profile_id ≠ learners.id ;
-      // le comparer à enrollments.learner_id (+ statut 'active' inexistant)
-      // était le bug P0 côté apprenant.
-      const enrolled = await isLearnerEnrolledInSession(auth.supabase, userId, session_id);
-      if (!enrolled) {
-        return NextResponse.json(
-          { error: "Vous n'êtes pas inscrit à cette session." },
-          { status: 403 }
-        );
-      }
-    } else if (role === "trainer") {
+    if (role === "trainer") {
       // Résout trainers.id depuis profile_id (auth.uid()) puis vérifie
       // l'assignation via formation_trainers (source canonique). `userId` est
       // un profile_id, jamais un trainers.id — le comparer directement à
@@ -123,7 +111,7 @@ export async function POST(request: NextRequest) {
     }
 
     // bodySignerId est garanti non-null pour les admin (validé plus haut).
-    // Pour learner/trainer, on utilise userId (ils signent pour eux-mêmes).
+    // Pour le trainer, on utilise userId (il signe pour lui-même).
     const effectiveSignerId = ["admin", "super_admin"].includes(role) ? bodySignerId : userId;
 
     // Check if already signed (slot-aware)

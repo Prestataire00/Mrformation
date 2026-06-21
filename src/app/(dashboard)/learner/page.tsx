@@ -46,7 +46,6 @@ import {
   Mail,
   Briefcase,
   Star,
-  PenLine,
 } from "lucide-react";
 import { isAfter, parseISO } from "date-fns";
 import { HeroCard, QuickActionCards, MiniCalendar, PriorityList } from "@/components/dashboard-home";
@@ -160,16 +159,8 @@ function EnrollmentCard({ enrollment }: { enrollment: EnrollmentWithSession }) {
         </div>
       )}
 
-      {/* Signature link for in_progress or completed sessions */}
-      {(session.status === "in_progress" || session.status === "completed") && (
-        <Link
-          href={`/learner/sessions/${session.id}/sign`}
-          className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-800 transition-colors mt-1"
-        >
-          <PenLine className="h-3.5 w-3.5" />
-          Signer ma présence
-        </Link>
-      )}
+      {/* Auto-signature portail apprenant retirée : l'émargement se fait
+          uniquement sur place via QR (cf /api/emargement/sign). */}
     </div>
   );
 }
@@ -893,7 +884,7 @@ export default function LearnerPage() {
               id: e.id,
               title: e.session?.title || "Formation",
               subtitle: e.session ? formatDate(e.session.start_date) : undefined,
-              href: e.session ? `/learner/sessions/${e.session.id}/sign` : undefined,
+              href: "/learner/my-trainings",
               badge: e.session ? { label: SESSION_STATUS_LABELS[e.session.status] || e.session.status, color: STATUS_COLORS[e.session.status] || "bg-gray-100" } : undefined,
             }))}
             emptyMessage="Aucune session à venir"
