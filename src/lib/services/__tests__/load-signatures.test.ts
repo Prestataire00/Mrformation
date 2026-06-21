@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { loadSignaturesBySessionId } from "@/lib/services/load-signatures";
+import { loadSignaturesBySessionId, DOC_TYPES_WITH_SIGNATURE_TABLE } from "@/lib/services/load-signatures";
 
 /**
  * Mock minimaliste de SupabaseClient pour loadSignaturesBySessionId.
@@ -278,5 +278,25 @@ describe("loadSignaturesBySessionId", () => {
     expect(result.signaturesBySlotPerson.size).toBe(0);
     expect(result.signedLearnerIds.size).toBe(0);
     expect(result.totalCount).toBe(0);
+  });
+});
+
+describe("DOC_TYPES_WITH_SIGNATURE_TABLE — garde-fou alias", () => {
+  it("inclut les deux alias planning (planning_semaine ET planning_hebdo_signe)", () => {
+    // Retour Loris : « FEUILLE D'ÉMARGEMENT PLANNING — signatures absentes ».
+    // Cause : planning_semaine (alias registry de planning_hebdo_signe, doc_type
+    // utilisé par l'onglet Documents) était absent du gate de chargement.
+    expect(DOC_TYPES_WITH_SIGNATURE_TABLE.has("planning_semaine")).toBe(true);
+    expect(DOC_TYPES_WITH_SIGNATURE_TABLE.has("planning_hebdo_signe")).toBe(true);
+  });
+
+  it("inclut les feuilles d'émargement (individuelle, collective) et l'assiduité", () => {
+    expect(DOC_TYPES_WITH_SIGNATURE_TABLE.has("feuille_emargement")).toBe(true);
+    expect(DOC_TYPES_WITH_SIGNATURE_TABLE.has("feuille_emargement_collectif")).toBe(true);
+    expect(DOC_TYPES_WITH_SIGNATURE_TABLE.has("attestation_assiduite")).toBe(true);
+  });
+
+  it("n'inclut pas un doc_type sans tableau de signatures (ex. convocation)", () => {
+    expect(DOC_TYPES_WITH_SIGNATURE_TABLE.has("convocation")).toBe(false);
   });
 });

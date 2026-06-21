@@ -17,7 +17,7 @@ import {
   type ResolveContext,
 } from "@/lib/utils/resolve-variables";
 import { validateDocumentVariables, type MissingByEntity } from "@/lib/validation/document-vars-validator";
-import { loadSignaturesBySessionId } from "@/lib/services/load-signatures";
+import { loadSignaturesBySessionId, DOC_TYPES_WITH_SIGNATURE_TABLE } from "@/lib/services/load-signatures";
 import { loadClientWithContacts } from "@/lib/services/load-client";
 import { loadSessionAggregates } from "@/lib/services/load-session-aggregates";
 import { loadEvaluationResults } from "@/lib/services/load-evaluation-results";
@@ -421,7 +421,7 @@ export async function POST(request: NextRequest) {
         let signaturesById: Map<string, unknown> | undefined;
         let signaturesBySlotPerson: Map<string, unknown> | undefined;
         if (
-          ["attestation_assiduite", "feuille_emargement", "feuille_emargement_collectif", "planning_hebdo_signe"].includes(payload.doc_type ?? "")
+          DOC_TYPES_WITH_SIGNATURE_TABLE.has(payload.doc_type ?? "")
           && payload.context.session_id
         ) {
           try {
