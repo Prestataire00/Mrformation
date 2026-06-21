@@ -171,6 +171,7 @@ export async function POST(request: NextRequest) {
         .select(`
           *,
           training:trainings(*),
+          program:programs(*),
           enrollments(id, client_id, learner:learners(id, first_name, last_name, email)),
           formation_companies(id, client_id, amount, email, reference, created_at),
           formation_trainers(trainer:trainers(id, first_name, last_name, email)),
