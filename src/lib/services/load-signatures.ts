@@ -54,3 +54,21 @@ export async function loadSignaturesBySessionId(
 
   return { signaturesById, signaturesBySlotPerson, signedLearnerIds, totalCount: typed.length };
 }
+
+/**
+ * Doc types dont le rendu contient un tableau de signatures (émargement /
+ * planning signé) et qui nécessitent donc le chargement des signatures
+ * (signaturesBySlotPerson / signaturesById) côté generate-from-template.
+ *
+ * ⚠ Inclure les ALIAS du registry : `planning_semaine` est un alias de
+ * `planning_hebdo_signe` (même template PLANNING_HEBDO_SIGNE_HTML). Oublier
+ * l'alias = signatures jamais chargées pour ce doc_type → tableau émargement
+ * vide (retour Loris « FEUILLE D'ÉMARGEMENT PLANNING : signatures absentes »).
+ */
+export const DOC_TYPES_WITH_SIGNATURE_TABLE = new Set<string>([
+  "attestation_assiduite",
+  "feuille_emargement",
+  "feuille_emargement_collectif",
+  "planning_hebdo_signe",
+  "planning_semaine",
+]);
