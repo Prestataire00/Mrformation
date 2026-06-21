@@ -50,6 +50,12 @@ import {
 } from "@/lib/services/documents-store";
 import { cn } from "@/lib/utils";
 import { DocMatrixSection } from "@/components/formations/DocMatrixSection";
+import { BulkDocActionsPanel, type BulkDocGroup } from "./BulkDocActionsPanel";
+import {
+  buildDownloadAllArgs,
+  downloadAllSessionDocs,
+  type RawSessionDoc,
+} from "@/lib/utils/batch-doc-download-all";
 import { useDocumentGeneration } from "@/hooks/useDocumentGeneration";
 import { SecondaryDocCatalogDialog } from "./SecondaryDocCatalogDialog";
 import {
@@ -278,6 +284,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
   const [massSending, setMassSending] = useState<string | null>(null);
   const [massDownloading, setMassDownloading] = useState<string | null>(null);
   const [massRequestingSig, setMassRequestingSig] = useState<string | null>(null);
+  const [downloadingAll, setDownloadingAll] = useState(false);
 
   // h-22 : Dialog catalogue documents secondaires
   const [secondaryCatalogOpen, setSecondaryCatalogOpen] = useState(false);
@@ -905,6 +912,55 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     setMassDownloading(null);
   };
 
+  // ===== TOUT TÉLÉCHARGER (ZIP agrégé tous types) — spec 2026-06-21 =====
+  const handleDownloadAllSession = async () => {
+    if (docs.length === 0) return;
+    setDownloadingAll(true);
+    const t0 = Date.now();
+    try {
+      const raw: RawSessionDoc[] = docs.map((d) => {
+        const info = getOwnerInfo(d);
+        return {
+          docType: d.doc_type,
+          ownerType: d.owner_type as "learner" | "company" | "trainer",
+          ownerId: d.owner_id,
+          ownerName: info.name,
+          templateId: d.template_id ?? null,
+          customLabel: d.custom_label ?? null,
+        };
+      });
+      const args = buildDownloadAllArgs(raw, {
+        sessionId: formation.id,
+        sessionTitle: formation.title ?? formation.id,
+        now: new Date(),
+        staticDocTypes: STATIC_DOCS as unknown as string[],
+        folderLabel: (dt) => DOC_LABELS[dt] ?? dt,
+        fileLabel: (dt) => DOC_LABELS[dt] ?? dt,
+      });
+      const res = await downloadAllSessionDocs(args);
+      const secs = ((Date.now() - t0) / 1000).toFixed(1);
+      if (res.failedTypes > 0) {
+        toast({
+          title: `${res.totalFiles} document(s) téléchargé(s)`,
+          description: `${res.failedTypes} en échec — voir _erreurs.txt (généré en ${secs}s)`,
+        });
+      } else {
+        toast({
+          title: `${res.totalFiles} document(s) téléchargé(s)`,
+          description: `${res.successTypes} type(s) — généré en ${secs}s`,
+        });
+      }
+    } catch (err) {
+      toast({
+        title: "Erreur téléchargement global",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    } finally {
+      setDownloadingAll(false);
+    }
+  };
+
   // ===== MASS SIGNATURE REQUEST (Story F3) =====
 
   const handleMassSignatureRequest = async (docType: string) => {
@@ -1403,6 +1459,54 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
 
   const isInitializing = initializing && docs.length === 0 && enrollments.length > 0;
 
+  // Groupes pour le panneau d'actions en masse (visible dans les 2 vues)
+  const bulkGroups: BulkDocGroup[] = (() => {
+    const countOf = (ownerType: ConventionOwnerType, docType: string) =>
+      docs.filter((d) => d.owner_type === ownerType && d.doc_type === docType).length;
+
+    const buildRows = (ownerType: ConventionOwnerType, docTypes: readonly string[]) =>
+      docTypes
+        .map((dt) => ({
+          docType: dt,
+          label: DOC_LABELS_PLURAL[dt] ?? DOC_LABELS[dt] ?? dt,
+          count: countOf(ownerType, dt),
+          canDownload: hasBatchEndpoint(dt),
+          canSend: hasBatchSendEndpoint(dt),
+          signable: REQUIRES_SIGNATURE_TYPES.includes(dt as ConventionDocType) && hasBatchSignatureRequestEndpoint(dt),
+        }))
+        .filter((r) => r.count > 0);
+
+    const secondaryByOwner = (ownerType: ConventionOwnerType) =>
+      secondaryDocTypesPresent
+        .map((dt) => ({
+          docType: dt,
+          label: DOC_LABELS[dt] ?? dt,
+          count: countOf(ownerType, dt),
+          canDownload: hasBatchEndpoint(dt),
+          canSend: hasBatchSendEndpoint(dt),
+          signable: hasBatchSignatureRequestEndpoint(dt),
+        }))
+        .filter((r) => r.count > 0);
+
+    return [
+      {
+        ownerType: "learner" as const,
+        ownerLabel: "Apprenants",
+        rows: [...buildRows("learner", DEFAULT_LEARNER_DOCS), ...secondaryByOwner("learner")],
+      },
+      {
+        ownerType: "company" as const,
+        ownerLabel: "Entreprises",
+        rows: [...buildRows("company", DEFAULT_COMPANY_DOCS), ...secondaryByOwner("company")],
+      },
+      {
+        ownerType: "trainer" as const,
+        ownerLabel: "Formateurs",
+        rows: [...buildRows("trainer", DEFAULT_TRAINER_DOCS), ...secondaryByOwner("trainer")],
+      },
+    ];
+  })();
+
   // ── Compute progress stats for hero row ──
   const docProgress = (() => {
     const types = ["convocation", "certificat_realisation", "attestation_assiduite", "feuille_emargement", "convention_entreprise"] as const;
@@ -1608,6 +1712,17 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
           {saving === "confirm-all-learners" && <Loader2 className="h-3 w-3 animate-spin" />}
           <CheckCircle className="h-3 w-3" /> Tout figer
         </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="text-xs h-7 gap-1"
+          onClick={handleDownloadAllSession}
+          disabled={downloadingAll || docs.length === 0}
+          title="Tous les documents de la session en un seul ZIP"
+        >
+          {downloadingAll ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
+          Tout télécharger (ZIP)
+        </Button>
         {/* h-22 : bouton catalogue documents secondaires
             P10 (code review 2026-05-19) — libellé aligné sur spec AC-3 */}
         <Button
@@ -1637,6 +1752,19 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
           Détail
         </Button>
       </div>
+
+      {/* Actions en masse — visibles dans les 2 vues (spec 2026-06-21) */}
+      <BulkDocActionsPanel
+        groups={bulkGroups}
+        savingKey={saving}
+        massSending={massSending}
+        massDownloading={massDownloading}
+        massRequestingSig={massRequestingSig}
+        onConfirmAll={(docType, ownerType) => handleMassConfirm(docType as ConventionDocType, ownerType)}
+        onDownloadAll={(ownerType, docType) => handleDownloadAllPDF(ownerType, docType)}
+        onSendAll={(ownerType, docType) => handleMassSendWithPDF(ownerType, docType)}
+        onRequestSignature={(docType) => handleMassSignatureRequest(docType)}
+      />
 
       {/* ═══ VUE MATRICE — Composants réutilisables ═══ */}
       {matrixView && (
@@ -1730,53 +1858,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
       {/* Mass actions — compact */}
       <div className="border rounded-lg overflow-hidden">
         <div className="px-4 py-2.5 bg-muted/30 border-b">
-          <span className="text-sm font-medium">Actions en masse — documents par défaut</span>
-        </div>
-        <div className="px-4 py-2 space-y-1.5">
-          {DEFAULT_LEARNER_DOCS.map((docType) => {
-            const label = DOC_LABELS_PLURAL[docType] || docType;
-            const isMassConfirming = saving === `mass-confirm-${docType}`;
-            const isMassSending = saving === `mass-send-${docType}`;
-
-            return (
-              <div key={docType} className="flex items-center justify-between py-1">
-                <span className="text-xs font-medium text-muted-foreground capitalize">{label}</span>
-                <div className="flex items-center gap-1.5">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-6 text-xs gap-1"
-                    onClick={() => handleMassConfirm(docType)}
-                    disabled={isMassConfirming}
-                  >
-                    {isMassConfirming && <Loader2 className="h-3 w-3 animate-spin" />}
-                    <CheckCircle className="h-3 w-3" /> Figer
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-6 text-xs gap-1"
-                    onClick={() => setConfirmMassSend({ docType })}
-                    disabled={isMassSending}
-                  >
-                    {isMassSending && <Loader2 className="h-3 w-3 animate-spin" />}
-                    <Send className="h-3 w-3" /> Envoyer
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-6 w-6 p-0"
-                    onClick={() => {
-                      navigator.clipboard.writeText(`${DOC_LABELS[docType]} - ${formation.title}`);
-                      toast({ title: "Copié" });
-                    }}
-                  >
-                    <Copy className="h-3 w-3" />
-                  </Button>
-                </div>
-              </div>
-            );
-          })}
+          <span className="text-sm font-medium">Documents personnalisés (masse)</span>
         </div>
 
         {/* Mass custom docs */}
@@ -1843,74 +1925,6 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
             <span className="text-sm font-medium">Apprenants ({enrollments.length})</span>
           </div>
 
-          {/* Lot G : Actions en masse — 1 ligne par doc_type apprenant.
-              Avant : seul convocation avait des boutons "Envoyer tout"/"PDF tout".
-              Maintenant : tous les doc_types ∈ DEFAULT_LEARNER_DOCS qui ont au
-              moins une action batch (envoi OU téléchargement) sont exposés
-              (cf retour Loris "PDF Tous télécharge que les convocations + il
-              faudrait figer les certificats de réalisation de tout le monde
-              et tous les télécharger Pour chacun des docs"). */}
-          {enrollments.length > 0 && (
-            <div className="px-4 py-2 space-y-1.5 border-b bg-muted/20">
-              {DEFAULT_LEARNER_DOCS
-                .filter((dt) => hasBatchEndpoint(dt) || hasBatchSendEndpoint(dt))
-                .map((docType) => {
-                  const typeLabel = DOC_LABELS_PLURAL[docType] ?? DOC_LABELS[docType] ?? docType;
-                  const isMassConfirming = saving === `mass-confirm-${docType}`;
-                  const key = `learner-${docType}`;
-                  const isSending = massSending === key;
-                  const isDownloading = massDownloading === key;
-                  const canSend = hasBatchSendEndpoint(docType);
-                  const canDownload = hasBatchEndpoint(docType);
-                  return (
-                    <div key={docType} className="flex items-center justify-between py-1 gap-2">
-                      <span className="text-xs font-medium text-muted-foreground truncate">
-                        {typeLabel} <span className="text-gray-400">({enrollments.length})</span>
-                      </span>
-                      <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-6 text-xs gap-1"
-                          onClick={() => handleMassConfirm(docType, "learner")}
-                          disabled={isMassConfirming}
-                          title={`Figer tous les ${typeLabel.toLowerCase()} en l'état actuel`}
-                        >
-                          {isMassConfirming && <Loader2 className="h-3 w-3 animate-spin" />}
-                          <CheckCircle className="h-3 w-3" /> Tout figer
-                        </Button>
-                        {canSend && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-6 text-xs gap-1"
-                            onClick={() => handleMassSendWithPDF("learner", docType)}
-                            disabled={massSending !== null}
-                          >
-                            {isSending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
-                            Envoyer tout
-                          </Button>
-                        )}
-                        {canDownload && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-6 text-xs gap-1"
-                            onClick={() => handleDownloadAllPDF("learner", docType)}
-                            disabled={massDownloading !== null}
-                            title={`Télécharger un ZIP avec tous les ${typeLabel.toLowerCase()}`}
-                          >
-                            {isDownloading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
-                            PDF tout
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-            </div>
-          )}
-
           {enrollments.length === 0 ? (
             <p className="text-sm text-muted-foreground px-4 py-4 text-center italic">Aucun apprenant inscrit.</p>
           ) : (
@@ -1930,82 +1944,6 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
             <span className="text-sm font-medium">Entreprises ({companies.length})</span>
           </div>
 
-          {/* Lot G : Actions en masse par doc_type entreprise */}
-          {companies.length > 0 && (
-            <div className="px-4 py-2 space-y-1.5 border-b bg-muted/20">
-              {DEFAULT_COMPANY_DOCS
-                .filter((dt) => hasBatchEndpoint(dt) || hasBatchSendEndpoint(dt))
-                .map((docType) => {
-                  const typeLabel = DOC_LABELS_PLURAL[docType] ?? DOC_LABELS[docType] ?? docType;
-                  const signable = REQUIRES_SIGNATURE_TYPES.includes(docType) && hasBatchSignatureRequestEndpoint(docType);
-                  const isMassConfirming = saving === `mass-confirm-${docType}`;
-                  const key = `company-${docType}`;
-                  const isSending = massSending === key;
-                  const isDownloading = massDownloading === key;
-                  const canSend = hasBatchSendEndpoint(docType);
-                  const canDownload = hasBatchEndpoint(docType);
-                  return (
-                    <div key={docType} className="flex items-center justify-between py-1 gap-2">
-                      <span className="text-xs font-medium text-muted-foreground truncate">
-                        {typeLabel} <span className="text-gray-400">({companies.length})</span>
-                      </span>
-                      <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-6 text-xs gap-1"
-                          onClick={() => handleMassConfirm(docType, "company")}
-                          disabled={isMassConfirming}
-                          title={`Figer tous les ${typeLabel.toLowerCase()} en l'état actuel`}
-                        >
-                          {isMassConfirming && <Loader2 className="h-3 w-3 animate-spin" />}
-                          <CheckCircle className="h-3 w-3" /> Tout figer
-                        </Button>
-                        {canSend && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-6 text-xs gap-1"
-                            onClick={() => handleMassSendWithPDF("company", docType)}
-                            disabled={massSending !== null}
-                          >
-                            {isSending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
-                            Envoyer tout
-                          </Button>
-                        )}
-                        {canDownload && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-6 text-xs gap-1"
-                            onClick={() => handleDownloadAllPDF("company", docType)}
-                            disabled={massDownloading !== null}
-                            title={`Télécharger un ZIP avec tous les ${typeLabel.toLowerCase()}`}
-                          >
-                            {isDownloading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
-                            PDF tout
-                          </Button>
-                        )}
-                        {signable && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-6 text-xs gap-1 border-orange-300 text-orange-700 hover:bg-orange-50"
-                            onClick={() => handleMassSignatureRequest(docType)}
-                            disabled={massRequestingSig !== null}
-                            title="Crée un magic link de signature pour chaque destinataire (valide 30 jours)"
-                          >
-                            {massRequestingSig === docType ? <Loader2 className="h-3 w-3 animate-spin" /> : <PenLine className="h-3 w-3" />}
-                            Demander signature
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-            </div>
-          )}
-
           {companies.length === 0 ? (
             <p className="text-sm text-muted-foreground px-4 py-4 text-center italic">Aucune entreprise.</p>
           ) : (
@@ -2024,82 +1962,6 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
           <div className="px-4 py-2.5 bg-muted/30 border-b">
             <span className="text-sm font-medium">Formateurs ({trainers.length})</span>
           </div>
-
-          {/* Lot G : Actions en masse par doc_type formateur */}
-          {trainers.length > 0 && (
-            <div className="px-4 py-2 space-y-1.5 border-b bg-muted/20">
-              {DEFAULT_TRAINER_DOCS
-                .filter((dt) => hasBatchEndpoint(dt) || hasBatchSendEndpoint(dt))
-                .map((docType) => {
-                  const typeLabel = DOC_LABELS_PLURAL[docType] ?? DOC_LABELS[docType] ?? docType;
-                  const signable = REQUIRES_SIGNATURE_TYPES.includes(docType) && hasBatchSignatureRequestEndpoint(docType);
-                  const isMassConfirming = saving === `mass-confirm-${docType}`;
-                  const key = `trainer-${docType}`;
-                  const isSending = massSending === key;
-                  const isDownloading = massDownloading === key;
-                  const canSend = hasBatchSendEndpoint(docType);
-                  const canDownload = hasBatchEndpoint(docType);
-                  return (
-                    <div key={docType} className="flex items-center justify-between py-1 gap-2">
-                      <span className="text-xs font-medium text-muted-foreground truncate">
-                        {typeLabel} <span className="text-gray-400">({trainers.length})</span>
-                      </span>
-                      <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-6 text-xs gap-1"
-                          onClick={() => handleMassConfirm(docType, "trainer")}
-                          disabled={isMassConfirming}
-                          title={`Figer tous les ${typeLabel.toLowerCase()} en l'état actuel`}
-                        >
-                          {isMassConfirming && <Loader2 className="h-3 w-3 animate-spin" />}
-                          <CheckCircle className="h-3 w-3" /> Tout figer
-                        </Button>
-                        {canSend && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-6 text-xs gap-1"
-                            onClick={() => handleMassSendWithPDF("trainer", docType)}
-                            disabled={massSending !== null}
-                          >
-                            {isSending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
-                            Envoyer tout
-                          </Button>
-                        )}
-                        {canDownload && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-6 text-xs gap-1"
-                            onClick={() => handleDownloadAllPDF("trainer", docType)}
-                            disabled={massDownloading !== null}
-                            title={`Télécharger un ZIP avec tous les ${typeLabel.toLowerCase()}`}
-                          >
-                            {isDownloading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
-                            PDF tout
-                          </Button>
-                        )}
-                        {signable && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-6 text-xs gap-1 border-orange-300 text-orange-700 hover:bg-orange-50"
-                            onClick={() => handleMassSignatureRequest(docType)}
-                            disabled={massRequestingSig !== null}
-                            title="Crée un magic link de signature pour chaque formateur (valide 30 jours)"
-                          >
-                            {massRequestingSig === docType ? <Loader2 className="h-3 w-3 animate-spin" /> : <PenLine className="h-3 w-3" />}
-                            Demander signature
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-            </div>
-          )}
 
           {trainers.length === 0 ? (
             <p className="text-sm text-muted-foreground px-4 py-4 text-center italic">Aucun formateur.</p>
@@ -2127,53 +1989,6 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
             <p className="text-xs text-sky-700 mt-0.5">
               Attribués via « Ajouter doc secondaire ». Figez, générez (Voir) et signez-les comme les documents officiels.
             </p>
-          </div>
-
-          {/* Actions en masse — une ligne par type secondaire présent */}
-          <div className="px-4 py-2 space-y-1.5 border-b bg-muted/20">
-            {secondaryDocTypesPresent.map((docType) => {
-              const meta = SECONDARY_TEMPLATE_CATEGORIES[docType as SecondaryDocType];
-              const typeLabel = meta?.label || DOC_LABELS[docType] || docType;
-              const count = secondaryDocs.filter((d) => d.doc_type === docType).length;
-              const signable = !!meta?.signable && hasBatchSignatureRequestEndpoint(docType);
-              const isMassConfirming = saving === `mass-confirm-${docType}`;
-              return (
-                <div key={docType} className="flex items-center justify-between py-1 gap-2">
-                  <span className="text-xs font-medium text-muted-foreground truncate">
-                    {typeLabel} <span className="text-gray-400">({count})</span>
-                  </span>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-6 text-xs gap-1"
-                      onClick={() => handleMassConfirm(docType as ConventionDocType)}
-                      disabled={isMassConfirming}
-                    >
-                      {isMassConfirming && <Loader2 className="h-3 w-3 animate-spin" />}
-                      <CheckCircle className="h-3 w-3" /> Tout figer
-                    </Button>
-                    {signable && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-6 text-xs gap-1 border-orange-300 text-orange-700 hover:bg-orange-50"
-                        onClick={() => handleMassSignatureRequest(docType)}
-                        disabled={massRequestingSig !== null}
-                        title="Crée un magic link de signature pour chaque destinataire (valide 30 jours)"
-                      >
-                        {massRequestingSig === docType ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : (
-                          <PenLine className="h-3 w-3" />
-                        )}
-                        Demander signature à tous
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
           </div>
 
           {/* Documents groupés par destinataire */}

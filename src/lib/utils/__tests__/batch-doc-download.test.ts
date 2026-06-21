@@ -166,3 +166,50 @@ describe("fetchBatchZip", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+describe("BATCH_ENDPOINTS_BY_DOC_TYPE — couverture", () => {
+  // Types nominatifs ayant un endpoint generate-*-batch session-scopé.
+  // Source : src/app/api/documents/generate-*-batch (vérifié : body { sessionId } → { zipBase64 }).
+  const EXPECTED: Record<string, string> = {
+    convocation: "generate-convocations-batch",
+    certificat_realisation: "generate-certificats-realisation-batch",
+    attestation_assiduite: "generate-attestations-assiduite-batch",
+    feuille_emargement: "generate-emargements-individuels-batch",
+    feuille_emargement_collectif: "generate-emargements-batch",
+    convention_entreprise: "generate-conventions-batch",
+    convention_intervention: "generate-conventions-intervention-batch",
+    avis_hab_elec_generique: "generate-avis-habilitation-electrique-batch",
+    avis_hab_elec_b0_bf_bs: "generate-avis-habilitation-electrique-b0-bf-bs-batch",
+    avis_hab_elec_b1v_b2v_br: "generate-avis-habilitation-electrique-b1v-b2v-br-batch",
+    avis_hab_elec_bf_hf: "generate-avis-habilitation-electrique-bf-hf-batch",
+    avis_hab_elec_bt: "generate-avis-habilitation-electrique-bt-batch",
+    avis_hab_elec_bt_ht: "generate-avis-habilitation-electrique-bt-ht-batch",
+    avis_hab_elec_h0_b0: "generate-avis-habilitation-electrique-h0-b0-batch",
+    avis_hab_elec_h0_b0_bf_hf_bs: "generate-avis-habilitation-electrique-h0-b0-bf-hf-bs-batch",
+    avis_hab_elec_h0_b0_initial: "generate-avis-habilitation-electrique-h0-b0-initial-batch",
+    attestation_aipr: "generate-attestations-aipr-batch",
+    attestation_competences: "generate-attestations-competences-batch",
+    attestation_abandon_formation: "generate-attestations-abandon-batch",
+    certificat_travail_hauteur: "generate-certificats-travail-hauteur-batch",
+    certificat_diplome: "generate-certificats-diplome-batch",
+    autorisation_image: "generate-autorisations-image-batch",
+    decharge_responsabilite: "generate-decharges-responsabilite-batch",
+    lettre_decharge_responsabilite: "generate-lettres-decharge-batch",
+    contrat_engagement_stagiaire: "generate-contrats-engagement-batch",
+    bilan_poe: "generate-bilans-poe-batch",
+    resultats_evaluations: "generate-resultats-evaluations-batch",
+  };
+
+  it("mappe chaque type nominatif vers son endpoint generate-*-batch", () => {
+    for (const [docType, endpoint] of Object.entries(EXPECTED)) {
+      expect(BATCH_ENDPOINTS_BY_DOC_TYPE[docType]).toBe(endpoint);
+    }
+  });
+
+  it("n'inclut PAS les types non session-scopés (charte_formateur entité-wide, planning_semaine, reponses_*)", () => {
+    expect(BATCH_ENDPOINTS_BY_DOC_TYPE["charte_formateur"]).toBeUndefined();
+    expect(BATCH_ENDPOINTS_BY_DOC_TYPE["planning_semaine"]).toBeUndefined();
+    expect(BATCH_ENDPOINTS_BY_DOC_TYPE["reponses_evaluations"]).toBeUndefined();
+    expect(BATCH_ENDPOINTS_BY_DOC_TYPE["reponses_satisfaction_session"]).toBeUndefined();
+  });
+});
