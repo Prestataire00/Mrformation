@@ -69,6 +69,7 @@ type QuestionnaireWithStats = Questionnaire & {
   questions: Question[];
   responses_count: number;
   avg_rating: number | null;
+  created_by_trainer_id?: string | null;
 };
 
 const TYPE_LABELS: Record<QuestionnaireType, string> = {
@@ -712,7 +713,12 @@ export default function QuestionnairesPage() {
                 filtered.map((q) => (
                   <tr key={q.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-3">
-                      <p className="font-medium text-gray-900">{truncate(q.title, 45)}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium text-gray-900">{truncate(q.title, 45)}</p>
+                        {q.created_by_trainer_id && (
+                          <Badge variant="secondary" className="text-[10px]">Créé par formateur</Badge>
+                        )}
+                      </div>
                       {q.description && (
                         <p className="text-xs text-gray-400 mt-0.5">{truncate(q.description, 60)}</p>
                       )}

@@ -193,6 +193,7 @@ const trainerNavSections: NavSection[] = [
       { label: "Mon Planning", href: "/trainer/planning", icon: ClipboardList },
       { label: "Mes Contrats", href: "/trainer/contracts", icon: FileText },
       { label: "Évaluations", href: "/trainer/evaluations", icon: Star },
+      { label: "Questionnaires", href: "/trainer/questionnaires", icon: ClipboardList },
       { label: "Mon Profil", href: "/trainer/profile", icon: UserCheck },
     ],
   },
