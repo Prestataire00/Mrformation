@@ -16,6 +16,7 @@
  * purement la couche moteur + cache + observabilité.
  */
 
+import { createHash } from "crypto";
 import { logEvent } from "@/lib/logger";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
@@ -78,6 +79,10 @@ export class DocumentGenerationService {
     const cacheKey = computeCacheKey({
       entity_id: input.entityId,
       ...input.cacheInputs,
+      // Hash du HTML résolu : invalide le cache dès que le contenu rendu change
+      // (y compris modif d'un template système en code, non couverte par les
+      // `*_updated_at`). Cf. pdf-cache.ts::CacheKeyInputs.html_hash.
+      html_hash: createHash("sha256").update(input.html).digest("hex"),
     });
 
     try {

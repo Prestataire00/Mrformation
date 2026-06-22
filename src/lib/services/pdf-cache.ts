@@ -40,6 +40,13 @@ export interface CacheKeyInputs {
   client_updated_at?: string | null;
   /** updated_at du trainer */
   trainer_updated_at?: string | null;
+  /**
+   * Hash du HTML qui sera rendu (ou du template système brut). Fait invalider le
+   * cache quand le CONTENU du template change en code — les `*_updated_at` ne
+   * couvrent que les templates Word stockés en base, pas les templates système
+   * (ex. modif « payée à 15 jours » → « 30 jours » dans convention-intervention).
+   */
+  html_hash?: string | null;
 }
 
 /**
@@ -59,6 +66,7 @@ export function computeCacheKey(inputs: CacheKeyInputs): string {
     learner_updated_at: inputs.learner_updated_at ?? "",
     client_updated_at: inputs.client_updated_at ?? "",
     trainer_updated_at: inputs.trainer_updated_at ?? "",
+    html_hash: inputs.html_hash ?? "",
     custom_variables: inputs.custom_variables ? JSON.stringify(sortedKeys(inputs.custom_variables)) : "",
   };
 

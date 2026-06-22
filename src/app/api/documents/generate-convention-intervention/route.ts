@@ -32,28 +32,8 @@ import {
   DocumentGenerationService,
   createDefaultEngine,
 } from "@/lib/services/document-generation";
+import { computeAgreedCost, sessionDayCount } from "@/lib/utils/trainer-cost";
 import type { Session, Trainer } from "@/lib/types";
-
-/** Calcule le coût HT depuis formation_trainers : agreed_cost_ht > hourly × hours > daily × jours */
-function computeAgreedCost(ft: {
-  agreed_cost_ht?: number | null;
-  hourly_rate?: number | null;
-  hours_done?: number | null;
-  daily_rate?: number | null;
-  dates_done?: string | null;
-}): number | null {
-  if (typeof ft.agreed_cost_ht === "number" && ft.agreed_cost_ht > 0) {
-    return ft.agreed_cost_ht;
-  }
-  if (typeof ft.hourly_rate === "number" && typeof ft.hours_done === "number") {
-    return ft.hourly_rate * ft.hours_done;
-  }
-  if (typeof ft.daily_rate === "number" && ft.dates_done) {
-    const days = ft.dates_done.split(",").filter(Boolean).length;
-    if (days > 0) return ft.daily_rate * days;
-  }
-  return null;
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -126,7 +106,15 @@ export async function POST(request: NextRequest) {
       trainer: Trainer;
     };
 
-    const costHt = computeAgreedCost(ftTyped);
+    const sessionForCost = session as unknown as {
+      planned_hours?: number | null;
+      start_date?: string | null;
+      end_date?: string | null;
+    };
+    const costHt = computeAgreedCost(ftTyped, {
+      hours: sessionForCost.planned_hours ?? null,
+      days: sessionDayCount(sessionForCost.start_date, sessionForCost.end_date),
+    });
     const trainerWithCost = {
       ...ftTyped.trainer,
       _agreed_cost_ht: costHt,

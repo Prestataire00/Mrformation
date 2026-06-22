@@ -19,6 +19,8 @@ import {
 import { validateDocumentVariables, type MissingByEntity } from "@/lib/validation/document-vars-validator";
 import { loadSignaturesBySessionId, DOC_TYPES_WITH_SIGNATURE_TABLE } from "@/lib/services/load-signatures";
 import { loadClientWithContacts } from "@/lib/services/load-client";
+import { computeAgreedCost, sessionDayCount } from "@/lib/utils/trainer-cost";
+import { createHash } from "crypto";
 import { loadSessionAggregates } from "@/lib/services/load-session-aggregates";
 import { loadEvaluationResults } from "@/lib/services/load-evaluation-results";
 import { generateLoginQrDataUrl } from "@/lib/services/login-qr-code";
@@ -239,6 +241,16 @@ export async function POST(request: NextRequest) {
     // ou entité modifié grâce aux updated_at dans le hash).
     // Note : on n'inclut PAS date_today dans le hash pour ne pas invalider chaque
     // jour. Si tu veux date_today dynamique, passe-la en custom_variables.
+    // Templates système (en code) : leur contenu n'a pas d'`updated_at` en base.
+    // On hashe le HTML brut du template pour invalider le cache quand il est
+    // modifié en code (ex. délai de paiement convention-intervention).
+    const systemTplForHash = payload.doc_type ? getSystemTemplate(payload.doc_type) : null;
+    const systemTplHash = systemTplForHash
+      ? createHash("sha256")
+          .update(`${systemTplForHash.html} ${systemTplForHash.footer ?? ""}`)
+          .digest("hex")
+      : null;
+
     const cacheKey = computeCacheKey({
       entity_id: auth.profile.entity_id,
       template_id: template?.id ?? null,
@@ -252,6 +264,7 @@ export async function POST(request: NextRequest) {
       learner_updated_at: learnerUpdatedAt,
       client_updated_at: clientUpdatedAt,
       trainer_updated_at: trainerUpdatedAt,
+      html_hash: systemTplHash,
       custom_variables: payload.custom_variables ?? null,
     });
 
@@ -384,7 +397,9 @@ export async function POST(request: NextRequest) {
           if (trainerData && payload.context.session_id) {
             const { data: ft } = await auth.supabase
               .from("formation_trainers")
-              .select("agreed_cost_ht, hourly_rate, hours_done, daily_rate, dates_done")
+              .select(
+                "agreed_cost_ht, hourly_rate, hours_done, daily_rate, dates_done, session:sessions(planned_hours, start_date, end_date)",
+              )
               .eq("session_id", payload.context.session_id)
               .eq("trainer_id", payload.context.trainer_id)
               .maybeSingle();
@@ -395,16 +410,14 @@ export async function POST(request: NextRequest) {
                 hours_done: number | null;
                 daily_rate: number | null;
                 dates_done: string | null;
+                session: { planned_hours?: number | null; start_date?: string | null; end_date?: string | null } | null;
               };
-              let costHt: number | null = null;
-              if (typeof ftTyped.agreed_cost_ht === "number" && ftTyped.agreed_cost_ht > 0) {
-                costHt = ftTyped.agreed_cost_ht;
-              } else if (typeof ftTyped.hourly_rate === "number" && typeof ftTyped.hours_done === "number") {
-                costHt = ftTyped.hourly_rate * ftTyped.hours_done;
-              } else if (typeof ftTyped.daily_rate === "number" && ftTyped.dates_done) {
-                const days = ftTyped.dates_done.split(",").filter(Boolean).length;
-                if (days > 0) costHt = ftTyped.daily_rate * days;
-              }
+              // Fallback durée session quand hours_done/dates_done sont vides
+              // (cf. src/lib/utils/trainer-cost.ts — bug « tarif absent »).
+              const costHt = computeAgreedCost(ftTyped, {
+                hours: ftTyped.session?.planned_hours ?? null,
+                days: sessionDayCount(ftTyped.session?.start_date, ftTyped.session?.end_date),
+              });
               trainerData = { ...trainerData, _agreed_cost_ht: costHt };
             }
           }
