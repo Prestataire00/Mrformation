@@ -331,12 +331,30 @@ export async function POST(request: NextRequest) {
 
         // Fetch client avec ses contacts via helper (2 queries séparées pour
         // contourner PGRST201 quand plusieurs FK clients↔contacts existent).
+        //
+        // Résout l'entreprise (client) soit via client_id explicite, soit — pour
+        // un doc per-apprenant (ex. AIPR « présenté par [entreprise] ») — dérivé
+        // de l'enrollment de l'apprenant pour cette session. Sans cette
+        // dérivation, data.client restait null → {{nom_client}} vide et
+        // {{client_adresse}} = "[Adresse client]" (retour Loris AIPR). Aligne le
+        // comportement sur les routes batch qui chargent déjà le client par
+        // enrollment.client_id.
         let clientData: Client | null = null;
-        if (payload.context.client_id) {
-          clientData = await loadClientWithContacts(auth.supabase, payload.context.client_id);
+        let resolvedClientId: string | null = payload.context.client_id ?? null;
+        if (!resolvedClientId && payload.context.learner_id && payload.context.session_id) {
+          const { data: enr } = await auth.supabase
+            .from("enrollments")
+            .select("client_id")
+            .eq("session_id", payload.context.session_id)
+            .eq("learner_id", payload.context.learner_id)
+            .maybeSingle();
+          resolvedClientId = (enr?.client_id as string | null) ?? null;
+        }
+        if (resolvedClientId) {
+          clientData = await loadClientWithContacts(auth.supabase, resolvedClientId);
           if (!clientData) {
             console.warn(
-              `[generate-from-template] client NOT FOUND for id=${payload.context.client_id}`,
+              `[generate-from-template] client NOT FOUND for id=${resolvedClientId}`,
             );
           }
         } else if (payload.doc_type === "convention_entreprise") {
