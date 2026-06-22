@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { BookOpen, Clock, Play, CheckCircle2, Loader2, Plus, FileText, Video, HelpCircle, ExternalLink, GraduationCap, Calendar } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEntity } from "@/contexts/EntityContext";
+import { LearnerSupportsSection } from "@/components/learner/LearnerSupportsSection";
 
 interface PublishedCourse {
   id: string;
@@ -264,6 +265,8 @@ export default function LearnerCoursesPage() {
           Accédez à vos cours et suivez votre progression.
         </p>
       </div>
+
+      <LearnerSupportsSection />
 
       {/* Assigned via formations */}
       {!loading && assignedCourses.length > 0 && (
