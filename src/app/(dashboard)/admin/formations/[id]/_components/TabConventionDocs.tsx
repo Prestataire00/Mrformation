@@ -1459,54 +1459,6 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
 
   const isInitializing = initializing && docs.length === 0 && enrollments.length > 0;
 
-  // Groupes pour le panneau d'actions en masse (visible dans les 2 vues)
-  const bulkGroups: BulkDocGroup[] = (() => {
-    const countOf = (ownerType: ConventionOwnerType, docType: string) =>
-      docs.filter((d) => d.owner_type === ownerType && d.doc_type === docType).length;
-
-    const buildRows = (ownerType: ConventionOwnerType, docTypes: readonly string[]) =>
-      docTypes
-        .map((dt) => ({
-          docType: dt,
-          label: DOC_LABELS_PLURAL[dt] ?? DOC_LABELS[dt] ?? dt,
-          count: countOf(ownerType, dt),
-          canDownload: hasBatchEndpoint(dt),
-          canSend: hasBatchSendEndpoint(dt),
-          signable: REQUIRES_SIGNATURE_TYPES.includes(dt as ConventionDocType) && hasBatchSignatureRequestEndpoint(dt),
-        }))
-        .filter((r) => r.count > 0);
-
-    const secondaryByOwner = (ownerType: ConventionOwnerType) =>
-      secondaryDocTypesPresent
-        .map((dt) => ({
-          docType: dt,
-          label: DOC_LABELS[dt] ?? dt,
-          count: countOf(ownerType, dt),
-          canDownload: hasBatchEndpoint(dt),
-          canSend: hasBatchSendEndpoint(dt),
-          signable: hasBatchSignatureRequestEndpoint(dt),
-        }))
-        .filter((r) => r.count > 0);
-
-    return [
-      {
-        ownerType: "learner" as const,
-        ownerLabel: "Apprenants",
-        rows: [...buildRows("learner", DEFAULT_LEARNER_DOCS), ...secondaryByOwner("learner")],
-      },
-      {
-        ownerType: "company" as const,
-        ownerLabel: "Entreprises",
-        rows: [...buildRows("company", DEFAULT_COMPANY_DOCS), ...secondaryByOwner("company")],
-      },
-      {
-        ownerType: "trainer" as const,
-        ownerLabel: "Formateurs",
-        rows: [...buildRows("trainer", DEFAULT_TRAINER_DOCS), ...secondaryByOwner("trainer")],
-      },
-    ];
-  })();
-
   // ── Compute progress stats for hero row ──
   const docProgress = (() => {
     const types = ["convocation", "certificat_realisation", "attestation_assiduite", "feuille_emargement", "convention_entreprise"] as const;
@@ -1575,6 +1527,58 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
   const secondaryDocTypesPresent = Array.from(
     new Set(secondaryDocs.map((d) => d.doc_type)),
   );
+
+  // Groupes pour le panneau d'actions en masse (visible dans les 2 vues).
+  // ⚠ DOIT rester APRÈS `secondaryDocTypesPresent` : le builder le référence
+  // (via secondaryByOwner) et l'IIFE s'exécute au render → sinon TDZ runtime
+  // "Cannot access ... before initialization" qui crashe la page (hotfix).
+  const bulkGroups: BulkDocGroup[] = (() => {
+    const countOf = (ownerType: ConventionOwnerType, docType: string) =>
+      docs.filter((d) => d.owner_type === ownerType && d.doc_type === docType).length;
+
+    const buildRows = (ownerType: ConventionOwnerType, docTypes: readonly string[]) =>
+      docTypes
+        .map((dt) => ({
+          docType: dt,
+          label: DOC_LABELS_PLURAL[dt] ?? DOC_LABELS[dt] ?? dt,
+          count: countOf(ownerType, dt),
+          canDownload: hasBatchEndpoint(dt),
+          canSend: hasBatchSendEndpoint(dt),
+          signable: REQUIRES_SIGNATURE_TYPES.includes(dt as ConventionDocType) && hasBatchSignatureRequestEndpoint(dt),
+        }))
+        .filter((r) => r.count > 0);
+
+    const secondaryByOwner = (ownerType: ConventionOwnerType) =>
+      secondaryDocTypesPresent
+        .map((dt) => ({
+          docType: dt,
+          label: DOC_LABELS[dt] ?? dt,
+          count: countOf(ownerType, dt),
+          canDownload: hasBatchEndpoint(dt),
+          canSend: hasBatchSendEndpoint(dt),
+          signable: hasBatchSignatureRequestEndpoint(dt),
+        }))
+        .filter((r) => r.count > 0);
+
+    return [
+      {
+        ownerType: "learner" as const,
+        ownerLabel: "Apprenants",
+        rows: [...buildRows("learner", DEFAULT_LEARNER_DOCS), ...secondaryByOwner("learner")],
+      },
+      {
+        ownerType: "company" as const,
+        ownerLabel: "Entreprises",
+        rows: [...buildRows("company", DEFAULT_COMPANY_DOCS), ...secondaryByOwner("company")],
+      },
+      {
+        ownerType: "trainer" as const,
+        ownerLabel: "Formateurs",
+        rows: [...buildRows("trainer", DEFAULT_TRAINER_DOCS), ...secondaryByOwner("trainer")],
+      },
+    ];
+  })();
+
   const secondaryGroups = (() => {
     const ownerRank: Record<string, number> = { learner: 0, company: 1, trainer: 2 };
     const map = new Map<
