@@ -11,28 +11,35 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  *
  * Invariant anti-bug : `profile_id` (auth.users) ≠ `trainers.id`. On résout donc
  * d'abord `trainers.id` depuis `profile_id` avant de filtrer `formation_trainers`.
+ *
+ * ⚠️ Multi-entité : un même `profile_id` peut posséder PLUSIEURS fiches `trainers`
+ * (une par entité — la table n'a pas de contrainte d'unicité sur `profile_id`).
+ * On ne peut donc PAS utiliser `.single()` (qui échoue dès qu'il y a 2 fiches et
+ * renvoyait alors une liste vide → « aucune session » / « 0h » au tableau de bord).
+ * On récupère toutes les fiches du profil et on filtre `formation_trainers` par
+ * l'ensemble de leurs `id` via `.in()`.
  */
 export async function isTrainerAssignedToSession(
   supabase: SupabaseClient,
   profileId: string,
   sessionId: string,
 ): Promise<boolean> {
-  const { data: trainer } = await supabase
+  const { data: trainers } = await supabase
     .from("trainers")
     .select("id")
-    .eq("profile_id", profileId)
-    .single();
+    .eq("profile_id", profileId);
 
-  if (!trainer) return false;
+  const trainerIds = ((trainers as Array<{ id: string }> | null) ?? []).map((t) => t.id);
+  if (trainerIds.length === 0) return false;
 
   const { data: assignment } = await supabase
     .from("formation_trainers")
     .select("id")
     .eq("session_id", sessionId)
-    .eq("trainer_id", (trainer as { id: string }).id)
-    .maybeSingle();
+    .in("trainer_id", trainerIds)
+    .limit(1);
 
-  return Boolean(assignment);
+  return Boolean(assignment && (assignment as Array<unknown>).length > 0);
 }
 
 /**
@@ -48,18 +55,20 @@ export async function resolveTrainerSessionIds(
   supabase: SupabaseClient,
   profileId: string,
 ): Promise<string[]> {
-  const { data: trainer } = await supabase
+  // Multi-entité : un profil peut avoir plusieurs fiches trainers (1/entité).
+  // Pas de `.single()` (échouerait avec 2 fiches → []). Cf. doc de tête de fichier.
+  const { data: trainers } = await supabase
     .from("trainers")
     .select("id")
-    .eq("profile_id", profileId)
-    .single();
+    .eq("profile_id", profileId);
 
-  if (!trainer) return [];
+  const trainerIds = ((trainers as Array<{ id: string }> | null) ?? []).map((t) => t.id);
+  if (trainerIds.length === 0) return [];
 
   const { data: links } = await supabase
     .from("formation_trainers")
     .select("session_id")
-    .eq("trainer_id", (trainer as { id: string }).id);
+    .in("trainer_id", trainerIds);
 
   const ids = ((links as Array<{ session_id: string }> | null) ?? []).map((l) => l.session_id);
   return [...new Set(ids)];

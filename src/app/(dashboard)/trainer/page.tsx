@@ -139,6 +139,16 @@ export default function TrainerPage() {
   const weekStart = startOfWeek(now, { weekStartsOn: 1 });
   const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
 
+  // Statut effectif recalculé depuis les dates : `sessions.status` vaut 'upcoming'
+  // par défaut en base et n'est jamais passé à 'completed' → le KPI « heures
+  // délivrées » restait à 0h. On dérive le statut comme la page « Mes sessions ».
+  const effectiveStatus = (s: { status?: string | null; start_date: string; end_date?: string | null }) => {
+    if (s.status === "cancelled") return "cancelled";
+    if (s.end_date && now >= parseISO(s.end_date)) return "completed";
+    if (now >= parseISO(s.start_date)) return "in_progress";
+    return "upcoming";
+  };
+
   const upcomingSessions = sessions.filter((s) =>
     isAfter(parseISO(s.start_date), now) && s.status !== "cancelled"
   );
@@ -154,7 +164,7 @@ export default function TrainerPage() {
   });
 
   const totalHours = sessions
-    .filter((s) => s.status === "completed")
+    .filter((s) => effectiveStatus(s) === "completed")
     .reduce((acc, s) => acc + (s.training?.duration_hours ?? 0), 0);
 
   // ── data fetching ───────────────────────────────────────────────────────────
