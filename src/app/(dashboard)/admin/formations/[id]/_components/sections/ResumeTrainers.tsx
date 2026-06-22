@@ -34,6 +34,7 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
   const [selectedHourlyRate, setSelectedHourlyRate] = useState("");
   const [selectedDailyRate, setSelectedDailyRate] = useState("");
   const [selectedHoursDone, setSelectedHoursDone] = useState("");
+  const [selectedAgreedCost, setSelectedAgreedCost] = useState("");
   const [saving, setSaving] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [suggesting, setSuggesting] = useState(false);
@@ -63,6 +64,7 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
       hourly_rate: parseFloat(selectedHourlyRate) || null,
       daily_rate: parseFloat(selectedDailyRate) || null,
       hours_done: parseFloat(selectedHoursDone) || null,
+      agreed_cost_ht: parseFloat(selectedAgreedCost) || null,
     });
     setSaving(false);
     if (error) {
@@ -74,6 +76,7 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
       setSelectedHourlyRate("");
       setSelectedDailyRate("");
       setSelectedHoursDone("");
+      setSelectedAgreedCost("");
       await onRefresh();
     }
   };
@@ -167,6 +170,9 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
                   )}
                   {ft.daily_rate != null && (
                     <span className="text-xs text-muted-foreground">{ft.daily_rate} €/j</span>
+                  )}
+                  {ft.agreed_cost_ht != null && (
+                    <span className="text-xs font-medium text-muted-foreground">{ft.agreed_cost_ht} € HT</span>
                   )}
                 </div>
                 <Button size="sm" variant="ghost" className="text-red-600 hover:text-red-700" onClick={() => setDeleteId(ft.id)}>
@@ -291,6 +297,7 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
             setSelectedHourlyRate("");
             setSelectedDailyRate("");
             setSelectedHoursDone("");
+            setSelectedAgreedCost("");
           }
         }}>
         <DialogContent>
@@ -378,6 +385,20 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
                 onChange={(e) => setSelectedHoursDone(e.target.value)}
               />
               <p className="text-xs text-muted-foreground mt-1">Si vide, les heures seront calculées depuis les signatures</p>
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1.5 block">Coût total HT (€)</label>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="Optionnel — ex : 1900"
+                value={selectedAgreedCost}
+                onChange={(e) => setSelectedAgreedCost(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Montant total du contrat de sous-traitance. Si vide, il est calculé depuis le taux × la durée de la session.
+              </p>
             </div>
 
             {/* Lot D : alerte sur le profil formateur incomplet pour la

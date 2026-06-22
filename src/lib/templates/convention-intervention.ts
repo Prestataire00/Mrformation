@@ -162,7 +162,7 @@ export const CONVENTION_INTERVENTION_HTML = `<!DOCTYPE html>
   </ul>
 
   <h2 class="article">ARTICLE 5 - MODALITÉS FINANCIÈRE</h2>
-  <p>La rémunération sera versée lorsque la formation sera terminée après l'envoi de tous les documents nécessaires, payée à 15 jours. Soit un total de <strong>[%Coût total du formateur (HT)%] € HT</strong> pour l'intégralité de la prestation.</p>
+  <p>La rémunération sera versée lorsque la formation sera terminée après l'envoi de tous les documents nécessaires, payée à 30 jours. Soit un total de <strong>[%Coût total du formateur (HT)%] € HT</strong> pour l'intégralité de la prestation.</p>
 
   <h2 class="article">ARTICLE 6 – CONDITIONS D'ANNULATION</h2>
   <p>En cas de renoncement de la prestation imputable à l'intervenant, sans motif justifié (production d'un arrêt maladie) à moins de 8 jours avant le début du 1er jour de l'action, celui-ci s'engage à verser à [%Nom de l'organisme%] 15 % de la prestation au titre de dédommagement.</p>
