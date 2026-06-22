@@ -118,52 +118,68 @@ export function Header({ profile, entity }: HeaderProps) {
   const roleLabel = profile?.role ? ROLE_LABELS[profile.role] : "";
   const entityColor = entity?.slug ? ENTITY_COLORS[entity.slug] ?? entity.theme_color : "#374151";
 
+  // Seuls super_admin et commercial sont cross-entité (cf. /api/auth/switch-entity).
+  // Pour les autres rôles (admin, trainer, client, learner) le basculement renvoie
+  // 403 : le sélecteur ne faisait que changer un cookie sans effet → confusion
+  // « C3V/MR affichent la même chose ». On affiche un badge statique, non cliquable.
+  const canSwitchEntity = profile?.role === "super_admin" || profile?.role === "commercial";
+
   return (
     <header className="h-14 flex items-center px-5 gap-4 shrink-0" style={{ background: "#374151" }}>
-      {/* Entity Switcher separator */}
-
-      {/* Entity Switcher */}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            aria-label="Changer d'entité"
-            aria-haspopup="true"
-            className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 bg-white/20 hover:bg-white/30 transition-colors focus:outline-none"
-          >
-            <div
-              className="w-2.5 h-2.5 rounded-full shrink-0 bg-white"
-            />
-            <span className="text-xs font-semibold text-white max-w-[120px] truncate">
-              {entity?.name ?? "Entité"}
-            </span>
-            <ChevronsUpDown className="w-3 h-3 text-white/70" />
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-56">
-          <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">
-            Changer d&apos;entité
-          </DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          {entities.map((e) => {
-            const color = ENTITY_COLORS[e.slug] ?? e.theme_color;
-            const isActive = e.id === entity?.id;
-            return (
-              <DropdownMenuItem
-                key={e.id}
-                onClick={() => handleSwitchEntity(e)}
-                className="flex items-center gap-2.5 cursor-pointer"
-              >
-                <div
-                  className="w-3 h-3 rounded-full shrink-0"
-                  style={{ backgroundColor: color }}
-                />
-                <span className="flex-1 text-sm">{e.name}</span>
-                {isActive && <Check className="w-4 h-4 text-primary" />}
-              </DropdownMenuItem>
-            );
-          })}
-        </DropdownMenuContent>
-      </DropdownMenu>
+      {/* Entity Switcher (cross-entité) ou badge statique (mono-entité) */}
+      {canSwitchEntity ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              aria-label="Changer d'entité"
+              aria-haspopup="true"
+              className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 bg-white/20 hover:bg-white/30 transition-colors focus:outline-none"
+            >
+              <div
+                className="w-2.5 h-2.5 rounded-full shrink-0 bg-white"
+              />
+              <span className="text-xs font-semibold text-white max-w-[120px] truncate">
+                {entity?.name ?? "Entité"}
+              </span>
+              <ChevronsUpDown className="w-3 h-3 text-white/70" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-56">
+            <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">
+              Changer d&apos;entité
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {entities.map((e) => {
+              const color = ENTITY_COLORS[e.slug] ?? e.theme_color;
+              const isActive = e.id === entity?.id;
+              return (
+                <DropdownMenuItem
+                  key={e.id}
+                  onClick={() => handleSwitchEntity(e)}
+                  className="flex items-center gap-2.5 cursor-pointer"
+                >
+                  <div
+                    className="w-3 h-3 rounded-full shrink-0"
+                    style={{ backgroundColor: color }}
+                  />
+                  <span className="flex-1 text-sm">{e.name}</span>
+                  {isActive && <Check className="w-4 h-4 text-primary" />}
+                </DropdownMenuItem>
+              );
+            })}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : (
+        <div
+          className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 bg-white/20"
+          title={entity?.name ?? "Entité"}
+        >
+          <Building2 className="w-3.5 h-3.5 text-white/80 shrink-0" />
+          <span className="text-xs font-semibold text-white max-w-[140px] truncate">
+            {entity?.name ?? "Entité"}
+          </span>
+        </div>
+      )}
 
       <div className="w-px h-6 bg-white/30" />
 

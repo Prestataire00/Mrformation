@@ -4,37 +4,46 @@ import { isTrainerAssignedToSession, resolveTrainerSessionIds } from "../trainer
 type AnyClient = Parameters<typeof isTrainerAssignedToSession>[0];
 
 /**
- * Mock client Supabase pour isTrainerAssignedToSession.
- * Simule : SELECT trainers WHERE profile_id → SELECT formation_trainers WHERE
- * session_id + trainer_id. Enregistre les filtres `.eq()` par table pour
- * vérifier le câblage (résolution profile_id → trainer.id → formation_trainers).
+ * Mock client Supabase pour les deux helpers.
+ * Multi-entité : `trainers` renvoie désormais une LISTE de fiches (un profil peut
+ * en avoir plusieurs, une par entité), et `formation_trainers` est filtré par
+ * `.in("trainer_id", [...])`. Enregistre les filtres `.eq()`/`.in()` par table.
  */
 function makeClient(opts: {
-  trainer?: { id: string } | null;
-  assignment?: { id: string } | null;
+  trainers?: Array<{ id: string }>;
+  // formation_trainers rows: pour isTrainerAssignedToSession (assignment) ou
+  // pour resolveTrainerSessionIds (links).
+  assignment?: Array<{ id: string }>;
+  links?: Array<{ session_id: string }>;
 }) {
   const calls: Record<string, Record<string, unknown>> = {
     trainers: {},
     formation_trainers: {},
   };
 
-  function chain(table: string, terminal: "single" | "maybeSingle", value: unknown) {
+  function chain(table: string, result: unknown) {
     const builder: Record<string, unknown> = {
       select: vi.fn(() => builder),
       eq: vi.fn((col: string, val: unknown) => {
         calls[table][col] = val;
         return builder;
       }),
-      single: vi.fn(async () => ({ data: value, error: value ? null : { message: "not found" } })),
-      maybeSingle: vi.fn(async () => ({ data: value, error: null })),
+      in: vi.fn((col: string, val: unknown) => {
+        calls[table][col] = val;
+        return builder;
+      }),
+      limit: vi.fn(() => builder),
+      then: (resolve: (v: { data: unknown; error: null }) => unknown) =>
+        resolve({ data: result, error: null }),
     };
     return builder;
   }
 
   const client = {
     from: vi.fn((table: string) => {
-      if (table === "trainers") return chain("trainers", "single", opts.trainer ?? null);
-      if (table === "formation_trainers") return chain("formation_trainers", "maybeSingle", opts.assignment ?? null);
+      if (table === "trainers") return chain("trainers", opts.trainers ?? []);
+      if (table === "formation_trainers")
+        return chain("formation_trainers", opts.assignment ?? opts.links ?? []);
       throw new Error(`table inattendue: ${table}`);
     }),
     __calls: calls,
@@ -45,95 +54,82 @@ function makeClient(opts: {
 
 describe("isTrainerAssignedToSession", () => {
   it("retourne true quand le formateur existe ET est assigné à la session", async () => {
-    const client = makeClient({ trainer: { id: "trainer-1" }, assignment: { id: "ft-1" } });
+    const client = makeClient({ trainers: [{ id: "trainer-1" }], assignment: [{ id: "ft-1" }] });
     const result = await isTrainerAssignedToSession(client, "profile-1", "session-1");
     expect(result).toBe(true);
   });
 
-  it("résout le formateur par profile_id, puis formation_trainers par le trainer.id résolu (pas par profile_id)", async () => {
-    const client = makeClient({ trainer: { id: "trainer-1" }, assignment: { id: "ft-1" } });
+  it("résout le formateur par profile_id, puis formation_trainers par les trainer.id résolus (pas par profile_id)", async () => {
+    const client = makeClient({ trainers: [{ id: "trainer-1" }], assignment: [{ id: "ft-1" }] });
     await isTrainerAssignedToSession(client, "profile-1", "session-1");
     // trainers résolu par profile_id (= auth.uid()), PAS par l'id
     expect(client.__calls.trainers.profile_id).toBe("profile-1");
-    // formation_trainers filtré par le trainer.id résolu ET la session
-    expect(client.__calls.formation_trainers.trainer_id).toBe("trainer-1");
+    // formation_trainers filtré par les trainer.id résolus (.in) ET la session
+    expect(client.__calls.formation_trainers.trainer_id).toEqual(["trainer-1"]);
     expect(client.__calls.formation_trainers.session_id).toBe("session-1");
   });
 
   it("retourne false si aucune fiche formateur pour ce profile_id", async () => {
-    const client = makeClient({ trainer: null });
+    const client = makeClient({ trainers: [] });
     const result = await isTrainerAssignedToSession(client, "profile-inconnu", "session-1");
     expect(result).toBe(false);
   });
 
   it("retourne false si le formateur existe mais n'est pas assigné à la session", async () => {
-    const client = makeClient({ trainer: { id: "trainer-1" }, assignment: null });
+    const client = makeClient({ trainers: [{ id: "trainer-1" }], assignment: [] });
     const result = await isTrainerAssignedToSession(client, "profile-1", "session-autre");
     expect(result).toBe(false);
   });
+
+  it("multi-entité : prend en compte TOUTES les fiches du profil (filtre .in)", async () => {
+    const client = makeClient({
+      trainers: [{ id: "trainer-mr" }, { id: "trainer-c3v" }],
+      assignment: [{ id: "ft-1" }],
+    });
+    const result = await isTrainerAssignedToSession(client, "profile-1", "session-1");
+    expect(result).toBe(true);
+    expect(client.__calls.formation_trainers.trainer_id).toEqual(["trainer-mr", "trainer-c3v"]);
+  });
 });
-
-/**
- * Mock pour resolveTrainerSessionIds : trainers (single) + formation_trainers
- * (liste, awaitable via `then`). Enregistre les filtres `.eq()`.
- */
-function makeListClient(opts: {
-  trainer?: { id: string } | null;
-  links?: Array<{ session_id: string }>;
-}) {
-  const calls: Record<string, Record<string, unknown>> = { trainers: {}, formation_trainers: {} };
-
-  function chain(table: string) {
-    const builder: Record<string, unknown> = {
-      select: vi.fn(() => builder),
-      eq: vi.fn((col: string, val: unknown) => {
-        calls[table][col] = val;
-        return builder;
-      }),
-      single: vi.fn(async () => ({
-        data: opts.trainer ?? null,
-        error: opts.trainer ? null : { message: "not found" },
-      })),
-      then: (resolve: (v: { data: unknown; error: null }) => unknown) =>
-        resolve({ data: opts.links ?? [], error: null }),
-    };
-    return builder;
-  }
-
-  const client = {
-    from: vi.fn((table: string) => chain(table)),
-    __calls: calls,
-  };
-  return client as unknown as AnyClient & { __calls: typeof calls };
-}
 
 describe("resolveTrainerSessionIds", () => {
   it("retourne les session_ids du formateur (résolus via formation_trainers)", async () => {
-    const client = makeListClient({
-      trainer: { id: "trainer-1" },
+    const client = makeClient({
+      trainers: [{ id: "trainer-1" }],
       links: [{ session_id: "s1" }, { session_id: "s2" }],
     });
     const ids = await resolveTrainerSessionIds(client, "profile-1");
     expect(ids).toEqual(["s1", "s2"]);
     expect(client.__calls.trainers.profile_id).toBe("profile-1");
-    expect(client.__calls.formation_trainers.trainer_id).toBe("trainer-1");
+    expect(client.__calls.formation_trainers.trainer_id).toEqual(["trainer-1"]);
   });
 
   it("déduplique les session_ids", async () => {
-    const client = makeListClient({
-      trainer: { id: "trainer-1" },
+    const client = makeClient({
+      trainers: [{ id: "trainer-1" }],
       links: [{ session_id: "s1" }, { session_id: "s1" }, { session_id: "s2" }],
     });
     expect(await resolveTrainerSessionIds(client, "profile-1")).toEqual(["s1", "s2"]);
   });
 
   it("retourne [] si aucune fiche formateur", async () => {
-    const client = makeListClient({ trainer: null });
+    const client = makeClient({ trainers: [] });
     expect(await resolveTrainerSessionIds(client, "inconnu")).toEqual([]);
   });
 
   it("retourne [] si le formateur n'a aucune assignation", async () => {
-    const client = makeListClient({ trainer: { id: "trainer-1" }, links: [] });
+    const client = makeClient({ trainers: [{ id: "trainer-1" }], links: [] });
     expect(await resolveTrainerSessionIds(client, "profile-1")).toEqual([]);
+  });
+
+  it("multi-entité (régression bug 'aucune session/0h') : 2 fiches → ne renvoie PAS [] et union les sessions", async () => {
+    // Avant le fix, `.single()` échouait avec 2 fiches → [] → dashboard vide.
+    const client = makeClient({
+      trainers: [{ id: "trainer-mr" }, { id: "trainer-c3v" }],
+      links: [{ session_id: "s-mr" }, { session_id: "s-c3v" }],
+    });
+    const ids = await resolveTrainerSessionIds(client, "profile-1");
+    expect(ids).toEqual(["s-mr", "s-c3v"]);
+    expect(client.__calls.formation_trainers.trainer_id).toEqual(["trainer-mr", "trainer-c3v"]);
   });
 });
