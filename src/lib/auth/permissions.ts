@@ -70,6 +70,7 @@ export const API_PERMISSIONS: Array<[string, Role[]]> = [
   // (singulier, espace formateur) — le matching est first-match, sinon le
   // singulier ombrerait le pluriel.
   ["/api/trainer",                 ["super_admin", "admin", "trainer"]],
+  ["/api/learner",                 ["super_admin", "admin", "learner"]],
   ["/api/trainings",               ["super_admin", "admin"]],
 
   // ── CRM : admin + commercial + trainer (tasks) ──────────────────────────────
