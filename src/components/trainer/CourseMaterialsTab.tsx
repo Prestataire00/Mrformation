@@ -27,9 +27,11 @@ import {
   Eye,
   EyeOff,
   FileText,
+  Share2,
 } from "lucide-react";
 import { FileUploader } from "./FileUploader";
 import { FileItem } from "./FileItem";
+import { ShareCourseDialog } from "./ShareCourseDialog";
 import type { UploadedFile } from "./types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -41,6 +43,7 @@ interface TrainerCourse {
   category: string | null;
   status: "draft" | "published";
   files: UploadedFile[];
+  shared_session_count?: number;
   created_at: string;
   updated_at: string;
 }
@@ -205,6 +208,7 @@ export function CourseMaterialsTab({ trainerId }: { trainerId: string }) {
   const [editingCourse, setEditingCourse] = useState<TrainerCourse | undefined>();
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [sharingCourse, setSharingCourse] = useState<TrainerCourse | null>(null);
 
   const fetchCourses = useCallback(async () => {
     setLoading(true);
@@ -274,6 +278,12 @@ export function CourseMaterialsTab({ trainerId }: { trainerId: string }) {
       if (exists) return prev.map((c) => (c.id === saved.id ? saved : c));
       return [saved, ...prev];
     });
+  };
+
+  const handleSharedChanged = (courseId: string, linkedCount: number) => {
+    setCourses((prev) =>
+      prev.map((c) => (c.id === courseId ? { ...c, shared_session_count: linkedCount } : c)),
+    );
   };
 
   const openCreate = () => {
@@ -439,6 +449,21 @@ export function CourseMaterialsTab({ trainerId }: { trainerId: string }) {
                       )}
                     </Button>
                     <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 gap-1.5 text-xs"
+                      onClick={() => setSharingCourse(course)}
+                      disabled={course.status !== "published"}
+                      title={course.status !== "published"
+                        ? "Publiez le support pour le partager"
+                        : "Partager avec mes sessions"}
+                    >
+                      <Share2 className="h-3.5 w-3.5" />
+                      {course.shared_session_count
+                        ? `Partagé (${course.shared_session_count})`
+                        : "Partager"}
+                    </Button>
+                    <Button
                       variant="ghost"
                       size="sm"
                       className="h-8 w-8 p-0"
@@ -504,6 +529,14 @@ export function CourseMaterialsTab({ trainerId }: { trainerId: string }) {
           onSaved={handleSaved}
           trainerId={trainerId}
           course={editingCourse}
+        />
+      )}
+      {sharingCourse && (
+        <ShareCourseDialog
+          courseId={sharingCourse.id}
+          open={!!sharingCourse}
+          onClose={() => setSharingCourse(null)}
+          onChanged={handleSharedChanged}
         />
       )}
     </div>
