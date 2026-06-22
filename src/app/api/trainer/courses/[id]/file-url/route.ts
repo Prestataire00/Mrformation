@@ -28,12 +28,20 @@ export async function GET(
     // Check access: either the trainer owns the course, or the course is published
     const { data: course } = await supabase
       .from("trainer_courses")
-      .select("id, status, trainer_id")
+      .select("id, status, trainer_id, files")
       .eq("id", params.id)
       .single();
 
     if (!course) {
       return NextResponse.json({ error: "Cours non trouvé" }, { status: 404 });
+    }
+
+    // Le path demandé doit appartenir aux fichiers de CE cours — sinon on pourrait
+    // signer n'importe quel fichier du bucket privé partagé (CV formateurs, autres
+    // cours…). L'égalité stricte ferme aussi le path traversal.
+    const courseFiles = ((course as { files?: Array<{ path?: string }> }).files ?? []);
+    if (!courseFiles.some((f) => f.path === filePath)) {
+      return NextResponse.json({ error: "Fichier non autorisé" }, { status: 403 });
     }
 
     // Allow if published (any authenticated user) or if requester is the trainer

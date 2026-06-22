@@ -29,11 +29,19 @@ export async function GET(
     // Support publié ?
     const { data: course } = await supabase
       .from("trainer_courses")
-      .select("id, status")
+      .select("id, status, files")
       .eq("id", params.courseId)
       .maybeSingle();
     if (!course || (course as { status: string }).status !== "published") {
       return NextResponse.json({ error: "Support indisponible" }, { status: 404 });
+    }
+
+    // Le path demandé DOIT appartenir aux fichiers de CE support — sinon un apprenant
+    // pourrait signer n'importe quel fichier du bucket privé (CV formateurs, autres
+    // tenants…). L'égalité stricte ferme aussi le path traversal.
+    const courseFiles = ((course as { files?: Array<{ path?: string }> }).files ?? []);
+    if (!courseFiles.some((f) => f.path === filePath)) {
+      return NextResponse.json({ error: "Fichier non autorisé" }, { status: 403 });
     }
 
     // Sessions de l'apprenant

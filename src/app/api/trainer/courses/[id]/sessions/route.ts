@@ -88,10 +88,26 @@ export async function POST(
       return NextResponse.json({ error: "Vous n'êtes pas assigné à cette session" }, { status: 403 });
     }
 
+    // `trainer_course_sessions.entity_id` est NOT NULL, mais `trainer_courses.entity_id`
+    // peut être null (anciens supports). On retombe sur l'entité de la session (toujours
+    // renseignée, et même entité que le formateur — mono-entité).
+    let entityId = course.entity_id;
+    if (!entityId) {
+      const { data: sess } = await supabase
+        .from("sessions")
+        .select("entity_id")
+        .eq("id", body.sessionId)
+        .maybeSingle();
+      entityId = (sess as { entity_id: string } | null)?.entity_id ?? null;
+    }
+    if (!entityId) {
+      return NextResponse.json({ error: "Entité introuvable pour ce partage" }, { status: 400 });
+    }
+
     const { error } = await supabase
       .from("trainer_course_sessions")
       .upsert(
-        { trainer_course_id: params.id, session_id: body.sessionId, entity_id: course.entity_id },
+        { trainer_course_id: params.id, session_id: body.sessionId, entity_id: entityId },
         { onConflict: "trainer_course_id,session_id", ignoreDuplicates: true },
       );
     if (error) {
