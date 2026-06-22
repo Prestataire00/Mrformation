@@ -29,7 +29,28 @@ export async function GET(_request: NextRequest) {
 
     if (error) return NextResponse.json({ error: sanitizeDbError(error, "trainer/courses GET") }, { status: 500 });
 
-    return NextResponse.json({ data: courses || [] });
+    // Nombre de sessions auxquelles chaque support est partagé (badge UI).
+    const courseRows = (courses as Array<{ id: string }> | null) ?? [];
+    let sharedCounts: Record<string, number> = {};
+    if (courseRows.length > 0) {
+      const { data: links } = await supabase
+        .from("trainer_course_sessions")
+        .select("trainer_course_id")
+        .in("trainer_course_id", courseRows.map((c) => c.id));
+      sharedCounts = ((links as Array<{ trainer_course_id: string }> | null) ?? []).reduce(
+        (acc, l) => {
+          acc[l.trainer_course_id] = (acc[l.trainer_course_id] ?? 0) + 1;
+          return acc;
+        },
+        {} as Record<string, number>,
+      );
+    }
+    const withCounts = courseRows.map((c) => ({
+      ...c,
+      shared_session_count: sharedCounts[c.id] ?? 0,
+    }));
+
+    return NextResponse.json({ data: withCounts });
   } catch (e) {
     return NextResponse.json({ error: sanitizeError(e, "trainer/courses GET") }, { status: 500 });
   }
