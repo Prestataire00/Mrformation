@@ -7,11 +7,13 @@ const enrollments = [
 ];
 
 describe("computeSessionLearnerProgress", () => {
-  it("compte les signatures par apprenant via profile_id (pas learner.id) et le total de créneaux", () => {
+  it("compte les signatures par apprenant via learner.id (convention réelle QR/émargement) et le total de créneaux", () => {
+    // Les routes de signature apprenant (QR /api/emargement/sign + /api/signatures)
+    // stockent signer_id = learners.id (= enrollments.learner_id), JAMAIS profile_id.
     const signatures = [
-      { signer_id: "prof-1", time_slot_id: "s1" },
-      { signer_id: "prof-1", time_slot_id: "s2" },
-      { signer_id: "prof-2", time_slot_id: "s1" },
+      { signer_id: "lrn-1", time_slot_id: "s1" },
+      { signer_id: "lrn-1", time_slot_id: "s2" },
+      { signer_id: "lrn-2", time_slot_id: "s1" },
     ];
     const rows = computeSessionLearnerProgress(enrollments, signatures, 3, []);
     const marie = rows.find((r) => r.learnerId === "lrn-1")!;
@@ -19,6 +21,12 @@ describe("computeSessionLearnerProgress", () => {
     expect(marie.signedCount).toBe(2);
     expect(marie.slotsCount).toBe(3);
     expect(paul.signedCount).toBe(1);
+  });
+
+  it("compte aussi une signature stockée via profile_id (robustesse rétrocompat)", () => {
+    const signatures = [{ signer_id: "prof-1", time_slot_id: "s1" }];
+    const rows = computeSessionLearnerProgress(enrollments, signatures, 1, []);
+    expect(rows.find((r) => r.learnerId === "lrn-1")!.signedCount).toBe(1);
   });
 
   it("marque questionnaireDone via learner.id présent dans les réponses", () => {
