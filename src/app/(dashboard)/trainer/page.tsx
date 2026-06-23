@@ -52,7 +52,6 @@ import {
   endOfMonth,
   parseISO,
   isWithinInterval,
-  isAfter,
 } from "date-fns";
 import { HeroCard, QuickActionCards, MiniCalendar, PriorityList } from "@/components/dashboard-home";
 import { ClipboardCheck } from "lucide-react";
@@ -96,9 +95,12 @@ const profileSchema = z.object({
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
-interface SessionWithDetails extends Omit<Session, "training" | "enrollments"> {
+interface SessionWithDetails
+  extends Omit<Session, "training" | "enrollments" | "formation_time_slots" | "signatures"> {
   training?: { title: string; description: string | null; duration_hours: number | null };
   enrollments?: { id: string }[];
+  formation_time_slots?: { id: string; start_time: string; end_time: string }[];
+  signatures?: { time_slot_id: string | null }[];
 }
 
 interface ProfileForm {
@@ -149,9 +151,12 @@ export default function TrainerPage() {
     return "upcoming";
   };
 
-  const upcomingSessions = sessions.filter((s) =>
-    isAfter(parseISO(s.start_date), now) && s.status !== "cancelled"
-  );
+  // « À venir » inclut les sessions EN COURS (non terminées) : une session active
+  // ne doit pas s'afficher « aucune session à venir » (décision produit).
+  const upcomingSessions = sessions.filter((s) => {
+    const st = effectiveStatus(s);
+    return st === "upcoming" || st === "in_progress";
+  });
 
   const monthSessions = sessions.filter((s) => {
     const d = parseISO(s.start_date);
@@ -163,9 +168,26 @@ export default function TrainerPage() {
     return isWithinInterval(d, { start: weekStart, end: weekEnd });
   });
 
-  const totalHours = sessions
-    .filter((s) => effectiveStatus(s) === "completed")
-    .reduce((acc, s) => acc + (s.training?.duration_hours ?? 0), 0);
+  // Heures délivrées = somme des heures des créneaux réellement ÉMARGÉS (≥1 signature
+  // de présence). Reflète la livraison réelle et augmente au fil de la session, plutôt
+  // que les heures planifiées des sessions terminées (décision produit).
+  const totalHours = Math.round(
+    sessions.reduce((acc, s) => {
+      const signedSlotIds = new Set(
+        (s.signatures ?? [])
+          .map((sig) => sig.time_slot_id)
+          .filter((id): id is string => Boolean(id)),
+      );
+      const hours = (s.formation_time_slots ?? [])
+        .filter((slot) => signedSlotIds.has(slot.id))
+        .reduce(
+          (h, slot) =>
+            h + (new Date(slot.end_time).getTime() - new Date(slot.start_time).getTime()) / 3_600_000,
+          0,
+        );
+      return acc + hours;
+    }, 0),
+  );
 
   // ── data fetching ───────────────────────────────────────────────────────────
 
@@ -211,7 +233,9 @@ export default function TrainerPage() {
             `
             *,
             training:trainings(title, description, duration_hours),
-            enrollments(id)
+            enrollments(id),
+            formation_time_slots(id, start_time, end_time),
+            signatures(time_slot_id)
           `
           )
           .in("id", sessionIds)

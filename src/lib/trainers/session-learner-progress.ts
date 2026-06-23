@@ -3,8 +3,11 @@
  * complétion du questionnaire. Fonction pure → testable, sans dépendance React
  * ni Supabase (les données sont fournies par le composant appelant).
  *
- * ⚠️ Les signatures apprenant stockent `signer_id = profile_id` (pas
- * `learners.id`) — on matche donc sur `learner.profile_id`.
+ * ⚠️ Les signatures apprenant stockent `signer_id = learners.id` (= la valeur
+ * d'`enrollments.learner_id`) — c'est ce que posent les routes QR
+ * (`/api/emargement/sign`) ET d'émargement (`/api/signatures`). On matche donc
+ * sur `learner.id`. On garde `learner.profile_id` en repli défensif (rétrocompat
+ * d'éventuelles lignes legacy).
  */
 export interface ProgressEnrollment {
   learner: {
@@ -50,9 +53,11 @@ export function computeSessionLearnerProgress(
     if (!learner || seen.has(learner.id)) continue;
     seen.add(learner.id);
 
-    const signedCount = learner.profile_id
-      ? signatures.filter((s) => s.signer_id === learner.profile_id).length
-      : 0;
+    const signedCount = signatures.filter(
+      (s) =>
+        s.signer_id === learner.id ||
+        (learner.profile_id != null && s.signer_id === learner.profile_id),
+    ).length;
 
     rows.push({
       learnerId: learner.id,
