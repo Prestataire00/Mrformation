@@ -29,6 +29,8 @@ import {
   Calendar,
   FileText,
   FolderOpen,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { FileUploader } from "./FileUploader";
 import { FileItem } from "./FileItem";
@@ -76,6 +78,7 @@ function UploadDialog({
   const [sessionId, setSessionId] = useState("");
   const [docType, setDocType] = useState<SessionDocType>("feuille_emargement");
   const [notes, setNotes] = useState("");
+  const [visibleToLearners, setVisibleToLearners] = useState(true);
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null);
   const [saving, setSaving] = useState(false);
   const { toast } = useToast();
@@ -85,6 +88,7 @@ function UploadDialog({
       setSessionId("");
       setDocType("feuille_emargement");
       setNotes("");
+      setVisibleToLearners(true);
       setUploadedFile(null);
     }
   }, [open]);
@@ -113,6 +117,7 @@ function UploadDialog({
           file_size: uploadedFile.size,
           file_path: uploadedFile.path,
           notes,
+          visible_to_learners: visibleToLearners,
         }),
       });
 
@@ -189,6 +194,21 @@ function UploadDialog({
             />
           </div>
 
+          <label className="flex items-start gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={visibleToLearners}
+              onChange={(e) => setVisibleToLearners(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span>
+              Visible par les apprenants de la session
+              <span className="block text-xs text-muted-foreground">
+                Décochez pour un document interne (émargement, bilan…).
+              </span>
+            </span>
+          </label>
+
           <div className="space-y-2">
             <Label>Fichier *</Label>
             {uploadedFile ? (
@@ -232,6 +252,7 @@ export function SessionDocumentsTab({ trainerId }: { trainerId: string }) {
   const [sessions, setSessions] = useState<TrainerSession[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -294,6 +315,29 @@ export function SessionDocumentsTab({ trainerId }: { trainerId: string }) {
 
   const handleSaved = (doc: TrainerDocument) => {
     setDocuments((prev) => [doc, ...prev]);
+  };
+
+  const handleToggleVisible = async (doc: TrainerDocument) => {
+    const next = !(doc.visible_to_learners ?? false);
+    setTogglingId(doc.id);
+    try {
+      const res = await fetch(`/api/trainer/documents/${doc.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ visible_to_learners: next }),
+      });
+      if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error ?? "Erreur"); }
+      setDocuments((prev) => prev.map((d) => (d.id === doc.id ? { ...d, visible_to_learners: next } : d)));
+      toast({ title: next ? "Visible par les apprenants" : "Masqué pour les apprenants" });
+    } catch (err) {
+      toast({
+        title: "Erreur",
+        description: err instanceof Error ? err.message : "Action impossible.",
+        variant: "destructive",
+      });
+    } finally {
+      setTogglingId(null);
+    }
   };
 
   const formatDate = (d: string) =>
@@ -429,6 +473,29 @@ export function SessionDocumentsTab({ trainerId }: { trainerId: string }) {
                           onRemove={undefined}
                         />
                       </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className={cn(
+                          "h-7 w-7 p-0 shrink-0",
+                          doc.visible_to_learners
+                            ? "text-green-600 hover:text-green-700"
+                            : "text-muted-foreground hover:text-foreground"
+                        )}
+                        title={doc.visible_to_learners
+                          ? "Visible par les apprenants — cliquer pour masquer"
+                          : "Masqué pour les apprenants — cliquer pour partager"}
+                        onClick={() => handleToggleVisible(doc)}
+                        disabled={togglingId === doc.id}
+                      >
+                        {togglingId === doc.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : doc.visible_to_learners ? (
+                          <Eye className="h-3.5 w-3.5" />
+                        ) : (
+                          <EyeOff className="h-3.5 w-3.5" />
+                        )}
+                      </Button>
                       <Button
                         variant="ghost"
                         size="sm"

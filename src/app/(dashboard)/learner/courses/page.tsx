@@ -9,6 +9,7 @@ import { BookOpen, Clock, Play, CheckCircle2, Loader2, Plus, FileText, Video, He
 import { cn } from "@/lib/utils";
 import { useEntity } from "@/contexts/EntityContext";
 import { LearnerSupportsSection } from "@/components/learner/LearnerSupportsSection";
+import { LearnerSessionDocumentsSection } from "@/components/learner/LearnerSessionDocumentsSection";
 
 interface PublishedCourse {
   id: string;
@@ -267,6 +268,8 @@ export default function LearnerCoursesPage() {
       </div>
 
       <LearnerSupportsSection />
+
+      <LearnerSessionDocumentsSection />
 
       {/* Assigned via formations */}
       {!loading && assignedCourses.length > 0 && (

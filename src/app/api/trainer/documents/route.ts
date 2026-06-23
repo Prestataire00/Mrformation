@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
     if (!trainer) return NextResponse.json({ error: "Formateur non trouvé" }, { status: 403 });
 
     const body = await request.json();
-    const { scope, session_id, doc_type, file_name, file_type, file_size, file_path, notes } = body;
+    const { scope, session_id, doc_type, file_name, file_type, file_size, file_path, notes, visible_to_learners } = body;
 
     // Validate scope
     if (!scope || !VALID_SCOPES.includes(scope)) {
@@ -99,6 +99,9 @@ export async function POST(request: NextRequest) {
         file_size,
         file_path,
         notes: notes?.trim() || null,
+        // Documents de session visibles des apprenants par défaut (le formateur
+        // peut masquer). Sans effet pour scope='admin' (jamais exposé apprenant).
+        visible_to_learners: visible_to_learners !== false,
       })
       .select("*, sessions(id, start_date, trainings(title))")
       .single();

@@ -34,6 +34,7 @@ export interface TrainerDocument {
   file_size: number;
   file_path: string;
   notes: string | null;
+  visible_to_learners?: boolean;
   created_at: string;
   updated_at: string;
   // joined

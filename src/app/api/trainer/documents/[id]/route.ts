@@ -43,6 +43,40 @@ export async function GET(
   }
 }
 
+/**
+ * PATCH /api/trainer/documents/[id] — met à jour la visibilité apprenant.
+ * Body : `{ visible_to_learners: boolean }`. Réservé au formateur propriétaire.
+ */
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const supabase = createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+
+    const trainer = await getTrainerContext(supabase, user.id);
+    if (!trainer) return NextResponse.json({ error: "Formateur non trouvé" }, { status: 403 });
+
+    const body = (await request.json()) as { visible_to_learners?: boolean };
+    if (typeof body.visible_to_learners !== "boolean") {
+      return NextResponse.json({ error: "visible_to_learners (booléen) requis" }, { status: 400 });
+    }
+
+    const { error } = await supabase
+      .from("trainer_documents")
+      .update({ visible_to_learners: body.visible_to_learners })
+      .eq("id", params.id)
+      .eq("trainer_id", trainer.id);
+
+    if (error) return NextResponse.json({ error: sanitizeDbError(error, "trainer/documents/[id] PATCH") }, { status: 500 });
+    return NextResponse.json({ success: true });
+  } catch (e) {
+    return NextResponse.json({ error: sanitizeError(e, "trainer/documents/[id] PATCH") }, { status: 500 });
+  }
+}
+
 export async function DELETE(
   _request: NextRequest,
   { params }: { params: { id: string } }
