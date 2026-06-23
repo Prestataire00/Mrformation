@@ -22,12 +22,21 @@ export interface TrainerStats {
 export function getTrainerStats(
   formation: Pick<Session, "formation_time_slots" | "signatures">,
   trainerId: string,
+  trainerProfileId?: string | null,
 ): TrainerStats {
   const signatures = formation.signatures ?? [];
   const timeSlots = formation.formation_time_slots ?? [];
 
+  // ⚠️ Convention `signatures.signer_id` incohérente côté formateur :
+  // `/api/emargement/sign` stocke `trainers.id`, `/api/signatures` (page
+  // d'émargement formateur) stocke `profile_id`. On matche donc les deux.
   const signedSlotIds = signatures
-    .filter((s) => s.signer_id === trainerId && s.signer_type === "trainer")
+    .filter(
+      (s) =>
+        s.signer_type === "trainer" &&
+        (s.signer_id === trainerId ||
+          (trainerProfileId != null && s.signer_id === trainerProfileId)),
+    )
     .map((s) => s.time_slot_id);
 
   const signedSlots = timeSlots.filter((ts) => signedSlotIds.includes(ts.id));
