@@ -53,6 +53,23 @@ describe("getTrainerStats", () => {
     expect(stats.slotCount).toBe(0);
   });
 
+  it("compte une signature trainer stockée via profile_id (route /api/signatures) quand profileId est fourni", () => {
+    // La page d'émargement formateur appelle /api/signatures qui stocke
+    // signer_id = profile_id (auth.uid()), pas trainers.id. On doit donc matcher
+    // aussi le profile_id quand il est connu.
+    const formation = makeFormation({
+      formation_time_slots: [
+        { id: "ts1", start_time: "2026-01-01T09:00:00Z", end_time: "2026-01-01T12:00:00Z" } as never,
+      ],
+      signatures: [
+        { signer_id: "PROFILE-1", signer_type: "trainer", time_slot_id: "ts1" } as never,
+      ],
+    });
+    const stats = getTrainerStats(formation, "TRAINER-1", "PROFILE-1");
+    expect(stats.hours).toBe(3);
+    expect(stats.slotCount).toBe(1);
+  });
+
   it("signatures non-trainer (learner) ignorées", () => {
     const formation = makeFormation({
       formation_time_slots: [

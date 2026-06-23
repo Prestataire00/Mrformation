@@ -135,7 +135,7 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
         <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Formateurs ({formationTrainers.length})</h3>
         <div className="space-y-3">
           {formationTrainers.map((ft) => {
-            const stats = ft.trainer ? getTrainerStats(formation, ft.trainer.id) : null;
+            const stats = ft.trainer ? getTrainerStats(formation, ft.trainer.id, ft.trainer.profile_id) : null;
             const plannedHours = ft.hours_done ?? formation.planned_hours ?? null;
             const actualHours = stats?.hours || 0;
             const progressPct = plannedHours && plannedHours > 0
