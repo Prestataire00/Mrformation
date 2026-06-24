@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { pickLearnerRecord } from "@/lib/learner/pick-learner-record";
 import { useToast } from "@/components/ui/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { BookOpen, Clock, Play, CheckCircle2, Loader2, Plus, FileText, Video, HelpCircle, ExternalLink, GraduationCap, Calendar } from "lucide-react";
@@ -96,12 +97,14 @@ export default function LearnerCoursesPage() {
     if (!user) return;
 
     // Find learner via profile_id (auth.uid) — pas par email, qui peut
-    // diverger entre auth.users et learners (Epic G story g-4)
-    const { data: learner } = await supabase
+    // diverger entre auth.users et learners (Epic G story g-4).
+    // Multi-fiche (compte partagé apprenant sans email) : .maybeSingle()
+    // cassait à ≥ 2 fiches. pickLearnerRecord = mono-fiche inchangé.
+    const { data: learnerRows } = await supabase
       .from("learners")
       .select("id, entity_id")
-      .eq("profile_id", user.id)
-      .maybeSingle();
+      .eq("profile_id", user.id);
+    const learner = pickLearnerRecord(learnerRows);
 
     const currentLearnerId = learner?.id ?? null;
     // entity_id de l'apprenant : sert à filtrer le catalogue/programmes

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { pickLearnerRecord } from "@/lib/learner/pick-learner-record";
 import { FileText, Loader2, Eye, CheckCircle, Clock, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -72,11 +73,14 @@ export default function LearnerDocumentsPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data: learnerData } = await supabase
+      // Multi-fiche : un compte partagé (apprenant sans email) peut avoir
+      // plusieurs fiches → .single() cassait. pickLearnerRecord = mono-fiche
+      // inchangé, sinon choix déterministe. Cf. pick-learner-record.
+      const { data: learnerRows } = await supabase
         .from("learners")
         .select("id, first_name, last_name, email")
-        .eq("profile_id", user.id)
-        .single();
+        .eq("profile_id", user.id);
+      const learnerData = pickLearnerRecord(learnerRows);
 
       if (!learnerData) {
         setLoading(false);

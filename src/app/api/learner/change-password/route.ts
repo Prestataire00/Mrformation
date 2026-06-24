@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logAudit } from "@/lib/audit-log";
+import { pickLearnerRecord } from "@/lib/learner/pick-learner-record";
 
 /**
  * Pédagogie V2 Epic 2.5 — POST /api/learner/change-password
@@ -73,11 +74,13 @@ export async function POST(request: NextRequest) {
   // 2. Synchroniser learners.password_must_change + first_login_at via admin
   //    (bypass RLS — l'apprenant n'a pas de policy UPDATE sur sa ligne).
   const admin = createAdminClient();
-  const { data: learner } = await admin
+  // Multi-fiche (compte partagé apprenant sans email) : .maybeSingle() cassait
+  // à ≥ 2 fiches. pickLearnerRecord = mono-fiche inchangé.
+  const { data: learnerRows } = await admin
     .from("learners")
     .select("id, entity_id, first_login_at")
-    .eq("profile_id", user.id)
-    .maybeSingle();
+    .eq("profile_id", user.id);
+  const learner = pickLearnerRecord(learnerRows);
 
   if (learner) {
     await admin

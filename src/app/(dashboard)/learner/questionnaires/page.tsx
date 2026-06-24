@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { pickLearnerRecord } from "@/lib/learner/pick-learner-record";
 import { useEntity } from "@/contexts/EntityContext";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -68,14 +69,17 @@ export default function LearnerQuestionnairesPage() {
 
     // Query nested unique : learners → enrollments (pattern aligné sur
     // /learner/page.tsx — évite ruptures RLS entre 2 queries séparées)
-    const { data: learnerData, error: learnerError } = await supabase
+    // Multi-fiche (compte partagé apprenant sans email) : .maybeSingle() cassait
+    // à ≥ 2 fiches. pickLearnerRecord = mono-fiche inchangé (enrollments de la
+    // fiche choisie). Cf. pick-learner-record.
+    const { data: learnerRows, error: learnerError } = await supabase
       .from("learners")
       .select(`
         id,
         enrollments(session_id, status)
       `)
-      .eq("profile_id", user.id)
-      .maybeSingle();
+      .eq("profile_id", user.id);
+    const learnerData = pickLearnerRecord(learnerRows);
 
     if (learnerError || !learnerData) {
       console.error("[questionnaires] learner fetch error:", learnerError);

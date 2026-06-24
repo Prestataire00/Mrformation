@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { pickLearnerRecord } from "@/lib/learner/pick-learner-record";
 import Link from "next/link";
 import {
   Mail,
@@ -56,11 +57,13 @@ export default function LearnerContactsPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setLoading(false); return; }
 
-    const { data: learner } = await supabase
+    // Multi-fiche (compte partagé apprenant sans email) : .maybeSingle() cassait
+    // à ≥ 2 fiches. pickLearnerRecord = mono-fiche inchangé.
+    const { data: learnerRows } = await supabase
       .from("learners")
       .select("id, entity_id")
-      .eq("profile_id", user.id)
-      .maybeSingle();
+      .eq("profile_id", user.id);
+    const learner = pickLearnerRecord(learnerRows);
 
     if (!learner) { setProfileMissing(true); setLoading(false); return; }
 

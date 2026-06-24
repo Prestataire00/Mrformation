@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { ReactNode } from "react";
+import { pickLearnerRecord } from "@/lib/learner/pick-learner-record";
 
 /**
  * Layout du portail apprenant.
@@ -13,12 +14,15 @@ export default async function LearnerLayout({ children }: { children: ReactNode 
   } = await supabase.auth.getUser();
 
   if (user) {
-    // maybeSingle() retourne null proprement si 0 résultats (contrairement à single() qui lève une erreur)
-    const { data: existing } = await supabase
+    // Multi-fiche (compte partagé apprenant sans email) : .maybeSingle() lève
+    // une erreur à ≥ 2 fiches → `existing` null → on créait à tort une fiche
+    // fantôme à chaque chargement. pickLearnerRecord renvoie null UNIQUEMENT
+    // s'il n'existe aucune fiche → l'insertion ne se déclenche plus à tort.
+    const { data: existingRows } = await supabase
       .from("learners")
       .select("id")
-      .eq("profile_id", user.id)
-      .maybeSingle();
+      .eq("profile_id", user.id);
+    const existing = pickLearnerRecord(existingRows);
 
     if (!existing) {
       const { data: profile } = await supabase

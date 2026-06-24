@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { pickLearnerRecord } from "@/lib/learner/pick-learner-record";
 import DOMPurify from "dompurify";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
@@ -465,11 +466,13 @@ export default function CoursePlayerPage() {
     // ≠ email de connexion (emails synthétiques/migrés) → progression non sauvegardée.
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
-      const { data: learner } = await supabase
+      // Multi-fiche (compte partagé apprenant sans email) : .maybeSingle()
+      // cassait à ≥ 2 fiches. pickLearnerRecord = mono-fiche inchangé.
+      const { data: learnerRows } = await supabase
         .from("learners")
         .select("id")
-        .eq("profile_id", user.id)
-        .maybeSingle();
+        .eq("profile_id", user.id);
+      const learner = pickLearnerRecord(learnerRows);
       if (learner) {
         const { data: enrollment } = await supabase
           .from("elearning_enrollments")

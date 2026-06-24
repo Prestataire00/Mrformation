@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { pickLearnerRecord } from "@/lib/learner/pick-learner-record";
 import { useEntity } from "@/contexts/EntityContext";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -97,12 +98,13 @@ export default function LearnerQuestionnaireFillPage() {
 
     setProfileId(user.id);
 
-    // Find learner
-    const { data: learner } = await supabase
+    // Find learner — multi-fiche (compte partagé apprenant sans email) :
+    // .single() cassait à ≥ 2 fiches. pickLearnerRecord = mono-fiche inchangé.
+    const { data: learnerRows } = await supabase
       .from("learners")
       .select("id")
-      .eq("profile_id", user.id)
-      .single();
+      .eq("profile_id", user.id);
+    const learner = pickLearnerRecord(learnerRows);
 
     if (!learner) {
       setLoading(false);

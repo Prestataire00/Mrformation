@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
+import { pickLearnerRecord } from "@/lib/learner/pick-learner-record";
 
 function formatICSDate(dateStr: string): string {
   const d = new Date(dateStr);
@@ -25,12 +26,13 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const sessionId = searchParams.get("session_id");
 
-    // Find learner
-    const { data: learner } = await supabase
+    // Find learner — multi-fiche (compte partagé apprenant sans email) :
+    // .maybeSingle() cassait à ≥ 2 fiches. pickLearnerRecord = mono-fiche inchangé.
+    const { data: learnerRows } = await supabase
       .from("learners")
       .select("id")
-      .eq("profile_id", user.id)
-      .maybeSingle();
+      .eq("profile_id", user.id);
+    const learner = pickLearnerRecord(learnerRows);
 
     if (!learner) {
       return NextResponse.json({ error: "Learner not found" }, { status: 404 });
