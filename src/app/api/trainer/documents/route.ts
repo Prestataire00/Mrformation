@@ -52,13 +52,13 @@ export async function POST(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
 
-    const { data: trainer } = await supabase
+    // Multi-entité : toutes les fiches du profil (.single() cassait à ≥2).
+    const { data: trainerRows } = await supabase
       .from("trainers")
       .select("id, entity_id")
-      .eq("profile_id", user.id)
-      .single();
-
-    if (!trainer) return NextResponse.json({ error: "Formateur non trouvé" }, { status: 403 });
+      .eq("profile_id", user.id);
+    const rows = (trainerRows ?? []) as Array<{ id: string; entity_id: string | null }>;
+    if (rows.length === 0) return NextResponse.json({ error: "Formateur non trouvé" }, { status: 403 });
 
     const body = await request.json();
     const { scope, session_id, doc_type, file_name, file_type, file_size, file_path, notes, visible_to_learners } = body;
@@ -79,6 +79,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Session requise pour les documents de session" }, { status: 400 });
     }
 
+    // Sécurité : pour un document de session, le formateur DOIT être assigné à
+    // cette session (sinon il pourrait injecter un document — visible des
+    // apprenants — dans une session qu'il ne donne pas). On retient au passage
+    // la fiche formateur de l'entité de la session.
+    let trainerRow = rows[0];
+    if (scope === "session") {
+      const { data: ft } = await supabase
+        .from("formation_trainers")
+        .select("trainer_id")
+        .eq("session_id", session_id)
+        .in("trainer_id", rows.map((r) => r.id))
+        .limit(1);
+      const assignedId = (ft as Array<{ trainer_id: string }> | null)?.[0]?.trainer_id;
+      if (!assignedId) {
+        return NextResponse.json({ error: "Vous n'êtes pas assigné à cette session" }, { status: 403 });
+      }
+      trainerRow = rows.find((r) => r.id === assignedId) ?? rows[0];
+    }
+
     // Validate file fields
     if (!file_name || !file_type || !file_size || !file_path) {
       return NextResponse.json({ error: "Informations du fichier manquantes" }, { status: 400 });
@@ -87,8 +106,8 @@ export async function POST(request: NextRequest) {
     const { data: doc, error } = await supabase
       .from("trainer_documents")
       .insert({
-        trainer_id: trainer.id,
-        entity_id: trainer.entity_id || null,
+        trainer_id: trainerRow.id,
+        entity_id: trainerRow.entity_id || null,
         scope,
         session_id: scope === "session" ? session_id : null,
         doc_type,
@@ -106,10 +125,10 @@ export async function POST(request: NextRequest) {
 
     if (error) return NextResponse.json({ error: sanitizeDbError(error, "trainer/documents POST") }, { status: 500 });
 
-    if (trainer.entity_id) {
+    if (trainerRow.entity_id) {
       logAudit({
         supabase,
-        entityId: trainer.entity_id,
+        entityId: trainerRow.entity_id,
         userId: user.id,
         action: "create",
         resourceType: "trainer_documents",
