@@ -27,6 +27,7 @@ import {
   SESSION_STATUS_LABELS,
   STATUS_COLORS,
 } from "@/lib/utils";
+import { computeSessionStatus } from "@/lib/utils/formation";
 import type { Learner, Enrollment, Session } from "@/lib/types";
 import Link from "next/link";
 import {
@@ -47,7 +48,7 @@ import {
   Briefcase,
   Star,
 } from "lucide-react";
-import { isAfter, parseISO } from "date-fns";
+import { parseISO } from "date-fns";
 import { HeroCard, QuickActionCards, MiniCalendar, PriorityList } from "@/components/dashboard-home";
 import { FileText, ClipboardCheck, Monitor } from "lucide-react";
 
@@ -149,7 +150,8 @@ function EnrollmentCard({ enrollment }: { enrollment: EnrollmentWithSession }) {
       </div>
 
       {/* Progress bar */}
-      {(enrollment.completion_rate > 0 || session.status === "in_progress") && (
+      {(enrollment.completion_rate > 0 ||
+        computeSessionStatus(session.status, session.start_date, session.end_date) === "in_progress") && (
         <div className="space-y-1">
           <div className="flex justify-between text-xs">
             <span className="text-muted-foreground">Progression</span>
@@ -244,22 +246,24 @@ export default function LearnerPage() {
 
   const enrollments = learner?.enrollments ?? [];
 
+  // Statut EFFECTIF recalculé depuis les dates : `sessions.status` reste 'upcoming'
+  // en base et n'est jamais mis à jour → sinon une session en cours est invisible
+  // et les KPI sont faux. Même correctif que côté formateur / page my-trainings.
+  const effStatus = (e: EnrollmentWithSession) =>
+    e.session
+      ? computeSessionStatus(e.session.status, e.session.start_date, e.session.end_date, now)
+      : "cancelled";
+
   const inProgressEnrollments = enrollments.filter(
-    (e) =>
-      e.session?.status === "in_progress" &&
-      e.status !== "cancelled"
+    (e) => e.status !== "cancelled" && effStatus(e) === "in_progress"
   );
 
   const upcomingEnrollments = enrollments.filter(
-    (e) =>
-      e.session &&
-      isAfter(parseISO(e.session.start_date), now) &&
-      e.session.status !== "cancelled" &&
-      e.status !== "cancelled"
+    (e) => e.status !== "cancelled" && effStatus(e) === "upcoming"
   );
 
   const completedEnrollments = enrollments.filter(
-    (e) => e.status !== "cancelled" && (e.status === "completed" || e.session?.status === "completed")
+    (e) => e.status !== "cancelled" && (e.status === "completed" || effStatus(e) === "completed")
   );
 
   const totalHours = completedEnrollments.reduce(
@@ -419,7 +423,8 @@ export default function LearnerPage() {
 
   // ── render ─────────────────────────────────────────────────────────────────
 
-  const nextSession = upcomingEnrollments[0]?.session;
+  const nextSession = [...upcomingEnrollments]
+    .sort((a, b) => new Date(a.session!.start_date).getTime() - new Date(b.session!.start_date).getTime())[0]?.session;
   const eventDates = enrollments
     .filter(e => e.session && e.status !== "cancelled")
     .map(e => e.session!.start_date?.split("T")[0])
@@ -568,7 +573,7 @@ export default function LearnerPage() {
                   ) : (
                     <ScrollArea className="max-h-[480px]">
                       <div className="space-y-3">
-                        {upcomingEnrollments
+                        {[...upcomingEnrollments]
                           .sort(
                             (a, b) =>
                               parseISO(a.session!.start_date).getTime() -
@@ -885,7 +890,10 @@ export default function LearnerPage() {
               title: e.session?.title || "Formation",
               subtitle: e.session ? formatDate(e.session.start_date) : undefined,
               href: "/learner/my-trainings",
-              badge: e.session ? { label: SESSION_STATUS_LABELS[e.session.status] || e.session.status, color: STATUS_COLORS[e.session.status] || "bg-gray-100" } : undefined,
+              badge: e.session ? (() => {
+                const st = computeSessionStatus(e.session.status, e.session.start_date, e.session.end_date, now);
+                return { label: SESSION_STATUS_LABELS[st] || st, color: STATUS_COLORS[st] || "bg-gray-100" };
+              })() : undefined,
             }))}
             emptyMessage="Aucune session à venir"
           />
