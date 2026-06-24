@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { Search, Loader2, Building2, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { MIN_COMPANY_QUERY_LENGTH, isCompanyQueryValid } from "@/lib/crm/company-search-query";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -93,7 +94,9 @@ export function CompanySearch({
 
   // Debounced search
   const doSearch = useCallback(async (q: string) => {
-    if (q.trim().length < 2) {
+    // data.gouv exige ≥ 3 caractères (cf. company-search-query). En deçà, on ne
+    // déclenche PAS l'appel (sinon 400 upstream affiché comme « indisponible »).
+    if (!isCompanyQueryValid(q)) {
       setResults([]);
       setOpen(false);
       setError(null);
@@ -221,6 +224,14 @@ export function CompanySearch({
       {/* Error state */}
       {error && (
         <p className="mt-1 text-xs text-red-500">{error}</p>
+      )}
+
+      {/* Indice : requête trop courte pour data.gouv (≥ 3 car.) — évite la
+          confusion « j'ai tapé mais rien ne se passe ». */}
+      {!error && !loading && query.trim().length > 0 && !isCompanyQueryValid(query) && (
+        <p className="mt-1 text-xs text-gray-400">
+          Tapez au moins {MIN_COMPANY_QUERY_LENGTH} caractères pour lancer la recherche.
+        </p>
       )}
 
       {/* Dropdown results */}

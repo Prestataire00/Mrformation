@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/require-role";
 import { sanitizeError } from "@/lib/api-error";
+import { MIN_COMPANY_QUERY_LENGTH, isCompanyQueryValid } from "@/lib/crm/company-search-query";
 
 export const dynamic = "force-dynamic";
 
@@ -71,16 +72,21 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const q = searchParams.get("q");
 
-    if (!q || q.trim().length < 2) {
+    // Garde autoritaire : l'API data.gouv exige ≥ 3 caractères (cf.
+    // company-search-query). On rejette AVANT l'appel amont pour éviter un 400
+    // upstream affiché à tort comme « service indisponible ».
+    if (!isCompanyQueryValid(q)) {
       return NextResponse.json(
-        { error: "Le paramètre 'q' doit contenir au moins 2 caractères" },
+        { error: `Le paramètre 'q' doit contenir au moins ${MIN_COMPANY_QUERY_LENGTH} caractères` },
         { status: 400 }
       );
     }
 
     // ── Appel API Recherche Entreprises (gouv.fr — gratuit, sans clé) ─────────
+    // q est garanti valide (≥ 3 car.) par le guard ci-dessus.
+    const term = (q ?? "").trim();
     const url = new URL("https://recherche-entreprises.api.gouv.fr/search");
-    url.searchParams.set("q", q.trim());
+    url.searchParams.set("q", term);
     url.searchParams.set("per_page", "5");
     url.searchParams.set("page", "1");
 

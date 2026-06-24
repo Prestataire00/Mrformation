@@ -66,6 +66,7 @@ import {
   EditCommercialActionDialog,
   type EditableCommercialAction,
 } from "@/components/crm/EditCommercialActionDialog";
+import { isCompanyQueryValid } from "@/lib/crm/company-search-query";
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
@@ -1478,7 +1479,8 @@ function EntrepriseSearchPanel({ companyName, onSelect }: { companyName: string;
   const [searching, setSearching] = useState(false);
 
   const handleSearch = async () => {
-    if (!query.trim() || query.trim().length < 2) return;
+    // data.gouv exige ≥ 3 caractères (cf. company-search-query).
+    if (!isCompanyQueryValid(query)) return;
     setSearching(true);
     try {
       const res = await fetch(`/api/pappers/search?q=${encodeURIComponent(query.trim())}`);
@@ -1488,7 +1490,7 @@ function EntrepriseSearchPanel({ companyName, onSelect }: { companyName: string;
     finally { setSearching(false); }
   };
 
-  useEffect(() => { if (companyName.length >= 2) handleSearch(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (isCompanyQueryValid(companyName)) handleSearch(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="space-y-3">
