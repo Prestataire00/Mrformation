@@ -75,3 +75,21 @@ export function formatYmdParis(iso: string): string {
     return "1970-01-01";
   }
 }
+
+/**
+ * Renvoie "dd/MM/yyyy" en date locale Paris pour une ISO (ou Date).
+ *
+ * Équivalent TZ-safe de `formatDate` (date-fns, heure locale du process) pour
+ * les variables de documents : un horodatage proche de minuit ne doit pas
+ * basculer de jour selon le fuseau du serveur (UTC en prod Netlify). Conserve
+ * le contrat de `formatDate` : "—" pour une valeur absente ou invalide.
+ */
+export function formatDateParis(iso: string | Date | null | undefined): string {
+  if (!iso) return "—";
+  try {
+    const p = partsFromIso(typeof iso === "string" ? iso : iso.toISOString());
+    return `${p.day}/${p.month}/${p.year}`;
+  } catch {
+    return "—";
+  }
+}

@@ -1,9 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { formatDate } from "@/lib/utils";
 import { addDays, getISOWeek, startOfISOWeek, endOfISOWeek, format } from "date-fns";
 import type { Session, Client, Learner, Trainer } from "@/lib/types";
 import { getLearnersForCompany, getAmountForCompany } from "@/lib/utils/formation-companies";
-import { formatTimeParis, getHourParis } from "@/lib/utils/paris-time";
+import { formatTimeParis, getHourParis, formatDateParis } from "@/lib/utils/paris-time";
 import { isSyntheticEmail } from "@/lib/utils/learner-email-synthetic";
 
 export interface ResolveContext {
@@ -248,17 +247,17 @@ export function resolveVariables(content: string, data: ResolveContext): string 
     "{{nom_formateur}}": trainerName,
     "{{titre_formation}}": data.session?.title || "[Titre formation]",
     "{{date_formation}}": data.session
-      ? formatDate(data.session.start_date)
+      ? formatDateParis(data.session.start_date)
       : "[Date formation]",
     "{{date_debut}}": data.session
-      ? formatDate(data.session.start_date)
+      ? formatDateParis(data.session.start_date)
       : "[Date début]",
     "{{date_fin}}": data.session
-      ? formatDate(data.session.end_date)
+      ? formatDateParis(data.session.end_date)
       : "[Date fin]",
     "{{lieu}}": data.session?.location || "[Lieu]",
     "{{duree_heures}}": dureeHeures,
-    "{{date_today}}": formatDate(now.toISOString()),
+    "{{date_today}}": formatDateParis(now.toISOString()),
     "{{numero_facture}}": `FACT-${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`,
     "{{montant}}": montantHt > 0 ? `${montantHt.toFixed(2)}` : "[Montant HT]",
     "{{signature_apprenant}}": "[Signature apprenant]",
@@ -337,7 +336,7 @@ export function resolveVariables(content: string, data: ResolveContext): string 
     "{{date_creation_programme}}": (() => {
       const p = data.session?.program;
       const created = p?.created_at || data.session?.training?.created_at;
-      return created ? formatDate(created) : "";
+      return created ? formatDateParis(created) : "";
     })(),
     "{{duree_jours}}": (() => {
       const c = (data.session?.program?.content || {}) as Record<string, unknown>;
@@ -560,7 +559,7 @@ export function resolveVariables(content: string, data: ResolveContext): string 
       if (!results || results.length === 0) {
         return `<p style="color:#6b7280;font-style:italic;text-align:center;padding:14px;">Aucune évaluation complétée pour cette formation.</p>`;
       }
-      const fmtDate = (iso: string | null) => (iso ? formatDate(iso) : "—");
+      const fmtDate = (iso: string | null) => (iso ? formatDateParis(iso) : "—");
       const statusLabel = (s: typeof results[number]["status"]) => {
         switch (s) {
           case "acquis": return `<span style="color:#15803d;font-weight:700;">ACQUIS</span>`;
@@ -623,7 +622,7 @@ export function resolveVariables(content: string, data: ResolveContext): string 
       if (!sess?.start_date || !sess?.end_date) return "[Tableau signature]";
       if (!data.learner) return "[Apprenant manquant]";
 
-      const fmtDate = (iso: string) => formatDate(iso);
+      const fmtDate = (iso: string) => formatDateParis(iso);
       const fmtTime = (iso: string) => {
         try {
           const d = new Date(iso);
@@ -784,7 +783,7 @@ export function resolveVariables(content: string, data: ResolveContext): string 
     // 09:00 Paris (= 07:00Z l'été) sortait "07:00" dans la convocation
     // alors que le planning admin l'affiche correctement à "09:00".
     "{{dates_detail}}": (() => {
-      const fmtDate = (iso: string) => formatDate(iso);
+      const fmtDate = (iso: string) => formatDateParis(iso);
       const fmtTime = (iso: string) => formatTimeParis(iso);
       const slots = (data.session as unknown as { formation_time_slots?: { start_time: string; end_time: string }[] })?.formation_time_slots;
       if (slots && slots.length > 0) {
@@ -819,7 +818,7 @@ export function resolveVariables(content: string, data: ResolveContext): string 
       const cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
       const endDay = new Date(end.getFullYear(), end.getMonth(), end.getDate());
       while (cursor.getTime() <= endDay.getTime()) {
-        const dateStr = formatDate(cursor.toISOString());
+        const dateStr = formatDateParis(cursor.toISOString());
         items.push(`<li>De ${dateStr} - ${startTime} À ${dateStr} - ${endTime}</li>`);
         cursor.setDate(cursor.getDate() + 1);
       }
@@ -1047,8 +1046,8 @@ export function resolveVariables(content: string, data: ResolveContext): string 
     // Combo dates : "Du 15 mai 2026 au 16 mai 2026"
     "{{dates_formation}}": (() => {
       if (!data.session?.start_date || !data.session?.end_date) return "[Dates formation]";
-      const debut = formatDate(data.session.start_date);
-      const fin = formatDate(data.session.end_date);
+      const debut = formatDateParis(data.session.start_date);
+      const fin = formatDateParis(data.session.end_date);
       return debut === fin ? `Le ${debut}` : `Du ${debut} au ${fin}`;
     })(),
     // Tableau HTML des coûts pour le client courant (cf §4 de la convention).
