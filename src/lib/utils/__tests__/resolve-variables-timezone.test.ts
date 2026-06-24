@@ -109,3 +109,22 @@ describe("Resolver — dates de documents en date Paris (anti off-by-one minuit)
     expect(resolveVariables("{{date_fin}}", { session })).toBe("16/06/2026");
   });
 });
+
+describe("Resolver — {{dates_detail}} fallback (sans créneaux) en calendrier Paris", () => {
+  // start 22:30Z = 08/06 00:30 Paris ; sans formation_time_slots → branche fallback.
+  function boundarySession(): Session {
+    return {
+      id: "session-1",
+      entity_id: "entity-1",
+      start_date: "2026-06-07T22:30:00.000Z",
+      end_date: "2026-06-08T15:00:00.000Z",
+    } as unknown as Session;
+  }
+
+  it.each(HOSTILE_TZS)("affiche le jour Paris (08/06), pas le jour UTC (07/06), même si TZ=%s", (tz) => {
+    process.env.TZ = tz;
+    const html = resolveVariables("{{dates_detail}}", { session: boundarySession() });
+    expect(html).toContain("08/06/2026");
+    expect(html).not.toContain("07/06/2026");
+  });
+});

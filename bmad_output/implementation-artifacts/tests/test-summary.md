@@ -39,7 +39,8 @@
 - **Cause** : `{{tableau_signature_compact}}` calculait dates + semaine ISO via date-fns en heure locale (les heures étaient déjà Paris). Un créneau 22:30Z (= 00:30 le lendemain Paris) tombait sur la veille / la mauvaise semaine en prod UTC.
 - **Fix** : nouveau `parisDateAnchor` (jour Paris ancré à midi → `getISOWeek`/`startOfISOWeek`/`format` stables) + `formatDateParis` pour les dates de créneaux, sur les branches slot-aware ET fallback. `{{tableau_planning_hebdo}}` était déjà Paris-safe (`toLocaleDateString` timeZone Europe/Paris).
 - **TDD** : 2 tests rouges sous TZ hostile (07/06 + « Semaine 23 ») → verts (08/06). Snapshots inchangés.
-- Reliquat mineur connu : la branche fallback de `{{tableau_signature_individuel}}` dérive encore sa date via `cursor.toISOString()` (rare — sessions sans `formation_time_slots`).
+- **Branches fallback (sans `formation_time_slots`) aussi corrigées** : `{{tableau_signature_individuel}}` et `{{dates_detail}}` ancrent désormais leur cursor de jours via `parisDateAnchor` (tests sous TZ hostile : 08/06 vs 07/06). `{{tableau_planning_hebdo}}` était déjà sûr (round-trip d'un `dateStr` Paris).
+- **Sweep complet** : plus aucun motif de jour process-local dans le resolver, **sauf** `{{numero_facture}}` (`FACT-${now.getFullYear()}-${now.getMonth()}`) — peut être décalé d'un mois/an si un document est généré juste après minuit Paris une nuit de bascule. Faible fréquence + format de numérotation sensible → laissé en l'état, documenté.
 
 ### Tests E2E (navigateur)
 - (aucun pour l'instant — décision : tests contrat d'abord ; E2E Playwright sur 2-3 flux UI critiques dans un second temps, une fois l'environnement de test cadré.)
@@ -51,7 +52,7 @@
 - **État actuel des templates : propre** — 0 violation sur les 37 doc_types (les PDF partent sans placeholder visible aujourd'hui).
 - **Rôle du test : filet anti-régression** — il cassera dès qu'un template introduira une variable non branchée (cause n°1 des « variables vides » signalées par le client, ex. `generate-from-template`).
 - **Preuve de robustesse (vérif destructive)** : injection d'un `[%Variable Bidon%]` dans `attestation-assiduite.ts` → seul le test `attestation_assiduite` passe au rouge en nommant la variable ; revert propre ensuite.
-- **Suite complète :** 162 fichiers / 1842 tests **verts**, 0 régression.
+- **Suite complète :** 162 fichiers / 1847 tests **verts**, 0 régression.
 
 ### ✅ Finding CORRIGÉ — `formatDate` TZ-naïf dans les documents
 - **Cause** : `formatDate` (`src/lib/utils.ts`, date-fns local) rendait les dates documents dans le fuseau du process. En prod UTC, une date `22:00Z` (= 15/06 00:00 Paris) sortait **`14/06/2026`** au lieu de `15/06/2026` (off-by-one minuit).

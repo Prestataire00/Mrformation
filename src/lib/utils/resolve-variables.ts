@@ -698,12 +698,10 @@ export function resolveVariables(content: string, data: ResolveContext): string 
       // est désormais Paris-aware et décalerait ces horaires synthétiques.
       type Creneau = { startIso: string; endIso: string; startLabel: string; endLabel: string; label: string };
       const creneaux: Creneau[] = [];
-      const start = new Date(sess.start_date);
-      const end = new Date(sess.end_date);
-      const cursor = new Date(start);
-      cursor.setHours(0, 0, 0, 0);
-      const endDay = new Date(end);
-      endDay.setHours(0, 0, 0, 0);
+      // ⚠ TZ : itère sur les jours du calendrier Paris (ancrés à midi) pour que
+      // dateStr corresponde au jour Paris quel que soit le fuseau du process.
+      const cursor = parisDateAnchor(sess.start_date);
+      const endDay = parisDateAnchor(sess.end_date);
       while (cursor.getTime() <= endDay.getTime()) {
         const dateStr = cursor.toISOString().slice(0, 10);
         creneaux.push({ startIso: `${dateStr}T09:00:00Z`, endIso: `${dateStr}T12:00:00Z`, startLabel: "09:00", endLabel: "12:00", label: "MATIN" });
@@ -807,15 +805,13 @@ export function resolveVariables(content: string, data: ResolveContext): string 
       if (!data.session?.start_date || !data.session?.end_date) {
         return `<p style="color:#9ca3af;font-style:italic;">À renseigner dans : section « Planning » de la session.</p>`;
       }
-      const start = new Date(data.session.start_date);
-      const end = new Date(data.session.end_date);
       const startTime = fmtTime(data.session.start_date);
       const endTime = fmtTime(data.session.end_date);
       const items: string[] = [];
-      // Itération par jour LOCAL (cohérent avec le getHours local du fmtTime
-      // pour éviter de créer un jour fantôme si end_date est juste après minuit UTC).
-      const cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
-      const endDay = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+      // ⚠ TZ : itère sur les jours du calendrier Paris (ancrés à midi), cohérent
+      // avec fmtTime / formatDateParis désormais Paris, quel que soit le fuseau.
+      const cursor = parisDateAnchor(data.session.start_date);
+      const endDay = parisDateAnchor(data.session.end_date);
       while (cursor.getTime() <= endDay.getTime()) {
         const dateStr = formatDateParis(cursor.toISOString());
         items.push(`<li>De ${dateStr} - ${startTime} À ${dateStr} - ${endTime}</li>`);

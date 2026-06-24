@@ -70,7 +70,7 @@ describe("Émargement individuel — heures de créneaux en heure Paris", () => 
   });
 });
 
-describe("Émargement individuel — fallback legacy (sans formation_time_slots) inchangé", () => {
+describe("Émargement individuel — fallback legacy (sans formation_time_slots)", () => {
   it("conserve l'affichage des créneaux génériques 09:00 / 12:00 / 13:00 / 17:00", () => {
     const session = {
       id: "session-1",
@@ -84,5 +84,19 @@ describe("Émargement individuel — fallback legacy (sans formation_time_slots)
     expect(html).toContain("12:00");
     expect(html).toContain("13:00");
     expect(html).toContain("17:00");
+  });
+
+  it.each(HOSTILE_TZS)("date en calendrier Paris : start 22:30Z (= 08/06 Paris) → 08/06, pas 07/06, même si TZ=%s", (tz) => {
+    process.env.TZ = tz;
+    const session = {
+      id: "session-1",
+      entity_id: "entity-1",
+      start_date: "2026-06-07T22:30:00.000Z", // = 08/06 00:30 Paris
+      end_date: "2026-06-08T15:00:00.000Z", // = 08/06 17:00 Paris (même jour Paris)
+      // pas de formation_time_slots → branche fallback
+    } as unknown as Session;
+    const html = resolveVariables("{{tableau_signature_individuel}}", { session, learner: makeLearner() });
+    expect(html).toContain("08/06/2026");
+    expect(html).not.toContain("07/06/2026");
   });
 });
