@@ -1,5 +1,6 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
+import { loadImageDataUrl } from "@/lib/devis/logo-loader";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -236,19 +237,10 @@ export async function generateDevisPDF(data: DevisData, entityName?: string): Pr
   const margin = 15;
   const contentWidth = pageWidth - margin * 2;
 
-  // Try to load logo
-  let logoImg: string | null = null;
-  try {
-    const response = await fetch(COMPANY.logo);
-    const blob = await response.blob();
-    logoImg = await new Promise<string>((resolve) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result as string);
-      reader.readAsDataURL(blob);
-    });
-  } catch {
-    // Logo not available, skip
-  }
+  // Logo résilient : null si absent/invalide, ne plante jamais. Cf bug devis
+  // C3V — /logo-c3v-formation.png absent → 404 → l'ancien code passait le corps
+  // HTML du 404 à addImage("PNG"), qui plantait (« impossible de générer »).
+  const logoImg = await loadImageDataUrl(COMPANY.logo);
 
   let y = margin;
 
@@ -256,7 +248,11 @@ export async function generateDevisPDF(data: DevisData, entityName?: string): Pr
 
   // Logo (top right)
   if (logoImg) {
-    doc.addImage(logoImg, "PNG", pageWidth - margin - 35, y, 35, 30);
+    try {
+      doc.addImage(logoImg, "PNG", pageWidth - margin - 35, y, 35, 30);
+    } catch {
+      /* logo invalide — on génère le devis sans */
+    }
   }
 
   // Company info (left side)
@@ -529,7 +525,11 @@ export async function generateDevisPDF(data: DevisData, entityName?: string): Pr
 
   // Logo stamp at top with company info
   if (logoImg) {
-    doc.addImage(logoImg, "PNG", margin, y, 25, 22);
+    try {
+      doc.addImage(logoImg, "PNG", margin, y, 25, 22);
+    } catch {
+      /* logo invalide — on continue sans */
+    }
   }
 
   doc.setFontSize(6);

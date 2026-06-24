@@ -1,5 +1,6 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
+import { loadImageDataUrl } from "@/lib/devis/logo-loader";
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Types
@@ -109,17 +110,8 @@ function getLogoPath(entityName: string): string {
 }
 
 async function loadImage(path: string): Promise<string | null> {
-  try {
-    const response = await fetch(path);
-    const blob = await response.blob();
-    return await new Promise<string>((resolve) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result as string);
-      reader.readAsDataURL(blob);
-    });
-  } catch {
-    return null;
-  }
+  // Résilient : null si absent/invalide (cf bug logo C3V manquant) — ne plante jamais.
+  return loadImageDataUrl(path);
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -146,7 +138,11 @@ function renderHeader(
 ): number {
   // Logo (droite, sous lequel on placera la date facture)
   if (logoImg) {
-    doc.addImage(logoImg, "PNG", PAGE_W - MARGIN - 30, y, 30, 25);
+    try {
+      doc.addImage(logoImg, "PNG", PAGE_W - MARGIN - 30, y, 30, 25);
+    } catch {
+      /* logo invalide — facture générée sans */
+    }
   }
 
   // Coordonnées entité (gauche)
@@ -461,8 +457,12 @@ async function renderStampAndFooter(doc: jsPDF, data: InvoicePdfData, y: number)
   if (data.entityStampUrl) {
     const stampImg = await loadImage(data.entityStampUrl);
     if (stampImg) {
-      doc.addImage(stampImg, "PNG", MARGIN, y, 35, 25);
-      y += 28;
+      try {
+        doc.addImage(stampImg, "PNG", MARGIN, y, 35, 25);
+        y += 28;
+      } catch {
+        /* tampon invalide — facture générée sans */
+      }
     }
   }
 
