@@ -1,0 +1,40 @@
+name: CI
+
+# Garde-fou anti-régression : typecheck + tests unitaires Vitest sur chaque
+# push (main/develop) et chaque pull request. Les tests e2e Playwright
+# (npm run test:e2e) ne sont volontairement PAS inclus ici : ils nécessitent
+# un serveur applicatif + Supabase et seront ajoutés séparément.
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+# Annule un run obsolète si un nouveau push arrive sur la même réf.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Typecheck & tests unitaires
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node (.nvmrc = 22, aligné prod Netlify)
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install (npm ci)
+        run: npm ci
+
+      - name: Typecheck (tsc --noEmit)
+        run: npx tsc --noEmit
+
+      - name: Tests unitaires (vitest run)
+        run: npm test
