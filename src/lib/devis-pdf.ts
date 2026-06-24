@@ -230,7 +230,7 @@ Conform\u00e9ment \u00e0 l'exigence essentielle de s\u00e9curit\u00e9 des donn\u
 
 // ── Main export ──────────────────────────────────────────────────────────────
 
-export async function generateDevisPDF(data: DevisData, entityName?: string): Promise<jsPDF> {
+export async function generateDevisPDF(data: DevisData, entityName?: string, logoUrl?: string | null): Promise<jsPDF> {
   const COMPANY = getCompanyInfo(entityName);
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const pageWidth = 210;
@@ -240,7 +240,9 @@ export async function generateDevisPDF(data: DevisData, entityName?: string): Pr
   // Logo résilient : null si absent/invalide, ne plante jamais. Cf bug devis
   // C3V — /logo-c3v-formation.png absent → 404 → l'ancien code passait le corps
   // HTML du 404 à addImage("PNG"), qui plantait (« impossible de générer »).
-  const logoImg = await loadImageDataUrl(COMPANY.logo);
+  // Préfère le logo réel de l'entité (entity.logo_url, comme les attestations) ;
+  // fallback sur l'asset public hardcodé (le chemin C3V hardcodé n'existe pas).
+  const logoImg = await loadImageDataUrl(logoUrl || COMPANY.logo);
 
   let y = margin;
 
@@ -703,13 +705,13 @@ function addFooter(doc: jsPDF, pageWidth: number, contentWidth: number, company:
 
 // ── Convenience: download directly ──────────────────────────────────────────
 
-export async function downloadDevisPDF(data: DevisData, entityName?: string): Promise<void> {
-  const doc = await generateDevisPDF(data, entityName);
+export async function downloadDevisPDF(data: DevisData, entityName?: string, logoUrl?: string | null): Promise<void> {
+  const doc = await generateDevisPDF(data, entityName, logoUrl);
   doc.save(`Devis_${data.reference}.pdf`);
 }
 
-export async function generateDevisPDFBase64(data: DevisData, entityName?: string): Promise<string> {
-  const doc = await generateDevisPDF(data, entityName);
+export async function generateDevisPDFBase64(data: DevisData, entityName?: string, logoUrl?: string | null): Promise<string> {
+  const doc = await generateDevisPDF(data, entityName, logoUrl);
   const arrayBuffer = doc.output("arraybuffer");
   const bytes = new Uint8Array(arrayBuffer);
   let binary = "";
