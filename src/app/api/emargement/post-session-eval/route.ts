@@ -92,6 +92,10 @@ export async function POST(request: NextRequest) {
       : session.training;
 
     // 3. Get enrolled learners with emails
+    // ⚠️ Volontairement [registered, confirmed] et NON SIGNABLE_ENROLLMENT_STATUSES :
+    // cette route ENVOIE des emails. Inclure 'completed' re-spammerait les
+    // inscriptions déjà terminées (décision produit 24/06). Ne PAS « aligner »
+    // sur les routes émargement (liste/tokens/signature) sans cette nuance.
     const { data: enrollments } = await supabase
       .from("enrollments")
       .select("learner_id, learner:learners(id, first_name, last_name, email)")
