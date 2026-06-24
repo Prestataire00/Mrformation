@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useEntity } from "@/contexts/EntityContext";
+import { pickTrainerRecord } from "@/lib/auth/trainer-session-access";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Loader2, BookOpen, FileText, ShieldCheck } from "lucide-react";
 import { CourseMaterialsTab } from "@/components/trainer/CourseMaterialsTab";
@@ -10,6 +12,7 @@ import { AdminDocumentsTab } from "@/components/trainer/AdminDocumentsTab";
 
 export default function TrainerCoursesPage() {
   const supabase = createClient();
+  const { entityId } = useEntity();
   const [trainerId, setTrainerId] = useState<string>("");
   const [loading, setLoading] = useState(true);
 
@@ -18,17 +21,20 @@ export default function TrainerCoursesPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data: trainer } = await supabase
+      // Multi-entité : un profil peut posséder plusieurs fiches (1/entité). On
+      // prend celle de l'entité active ; mono-entité (cas courant) → la fiche
+      // unique, strictement comme l'ancien .single() (aucune régression).
+      const { data: trainers } = await supabase
         .from("trainers")
-        .select("id")
-        .eq("profile_id", user.id)
-        .single();
+        .select("id, entity_id")
+        .eq("profile_id", user.id);
+      const trainer = pickTrainerRecord(trainers, entityId);
 
       if (trainer) setTrainerId(trainer.id);
     } finally {
       setLoading(false);
     }
-  }, [supabase]);
+  }, [supabase, entityId]);
 
   useEffect(() => { fetchTrainerId(); }, [fetchTrainerId]);
 

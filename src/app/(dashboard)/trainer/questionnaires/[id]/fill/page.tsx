@@ -5,6 +5,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
+import { pickTrainerRecord } from "@/lib/auth/trainer-session-access";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -75,11 +76,14 @@ export default function TrainerQuestionnaireFillPage() {
       return;
     }
 
-    const { data: trainer } = await supabase
+    // Multi-entité : un profil peut avoir plusieurs fiches (1/entité). On prend
+    // celle de l'entité active ; mono-entité → la fiche unique, comme l'ancien
+    // .single() (aucune régression).
+    const { data: trainers } = await supabase
       .from("trainers")
-      .select("id")
-      .eq("profile_id", user.id)
-      .single();
+      .select("id, entity_id")
+      .eq("profile_id", user.id);
+    const trainer = pickTrainerRecord(trainers, entityId);
     if (!trainer) {
       setLoading(false);
       return;

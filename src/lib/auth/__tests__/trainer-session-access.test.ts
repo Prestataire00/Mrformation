@@ -1,5 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
-import { isTrainerAssignedToSession, resolveTrainerSessionIds, resolveTrainerIds } from "../trainer-session-access";
+import {
+  isTrainerAssignedToSession,
+  resolveTrainerSessionIds,
+  resolveTrainerIds,
+  pickTrainerRecord,
+} from "../trainer-session-access";
 
 type AnyClient = Parameters<typeof isTrainerAssignedToSession>[0];
 
@@ -153,5 +158,35 @@ describe("resolveTrainerIds (multi-entité — anti-bug .single())", () => {
   it("déduplique les ids", async () => {
     const client = makeClient({ trainers: [{ id: "t1" }, { id: "t1" }] });
     expect(await resolveTrainerIds(client, "profile-1")).toEqual(["t1"]);
+  });
+});
+
+describe("pickTrainerRecord (sélection de fiche — régression-safe mono-entité)", () => {
+  const mr = { id: "t-mr", entity_id: "ent-mr", name: "MR" };
+  const c3v = { id: "t-c3v", entity_id: "ent-c3v", name: "C3V" };
+
+  it("renvoie null si aucune fiche", () => {
+    expect(pickTrainerRecord([], "ent-mr")).toBeNull();
+    expect(pickTrainerRecord(null, "ent-mr")).toBeNull();
+    expect(pickTrainerRecord(undefined)).toBeNull();
+  });
+
+  it("NON-RÉGRESSION mono-entité : 1 seule fiche → cette fiche, peu importe l'entité active", () => {
+    // Cas Loris (formateur mono-entité). Équivalent strict de l'ancien `.single()` :
+    // on renvoie la fiche même si entityId ne correspond pas / est absent.
+    expect(pickTrainerRecord([mr], "ent-mr")).toBe(mr);
+    expect(pickTrainerRecord([mr], "ent-autre")).toBe(mr);
+    expect(pickTrainerRecord([mr], undefined)).toBe(mr);
+    expect(pickTrainerRecord([mr], null)).toBe(mr);
+  });
+
+  it("multi-entité : préfère la fiche de l'entité active", () => {
+    expect(pickTrainerRecord([mr, c3v], "ent-c3v")).toBe(c3v);
+    expect(pickTrainerRecord([mr, c3v], "ent-mr")).toBe(mr);
+  });
+
+  it("multi-entité sans correspondance d'entité active → 1ʳᵉ fiche (ne casse jamais)", () => {
+    expect(pickTrainerRecord([mr, c3v], "ent-inconnue")).toBe(mr);
+    expect(pickTrainerRecord([mr, c3v], undefined)).toBe(mr);
   });
 });

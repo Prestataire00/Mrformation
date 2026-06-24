@@ -3,7 +3,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/client";
-import { resolveTrainerSessionIds } from "@/lib/auth/trainer-session-access";
+import { resolveTrainerSessionIds, pickTrainerRecord } from "@/lib/auth/trainer-session-access";
+import { useEntity } from "@/contexts/EntityContext";
 import {
   Card,
   CardContent,
@@ -115,6 +116,7 @@ interface ProfileForm {
 
 export default function TrainerPage() {
   const supabase = createClient();
+  const { entityId } = useEntity();
   const { toast } = useToast();
 
   const [loading, setLoading] = useState(true);
@@ -198,14 +200,19 @@ export default function TrainerPage() {
       } = await supabase.auth.getUser();
       if (!user) return;
 
-      // fetch trainer profile
-      const { data: trainerData, error: trainerError } = await supabase
+      // fetch trainer profile — multi-entité : un profil peut avoir plusieurs
+      // fiches (1/entité). On prend celle de l'entité active ; mono-entité → la
+      // fiche unique, comme l'ancien .single() (aucune régression).
+      const { data: trainerRows } = await supabase
         .from("trainers")
         .select("*, competencies:trainer_competencies(*)")
-        .eq("profile_id", user.id)
-        .single();
+        .eq("profile_id", user.id);
+      const trainerData = pickTrainerRecord(
+        trainerRows as Array<Trainer & { entity_id: string | null }> | null,
+        entityId,
+      );
 
-      if (trainerError || !trainerData) {
+      if (!trainerData) {
         setTrainer(null);
         return;
       }
@@ -247,7 +254,7 @@ export default function TrainerPage() {
     } finally {
       setLoading(false);
     }
-  }, [supabase]);
+  }, [supabase, entityId]);
 
   useEffect(() => {
     fetchData();

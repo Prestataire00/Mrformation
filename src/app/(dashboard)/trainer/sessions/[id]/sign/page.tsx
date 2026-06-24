@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { useEntity } from "@/contexts/EntityContext";
+import { pickTrainerRecord } from "@/lib/auth/trainer-session-access";
 import { SignaturePad } from "@/components/signatures/SignaturePad";
 import { sanitizeSignatureSvg } from "@/lib/utils/sanitize-svg";
 import {
@@ -77,6 +79,7 @@ export default function TrainerSignPage() {
   const params = useParams();
   const router = useRouter();
   const supabase = createClient();
+  const { entityId } = useEntity();
   const { toast } = useToast();
   const sessionId = params.id as string;
 
@@ -97,12 +100,15 @@ export default function TrainerSignPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // Get trainer ID from profile
-    const { data: trainerData } = await supabase
+    // Get trainer ID from profile — multi-entité : un profil peut avoir
+    // plusieurs fiches (1/entité). On prend celle de l'entité active ;
+    // mono-entité → la fiche unique, comme l'ancien .single() (aucune
+    // régression). Fallback sur user.id conservé (cf. convention signer_id).
+    const { data: trainers } = await supabase
       .from("trainers")
-      .select("id")
-      .eq("profile_id", user.id)
-      .single();
+      .select("id, entity_id")
+      .eq("profile_id", user.id);
+    const trainerData = pickTrainerRecord(trainers, entityId);
 
     const tId = trainerData?.id || user.id;
     setTrainerId(tId);
@@ -204,7 +210,7 @@ export default function TrainerSignPage() {
 
     setSlotStates(stateMap);
     setLoading(false);
-  }, [sessionId, supabase, toast]);
+  }, [sessionId, supabase, toast, entityId]);
 
   useEffect(() => {
     loadData();

@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useEntity } from "@/contexts/EntityContext";
+import { pickTrainerRecord } from "@/lib/auth/trainer-session-access";
 import {
   Star, Loader2, BarChart3, ClipboardList, CheckCircle, Clock,
   ExternalLink, AlertCircle,
@@ -33,6 +35,7 @@ interface TrainerQuestionnaire {
 
 export default function TrainerEvaluationsPage() {
   const supabase = createClient();
+  const { entityId } = useEntity();
   const { toast } = useToast();
 
   const [loading, setLoading] = useState(true);
@@ -48,12 +51,14 @@ export default function TrainerEvaluationsPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Find trainer
-      const { data: trainer } = await supabase
+      // Find trainer — multi-entité : un profil peut avoir plusieurs fiches
+      // (1/entité). On prend celle de l'entité active ; mono-entité → la fiche
+      // unique, comme l'ancien .single() (aucune régression).
+      const { data: trainers } = await supabase
         .from("trainers")
-        .select("id")
-        .eq("profile_id", user.id)
-        .single();
+        .select("id, entity_id")
+        .eq("profile_id", user.id);
+      const trainer = pickTrainerRecord(trainers, entityId);
 
       if (!trainer) {
         setLoading(false);
@@ -170,7 +175,7 @@ export default function TrainerEvaluationsPage() {
     } finally {
       setLoading(false);
     }
-  }, [supabase, toast]);
+  }, [supabase, toast, entityId]);
 
   useEffect(() => {
     fetchData();

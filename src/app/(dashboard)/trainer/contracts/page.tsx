@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useEntity } from "@/contexts/EntityContext";
+import { pickTrainerRecord } from "@/lib/auth/trainer-session-access";
 import { useToast } from "@/components/ui/use-toast";
 import {
   Card,
@@ -46,6 +48,7 @@ interface TrainerDocument {
 
 export default function TrainerContractsPage() {
   const supabase = createClient();
+  const { entityId } = useEntity();
   const { toast } = useToast();
 
   const [documents, setDocuments] = useState<TrainerDocument[]>([]);
@@ -66,11 +69,14 @@ export default function TrainerContractsPage() {
     }
 
     // Résout la fiche formateur (trainers.id) depuis le profil.
-    const { data: trainer } = await supabase
+    // Multi-entité : un profil peut avoir plusieurs fiches (1/entité) → on prend
+    // celle de l'entité active ; mono-entité → la fiche unique, comme l'ancien
+    // .single() (aucune régression).
+    const { data: trainers } = await supabase
       .from("trainers")
-      .select("id")
-      .eq("profile_id", user.id)
-      .single();
+      .select("id, entity_id")
+      .eq("profile_id", user.id);
+    const trainer = pickTrainerRecord(trainers, entityId);
     if (!trainer) {
       setDocuments([]);
       setLoading(false);
@@ -82,7 +88,7 @@ export default function TrainerContractsPage() {
     const { data: docs, error: docsError } = await supabase
       .from("generated_documents")
       .select("id, name, file_url, content, created_at, session_id")
-      .eq("trainer_id", (trainer as { id: string }).id)
+      .eq("trainer_id", trainer.id)
       .order("created_at", { ascending: false });
 
     if (docsError) {
@@ -127,7 +133,7 @@ export default function TrainerContractsPage() {
     setDocuments(mapped);
 
     setLoading(false);
-  }, [supabase, toast]);
+  }, [supabase, toast, entityId]);
 
   useEffect(() => {
     fetchDocuments();

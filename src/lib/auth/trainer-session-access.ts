@@ -52,6 +52,23 @@ export async function isTrainerAssignedToSession(
  * ou aucune assignation (la page affiche alors un état vide).
  */
 /**
+ * Choisit LA fiche formateur à utiliser pour les pages qui affichent/éditent un
+ * seul profil. Régression-safe : avec une seule fiche (mono-entité, cas courant)
+ * renvoie cette fiche quoi qu'il arrive — strictement équivalent à l'ancien
+ * `.single()`. Avec plusieurs fiches (multi-entité), préfère celle de l'entité
+ * active, sinon la première (ne renvoie jamais null s'il existe ≥1 fiche).
+ */
+export function pickTrainerRecord<T extends { entity_id: string | null }>(
+  rows: T[] | null | undefined,
+  entityId?: string | null,
+): T | null {
+  const list = rows ?? [];
+  if (list.length === 0) return null;
+  if (entityId) return list.find((r) => r.entity_id === entityId) ?? list[0];
+  return list[0];
+}
+
+/**
  * Retourne les `trainers.id` (dédupliqués) du profil `profileId`.
  *
  * Un même `profile_id` peut avoir PLUSIEURS fiches `trainers` (une par entité —
