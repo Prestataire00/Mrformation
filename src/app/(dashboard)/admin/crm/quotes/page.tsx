@@ -395,7 +395,7 @@ export default function QuotesPage() {
     try {
       const devisData = await buildDevisData(quote);
       if (!devisData) throw new Error("Données manquantes");
-      await downloadDevisPDF(devisData, entity?.name, entity?.logo_url);
+      await downloadDevisPDF(devisData, entity?.name, entity?.logo_url, entity?.siret, entity?.nda);
     } catch (err) {
       console.error("PDF download error:", err);
       toast({ title: "Erreur", description: "Impossible de générer le PDF.", variant: "destructive" });
@@ -470,7 +470,7 @@ export default function QuotesPage() {
         devisData.lines = [{ description: fallbackDesc, quantity: 1, unit_price: Math.round(amountHT * 100) / 100 }];
       }
 
-      const doc = await generateDevisPDF(devisData, entity?.name, entity?.logo_url);
+      const doc = await generateDevisPDF(devisData, entity?.name, entity?.logo_url, entity?.siret, entity?.nda);
       const blob = doc.output("blob");
       const base64 = await new Promise<string>((resolve) => {
         const reader = new FileReader();
@@ -671,7 +671,7 @@ export default function QuotesPage() {
       try {
         const devisData = await buildDevisData(quote);
         if (devisData) {
-          const base64 = await generateDevisPDFBase64(devisData, entity?.name, entity?.logo_url);
+          const base64 = await generateDevisPDFBase64(devisData, entity?.name, entity?.logo_url, entity?.siret, entity?.nda);
           setSignAttachments([{ filename: `Devis_${quote.reference}.pdf`, content: base64 }]);
         }
       } catch { /* PDF generation failed silently — user can still add manually */ }

@@ -801,6 +801,14 @@ export async function exportHtmlToPDFBase64(
 
 interface BPFFullExportData {
   entityName: string;
+  // Identité fiscale de l'entité (Section A). Sans ça, le CERFA hardcodait
+  // les identifiants de MR pour TOUTES les entités (C3V → SIRET/NDA/email de MR).
+  entitySiret?: string | null;
+  entityNda?: string | null;
+  entityApeCode?: string | null;
+  entityAddress?: string | null;
+  entityEmail?: string | null;
+  entityPhone?: string | null;
   fiscalYear: number;
   dateFrom: string;
   dateTo: string;
@@ -893,11 +901,11 @@ export function exportBPFFullToPDF(data: BPFFullExportData): void {
   doc.setFontSize(8);
   doc.setFont("helvetica", "normal");
   const infoLines = [
-    `N° de déclaration : 93132013113`,
-    `SIRET : 91311329600036 | NAF : 8559A`,
+    `N° de déclaration : ${data.entityNda || "à compléter"}`,
+    `SIRET : ${data.entitySiret || "à compléter"} | NAF : ${data.entityApeCode || "8559A"}`,
     `Organisme : ${data.entityName}`,
-    `Adresse : 24/26 Boulevard Gay Lussac 13014 Marseille`,
-    `Tél : 0750461245 | Email : contact@mrformation.fr`,
+    `Adresse : ${data.entityAddress || "24/26 Boulevard Gay Lussac 13014 Marseille"}`,
+    `Tél : ${data.entityPhone || "0750461245"} | Email : ${data.entityEmail || "—"}`,
   ];
   for (const line of infoLines) {
     doc.text(line, 18, y);

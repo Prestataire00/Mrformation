@@ -866,8 +866,17 @@ export function BPFForm({ title }: BPFFormProps) {
     setExportingPDF(true);
     try {
       const { exportBPFFullToPDF } = await import("@/lib/pdf-export");
+      const entityAddress = entity?.address
+        ? [entity.address, [entity.postal_code, entity.city].filter(Boolean).join(" ")].filter(Boolean).join(" ")
+        : null;
       await exportBPFFullToPDF({
         entityName,
+        entitySiret: entity?.siret ?? null,
+        entityNda: entity?.nda ?? null,
+        entityApeCode: entity?.ape_code ?? null,
+        entityAddress,
+        entityEmail: entity?.email ?? null,
+        entityPhone: entity?.phone ?? null,
         fiscalYear,
         dateFrom: filteredFrom,
         dateTo: filteredTo,

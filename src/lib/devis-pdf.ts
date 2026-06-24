@@ -230,8 +230,11 @@ Conform\u00e9ment \u00e0 l'exigence essentielle de s\u00e9curit\u00e9 des donn\u
 
 // ── Main export ──────────────────────────────────────────────────────────────
 
-export async function generateDevisPDF(data: DevisData, entityName?: string, logoUrl?: string | null): Promise<jsPDF> {
+export async function generateDevisPDF(data: DevisData, entityName?: string, logoUrl?: string | null, siret?: string | null, nda?: string | null): Promise<jsPDF> {
   const COMPANY = getCompanyInfo(entityName);
+  // SIRET/NDA tirés de l'entité (le hardcodé C3V vaut « à compléter »).
+  if (siret) COMPANY.siret = siret;
+  if (nda) COMPANY.nda = nda;
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const pageWidth = 210;
   const margin = 15;
@@ -705,13 +708,13 @@ function addFooter(doc: jsPDF, pageWidth: number, contentWidth: number, company:
 
 // ── Convenience: download directly ──────────────────────────────────────────
 
-export async function downloadDevisPDF(data: DevisData, entityName?: string, logoUrl?: string | null): Promise<void> {
-  const doc = await generateDevisPDF(data, entityName, logoUrl);
+export async function downloadDevisPDF(data: DevisData, entityName?: string, logoUrl?: string | null, siret?: string | null, nda?: string | null): Promise<void> {
+  const doc = await generateDevisPDF(data, entityName, logoUrl, siret, nda);
   doc.save(`Devis_${data.reference}.pdf`);
 }
 
-export async function generateDevisPDFBase64(data: DevisData, entityName?: string, logoUrl?: string | null): Promise<string> {
-  const doc = await generateDevisPDF(data, entityName, logoUrl);
+export async function generateDevisPDFBase64(data: DevisData, entityName?: string, logoUrl?: string | null, siret?: string | null, nda?: string | null): Promise<string> {
+  const doc = await generateDevisPDF(data, entityName, logoUrl, siret, nda);
   const arrayBuffer = doc.output("arraybuffer");
   const bytes = new Uint8Array(arrayBuffer);
   let binary = "";
