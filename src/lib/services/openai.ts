@@ -228,7 +228,7 @@ import {
  *  Si un schéma Zod est fourni, valide la structure et lève une erreur
  *  typée (code "AI_SCHEMA") plutôt que de laisser passer un objet malformé.
  */
-function parseJsonResponse<T>(content: string, schema?: ZodType<T>): T {
+export function parseJsonResponse<T>(content: string, schema?: ZodType<T>): T {
   let jsonStr = content.trim();
   if (jsonStr.startsWith("```")) {
     jsonStr = jsonStr.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");

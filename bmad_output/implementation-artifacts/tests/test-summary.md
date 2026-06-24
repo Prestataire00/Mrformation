@@ -1,7 +1,7 @@
 # Résumé — Tests anti-régression (QA Automation)
 
 **Date :** 2026-06-24
-**Module :** Documents / Attestations (prioritaire) — puis E-learning (à venir)
+**Module :** Documents/Attestations + Émargements + E-learning (parsing IA)
 **Objectif :** réduire les bugs récurrents en prod via un filet de tests contrat exécutable.
 **Framework :** Vitest (env `node`, déjà en place — 156 fichiers existants).
 
@@ -42,6 +42,13 @@
 - **Branches fallback (sans `formation_time_slots`) aussi corrigées** : `{{tableau_signature_individuel}}` et `{{dates_detail}}` ancrent désormais leur cursor de jours via `parisDateAnchor` (tests sous TZ hostile : 08/06 vs 07/06). `{{tableau_planning_hebdo}}` était déjà sûr (round-trip d'un `dateStr` Paris).
 - **Sweep complet** : plus aucun motif de jour process-local dans le resolver, **sauf** `{{numero_facture}}` (`FACT-${now.getFullYear()}-${now.getMonth()}`) — peut être décalé d'un mois/an si un document est généré juste après minuit Paris une nuit de bascule. Faible fréquence + format de numérotation sensible → laissé en l'état, documenté.
 
+### ✅ E-learning — fiabilité du parsing IA
+- [x] `src/lib/services/__tests__/openai-parse-json.test.ts` — **10 tests**.
+- `parseJsonResponse` (`openai.ts`) est le point unique où la fiabilité de la génération IA est attrapée — utilisé par les **7 générateurs** (outline/chapter/quiz/exam/flashcards/slides…). Il était **non testé**.
+- Verrouille : strip des fences markdown (```` ```json ````/```` ``` ````), trim ; sortie non-JSON / tronquée → code typé **`AI_JSON_PARSE`** ; JSON valide mais structure invalide (champ requis manquant, `chapters` vide) → **`AI_SCHEMA`** ; succès → données typées (avec ou sans fences).
+- Petit refactor : `parseJsonResponse` exporté (était local). **Preuve destructive** : throw AI_SCHEMA désactivé → les 2 tests `AI_SCHEMA` cassent ; revert propre.
+- Findings à traiter séparément : (1) les routes `generate/*` ne mappent pas `AI_SCHEMA`/`AI_JSON_PARSE` → message client probablement générique (500) ; (2) `extractJSON` (`claude-client.ts`, CRM) utilise une regex gloutonne fragile au JSON entouré de prose.
+
 ### Tests E2E (navigateur)
 - (aucun pour l'instant — décision : tests contrat d'abord ; E2E Playwright sur 2-3 flux UI critiques dans un second temps, une fois l'environnement de test cadré.)
 
@@ -52,7 +59,7 @@
 - **État actuel des templates : propre** — 0 violation sur les 37 doc_types (les PDF partent sans placeholder visible aujourd'hui).
 - **Rôle du test : filet anti-régression** — il cassera dès qu'un template introduira une variable non branchée (cause n°1 des « variables vides » signalées par le client, ex. `generate-from-template`).
 - **Preuve de robustesse (vérif destructive)** : injection d'un `[%Variable Bidon%]` dans `attestation-assiduite.ts` → seul le test `attestation_assiduite` passe au rouge en nommant la variable ; revert propre ensuite.
-- **Suite complète :** 162 fichiers / 1847 tests **verts**, 0 régression.
+- **Suite complète :** 163 fichiers / 1857 tests **verts**, 0 régression.
 
 ### ✅ Finding CORRIGÉ — `formatDate` TZ-naïf dans les documents
 - **Cause** : `formatDate` (`src/lib/utils.ts`, date-fns local) rendait les dates documents dans le fuseau du process. En prod UTC, une date `22:00Z` (= 15/06 00:00 Paris) sortait **`14/06/2026`** au lieu de `15/06/2026` (off-by-one minuit).
