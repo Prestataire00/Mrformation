@@ -32,12 +32,15 @@ async function resolveOwnTrainer(
   supabase: ReturnType<typeof createClient>,
   userId: string,
 ) {
+  // Multi-entité : un profil peut avoir plusieurs fiches (1/entité). .maybeSingle()
+  // échouait à ≥2 lignes → CV inaccessible. On prend la 1ʳᵉ fiche (le CV est par
+  // fiche ; cas multi-entité rare — affiner par entité active si besoin).
   const { data } = await supabase
     .from("trainers")
     .select("id, entity_id, cv_url")
     .eq("profile_id", userId)
-    .maybeSingle();
-  return data as { id: string; entity_id: string | null; cv_url: string | null } | null;
+    .limit(1);
+  return ((data ?? [])[0] as { id: string; entity_id: string | null; cv_url: string | null } | undefined) ?? null;
 }
 
 export async function POST(request: NextRequest) {
