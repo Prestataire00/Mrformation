@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { buildLearnerUpdatePayload } from "@/lib/learners/learner-update-payload";
 import { useEntity } from "@/contexts/EntityContext";
 import { useToast } from "@/components/ui/use-toast";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -195,25 +196,17 @@ export default function LearnerDetailPage() {
     if (!learner || !entityId) return;
     setSaving(true);
     try {
+      // Payload dérivé de la liste des champs éditables (cf learner-update-payload)
+      // → impossible d'oublier un champ comme birth_city (bug AIPR).
       const { error } = await supabase
         .from("learners")
-        .update({
-          first_name: form.first_name?.trim() || learner.first_name,
-          last_name: form.last_name?.trim() || learner.last_name,
-          email: form.email?.trim() || learner.email,
-          phone: form.phone?.trim() || null,
-          client_id: form.client_id || null,
-          job_title: form.job_title?.trim() || null,
-          birth_date: form.birth_date || null,
-          birth_city: form.birth_city?.trim() || null,
-          gender: form.gender || null,
-          nationality: form.nationality?.trim() || null,
-          address: form.address?.trim() || null,
-          city: form.city?.trim() || null,
-          postal_code: form.postal_code?.trim() || null,
-          social_security_number: form.social_security_number?.trim() || null,
-          education_level: form.education_level || null,
-        })
+        .update(
+          buildLearnerUpdatePayload(form, {
+            first_name: learner.first_name,
+            last_name: learner.last_name,
+            email: learner.email,
+          }),
+        )
         .eq("id", learner.id)
         .eq("entity_id", entityId);
 
