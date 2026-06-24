@@ -60,12 +60,13 @@ export async function POST(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
 
-    const { data: trainer } = await supabase
+    // Multi-entité : toutes les fiches du profil (.single() cassait à ≥2). Un
+    // support n'est pas lié à une session → on l'attribue à la 1ʳᵉ fiche.
+    const { data: trainerRows } = await supabase
       .from("trainers")
       .select("id, entity_id")
-      .eq("profile_id", user.id)
-      .single();
-
+      .eq("profile_id", user.id);
+    const trainer = ((trainerRows ?? []) as Array<{ id: string; entity_id: string | null }>)[0];
     if (!trainer) return NextResponse.json({ error: "Formateur non trouvé" }, { status: 403 });
 
     const body = await request.json();
