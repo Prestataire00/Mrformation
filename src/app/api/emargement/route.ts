@@ -4,6 +4,7 @@ import { requireRole } from "@/lib/auth/require-role";
 import { sanitizeDbError } from "@/lib/api-error";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 import { resolveActiveEntityId } from "@/lib/crm/active-entity";
+import { SIGNABLE_ENROLLMENT_STATUSES } from "@/lib/auth/learner-session-access";
 
 function createServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -183,7 +184,7 @@ export async function GET(request: NextRequest) {
       .from("enrollments")
       .select("id, learner_id, status, learner:learners(id, first_name, last_name)")
       .eq("session_id", tokenData.session_id)
-      .in("status", ["registered", "confirmed"]);
+      .in("status", [...SIGNABLE_ENROLLMENT_STATUSES]); // inclut 'completed' (sessions terminées émargeables)
 
     const learners = (enrollments || [])
       .filter((e: { learner: unknown }) => e.learner)
@@ -353,7 +354,7 @@ export async function POST(request: NextRequest) {
       .from("enrollments")
       .select("id, learner_id, learner:learners(id, first_name, last_name, email)")
       .eq("session_id", session_id)
-      .in("status", ["registered", "confirmed"]);
+      .in("status", [...SIGNABLE_ENROLLMENT_STATUSES]); // inclut 'completed' (sessions terminées émargeables)
 
     if (!enrollments || enrollments.length === 0) {
       return NextResponse.json({ tokens: [], message: "Aucun apprenant inscrit" });

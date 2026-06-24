@@ -3,6 +3,7 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 import { sanitizeSignatureSvg } from "@/lib/utils/sanitize-svg";
+import { SIGNABLE_ENROLLMENT_STATUSES } from "@/lib/auth/learner-session-access";
 
 function createServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -114,7 +115,7 @@ export async function POST(request: NextRequest) {
         .select("id")
         .eq("session_id", tokenData.session_id)
         .eq("learner_id", signerId)
-        .in("status", ["registered", "confirmed"])
+        .in("status", [...SIGNABLE_ENROLLMENT_STATUSES]) // inclut 'completed' (session terminée émargeable)
         .maybeSingle();
 
       if (!enrollment) {

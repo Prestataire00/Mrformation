@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { isLearnerEnrolledInSession } from "../learner-session-access";
+import { isLearnerEnrolledInSession, SIGNABLE_ENROLLMENT_STATUSES } from "../learner-session-access";
 
 type AnyClient = Parameters<typeof isLearnerEnrolledInSession>[0];
 
@@ -47,6 +47,25 @@ function makeClient(opts: {
 
   return client as unknown as AnyClient & { __calls: typeof calls };
 }
+
+describe("SIGNABLE_ENROLLMENT_STATUSES (statuts émargeables — source unique)", () => {
+  // Décision produit (24/06) : une inscription TERMINÉE ('completed') reste
+  // émargeable (sessions passées → audits Qualiopi). Les 4 routes émargement
+  // doivent référencer cette constante, pas re-hardcoder [registered,confirmed].
+  it("inclut 'completed' (session terminée émargeable)", () => {
+    expect(SIGNABLE_ENROLLMENT_STATUSES).toContain("completed");
+  });
+
+  it("inclut 'registered' et 'confirmed'", () => {
+    expect(SIGNABLE_ENROLLMENT_STATUSES).toContain("registered");
+    expect(SIGNABLE_ENROLLMENT_STATUSES).toContain("confirmed");
+  });
+
+  it("exclut 'cancelled' (et 'active' inexistant — ancien bug P0)", () => {
+    expect(SIGNABLE_ENROLLMENT_STATUSES).not.toContain("cancelled");
+    expect(SIGNABLE_ENROLLMENT_STATUSES).not.toContain("active");
+  });
+});
 
 describe("isLearnerEnrolledInSession", () => {
   it("retourne true quand l'apprenant existe ET a une inscription signable", async () => {
