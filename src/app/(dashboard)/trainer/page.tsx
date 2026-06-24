@@ -23,7 +23,6 @@ import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/components/ui/use-toast";
 import {
   formatDate,
-  formatDateTime,
   getInitials,
   SESSION_STATUS_LABELS,
   STATUS_COLORS,
@@ -510,8 +509,8 @@ export default function TrainerPage() {
                             <Badge className={MODE_COLORS[session.mode] ?? "bg-gray-100 text-gray-800"}>
                               {MODE_LABELS[session.mode] ?? session.mode}
                             </Badge>
-                            <Badge className={STATUS_COLORS[session.status] ?? ""}>
-                              {SESSION_STATUS_LABELS[session.status] ?? session.status}
+                            <Badge className={STATUS_COLORS[effectiveStatus(session)] ?? ""}>
+                              {SESSION_STATUS_LABELS[effectiveStatus(session)] ?? effectiveStatus(session)}
                             </Badge>
                           </div>
                         </div>
@@ -533,7 +532,7 @@ export default function TrainerPage() {
                             {session.max_participants ? ` / ${session.max_participants}` : ""}
                           </span>
                         </div>
-                        {(session.status === "planned" || session.status === "in_progress" || session.status === "completed") && (
+                        {(["in_progress", "completed"].includes(effectiveStatus(session))) && (
                           <Link
                             href={`/trainer/sessions/${session.id}/sign`}
                             className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-800 transition-colors mt-1"
@@ -586,7 +585,7 @@ export default function TrainerPage() {
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-sm truncate">{session.title}</p>
                         <p className="text-xs text-muted-foreground">
-                          {formatDateTime(session.start_date)}
+                          {formatDate(session.start_date)}
                           {session.location && ` · ${session.location}`}
                         </p>
                       </div>
@@ -803,13 +802,13 @@ export default function TrainerPage() {
                           </p>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
-                          {(session.status === "planned" || session.status === "in_progress" || session.status === "completed") && (
+                          {(["in_progress", "completed"].includes(effectiveStatus(session))) && (
                             <Link href={`/trainer/sessions/${session.id}/sign`}>
                               <PenLine className="h-3.5 w-3.5 text-blue-600 hover:text-blue-800" />
                             </Link>
                           )}
-                          <Badge className={STATUS_COLORS[session.status] ?? ""}>
-                            {SESSION_STATUS_LABELS[session.status] ?? session.status}
+                          <Badge className={STATUS_COLORS[effectiveStatus(session)] ?? ""}>
+                            {SESSION_STATUS_LABELS[effectiveStatus(session)] ?? effectiveStatus(session)}
                           </Badge>
                         </div>
                       </div>
