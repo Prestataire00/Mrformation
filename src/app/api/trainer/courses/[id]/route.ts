@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
+import { resolveTrainerIds } from "@/lib/auth/trainer-session-access";
 
 /**
  * GET    /api/trainer/courses/[id]  — get one course
@@ -8,9 +9,9 @@ import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
  * DELETE /api/trainer/courses/[id]  — delete course
  */
 
-async function getTrainerId(supabase: ReturnType<typeof createClient>, userId: string) {
-  const { data } = await supabase.from("trainers").select("id").eq("profile_id", userId).single();
-  return data?.id || null;
+// Multi-entité : toutes les fiches du profil (.single() cassait avec ≥2 fiches).
+async function getTrainerIds(supabase: ReturnType<typeof createClient>, userId: string) {
+  return resolveTrainerIds(supabase, userId);
 }
 
 export async function GET(
@@ -22,14 +23,14 @@ export async function GET(
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
 
-    const trainerId = await getTrainerId(supabase, user.id);
-    if (!trainerId) return NextResponse.json({ error: "Formateur non trouvé" }, { status: 403 });
+    const trainerIds = await getTrainerIds(supabase, user.id);
+    if (trainerIds.length === 0) return NextResponse.json({ error: "Formateur non trouvé" }, { status: 403 });
 
     const { data: course, error } = await supabase
       .from("trainer_courses")
       .select("*")
       .eq("id", params.id)
-      .eq("trainer_id", trainerId)
+      .in("trainer_id", trainerIds)
       .single();
 
     if (error || !course) return NextResponse.json({ error: "Cours non trouvé" }, { status: 404 });
@@ -48,8 +49,8 @@ export async function PUT(
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
 
-    const trainerId = await getTrainerId(supabase, user.id);
-    if (!trainerId) return NextResponse.json({ error: "Formateur non trouvé" }, { status: 403 });
+    const trainerIds = await getTrainerIds(supabase, user.id);
+    if (trainerIds.length === 0) return NextResponse.json({ error: "Formateur non trouvé" }, { status: 403 });
 
     const body = await request.json();
     const { title, description, category, files, status } = body;
@@ -65,7 +66,7 @@ export async function PUT(
       .from("trainer_courses")
       .update(updates)
       .eq("id", params.id)
-      .eq("trainer_id", trainerId)
+      .in("trainer_id", trainerIds)
       .select()
       .single();
 
@@ -85,14 +86,14 @@ export async function DELETE(
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
 
-    const trainerId = await getTrainerId(supabase, user.id);
-    if (!trainerId) return NextResponse.json({ error: "Formateur non trouvé" }, { status: 403 });
+    const trainerIds = await getTrainerIds(supabase, user.id);
+    if (trainerIds.length === 0) return NextResponse.json({ error: "Formateur non trouvé" }, { status: 403 });
 
     const { error } = await supabase
       .from("trainer_courses")
       .delete()
       .eq("id", params.id)
-      .eq("trainer_id", trainerId);
+      .in("trainer_id", trainerIds);
 
     if (error) return NextResponse.json({ error: sanitizeDbError(error, "trainer/courses/[id] DELETE") }, { status: 500 });
     return NextResponse.json({ success: true });

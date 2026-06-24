@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { sanitizeError } from "@/lib/api-error";
+import { resolveTrainerIds } from "@/lib/auth/trainer-session-access";
 
 /**
  * GET /api/trainer/documents/[id]/file-url
@@ -49,13 +50,9 @@ export async function GET(
       profile.entity_id === doc.entity_id;
 
     if (!isAdminOrSuper) {
-      const { data: trainer } = await supabase
-        .from("trainers")
-        .select("id")
-        .eq("profile_id", user.id)
-        .single();
-
-      if (!trainer || trainer.id !== doc.trainer_id) {
+      // Multi-entité : .includes sur toutes les fiches du profil (.single() cassait à ≥2).
+      const trainerIds = await resolveTrainerIds(supabase, user.id);
+      if (!trainerIds.includes(doc.trainer_id)) {
         return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
       }
     }
