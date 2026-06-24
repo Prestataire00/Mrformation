@@ -1659,7 +1659,7 @@ export default function EmailsPage() {
           </DialogHeader>
           <div className="space-y-3 border rounded-lg p-4 bg-white">
             <div className="flex items-center gap-2 text-sm text-muted-foreground border-b pb-2">
-              <span className="font-medium">De :</span> <span>contact@mrformation.fr</span>
+              <span className="font-medium">De :</span> <span>{currentEntity?.email || "—"}</span>
             </div>
             <div className="flex items-center gap-2 text-sm text-muted-foreground border-b pb-2">
               <span className="font-medium">À :</span> <span>{sendForm.recipient_email || "—"}</span>
