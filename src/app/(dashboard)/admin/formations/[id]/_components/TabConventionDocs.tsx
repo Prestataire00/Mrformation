@@ -358,7 +358,11 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     if (loadingTemplates) return;
     if (enrollments.length === 0 && companies.length === 0 && trainers.length === 0) return;
 
-    if (!entity?.id) {
+    // Les documents appartiennent à l'entité DE LA FORMATION (pas à l'entité
+    // sélectionnée dans le contexte) : un super_admin peut consulter une
+    // formation d'une autre entité que la sienne. Cf migration
+    // add_documents_super_admin_rls.sql (RLS super_admin cross-entité).
+    if (!formation.entity_id) {
       setInitializing(false);
       return;
     }
@@ -392,7 +396,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
           if (existingKeys.has(`${dt}|learner|${learnerId}`)) continue;
           const isStatic = STATIC_DOCS.includes(dt);
           rows.push({
-            entity_id: entity.id,
+            entity_id: formation.entity_id,
             session_id: formation.id,
             doc_type: dt,
             owner_type: "learner",
@@ -412,7 +416,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
           if (existingKeys.has(`${dt}|company|${clientId}`)) continue;
           const isStatic = STATIC_DOCS.includes(dt);
           rows.push({
-            entity_id: entity.id,
+            entity_id: formation.entity_id,
             session_id: formation.id,
             doc_type: dt,
             owner_type: "company",
@@ -432,7 +436,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
           if (existingKeys.has(`${dt}|trainer|${trainerId}`)) continue;
           const isStatic = STATIC_DOCS.includes(dt);
           rows.push({
-            entity_id: entity.id,
+            entity_id: formation.entity_id,
             session_id: formation.id,
             doc_type: dt,
             owner_type: "trainer",
@@ -461,7 +465,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     } finally {
       setInitializing(false);
     }
-  }, [formation.id, enrollments, companies, trainers, supabase, onRefresh, loadingTemplates, initializing, entity?.id]);
+  }, [formation.id, formation.entity_id, enrollments, companies, trainers, supabase, onRefresh, loadingTemplates, initializing]);
 
   // Re-déclenche l'init à chaque changement de count d'enrollments/companies/trainers.
   // Le check existingKeys (depuis DB) évite les doublons.
