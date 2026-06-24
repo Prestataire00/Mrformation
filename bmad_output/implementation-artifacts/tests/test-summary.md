@@ -47,7 +47,8 @@
 - `parseJsonResponse` (`openai.ts`) est le point unique où la fiabilité de la génération IA est attrapée — utilisé par les **7 générateurs** (outline/chapter/quiz/exam/flashcards/slides…). Il était **non testé**.
 - Verrouille : strip des fences markdown (```` ```json ````/```` ``` ````), trim ; sortie non-JSON / tronquée → code typé **`AI_JSON_PARSE`** ; JSON valide mais structure invalide (champ requis manquant, `chapters` vide) → **`AI_SCHEMA`** ; succès → données typées (avec ou sans fences).
 - Petit refactor : `parseJsonResponse` exporté (était local). **Preuve destructive** : throw AI_SCHEMA désactivé → les 2 tests `AI_SCHEMA` cassent ; revert propre.
-- Findings à traiter séparément : (1) les routes `generate/*` ne mappent pas `AI_SCHEMA`/`AI_JSON_PARSE` → message client probablement générique (500) ; (2) `extractJSON` (`claude-client.ts`, CRM) utilise une regex gloutonne fragile au JSON entouré de prose.
+- **Finding (1) CORRIGÉ** — mapping des erreurs IA dans les routes : nouveau `aiGenerationError` (`api-error.ts`) traduit `AI_SCHEMA`/`AI_JSON_PARSE` en message client clair (« La génération IA a renvoyé un format inattendu. Veuillez réessayer. ») + **statut 422** (au lieu du 500 générique « Une erreur interne est survenue »). Câblé dans les 4 routes `generate/{outline,chapter,quiz,exam}`. Le message technique reste loggué côté serveur, jamais renvoyé. 6 tests (`ai-generation-error.test.ts`, TDD).
+- Finding (2) restant : `extractJSON` (`claude-client.ts`, CRM) utilise une regex gloutonne fragile au JSON entouré de prose (hors e-learning).
 
 ### Tests E2E (navigateur)
 - (aucun pour l'instant — décision : tests contrat d'abord ; E2E Playwright sur 2-3 flux UI critiques dans un second temps, une fois l'environnement de test cadré.)
@@ -59,7 +60,7 @@
 - **État actuel des templates : propre** — 0 violation sur les 37 doc_types (les PDF partent sans placeholder visible aujourd'hui).
 - **Rôle du test : filet anti-régression** — il cassera dès qu'un template introduira une variable non branchée (cause n°1 des « variables vides » signalées par le client, ex. `generate-from-template`).
 - **Preuve de robustesse (vérif destructive)** : injection d'un `[%Variable Bidon%]` dans `attestation-assiduite.ts` → seul le test `attestation_assiduite` passe au rouge en nommant la variable ; revert propre ensuite.
-- **Suite complète :** 163 fichiers / 1857 tests **verts**, 0 régression.
+- **Suite complète :** 164 fichiers / 1863 tests **verts**, 0 régression.
 
 ### ✅ Finding CORRIGÉ — `formatDate` TZ-naïf dans les documents
 - **Cause** : `formatDate` (`src/lib/utils.ts`, date-fns local) rendait les dates documents dans le fuseau du process. En prod UTC, une date `22:00Z` (= 15/06 00:00 Paris) sortait **`14/06/2026`** au lieu de `15/06/2026` (off-by-one minuit).

@@ -15,7 +15,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
+import { sanitizeError, sanitizeDbError, aiGenerationError } from "@/lib/api-error";
 import { verifyCronAuth } from "@/lib/cron-auth";
 import { requireElearningCourse } from "@/lib/auth/elearning-access";
 import { generateCourseOutline } from "@/lib/services/openai";
@@ -114,6 +114,8 @@ export async function POST(
       objectives: outline.objectives,
     });
   } catch (err) {
+    const aiErr = aiGenerationError(err, "generating outline");
+    if (aiErr) return NextResponse.json({ error: aiErr.error }, { status: aiErr.status });
     return NextResponse.json(
       { error: sanitizeError(err, "generating outline") },
       { status: 500 },
