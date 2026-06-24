@@ -50,6 +50,7 @@ import {
 } from "lucide-react";
 import { parseISO } from "date-fns";
 import { HeroCard, QuickActionCards, MiniCalendar, PriorityList } from "@/components/dashboard-home";
+import { LearnerAttendanceSection } from "@/components/learner/LearnerAttendanceSection";
 import { FileText, ClipboardCheck, Monitor } from "lucide-react";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -881,6 +882,7 @@ export default function LearnerPage() {
 
         {/* ═══ SIDEBAR DROITE (1/3) ═══ */}
         <div className="space-y-4">
+          <LearnerAttendanceSection />
           <MiniCalendar eventDates={eventDates} />
           <PriorityList
             title="Prochaines sessions"
