@@ -6,6 +6,7 @@ import { Header } from "@/components/layout/Header";
 import { MobileSidebarWrapper } from "@/components/layout/MobileSidebarWrapper";
 import { EntityProvider } from "@/contexts/EntityContext";
 import { GlobalProviders } from "@/components/layout/GlobalProviders";
+import { shouldForceProfileEntity } from "@/lib/auth/effective-entity";
 import type { Entity } from "@/lib/types";
 
 export default async function DashboardLayout({
@@ -48,7 +49,13 @@ export default async function DashboardLayout({
     .eq("id", user.id)
     .single();
 
-  const entity: Entity | null = currentEntity ?? null;
+  // Un rôle non super_admin reste lié à l'entité de son profil (RLS). Si le
+  // cookie pré-login pointe une entité étrangère, on force celle du profil —
+  // sinon l'espace paraît vide et toute création est refusée par la RLS.
+  // (EntityProvider re-synchronise alors le cookie côté client.)
+  const entity: Entity | null = shouldForceProfileEntity(profile?.role, profile?.entity_id, entityCookieId)
+    ? ((allEntities ?? []).find((e) => e.id === profile?.entity_id) ?? currentEntity ?? null)
+    : (currentEntity ?? null);
   const entitySlug = entity?.slug ?? "mr-formation";
 
   return (
