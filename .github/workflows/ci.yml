@@ -31,7 +31,9 @@ jobs:
           cache: npm
 
       - name: Install (npm ci)
-        run: npm ci
+        # --legacy-peer-deps : aligné sur netlify.toml (NPM_FLAGS) — conflit de
+        # peer-deps connu eslint@9 vs eslint-config-next@14.
+        run: npm ci --legacy-peer-deps
 
       - name: Typecheck (tsc --noEmit)
         run: npx tsc --noEmit
