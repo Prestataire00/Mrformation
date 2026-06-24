@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { useTimeGreeting } from "@/hooks/useTimeGreeting";
 
 interface HeroCardProps {
   firstName: string;
@@ -11,14 +12,13 @@ interface HeroCardProps {
 }
 
 export function HeroCard({ firstName, message, ctaLabel, ctaHref }: HeroCardProps) {
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? "Bonjour" : hour < 18 ? "Bon après-midi" : "Bonsoir";
+  const greeting = useTimeGreeting();
 
   return (
     <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#374151] to-[#1f2937] text-white p-8">
       <div className="relative z-10 max-w-[70%]">
         <h1 className="text-2xl sm:text-3xl font-bold mb-2">
-          {greeting} {firstName} 👋
+          {greeting ? `${greeting} ` : ""}{firstName} 👋
         </h1>
         <p className="text-gray-300 text-sm mb-4 leading-relaxed">
           {message}

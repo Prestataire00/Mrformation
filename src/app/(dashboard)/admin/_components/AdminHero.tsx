@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { AlertCircle, ArrowRight, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useTimeGreeting } from "@/hooks/useTimeGreeting";
 
 interface AdminHeroProps {
   firstName: string;
@@ -12,8 +13,7 @@ interface AdminHeroProps {
 }
 
 export function AdminHero({ firstName, ongoingSessions, attentionCount }: AdminHeroProps) {
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? "Bonjour" : hour < 18 ? "Bon après-midi" : "Bonsoir";
+  const greeting = useTimeGreeting();
   const hasAlerts = attentionCount > 0;
 
   return (
@@ -29,7 +29,7 @@ export function AdminHero({ firstName, ongoingSessions, attentionCount }: AdminH
       <div className="relative z-10 flex items-center justify-between gap-4">
         <div className="min-w-0">
           <p className="text-lg font-semibold leading-tight">
-            {greeting} {firstName}
+            {greeting ? `${greeting} ` : ""}{firstName}
           </p>
           <p className="text-sm text-white/75 mt-0.5">
             <span className="font-medium text-white/90">
