@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { addDays, getISOWeek, startOfISOWeek, endOfISOWeek, format } from "date-fns";
 import type { Session, Client, Learner, Trainer } from "@/lib/types";
 import { getLearnersForCompany, getAmountForCompany } from "@/lib/utils/formation-companies";
-import { formatTimeParis, getHourParis, formatDateParis } from "@/lib/utils/paris-time";
+import { formatTimeParis, getHourParis, formatDateParis, parisDateAnchor } from "@/lib/utils/paris-time";
 import { isSyntheticEmail } from "@/lib/utils/learner-email-synthetic";
 
 export interface ResolveContext {
@@ -1124,25 +1124,25 @@ export function resolveVariables(content: string, data: ResolveContext): string 
           return renderUnsignedCell(sessionEndDate);
         };
 
-        // Groupe par semaine ISO
+        // Groupe par semaine ISO — ⚠ TZ : ancrage Paris (parisDateAnchor) pour
+        // que la semaine et les dates ne dépendent pas du fuseau du process
+        // (un slot 22:30Z = 00:30 le lendemain Paris doit compter dans le bon jour).
         const byWeek = new Map<number, RealSlot[]>();
         for (const s of sortedSlots) {
-          const wk = getISOWeek(new Date(s.start_time));
+          const wk = getISOWeek(parisDateAnchor(s.start_time));
           if (!byWeek.has(wk)) byWeek.set(wk, []);
           byWeek.get(wk)!.push(s);
         }
 
         const sections: string[] = [];
         for (const [weekNum, weekSlots] of byWeek) {
-          const monday = startOfISOWeek(new Date(weekSlots[0].start_time));
-          const sunday = endOfISOWeek(new Date(weekSlots[0].start_time));
+          const monday = startOfISOWeek(parisDateAnchor(weekSlots[0].start_time));
+          const sunday = endOfISOWeek(parisDateAnchor(weekSlots[0].start_time));
           const weekLabel = `Semaine ${String(weekNum).padStart(2, "0")} (${format(monday, "dd/MM/yyyy")} au ${format(sunday, "dd/MM/yyyy")})`;
 
           const rows = weekSlots
             .map((slot) => {
-              const slotStart = new Date(slot.start_time);
-              // ⚠ TZ : utilise formatTimeParis pour rendre en Europe/Paris
-              // indépendamment du TZ runtime (cf bug heures convocation).
+              // ⚠ TZ : heures et date en Europe/Paris indépendamment du TZ runtime.
               const horaire = `${formatTimeParis(slot.start_time)} - ${formatTimeParis(slot.end_time)}`;
               // Label MATIN/APRES MIDI déduit de l'heure de début Paris.
               const label = getHourParis(slot.start_time) < 13 ? "MATIN" : "APRES MIDI";
@@ -1155,7 +1155,7 @@ export function resolveVariables(content: string, data: ResolveContext): string 
                 .join("");
               return `
             <tr>
-              <td class="col-date">${format(slotStart, "dd/MM/yyyy")}<br>${horaire}</td>
+              <td class="col-date">${formatDateParis(slot.start_time)}<br>${horaire}</td>
               <td class="col-creneau">${slot.title || label}</td>
               <td class="col-formateur"><span class="person-name">${formateursLine}</span>${trainerStatusForSlot(slot.id)}</td>
               <td class="col-apprenants">${apprenantsCell}</td>
@@ -1197,10 +1197,10 @@ export function resolveVariables(content: string, data: ResolveContext): string 
 
       type Creneau = { date: Date; label: string; horaire: string };
       const creneaux: Creneau[] = [];
-      let cursor = new Date(start);
-      cursor.setHours(0, 0, 0, 0);
-      const endDay = new Date(end);
-      endDay.setHours(0, 0, 0, 0);
+      // ⚠ TZ : jours ancrés sur le calendrier Paris (midi) pour stabilité du
+      // groupement par semaine ISO et du rendu format(), quel que soit le fuseau.
+      let cursor = parisDateAnchor(sess.start_date!);
+      const endDay = parisDateAnchor(sess.end_date!);
       while (cursor.getTime() <= endDay.getTime()) {
         creneaux.push({ date: new Date(cursor), label: "MATIN", horaire: "09:00 - 12:00" });
         creneaux.push({ date: new Date(cursor), label: "APRES MIDI", horaire: "13:00 - 17:00" });

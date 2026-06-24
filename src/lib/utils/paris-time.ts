@@ -93,3 +93,19 @@ export function formatDateParis(iso: string | Date | null | undefined): string {
     return "—";
   }
 }
+
+/**
+ * Renvoie une Date ancrée au jour calendaire Paris de l'ISO, à midi heure
+ * locale du process.
+ *
+ * Sert au calcul de semaine ISO (`getISOWeek`, `startOfISOWeek`, `endOfISOWeek`)
+ * et au rendu `format(date, "dd/MM/yyyy")` de date-fns, qui opèrent en heure
+ * locale : en passant le jour Paris ancré à midi, le résultat est identique quel
+ * que soit le fuseau d'exécution (midi laisse 12h de marge avant tout
+ * basculement de jour). Fallback : date du jour ancrée à midi si l'ISO est invalide.
+ */
+export function parisDateAnchor(iso: string): Date {
+  const ymd = formatYmdParis(iso); // "YYYY-MM-DD" en heure Paris
+  const [y, m, d] = ymd.split("-").map(Number);
+  return new Date(y, m - 1, d, 12, 0, 0, 0);
+}
