@@ -29,6 +29,14 @@
   - **Resolver** : `{{dates_detail}}` rend **09:00 / 12:00 (Paris)**, pas 07:00 / 10:00 (UTC) — verrouille le bug convocation, y compris sous fuseaux hostiles.
   - **Preuve destructive** : `formatTimeParis` repassé en `getHours()` → 7 tests échouent (UTC→07:00, NY→03:00) ; revert propre. Les tests forçant `TZ=UTC` attraperaient le bug **même si la CI tournait en Europe/Paris**.
 
+- [x] `src/lib/utils/__tests__/resolve-variables-signature-presence.test.ts` — **4 tests** (présence + convention signer_id)
+  - `{{tableau_signature_compact}}` : apprenant signé → « Présent » + signature ; non signé (session passée) → « Non signé » ; formateur signé → « Présent ».
+  - **Anti 0/100** : une signature indexée par le mauvais id (profile_id au lieu de `learners.id`) → l'apprenant reste **absent**. Verrouille la convention `slotId|learners.id|learner` / `slotId|trainers.id|trainer`.
+  - **Preuve destructive** : id de lookup cassé → le test « présent » échoue ; revert propre.
+
+### ⚠️ Reste à corriger (consistance fuseau, faible fréquence)
+- `{{tableau_signature_compact}}` et `{{tableau_planning_hebdo}}` formatent encore les **dates** via `format()` date-fns (heure locale du process) aux lignes ~1139/1158/1234/1239 — les **heures** sont déjà Paris-safe (`formatTimeParis`). Off-by-one possible uniquement aux frontières de jour/semaine. À router vers `formatDateParis` + bornes de semaine Paris dans une passe ultérieure.
+
 ### Tests E2E (navigateur)
 - (aucun pour l'instant — décision : tests contrat d'abord ; E2E Playwright sur 2-3 flux UI critiques dans un second temps, une fois l'environnement de test cadré.)
 
@@ -39,7 +47,7 @@
 - **État actuel des templates : propre** — 0 violation sur les 37 doc_types (les PDF partent sans placeholder visible aujourd'hui).
 - **Rôle du test : filet anti-régression** — il cassera dès qu'un template introduira une variable non branchée (cause n°1 des « variables vides » signalées par le client, ex. `generate-from-template`).
 - **Preuve de robustesse (vérif destructive)** : injection d'un `[%Variable Bidon%]` dans `attestation-assiduite.ts` → seul le test `attestation_assiduite` passe au rouge en nommant la variable ; revert propre ensuite.
-- **Suite complète :** 159 fichiers / 1825 tests **verts**, 0 régression.
+- **Suite complète :** 161 fichiers / 1839 tests **verts**, 0 régression.
 
 ### ✅ Finding CORRIGÉ — `formatDate` TZ-naïf dans les documents
 - **Cause** : `formatDate` (`src/lib/utils.ts`, date-fns local) rendait les dates documents dans le fuseau du process. En prod UTC, une date `22:00Z` (= 15/06 00:00 Paris) sortait **`14/06/2026`** au lieu de `15/06/2026` (off-by-one minuit).
