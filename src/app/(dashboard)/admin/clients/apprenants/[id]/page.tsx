@@ -205,6 +205,7 @@ export default function LearnerDetailPage() {
           client_id: form.client_id || null,
           job_title: form.job_title?.trim() || null,
           birth_date: form.birth_date || null,
+          birth_city: form.birth_city?.trim() || null,
           gender: form.gender || null,
           nationality: form.nationality?.trim() || null,
           address: form.address?.trim() || null,
