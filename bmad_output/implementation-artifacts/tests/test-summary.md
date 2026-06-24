@@ -46,8 +46,11 @@
 - **Fix** : nouveau `formatDateParis` (TZ-safe, `src/lib/utils/paris-time.ts`) + routage des **11 call-sites de date** du resolver (`{{date_debut}}`, `{{date_fin}}`, `{{date_formation}}`, `{{date_today}}`, `{{dates_formation}}`, tableaux…). Import `formatDate` naïf retiré.
 - **TDD** : 3 tests rouges (date_debut → 14/06) → verts après fix. Dates diurnes inchangées (non-régression). Snapshots inchangés.
 
-### ⚠️ Finding suivant (pour la slice Émargements/Signatures)
-- **`{{tableau_signature_individuel}}` rend les heures de créneaux en `getUTCHours()`** (`resolve-variables.ts` ~ligne 628) → **UTC, pas Paris**. Un créneau 07:00Z afficherait « 07:00 » au lieu de « 09:00 » dans la feuille d'émargement individuelle. Même classe de bug que la convocation. À corriger avec la slice émargements (router vers `formatTimeParis`).
+### ✅ Émargement individuel — heures de créneaux en Paris (CORRIGÉ)
+- [x] `src/lib/utils/__tests__/resolve-variables-emargement.test.ts` — **5 tests**.
+- **Cause** : `{{tableau_signature_individuel}}` rendait les heures de vrais créneaux via `getUTCHours()`/`getUTCMinutes()` (heure affichée + libellé MATIN/APRÈS-MIDI) → **UTC, pas Paris**. Un créneau 11:00Z (= 13:00 Paris) sortait « 11:00 » et « MATIN ».
+- **Fix** : `fmtTime` → `formatTimeParis`, bucket horaire → `getHourParis`. Branche fallback legacy préservée (libellés horaires fixes 09:00/12:00/13:00/17:00, non routés via fmtTime).
+- **TDD** : 4 tests rouges (07:00/11:00, APRES MIDI manquant) → verts. Snapshot `emargement-individuel` régénéré (fixture rendue réaliste : créneaux 09:00-17:00 Paris stockés en 07:00Z-15:00Z). Plus aucun `getUTCHours` dans le resolver.
 
 ---
 

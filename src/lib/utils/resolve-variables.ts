@@ -623,14 +623,10 @@ export function resolveVariables(content: string, data: ResolveContext): string 
       if (!data.learner) return "[Apprenant manquant]";
 
       const fmtDate = (iso: string) => formatDateParis(iso);
-      const fmtTime = (iso: string) => {
-        try {
-          const d = new Date(iso);
-          return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
-        } catch {
-          return "--:--";
-        }
-      };
+      // Heures de créneaux en Europe/Paris (cf paris-time) — sinon les vrais
+      // créneaux saisis (timestamps UTC en base) sortaient en heure UTC dans
+      // la feuille d'émargement (07:00 au lieu de 09:00 en prod Netlify).
+      const fmtTime = (iso: string) => formatTimeParis(iso);
 
       const sigMap = data.signaturesById;
       const slotSigMap = data.signaturesBySlotPerson;
@@ -679,7 +675,7 @@ export function resolveVariables(content: string, data: ResolveContext): string 
         };
 
         const cards = realSlots.map((s) => {
-          const h = new Date(s.start_time).getUTCHours();
+          const h = getHourParis(s.start_time);
           const label = s.title || (h < 13 ? "MATIN" : "APRES MIDI");
           return `
 <div class="creneau-card">
@@ -697,7 +693,10 @@ export function resolveVariables(content: string, data: ResolveContext): string 
       // jour, statut basé sur sigMap global (imprécis : 1 sig dupliquée sur
       // tous les créneaux). Conservé pour ne pas casser les vieilles sessions
       // sans slots détaillés.
-      type Creneau = { startIso: string; endIso: string; label: string };
+      // Créneaux génériques simulés : les heures affichées sont des libellés
+      // fixes (09:00/12:00/13:00/17:00) — surtout pas dérivés via fmtTime, qui
+      // est désormais Paris-aware et décalerait ces horaires synthétiques.
+      type Creneau = { startIso: string; endIso: string; startLabel: string; endLabel: string; label: string };
       const creneaux: Creneau[] = [];
       const start = new Date(sess.start_date);
       const end = new Date(sess.end_date);
@@ -707,8 +706,8 @@ export function resolveVariables(content: string, data: ResolveContext): string 
       endDay.setHours(0, 0, 0, 0);
       while (cursor.getTime() <= endDay.getTime()) {
         const dateStr = cursor.toISOString().slice(0, 10);
-        creneaux.push({ startIso: `${dateStr}T09:00:00Z`, endIso: `${dateStr}T12:00:00Z`, label: "MATIN" });
-        creneaux.push({ startIso: `${dateStr}T13:00:00Z`, endIso: `${dateStr}T17:00:00Z`, label: "APRES MIDI" });
+        creneaux.push({ startIso: `${dateStr}T09:00:00Z`, endIso: `${dateStr}T12:00:00Z`, startLabel: "09:00", endLabel: "12:00", label: "MATIN" });
+        creneaux.push({ startIso: `${dateStr}T13:00:00Z`, endIso: `${dateStr}T17:00:00Z`, startLabel: "13:00", endLabel: "17:00", label: "APRES MIDI" });
         cursor.setDate(cursor.getDate() + 1);
       }
 
@@ -726,7 +725,7 @@ export function resolveVariables(content: string, data: ResolveContext): string 
 
       const cards = creneaux.map((c) => `
 <div class="creneau-card">
-  <p class="creneau-header">Créneau : De ${fmtDate(c.startIso)} - ${fmtTime(c.startIso)} À ${fmtDate(c.endIso)} - ${fmtTime(c.endIso)} (${c.label})</p>
+  <p class="creneau-header">Créneau : De ${fmtDate(c.startIso)} - ${c.startLabel} À ${fmtDate(c.endIso)} - ${c.endLabel} (${c.label})</p>
   <p class="person-name">${formateursLine}${formateursNoms ? " (Formateur)" : ""}</p>
   ${formateurStatusHtml}
   <p class="person-name learner">${learnerName}</p>
