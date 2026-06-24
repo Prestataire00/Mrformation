@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { isTrainerAssignedToSession, resolveTrainerSessionIds } from "../trainer-session-access";
+import { isTrainerAssignedToSession, resolveTrainerSessionIds, resolveTrainerIds } from "../trainer-session-access";
 
 type AnyClient = Parameters<typeof isTrainerAssignedToSession>[0];
 
@@ -131,5 +131,27 @@ describe("resolveTrainerSessionIds", () => {
     const ids = await resolveTrainerSessionIds(client, "profile-1");
     expect(ids).toEqual(["s-mr", "s-c3v"]);
     expect(client.__calls.formation_trainers.trainer_id).toEqual(["trainer-mr", "trainer-c3v"]);
+  });
+});
+
+describe("resolveTrainerIds (multi-entité — anti-bug .single())", () => {
+  it("renvoie l'id pour un profil mono-entité", async () => {
+    const client = makeClient({ trainers: [{ id: "t1" }] });
+    expect(await resolveTrainerIds(client, "profile-1")).toEqual(["t1"]);
+  });
+
+  it("renvoie TOUTES les fiches pour un profil multi-entité (ne casse pas, contrairement à .single())", async () => {
+    const client = makeClient({ trainers: [{ id: "t-mr" }, { id: "t-c3v" }] });
+    expect(await resolveTrainerIds(client, "profile-1")).toEqual(["t-mr", "t-c3v"]);
+  });
+
+  it("renvoie [] si aucune fiche formateur", async () => {
+    const client = makeClient({ trainers: [] });
+    expect(await resolveTrainerIds(client, "profile-x")).toEqual([]);
+  });
+
+  it("déduplique les ids", async () => {
+    const client = makeClient({ trainers: [{ id: "t1" }, { id: "t1" }] });
+    expect(await resolveTrainerIds(client, "profile-1")).toEqual(["t1"]);
   });
 });

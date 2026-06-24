@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
+import { resolveTrainerIds } from "@/lib/auth/trainer-session-access";
 
 /**
  * GET  /api/trainer/courses        — list current trainer's courses
@@ -13,18 +14,15 @@ export async function GET(_request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
 
-    const { data: trainer } = await supabase
-      .from("trainers")
-      .select("id")
-      .eq("profile_id", user.id)
-      .single();
-
-    if (!trainer) return NextResponse.json({ error: "Formateur non trouvé" }, { status: 403 });
+    // Multi-entité : toutes les fiches du profil (cf resolveTrainerIds) — .single()
+    // cassait pour un formateur présent dans 2 entités.
+    const trainerIds = await resolveTrainerIds(supabase, user.id);
+    if (trainerIds.length === 0) return NextResponse.json({ error: "Formateur non trouvé" }, { status: 403 });
 
     const { data: courses, error } = await supabase
       .from("trainer_courses")
       .select("*")
-      .eq("trainer_id", trainer.id)
+      .in("trainer_id", trainerIds)
       .order("created_at", { ascending: false });
 
     if (error) return NextResponse.json({ error: sanitizeDbError(error, "trainer/courses GET") }, { status: 500 });

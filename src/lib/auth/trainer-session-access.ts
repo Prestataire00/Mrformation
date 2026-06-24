@@ -51,6 +51,27 @@ export async function isTrainerAssignedToSession(
  * `sessions.trainer_id`, souvent NULL. Renvoie `[]` si pas de fiche formateur
  * ou aucune assignation (la page affiche alors un état vide).
  */
+/**
+ * Retourne les `trainers.id` (dédupliqués) du profil `profileId`.
+ *
+ * Un même `profile_id` peut avoir PLUSIEURS fiches `trainers` (une par entité —
+ * pas de contrainte d'unicité). Résoudre la fiche via `.single()` échoue alors
+ * (0 ou ≥2 lignes → erreur → data null) et casse l'espace formateur (« Formateur
+ * non trouvé » / listes vides). À utiliser avec `.in("trainer_id", ids)` pour
+ * lister les ressources du formateur (supports, documents, contrats…).
+ */
+export async function resolveTrainerIds(
+  supabase: SupabaseClient,
+  profileId: string,
+): Promise<string[]> {
+  const { data: trainers } = await supabase
+    .from("trainers")
+    .select("id")
+    .eq("profile_id", profileId);
+  const ids = ((trainers as Array<{ id: string }> | null) ?? []).map((t) => t.id);
+  return [...new Set(ids)];
+}
+
 export async function resolveTrainerSessionIds(
   supabase: SupabaseClient,
   profileId: string,

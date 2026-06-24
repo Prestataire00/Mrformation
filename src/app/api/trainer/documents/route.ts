@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 import { logAudit } from "@/lib/audit-log";
+import { resolveTrainerIds } from "@/lib/auth/trainer-session-access";
 
 const VALID_SCOPES = ["session", "admin"] as const;
 const SESSION_DOC_TYPES = ["feuille_emargement", "evaluation", "compte_rendu", "bilan_pedagogique", "autre"];
@@ -18,20 +19,17 @@ export async function GET(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
 
-    const { data: trainer } = await supabase
-      .from("trainers")
-      .select("id")
-      .eq("profile_id", user.id)
-      .single();
-
-    if (!trainer) return NextResponse.json({ error: "Formateur non trouvé" }, { status: 403 });
+    // Multi-entité : toutes les fiches du profil (cf resolveTrainerIds) — .single()
+    // cassait pour un formateur présent dans 2 entités (liste vide).
+    const trainerIds = await resolveTrainerIds(supabase, user.id);
+    if (trainerIds.length === 0) return NextResponse.json({ error: "Formateur non trouvé" }, { status: 403 });
 
     const scope = request.nextUrl.searchParams.get("scope");
 
     let query = supabase
       .from("trainer_documents")
       .select("*, sessions(id, start_date, trainings(title))")
-      .eq("trainer_id", trainer.id)
+      .in("trainer_id", trainerIds)
       .order("created_at", { ascending: false });
 
     if (scope && VALID_SCOPES.includes(scope as typeof VALID_SCOPES[number])) {
