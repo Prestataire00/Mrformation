@@ -1,13 +1,13 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Search, Loader2, Building2, AlertTriangle, X } from "lucide-react";
+import { Search, Loader2, Building2, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export interface PappersCompany {
+export interface SearchCompany {
   company_name: string;
   siret: string;
   siren: string;
@@ -71,11 +71,9 @@ export function CompanySearch({
   disabled = false,
 }: CompanySearchProps) {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<PappersCompany[]>([]);
+  const [results, setResults] = useState<SearchCompany[]>([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
-  const [demoMode, setDemoMode] = useState(false);
-  const [demoWarningVisible, setDemoWarningVisible] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -108,7 +106,7 @@ export function CompanySearch({
     try {
       const res = await fetch(`/api/pappers/search?q=${encodeURIComponent(q.trim())}`);
       const json = (await res.json()) as {
-        data?: PappersCompany[];
+        data?: SearchCompany[];
         demo?: boolean;
         message?: string;
         error?: string;
@@ -123,12 +121,6 @@ export function CompanySearch({
 
       const companies = json.data ?? [];
       setResults(companies);
-      setDemoMode(json.demo ?? false);
-
-      if (json.demo) {
-        setDemoWarningVisible(true);
-      }
-
       setOpen(companies.length > 0);
     } catch {
       setError("Impossible de contacter le service de recherche");
@@ -160,7 +152,7 @@ export function CompanySearch({
     inputRef.current?.focus();
   }
 
-  function handleSelect(company: PappersCompany) {
+  function handleSelect(company: SearchCompany) {
     setOpen(false);
     setQuery("");
     setResults([]);
@@ -181,25 +173,6 @@ export function CompanySearch({
 
   return (
     <div ref={wrapperRef} className={cn("relative w-full", className)}>
-      {/* Demo warning banner */}
-      {demoWarningVisible && (
-        <div className="mb-2 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-amber-600" />
-          <span className="flex-1">
-            <strong>Mode démo</strong> — Configurez{" "}
-            <code className="rounded bg-amber-100 px-1 font-mono">PAPPERS_API_KEY</code> dans{" "}
-            <code className="rounded bg-amber-100 px-1 font-mono">.env.local</code> pour obtenir des données
-            réelles.
-          </span>
-          <button
-            type="button"
-            onClick={() => setDemoWarningVisible(false)}
-            className="ml-1 flex-shrink-0 text-amber-600 hover:text-amber-800"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      )}
 
       {/* Search input */}
       <div className="relative">
@@ -228,9 +201,9 @@ export function CompanySearch({
           className="pl-9 pr-20"
         />
         <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1.5">
-          {/* Pappers badge */}
+          {/* Annuaire Entreprises badge */}
           <span className="hidden rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-600 sm:inline">
-            Pappers
+            Gouv.fr
           </span>
           {/* Clear button */}
           {query && (
@@ -257,11 +230,6 @@ export function CompanySearch({
             <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
               {results.length} résultat{results.length > 1 ? "s" : ""}
             </span>
-            {demoMode && (
-              <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-amber-700">
-                Démo
-              </span>
-            )}
           </div>
 
           <ul className="max-h-64 overflow-y-auto">
@@ -321,8 +289,7 @@ export function CompanySearch({
 
           <div className="border-t border-gray-100 bg-gray-50 px-3 py-1.5 text-[10px] text-gray-400">
             Données fournies par{" "}
-            <span className="font-semibold text-blue-500">Pappers.fr</span>
-            {demoMode && " · Mode démonstration"}
+            <span className="font-semibold text-blue-500">Annuaire Entreprises (gouv.fr)</span>
           </div>
         </div>
       )}

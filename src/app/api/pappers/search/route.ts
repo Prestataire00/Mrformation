@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export interface PappersCompany {
+export interface CompanySearchResult {
   company_name: string;
   siret: string;
   siren: string;
@@ -22,74 +22,42 @@ export interface PappersCompany {
   is_demo?: boolean;
 }
 
-// ─── Mock data (mode démo) ────────────────────────────────────────────────────
-
-const MOCK_COMPANIES: PappersCompany[] = [
-  {
-    company_name: "FORMATION EXCELLENCE SAS",
-    siret: "44306184100047",
-    siren: "443061841",
-    legal_form: "Société par actions simplifiée",
-    address: "12 Rue de la Formation",
-    city: "Paris",
-    postal_code: "75008",
-    capital: 10000,
-    revenue: 850000,
-    employees: "10 à 19 salariés",
-    naf_code: "8559A",
-    creation_date: "2001-03-15",
-    is_demo: true,
-  },
-  {
-    company_name: "GROUPE CONSEIL & FORMATION SARL",
-    siret: "53229580700021",
-    siren: "532295807",
-    legal_form: "Société à responsabilité limitée",
-    address: "45 Avenue des Entrepreneurs",
-    city: "Lyon",
-    postal_code: "69003",
-    capital: 5000,
-    revenue: 420000,
-    employees: "6 à 9 salariés",
-    naf_code: "8559B",
-    creation_date: "2011-07-22",
-    is_demo: true,
-  },
-  {
-    company_name: "ACAD'EVEIL FORMATION",
-    siret: "80812356200018",
-    siren: "808123562",
-    legal_form: "Entrepreneur individuel",
-    address: "8 Rue de l'Innovation",
-    city: "Bordeaux",
-    postal_code: "33000",
-    capital: null,
-    revenue: 175000,
-    employees: "1 ou 2 salariés",
-    naf_code: "8559A",
-    creation_date: "2015-02-10",
-    is_demo: true,
-  },
-];
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function mapPappersResult(entreprise: Record<string, unknown>): PappersCompany {
-  const siege = (entreprise.siege ?? {}) as Record<string, unknown>;
+interface GouvSiege {
+  siret?: string;
+  adresse?: string;
+  libelle_commune?: string;
+  code_postal?: string;
+  date_creation?: string;
+}
+
+interface GouvEntreprise {
+  nom_complet?: string;
+  siren?: string;
+  nature_juridique?: string;
+  activite_principale?: string;
+  tranche_effectif_salarie?: string;
+  date_creation?: string;
+  siege?: GouvSiege;
+}
+
+function mapGouvResult(entreprise: GouvEntreprise): CompanySearchResult {
+  const siege = entreprise.siege ?? {};
 
   return {
-    company_name: (entreprise.nom_entreprise as string) ?? "",
-    siret: (siege.siret as string) ?? "",
-    siren: (entreprise.siren as string) ?? "",
-    legal_form: (entreprise.forme_juridique as string) ?? "",
-    address: (siege.adresse_ligne_1 as string) ?? "",
-    city: (siege.ville as string) ?? "",
-    postal_code: (siege.code_postal as string) ?? "",
-    capital: (entreprise.capital as number) ?? null,
-    revenue: null, // available in full company endpoint
-    employees: (entreprise.tranche_effectif as string) ?? null,
-    naf_code: (entreprise.code_naf as string) ?? null,
-    creation_date: (entreprise.date_creation as string) ?? null,
+    company_name: entreprise.nom_complet ?? "",
+    siret: siege.siret ?? "",
+    siren: entreprise.siren ?? "",
+    legal_form: entreprise.nature_juridique ?? "",
+    address: siege.adresse ?? "",
+    city: siege.libelle_commune ?? "",
+    postal_code: siege.code_postal ?? "",
+    capital: null,
+    revenue: null,
+    employees: entreprise.tranche_effectif_salarie ?? null,
+    naf_code: entreprise.activite_principale ?? null,
+    creation_date: entreprise.date_creation ?? siege.date_creation ?? null,
   };
 }
 
@@ -110,32 +78,11 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const apiKey = process.env.PAPPERS_API_KEY;
-    const isDemo = !apiKey || apiKey === "votre-cle-pappers" || apiKey.trim() === "";
-    const cleanQ = q.trim().toLowerCase();
-
-    // ── Mode démo ─────────────────────────────────────────────────────────────
-    if (isDemo) {
-      const filtered = MOCK_COMPANIES.filter(
-        (c) =>
-          c.company_name.toLowerCase().includes(cleanQ) ||
-          c.siret.includes(cleanQ) ||
-          c.siren.includes(cleanQ) ||
-          c.city.toLowerCase().includes(cleanQ)
-      );
-
-      return NextResponse.json({
-        data: filtered.length > 0 ? filtered : MOCK_COMPANIES,
-        demo: true,
-        message: "Mode démo — configurez PAPPERS_API_KEY pour des données réelles",
-      });
-    }
-
-    // ── Appel API Pappers réel ─────────────────────────────────────────────────
-    const url = new URL("https://api.pappers.fr/v2/recherche");
+    // ── Appel API Recherche Entreprises (gouv.fr — gratuit, sans clé) ─────────
+    const url = new URL("https://recherche-entreprises.api.gouv.fr/search");
     url.searchParams.set("q", q.trim());
-    url.searchParams.set("api_token", apiKey);
-    url.searchParams.set("par_page", "5");
+    url.searchParams.set("per_page", "5");
+    url.searchParams.set("page", "1");
 
     const response = await fetch(url.toString(), {
       headers: { Accept: "application/json" },
@@ -143,24 +90,24 @@ export async function GET(request: NextRequest) {
 
     if (!response.ok) {
       const text = await response.text();
-      console.error("[Pappers search] API error:", response.status, text);
+      console.error("[Entreprise search] API gouv error:", response.status, text);
       if (response.status === 429) {
         return NextResponse.json(
-          { error: "Limite Pappers atteinte. Réessayez dans 1h.", status_code: 429 },
+          { error: "Trop de requêtes. Réessayez dans quelques secondes.", status_code: 429 },
           { status: 429 }
         );
       }
       return NextResponse.json(
-        { error: `Service Pappers indisponible (${response.status})`, status_code: response.status },
+        { error: `Service Annuaire Entreprises indisponible (${response.status})`, status_code: response.status },
         { status: response.status }
       );
     }
 
-    const json = (await response.json()) as { resultats?: Record<string, unknown>[] };
-    const results = (json.resultats ?? []).map(mapPappersResult);
+    const json = (await response.json()) as { results?: GouvEntreprise[] };
+    const results = (json.results ?? []).map(mapGouvResult);
 
     return NextResponse.json({ data: results, demo: false });
   } catch (error) {
-    return NextResponse.json({ error: sanitizeError(error, "pappers/search") }, { status: 500 });
+    return NextResponse.json({ error: sanitizeError(error, "entreprise/search") }, { status: 500 });
   }
 }

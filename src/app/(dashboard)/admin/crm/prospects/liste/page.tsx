@@ -343,7 +343,7 @@ export default function ProspectListePage() {
         </div>
       </div>
 
-      {/* h-23 AC-3 : Dialog création prospect partagé (Pappers UPFRONT) */}
+      {/* h-23 AC-3 : Dialog création prospect partagé (Annuaire Entreprises UPFRONT) */}
       {entityId && (
         <AddProspectDialog
           open={addDialogOpen}

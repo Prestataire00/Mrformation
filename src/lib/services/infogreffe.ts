@@ -1,26 +1,10 @@
 /**
- * Service d'intégration Infogreffe / Papers
- * Utilisé pour enrichir les fiches prospects/clients avec des données légales et financières.
+ * Service d'intégration Annuaire Entreprises (recherche-entreprises.api.gouv.fr)
+ * Utilisé pour enrichir les fiches prospects/clients avec des données légales.
+ * API gratuite, données INSEE/SIRENE — aucune clé API nécessaire.
  */
 
-const INFOGREFFE_API_URL = "https://opendata-rncs.inpi.fr/services/diffusion/entreprises";
-const PAPERS_API_URL = "https://api.pappers.fr/v2";
-
-function getInfogreffeKey(): string {
-  const key = process.env.INFOGREFFE_API_KEY;
-  if (!key || key === "votre-cle-infogreffe") {
-    throw new Error("INFOGREFFE_API_KEY non configurée. Ajoutez votre clé dans .env.local");
-  }
-  return key;
-}
-
-function getPappersKey(): string {
-  const key = process.env.PAPPERS_API_KEY;
-  if (!key || key === "votre-cle-pappers") {
-    throw new Error("PAPPERS_API_KEY non configurée. Ajoutez votre clé dans .env.local");
-  }
-  return key;
-}
+const ENTREPRISES_API_URL = "https://recherche-entreprises.api.gouv.fr";
 
 export interface CompanyInfo {
   siren: string;
@@ -40,11 +24,60 @@ export interface CompanyInfo {
   resultat_net: number | null;
 }
 
+interface GouvDirigeant {
+  nom?: string;
+  prenoms?: string;
+  qualite?: string;
+}
+
+interface GouvSiege {
+  siret?: string;
+  adresse?: string;
+  libelle_commune?: string;
+  code_postal?: string;
+}
+
+interface GouvEntreprise {
+  nom_complet?: string;
+  siren?: string;
+  nature_juridique?: string;
+  activite_principale?: string;
+  section_activite_principale?: string;
+  tranche_effectif_salarie?: string;
+  date_creation?: string;
+  siege?: GouvSiege;
+  dirigeants?: GouvDirigeant[];
+}
+
+function mapGouvToCompanyInfo(item: GouvEntreprise): CompanyInfo {
+  const siege = item.siege ?? {};
+  return {
+    siren: item.siren ?? "",
+    siret: siege.siret ?? "",
+    denomination: item.nom_complet ?? "",
+    forme_juridique: item.nature_juridique ?? "",
+    date_creation: item.date_creation ?? "",
+    adresse: siege.adresse ?? "",
+    code_postal: siege.code_postal ?? "",
+    ville: siege.libelle_commune ?? "",
+    code_naf: item.activite_principale ?? "",
+    libelle_naf: item.section_activite_principale ?? "",
+    capital_social: null,
+    effectif: item.tranche_effectif_salarie ?? null,
+    dirigeants: (item.dirigeants ?? []).map((d) => ({
+      nom: d.nom ?? "",
+      prenom: d.prenoms ?? "",
+      fonction: d.qualite ?? "",
+    })),
+    chiffre_affaires: null,
+    resultat_net: null,
+  };
+}
+
 /**
- * Recherche une entreprise par SIRET via l'API Pappers
+ * Recherche une entreprise par SIRET via l'API Recherche Entreprises
  */
 export async function searchBySiret(siret: string): Promise<CompanyInfo | null> {
-  const apiKey = getPappersKey();
   const cleanSiret = siret.replace(/\s/g, "");
 
   if (cleanSiret.length !== 14) {
@@ -52,80 +85,40 @@ export async function searchBySiret(siret: string): Promise<CompanyInfo | null> 
   }
 
   const response = await fetch(
-    `${PAPERS_API_URL}/entreprise?siret=${cleanSiret}&api_token=${apiKey}`,
+    `${ENTREPRISES_API_URL}/search?q=${cleanSiret}&per_page=1`,
     { headers: { Accept: "application/json" } }
   );
 
   if (!response.ok) {
     if (response.status === 404) return null;
-    const error = await response.json().catch(() => ({}));
-    throw new Error(`Pappers API error (${response.status}): ${error.message || "Unknown error"}`);
+    throw new Error(`API Annuaire Entreprises erreur (${response.status})`);
   }
 
-  const data = await response.json();
+  const data = (await response.json()) as { results?: GouvEntreprise[] };
+  const results = data.results ?? [];
 
-  return {
-    siren: data.siren || "",
-    siret: data.siege?.siret || cleanSiret,
-    denomination: data.nom_entreprise || data.denomination || "",
-    forme_juridique: data.forme_juridique || "",
-    date_creation: data.date_creation || "",
-    adresse: data.siege?.adresse_ligne_1 || "",
-    code_postal: data.siege?.code_postal || "",
-    ville: data.siege?.ville || "",
-    code_naf: data.code_naf || "",
-    libelle_naf: data.libelle_code_naf || "",
-    capital_social: data.capital ? parseFloat(data.capital) : null,
-    effectif: data.effectif || null,
-    dirigeants: (data.representants || []).map((r: Record<string, string>) => ({
-      nom: r.nom || "",
-      prenom: r.prenom || "",
-      fonction: r.qualite || "",
-    })),
-    chiffre_affaires: data.finances?.[0]?.chiffre_affaires
-      ? parseFloat(data.finances[0].chiffre_affaires)
-      : null,
-    resultat_net: data.finances?.[0]?.resultat
-      ? parseFloat(data.finances[0].resultat)
-      : null,
-  };
+  if (results.length === 0) return null;
+
+  return mapGouvToCompanyInfo(results[0]);
 }
 
 /**
- * Recherche une entreprise par nom via l'API Pappers
+ * Recherche une entreprise par nom via l'API Recherche Entreprises
  */
 export async function searchByName(name: string, limit = 5): Promise<CompanyInfo[]> {
-  const apiKey = getPappersKey();
-
   const response = await fetch(
-    `${PAPERS_API_URL}/recherche?q=${encodeURIComponent(name)}&par_page=${limit}&api_token=${apiKey}`,
+    `${ENTREPRISES_API_URL}/search?q=${encodeURIComponent(name)}&per_page=${limit}`,
     { headers: { Accept: "application/json" } }
   );
 
   if (!response.ok) {
-    throw new Error(`Pappers API error (${response.status})`);
+    throw new Error(`API Annuaire Entreprises erreur (${response.status})`);
   }
 
-  const data = await response.json();
-  const results = data.resultats || [];
+  const data = (await response.json()) as { results?: GouvEntreprise[] };
+  const results = data.results ?? [];
 
-  return results.map((item: Record<string, unknown>) => ({
-    siren: (item.siren as string) || "",
-    siret: ((item.siege as Record<string, string>)?.siret) || "",
-    denomination: (item.nom_entreprise as string) || "",
-    forme_juridique: (item.forme_juridique as string) || "",
-    date_creation: (item.date_creation as string) || "",
-    adresse: ((item.siege as Record<string, string>)?.adresse_ligne_1) || "",
-    code_postal: ((item.siege as Record<string, string>)?.code_postal) || "",
-    ville: ((item.siege as Record<string, string>)?.ville) || "",
-    code_naf: (item.code_naf as string) || "",
-    libelle_naf: (item.libelle_code_naf as string) || "",
-    capital_social: null,
-    effectif: null,
-    dirigeants: [],
-    chiffre_affaires: null,
-    resultat_net: null,
-  }));
+  return results.map(mapGouvToCompanyInfo);
 }
 
 /**
@@ -136,23 +129,31 @@ export async function checkCompanyStatus(siren: string): Promise<{
   procedure_collective: boolean;
   date_radiation?: string;
 }> {
-  const apiKey = getPappersKey();
   const cleanSiren = siren.replace(/\s/g, "");
 
   const response = await fetch(
-    `${PAPERS_API_URL}/entreprise?siren=${cleanSiren}&api_token=${apiKey}`,
+    `${ENTREPRISES_API_URL}/search?q=${cleanSiren}&per_page=1`,
     { headers: { Accept: "application/json" } }
   );
 
   if (!response.ok) {
-    throw new Error(`Pappers API error (${response.status})`);
+    throw new Error(`API Annuaire Entreprises erreur (${response.status})`);
   }
 
-  const data = await response.json();
+  const data = (await response.json()) as {
+    results?: Array<{ etat_administratif?: string; date_cessation?: string }>;
+  };
+  const results = data.results ?? [];
+
+  if (results.length === 0) {
+    return { active: false, procedure_collective: false };
+  }
+
+  const entreprise = results[0];
 
   return {
-    active: !data.date_cessation,
-    procedure_collective: !!data.procedure_collective,
-    date_radiation: data.date_cessation || undefined,
+    active: entreprise.etat_administratif === "A",
+    procedure_collective: false, // non disponible via cette API
+    date_radiation: entreprise.etat_administratif === "C" ? entreprise.date_cessation : undefined,
   };
 }

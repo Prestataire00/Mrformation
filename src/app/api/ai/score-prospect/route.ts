@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
       naf_code: prospect.naf_code,
       source: prospect.source,
       amount: prospect.amount,
-      employees: null, // Would come from Pappers enrichment
+      employees: null, // Would come from entreprise enrichment
       emailsSentCount: emailsCount || 0,
       actionsCount: actions?.length || 0,
       lastContactDate,

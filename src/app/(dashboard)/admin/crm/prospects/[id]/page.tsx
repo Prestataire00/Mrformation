@@ -69,10 +69,10 @@ import {
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
-// h-23 AC-4b : feature flag pour le bouton "Enrichir Pappers" post-création.
-// false par défaut depuis h-23 (Pappers UPFRONT à la création via AddProspectDialog).
-// Passer à true si besoin de réactiver (cas Sellsy import sans Pappers).
-const FEATURE_PAPPERS_ENRICH_POST_CREATE = false;
+// h-23 AC-4b : feature flag pour le bouton "Enrichir" post-création.
+// false par défaut depuis h-23 (recherche entreprise UPFRONT à la création via AddProspectDialog).
+// Passer à true si besoin de réactiver (cas Sellsy import sans données entreprise).
+const FEATURE_ENRICH_POST_CREATE = false;
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   new:       { label: "Lead",        color: "#374151" },
@@ -602,13 +602,13 @@ export default function ProspectDetailPage() {
 
   // ── AI Functions ──────────────────────────────────────────────────────────
 
-  const [pappersSearchOpen, setPappersSearchOpen] = useState(false);
+  const [entrepriseSearchOpen, setEntrepriseSearchOpen] = useState(false);
 
-  const handleEnrichPappers = async (siretOverride?: string) => {
+  const handleEnrichEntreprise = async (siretOverride?: string) => {
     const siretToUse = siretOverride || prospect?.siret;
     if (!siretToUse) {
       // Pas de SIRET → ouvrir recherche par nom
-      setPappersSearchOpen(true);
+      setEntrepriseSearchOpen(true);
       return;
     }
     setEnriching(true);
@@ -618,13 +618,13 @@ export default function ProspectDetailPage() {
 
       if (!res.ok) {
         const errorMessages: Record<number, string> = {
-          404: "Ce SIRET n'existe pas chez Pappers. Vérifiez le numéro ou recherchez par nom.",
-          429: "Limite Pappers atteinte. Réessayez dans 1h.",
-          503: "Service Pappers en maintenance.",
+          404: "Ce SIRET/SIREN n'a pas été trouvé. Vérifiez le numéro ou recherchez par nom.",
+          429: "Trop de requêtes. Réessayez dans quelques secondes.",
+          503: "Service Annuaire Entreprises en maintenance.",
         };
-        const message = errorMessages[data.status_code || res.status] || data.error || "Erreur Pappers inattendue";
+        const message = errorMessages[data.status_code || res.status] || data.error || "Erreur inattendue";
         toast({ title: "Enrichissement impossible", description: message, variant: "destructive" });
-        if (res.status === 404) setPappersSearchOpen(true);
+        if (res.status === 404) setEntrepriseSearchOpen(true);
         return;
       }
 
@@ -632,7 +632,7 @@ export default function ProspectDetailPage() {
       setEnrichData(detail);
       const opco = detectOPCO(detail.naf_code);
       toast({
-        title: data.cached ? "Données Pappers (cache)" : "Données Pappers récupérées",
+        title: data.cached ? "Données entreprise (cache)" : "Données entreprise récupérées",
         description: opco ? `OPCO probable : ${opco.opco}` : "OPCO non détecté",
       });
       // Auto-update NAF + address + SIRET if missing
@@ -647,15 +647,15 @@ export default function ProspectDetailPage() {
         fetchProspect();
       }
     } catch (err) {
-      toast({ title: "Erreur Pappers", description: err instanceof Error ? err.message : "Service indisponible", variant: "destructive" });
+      toast({ title: "Erreur enrichissement", description: err instanceof Error ? err.message : "Service indisponible", variant: "destructive" });
     } finally {
       setEnriching(false);
     }
   };
 
-  const handlePappersSearchSelect = async (siret: string) => {
-    setPappersSearchOpen(false);
-    await handleEnrichPappers(siret);
+  const handleEntrepriseSearchSelect = async (siret: string) => {
+    setEntrepriseSearchOpen(false);
+    await handleEnrichEntreprise(siret);
   };
 
   const handleAiInsights = async () => {
@@ -1194,18 +1194,18 @@ export default function ProspectDetailPage() {
           <div className="space-y-3">
             <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Intelligence commerciale</h3>
 
-            {/* h-23 AC-4b : bouton "Enrichir Pappers" masqué derrière feature flag.
-                Pappers est désormais utilisé UPFRONT à la création (AddProspectDialog).
-                Code conservé pour réversibilité si besoin futur (ex: import Sellsy sans
-                Pappers). Réactiver en mettant FEATURE_PAPPERS_ENRICH_POST_CREATE à true. */}
-            {FEATURE_PAPPERS_ENRICH_POST_CREATE && (
-              <Button size="sm" variant="outline" className="w-full text-xs h-7 gap-1" onClick={() => handleEnrichPappers()} disabled={enriching}>
+            {/* h-23 AC-4b : bouton "Enrichir" masqué derrière feature flag.
+                Recherche entreprise est désormais utilisée UPFRONT à la création (AddProspectDialog).
+                Code conservé pour réversibilité si besoin futur (ex: import Sellsy sans données).
+                Réactiver en mettant FEATURE_ENRICH_POST_CREATE à true. */}
+            {FEATURE_ENRICH_POST_CREATE && (
+              <Button size="sm" variant="outline" className="w-full text-xs h-7 gap-1" onClick={() => handleEnrichEntreprise()} disabled={enriching}>
                 {enriching ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
-                {prospect.siret ? "Enrichir via Pappers" : "Rechercher l'entreprise"}
+                {prospect.siret ? "Enrichir via Annuaire Entreprises" : "Rechercher l'entreprise"}
               </Button>
             )}
 
-            {/* Résultat Pappers (lecture seule conservée pour les enrichissements historiques) */}
+            {/* Résultat enrichissement entreprise */}
             {enrichData && (
               <div className="text-xs space-y-1 p-2 bg-blue-50 rounded-lg">
                 {!!enrichData.naf_label && <p><span className="text-muted-foreground">NAF :</span> <strong>{String(enrichData.naf_code)}</strong> — {String(enrichData.naf_label)}</p>}
@@ -1451,13 +1451,13 @@ export default function ProspectDetailPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Pappers search dialog */}
-      <Dialog open={pappersSearchOpen} onOpenChange={setPappersSearchOpen}>
+      {/* Recherche entreprise dialog */}
+      <Dialog open={entrepriseSearchOpen} onOpenChange={setEntrepriseSearchOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Rechercher l&apos;entreprise sur Pappers</DialogTitle>
+            <DialogTitle>Rechercher l&apos;entreprise (Annuaire Entreprises)</DialogTitle>
           </DialogHeader>
-          <PappersSearchPanel companyName={prospect?.company_name || ""} onSelect={handlePappersSearchSelect} />
+          <EntrepriseSearchPanel companyName={prospect?.company_name || ""} onSelect={handleEntrepriseSearchSelect} />
         </DialogContent>
       </Dialog>
 
@@ -1472,7 +1472,7 @@ export default function ProspectDetailPage() {
   );
 }
 
-function PappersSearchPanel({ companyName, onSelect }: { companyName: string; onSelect: (siret: string) => void }) {
+function EntrepriseSearchPanel({ companyName, onSelect }: { companyName: string; onSelect: (siret: string) => void }) {
   const [query, setQuery] = useState(companyName);
   const [results, setResults] = useState<Array<{ company_name: string; siret: string; city: string; naf_code: string | null }>>([]);
   const [searching, setSearching] = useState(false);

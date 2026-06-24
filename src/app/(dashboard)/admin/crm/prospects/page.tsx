@@ -582,7 +582,7 @@ export default function CrmProspectsPage() {
     fetchProspects();
   }
 
-  // ─── Autofill depuis Pappers ──────────────────────────────────────────────
+  // ─── Autofill depuis Annuaire Entreprises ──────────────────────────────────
   function handleCompanySelect(company: CompanySearchResult) {
     setForm((f) => ({
       ...f,
@@ -1067,7 +1067,7 @@ function ProspectFormFields({ form, setForm, columns, onCompanySelect, teamMembe
       {!compact && (
         <div>
           <label className="mb-1 block text-xs font-medium text-gray-600">
-            Recherche entreprise (Pappers)
+            Recherche entreprise (Annuaire Entreprises)
           </label>
           <CompanySearch
             onSelect={onCompanySelect}

@@ -25,13 +25,13 @@ import { useToast } from "@/components/ui/use-toast";
  * Dialog "Créer un prospect" partagé (h-23 AC-3 + AC-4).
  *
  * Utilisé par la page liste `/admin/crm/prospects/liste` (nouveau bouton
- * créer). Pappers UPFRONT : le `CompanySearch` en haut auto-fill TOUS les
+ * créer). Recherche entreprise UPFRONT : le `CompanySearch` en haut auto-fill TOUS les
  * champs disponibles (company_name, siret, address, city, postal_code,
  * naf_code) ce qui élimine le besoin d'un bouton "Enrichir" post-création.
  *
  * Décisions résolues code review h-23 §9 :
- * - Q4 : tous les champs Pappers auto-fillés au onSelect
- * - Q6 : Pappers à la création seule (post-création masqué par feature flag
+ * - Q4 : tous les champs auto-fillés au onSelect
+ * - Q6 : Recherche à la création seule (post-création masqué par feature flag
  *   dans `[id]/page.tsx`)
  */
 
@@ -79,10 +79,10 @@ export function AddProspectDialog({
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
 
-  // h-23 AC-4 : Pappers UPFRONT — auto-fill les champs vides uniquement.
+  // h-23 AC-4 : Annuaire Entreprises UPFRONT — auto-fill les champs vides uniquement.
   // P5 (code review h-23) : ne PAS overwrite les champs déjà saisis par
   // l'utilisateur (si le user a tapé un nom custom avant de selectionner
-  // un resultat Pappers, on respecte sa saisie).
+  // un resultat Annuaire Entreprises, on respecte sa saisie).
   function handleCompanySelect(company: CompanySearchResult) {
     setForm((f) => ({
       ...f,
@@ -174,14 +174,14 @@ export function AddProspectDialog({
         <DialogHeader>
           <DialogTitle>Créer un prospect</DialogTitle>
           <DialogDescription>
-            Recherche d&apos;abord la société via Pappers pour auto-remplir les champs (SIRET, adresse, code NAF), puis complète le contact.
+            Recherche d&apos;abord la société via Annuaire Entreprises pour auto-remplir les champs (SIRET, adresse, code NAF), puis complète le contact.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3 overflow-y-auto pr-1">
-          {/* Pappers search en HAUT (h-23 AC-4) */}
+          {/* Annuaire Entreprises search en HAUT (h-23 AC-4) */}
           <div>
-            <Label className="text-xs">Recherche société (Pappers)</Label>
+            <Label className="text-xs">Recherche société (Annuaire Entreprises)</Label>
             <CompanySearch
               onSelect={handleCompanySelect}
               placeholder="Nom de société ou SIRET…"

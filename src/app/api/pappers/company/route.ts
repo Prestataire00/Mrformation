@@ -6,21 +6,21 @@ export const dynamic = "force-dynamic";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export interface PappersDirigeant {
+export interface CompanyDirigeant {
   nom: string;
   prenom: string | null;
   qualite: string;
   date_naissance_formate: string | null;
 }
 
-export interface PappersFinances {
+export interface CompanyFinances {
   annee: number;
   chiffre_affaires: number | null;
   resultat: number | null;
   effectif: number | null;
 }
 
-export interface PappersCompanyDetail {
+export interface CompanyDetail {
   company_name: string;
   siret: string;
   siren: string;
@@ -33,83 +33,71 @@ export interface PappersCompanyDetail {
   naf_label: string | null;
   creation_date: string | null;
   employees: string | null;
-  dirigeants: PappersDirigeant[];
-  finances: PappersFinances[];
+  dirigeants: CompanyDirigeant[];
+  finances: CompanyFinances[];
   website: string | null;
   is_demo?: boolean;
 }
 
-// ─── Mock data ────────────────────────────────────────────────────────────────
+// ─── Gouv API types ──────────────────────────────────────────────────────────
 
-const MOCK_DETAIL: PappersCompanyDetail = {
-  company_name: "FORMATION EXCELLENCE SAS",
-  siret: "44306184100047",
-  siren: "443061841",
-  legal_form: "Société par actions simplifiée",
-  address: "12 Rue de la Formation",
-  city: "Paris",
-  postal_code: "75008",
-  capital: 10000,
-  naf_code: "8559A",
-  naf_label: "Autres formations",
-  creation_date: "2001-03-15",
-  employees: "10 à 19 salariés",
-  dirigeants: [
-    {
-      nom: "DUPONT",
-      prenom: "Jean-Marc",
-      qualite: "Président",
-      date_naissance_formate: "Janvier 1972",
-    },
-  ],
-  finances: [
-    { annee: 2022, chiffre_affaires: 850000, resultat: 62000, effectif: 12 },
-    { annee: 2021, chiffre_affaires: 720000, resultat: 48000, effectif: 10 },
-    { annee: 2020, chiffre_affaires: 580000, resultat: 31000, effectif: 9 },
-  ],
-  website: null,
-  is_demo: true,
-};
+interface GouvDirigeant {
+  nom?: string;
+  prenoms?: string;
+  qualite?: string;
+  date_naissance?: string;
+}
+
+interface GouvSiege {
+  siret?: string;
+  adresse?: string;
+  libelle_commune?: string;
+  code_postal?: string;
+  date_creation?: string;
+}
+
+interface GouvEntreprise {
+  nom_complet?: string;
+  siren?: string;
+  nature_juridique?: string;
+  activite_principale?: string;
+  section_activite_principale?: string;
+  tranche_effectif_salarie?: string;
+  date_creation?: string;
+  siege?: GouvSiege;
+  dirigeants?: GouvDirigeant[];
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function mapPappersDetail(entreprise: Record<string, unknown>): PappersCompanyDetail {
-  const siege = (entreprise.siege ?? {}) as Record<string, unknown>;
+function mapGouvDetail(entreprise: GouvEntreprise): CompanyDetail {
+  const siege = entreprise.siege ?? {};
 
-  const dirigeants: PappersDirigeant[] = ((entreprise.dirigeants as Record<string, unknown>[]) ?? []).map(
+  const dirigeants: CompanyDirigeant[] = (entreprise.dirigeants ?? []).map(
     (d) => ({
-      nom: (d.nom as string) ?? "",
-      prenom: (d.prenom as string) ?? null,
-      qualite: (d.qualite as string) ?? "",
-      date_naissance_formate: (d.date_naissance_formate as string) ?? null,
-    })
-  );
-
-  const finances: PappersFinances[] = ((entreprise.finances as Record<string, unknown>[]) ?? []).map(
-    (f) => ({
-      annee: (f.annee as number) ?? 0,
-      chiffre_affaires: (f.chiffre_affaires as number) ?? null,
-      resultat: (f.resultat as number) ?? null,
-      effectif: (f.effectif as number) ?? null,
+      nom: d.nom ?? "",
+      prenom: d.prenoms ?? null,
+      qualite: d.qualite ?? "",
+      date_naissance_formate: d.date_naissance ?? null,
     })
   );
 
   return {
-    company_name: (entreprise.nom_entreprise as string) ?? "",
-    siret: (siege.siret as string) ?? "",
-    siren: (entreprise.siren as string) ?? "",
-    legal_form: (entreprise.forme_juridique as string) ?? "",
-    address: (siege.adresse_ligne_1 as string) ?? "",
-    city: (siege.ville as string) ?? "",
-    postal_code: (siege.code_postal as string) ?? "",
-    capital: (entreprise.capital as number) ?? null,
-    naf_code: (entreprise.code_naf as string) ?? null,
-    naf_label: (entreprise.libelle_code_naf as string) ?? null,
-    creation_date: (entreprise.date_creation as string) ?? null,
-    employees: (entreprise.tranche_effectif as string) ?? null,
+    company_name: entreprise.nom_complet ?? "",
+    siret: siege.siret ?? "",
+    siren: entreprise.siren ?? "",
+    legal_form: entreprise.nature_juridique ?? "",
+    address: siege.adresse ?? "",
+    city: siege.libelle_commune ?? "",
+    postal_code: siege.code_postal ?? "",
+    capital: null, // non disponible via API gouv gratuite
+    naf_code: entreprise.activite_principale ?? null,
+    naf_label: entreprise.section_activite_principale ?? null,
+    creation_date: entreprise.date_creation ?? siege.date_creation ?? null,
+    employees: entreprise.tranche_effectif_salarie ?? null,
     dirigeants,
-    finances,
-    website: (entreprise.site_web as string) ?? null,
+    finances: [], // non disponible via API gouv gratuite
+    website: null, // non disponible via API gouv gratuite
   };
 }
 
@@ -130,18 +118,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const apiKey = process.env.PAPPERS_API_KEY;
-    const isDemo = !apiKey || apiKey === "votre-cle-pappers" || apiKey.trim() === "";
     const cleanSiret = siret.trim().replace(/\s/g, "");
-
-    // ── Mode démo ─────────────────────────────────────────────────────────────
-    if (isDemo) {
-      return NextResponse.json({
-        data: { ...MOCK_DETAIL, siret: cleanSiret },
-        demo: true,
-        message: "Mode démo — configurez PAPPERS_API_KEY pour des données réelles",
-      });
-    }
 
     // ── Cache DB (30 jours) ───────────────────────────────────────────────────
     const { data: cached } = await auth.supabase
@@ -156,10 +133,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ data: cached.data, demo: false, cached: true });
     }
 
-    // ── Appel API Pappers réel ─────────────────────────────────────────────────
-    const url = new URL("https://api.pappers.fr/v2/entreprise");
-    url.searchParams.set("siret", cleanSiret);
-    url.searchParams.set("api_token", apiKey);
+    // ── Appel API Recherche Entreprises (gouv.fr — gratuit, sans clé) ─────────
+    const url = new URL("https://recherche-entreprises.api.gouv.fr/search");
+    url.searchParams.set("q", cleanSiret);
+    url.searchParams.set("per_page", "1");
+    url.searchParams.set("page", "1");
 
     const response = await fetch(url.toString(), {
       headers: { Accept: "application/json" },
@@ -167,27 +145,30 @@ export async function GET(request: NextRequest) {
 
     if (!response.ok) {
       const text = await response.text();
-      console.error("[Pappers company] API error:", response.status, text);
-      if (response.status === 404) {
-        return NextResponse.json(
-          { error: "Ce SIRET n'existe pas chez Pappers. Vérifiez le numéro ou recherchez par nom.", status_code: 404 },
-          { status: 404 }
-        );
-      }
+      console.error("[Entreprise company] API gouv error:", response.status, text);
       if (response.status === 429) {
         return NextResponse.json(
-          { error: "Limite Pappers atteinte. Réessayez dans 1h.", status_code: 429 },
+          { error: "Trop de requêtes. Réessayez dans quelques secondes.", status_code: 429 },
           { status: 429 }
         );
       }
       return NextResponse.json(
-        { error: `Service Pappers indisponible (${response.status})`, status_code: response.status },
+        { error: `Service Annuaire Entreprises indisponible (${response.status})`, status_code: response.status },
         { status: response.status }
       );
     }
 
-    const json = (await response.json()) as Record<string, unknown>;
-    const detail = mapPappersDetail(json);
+    const json = (await response.json()) as { results?: GouvEntreprise[] };
+    const results = json.results ?? [];
+
+    if (results.length === 0) {
+      return NextResponse.json(
+        { error: "Ce SIRET/SIREN n'a pas été trouvé. Vérifiez le numéro ou recherchez par nom.", status_code: 404 },
+        { status: 404 }
+      );
+    }
+
+    const detail = mapGouvDetail(results[0]);
 
     // ── Stocker en cache ──────────────────────────────────────────────────────
     await auth.supabase
@@ -204,6 +185,6 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ data: detail, demo: false });
   } catch (error) {
-    return NextResponse.json({ error: sanitizeError(error, "pappers/company") }, { status: 500 });
+    return NextResponse.json({ error: sanitizeError(error, "entreprise/company") }, { status: 500 });
   }
 }
