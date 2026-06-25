@@ -142,86 +142,94 @@ export function ResumeCompanies({ formation, onRefresh }: Props) {
   const handleAdd = async () => {
     if (!selectedClientId) return;
     setSaving(true);
-    const result = await addCompanyToSession(supabase, {
-      sessionId: formation.id,
-      clientId: selectedClientId,
-      amount: amount ? parseFloat(amount) : null,
-      email: email || null,
-    });
+    // try/catch + finally : l'auto-inscription des apprenants se fait en
+    // supabase direct → une coupure réseau rejetterait l'await et figerait le
+    // bouton (spinner bloqué). finally garantit setSaving(false).
+    try {
+      const result = await addCompanyToSession(supabase, {
+        sessionId: formation.id,
+        clientId: selectedClientId,
+        amount: amount ? parseFloat(amount) : null,
+        email: email || null,
+      });
 
-    if (!result.ok) {
-      setSaving(false);
-      toast({ title: "Erreur", description: result.error.message, variant: "destructive" });
-      return;
-    }
+      if (!result.ok) {
+        toast({ title: "Erreur", description: result.error.message, variant: "destructive" });
+        return;
+      }
 
-    // Auto-inscrire les apprenants rattachés à cette entreprise
-    const existingLearnerIds = new Set(
-      (formation.enrollments || []).map((e) => e.learner_id)
-    );
-
-    const { data: companyLearners } = await supabase
-      .from("learners")
-      .select("id, first_name, last_name")
-      .eq("client_id", selectedClientId)
-      .eq("entity_id", formation.entity_id);
-
-    const toEnroll = (companyLearners || []).filter(
-      (l) => !existingLearnerIds.has(l.id)
-    );
-
-    if (toEnroll.length > 0) {
-      const { error: enrollError } = await supabase.from("enrollments").insert(
-        toEnroll.map((l) => ({
-          session_id: formation.id,
-          learner_id: l.id,
-          client_id: selectedClientId,
-          status: "registered",
-        }))
+      // Auto-inscrire les apprenants rattachés à cette entreprise
+      const existingLearnerIds = new Set(
+        (formation.enrollments || []).map((e) => e.learner_id)
       );
 
-      if (enrollError) {
-        // Non-bloquant : l'entreprise est ajoutée même si l'inscription échoue
-        toast({ title: "Entreprise ajoutée", description: `Attention : ${enrollError.message}`, variant: "destructive" });
-      } else {
-        const names = toEnroll.map((l) => `${l.first_name} ${l.last_name}`).join(", ");
-        toast({
-          title: "Entreprise ajoutée",
-          description: `${toEnroll.length} apprenant(s) inscrit(s) automatiquement : ${names}`,
-        });
+      const { data: companyLearners } = await supabase
+        .from("learners")
+        .select("id, first_name, last_name")
+        .eq("client_id", selectedClientId)
+        .eq("entity_id", formation.entity_id);
 
-        // Pédagogie V2 Epic 2 : auto-enrôlement aux e-learning de la session
-        // pour chaque apprenant nouvellement inscrit. Non-bloquant : si
-        // l'auto-enroll plante, l'inscription reste valide. UI opt-out viendra
-        // dans une PR future (Epic 3.5+).
-        if (isPedagogieV2Epic2Enabled()) {
-          for (const learner of toEnroll) {
-            try {
-              await autoEnrollLearnerToSessionElearning(supabase, {
-                sessionId: formation.id,
-                learnerId: learner.id,
-                optOutElearningCourseIds: [],
-              });
-            } catch (err) {
-              console.error("[pedagogie-v2] autoEnrollLearnerToSessionElearning failed", {
-                learnerId: learner.id,
-                error: err,
-              });
+      const toEnroll = (companyLearners || []).filter(
+        (l) => !existingLearnerIds.has(l.id)
+      );
+
+      if (toEnroll.length > 0) {
+        const { error: enrollError } = await supabase.from("enrollments").insert(
+          toEnroll.map((l) => ({
+            session_id: formation.id,
+            learner_id: l.id,
+            client_id: selectedClientId,
+            status: "registered",
+          }))
+        );
+
+        if (enrollError) {
+          // Non-bloquant : l'entreprise est ajoutée même si l'inscription échoue
+          toast({ title: "Entreprise ajoutée", description: `Attention : ${enrollError.message}`, variant: "destructive" });
+        } else {
+          const names = toEnroll.map((l) => `${l.first_name} ${l.last_name}`).join(", ");
+          toast({
+            title: "Entreprise ajoutée",
+            description: `${toEnroll.length} apprenant(s) inscrit(s) automatiquement : ${names}`,
+          });
+
+          // Pédagogie V2 Epic 2 : auto-enrôlement aux e-learning de la session
+          // pour chaque apprenant nouvellement inscrit. Non-bloquant : si
+          // l'auto-enroll plante, l'inscription reste valide. UI opt-out viendra
+          // dans une PR future (Epic 3.5+).
+          if (isPedagogieV2Epic2Enabled()) {
+            for (const learner of toEnroll) {
+              try {
+                await autoEnrollLearnerToSessionElearning(supabase, {
+                  sessionId: formation.id,
+                  learnerId: learner.id,
+                  optOutElearningCourseIds: [],
+                });
+              } catch (err) {
+                console.error("[pedagogie-v2] autoEnrollLearnerToSessionElearning failed", {
+                  learnerId: learner.id,
+                  error: err,
+                });
+              }
             }
           }
         }
+      } else {
+        toast({ title: "Entreprise ajoutée" });
       }
-    } else {
-      toast({ title: "Entreprise ajoutée" });
-    }
 
-    setSaving(false);
-    setDialogOpen(false);
-    setSelectedClientId("");
-    setAmount("");
-    setEmail("");
-    setLinkedLearners([]);
-    await onRefresh();
+      setDialogOpen(false);
+      setSelectedClientId("");
+      setAmount("");
+      setEmail("");
+      setLinkedLearners([]);
+      await onRefresh();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Impossible d'ajouter l'entreprise";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const [deleting, setDeleting] = useState(false);

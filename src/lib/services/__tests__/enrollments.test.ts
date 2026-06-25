@@ -74,6 +74,19 @@ describe("enrollLearner", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe("23505");
   });
+
+  it("ne throw PAS si l'appel Supabase rejette (coupure réseau) → ServiceResult", async () => {
+    // Sans le try/catch du service, l'exception figerait le bouton « Ajouter »
+    // (spinner bloqué, aucun toast). On doit récupérer un ServiceResult.
+    const insert = vi.fn().mockRejectedValue(new Error("Failed to fetch"));
+    const from = vi.fn().mockReturnValue({ insert });
+    const supabase = { from } as never;
+
+    const result = await enrollLearner(supabase, { sessionId: "s1", learnerId: "l1", clientId: "c1" });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.message).toBe("Failed to fetch");
+  });
 });
 
 describe("createLearnerAndEnroll", () => {
@@ -188,6 +201,23 @@ describe("createLearnerAndEnroll", () => {
     );
     spy.mockRestore();
   });
+
+  it("ne throw PAS si la création du learner rejette (réseau) → ServiceResult", async () => {
+    const single = vi.fn().mockRejectedValue(new Error("network down"));
+    const selectAfterInsert = vi.fn().mockReturnValue({ single });
+    const insertLearner = vi.fn().mockReturnValue({ select: selectAfterInsert });
+    const from = vi.fn((table: string) =>
+      table === "learners" ? { insert: insertLearner } : { insert: vi.fn() }
+    );
+    const supabase = { from } as never;
+
+    const result = await createLearnerAndEnroll(supabase, {
+      firstName: "Anne", lastName: "Martin", email: null, entityId: "e1", sessionId: "s1", clientId: "c1",
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.message).toBe("network down");
+  });
 });
 
 describe("removeEnrollment", () => {
@@ -220,5 +250,17 @@ describe("removeEnrollment", () => {
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe("42501");
+  });
+
+  it("ne throw PAS si l'appel Supabase rejette (réseau) → ServiceResult", async () => {
+    const eq2 = vi.fn().mockRejectedValue(new Error("network"));
+    const eq1 = vi.fn().mockReturnValue({ eq: eq2 });
+    const deleteFn = vi.fn().mockReturnValue({ eq: eq1 });
+    const from = vi.fn().mockReturnValue({ delete: deleteFn });
+    const supabase = { from } as never;
+
+    const result = await removeEnrollment(supabase, "enr-id", "s1");
+
+    expect(result.ok).toBe(false);
   });
 });

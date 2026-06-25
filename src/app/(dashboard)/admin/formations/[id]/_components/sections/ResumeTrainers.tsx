@@ -57,19 +57,22 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
   const handleAdd = async () => {
     if (!selectedTrainerId) return;
     setSaving(true);
-    const { error } = await supabase.from("formation_trainers").insert({
-      session_id: formation.id,
-      trainer_id: selectedTrainerId,
-      role: selectedRole,
-      hourly_rate: parseFloat(selectedHourlyRate) || null,
-      daily_rate: parseFloat(selectedDailyRate) || null,
-      hours_done: parseFloat(selectedHoursDone) || null,
-      agreed_cost_ht: parseFloat(selectedAgreedCost) || null,
-    });
-    setSaving(false);
-    if (error) {
-      toast({ title: "Erreur", description: error.message, variant: "destructive" });
-    } else {
+    // try/catch : une coupure réseau fait rejeter l'insert → sans ça le bouton
+    // « Ajouter » restait figé (spinner), aucun toast. finally garantit le reset.
+    try {
+      const { error } = await supabase.from("formation_trainers").insert({
+        session_id: formation.id,
+        trainer_id: selectedTrainerId,
+        role: selectedRole,
+        hourly_rate: parseFloat(selectedHourlyRate) || null,
+        daily_rate: parseFloat(selectedDailyRate) || null,
+        hours_done: parseFloat(selectedHoursDone) || null,
+        agreed_cost_ht: parseFloat(selectedAgreedCost) || null,
+      });
+      if (error) {
+        toast({ title: "Erreur", description: error.message, variant: "destructive" });
+        return;
+      }
       toast({ title: "Formateur ajouté" });
       setDialogOpen(false);
       setSelectedTrainerId("");
@@ -78,6 +81,11 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
       setSelectedHoursDone("");
       setSelectedAgreedCost("");
       await onRefresh();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Impossible d'ajouter le formateur";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
+    } finally {
+      setSaving(false);
     }
   };
 

@@ -23,19 +23,30 @@ export async function enrollLearner(
   supabase: SupabaseClient,
   input: EnrollLearnerInput
 ): Promise<ServiceResult<Record<never, never>>> {
-  const { error } = await supabase
-    .from("enrollments")
-    .insert({
-      session_id: input.sessionId,
-      learner_id: input.learnerId,
-      client_id: input.clientId,
-      status: input.status ?? "registered",
-    });
+  // never-throw : une coupure réseau fait rejeter l'await Supabase. Sans ce
+  // try/catch, l'exception remontait au handler UI (souvent sans try/catch) et
+  // figeait le bouton (spinner bloqué, aucun toast). On renvoie toujours un
+  // ServiceResult exploitable.
+  try {
+    const { error } = await supabase
+      .from("enrollments")
+      .insert({
+        session_id: input.sessionId,
+        learner_id: input.learnerId,
+        client_id: input.clientId,
+        status: input.status ?? "registered",
+      });
 
-  if (error) {
-    return { ok: false, error: { message: error.message, code: error.code } };
+    if (error) {
+      return { ok: false, error: { message: error.message, code: error.code } };
+    }
+    return { ok: true };
+  } catch (err) {
+    return {
+      ok: false,
+      error: { message: err instanceof Error ? err.message : "Erreur réseau lors de l'inscription" },
+    };
   }
-  return { ok: true };
 }
 
 export type CreateLearnerAndEnrollInput = {
@@ -61,54 +72,64 @@ export async function createLearnerAndEnroll(
   supabase: SupabaseClient,
   input: CreateLearnerAndEnrollInput
 ): Promise<ServiceResult<{ learner: LearnerRow }>> {
-  const { data: learner, error: createError } = await supabase
-    .from("learners")
-    .insert({
-      first_name: input.firstName,
-      last_name: input.lastName,
-      email: input.email,
-      entity_id: input.entityId,
-    })
-    .select()
-    .single();
-
-  if (createError || !learner) {
-    return {
-      ok: false,
-      error: {
-        message: createError?.message ?? "Failed to create learner",
-        code: createError?.code,
-      },
-    };
-  }
-
-  const { error: enrollError } = await supabase
-    .from("enrollments")
-    .insert({
-      session_id: input.sessionId,
-      learner_id: learner.id,
-      client_id: input.clientId,
-      status: "registered",
-    });
-
-  if (enrollError) {
-    const { error: rollbackError } = await supabase
+  // never-throw (cf. enrollLearner) : protège le handler UI du gel sur coupure
+  // réseau. Le rollback applicatif (enroll échoué → suppression du learner)
+  // reste géré pour le cas d'erreur RENVOYÉE par Supabase.
+  try {
+    const { data: learner, error: createError } = await supabase
       .from("learners")
-      .delete()
-      .eq("id", learner.id);
-    if (rollbackError) {
-      console.error("[enrollments] rollback delete learner failed", {
-        learnerId: learner.id,
-        error: rollbackError,
-      });
+      .insert({
+        first_name: input.firstName,
+        last_name: input.lastName,
+        email: input.email,
+        entity_id: input.entityId,
+      })
+      .select()
+      .single();
+
+    if (createError || !learner) {
+      return {
+        ok: false,
+        error: {
+          message: createError?.message ?? "Failed to create learner",
+          code: createError?.code,
+        },
+      };
     }
+
+    const { error: enrollError } = await supabase
+      .from("enrollments")
+      .insert({
+        session_id: input.sessionId,
+        learner_id: learner.id,
+        client_id: input.clientId,
+        status: "registered",
+      });
+
+    if (enrollError) {
+      const { error: rollbackError } = await supabase
+        .from("learners")
+        .delete()
+        .eq("id", learner.id);
+      if (rollbackError) {
+        console.error("[enrollments] rollback delete learner failed", {
+          learnerId: learner.id,
+          error: rollbackError,
+        });
+      }
+      return {
+        ok: false,
+        error: { message: enrollError.message, code: enrollError.code },
+      };
+    }
+
+    return { ok: true, learner };
+  } catch (err) {
     return {
       ok: false,
-      error: { message: enrollError.message, code: enrollError.code },
+      error: { message: err instanceof Error ? err.message : "Erreur réseau lors de la création/inscription" },
     };
   }
-
-  return { ok: true, learner };
 }
 
 /**
@@ -119,14 +140,22 @@ export async function removeEnrollment(
   enrollmentId: string,
   sessionId: string
 ): Promise<ServiceResult<Record<never, never>>> {
-  const { error } = await supabase
-    .from("enrollments")
-    .delete()
-    .eq("id", enrollmentId)
-    .eq("session_id", sessionId);
+  // never-throw (cf. enrollLearner).
+  try {
+    const { error } = await supabase
+      .from("enrollments")
+      .delete()
+      .eq("id", enrollmentId)
+      .eq("session_id", sessionId);
 
-  if (error) {
-    return { ok: false, error: { message: error.message, code: error.code } };
+    if (error) {
+      return { ok: false, error: { message: error.message, code: error.code } };
+    }
+    return { ok: true };
+  } catch (err) {
+    return {
+      ok: false,
+      error: { message: err instanceof Error ? err.message : "Erreur réseau lors du retrait" },
+    };
   }
-  return { ok: true };
 }

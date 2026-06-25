@@ -156,29 +156,34 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
     const clientId = selectedClientId
       || (fcs.length === 1 ? fcs[0].client_id : null);
 
-    const result = await enrollLearner(supabase, {
-      sessionId: formation.id,
-      learnerId: selectedLearnerId,
-      clientId,
-      status: "registered",
-    });
-    if (!result.ok) {
-      setSaving(false);
-      if (result.error.code === "23505") {
-        toast({ title: "Cet apprenant est déjà inscrit", variant: "destructive" });
-      } else {
-        toast({ title: "Erreur", description: result.error.message, variant: "destructive" });
+    // try/catch + finally : aucun throw ne doit figer le bouton « Ajouter ».
+    try {
+      const result = await enrollLearner(supabase, {
+        sessionId: formation.id,
+        learnerId: selectedLearnerId,
+        clientId,
+        status: "registered",
+      });
+      if (!result.ok) {
+        if (result.error.code === "23505") {
+          toast({ title: "Cet apprenant est déjà inscrit", variant: "destructive" });
+        } else {
+          toast({ title: "Erreur", description: result.error.message, variant: "destructive" });
+        }
+        return;
       }
-    } else {
-      // Garde le bouton désactivé pendant la création du compte (évite le double-clic).
       await ensureLearnerAccess(selectedLearnerId);
-      setSaving(false);
       toast({ title: "Apprenant ajouté" });
       pingOnEnrollment(formation.id, selectedLearnerId);
       setDialogOpen(false);
       setSelectedLearnerId("");
       setSelectedClientId("");
       await onRefresh();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Impossible d'inscrire l'apprenant";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
+    } finally {
+      setSaving(false);
     }
   };
 
