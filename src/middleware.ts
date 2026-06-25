@@ -120,6 +120,10 @@ export async function middleware(request: NextRequest) {
       .from("learners")
       .select("id, entity_id, first_login_at")
       .eq("profile_id", user.id)
+      // .limit(1) : profile_id n'est pas unique (compte partagé apprenant sans
+      // email). Sans ça, .maybeSingle() erre à ≥2 fiches → stamp first_login
+      // jamais posé pour ces comptes. On stampe la 1ʳᵉ fiche (best-effort).
+      .limit(1)
       .maybeSingle()
       .then(async ({ data: learner }) => {
         if (learner && !learner.first_login_at) {
