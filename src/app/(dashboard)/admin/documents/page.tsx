@@ -809,6 +809,9 @@ export default function DocumentsPage() {
       return;
     }
     setSaving(true);
+    // try/catch + finally : un update/insert qui rejette (réseau) ne doit pas
+    // figer le bouton « Enregistrer ».
+    try {
 
     // Extract variables : depuis le HTML édité OU depuis le .docx source (à défaut, [])
     const variableMatches = templateForm.content.match(/\{\{[^}]+\}\}/g) || [];
@@ -843,9 +846,14 @@ export default function DocumentsPage() {
       }
       toast({ title: "Modèle créé", description: `ID: ${inserted?.id?.slice(0, 8)}...` });
     }
-    setSaving(false);
     setTemplateDialogOpen(false);
     await fetchTemplates();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Enregistrement impossible. Réessayez.";
+      toast({ title: "Erreur enregistrement", description: msg, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const openDeleteTemplate = (t: DocumentTemplate) => {
@@ -856,15 +864,23 @@ export default function DocumentsPage() {
   const handleDeleteTemplate = async () => {
     if (!templateToDelete) return;
     setDeleting(true);
-    const { error } = await supabase.from("document_templates").delete().eq("id", templateToDelete.id);
-    if (error) { toast({ title: "Erreur", description: error.message, variant: "destructive" }); }
-    else {
+    // try/catch + finally : un delete/refetch qui rejette ne doit pas figer le bouton.
+    try {
+      const { error } = await supabase.from("document_templates").delete().eq("id", templateToDelete.id);
+      if (error) {
+        toast({ title: "Erreur", description: error.message, variant: "destructive" });
+        return;
+      }
       toast({ title: "Modèle supprimé" });
       setDeleteDialogOpen(false);
       setTemplateToDelete(null);
       await fetchTemplates();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Suppression impossible. Réessayez.";
+      toast({ title: "Erreur", description: msg, variant: "destructive" });
+    } finally {
+      setDeleting(false);
     }
-    setDeleting(false);
   };
 
   const handleExportTemplateAsPDF = async (tpl?: DocumentTemplate) => {
@@ -948,10 +964,14 @@ export default function DocumentsPage() {
       toast({ title: "Nom du document requis", variant: "destructive" });
       return;
     }
-    setGenerating(true);
-
     const template = templates.find((t) => t.id === generateForm.template_id);
-    if (!template) { setGenerating(false); return; }
+    if (!template) { toast({ title: "Modèle introuvable", variant: "destructive" }); return; }
+
+    setGenerating(true);
+    // try/catch + finally : les nombreux await (fetch session/client/learner,
+    // insert, liaison signatures) peuvent rejeter sur coupure réseau → sans ça
+    // le bouton « Générer » restait figé, aucun toast.
+    try {
 
     let sessionData: Session | null = null;
     let clientData: Client | null = null;
@@ -1039,7 +1059,12 @@ export default function DocumentsPage() {
       setGenerateDialogOpen(false);
       await fetchGeneratedDocs();
     }
-    setGenerating(false);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Génération impossible. Réessayez.";
+      toast({ title: "Erreur génération", description: msg, variant: "destructive" });
+    } finally {
+      setGenerating(false);
+    }
   };
 
   const handleDownload = async (doc: GeneratedDocumentFull) => {
