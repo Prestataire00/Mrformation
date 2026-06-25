@@ -178,23 +178,34 @@ export default function TrainerQuestionnaireFillPage() {
       return;
     }
     setSubmitting(true);
-    const responsesPayload = buildResponsesPayload(responses, questions as never);
-    const { error } = await supabase.from("questionnaire_responses").insert({
-      questionnaire_id: questionnaireId,
-      session_id: sessionId,
-      trainer_id: trainerId,
-      responses: responsesPayload,
-    });
-    setSubmitting(false);
-    if (error) {
+    // try/catch + finally : une coupure réseau fait rejeter l'insert → sans ça
+    // le bouton « Envoyer » restait figé (spinner), aucun toast d'erreur.
+    try {
+      const responsesPayload = buildResponsesPayload(responses, questions as never);
+      const { error } = await supabase.from("questionnaire_responses").insert({
+        questionnaire_id: questionnaireId,
+        session_id: sessionId,
+        trainer_id: trainerId,
+        responses: responsesPayload,
+      });
+      if (error) {
+        toast({
+          title: "Erreur",
+          description: "Impossible d'envoyer vos réponses. Veuillez réessayer.",
+          variant: "destructive",
+        });
+        return;
+      }
+      setSubmitted(true);
+    } catch {
       toast({
         title: "Erreur",
         description: "Impossible d'envoyer vos réponses. Veuillez réessayer.",
         variant: "destructive",
       });
-      return;
+    } finally {
+      setSubmitting(false);
     }
-    setSubmitted(true);
   }
 
   if (submitted) {

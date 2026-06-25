@@ -315,34 +315,44 @@ export default function LearnerQuestionnaireFillPage() {
 
     setSubmitting(true);
 
-    // Enrichit le payload avec un snapshot des objectifs (utile si le programme
-    // est modifié plus tard, on conserve la trace des objectifs au moment T).
-    const responsesPayload = buildResponsesPayload(responses, questions);
+    // try/catch + finally : une coupure réseau fait rejeter l'insert → sans ça
+    // le bouton « Envoyer » restait figé (spinner), aucun toast d'erreur.
+    try {
+      // Enrichit le payload avec un snapshot des objectifs (utile si le programme
+      // est modifié plus tard, on conserve la trace des objectifs au moment T).
+      const responsesPayload = buildResponsesPayload(responses, questions);
 
-    const { error } = await supabase.from("questionnaire_responses").insert({
-      questionnaire_id: questionnaireId,
-      session_id: sessionId,
-      learner_id: learnerId,
-      responses: responsesPayload,
-    });
+      const { error } = await supabase.from("questionnaire_responses").insert({
+        questionnaire_id: questionnaireId,
+        session_id: sessionId,
+        learner_id: learnerId,
+        responses: responsesPayload,
+      });
 
-    setSubmitting(false);
+      if (error) {
+        toast({
+          title: "Erreur",
+          description: "Impossible d'envoyer vos réponses. Veuillez réessayer.",
+          variant: "destructive",
+        });
+        return;
+      }
 
-    if (error) {
+      // Cleanup localStorage draft after successful submit
+      if (draftKey) {
+        localStorage.removeItem(draftKey);
+      }
+      setDirty(false);
+      setSubmitted(true);
+    } catch {
       toast({
         title: "Erreur",
         description: "Impossible d'envoyer vos réponses. Veuillez réessayer.",
         variant: "destructive",
       });
-      return;
+    } finally {
+      setSubmitting(false);
     }
-
-    // Cleanup localStorage draft after successful submit
-    if (draftKey) {
-      localStorage.removeItem(draftKey);
-    }
-    setDirty(false);
-    setSubmitted(true);
   }
 
   // Success screen
