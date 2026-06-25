@@ -1,0 +1,33 @@
+{
+  "mode": "EXECUTE",
+  "started_at": "2026-06-25T18:07:29.412869Z",
+  "tables": {
+    "formation_trainers": {
+      "total_rows": 206,
+      "to_insert": 206,
+      "skipped_no_match": 0,
+      "skipped_duplicates": 0,
+      "inserted": 206,
+      "errors": 0,
+      "error_samples": []
+    },
+    "enrollments": {
+      "total_rows": 655,
+      "to_insert": 638,
+      "skipped_no_match": 0,
+      "skipped_duplicates": 17,
+      "inserted": 638,
+      "errors": 0,
+      "error_samples": []
+    },
+    "formation_invoices": {
+      "total_rows": 437,
+      "to_insert": 437,
+      "skipped_no_match": 0,
+      "inserted": 437,
+      "errors": 0,
+      "error_samples": []
+    }
+  },
+  "ended_at": "2026-06-25T18:07:40.778769Z"
+}
