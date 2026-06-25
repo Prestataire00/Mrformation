@@ -1,0 +1,32 @@
+{
+  "generated_at": "(dry-run, lecture seule)",
+  "db": {
+    "sessions": 179,
+    "learners": 536,
+    "clients": 192
+  },
+  "codes_formation": 182,
+  "jointure_session": {
+    "extid": 182,
+    "title_date": 0,
+    "title_only": 0,
+    "none": 0
+  },
+  "jointure_client": {
+    "intra_ok": 146,
+    "intra_no_client": 0,
+    "inter": 34,
+    "no_entreprise": 2
+  },
+  "inscriptions": {
+    "total": 655,
+    "session_ok_learner_ok": 643,
+    "session_missing": 0,
+    "learner_missing": 0,
+    "learner_ambigu": 12
+  },
+  "inscriptions_client_id_resolvable": 441,
+  "entreprises_non_matchees": {},
+  "sessions_non_matchees_sample": [],
+  "learners_non_matches_sample": []
+}

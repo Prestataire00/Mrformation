@@ -1,0 +1,12 @@
+{
+  "mode": "apply",
+  "liens_a_creer": 231,
+  "sessions_concernees": 176,
+  "stats": {
+    "deja_present": 7,
+    "session_non_matchee": 0,
+    "entreprise_sans_client": 0,
+    "sans_prix": 0
+  },
+  "entreprises_non_resolues": {}
+}
