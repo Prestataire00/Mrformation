@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/require-role";
 import { logAudit } from "@/lib/audit-log";
+import { resolveActiveEntityId } from "@/lib/crm/active-entity";
 
 type RouteContext = { params: { id: string } };
 
@@ -19,7 +20,9 @@ export async function POST(req: NextRequest, context: RouteContext) {
 
     const payload = JSON.parse(payloadStr);
     const sessionId = context.params.id;
-    const entityId = auth.profile.entity_id;
+    // super_admin : entité active (cookie) ; autres rôles : profile.entity_id.
+    // Aligné sur affacturage/CRM/auto-generate.
+    const entityId = resolveActiveEntityId(auth.profile);
 
     // Vérifier session
     const { data: session } = await auth.supabase

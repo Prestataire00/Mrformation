@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/require-role";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 import { logAudit } from "@/lib/audit-log";
+import { resolveActiveEntityId } from "@/lib/crm/active-entity";
 
 interface RouteContext {
   params: { id: string };
@@ -19,7 +20,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       .from("formation_invoices")
       .select("*")
       .eq("session_id", sessionId)
-      .eq("entity_id", auth.profile.entity_id)
+      .eq("entity_id", resolveActiveEntityId(auth.profile))
       .order("created_at", { ascending: true });
 
     if (invError) {
@@ -34,7 +35,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       .from("formation_charges")
       .select("*")
       .eq("session_id", sessionId)
-      .eq("entity_id", auth.profile.entity_id)
+      .eq("entity_id", resolveActiveEntityId(auth.profile))
       .order("created_at", { ascending: true });
 
     if (chargesError) {
@@ -108,7 +109,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     // INSERT dans la même transaction → atomicité garantie côté Postgres,
     // pas de race condition possible entre 2 admins concurrents.
     const fiscalYear = new Date().getFullYear();
-    const entityId = auth.profile.entity_id;
+    const entityId = resolveActiveEntityId(auth.profile);
     const invoicePrefix = is_avoir ? "AV" : (prefix || "FAC");
 
     const { data, error } = await auth.supabase.rpc("create_invoice_with_atomic_number", {
@@ -158,7 +159,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     logAudit({
       supabase: auth.supabase,
-      entityId: auth.profile.entity_id,
+      entityId: resolveActiveEntityId(auth.profile),
       userId: auth.user.id,
       action: "create",
       resourceType: is_avoir ? "formation_avoir" : "formation_invoice",
@@ -215,7 +216,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         .from("formation_invoices")
         .select("status")
         .eq("id", invoice_id)
-        .eq("entity_id", auth.profile.entity_id)
+        .eq("entity_id", resolveActiveEntityId(auth.profile))
         .maybeSingle();
       if (currentErr) {
         return NextResponse.json(
@@ -257,7 +258,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       .from("formation_invoices")
       .update(updateData)
       .eq("id", invoice_id)
-      .eq("entity_id", auth.profile.entity_id)
+      .eq("entity_id", resolveActiveEntityId(auth.profile))
       .select()
       .single();
 
@@ -308,7 +309,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
     logAudit({
       supabase: auth.supabase,
-      entityId: auth.profile.entity_id,
+      entityId: resolveActiveEntityId(auth.profile),
       userId: auth.user.id,
       action: "update",
       resourceType: "formation_invoice",

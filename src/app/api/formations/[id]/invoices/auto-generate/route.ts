@@ -9,6 +9,7 @@ import {
   getAmountForCompany,
 } from "@/lib/utils/formation-companies";
 import { buildInvoiceLines } from "@/lib/utils/invoice-builder";
+import { resolveActiveEntityId } from "@/lib/crm/active-entity";
 import type { Session } from "@/lib/types";
 
 type SupabaseServerClient = ReturnType<typeof createClient>;
@@ -23,7 +24,10 @@ export async function GET(_request: NextRequest, context: RouteContext) {
   if (auth.error) return auth.error;
 
   const sessionId = context.params.id;
-  const entityId = auth.profile.entity_id;
+  // super_admin : entité active (cookie) ; autres rôles : profile.entity_id.
+  // Aligné sur affacturage/CRM (sinon un super_admin ne peut pas facturer
+  // l'entité active → « Session introuvable »).
+  const entityId = resolveActiveEntityId(auth.profile);
 
   try {
     const { preview, warnings, error } = await buildInvoicePreview(auth.supabase, sessionId, entityId);
@@ -40,7 +44,10 @@ export async function POST(_request: NextRequest, context: RouteContext) {
   if (auth.error) return auth.error;
 
   const sessionId = context.params.id;
-  const entityId = auth.profile.entity_id;
+  // super_admin : entité active (cookie) ; autres rôles : profile.entity_id.
+  // Aligné sur affacturage/CRM (sinon un super_admin ne peut pas facturer
+  // l'entité active → « Session introuvable »).
+  const entityId = resolveActiveEntityId(auth.profile);
 
   try {
     const { preview, error: previewError } = await buildInvoicePreview(auth.supabase, sessionId, entityId);
