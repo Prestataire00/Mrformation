@@ -485,38 +485,52 @@ export default function SessionsPage() {
     if (!enrollSession) return;
     setEnrollingLearnerId(learnerId);
 
-    const { error } = await supabase.from("enrollments").insert({
-      session_id: enrollSession.id,
-      learner_id: learnerId,
-      status: "registered",
-    });
-
-    if (error) {
-      toast({ title: "Erreur", description: error.message, variant: "destructive" });
-    } else {
+    // try/catch + finally : ni l'insert ni le refetch ne doivent figer le
+    // spinner de la ligne (le reset était après des await pouvant rejeter).
+    try {
+      const { error } = await supabase.from("enrollments").insert({
+        session_id: enrollSession.id,
+        learner_id: learnerId,
+        status: "registered",
+      });
+      if (error) {
+        toast({ title: "Erreur", description: error.message, variant: "destructive" });
+        return;
+      }
       toast({ title: "Apprenant inscrit" });
       await openEnrollDialog(enrollSession);
       await fetchSessions();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Impossible d'inscrire l'apprenant";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
+    } finally {
+      setEnrollingLearnerId(null);
     }
-    setEnrollingLearnerId(null);
   };
 
   const handleRemoveEnrollment = async (enrollmentId: string) => {
     setRemovingEnrollmentId(enrollmentId);
 
-    const { error } = await supabase.from("enrollments").delete().eq("id", enrollmentId);
-
-    if (error) {
-      toast({ title: "Erreur", description: error.message, variant: "destructive" });
-    } else {
+    // try/catch + finally : ni le delete ni le refetch ne doivent figer le
+    // spinner de retrait (le reset était après des await pouvant rejeter).
+    try {
+      const { error } = await supabase.from("enrollments").delete().eq("id", enrollmentId);
+      if (error) {
+        toast({ title: "Erreur", description: error.message, variant: "destructive" });
+        return;
+      }
       toast({ title: "Inscription retirée" });
       if (enrollSession) {
         await openEnrollDialog(enrollSession);
         await fetchSessions();
       }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Impossible de retirer l'inscription";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
+    } finally {
+      setRemovingEnrollmentId(null);
+      setEnrollmentToRemove(null);
     }
-    setRemovingEnrollmentId(null);
-    setEnrollmentToRemove(null);
   };
 
   // Learners not yet enrolled in this session

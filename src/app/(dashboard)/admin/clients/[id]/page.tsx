@@ -389,21 +389,29 @@ export default function ClientDetailPage() {
   async function handleConfirmEnroll() {
     if (!enrollingLearner || !enrollSessionId) return;
     setEnrolling(true);
-    const { error } = await supabase.from("enrollments").insert({
-      session_id: enrollSessionId,
-      learner_id: enrollingLearner.id,
-      client_id: clientId,
-      status: "registered",
-    });
-    setEnrolling(false);
-    if (error) {
-      if (error.code === "23505") toast({ title: "Déjà inscrit à cette session", variant: "destructive" });
-      else toast({ title: "Erreur", description: error.message, variant: "destructive" });
-    } else {
+    // try/catch + finally : une coupure réseau fait rejeter l'insert → sans ça
+    // le bouton « Inscrire » restait figé (spinner), aucun toast.
+    try {
+      const { error } = await supabase.from("enrollments").insert({
+        session_id: enrollSessionId,
+        learner_id: enrollingLearner.id,
+        client_id: clientId,
+        status: "registered",
+      });
+      if (error) {
+        if (error.code === "23505") toast({ title: "Déjà inscrit à cette session", variant: "destructive" });
+        else toast({ title: "Erreur", description: error.message, variant: "destructive" });
+        return;
+      }
       toast({ title: `${enrollingLearner.first_name} inscrit à la formation` });
       setEnrollDialogOpen(false);
       fetchLearners();
       fetchSessions();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Impossible d'inscrire l'apprenant";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
+    } finally {
+      setEnrolling(false);
     }
   }
 
