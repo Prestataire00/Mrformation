@@ -1,0 +1,129 @@
+{
+  "mode": "apply",
+  "sessions_concernees": 168,
+  "total_a_inserer": 2,
+  "total_a_supprimer": 0,
+  "noms_sans_fiche_apprenant": 0,
+  "sessions_les_plus_corrigees": [
+    {
+      "session_id": "7281eff4-8b9c-44d5-ba23-325fec167fe2",
+      "code": "171",
+      "attendus": 2,
+      "actuels": 1,
+      "a_inserer": 1,
+      "a_supprimer": 0
+    },
+    {
+      "session_id": "c052c4d9-662b-432c-8565-75ef2dd231af",
+      "code": "169",
+      "attendus": 8,
+      "actuels": 7,
+      "a_inserer": 1,
+      "a_supprimer": 0
+    },
+    {
+      "session_id": "85a7a010-ccc0-4846-ab5c-37f98f03a316",
+      "code": "155",
+      "attendus": 2,
+      "actuels": 2,
+      "a_inserer": 0,
+      "a_supprimer": 0
+    },
+    {
+      "session_id": "3b2bc920-67c8-42c4-bd9f-695c9b49bdfa",
+      "code": "153",
+      "attendus": 11,
+      "actuels": 11,
+      "a_inserer": 0,
+      "a_supprimer": 0
+    },
+    {
+      "session_id": "b7d0a4d8-d00e-4b7d-ba36-f865d657679a",
+      "code": "165",
+      "attendus": 8,
+      "actuels": 8,
+      "a_inserer": 0,
+      "a_supprimer": 0
+    },
+    {
+      "session_id": "3e9b076c-4509-4179-8df4-fedb0ad014b4",
+      "code": "164",
+      "attendus": 8,
+      "actuels": 8,
+      "a_inserer": 0,
+      "a_supprimer": 0
+    },
+    {
+      "session_id": "c021fd38-6980-4f44-8b2e-79b80664eda4",
+      "code": "163",
+      "attendus": 9,
+      "actuels": 9,
+      "a_inserer": 0,
+      "a_supprimer": 0
+    },
+    {
+      "session_id": "3be92448-e5b1-4cc1-80f9-f30365b13a6f",
+      "code": "162",
+      "attendus": 2,
+      "actuels": 2,
+      "a_inserer": 0,
+      "a_supprimer": 0
+    },
+    {
+      "session_id": "2266f27c-3e59-4eb3-8c77-6e1d3d7479fb",
+      "code": "160",
+      "attendus": 3,
+      "actuels": 3,
+      "a_inserer": 0,
+      "a_supprimer": 0
+    },
+    {
+      "session_id": "f71de9e6-6780-4bbe-a581-bd89afa88578",
+      "code": "159",
+      "attendus": 2,
+      "actuels": 2,
+      "a_inserer": 0,
+      "a_supprimer": 0
+    },
+    {
+      "session_id": "5fff0593-b412-49b7-a0cd-b06d05dbf94e",
+      "code": "157",
+      "attendus": 8,
+      "actuels": 8,
+      "a_inserer": 0,
+      "a_supprimer": 0
+    },
+    {
+      "session_id": "4ac45e83-d71e-49fb-827c-8ba301726de6",
+      "code": "154",
+      "attendus": 10,
+      "actuels": 10,
+      "a_inserer": 0,
+      "a_supprimer": 0
+    },
+    {
+      "session_id": "3d1a1d19-0331-4e3a-9fb3-c5550186bca9",
+      "code": "161",
+      "attendus": 9,
+      "actuels": 9,
+      "a_inserer": 0,
+      "a_supprimer": 0
+    },
+    {
+      "session_id": "150ac014-1bbf-4482-8ca4-95a33c94fd0b",
+      "code": "158",
+      "attendus": 1,
+      "actuels": 1,
+      "a_inserer": 0,
+      "a_supprimer": 0
+    },
+    {
+      "session_id": "1efead71-e3c8-461c-8838-581df4e84450",
+      "code": "150",
+      "attendus": 9,
+      "actuels": 9,
+      "a_inserer": 0,
+      "a_supprimer": 0
+    }
+  ]
+}

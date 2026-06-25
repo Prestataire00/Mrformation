@@ -1,0 +1,12 @@
+{
+  "mode": "apply",
+  "a_renseigner": 417,
+  "stats": {
+    "intra": 417,
+    "inter_via_apprenant": 0,
+    "inter_ambigu": 221,
+    "session_sans_entreprise": 0,
+    "deja_renseigne": 9
+  },
+  "distinct_clients": 38
+}
