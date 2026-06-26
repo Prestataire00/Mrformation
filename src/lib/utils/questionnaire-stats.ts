@@ -130,6 +130,115 @@ interface AssignmentWithQuestionnaire extends AssignmentRow {
   questionnaire?: { title?: string };
 }
 
+/**
+ * Un questionnaire lié à la session via `questionnaire_sessions` mais NON
+ * couvert par une étape Qualiopi (= attribué par un formateur, ou attribution
+ * legacy hors parcours). Sert à rendre visible côté admin ce que le formateur
+ * a attribué (asymétrie : le formateur écrit dans questionnaire_sessions, les
+ * onglets admin ne lisent que formation_*_assignments).
+ */
+export interface TrainerQuestionnaire {
+  id: string;
+  title: string;
+  type: string;
+  createdByTrainerId: string | null;
+}
+
+interface SessionQuestionnaireLink {
+  questionnaire_id?: string;
+  questionnaires?: {
+    id?: string;
+    title?: string;
+    type?: string;
+    created_by_trainer_id?: string | null;
+    is_active?: boolean;
+  } | null;
+}
+
+/**
+ * Sélectionne les questionnaires liés à la session (`questionnaire_sessions`)
+ * dont le `questionnaire_id` n'est dans AUCUN assignment Qualiopi — donc non
+ * déjà affichés dans les étapes. Dédupliqué par `questionnaire_id`.
+ */
+export function selectTrainerQuestionnaires(
+  sessionLinks: SessionQuestionnaireLink[],
+  evalAssignments: Array<{ questionnaire_id?: string }>,
+  satisAssignments: Array<{ questionnaire_id?: string }>,
+): TrainerQuestionnaire[] {
+  const assigned = new Set<string>();
+  for (const a of [...evalAssignments, ...satisAssignments]) {
+    if (typeof a.questionnaire_id === "string") assigned.add(a.questionnaire_id);
+  }
+
+  const byId = new Map<string, TrainerQuestionnaire>();
+  for (const link of sessionLinks) {
+    const qId = link.questionnaire_id;
+    if (typeof qId !== "string" || assigned.has(qId) || byId.has(qId)) continue;
+    const q = link.questionnaires;
+    // Exclure les questionnaires désactivés (cohérence avec la liste officielle
+    // qui filtre is_active=true ; évite d'afficher un test "retiré").
+    if (q?.is_active === false) continue;
+    byId.set(qId, {
+      id: qId,
+      title: q?.title ?? "(sans titre)",
+      type: q?.type ?? "",
+      createdByTrainerId: q?.created_by_trainer_id ?? null,
+    });
+  }
+  return [...byId.values()];
+}
+
+/**
+ * Construit les `LearnerStatusCell[]` pour UN questionnaire formateur (parité
+ * avec computeLearnerStatuses, restreint à ce questionnaire). `now` injectable
+ * pour des tests déterministes.
+ */
+export function buildTrainerLearnerCells(
+  questionnaireId: string,
+  questionnaireTitle: string,
+  enrollments: EnrollmentWithLearner[],
+  responses: Array<{ questionnaire_id?: string; learner_id?: string; id: string }>,
+  tokens: Array<{ questionnaire_id?: string; learner_id?: string; expires_at?: string; id?: string }> = [],
+  now: number = Date.now(),
+): LearnerStatusCell[] {
+  const cells: LearnerStatusCell[] = [];
+  const seen = new Set<string>();
+  for (const enr of enrollments) {
+    const lId = enr.learner?.id;
+    if (typeof lId !== "string") continue;
+    // Dédup par learner_id : une même fiche peut être inscrite plusieurs fois
+    // (comptes partagés / doublons d'import) → sinon clé React dupliquée et
+    // compteur "X/Y réponses" gonflé.
+    if (seen.has(lId)) continue;
+    seen.add(lId);
+    const lName = `${enr.learner?.first_name ?? ""} ${enr.learner?.last_name ?? ""}`.trim() || lId;
+
+    const response = responses.find((r) => r.questionnaire_id === questionnaireId && r.learner_id === lId);
+    const token = tokens.find((t) => t.questionnaire_id === questionnaireId && t.learner_id === lId);
+
+    let status: LearnerStatus;
+    if (response) {
+      status = "answered";
+    } else if (token) {
+      const expiresMs = token.expires_at ? Date.parse(token.expires_at) : NaN;
+      status = !isNaN(expiresMs) && expiresMs < now ? "expired" : "sent";
+    } else {
+      status = "not_sent";
+    }
+
+    cells.push({
+      learnerId: lId,
+      learnerName: lName,
+      questionnaireId,
+      questionnaireTitle,
+      status,
+      responseId: response?.id,
+      tokenExpiresAt: token?.expires_at,
+    });
+  }
+  return cells;
+}
+
 export function computeLearnerStatuses(
   enrollments: EnrollmentWithLearner[],
   evalAssignments: AssignmentWithQuestionnaire[],

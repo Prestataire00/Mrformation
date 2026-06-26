@@ -7,6 +7,7 @@ import type { ObjectiveProgression } from "@/lib/services/load-session-aggregate
 import {
   Target, Clock, TrendingUp, CheckCircle2,
   AlertCircle, Plus, ChevronRight, Mail, X, Loader2, Pencil, QrCode, Copy,
+  GraduationCap, Eye,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -21,8 +22,8 @@ import { ObjectivesProgressionCard } from "./questionnaires/ObjectivesProgressio
 import { StageStatsBar } from "./questionnaires/StageStatsBar";
 import { LearnerStatusGrid } from "./questionnaires/LearnerStatusGrid";
 import { LearnerResponsesDialog } from "./questionnaires/LearnerResponsesDialog";
-import { computeStageStats, computeLearnerStatuses } from "@/lib/utils/questionnaire-stats";
-import type { LearnerStatusCell } from "@/lib/utils/questionnaire-stats";
+import { computeStageStats, computeLearnerStatuses, selectTrainerQuestionnaires, buildTrainerLearnerCells } from "@/lib/utils/questionnaire-stats";
+import type { LearnerStatusCell, TrainerQuestionnaire } from "@/lib/utils/questionnaire-stats";
 
 interface Props { formation: Session; onRefresh: () => Promise<void>; }
 
@@ -72,6 +73,9 @@ export function TabQuestionnaires({ formation, onRefresh }: Props) {
   const [satisAssignments, setSatisAssignments] = useState<Array<Record<string, unknown>>>([]);
   const [responses, setResponses] = useState<Array<Record<string, unknown>>>([]);
   const [tokens, setTokens] = useState<Array<Record<string, unknown>>>([]);
+  // Liens questionnaire↔session (incl. ceux attribués par un formateur, qui
+  // n'apparaissent pas dans formation_*_assignments — cf. P2).
+  const [sessionLinks, setSessionLinks] = useState<Array<Record<string, unknown>>>([]);
   const [qualiopiIndicators, setQualiopiIndicators] = useState<{
     satisfactionRate: number | null;
     satisfactionResponses: number;
@@ -89,7 +93,7 @@ export function TabQuestionnaires({ formation, onRefresh }: Props) {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [qR, eR, sR, rR, tR, qiR, opR] = await Promise.all([
+      const [qR, eR, sR, rR, tR, qiR, opR, lR] = await Promise.all([
         supabase.from("questionnaires").select("id, title, type").eq("entity_id", formation.entity_id).eq("is_active", true).order("title"),
         supabase.from("formation_evaluation_assignments").select("*, questionnaire:questionnaires(title)").eq("session_id", formation.id),
         supabase.from("formation_satisfaction_assignments").select("*, questionnaire:questionnaires(title)").eq("session_id", formation.id),
@@ -97,12 +101,20 @@ export function TabQuestionnaires({ formation, onRefresh }: Props) {
         supabase.from("questionnaire_tokens").select("id, questionnaire_id, learner_id, expires_at").eq("session_id", formation.id),
         loadQualiopiIndicators(supabase, formation.id),
         loadObjectivesProgression(supabase, formation.id),
+        supabase.from("questionnaire_sessions").select("questionnaire_id, questionnaires:questionnaires!inner(id, title, type, created_by_trainer_id, is_active)").eq("session_id", formation.id),
       ]);
       if (qR.data) setQuestionnaires(qR.data);
       if (eR.data) setEvalAssignments(eR.data);
       if (sR.data) setSatisAssignments(sR.data);
       if (rR.data) setResponses(rR.data);
       if (tR.data) setTokens(tR.data);
+      // Section formateur : on ne l'alimente QUE si les assignments ont bien
+      // chargé — sinon (échec RLS sur ces tables) le set d'exclusion serait
+      // vide et des questionnaires admin paraîtraient "hors parcours".
+      if (eR.error) console.error("[TabQuestionnaires] eval assignments:", eR.error);
+      if (sR.error) console.error("[TabQuestionnaires] satis assignments:", sR.error);
+      if (lR.error) console.error("[TabQuestionnaires] questionnaire_sessions:", lR.error);
+      setSessionLinks(lR.data && !eR.error && !sR.error ? lR.data : []);
       setQualiopiIndicators({
         satisfactionRate: qiR.satisfactionRate,
         satisfactionResponses: qiR.satisfactionResponses,
@@ -152,6 +164,14 @@ export function TabQuestionnaires({ formation, onRefresh }: Props) {
     satisAssignments as unknown as Parameters<typeof computeLearnerStatuses>[2],
     tokens as unknown as Parameters<typeof computeLearnerStatuses>[3],
     responses as unknown as Parameters<typeof computeLearnerStatuses>[4],
+  );
+
+  // P2 : questionnaires attribués hors parcours (formateur) — invisibles
+  // jusqu'ici car l'admin ne lisait que formation_*_assignments.
+  const trainerQuestionnaires = selectTrainerQuestionnaires(
+    sessionLinks as Parameters<typeof selectTrainerQuestionnaires>[0],
+    evalAssignments as Array<{ questionnaire_id?: string }>,
+    satisAssignments as Array<{ questionnaire_id?: string }>,
   );
 
   const learnerGridRef = useRef<HTMLDivElement>(null);
@@ -264,6 +284,68 @@ export function TabQuestionnaires({ formation, onRefresh }: Props) {
           onRefresh={async () => { await fetchData(); await onRefresh(); }}
         />
       </div>
+
+      {/* P2 : questionnaires attribués par un formateur (hors parcours Qualiopi) */}
+      {trainerQuestionnaires.length > 0 && (
+        <div className="rounded-xl border-2 border-indigo-200 bg-white">
+          <div className="flex items-center gap-2 p-4 pb-3 border-b">
+            <GraduationCap className="h-5 w-5 text-indigo-600" />
+            <h3 className="font-bold text-base text-gray-900">Questionnaires du formateur</h3>
+            <Badge variant="outline" className="text-[10px] bg-indigo-50 text-indigo-700 border-indigo-200">
+              Hors parcours Qualiopi
+            </Badge>
+          </div>
+          <div className="divide-y">
+            {trainerQuestionnaires.map((tq: TrainerQuestionnaire) => {
+              const cells = buildTrainerLearnerCells(
+                tq.id,
+                tq.title,
+                enrollments as unknown as Parameters<typeof buildTrainerLearnerCells>[2],
+                responses as Array<{ questionnaire_id?: string; learner_id?: string; id: string }>,
+                tokens as Array<{ questionnaire_id?: string; learner_id?: string; expires_at?: string; id?: string }>,
+              );
+              const answered = cells.filter((c) => c.status === "answered").length;
+              return (
+                <div key={tq.id} className="p-4 space-y-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium text-sm text-gray-900">{tq.title}</span>
+                    {tq.type && <Badge variant="outline" className="text-[10px] capitalize">{tq.type}</Badge>}
+                    {tq.createdByTrainerId && (
+                      <Badge variant="outline" className="text-[10px] bg-indigo-50 text-indigo-700 border-indigo-200">
+                        <GraduationCap className="h-2.5 w-2.5 mr-0.5" />Formateur
+                      </Badge>
+                    )}
+                    <span className="text-xs text-muted-foreground ml-auto">{answered}/{cells.length} réponses</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {cells.length === 0 && (
+                      <span className="text-xs text-muted-foreground italic">Aucun apprenant inscrit</span>
+                    )}
+                    {cells.map((cell) =>
+                      cell.status === "answered" ? (
+                        <button
+                          key={cell.learnerId}
+                          onClick={() => setResponseDialogCell(cell)}
+                          className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md border border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition"
+                        >
+                          <Eye className="h-3 w-3" />{cell.learnerName}
+                        </button>
+                      ) : (
+                        <span
+                          key={cell.learnerId}
+                          className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md border border-gray-200 bg-gray-50 text-gray-400"
+                        >
+                          {cell.learnerName}
+                        </span>
+                      ),
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <LearnerResponsesDialog
         cell={responseDialogCell}
