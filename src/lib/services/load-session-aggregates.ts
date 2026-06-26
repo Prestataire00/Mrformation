@@ -53,6 +53,62 @@ interface ResponseRow {
 
 const PASSING_SCORE_PCT = 70;
 
+const ASSIGNMENT_TABLE = {
+  evaluation: "formation_evaluation_assignments",
+  satisfaction: "formation_satisfaction_assignments",
+} as const;
+
+/**
+ * Résout les questionnaires d'une session par type, **drift-proof**.
+ *
+ * Découvre en UNION deux sources :
+ *  - `questionnaire_sessions` (attribution legacy / module questionnaires)
+ *  - `formation_{evaluation|satisfaction}_assignments` (onglets formation +
+ *    auto-attribution Qualiopi) — la source que lit déjà `loadObjectivesProgression`.
+ *
+ * Avant ce helper, les agrégats ne lisaient QUE `questionnaire_sessions`,
+ * alimentée par un trigger miroir non garanti déployé en prod (drift) → le
+ * document d'extraction des réponses sortait vide alors que les réponses
+ * existaient. La découverte ne dépend donc plus du trigger.
+ *
+ * Dédupliqué par `questionnaire_id`. Filtre par `session_id` (l'isolation
+ * `entity_id` transite par la session, cf. JSDoc de loadQualiopiIndicators).
+ *
+ * Exporté pour test unitaire ciblé (cf. load-session-aggregates-discovery.test.ts).
+ */
+export async function getSessionQuestionnaireMeta(
+  supabase: SupabaseClient,
+  sessionId: string,
+  type: "evaluation" | "satisfaction",
+): Promise<{ id: string; title: string }[]> {
+  const select = "questionnaire_id, questionnaires:questionnaires!inner(id, type, title)";
+  const [mirrorRes, assignmentRes] = await Promise.all([
+    supabase.from("questionnaire_sessions").select(select).eq("session_id", sessionId),
+    supabase.from(ASSIGNMENT_TABLE[type]).select(select).eq("session_id", sessionId),
+  ]);
+
+  // Ne PAS avaler l'erreur en silence : le bug d'origine était précisément un
+  // "sort vide sans signal" (drift RLS / table absente). On log pour rester
+  // débuggable si une source échoue (l'autre source reste exploitée).
+  if (mirrorRes.error) {
+    console.error(`[getSessionQuestionnaireMeta] questionnaire_sessions (${type}):`, mirrorRes.error);
+  }
+  if (assignmentRes.error) {
+    console.error(`[getSessionQuestionnaireMeta] ${ASSIGNMENT_TABLE[type]}:`, assignmentRes.error);
+  }
+  const mirror = mirrorRes.data;
+  const assignments = assignmentRes.data;
+
+  type Row = { questionnaire_id: string; questionnaires: { type: string; title: string | null } | null };
+  const byId = new Map<string, string>();
+  for (const r of [...(mirror ?? []), ...(assignments ?? [])] as unknown as Row[]) {
+    if (r.questionnaires?.type === type && !byId.has(r.questionnaire_id)) {
+      byId.set(r.questionnaire_id, r.questionnaires.title ?? "");
+    }
+  }
+  return [...byId.entries()].map(([id, title]) => ({ id, title }));
+}
+
 /**
  * Calcule les agrégats satisfaction par question. Format :
  * - rating : averageRating = moyenne, distribution = compte par valeur
@@ -63,19 +119,9 @@ async function loadSatisfactionAggregates(
   supabase: SupabaseClient,
   sessionId: string,
 ): Promise<SatisfactionQuestionAggregate[]> {
-  const { data: qSessions } = await supabase
-    .from("questionnaire_sessions")
-    .select("questionnaire_id, questionnaires:questionnaires!inner(id, type)")
-    .eq("session_id", sessionId);
-
-  if (!qSessions || qSessions.length === 0) return [];
-
-  const satisfactionQuestionnaireIds = (qSessions as unknown as {
-    questionnaire_id: string;
-    questionnaires: { id: string; type: string };
-  }[])
-    .filter((qs) => qs.questionnaires?.type === "satisfaction")
-    .map((qs) => qs.questionnaire_id);
+  const satisfactionQuestionnaireIds = (
+    await getSessionQuestionnaireMeta(supabase, sessionId, "satisfaction")
+  ).map((q) => q.id);
 
   if (satisfactionQuestionnaireIds.length === 0) return [];
 
@@ -208,16 +254,9 @@ export async function loadQualiopiIndicators(
   }
 
   // Acquisition (taux d'apprenants ACQUIS aux évaluations)
-  const { data: qSessions } = await supabase
-    .from("questionnaire_sessions")
-    .select("questionnaire_id, questionnaires:questionnaires!inner(id, type)")
-    .eq("session_id", sessionId);
-  const evalQuestionnaireIds = ((qSessions ?? []) as unknown as {
-    questionnaire_id: string;
-    questionnaires: { id: string; type: string };
-  }[])
-    .filter((qs) => qs.questionnaires?.type === "evaluation")
-    .map((qs) => qs.questionnaire_id);
+  const evalQuestionnaireIds = (
+    await getSessionQuestionnaireMeta(supabase, sessionId, "evaluation")
+  ).map((q) => q.id);
 
   let acquisitionRate: number | null = null;
   if (evalQuestionnaireIds.length > 0 && totalLearners > 0) {
@@ -289,27 +328,20 @@ async function loadEvaluationAggregates(
   supabase: SupabaseClient,
   sessionId: string,
 ): Promise<EvaluationAggregate[]> {
-  const [{ data: qSessions }, { data: enrollments }] = await Promise.all([
-    supabase
-      .from("questionnaire_sessions")
-      .select("questionnaire_id, questionnaires:questionnaires!inner(id, title, type)")
-      .eq("session_id", sessionId),
+  const [evalQs, { data: enrollments }] = await Promise.all([
+    getSessionQuestionnaireMeta(supabase, sessionId, "evaluation"),
     supabase.from("enrollments").select("learner_id").eq("session_id", sessionId),
   ]);
 
   const totalEnrolled = (enrollments ?? []).length;
-  const evalQs = ((qSessions ?? []) as unknown as {
-    questionnaire_id: string;
-    questionnaires: { id: string; title: string; type: string };
-  }[]).filter((qs) => qs.questionnaires?.type === "evaluation");
 
   if (evalQs.length === 0) return [];
 
   const tasks = evalQs.map(async (qs) => {
     const [{ data: questions }, { data: responses }] = await Promise.all([
-      supabase.from("questions").select("id, type, options").eq("questionnaire_id", qs.questionnaire_id),
+      supabase.from("questions").select("id, type, options").eq("questionnaire_id", qs.id),
       supabase.from("questionnaire_responses").select("learner_id, responses")
-        .eq("questionnaire_id", qs.questionnaire_id).eq("session_id", sessionId),
+        .eq("questionnaire_id", qs.id).eq("session_id", sessionId),
     ]);
 
     const questionsTyped = (questions ?? []) as QuestionRow[];
@@ -336,7 +368,7 @@ async function loadEvaluationAggregates(
       : null;
 
     return {
-      title: qs.questionnaires.title,
+      title: qs.title,
       responseCount: responsesTyped.length,
       totalEnrolled,
       averageScorePct,
