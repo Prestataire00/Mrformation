@@ -378,6 +378,17 @@ def map_session(row, idx, trainings_by_title):
         "location": location,
         "price": amount_ht,
         "total_price": amount_ht,
+        # ⚠️ BUG DÉDUP (constaté 26/06) : la clé n'inclut PAS le Code formation →
+        # 2 sessions distinctes de même (titre, date_début) mais Code différent
+        # sont FUSIONNÉES en une seule (ex. « Électricien du bâtiment » 16/03 :
+        # codes 41 + 42, formateurs/apprenants/clients/factures collés ensemble).
+        # Remédiation des fusions existantes : c3v_split_merged_sessions.py.
+        # Pour un FUTUR import propre : inclure le Code formation ici
+        #   stable_external_id("session", title, start_date, norm(row.get("Code formation")))
+        # ET dans les résolutions code→session (≈ l.664, l.886) ET dans les scripts
+        # apply_*/reconcile (qui résolvent aussi par titre+début). NON fait ici car
+        # ça change l'extid de toutes les sessions déjà importées → un ré-import
+        # créerait des doublons (idempotence cassée).
         "loris_external_id": stable_external_id("session", title, start_date or ""),
         "loris_metadata": metadata,
     }

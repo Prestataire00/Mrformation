@@ -1,0 +1,80 @@
+[
+  {
+    "groupe": "AIPR - OPÉRATEUR 2026-04-03",
+    "code_a": "29",
+    "code_b": "30",
+    "session_a": "c962b56d-5f9f-41b9-b78c-fda9e34c831b",
+    "new_extid": "loris-session-13fe6e875aa8e8b2",
+    "mv_inscriptions": 4,
+    "mv_formateurs": 1,
+    "mv_factures": 2,
+    "mv_entreprises": 2,
+    "creneaux": 2,
+    "new_session": "ccf40a14-8ad7-4b24-a032-249cf6e2db13"
+  },
+  {
+    "groupe": "Électricien du bâtiment 2026-03-16",
+    "code_a": "41",
+    "code_b": "42",
+    "session_a": "d2635867-62d5-459c-b8eb-a61daaaf3c36",
+    "new_extid": "loris-session-4f3135b799b764ae",
+    "mv_inscriptions": 8,
+    "mv_formateurs": 3,
+    "mv_factures": 13,
+    "mv_entreprises": 3,
+    "creneaux": 114,
+    "new_session": "9ecb074f-f41b-4636-9a86-4010fc69cf8a"
+  },
+  {
+    "groupe": "CACES R486 CAT A et B - INITIAL 2026-02-09",
+    "code_a": "58",
+    "code_b": "59",
+    "session_a": "b487a388-5c12-4602-bdaf-2aed41b7681c",
+    "new_extid": "loris-session-ebf91f5dae91b695",
+    "mv_inscriptions": 1,
+    "mv_formateurs": 1,
+    "mv_factures": 0,
+    "mv_entreprises": 0,
+    "creneaux": 8,
+    "new_session": "620c1e63-3b31-4212-82f6-870e0701d764"
+  },
+  {
+    "groupe": "Électricien du bâtiment 2025-11-24",
+    "code_a": "93",
+    "code_b": "94",
+    "session_a": "76e5b7e2-9c0a-4bc9-a83c-e0a03dd3768f",
+    "new_extid": "loris-session-a6028fec8657f619",
+    "mv_inscriptions": 8,
+    "mv_formateurs": 3,
+    "mv_factures": 9,
+    "mv_entreprises": 3,
+    "creneaux": 114,
+    "new_session": "e4296605-1a2d-4485-8c79-8be109be600a"
+  },
+  {
+    "groupe": "AIPR - OPÉRATEUR 2025-11-10",
+    "code_a": "101",
+    "code_b": "104",
+    "session_a": "2d109243-180f-4116-9b51-b547d02fd503",
+    "new_extid": "loris-session-86cdbe8363f4340c",
+    "mv_inscriptions": 1,
+    "mv_formateurs": 0,
+    "mv_factures": 0,
+    "mv_entreprises": 0,
+    "creneaux": 2,
+    "new_session": "8df0dd77-6b83-4efb-8d52-591fcff3e623"
+  },
+  {
+    "groupe": "CACES R482 CAT A - INITIAL 2024-10-21",
+    "code_a": "177",
+    "code_b": "179",
+    "session_a": "6c4f09cb-6da1-4d86-9cce-d0e47dedb355",
+    "new_extid": "loris-session-8a35b8ea664a0d7a",
+    "mv_inscriptions": 0,
+    "mv_formateurs": 1,
+    "mv_factures": 1,
+    "mv_entreprises": 1,
+    "creneaux": 10,
+    "new_session": "cf7299f8-8a62-4210-b22b-2feb27dca3c6"
+  }
+]
