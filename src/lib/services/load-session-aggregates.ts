@@ -347,6 +347,122 @@ async function loadEvaluationAggregates(
   return Promise.all(tasks);
 }
 
+// ─── Progression par objectif (avant → après) ─────────────────────────
+
+export interface ObjectiveProgression {
+  objective: string;
+  avgBefore: number | null; // moyenne rating 1-5
+  avgAfter: number | null;
+  delta: number | null; // après − avant (null si un côté manquant)
+}
+
+/**
+ * Charge la progression par objectif pour une session donnée.
+ *
+ * Identifie les questionnaires `auto_eval_pre` (avant) et `auto_eval_post`
+ * (après) via `formation_evaluation_assignments`, puis parse les réponses
+ * `program_objectives` (clés `{question_id}::obj_{i}`, ratings 1-5).
+ *
+ * IMPORTANT : les questionnaires avant et après sont DISTINCTS — chacun a sa
+ * propre question placeholder `program_objectives`, donc son propre `question_id`.
+ * On lit donc le `_objectives_snapshot` propre à CHAQUE réponse, et on agrège
+ * **par libellé d'objectif** (pas par index) : robuste aux question_id distincts
+ * et à un réordonnancement/édition des objectifs entre avant et après.
+ *
+ * Retourne `[]` si aucun objectif n'est trouvé.
+ */
+export async function loadObjectivesProgression(
+  supabase: SupabaseClient,
+  sessionId: string,
+): Promise<ObjectiveProgression[]> {
+  // 1. Trouver les questionnaire IDs attribués auto_eval_pre / auto_eval_post
+  const { data: assignments } = await supabase
+    .from("formation_evaluation_assignments")
+    .select("questionnaire_id, evaluation_type")
+    .eq("session_id", sessionId)
+    .in("evaluation_type", ["auto_eval_pre", "auto_eval_post"]);
+
+  if (!assignments || assignments.length === 0) return [];
+
+  const preIds = new Set(
+    (assignments as { questionnaire_id: string; evaluation_type: string }[])
+      .filter((a) => a.evaluation_type === "auto_eval_pre")
+      .map((a) => a.questionnaire_id),
+  );
+  const postIds = new Set(
+    (assignments as { questionnaire_id: string; evaluation_type: string }[])
+      .filter((a) => a.evaluation_type === "auto_eval_post")
+      .map((a) => a.questionnaire_id),
+  );
+
+  const allIds = [...preIds, ...postIds];
+  if (allIds.length === 0) return [];
+
+  // 2. Charger les réponses de ces questionnaires pour cette session
+  const { data: responses } = await supabase
+    .from("questionnaire_responses")
+    .select("questionnaire_id, responses")
+    .in("questionnaire_id", allIds)
+    .eq("session_id", sessionId);
+
+  if (!responses || responses.length === 0) return [];
+
+  const responsesTyped = responses as {
+    questionnaire_id: string;
+    responses: Record<string, unknown> | null;
+  }[];
+
+  // 3. Agréger les ratings par libellé d'objectif, séparés avant / après.
+  //    Chaque réponse porte son propre snapshot { "<son_question_id>": [labels] }.
+  const before = new Map<string, number[]>();
+  const after = new Map<string, number[]>();
+  const order: string[] = []; // ordre de première apparition des libellés
+
+  for (const r of responsesTyped) {
+    const resp = r.responses;
+    if (!resp) continue;
+
+    const isPre = preIds.has(r.questionnaire_id);
+    const isPost = postIds.has(r.questionnaire_id);
+    if (!isPre && !isPost) continue;
+
+    const snapshot = resp._objectives_snapshot as Record<string, unknown> | undefined;
+    if (!snapshot) continue;
+    const entry = Object.entries(snapshot)[0];
+    if (!entry) continue;
+    const [questionId, rawLabels] = entry;
+    if (!Array.isArray(rawLabels) || rawLabels.length === 0) continue;
+
+    const bucket = isPre ? before : after;
+    rawLabels.forEach((label, i) => {
+      if (typeof label !== "string" || label === "") return;
+      if (!order.includes(label)) order.push(label);
+
+      const val = resp[`${questionId}::obj_${i}`];
+      if (val === undefined || val === null || val === "") return;
+      const num = Number(val);
+      if (Number.isNaN(num)) return;
+
+      if (!bucket.has(label)) bucket.set(label, []);
+      bucket.get(label)!.push(num);
+    });
+  }
+
+  if (order.length === 0) return [];
+
+  // 4. Moyennes et écarts par objectif (matchés par libellé).
+  const mean = (arr: number[] | undefined): number | null =>
+    arr && arr.length > 0 ? arr.reduce((s, n) => s + n, 0) / arr.length : null;
+
+  return order.map((label) => {
+    const avgBefore = mean(before.get(label));
+    const avgAfter = mean(after.get(label));
+    const delta =
+      avgBefore !== null && avgAfter !== null ? avgAfter - avgBefore : null;
+    return { objective: label, avgBefore, avgAfter, delta };
+  });
+}
+
 /**
  * Charge tous les agrégats en parallèle.
  */

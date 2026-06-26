@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { loadQualiopiIndicators } from "@/lib/services/load-session-aggregates";
+import { loadQualiopiIndicators, loadObjectivesProgression } from "@/lib/services/load-session-aggregates";
+import type { ObjectiveProgression } from "@/lib/services/load-session-aggregates";
 import {
   Target, Clock, TrendingUp, CheckCircle2,
   AlertCircle, Plus, ChevronRight, Mail, X, Loader2, Pencil, QrCode, Copy,
@@ -16,6 +17,7 @@ import { cn } from "@/lib/utils";
 import type { Session } from "@/lib/types";
 import { AdminFillQuestionnaireDialog } from "@/components/questionnaires/AdminFillQuestionnaireDialog";
 import { QuestionnaireOverview } from "./questionnaires/QuestionnaireOverview";
+import { ObjectivesProgressionCard } from "./questionnaires/ObjectivesProgressionCard";
 import { StageStatsBar } from "./questionnaires/StageStatsBar";
 import { LearnerStatusGrid } from "./questionnaires/LearnerStatusGrid";
 import { LearnerResponsesDialog } from "./questionnaires/LearnerResponsesDialog";
@@ -76,6 +78,7 @@ export function TabQuestionnaires({ formation, onRefresh }: Props) {
     acquisitionRate: number | null;
     evaluationCount: number;
   } | null>(null);
+  const [objectivesProgression, setObjectivesProgression] = useState<ObjectiveProgression[]>([]);
   const [loading, setLoading] = useState(true);
   const [detailItem, setDetailItem] = useState<{ stage: Stage; item: ItemType } | null>(null);
   const [responseDialogCell, setResponseDialogCell] = useState<LearnerStatusCell | null>(null);
@@ -86,13 +89,14 @@ export function TabQuestionnaires({ formation, onRefresh }: Props) {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [qR, eR, sR, rR, tR, qiR] = await Promise.all([
+      const [qR, eR, sR, rR, tR, qiR, opR] = await Promise.all([
         supabase.from("questionnaires").select("id, title, type").eq("entity_id", formation.entity_id).eq("is_active", true).order("title"),
         supabase.from("formation_evaluation_assignments").select("*, questionnaire:questionnaires(title)").eq("session_id", formation.id),
         supabase.from("formation_satisfaction_assignments").select("*, questionnaire:questionnaires(title)").eq("session_id", formation.id),
         supabase.from("questionnaire_responses").select("id, questionnaire_id, learner_id").eq("session_id", formation.id),
         supabase.from("questionnaire_tokens").select("id, questionnaire_id, learner_id, expires_at").eq("session_id", formation.id),
         loadQualiopiIndicators(supabase, formation.id),
+        loadObjectivesProgression(supabase, formation.id),
       ]);
       if (qR.data) setQuestionnaires(qR.data);
       if (eR.data) setEvalAssignments(eR.data);
@@ -105,6 +109,7 @@ export function TabQuestionnaires({ formation, onRefresh }: Props) {
         acquisitionRate: qiR.acquisitionRate,
         evaluationCount: qiR.evaluationCount,
       });
+      setObjectivesProgression(opR);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Erreur de chargement";
       toast({ title: "Erreur", description: message, variant: "destructive" });
@@ -166,6 +171,11 @@ export function TabQuestionnaires({ formation, onRefresh }: Props) {
         pending={pending}
         qualiopi={qualiopiIndicators}
         onScrollToPending={handleScrollToPending}
+      />
+
+      <ObjectivesProgressionCard
+        satisfactionRate={qualiopiIndicators?.satisfactionRate ?? null}
+        progressions={objectivesProgression}
       />
 
       {/* Timeline */}
