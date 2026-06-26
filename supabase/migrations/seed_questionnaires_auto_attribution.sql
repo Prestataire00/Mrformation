@@ -28,6 +28,23 @@ ALTER TABLE questions DROP CONSTRAINT IF EXISTS questions_type_check;
 ALTER TABLE questions ADD CONSTRAINT questions_type_check
   CHECK (type IN ('rating', 'text', 'multiple_choice', 'yes_no', 'program_objectives'));
 
+-- ── Prérequis auto-suffisant : colonnes & triggers de formation_automation_rules ──
+-- extend_automation_system.sql / add_automation_template.sql peuvent ne pas avoir
+-- été appliqués sur tous les environnements (drift de migrations). On réaffirme
+-- ici, de façon idempotente, ce dont ce seed dépend :
+--   • colonnes name / recipient_type
+--   • triggers événementiels (on_enrollment, on_session_completion) dans le CHECK
+ALTER TABLE formation_automation_rules ADD COLUMN IF NOT EXISTS name TEXT;
+ALTER TABLE formation_automation_rules ADD COLUMN IF NOT EXISTS recipient_type TEXT DEFAULT 'learners';
+ALTER TABLE formation_automation_rules DROP CONSTRAINT IF EXISTS formation_automation_rules_trigger_type_check;
+ALTER TABLE formation_automation_rules ADD CONSTRAINT formation_automation_rules_trigger_type_check
+  CHECK (trigger_type IN (
+    'session_start_minus_days', 'session_end_plus_days',
+    'on_session_creation', 'on_session_completion', 'on_enrollment',
+    'on_signature_complete', 'opco_deposit_reminder', 'invoice_overdue',
+    'questionnaire_reminder', 'certificate_ready'
+  ));
+
 DO $$
 DECLARE
   v_entity   RECORD;
@@ -87,9 +104,9 @@ BEGIN
 
     -- ── 3. Règles d'auto-attribution (idempotent par entity_id+trigger+document_type) ──
     INSERT INTO formation_automation_rules
-      (entity_id, trigger_type, document_type, document_types, days_offset, recipient_type, is_enabled, name)
+      (entity_id, trigger_type, document_type, days_offset, recipient_type, is_enabled, name)
     SELECT v_entity.id, 'on_enrollment', 'questionnaire_positionnement',
-           ARRAY['questionnaire_positionnement'], 0, 'learners', TRUE, 'Positionnement à l''inscription'
+           0, 'learners', TRUE, 'Positionnement à l''inscription'
     WHERE NOT EXISTS (
       SELECT 1 FROM formation_automation_rules
       WHERE entity_id = v_entity.id AND trigger_type = 'on_enrollment'
@@ -97,9 +114,9 @@ BEGIN
     );
 
     INSERT INTO formation_automation_rules
-      (entity_id, trigger_type, document_type, document_types, days_offset, recipient_type, is_enabled, name)
+      (entity_id, trigger_type, document_type, days_offset, recipient_type, is_enabled, name)
     SELECT v_entity.id, 'on_session_completion', 'questionnaire_autoevaluation',
-           ARRAY['questionnaire_autoevaluation'], 0, 'learners', TRUE, 'Auto-évaluation en fin de formation'
+           0, 'learners', TRUE, 'Auto-évaluation en fin de formation'
     WHERE NOT EXISTS (
       SELECT 1 FROM formation_automation_rules
       WHERE entity_id = v_entity.id AND trigger_type = 'on_session_completion'
@@ -107,9 +124,9 @@ BEGIN
     );
 
     INSERT INTO formation_automation_rules
-      (entity_id, trigger_type, document_type, document_types, days_offset, recipient_type, is_enabled, name)
+      (entity_id, trigger_type, document_type, days_offset, recipient_type, is_enabled, name)
     SELECT v_entity.id, 'on_session_completion', 'questionnaire_satisfaction',
-           ARRAY['questionnaire_satisfaction'], 0, 'learners', TRUE, 'Satisfaction à chaud'
+           0, 'learners', TRUE, 'Satisfaction à chaud'
     WHERE NOT EXISTS (
       SELECT 1 FROM formation_automation_rules
       WHERE entity_id = v_entity.id AND trigger_type = 'on_session_completion'
