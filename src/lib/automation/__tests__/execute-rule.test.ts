@@ -125,7 +125,7 @@ describe("isQuestionnaireRule", () => {
 });
 
 describe("resolveQuestionnaireIdForRule", () => {
-  it("retourne questionnaire_id pour règle 'questionnaire_positionnement' avec assignment eval_preformation", async () => {
+  it("retourne questionnaire_id pour règle 'questionnaire_positionnement' avec assignment auto_eval_pre existant", async () => {
     const supabase = {
       from: vi.fn(() => ({
         select: vi.fn().mockReturnThis(),
