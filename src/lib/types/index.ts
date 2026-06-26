@@ -655,6 +655,22 @@ export interface Program {
   created_at: string;
   updated_at: string;
   versions?: ProgramVersion[];
+  program_documents?: ProgramDocument[];
+}
+
+/**
+ * Support de cours attaché à un programme (source unique). Publié par
+ * jointure dans l'onglet Docs partagés des sessions liées + portail apprenant.
+ * Cf. migration add_program_documents.sql.
+ */
+export interface ProgramDocument {
+  id: string;
+  program_id: string;
+  entity_id: string;
+  file_name: string;
+  file_url: string;
+  uploaded_by: string | null;
+  created_at: string;
 }
 
 export interface ProgramVersion {

@@ -50,6 +50,18 @@ interface SessionGroup {
   docs: DocRow[];
 }
 
+interface ProgramSupportDoc {
+  id: string;
+  file_name: string;
+  file_url: string;
+}
+
+interface ProgramSupportGroup {
+  session_id: string;
+  session_title: string;
+  docs: ProgramSupportDoc[];
+}
+
 export default function LearnerDocumentsPage() {
   const supabase = createClient();
   const { entity } = useEntity();
@@ -57,6 +69,9 @@ export default function LearnerDocumentsPage() {
   const entityName = entity?.name || "MR FORMATION";
 
   const [groups, setGroups] = useState<SessionGroup[]>([]);
+  // Supports de cours hérités du programme de chaque session (cf. SPEC
+  // spec-program-supports-docs-partages). Bucket public → ouverture directe.
+  const [programSupports, setProgramSupports] = useState<ProgramSupportGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [learner, setLearner] = useState<{ id: string; first_name: string; last_name: string; email: string | null } | null>(null);
 
@@ -87,6 +102,65 @@ export default function LearnerDocumentsPage() {
         return;
       }
       setLearner(learnerData);
+
+      // Multi-fiche : on couvre TOUTES les fiches du compte partagé pour les
+      // supports (contenu pédagogique non nominatif), pas seulement la fiche
+      // pickée. Cf. learners.profile_id non unique → .in() (pas .single()).
+      const learnerIds = (learnerRows ?? []).map((r) => r.id as string);
+
+      // ── Supports de cours hérités du programme ──────────────────────────
+      // Chaîne : learner → enrollments → sessions.program_id → program_documents.
+      // Indépendant des documents générés (s'affiche même si aucun doc confirmé).
+      try {
+        const { data: enrollRows } = await supabase
+          .from("enrollments")
+          .select("session:sessions(id, title, program_id)")
+          .in("learner_id", learnerIds);
+
+        const sessions = (enrollRows ?? [])
+          .map((e) => (e as unknown as { session: { id: string; title: string | null; program_id: string | null } | null }).session)
+          .filter((s): s is { id: string; title: string | null; program_id: string } => !!s && !!s.program_id);
+
+        const programIds = [...new Set(sessions.map((s) => s.program_id))];
+        if (programIds.length > 0) {
+          // Filtre entity_id explicite (defense in depth, règle CLAUDE.md #2)
+          // en plus de la RLS program_documents_member_read.
+          let pdocsQuery = supabase
+            .from("program_documents")
+            .select("id, program_id, file_name, file_url")
+            .in("program_id", programIds)
+            .order("created_at", { ascending: true });
+          if (entity?.id) pdocsQuery = pdocsQuery.eq("entity_id", entity.id);
+          const { data: pdocs } = await pdocsQuery;
+
+          const byProgram = new Map<string, ProgramSupportDoc[]>();
+          for (const d of pdocs ?? []) {
+            const row = d as { id: string; program_id: string; file_name: string; file_url: string };
+            const list = byProgram.get(row.program_id) ?? [];
+            list.push({ id: row.id, file_name: row.file_name, file_url: row.file_url });
+            byProgram.set(row.program_id, list);
+          }
+
+          // Une carte par session (dédupliquée), uniquement si elle a des supports.
+          const seen = new Set<string>();
+          const supportGroups: ProgramSupportGroup[] = [];
+          for (const s of sessions) {
+            if (seen.has(s.id)) continue;
+            seen.add(s.id);
+            const docs = byProgram.get(s.program_id) ?? [];
+            if (docs.length > 0) {
+              supportGroups.push({ session_id: s.id, session_title: s.title || "Formation", docs });
+            }
+          }
+          setProgramSupports(supportGroups);
+        } else {
+          setProgramSupports([]);
+        }
+      } catch (err) {
+        // Non-bloquant : l'absence de supports ne doit pas casser la page docs.
+        console.warn("[learner/documents] chargement supports programme échoué:", err);
+        setProgramSupports([]);
+      }
 
       // Table unifiée `documents` : status != 'draft' = confirmé
       const { data: docsRaw } = await supabase
@@ -153,7 +227,7 @@ export default function LearnerDocumentsPage() {
     } finally {
       setLoading(false);
     }
-  }, [supabase, toast]);
+  }, [supabase, toast, entity?.id]);
 
   useEffect(() => {
     fetchDocuments();
@@ -257,16 +331,50 @@ export default function LearnerDocumentsPage() {
         </p>
       </div>
 
+      {programSupports.length > 0 && (
+        <div className="space-y-3">
+          <h2 className="text-lg font-semibold text-gray-900">Supports de cours</h2>
+          {programSupports.map((group) => (
+            <Card key={`support-${group.session_id}`}>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">{group.session_title}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {group.docs.map((doc) => (
+                    <a
+                      key={doc.id}
+                      href={doc.file_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-between p-3 bg-muted/30 rounded-lg hover:bg-muted/50 transition-colors"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <FileText className="h-4 w-4 text-blue-600 shrink-0" />
+                        <span className="text-sm font-medium truncate">{doc.file_name}</span>
+                      </div>
+                      <Download className="h-4 w-4 text-muted-foreground shrink-0" />
+                    </a>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
       {groups.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-            <FileText className="h-12 w-12 text-muted-foreground/30 mb-4" />
-            <p className="text-lg font-medium text-gray-700">Aucun document disponible pour le moment</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              Vos documents apparaîtront ici une fois confirmés par l&apos;administration.
-            </p>
-          </CardContent>
-        </Card>
+        programSupports.length === 0 && (
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+              <FileText className="h-12 w-12 text-muted-foreground/30 mb-4" />
+              <p className="text-lg font-medium text-gray-700">Aucun document disponible pour le moment</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                Vos documents apparaîtront ici une fois confirmés par l&apos;administration.
+              </p>
+            </CardContent>
+          </Card>
+        )
       ) : (
         groups.map((group) => (
           <Card key={group.session_id}>

@@ -58,6 +58,7 @@ import {
 import { useToast } from "@/components/ui/use-toast";
 import ProgramEnrollments from "./_components/ProgramEnrollments";
 import { ProgramElearningsList } from "./_components/ProgramElearningsList";
+import { ProgramSupports } from "./_components/ProgramSupports";
 import ProgramElearningDefaults from "@/components/pedagogie-v2/ProgramElearningDefaults";
 import { isPedagogieV2Epic3Enabled } from "@/lib/feature-flags";
 import { EditProgramDialog, type EditModule, type EditFormState } from "./_components/EditProgramDialog";
@@ -927,6 +928,10 @@ export default function ProgramDetailPage() {
           </InfoCard>
         </div>
       </div>
+
+      {/* ── Supports de cours du programme (publiés en Docs partagés) ────────── */}
+      <SectionDivider label="Supports de cours" />
+      {entityId && <ProgramSupports programId={program.id} entityId={entityId} />}
 
       {/* ── ELE-3 audit BMAD : Cours e-learning générés depuis ce programme ───── */}
       <SectionDivider label="Cours e-learning générés depuis ce programme" />

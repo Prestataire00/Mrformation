@@ -5,7 +5,7 @@
  * publique permanente. Lève une erreur en cas d'échec (le caller gère le toast).
  */
 export async function fetchSignedDocUrl(
-  table: "formation_documents" | "generated_documents" | "client_documents",
+  table: "formation_documents" | "program_documents" | "generated_documents" | "client_documents",
   id: string,
 ): Promise<string> {
   const res = await fetch("/api/storage/signed-url", {

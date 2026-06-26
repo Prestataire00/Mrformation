@@ -80,7 +80,7 @@ export default function FormationDetailPage() {
           .select(`
             *,
             training:trainings(*),
-            program:programs(*),
+            program:programs(*, program_documents(*)),
             manager:profiles!manager_id(id, first_name, last_name, email),
             formation_trainers(id, role, trainer_id, hourly_rate, daily_rate, hours_done, agreed_cost_ht, created_at, trainer:trainers(*)),
             enrollments(id, client_id, status, completion_rate, enrolled_at, learner:learners(*), client:clients(id, company_name)),

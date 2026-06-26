@@ -226,6 +226,21 @@ CREATE TABLE IF NOT EXISTS programs (
 );
 
 -- ============================================================
+-- TABLE: program_documents (supports de cours attachés au programme)
+-- Cf. migration add_program_documents.sql. Source unique : affichés par
+-- jointure dans l'onglet Docs partagés des sessions liées + portail apprenant.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS program_documents (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  program_id UUID NOT NULL REFERENCES programs(id) ON DELETE CASCADE,
+  entity_id UUID NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+  file_name TEXT NOT NULL,
+  file_url TEXT NOT NULL,
+  uploaded_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ============================================================
 -- TABLE: program_versions (versions des programmes)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS program_versions (

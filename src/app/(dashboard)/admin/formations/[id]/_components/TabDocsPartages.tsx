@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/use-toast";
 import { fetchSignedDocUrl } from "@/lib/storage/fetch-signed-doc-url";
-import type { Session, FormationDocument, FormationDocCategory } from "@/lib/types";
+import { Badge } from "@/components/ui/badge";
+import type { Session, FormationDocument, FormationDocCategory, ProgramDocument } from "@/lib/types";
 
 interface Props {
   formation: Session;
@@ -66,6 +67,9 @@ export function TabDocsPartages({ formation, onRefresh }: Props) {
   const documents = formation.formation_documents || [];
   const enrollments = formation.enrollments || [];
   const trainers = formation.formation_trainers || [];
+  // Supports hérités du programme (source unique, lecture seule : gérés sur la
+  // page détail du programme). Publiés automatiquement à toutes ses sessions.
+  const programDocs = formation.program?.program_documents || [];
 
   const getDocsForCategory = (category: FormationDocCategory, entityId?: string) => {
     return documents.filter((d) => {
@@ -179,6 +183,47 @@ export function TabDocsPartages({ formation, onRefresh }: Props) {
         variant: "destructive",
       });
     }
+  };
+
+  const handleOpenProgramDoc = async (doc: ProgramDocument) => {
+    try {
+      const url = await fetchSignedDocUrl("program_documents", doc.id);
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      toast({
+        title: "Erreur",
+        description: err instanceof Error ? err.message : "Téléchargement impossible.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Liste lecture seule des supports hérités du programme (pas de suppression
+  // ici : la gestion se fait sur la page détail du programme).
+  const renderProgramDocs = () => {
+    if (programDocs.length === 0) return null;
+    return (
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <Badge variant="outline" className="text-xs">Hérités du programme</Badge>
+        </div>
+        {programDocs.map((doc) => (
+          <div
+            key={doc.id}
+            className="flex items-center justify-between p-2 bg-blue-50/50 rounded-lg"
+          >
+            <button
+              type="button"
+              onClick={() => handleOpenProgramDoc(doc)}
+              className="flex items-center gap-2 text-sm hover:underline flex-1 min-w-0 text-left"
+            >
+              <FileText className="h-4 w-4 shrink-0 text-blue-600" />
+              <span className="truncate">{doc.file_name}</span>
+            </button>
+          </div>
+        ))}
+      </div>
+    );
   };
 
   const renderDocList = (docs: FormationDocument[], uploadKey: string) => (
@@ -311,6 +356,7 @@ export function TabDocsPartages({ formation, onRefresh }: Props) {
             ) : (
               // Simple category
               <div className="space-y-3">
+                {section.category === "program_support" && renderProgramDocs()}
                 {renderDocList(getDocsForCategory(section.category), `${section.category}-general`)}
                 <div>{renderUploadButton(section.category)}</div>
               </div>

@@ -130,3 +130,15 @@ Aucun fichier commun entre A et B → pas de conflit git tant que chaque session
 ## Deferred from: review spec-questionnaires-auto-attribution (2026-06-26)
 
 - **Auto-attribution satisfaction à chaud dépend du tag `quality_indicator_type='satisfaction_chaud'`** — La règle seedée `questionnaire_satisfaction` (on_session_completion) ne s'auto-résout que si l'entité possède un questionnaire actif tagué `satisfaction_chaud`. Les questionnaires satisfaction existants (C3V/MR) ne sont peut-être pas tagués → la règle skippe proprement (console.warn, pas d'email). Positionnement + auto-éval (cœur du SPEC) ne sont PAS concernés (créés tagués par le seed). Décision à prendre : (a) taguer un questionnaire satisfaction existant par entité (= modification de données existantes, Ask First), ou (b) laisser l'admin tagger via l'UI questionnaires. À vérifier en prod : `SELECT entity_id, count(*) FROM questionnaires WHERE quality_indicator_type='satisfaction_chaud' AND is_active GROUP BY entity_id;`
+
+---
+
+## Deferred from: code review of spec-program-supports-docs-partages (2026-06-26)
+
+Scope du review : feature « supports de cours attachés au programme » (table `program_documents`, publiés en Docs partagés admin + portail apprenant).
+
+### Bucket `formation-docs` PUBLIC → URLs permanentes (isolation par bucket illusoire)
+
+- **Constat (3 relecteurs)** : le bucket `formation-docs` est `public = true`. Les supports (`ProgramSupports`) y sont stockés et le portail apprenant ouvre directement la `file_url` publique permanente (choix explicitement acté dans la spec, boundary « Never » : pas d'élévation de rôle sur signed-url). Conséquence : un fichier reste téléchargeable par quiconque possède l'URL, sans contrôle `entity_id` ni authentification, et survit à la « suppression » DB tant que le fichier Storage existe.
+- **Pourquoi reporté** : ce n'est PAS une régression de cette story — c'est l'architecture préexistante, identique à `formation_documents`/`TabDocsPartages`. La feature étend un pattern déjà en place. La défense applicative (RLS `program_documents` + signed-url côté admin + filtre `entity_id`) est en place côté lignes DB.
+- **Trigger future story** : si des supports confidentiels doivent être strictement isolés par entité → migrer `formation-docs` vers un bucket PRIVÉ, router l'apprenant via `/api/storage/signed-url` (et y AJOUTER les rôles `learner`/`client` dans `requireRole`), et purger le fichier Storage de façon bloquante à la suppression. Concerne aussi rétroactivement `formation_documents`.

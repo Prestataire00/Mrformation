@@ -17,6 +17,7 @@ type EntityVia = "direct" | "session" | "client";
 
 const TABLES: Record<string, { bucket: string; entityVia: EntityVia; cols: string }> = {
   formation_documents: { bucket: "formation-docs", entityVia: "session", cols: "file_url, session_id" },
+  program_documents: { bucket: "formation-docs", entityVia: "direct", cols: "file_url, entity_id" },
   generated_documents: { bucket: "formation-docs", entityVia: "direct", cols: "file_url, entity_id" },
   client_documents: { bucket: "documents", entityVia: "client", cols: "file_url, client_id" },
 };
