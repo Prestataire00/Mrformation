@@ -388,6 +388,56 @@ export interface ObjectiveProgression {
   delta: number | null; // après − avant (null si un côté manquant)
 }
 
+export interface SessionHeadlineIndicators {
+  beforePct: number | null; // niveau positionnement avant, en % (moyenne/5×100)
+  afterPct: number | null; // niveau positionnement après, en %
+  deltaPct: number | null; // après − avant, en points de % (null si un côté manquant)
+  satisfactionOn5: number | null; // satisfaction en note /5 (satisfactionRate/20)
+}
+
+/**
+ * Dérive 3 indicateurs de synthèse « tête de gondole » des données DÉJÀ
+ * calculées (aucun fetch, aucun recalcul d'agrégat). Le positionnement est une
+ * auto-évaluation 1-5 → « % de réussite » = moyenne/5×100. `satisfactionRate`
+ * est déjà un % (= moyenne/5×20) → note/5 = satisfactionRate/20.
+ *
+ * Les moyennes globales ne portent que sur les objectifs au côté non-null
+ * (pas de division par zéro → null → affiché « — »).
+ */
+export function computeSessionHeadlineIndicators(
+  progressions: ObjectiveProgression[],
+  satisfactionRate: number | null,
+): SessionHeadlineIndicators {
+  // Moyenne des ratings (1-5) → %, clampée [0,100] par défense en profondeur
+  // (les ratings devraient être 1-5 mais ne sont pas bornés à la source).
+  const meanPct = (values: Array<number | null>): number | null => {
+    const nums = values.filter((v): v is number => v !== null);
+    if (nums.length === 0) return null;
+    const avg = nums.reduce((s, n) => s + n, 0) / nums.length;
+    return Math.min(100, Math.max(0, (avg / 5) * 100));
+  };
+
+  const beforePct = meanPct(progressions.map((p) => p.avgBefore));
+  const afterPct = meanPct(progressions.map((p) => p.avgAfter));
+
+  // Évolution = moyenne des deltas APPARIÉS par objectif (avant ET après
+  // renseignés). Évite d'annoncer une progression en comparant deux moyennes
+  // calculées sur des ensembles d'objectifs disjoints. Null si aucun objectif
+  // n'a ses deux côtés. En cas normal (mêmes objectifs des 2 côtés) =
+  // afterPct − beforePct.
+  const pairedDeltas = progressions
+    .map((p) => p.delta)
+    .filter((d): d is number => d !== null);
+  const deltaPct =
+    pairedDeltas.length > 0
+      ? (pairedDeltas.reduce((s, n) => s + n, 0) / pairedDeltas.length / 5) * 100
+      : null;
+
+  const satisfactionOn5 = satisfactionRate !== null ? satisfactionRate / 20 : null;
+
+  return { beforePct, afterPct, deltaPct, satisfactionOn5 };
+}
+
 /**
  * Charge la progression par objectif pour une session donnée.
  *

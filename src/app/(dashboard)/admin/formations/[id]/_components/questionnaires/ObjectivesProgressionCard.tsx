@@ -3,9 +3,39 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, TrendingDown, Minus, BarChart3, ThumbsUp } from "lucide-react";
+import { TrendingUp, TrendingDown, Minus, BarChart3 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ObjectiveProgression } from "@/lib/services/load-session-aggregates";
+import { computeSessionHeadlineIndicators } from "@/lib/services/load-session-aggregates";
+
+const fmtPct = (n: number | null) => (n !== null ? `${Math.round(n)}%` : "—");
+const fmtOn5 = (n: number | null) =>
+  n !== null ? `${(Math.round(n * 10) / 10).toFixed(1).replace(".", ",")}/5` : "—";
+
+/** Évolution avant→après en points de %, avec icône de tendance. */
+function EvolutionBadge({ deltaPct }: { deltaPct: number | null }) {
+  if (deltaPct === null) return null;
+  const pts = Math.round(deltaPct);
+  if (pts > 0) {
+    return (
+      <Badge className="text-xs font-medium bg-emerald-100 text-emerald-700 hover:bg-emerald-100 border-emerald-200">
+        <TrendingUp className="h-3 w-3 mr-0.5" />+{pts} pts
+      </Badge>
+    );
+  }
+  if (pts < 0) {
+    return (
+      <Badge className="text-xs font-medium bg-red-100 text-red-700 hover:bg-red-100 border-red-200">
+        <TrendingDown className="h-3 w-3 mr-0.5" />{pts} pts
+      </Badge>
+    );
+  }
+  return (
+    <Badge variant="outline" className="text-xs font-medium text-gray-600">
+      <Minus className="h-3 w-3 mr-0.5" />0 pt
+    </Badge>
+  );
+}
 
 interface Props {
   satisfactionRate: number | null;
@@ -59,6 +89,10 @@ export function ObjectivesProgressionCard({ satisfactionRate, progressions }: Pr
   // Masquer complètement si aucune donnée de progression
   if (progressions.length === 0 && satisfactionRate === null) return null;
 
+  const { beforePct, afterPct, deltaPct, satisfactionOn5 } = computeSessionHeadlineIndicators(
+    progressions,
+    satisfactionRate,
+  );
   const satisfactionOk = satisfactionRate !== null && satisfactionRate >= 70;
 
   return (
@@ -66,28 +100,34 @@ export function ObjectivesProgressionCard({ satisfactionRate, progressions }: Pr
       <CardHeader className="pb-3">
         <CardTitle className="text-base flex items-center gap-2">
           <BarChart3 className="h-4 w-4 text-indigo-600" />
-          Progression par objectif
+          Résultats de la session
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-5">
-        {/* Jauge satisfaction */}
-        {satisfactionRate !== null && (
-          <div className="flex items-center gap-3">
-            <ThumbsUp className={cn("h-4 w-4 shrink-0", satisfactionOk ? "text-emerald-600" : "text-amber-500")} />
-            <div className="flex-1 space-y-1">
-              <div className="flex items-center justify-between text-sm">
-                <span className="font-medium text-gray-700">Satisfaction globale</span>
-                <span className={cn("font-semibold", satisfactionOk ? "text-emerald-700" : "text-amber-600")}>
-                  {Math.round(satisfactionRate)}%
-                </span>
-              </div>
-              <Progress
-                value={satisfactionRate}
-                className={cn("h-2", satisfactionOk ? "[&>div]:bg-emerald-500" : "[&>div]:bg-amber-500")}
-              />
+        {/* Bandeau 3 indicateurs de synthèse */}
+        <div className="grid grid-cols-3 gap-3">
+          <div className="rounded-lg border bg-blue-50/40 p-3 text-center">
+            <p className="text-[10px] uppercase tracking-wide text-gray-500 font-medium">Positionnement avant</p>
+            <p className="text-2xl font-bold text-blue-700 mt-1">{fmtPct(beforePct)}</p>
+            <p className="text-[10px] text-gray-400">niveau moyen</p>
+          </div>
+          <div className="rounded-lg border bg-indigo-50/40 p-3 text-center">
+            <p className="text-[10px] uppercase tracking-wide text-gray-500 font-medium">Positionnement après</p>
+            <p className="text-2xl font-bold text-indigo-700 mt-1">{fmtPct(afterPct)}</p>
+            <div className="mt-0.5 flex justify-center min-h-[20px]">
+              <EvolutionBadge deltaPct={deltaPct} />
             </div>
           </div>
-        )}
+          <div className={cn("rounded-lg border p-3 text-center", satisfactionOk ? "bg-emerald-50/40" : "bg-amber-50/40")}>
+            <p className="text-[10px] uppercase tracking-wide text-gray-500 font-medium">Satisfaction</p>
+            <p className={cn("text-2xl font-bold mt-1", satisfactionOk ? "text-emerald-700" : "text-amber-600")}>
+              {fmtOn5(satisfactionOn5)}
+            </p>
+            {satisfactionRate !== null && (
+              <p className="text-[10px] text-gray-400">{Math.round(satisfactionRate)}%</p>
+            )}
+          </div>
+        </div>
 
         {/* Barres par objectif */}
         {progressions.length > 0 && (
