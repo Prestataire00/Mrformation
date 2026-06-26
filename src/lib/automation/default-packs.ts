@@ -21,7 +21,7 @@ export const AUTOMATION_PACKS: AutomationPack[] = [
   {
     id: "qualiopi-standard",
     name: "Pack Qualiopi standard",
-    description: "Les 6 automations essentielles pour respecter Qualiopi",
+    description: "Les automations essentielles pour respecter Qualiopi",
     icon: "🎓",
     color: "blue",
     rules: [
@@ -35,12 +35,21 @@ export const AUTOMATION_PACKS: AutomationPack[] = [
         scope: "formation",
       },
       {
-        name: "Positionnement J-3",
-        description: "Questionnaire de positionnement 3 jours avant",
-        trigger_type: "session_start_minus_days",
-        days_offset: 3,
+        name: "Positionnement à l'inscription",
+        description: "Questionnaire de positionnement (niveau sur les objectifs) dès l'inscription de l'apprenant",
+        trigger_type: "on_enrollment",
+        days_offset: 0,
         recipient_type: "learners",
         document_type: "questionnaire_positionnement",
+        scope: "formation",
+      },
+      {
+        name: "Auto-évaluation en fin de formation",
+        description: "Auto-évaluation du niveau sur les mêmes objectifs à la clôture (mesure de progression)",
+        trigger_type: "on_session_completion",
+        days_offset: 0,
+        recipient_type: "learners",
+        document_type: "questionnaire_autoevaluation",
         scope: "formation",
       },
       {

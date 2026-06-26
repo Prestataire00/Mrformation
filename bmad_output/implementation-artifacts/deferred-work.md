@@ -113,3 +113,20 @@ Scope review : revue adversariale de la sous-catégorie Facturation (13 fichiers
 - **`process-reminders` : pas de verrou de traitement par facture** — Deux runs concurrents du cron peuvent relancer 2×. Architectural.
 - **Appels Supabase inline dans `TabFinances`** — Charges, passage `sent` etc. en `supabase.from(...)` direct dans le composant (viole CLAUDE.md règle 10). Extraire vers `src/lib/services/`.
 - **`invoice-pdf-export` : avoir avec lignes → lignes positives, total négatif** [invoice-pdf-export.ts:250-315] — Document contradictoire ; edge case rare (avoirs créés avec `lines: []`).
+
+---
+
+## Découpage : spec-questionnaires-auto-eval (2026-06-26)
+
+Le SPEC `bmad_output/specs/spec-questionnaires-auto-eval/SPEC.md` dépassait la cible de scope (1 seul goal ≤1600 tokens). Scindé en 2 livrables shippables développés **en parallèle** (sessions + branches distinctes), partageant le **Contrat gelé** (types `auto_eval_pre`/`auto_eval_post`, format réponses `program_objectives`).
+
+- **Goal A — Auto-attribution backend** → `spec-questionnaires-auto-attribution.md` (cette session, branche `feat/questionnaires-auto-eval`). Seed questionnaires+règles, `default-packs.ts`, `execute-rule.ts` lazy-assign.
+- **Goal B — Visualisation progression objectifs + % satisfaction** → `spec-questionnaires-progression-viz.md` (autre session, branche dédiée ex. `feat/questionnaires-progression-viz`). `loadObjectivesProgression`, `ObjectivesProgressionCard`, intégration `TabQuestionnaires`. Testable sur fixtures sans attendre A.
+
+Aucun fichier commun entre A et B → pas de conflit git tant que chaque session reste sur sa branche. Décision Wissam (parallélisation).
+
+---
+
+## Deferred from: review spec-questionnaires-auto-attribution (2026-06-26)
+
+- **Auto-attribution satisfaction à chaud dépend du tag `quality_indicator_type='satisfaction_chaud'`** — La règle seedée `questionnaire_satisfaction` (on_session_completion) ne s'auto-résout que si l'entité possède un questionnaire actif tagué `satisfaction_chaud`. Les questionnaires satisfaction existants (C3V/MR) ne sont peut-être pas tagués → la règle skippe proprement (console.warn, pas d'email). Positionnement + auto-éval (cœur du SPEC) ne sont PAS concernés (créés tagués par le seed). Décision à prendre : (a) taguer un questionnaire satisfaction existant par entité (= modification de données existantes, Ask First), ou (b) laisser l'admin tagger via l'UI questionnaires. À vérifier en prod : `SELECT entity_id, count(*) FROM questionnaires WHERE quality_indicator_type='satisfaction_chaud' AND is_active GROUP BY entity_id;`

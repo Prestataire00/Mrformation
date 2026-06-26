@@ -16,6 +16,8 @@ export const DOCUMENT_TYPE_SUBJECTS: Record<string, string> = {
   convocation: "Convocation à la formation",
   certificat_realisation: "Certificat de réalisation",
   questionnaire_satisfaction: "Questionnaire de satisfaction",
+  questionnaire_positionnement: "Questionnaire de positionnement",
+  questionnaire_autoevaluation: "Auto-évaluation de fin de formation",
 };
 
 export interface CustomTemplateInfo {
@@ -68,9 +70,11 @@ export interface TemplateInfo {
  * Liste confirmée par Task 0 du Chantier 2c (grep default-packs.ts).
  *
  * Source : docs/superpowers/specs/2026-05-26-questionnaires-p0-5-auto-qualiopi-design.md §6.2
+ * + questionnaire_autoevaluation (auto-éval post sur objectifs, spec auto-attribution).
  */
 export const QUESTIONNAIRE_DOCUMENT_TYPES = new Set<string>([
   "questionnaire_positionnement",
+  "questionnaire_autoevaluation",
   "questionnaire_satisfaction",
   "questionnaire_satisfaction_froid",
   "questionnaire_satisfaction_client", // companies — pas dans mapping ci-dessous (learner_id NOT NULL)
@@ -97,41 +101,104 @@ const QUESTIONNAIRE_TYPE_TO_ASSIGNMENT: Record<string, {
   table: "formation_evaluation_assignments" | "formation_satisfaction_assignments";
   typeColumn: "evaluation_type" | "satisfaction_type";
   typeValue: string;
+  /** quality_indicator_type du questionnaire default d'entité (auto-attribution). */
+  qualityIndicator: string;
 }> = {
   questionnaire_positionnement: {
     table: "formation_evaluation_assignments",
     typeColumn: "evaluation_type",
-    typeValue: "eval_preformation",
+    typeValue: "auto_eval_pre",
+    qualityIndicator: "auto_eval_pre",
+  },
+  questionnaire_autoevaluation: {
+    table: "formation_evaluation_assignments",
+    typeColumn: "evaluation_type",
+    typeValue: "auto_eval_post",
+    qualityIndicator: "auto_eval_post",
   },
   questionnaire_satisfaction: {
     table: "formation_satisfaction_assignments",
     typeColumn: "satisfaction_type",
     typeValue: "satisfaction_chaud",
+    qualityIndicator: "satisfaction_chaud",
   },
   questionnaire_satisfaction_froid: {
     table: "formation_satisfaction_assignments",
     typeColumn: "satisfaction_type",
     typeValue: "satisfaction_froid",
+    qualityIndicator: "satisfaction_froid",
   },
 };
 
+/**
+ * Résout le questionnaire concret à envoyer pour une règle questionnaire.
+ *
+ * 1. Si un assignment explicite existe déjà pour la session → priorité (comportement
+ *    historique : l'admin a attribué manuellement un questionnaire à la session).
+ * 2. Sinon, AUTO-ATTRIBUTION (spec auto-attribution) : à condition de connaître
+ *    `entityId`, on résout le questionnaire actif par défaut de l'entité pour
+ *    l'indicateur qualité de la règle, et on crée l'assignment correspondant
+ *    (lazy, traçabilité Qualiopi). L'assignment naît ainsi au déclenchement du
+ *    trigger, sans hook à la création de session.
+ *
+ * Retourne null si : document_type hors mapping, aucun questionnaire default
+ * pour l'entité, ou `entityId` absent (impossible de résoudre l'auto-attribution).
+ */
 export async function resolveQuestionnaireIdForRule(
   supabase: SupabaseClient,
   rule: RuleInfo,
   sessionId: string,
+  entityId?: string,
 ): Promise<string | null> {
   const config = QUESTIONNAIRE_TYPE_TO_ASSIGNMENT[rule.document_type];
   if (!config) return null;
 
-  const { data } = await supabase
+  // 1. Assignment explicite déjà présent → priorité.
+  const { data: existing } = await supabase
     .from(config.table)
     .select("questionnaire_id")
     .eq("session_id", sessionId)
     .eq(config.typeColumn, config.typeValue)
     .limit(1)
     .maybeSingle();
+  if (existing?.questionnaire_id) return existing.questionnaire_id as string;
 
-  return (data?.questionnaire_id as string | undefined) ?? null;
+  // 2. Auto-attribution : sans entité, on ne peut pas résoudre le questionnaire default.
+  if (!entityId) return null;
+
+  const { data: defaultQ } = await supabase
+    .from("questionnaires")
+    .select("id")
+    .eq("entity_id", entityId)
+    .eq("quality_indicator_type", config.qualityIndicator)
+    .eq("is_active", true)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  const questionnaireId = defaultQ?.id as string | undefined;
+  if (!questionnaireId) {
+    console.warn(
+      `[execute-rule] aucun questionnaire actif '${config.qualityIndicator}' pour l'entité ${entityId} — règle ${rule.document_type} ignorée`,
+    );
+    return null;
+  }
+
+  // 3. Création lazy de l'assignment (en masse : learner_id/target_id = null).
+  const insertRow = config.table === "formation_evaluation_assignments"
+    ? { session_id: sessionId, questionnaire_id: questionnaireId, evaluation_type: config.typeValue, learner_id: null }
+    : { session_id: sessionId, questionnaire_id: questionnaireId, satisfaction_type: config.typeValue, target_type: "learner", target_id: null };
+  const { error: insErr } = await supabase.from(config.table).insert(insertRow);
+  // Violation d'unicité = l'assignment masse existe déjà (créé en concurrence) :
+  // bénin, l'index unique partiel garantit l'idempotence (cf. migration seed).
+  const isDuplicate = !!insErr && (
+    (insErr as { code?: string }).code === "23505" ||
+    /duplicate|unique/i.test(insErr.message ?? "")
+  );
+  if (insErr && !isDuplicate) {
+    // Ne bloque pas l'envoi : le questionnaire est résolu, l'assignment est best-effort.
+    console.error(`[execute-rule] création assignment ${config.table} échouée:`, insErr.message);
+  }
+  return questionnaireId;
 }
 
 /**
@@ -429,7 +496,7 @@ export async function executeRuleForSession(
 
     // NEW : Injection token questionnaire (Chantier 2c P0-5)
     if (isQuestionnaireRule(rule) && recipient.type === "learner") {
-      const questionnaireId = await resolveQuestionnaireIdForRule(supabase, rule, session.id);
+      const questionnaireId = await resolveQuestionnaireIdForRule(supabase, rule, session.id, session.entity_id);
       if (questionnaireId) {
         try {
           const tokenResult = await ensureQuestionnaireToken(
