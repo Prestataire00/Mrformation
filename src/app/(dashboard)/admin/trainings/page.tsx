@@ -57,10 +57,12 @@ import {
   Shield,
   Download,
   ChevronRight,
+  AlertTriangle,
 } from "lucide-react";
 import Link from "next/link";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { partitionSessions } from "@/lib/utils/session-grouping";
+import { computeAdminSessionStatus, sessionNeedsClosure } from "@/lib/utils/formation";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -77,6 +79,9 @@ interface SessionCard {
   type: string | null;
   program_id: string | null;
   training_id: string | null;
+  is_completed?: boolean | null;
+  // Story 3.1 — session échue mais pas clôturée (badge « à clôturer »).
+  needs_closure?: boolean;
   is_subcontracted?: boolean;
   qualiopi_score?: number;
   program?: { id: string; title: string; description: string | null } | null;
@@ -233,7 +238,7 @@ export default function FormationsPage() {
     const { data, error } = await supabase
       .from("sessions")
       .select(`
-        id, title, start_date, end_date, location, mode, status, max_participants, notes, type, program_id, training_id, is_subcontracted, qualiopi_score,
+        id, title, start_date, end_date, location, mode, status, max_participants, notes, type, program_id, training_id, is_completed, is_subcontracted, qualiopi_score,
         program:programs(id, title, description),
         training:trainings(title),
         formation_trainers(trainer:trainers(first_name, last_name)),
@@ -245,22 +250,20 @@ export default function FormationsPage() {
     if (error) {
       toast({ title: "Erreur", description: "Impossible de charger les formations.", variant: "destructive" });
     } else {
-      // Auto-compute status based on dates — sessions sans date : statut DB préservé
+      // Statut dérivé côté admin (Story 3.1) : une session échue n'est PAS
+      // auto-passée en "terminé" — elle reste "en cours" + badge « à clôturer »
+      // jusqu'au clic manuel « Marquer comme terminée » (après facturation).
       const now = new Date();
       const mapped = (data || []).map((s: Record<string, unknown>) => {
+        const dbStatus = s.status as string;
         const rawStart = s.start_date as string | null;
         const rawEnd = s.end_date as string | null;
-        let computedStatus = s.status as string;
-        if (computedStatus !== "cancelled" && rawStart && rawEnd) {
-          const startDate = new Date(rawStart);
-          const endDate = new Date(rawEnd);
-          if (now >= endDate) computedStatus = "completed";
-          else if (now >= startDate) computedStatus = "in_progress";
-          else computedStatus = "upcoming";
-        } else if (computedStatus !== "cancelled" && !rawStart) {
-          computedStatus = (s.status as string) || "upcoming";
-        }
-        return { ...s, status: computedStatus };
+        const isCompleted = Boolean(s.is_completed);
+        return {
+          ...s,
+          status: computeAdminSessionStatus(dbStatus, rawStart, rawEnd, now),
+          needs_closure: sessionNeedsClosure(dbStatus, rawEnd, isCompleted, now),
+        };
       });
       setSessions(mapped as SessionCard[]);
     }
@@ -414,6 +417,11 @@ export default function FormationsPage() {
               <Badge className={cn("text-[10px] border-0 font-medium", statusCfg.color)}>
                 {statusCfg.label}
               </Badge>
+              {session.needs_closure && (
+                <Badge className="text-[10px] border-0 font-medium gap-1 bg-orange-100 text-orange-700">
+                  <AlertTriangle className="h-3 w-3" /> À clôturer
+                </Badge>
+              )}
               <Badge variant="outline" className="text-[10px] font-medium gap-1">
                 <ModeIcon className="h-3 w-3" />
                 {modeCfg.label}
@@ -779,6 +787,11 @@ export default function FormationsPage() {
                               </div>
                             )}
                             <div className="flex items-center gap-1.5 flex-wrap">
+                              {session.needs_closure && (
+                                <Badge className="text-[10px] border-0 font-medium gap-1 bg-orange-100 text-orange-700">
+                                  <AlertTriangle className="h-3 w-3" /> À clôturer
+                                </Badge>
+                              )}
                               <Badge variant="outline" className="text-[10px] font-medium gap-1">
                                 <ModeIcon className="h-3 w-3" />
                                 {modeCfg.label}
