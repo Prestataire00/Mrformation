@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   computeSessionStatus,
+  computeAdminSessionStatus,
+  sessionNeedsClosure,
   computeAttendanceRate,
   getSignaturesForSlot,
   getQuestionStats,
@@ -35,6 +37,62 @@ describe("computeSessionStatus", () => {
 
   it("in_progress quand now === start", () => {
     expect(computeSessionStatus("upcoming", "2026-04-02T12:00:00Z", "2026-04-05T17:00:00Z", now)).toBe("in_progress");
+  });
+});
+
+describe("computeAdminSessionStatus (Story 3.1 — pas de terminé auto)", () => {
+  const now = new Date("2026-04-02T12:00:00Z");
+
+  it("upcoming pour session future", () => {
+    expect(computeAdminSessionStatus("upcoming", "2026-04-15T09:00:00Z", "2026-04-17T17:00:00Z", now)).toBe("upcoming");
+  });
+
+  it("in_progress quand now entre start et end", () => {
+    expect(computeAdminSessionStatus("upcoming", "2026-04-01T09:00:00Z", "2026-04-05T17:00:00Z", now)).toBe("in_progress");
+  });
+
+  it("NE passe PAS en completed quand la date de fin est dépassée (reste in_progress)", () => {
+    expect(computeAdminSessionStatus("upcoming", "2026-03-01T09:00:00Z", "2026-03-05T17:00:00Z", now)).toBe("in_progress");
+  });
+
+  it("affiche completed UNIQUEMENT si le statut DB est completed (clôture manuelle)", () => {
+    expect(computeAdminSessionStatus("completed", "2026-03-01T09:00:00Z", "2026-03-05T17:00:00Z", now)).toBe("completed");
+  });
+
+  it("préserve cancelled", () => {
+    expect(computeAdminSessionStatus("cancelled", "2026-03-01T09:00:00Z", "2026-03-05T17:00:00Z", now)).toBe("cancelled");
+  });
+
+  it("sans start_date : préserve le statut DB", () => {
+    expect(computeAdminSessionStatus("upcoming", null, null, now)).toBe("upcoming");
+  });
+});
+
+describe("sessionNeedsClosure (Story 3.1 — badge « à clôturer »)", () => {
+  const now = new Date("2026-04-02T12:00:00Z");
+
+  it("vrai si date de fin dépassée et non clôturée", () => {
+    expect(sessionNeedsClosure("upcoming", "2026-03-05T17:00:00Z", false, now)).toBe(true);
+  });
+
+  it("faux si la date de fin n'est pas encore passée", () => {
+    expect(sessionNeedsClosure("upcoming", "2026-04-10T17:00:00Z", false, now)).toBe(false);
+  });
+
+  it("faux si déjà clôturée en base (status completed)", () => {
+    expect(sessionNeedsClosure("completed", "2026-03-05T17:00:00Z", false, now)).toBe(false);
+  });
+
+  it("faux si is_completed=true même si statut DB pas completed", () => {
+    expect(sessionNeedsClosure("upcoming", "2026-03-05T17:00:00Z", true, now)).toBe(false);
+  });
+
+  it("faux pour une session annulée", () => {
+    expect(sessionNeedsClosure("cancelled", "2026-03-05T17:00:00Z", false, now)).toBe(false);
+  });
+
+  it("faux si pas de date de fin", () => {
+    expect(sessionNeedsClosure("upcoming", null, false, now)).toBe(false);
   });
 });
 

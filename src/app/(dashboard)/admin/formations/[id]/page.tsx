@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import {
   ArrowLeft, Loader2, Eye, Calendar, FileText, PenLine,
   ClipboardCheck, GraduationCap, Euro, ShieldCheck, MessageSquare, Zap,
-  Users, Clock, Briefcase, CheckCircle, RotateCcw, Copy, MoreHorizontal, Trash2,
+  Users, Clock, Briefcase, CheckCircle, RotateCcw, Copy, MoreHorizontal, Trash2, AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +22,7 @@ import {
 import { useToast } from "@/components/ui/use-toast";
 import { useEntity } from "@/contexts/EntityContext";
 import { cn, formatDate, SESSION_STATUS_LABELS, STATUS_COLORS } from "@/lib/utils";
+import { computeAdminSessionStatus, sessionNeedsClosure } from "@/lib/utils/formation";
 import { getFormationKind } from "@/lib/utils/formation-companies";
 import { getDocsForSession } from "@/lib/services/documents-store";
 import type { Session } from "@/lib/types";
@@ -249,9 +250,32 @@ export default function FormationDetailPage() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">{formation.title}</h1>
             <div className="flex items-center gap-2 mt-2 flex-wrap">
-              <Badge className={cn("border-0", STATUS_COLORS[formation.status] || "bg-gray-100")}>
-                {SESSION_STATUS_LABELS[formation.status] || formation.status}
-              </Badge>
+              {(() => {
+                // Story 3.1 — affichage admin : pas de "terminé" auto à la date.
+                // `formation.status` (brut) reste la source pour le bouton de clôture.
+                const displayStatus = computeAdminSessionStatus(
+                  formation.status,
+                  formation.start_date,
+                  formation.end_date,
+                );
+                const needsClosure = sessionNeedsClosure(
+                  formation.status,
+                  formation.end_date,
+                  Boolean((formation as unknown as { is_completed?: boolean }).is_completed),
+                );
+                return (
+                  <>
+                    <Badge className={cn("border-0", STATUS_COLORS[displayStatus] || "bg-gray-100")}>
+                      {SESSION_STATUS_LABELS[displayStatus] || displayStatus}
+                    </Badge>
+                    {needsClosure && (
+                      <Badge className="border-0 gap-1 bg-orange-100 text-orange-700">
+                        <AlertTriangle className="h-3 w-3" /> À clôturer
+                      </Badge>
+                    )}
+                  </>
+                );
+              })()}
               {(() => {
                 const kind = getFormationKind(formation);
                 if (kind === "unset") return null;

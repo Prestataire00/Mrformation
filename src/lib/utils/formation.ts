@@ -17,6 +17,45 @@ export function computeSessionStatus(
   return "upcoming";
 }
 
+/**
+ * Statut affiché côté ADMIN (Story 3.1 — workflow de clôture).
+ *
+ * Contrairement à `computeSessionStatus` (utilisé par les portails apprenant/
+ * client/formateur), une session dont la date de fin est dépassée n'est PAS
+ * auto-passée en "completed" : elle reste "in_progress" tant que le contact ne
+ * l'a pas clôturée manuellement en base (status='completed' / is_completed=true,
+ * typiquement après facturation). "terminé" ne s'affiche donc que sur une
+ * clôture réelle. Une session échue non clôturée porte le badge « à clôturer »
+ * (cf. `sessionNeedsClosure`).
+ */
+export function computeAdminSessionStatus(
+  currentStatus: string,
+  startDate: string | null,
+  endDate: string | null,
+  now: Date = new Date()
+): string {
+  if (currentStatus === "cancelled") return "cancelled";
+  if (currentStatus === "completed") return "completed";
+  if (!startDate) return currentStatus || "upcoming";
+  return now >= new Date(startDate) ? "in_progress" : "upcoming";
+}
+
+/**
+ * Vrai si une session admin est échue (date de fin passée) mais pas encore
+ * clôturée → déclenche l'affichage du badge « à clôturer ». (Story 3.1)
+ */
+export function sessionNeedsClosure(
+  currentStatus: string,
+  endDate: string | null,
+  isCompleted: boolean = false,
+  now: Date = new Date()
+): boolean {
+  if (isCompleted) return false;
+  if (currentStatus === "completed" || currentStatus === "cancelled") return false;
+  if (!endDate) return false;
+  return now >= new Date(endDate);
+}
+
 export function computeAttendanceRate(
   totalSlots: number,
   enrollmentsCount: number,

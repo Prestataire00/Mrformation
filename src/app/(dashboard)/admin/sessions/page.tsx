@@ -52,12 +52,16 @@ import {
   Loader2,
   Link2,
   Video,
+  AlertTriangle,
 } from "lucide-react";
+import { computeAdminSessionStatus, sessionNeedsClosure } from "@/lib/utils/formation";
 
 type SessionFull = Session & {
   training: { title: string; classification: string | null } | null;
   trainer: { first_name: string; last_name: string } | null;
   enrollments_count: number;
+  // Story 3.1 — session échue mais pas clôturée (badge « à clôturer »).
+  needs_closure?: boolean;
 };
 
 interface LearnerBasic {
@@ -189,24 +193,19 @@ export default function SessionsPage() {
     if (error) {
       toast({ title: "Erreur", description: "Impossible de charger les sessions.", variant: "destructive" });
     } else {
+      // Statut dérivé côté admin (Story 3.1) : une session échue n'est PAS
+      // auto-passée en "terminé" — elle reste "en cours" + badge « à clôturer »
+      // jusqu'au clic manuel « Marquer comme terminée » (après facturation).
       const now = new Date();
       const mapped = (data || []).map((s: Record<string, unknown>) => {
-        const startDate = new Date(s.start_date as string);
-        const endDate = new Date(s.end_date as string);
-        // Auto-compute status based on dates
-        let computedStatus = s.status as string;
-        if (computedStatus !== "cancelled") {
-          if (now >= endDate) {
-            computedStatus = "completed";
-          } else if (now >= startDate) {
-            computedStatus = "in_progress";
-          } else {
-            computedStatus = "upcoming";
-          }
-        }
+        const dbStatus = s.status as string;
+        const rawStart = s.start_date as string | null;
+        const rawEnd = s.end_date as string | null;
+        const isCompleted = Boolean(s.is_completed);
         return {
           ...s,
-          status: computedStatus,
+          status: computeAdminSessionStatus(dbStatus, rawStart, rawEnd, now),
+          needs_closure: sessionNeedsClosure(dbStatus, rawEnd, isCompleted, now),
           enrollments_count: Array.isArray(s.enrollments) ? (s.enrollments as unknown[]).length : 0,
         };
       });
@@ -738,9 +737,16 @@ export default function SessionsPage() {
                       </Badge>
                     </td>
                     <td className="px-4 py-3">
-                      <Badge className={cn("text-xs font-normal", STATUS_COLORS[session.status] || "bg-gray-100 text-gray-600")}>
-                        {SESSION_STATUS_LABELS[session.status] || session.status}
-                      </Badge>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <Badge className={cn("text-xs font-normal", STATUS_COLORS[session.status] || "bg-gray-100 text-gray-600")}>
+                          {SESSION_STATUS_LABELS[session.status] || session.status}
+                        </Badge>
+                        {session.needs_closure && (
+                          <Badge className="text-xs font-normal gap-1 bg-orange-100 text-orange-700">
+                            <AlertTriangle className="h-3 w-3" /> À clôturer
+                          </Badge>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       {session.trainer ? (
