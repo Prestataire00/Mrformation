@@ -179,3 +179,28 @@ Scope du review : feature « supports de cours attachés au programme » (table 
 - Role legacy non-enum : `FormationTrainer.role` est `string` en base — si une valeur hors enum existe, le Select ne l'affichera pas. Typer le champ ou ajouter un fallback.
 - Race condition : pas d'optimistic locking sur `formation_trainers` — deux éditions concurrentes écrasent silencieusement.
 - Session supprimée pendant dialog ouvert : le toast "Session introuvable" s'affiche mais le dialog reste ouvert sans action claire.
+
+## Deferred from: quick-dev split "recherche" (2026-06-27)
+
+- **Objectif B — Barre de recherche globale (popover live)** : différé. Construire dans
+  `src/components/layout/Header.tsx` (actuellement un `<div>` mort, lignes 199-202) un vrai
+  champ + popover de résultats live, cherchant entreprises clients ET prospects CRM, filtré
+  `entity_id`, clic → fiche. Réutiliser le moteur unaccent/trigram livré par l'objectif A.
+  Décisions produit déjà prises : résultats live (popover) ; périmètre clients + prospects.
+  Cf. cadrage `bmad_output/planning-artifacts/2026-06-27-cadrage-recherche-globale-et-prospects.md`.
+
+## Deferred from: code review "recherche prospects fuzzy" (2026-06-27)
+
+- **Debounce / race search-as-you-type** (pré-existant) : la recherche prospects (liste) déclenche
+  un fetch à chaque frappe sans debounce ni annulation des requêtes en vol → rafales RPC + risque
+  d'affichage périmé si une réponse ancienne arrive après une récente. Ajouter un debounce ~300ms
+  + garde "stale request".
+- **Wildcards `_`/`%` littéraux** : la nouvelle recherche RPC ne ré-échappe pas `_`/`%` dans la
+  partie `ILIKE` (l'ancien `computeSearchPattern` le faisait). Taper `a_b` matche `aXb`. Impact
+  faible (faux positifs, pas de fuite). Échapper dans la RPC si gênant.
+- **Perf requêtes 1-2 caractères** : sous 3 caractères, l'opérateur trigram `%` ne matche pas et
+  le `ILIKE '%x%'` ne peut pas utiliser l'index GIN → seq scan (filtré entity_id). Pré-existant ;
+  envisager un minimum de 2-3 caractères avant de lancer la recherche.
+- **Count plafonné sous recherche** : sous recherche, `totalCount`/pagination sont bornés par
+  `p_limit` (1000 en liste). Acceptable pour une liste paginée ; à revoir si un compteur exact est
+  requis sur de très gros volumes de matches.

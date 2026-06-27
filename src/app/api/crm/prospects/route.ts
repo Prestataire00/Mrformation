@@ -5,6 +5,7 @@ import { parsePagination, createProspectSchema } from "@/lib/validations";
 import { logAudit } from "@/lib/audit-log";
 import { isCrmAuthorized } from "@/lib/auth/permissions";
 import { resolveActiveEntityId } from "@/lib/crm/active-entity";
+import { searchProspectIds } from "@/lib/services/prospect-search";
 
 export async function GET(request: NextRequest) {
   try {
@@ -63,9 +64,19 @@ export async function GET(request: NextRequest) {
       .order("created_at", { ascending: false })
       .range(offset, offset + perPage - 1);
 
-    if (search) {
-      query = query.or(
-        `company_name.ilike.%${search}%,contact_name.ilike.%${search}%,email.ilike.%${search}%`
+    // Recherche fuzzy/accents via RPC paramétrée (plus d'injection DSL .or()).
+    if (search.trim()) {
+      const res = await searchProspectIds(supabase, activeEntityId ?? "", search);
+      if (!res.ok) {
+        return NextResponse.json(
+          { data: null, error: sanitizeDbError(res.error) },
+          { status: 500 }
+        );
+      }
+      // ids vides → sentinelle UUID inexistante pour renvoyer 0 résultat proprement.
+      query = query.in(
+        "id",
+        res.ids.length ? res.ids : ["00000000-0000-0000-0000-000000000000"]
       );
     }
 
