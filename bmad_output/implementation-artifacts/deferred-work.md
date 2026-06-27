@@ -217,3 +217,13 @@ Scope du review : feature « supports de cours attachés au programme » (table 
 - **UX ouverture** : la barre globale s'ouvre au clic (pattern command-palette) ; si on veut taper
   directement dans le header sans clic, prévoir un input header live + popover ancré (focus conservé)
   + nav clavier manuelle.
+
+## Deferred from: code review "planning vrais créneaux" (2026-06-27)
+
+- **Chunking des ids créneaux** : `fetchSessionSlots` fait `.in("session_id", ids)` ; sur une vue
+  très large (année, multi-formateurs avec des centaines de sessions) l'URL PostgREST pourrait être
+  trop longue. Chunker les ids (lots de ~100) si le besoin se présente. Le `.limit(5000)` couvre déjà
+  la troncature lignes.
+- **Filtre de date sur les créneaux** : on charge tous les créneaux des sessions visibles (sans borne
+  start_time) pour préserver le "a des créneaux ?" global. Optimisable (charger in-range + un check
+  d'existence séparé) si la volumétrie devient un souci.
