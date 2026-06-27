@@ -1,17 +1,22 @@
 "use client";
 
 /**
- * Lot A1 — Générateur de programme interne (IA + relecture).
+ * Lot A1 / Lot C — Générateur de programme interne (IA + relecture).
  *
- * Dialog ouvert depuis l'onglet Programme d'une formation. Pré-remplit
- * titre + durée depuis la session, offre un champ libre « précisions »,
- * appelle la génération IA (`POST /api/ai/generate-program` en mode
+ * Dialog réutilisable :
+ *  - depuis l'onglet Programme d'une formation : pré-remplit titre + durée
+ *    depuis la session (props `defaultTitle` / `defaultDurationHours`…) ;
+ *  - depuis le hub `/admin/programs` en mode **standalone** : props de
+ *    pré-remplissage optionnelles (défauts vides), l'admin saisit le titre.
+ *
+ * Il appelle la génération IA (`POST /api/ai/generate-program` en mode
  * `structured`), affiche le résultat via `ProgramContentPreview` pour
  * relecture (régénérer), puis remonte le contenu accepté au parent via
- * `onAccept` (qui se charge de l'enregistrement versionné).
+ * `onAccept` (qui se charge de l'enregistrement).
  *
  * Aucune écriture Supabase ici : la persistance (createProgram /
- * createProgramVersion + updateProgram) est faite côté TabProgramme.
+ * createProgramVersion + updateProgram) est faite côté parent (TabProgramme
+ * pour l'attribution session, hub Programmes pour la création standalone).
  */
 
 import { useState } from "react";
@@ -42,20 +47,25 @@ import type { ProgramContent } from "@/lib/types";
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Pré-remplissage depuis la formation. */
-  defaultTitle: string;
-  defaultDurationHours: number | null;
+  /** Pré-remplissage depuis la formation (optionnel : vide en mode standalone). */
+  defaultTitle?: string;
+  defaultDurationHours?: number | null;
   defaultDurationDays?: number | null;
   defaultTargetAudience?: string | null;
-  /** Appelé quand l'admin valide l'aperçu. Le parent persiste le contenu. */
-  onAccept: (generated: GeneratedProgramContent) => Promise<void>;
+  /**
+   * Appelé quand l'admin valide l'aperçu. Le parent persiste le contenu.
+   * `title` = titre saisi dans le formulaire (utile au mode standalone du
+   * hub où aucun titre n'est dérivé d'une formation existante).
+   */
+  onAccept: (generated: GeneratedProgramContent, title: string) => Promise<void>;
 }
 
 /**
- * Mappe la sortie IA vers la forme `ProgramContent` (pour l'aperçu).
- * Tous les champs enrichis sont additifs et optionnels.
+ * Mappe la sortie IA vers la forme `ProgramContent` (pour l'aperçu et la
+ * persistance standalone). Tous les champs enrichis sont additifs et
+ * optionnels. Exporté pour réutilisation par le hub Programmes (Lot C).
  */
-function toProgramContent(ai: GeneratedProgramContent): ProgramContent {
+export function generatedToProgramContent(ai: GeneratedProgramContent): ProgramContent {
   return {
     modules: ai.modules?.map((m) => ({
       id: m.id,
@@ -85,10 +95,10 @@ function toProgramContent(ai: GeneratedProgramContent): ProgramContent {
 export function GenerateProgramDialog({
   open,
   onOpenChange,
-  defaultTitle,
-  defaultDurationHours,
-  defaultDurationDays,
-  defaultTargetAudience,
+  defaultTitle = "",
+  defaultDurationHours = null,
+  defaultDurationDays = null,
+  defaultTargetAudience = null,
   onAccept,
 }: Props) {
   const { toast } = useToast();
@@ -183,7 +193,7 @@ export function GenerateProgramDialog({
     if (!generated) return;
     setAccepting(true);
     try {
-      await onAccept(generated);
+      await onAccept(generated, getValues("title") || defaultTitle);
       // Le parent gère le toast de succès + le refetch ; on ferme et reset.
       setGenerated(null);
       onOpenChange(false);
@@ -305,7 +315,7 @@ export function GenerateProgramDialog({
                 description: generated.description || null,
                 objectives: generated.objectives || null,
                 duration_hours: generated.duration_hours ?? null,
-                content: toProgramContent(generated),
+                content: generatedToProgramContent(generated),
               }}
             />
           </div>

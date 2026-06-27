@@ -94,6 +94,39 @@ describe("programContentSchema", () => {
     });
     expect(result.success).toBe(true);
   });
+
+  // ── Lot C : la création hub passe par l'IA → l'objet content généré doit
+  // être validable par programContentSchema (filet anti-régression). ────────
+  it("accepte un content généré par l'IA (objet, création hub Lot C)", () => {
+    const generatedContent = {
+      modules: [
+        {
+          id: 1,
+          title: "Séquence 1 — Accueil et cadrage",
+          duration_hours: 3,
+          topics: ["Tour de table", "Objectifs"],
+          summary_objective: "Poser le cadre",
+          operational_objectives: ["Identifier ses besoins"],
+          content_details: ["Présentation du déroulé"],
+          methods: "Apports + atelier",
+          evaluation: "Évaluation en continu",
+        },
+      ],
+      duration_hours: 14,
+      duration_days: 2,
+      location: "Présentiel",
+      target_audience: "Aides-soignants (max 12 personnes)",
+      prerequisites: "Aucun",
+      team_description: "Formateur expert métier",
+      evaluation_methods: ["QCM", "Mise en situation"],
+      pedagogical_resources: ["Support de synthèse"],
+      certification_results: "Attestation de fin de formation",
+      general_objectives: ["Maîtriser le cadre réglementaire"],
+      access_terms: "Inscription jusqu'à 10 jours avant la session.",
+    };
+    const result = programContentSchema.safeParse(generatedContent);
+    expect(result.success).toBe(true);
+  });
 });
 
 // ── generateProgramFormSchema (Lot A1 — dialog génération IA) ─────────
@@ -141,11 +174,11 @@ describe("generateProgramFormSchema", () => {
 
 // ── programHubFormSchema ─────────────────────────────────────────────
 
+// Lot C : le `content` n'est plus un champ du formulaire hub (création IA).
 const validHubForm: ProgramHubFormInput = {
   title: "Formation Excel avancé",
   description: "",
   objectives: "",
-  content: JSON.stringify({ modules: [{ id: 1, title: "M1" }] }),
   price: "",
   tva_rate: "20",
   duration_hours: "",
@@ -164,19 +197,6 @@ describe("programHubFormSchema", () => {
 
   it("rejette un titre vide", () => {
     const result = programHubFormSchema.safeParse({ ...validHubForm, title: "" });
-    expect(result.success).toBe(false);
-  });
-
-  it("rejette un contenu JSON syntaxiquement invalide", () => {
-    const result = programHubFormSchema.safeParse({ ...validHubForm, content: "{ pas: du JSON" });
-    expect(result.success).toBe(false);
-  });
-
-  it("rejette un contenu JSON valide mais sans modules", () => {
-    const result = programHubFormSchema.safeParse({
-      ...validHubForm,
-      content: JSON.stringify({ foo: "bar" }),
-    });
     expect(result.success).toBe(false);
   });
 
@@ -265,10 +285,10 @@ describe("programCreateSessionSchema", () => {
 
 describe("getProgramFormErrors", () => {
   it("renvoie une map champ → premier message", () => {
-    const result = programHubFormSchema.safeParse({ ...validHubForm, title: "", content: "{ pas: JSON" });
+    const result = programHubFormSchema.safeParse({ ...validHubForm, title: "", tva_rate: "150" });
     const errors = getProgramFormErrors<ProgramHubFormInput>(result);
     expect(errors.title).toBeDefined();
-    expect(errors.content).toBeDefined();
+    expect(errors.tva_rate).toBeDefined();
   });
 
   it("renvoie une map vide quand le parse réussit", () => {

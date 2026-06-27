@@ -23,10 +23,16 @@ import {
 } from "@/lib/services/pagination";
 import {
   programHubFormSchema,
+  programContentSchema,
   getProgramFormErrors,
   type ProgramHubFormInput,
 } from "@/lib/validations/program";
 import { BPF_FUNDING_LABELS, BPF_OBJECTIVE_LABELS } from "@/lib/bpf-labels";
+import {
+  GenerateProgramDialog,
+  generatedToProgramContent,
+} from "@/components/programs/GenerateProgramDialog";
+import type { GeneratedProgramContent } from "@/lib/services/openai";
 import { cn, formatDate, formatDateTime, truncate } from "@/lib/utils";
 import { useEntity } from "@/contexts/EntityContext";
 import { Button } from "@/components/ui/button";
@@ -68,7 +74,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  Plus,
   Search,
   MoreHorizontal,
   Pencil,
@@ -81,19 +86,19 @@ import {
   XCircle,
   Filter,
   Eye,
-  Upload,
   ChevronDown,
   Sparkles,
-  Loader2 as Loader2Icon,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
+// Lot C : le `content` (séquences) n'est plus saisi manuellement dans le hub.
+// La création passe par le générateur IA ; l'édition ne touche qu'aux
+// métadonnées et préserve le `content` existant tel quel.
 interface ProgramFormData {
   title: string;
   description: string;
   objectives: string;
-  content: string;
   price: string;
   tva_rate: string;
   duration_hours: string;
@@ -108,21 +113,6 @@ const emptyForm: ProgramFormData = {
   title: "",
   description: "",
   objectives: "",
-  content: JSON.stringify(
-    {
-      modules: [
-        {
-          id: 1,
-          title: "Module 1",
-          duration_hours: 2,
-          objectives: [],
-          topics: [],
-        },
-      ],
-    },
-    null,
-    2
-  ),
   price: "",
   tva_rate: "20",
   duration_hours: "",
@@ -172,14 +162,17 @@ export default function ProgramsPage() {
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [debouncedSearch, setDebouncedSearch] = useState(initialSearch);
 
-  // Add/Edit dialog
+  // Edit dialog (métadonnées). La création passe par le dialog IA dédié.
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingProgram, setEditingProgram] = useState<Program | null>(null);
   const [formData, setFormData] = useState<ProgramFormData>(emptyForm);
   const [saving, setSaving] = useState(false);
-  const [contentError, setContentError] = useState("");
   // Lot C audit BMAD : erreurs Zod par champ pour affichage sous chaque Input.
   const [formErrors, setFormErrors] = useState<Partial<Record<keyof ProgramHubFormInput, string>>>({});
+
+  // Lot C : génération IA = unique voie de création d'un programme.
+  const [generateDialogOpen, setGenerateDialogOpen] = useState(false);
+  const [creatingFromAi, setCreatingFromAi] = useState(false);
 
   // BPF section toggle
   const [bpfSectionOpen, setBpfSectionOpen] = useState(false);
@@ -196,9 +189,6 @@ export default function ProgramsPage() {
   const [programToDelete, setProgramToDelete] = useState<Program | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  // AI extract from document
-  const aiFileInputRef = useRef<HTMLInputElement>(null);
-  const [aiExtracting, setAiExtracting] = useState(false);
   // Lot G audit BMAD : compte les références FK pour avertir l'utilisateur
   const [deleteCounts, setDeleteCounts] = useState<ProgramReferenceCounts | null>(null);
   const [countsLoading, setCountsLoading] = useState(false);
@@ -292,96 +282,49 @@ export default function ProgramsPage() {
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
   const safePage = Math.min(currentPage, totalPages);
 
-  const validateContent = (raw: string): boolean => {
-    try {
-      const parsed = JSON.parse(raw);
-      if (!parsed.modules || !Array.isArray(parsed.modules)) {
-        setContentError("Le contenu doit avoir une clé \"modules\" de type tableau.");
-        return false;
-      }
-      setContentError("");
-      return true;
-    } catch {
-      setContentError("JSON invalide. Vérifiez la syntaxe.");
-      return false;
+  // Lot C : création = générateur IA standalone (sans session attachée).
+  const handleCreateFromAi = async (ai: GeneratedProgramContent, title: string): Promise<void> => {
+    if (!entityId) {
+      toast({ title: "Erreur", description: "Entité non chargée — réessayez.", variant: "destructive" });
+      throw new Error("entity non chargée");
     }
-  };
-
-  const openAddDialog = () => {
-    setEditingProgram(null);
-    setFormData(emptyForm);
-    setContentError("");
-    setFormErrors({});
-    setBpfSectionOpen(false);
-    setDialogOpen(true);
-  };
-
-  const handleAiExtractForNewProgram = async (file: File) => {
-    setAiExtracting(true);
+    setCreatingFromAi(true);
     try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await fetch("/api/programs/ai-extract", { method: "POST", body: fd });
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.error || `Erreur ${res.status}`);
-
-      const e = result.extracted;
-      // Build content JSON from modules
-      const modules = Array.isArray(e.modules)
-        ? e.modules.map((m: { title: string; duration_hours: number | null; topics: string; objectives?: string }, i: number) => ({
-            id: i + 1,
-            title: m.title || `Module ${i + 1}`,
-            duration_hours: m.duration_hours ?? 0,
-            objectives: m.objectives ? String(m.objectives).split("\n").filter(Boolean) : [],
-            topics: m.topics ? String(m.topics).split("\n").filter(Boolean) : [],
-          }))
-        : [];
-
-      const contentObj = {
-        modules,
-        target_audience: e.target_audience || undefined,
-        prerequisites: e.prerequisites || undefined,
-        team_description: e.team_description || undefined,
-        evaluation_methods: e.evaluation_methods ? e.evaluation_methods.split("\n").filter(Boolean) : undefined,
-        pedagogical_resources: e.pedagogical_resources ? e.pedagogical_resources.split("\n").filter(Boolean) : undefined,
-        certification: (e.certification_results || e.certification_terms || e.certification_details)
-          ? {
-              results: e.certification_results || undefined,
-              terms: e.certification_terms || undefined,
-              details: e.certification_details || undefined,
-            }
-          : undefined,
-      };
-
-      setEditingProgram(null);
-      setFormData({
-        ...emptyForm,
-        title: e.title || "",
-        description: e.description || "",
-        objectives: e.objectives || "",
-        content: JSON.stringify(contentObj, null, 2),
-        duration_hours: e.duration_hours != null ? String(e.duration_hours) : "",
+      const content = generatedToProgramContent(ai);
+      // Garde-fou : ne pas enregistrer un programme sans séquences exploitables
+      // (cohérent avec TabProgramme). programContentSchema exige modules >= 1.
+      const contentCheck = programContentSchema.safeParse(content);
+      if (!contentCheck.success) {
+        toast({
+          title: "Génération inexploitable",
+          description:
+            "La génération n'a pas produit de séquences exploitables, réessayez.",
+          variant: "destructive",
+        });
+        throw new Error("content IA invalide");
+      }
+      const result = await createProgramService(supabase, entityId, {
+        title: title.trim() || "Programme sans titre",
+        description: ai.description?.trim() || null,
+        objectives: ai.objectives?.trim() || null,
+        content,
+        price: null,
+        tva_rate: null,
+        duration_hours: ai.duration_hours ?? null,
+        nsf_code: null,
+        nsf_label: null,
+        is_apprenticeship: false,
+        bpf_objective: null,
+        bpf_funding_type: null,
       });
-      setFormErrors({});
-      setContentError("");
-      setBpfSectionOpen(false);
-      setDialogOpen(true);
-
-      const moduleCount = modules.length;
-      toast({
-        title: "Programme extrait depuis le document",
-        description: `${moduleCount} module${moduleCount > 1 ? "s" : ""} détecté${moduleCount > 1 ? "s" : ""}. Vérifiez et ajustez avant d'enregistrer.`,
-      });
-    } catch (err) {
-      console.error("[ProgramsPage] ai-extract failed:", err);
-      toast({
-        title: "Extraction échouée",
-        description: err instanceof Error ? err.message : "Erreur inconnue",
-        variant: "destructive",
-      });
+      if (!result.ok) {
+        toast({ title: "Erreur", description: result.error.message, variant: "destructive" });
+        throw new Error(result.error.message);
+      }
+      toast({ title: "Programme créé", description: `"${result.program.title}" a été ajouté.` });
+      await fetchPrograms();
     } finally {
-      setAiExtracting(false);
-      if (aiFileInputRef.current) aiFileInputRef.current.value = "";
+      setCreatingFromAi(false);
     }
   };
 
@@ -392,7 +335,6 @@ export default function ProgramsPage() {
       title: program.title,
       description: program.description || "",
       objectives: program.objectives || "",
-      content: program.content ? JSON.stringify(program.content, null, 2) : emptyForm.content,
       price: program.price != null ? String(program.price) : "",
       tva_rate: program.tva_rate != null ? String(program.tva_rate) : "20",
       duration_hours: program.duration_hours != null ? String(program.duration_hours) : "",
@@ -402,18 +344,21 @@ export default function ProgramsPage() {
       bpf_objective: program.bpf_objective || "",
       bpf_funding_type: program.bpf_funding_type || "",
     });
-    setContentError("");
     setBpfSectionOpen(false);
     setDialogOpen(true);
   };
 
+  // Lot C : ce dialog ne sert plus qu'à l'édition des métadonnées. Le
+  // `content` (séquences) est préservé tel quel — il n'est éditable que via
+  // le générateur IA (page détail).
   const handleSave = async () => {
-    // Lot C audit BMAD : validation Zod centralisée
+    if (!editingProgram) return;
+
+    // Validation Zod centralisée (métadonnées uniquement).
     const parsed = programHubFormSchema.safeParse(formData);
     if (!parsed.success) {
       const errors = getProgramFormErrors<ProgramHubFormInput>(parsed);
       setFormErrors(errors);
-      if (errors.content) setContentError(errors.content);
       toast({
         title: "Formulaire invalide",
         description: Object.values(errors)[0] || "Vérifiez les champs en rouge.",
@@ -422,16 +367,20 @@ export default function ProgramsPage() {
       return;
     }
     setFormErrors({});
-    setContentError("");
+
+    if (!entityId) {
+      toast({ title: "Erreur", description: "Entité non chargée — réessayez.", variant: "destructive" });
+      return;
+    }
 
     setSaving(true);
-    const contentParsed = JSON.parse(formData.content) as ProgramContent;
 
-    const payload = {
+    const servicePayload = {
       title: formData.title.trim(),
       description: formData.description.trim() || null,
       objectives: formData.objectives.trim() || null,
-      content: contentParsed,
+      // Préserve le content existant : non modifié dans ce dialog.
+      content: editingProgram.content as ProgramContent,
       price: formData.price ? parseFloat(formData.price) : null,
       tva_rate: formData.tva_rate ? parseFloat(formData.tva_rate) : null,
       duration_hours: formData.duration_hours ? parseFloat(formData.duration_hours) : null,
@@ -442,43 +391,13 @@ export default function ProgramsPage() {
       bpf_funding_type: (formData.bpf_funding_type || null) as Program["bpf_funding_type"],
     };
 
-    if (!entityId) {
-      toast({ title: "Erreur", description: "Entité non chargée — réessayez.", variant: "destructive" });
+    const result = await updateProgramService(supabase, editingProgram.id, entityId, servicePayload);
+    if (!result.ok) {
+      toast({ title: "Erreur", description: result.error.message, variant: "destructive" });
       setSaving(false);
       return;
     }
-
-    const servicePayload = {
-      title: payload.title,
-      description: payload.description,
-      objectives: payload.objectives,
-      content: payload.content,
-      price: payload.price,
-      tva_rate: payload.tva_rate,
-      duration_hours: payload.duration_hours,
-      nsf_code: payload.nsf_code,
-      nsf_label: payload.nsf_label,
-      is_apprenticeship: payload.is_apprenticeship,
-      bpf_objective: payload.bpf_objective,
-      bpf_funding_type: payload.bpf_funding_type,
-    };
-    if (editingProgram) {
-      const result = await updateProgramService(supabase, editingProgram.id, entityId, servicePayload);
-      if (!result.ok) {
-        toast({ title: "Erreur", description: result.error.message, variant: "destructive" });
-        setSaving(false);
-        return;
-      }
-      toast({ title: "Programme mis à jour" });
-    } else {
-      const result = await createProgramService(supabase, entityId, servicePayload);
-      if (!result.ok) {
-        toast({ title: "Erreur", description: result.error.message, variant: "destructive" });
-        setSaving(false);
-        return;
-      }
-      toast({ title: "Programme créé", description: `"${servicePayload.title}" a été ajouté.` });
-    }
+    toast({ title: "Programme mis à jour" });
 
     setSaving(false);
     setDialogOpen(false);
@@ -620,34 +539,10 @@ export default function ProgramsPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <input
-            ref={aiFileInputRef}
-            type="file"
-            accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) handleAiExtractForNewProgram(file);
-            }}
-          />
-          <Button
-            variant="outline"
-            className="gap-2 text-violet-700 border-violet-200 hover:bg-violet-50"
-            disabled={aiExtracting}
-            onClick={() => aiFileInputRef.current?.click()}
-          >
-            {aiExtracting ? <Loader2Icon className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-            {aiExtracting ? "Extraction IA..." : "Nouveau depuis document"}
-          </Button>
-          <Link href="/admin/programs/import">
-            <Button variant="outline" className="gap-2">
-              <Upload className="h-4 w-4" />
-              Importer PDF
-            </Button>
-          </Link>
-          <Button onClick={openAddDialog} className="gap-2">
-            <Plus className="h-4 w-4" />
-            Nouveau programme
+          {/* Lot C : unique voie de création = génération IA standalone. */}
+          <Button onClick={() => setGenerateDialogOpen(true)} className="gap-2">
+            <Sparkles className="h-4 w-4" />
+            Nouveau programme (IA)
           </Button>
         </div>
       </div>
@@ -885,9 +780,7 @@ export default function ProgramsPage() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>
-              {editingProgram ? "Modifier le programme" : "Nouveau programme pédagogique"}
-            </DialogTitle>
+            <DialogTitle>Modifier le programme</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
@@ -1052,15 +945,20 @@ export default function ProgramsPage() {
               Annuler
             </Button>
             <Button onClick={handleSave} disabled={saving}>
-              {saving
-                ? "Enregistrement..."
-                : editingProgram
-                ? "Mettre à jour"
-                : "Créer le programme"}
+              {saving ? "Enregistrement..." : "Mettre à jour"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Lot C : génération IA — unique voie de création (standalone, sans session) */}
+      <GenerateProgramDialog
+        open={generateDialogOpen}
+        onOpenChange={(next) => {
+          if (!creatingFromAi) setGenerateDialogOpen(next);
+        }}
+        onAccept={handleCreateFromAi}
+      />
 
       {/* Version History Dialog */}
       <Dialog open={historyDialogOpen} onOpenChange={setHistoryDialogOpen}>

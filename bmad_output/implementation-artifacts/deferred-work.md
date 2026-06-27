@@ -268,3 +268,7 @@ Spec A1 en cours : `spec-programme-generateur-interne.md`, branche `feat/program
 - **Aperçu catalogue (generate-program-preview) affiche `[Lieu]` / `[Durée heures]`** — `previewSession` met `location`/dates à null, les résolveurs `{{lieu}}`/`{{duree_heures}}` rendent un placeholder `[…]`. Préexistant (convention placeholder). Visible seulement dans l'aperçu hub programme, pas dans le PDF formation réel.
 - **Programme sans aucune séquence → pages 2-4 quasi blanches** — les `.page-break` du template v2 sont statiques ; un content routé v2 via `general_objectives` seul (sans modules) produit des pages vides. Cas dégénéré (A1 génère toujours des séquences). À ne traiter que si observé.
 - **Effectif « maximum 12 » codé en dur** — conforme aux 2 exemples + au prompt client. Si l'effectif doit suivre `session.max_participants`, basculer sur le résolveur `{{effectif_max}}` (existe déjà).
+
+## Deferred from: code review spec-programme-chemin-unique C (2026-06-27)
+
+- **Route `import-pdf` orpheline** — `src/app/api/programs/import-pdf/route.ts` n'a plus aucun appelant depuis la suppression de l'écran `/admin/programs/import` (lot C). Le spec gelé limitait les suppressions à la page import + la route ai-extract, donc la route import-pdf a été LAISSÉE volontairement. À supprimer dans un lot de nettoyage (grep confirmé : 0 appelant ; expose un endpoint OpenAI/pdf-parse non référencé aux rôles admin). Vérifier zéro référence avant suppression.

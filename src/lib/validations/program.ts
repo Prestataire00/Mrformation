@@ -7,10 +7,11 @@
  * CLAUDE.md.
  *
  * Ce module définit les schémas Zod réutilisables :
- *  - programHubFormSchema : dialog Add/Edit du hub (champs scalaires +
- *    métadonnées BPF/Qualiopi de premier niveau)
+ *  - programHubFormSchema : dialog d'édition des métadonnées du hub (champs
+ *    scalaires + métadonnées BPF/Qualiopi de premier niveau). Lot C : le
+ *    `content` n'y est plus saisi manuellement (création via générateur IA).
  *  - programContentSchema : valide la structure JSON du contenu pédagogique
- *    (modules) — utilisé conjointement pour valider le textarea JSON brut
+ *    (modules) — utilisé pour valider l'objet content généré par l'IA
  *  - programCreateSessionSchema : dialog "Créer une session" dans la page
  *    détail programme
  *
@@ -76,31 +77,14 @@ const stringToNumberOrNull = (v: unknown) => {
   return Number.isFinite(n as number) ? n : null;
 };
 
+// Lot C : le `content` (séquences) n'est plus saisi manuellement. La
+// création passe par le générateur IA (objet déjà validable par
+// `programContentSchema`) ; ce schéma ne couvre plus que les métadonnées
+// éditables dans le dialog du hub.
 export const programHubFormSchema = z.object({
   title: z.string().min(1, "Le titre est requis").max(255, "Maximum 255 caractères"),
   description: z.preprocess(emptyToNull, z.string().max(5000).nullable()),
   objectives: z.preprocess(emptyToNull, z.string().max(5000).nullable()),
-  // Le content est saisi en string JSON dans le textarea ; on valide
-  // que c'est du JSON valide ET conforme à programContentSchema.
-  content: z
-    .string()
-    .min(1, "Le contenu est requis")
-    .refine((raw) => {
-      try {
-        JSON.parse(raw);
-        return true;
-      } catch {
-        return false;
-      }
-    }, "JSON invalide — vérifiez la syntaxe")
-    .refine((raw) => {
-      try {
-        const parsed = JSON.parse(raw);
-        return programContentSchema.safeParse(parsed).success;
-      } catch {
-        return false;
-      }
-    }, "Le contenu doit avoir une clé \"modules\" non vide"),
   price: z.preprocess(stringToNumberOrNull, z.number().min(0).max(1_000_000).nullable()),
   tva_rate: z.preprocess(stringToNumberOrNull, z.number().min(0).max(100).nullable()),
   duration_hours: z.preprocess(stringToNumberOrNull, z.number().min(0).max(10_000).nullable()),

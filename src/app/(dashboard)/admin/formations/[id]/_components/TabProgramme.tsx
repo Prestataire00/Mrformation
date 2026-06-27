@@ -161,6 +161,9 @@ export function TabProgramme({ formation, onRefresh }: Props) {
   //  - Programme existant → createProgramVersion (snapshot) puis
   //    updateProgram(content) sur le programme attribué.
   // Refetch dans les deux cas. Lève en cas d'erreur (le dialog reste ouvert).
+  // Le 2e argument `title` (saisi dans le dialog) n'est pas utilisé ici :
+  // le titre du programme reste dérivé de la formation. Voie standalone (hub)
+  // l'exploite. Cf. Lot C.
   const handleAcceptGenerated = async (ai: GeneratedProgramContent): Promise<void> => {
     const entityId = formation.entity_id;
 
