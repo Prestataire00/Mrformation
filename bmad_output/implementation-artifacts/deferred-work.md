@@ -227,3 +227,48 @@ Scope du review : feature « supports de cours attachés au programme » (table 
 - **Filtre de date sur les créneaux** : on charge tous les créneaux des sessions visibles (sans borne
   start_time) pour préserver le "a des créneaux ?" global. Optimisable (charger in-range + un check
   d'existence séparé) si la volumétrie devient un souci.
+
+## Découpage : programme générateur interne (cadrage 2026-06-27)
+
+Source cadrage : `bmad_output/brainstorming/brainstorm-alignement-construction-programmes-2026-06-27/brainstorm-intent.md`.
+Lot **(A) en cours** = générateur interne côté FORMATION (onglet Programme), branche `feat/programme-generateur-interne`.
+
+- **Objectif B — Côté CRM/PROSPECT + programme flottant** : poser le même générateur sur le prospect
+  (document de vente avant signature). Option B tranchée : sauver une vraie ligne `programs`
+  « flottante » (+ PDF de vente), puis la rattacher à la formation d'un clic à la signature
+  (`set training.program_id`) — on génère une fois, on rattache, pas de régénération. **Nécessite une
+  migration SQL** pour le lien/stockage programme ↔ prospect (inexistant aujourd'hui). Dépend de (A).
+- **Objectif C — Suppression du chemin manuel séquence-par-séquence** : un seul chemin de création
+  (l'IA remplace la saisie manuelle), en conservant le lien programme → session existant
+  (`session.training_id → training.program_id → programs`). Nettoyage UX, à faire une fois (A) validé.
+
+### Sous-découpage de (A) — 2026-06-27 (spec dépassait 1600 tokens)
+
+Spec A1 en cours : `spec-programme-generateur-interne.md`, branche `feat/programme-generateur-interne`.
+
+- **A2 — PDF 4 pages au format des 2 exemples** : différé. Nouveau template
+  `src/lib/templates/programme-formation-v2.ts` reproduisant les exemples Gamma (page 1 infos
+  générales, page 2 cartes « résumé des séquences », pages 3-4 déroulé en **format texte** par
+  séquence — objectifs opérationnels / contenus détaillés / méthodes / évaluation / durée), + variables
+  de rendu dans `resolve-variables.ts` (ex. `{{sequences_resume}}` + `{{sequences_detail}}` sur le
+  pattern `{{contenu_pedagogique}}` l.902-992), + routage du template v2 dans
+  `generate-programme/route.ts` quand le programme a la structure enrichie (sans casser le legacy).
+  Dépend de la structure de séquence enrichie livrée par A1. Donne le PDF qui remplace réellement Gamma.
+  Décision Wissam : « coller à mes 2 exemples » (rework template, pas réutiliser le template Loris).
+
+## Deferred from: code review spec-programme-generateur-interne A1 (2026-06-27)
+
+- **Reset du champ « précisions » au re-render (RHF `values`)** — `GenerateProgramDialog.tsx` utilise `values:` (form réactif) avec `precisions: ""`. Un re-render parent pendant la frappe peut écraser la saisie en cours de « précisions ». Fenêtre étroite (la génération est async, `onRefresh` ne fire qu'au succès → ferme le dialog). LOW. Fix propre : `defaultValues` + `form.reset({...})` à l'ouverture, sortir `precisions` de `values`.
+- **Sémantique de versioning décalée d'un cran** — `createProgramVersion` snapshote l'ANCIEN `content` sous une version pendant que `programs.version` passe à N+1 avec le NOUVEAU content. Design préexistant du service (le changement l'utilise tel quel, conformément au spec). À revoir globalement si l'historique des versions doit être strictement aligné. LOW.
+
+## Deferred from: code review spec-programme-pdf-format-exemples A2 (2026-06-27)
+
+- **Champs legacy voisins non échappés dans le PDF v2** — les résolveurs partagés `{{moyens_pedagogiques}}`, `{{dispositif_evaluation}}`, `{{equipe_pedagogique}}`, `{{profil_stagiaire}}`, `{{programme_prerequis}}` injectent le texte brut (pas d'`escapeProgrammeHtml`), alors que les 4 résolveurs A2 voisins échappent. Préexistant (touche aussi le template v1 + d'autres documents). Risque de régression si on change le comportement partagé (du HTML intentionnel pourrait exister). Trigger : si un `<`/`&`/balise dans un champ admin casse un PDF → centraliser l'échappement sur ces résolveurs après vérif des autres docs.
+- **Labels statiques page 1 (Informations pratiques / Délais) affichés même vides** — « Prérequis : », « Public cible : », « Lieu : » sont en HTML statique dans `programme-formation-v2.ts` → label orphelin si la valeur résolue est vide. Cosmétique. À peaufiner au calage visuel du PDF (rendre la ligne conditionnelle nécessiterait un rendu côté résolveur).
+- **Aperçu catalogue (generate-program-preview) affiche `[Lieu]` / `[Durée heures]`** — `previewSession` met `location`/dates à null, les résolveurs `{{lieu}}`/`{{duree_heures}}` rendent un placeholder `[…]`. Préexistant (convention placeholder). Visible seulement dans l'aperçu hub programme, pas dans le PDF formation réel.
+- **Programme sans aucune séquence → pages 2-4 quasi blanches** — les `.page-break` du template v2 sont statiques ; un content routé v2 via `general_objectives` seul (sans modules) produit des pages vides. Cas dégénéré (A1 génère toujours des séquences). À ne traiter que si observé.
+- **Effectif « maximum 12 » codé en dur** — conforme aux 2 exemples + au prompt client. Si l'effectif doit suivre `session.max_participants`, basculer sur le résolveur `{{effectif_max}}` (existe déjà).
+
+## Deferred from: code review spec-programme-chemin-unique C (2026-06-27)
+
+- **Route `import-pdf` orpheline** — `src/app/api/programs/import-pdf/route.ts` n'a plus aucun appelant depuis la suppression de l'écran `/admin/programs/import` (lot C). Le spec gelé limitait les suppressions à la page import + la route ai-extract, donc la route import-pdf a été LAISSÉE volontairement. À supprimer dans un lot de nettoyage (grep confirmé : 0 appelant ; expose un endpoint OpenAI/pdf-parse non référencé aux rôles admin). Vérifier zéro référence avant suppression.

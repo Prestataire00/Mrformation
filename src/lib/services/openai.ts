@@ -3,6 +3,7 @@
  * Utilisé pour la génération de contenu pédagogique et l'assistance à la création de programmes.
  */
 
+import { z } from "zod";
 import { withRetry } from "@/lib/ai/with-retry";
 import { wrapUserData } from "@/lib/ai/sanitize-prompt";
 
@@ -113,6 +114,19 @@ Formate le résultat en texte structuré avec des titres clairs.`;
 /**
  * Génère un programme de formation structuré (JSON) pour remplir la fiche programme
  */
+export interface GeneratedProgramModule {
+  id: number;
+  title: string;
+  duration_hours: number;
+  topics: string[];
+  // Lot A1 — séquence enrichie (additif, tous optionnels).
+  summary_objective?: string;
+  operational_objectives?: string[];
+  content_details?: string[];
+  methods?: string;
+  evaluation?: string;
+}
+
 export interface GeneratedProgramContent {
   description: string;
   objectives: string;
@@ -121,42 +135,80 @@ export interface GeneratedProgramContent {
   target_audience: string;
   prerequisites: string;
   location: string;
-  modules: { id: number; title: string; duration_hours: number; topics: string[] }[];
+  modules: GeneratedProgramModule[];
   evaluation_methods: string[];
   pedagogical_resources: string[];
   team_description: string;
   certification_results: string;
+  // Lot A1 — page 1 enrichie (additif, tous optionnels).
+  general_objectives?: string[];
+  access_terms?: string;
 }
 
 export async function generateStructuredProgram(params: {
   title: string;
   duration_hours?: number;
+  duration_days?: number;
   target_audience?: string;
+  precisions?: string;
 }): Promise<GeneratedProgramContent> {
-  const { title, duration_hours, target_audience } = params;
+  const { title, duration_hours, duration_days, target_audience, precisions } = params;
 
-  const prompt = `Tu es un expert en ingénierie pédagogique pour MR FORMATION, un organisme de formation professionnelle français certifié Qualiopi.
+  // Lot A1 — Prompt métier fourni par le client (Design Notes du spec),
+  // paramétré {nom} / {jours} / {heures} / {precisions}. Sortie JSON contrainte.
+  const joursLabel = duration_days ? `${duration_days} jours` : "le nombre de jours adapté";
+  const heuresLabel = duration_hours ? `${duration_hours} heures` : "le volume horaire adapté";
 
-Génère le contenu complet d'un programme de formation pour :
-Titre : "${title}"
-${duration_hours ? `Durée souhaitée : environ ${duration_hours} heures` : ""}
-${target_audience ? `Public cible : ${target_audience}` : ""}
+  const prompt = `Tu es un concepteur pédagogique senior pour un organisme de formation en France, certifié Qualiopi.
+
+THÉMATIQUE : "${title}" sur ${joursLabel} soit ${heuresLabel}.
+
+Génère un programme détaillé : pour chaque séquence, donne objectifs opérationnels, contenus, méthodes, évaluations et durée.
+
+Infos générales attendues :
+- objectifs généraux de la formation
+- effectif maximum de 12 personnes
+- prérequis
+- public cible
+- lieu
+- délais et modalités d'accès
+- méthodes pédagogiques (alternance d'apports théoriques et d'ateliers pratiques, ludo-pédagogie, support de synthèse remis)
+- modalités d'évaluation (évaluation des acquis en continu, évaluation à chaud, émargements, accessibilité / situation de handicap)
+
+Résumé des séquences : pour chaque séquence, un titre + un objectif court.
+Détail par séquence : objectifs opérationnels, contenus détaillés avec exemples concrets, méthodes, évaluation, durée.
+
+Consignes de rédaction : verbes d'action, granularité fine, langage professionnel, exemples concrets, et respect des normes DPC / Titre Professionnel si elles sont présentes dans les précisions suivantes.
+
+PRÉCISIONS DU FORMATEUR : ${precisions && precisions.trim() ? precisions.trim() : "aucune précision fournie"}
+${target_audience ? `PUBLIC CIBLE IMPOSÉ : ${target_audience}` : ""}
 
 Réponds UNIQUEMENT en JSON valide (pas de markdown, pas de commentaires) avec cette structure exacte :
 {
   "description": "Description détaillée du programme sur plusieurs lignes, avec le déroulé jour par jour",
   "objectives": "1 - Premier objectif\\n2 - Deuxième objectif\\n3 - Troisième objectif\\n4 - Quatrième objectif",
-  "duration_hours": 14,
-  "duration_days": 2,
-  "target_audience": "Public visé",
+  "general_objectives": ["Objectif général 1", "Objectif général 2"],
+  "duration_hours": ${duration_hours ?? 14},
+  "duration_days": ${duration_days ?? 2},
+  "target_audience": "Public visé (max 12 personnes)",
   "prerequisites": "Prérequis nécessaires ou Aucun",
   "location": "Formation en présentiel",
+  "access_terms": "Délais et modalités d'accès à la formation",
   "modules": [
-    { "id": 1, "title": "Titre du module 1", "duration_hours": 3.5, "topics": ["Sujet 1", "Sujet 2"] },
-    { "id": 2, "title": "Titre du module 2", "duration_hours": 3.5, "topics": ["Sujet 3", "Sujet 4"] }
+    {
+      "id": 1,
+      "title": "Titre de la séquence 1",
+      "duration_hours": 3.5,
+      "topics": ["Sujet 1", "Sujet 2"],
+      "summary_objective": "Objectif court résumant la séquence",
+      "operational_objectives": ["Être capable de…", "Être capable de…"],
+      "content_details": ["Contenu détaillé avec exemple concret", "Contenu détaillé avec exemple concret"],
+      "methods": "Méthodes pédagogiques de la séquence (apports théoriques, atelier pratique…)",
+      "evaluation": "Modalités d'évaluation de la séquence"
+    }
   ],
-  "evaluation_methods": ["Test de positionnement", "Évaluation des acquis (tests, exercices, études de cas et mises en situation)", "Évaluation de l'impact de la formation"],
-  "pedagogical_resources": ["Alternance d'apports théoriques et d'ateliers pratiques", "Ateliers de mise en pratique et groupe de parole", "Ludo pédagogie pour faciliter l'ancrage"],
+  "evaluation_methods": ["Test de positionnement", "Évaluation des acquis en continu (tests, exercices, études de cas et mises en situation)", "Évaluation à chaud", "Émargements", "Accessibilité / situation de handicap prise en compte"],
+  "pedagogical_resources": ["Alternance d'apports théoriques et d'ateliers pratiques", "Ludo-pédagogie pour faciliter l'ancrage", "Support de synthèse remis aux participants"],
   "team_description": "Formateur expert du domaine avec expérience terrain",
   "certification_results": "Attestation de fin de formation"
 }`;
@@ -166,16 +218,71 @@ Réponds UNIQUEMENT en JSON valide (pas de markdown, pas de commentaires) avec c
       { role: "system", content: "Tu es un assistant spécialisé en formation professionnelle. Tu réponds UNIQUEMENT en JSON valide." },
       { role: "user", content: prompt },
     ],
-    { model: "gpt-4o-mini", temperature: 0.7, max_tokens: 3000, json: true }
+    { model: "gpt-4o-mini", temperature: 0.7, max_tokens: 8000, json: true }
   );
 
-  // Parse JSON from response (handle potential markdown wrapping)
+  // Parse JSON from response (handle potential markdown wrapping).
+  // Si le parse échoue, on conserve le comportement historique : throw →
+  // la route renvoie une erreur gérée.
   let jsonStr = result.content.trim();
   if (jsonStr.startsWith("```")) {
     jsonStr = jsonStr.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
   }
 
-  return JSON.parse(jsonStr) as GeneratedProgramContent;
+  const parsed = JSON.parse(jsonStr) as unknown;
+
+  // Normalisation tolérante : l'IA peut renvoyer des nombres en string ou
+  // omettre `modules`. On ne fait PLUS confiance aveuglément au JSON ; on
+  // coerce les champs numériques et on garantit que `modules` est un tableau.
+  // Un schéma Zod local tolérant gère la coercion sans introduire de `any`.
+  const tolerantModuleSchema = z.object({
+    id: z.coerce.number().optional(),
+    title: z.string().optional(),
+    duration_hours: z.coerce.number().optional(),
+    topics: z.array(z.string()).optional(),
+    summary_objective: z.string().optional(),
+    operational_objectives: z.array(z.string()).optional(),
+    content_details: z.array(z.string()).optional(),
+    methods: z.string().optional(),
+    evaluation: z.string().optional(),
+  });
+  const tolerantSchema = z.object({
+    modules: z.array(tolerantModuleSchema).default([]),
+    duration_hours: z.coerce.number().optional(),
+    duration_days: z.coerce.number().optional(),
+  });
+
+  const norm = tolerantSchema.safeParse(parsed);
+  // Base : l'objet parsé tel quel ; on superpose la normalisation tolérante.
+  const base = (parsed && typeof parsed === "object" ? parsed : {}) as Record<string, unknown>;
+
+  const normalized: GeneratedProgramContent = {
+    ...(base as Partial<GeneratedProgramContent>),
+    description: typeof base.description === "string" ? base.description : "",
+    objectives: typeof base.objectives === "string" ? base.objectives : "",
+    target_audience: typeof base.target_audience === "string" ? base.target_audience : "",
+    prerequisites: typeof base.prerequisites === "string" ? base.prerequisites : "",
+    location: typeof base.location === "string" ? base.location : "",
+    team_description: typeof base.team_description === "string" ? base.team_description : "",
+    certification_results: typeof base.certification_results === "string" ? base.certification_results : "",
+    evaluation_methods: Array.isArray(base.evaluation_methods) ? (base.evaluation_methods as string[]) : [],
+    pedagogical_resources: Array.isArray(base.pedagogical_resources) ? (base.pedagogical_resources as string[]) : [],
+    duration_hours: norm.success && norm.data.duration_hours != null ? norm.data.duration_hours : 0,
+    duration_days: norm.success && norm.data.duration_days != null ? norm.data.duration_days : 0,
+    modules: (norm.success ? norm.data.modules : []).map((m, i) => ({
+      id: m.id ?? i + 1,
+      title: m.title ?? "",
+      duration_hours: m.duration_hours ?? 0,
+      topics: m.topics ?? [],
+      summary_objective: m.summary_objective,
+      operational_objectives: m.operational_objectives,
+      content_details: m.content_details,
+      methods: m.methods,
+      evaluation: m.evaluation,
+    })),
+  };
+
+  return normalized;
 }
 
 /**

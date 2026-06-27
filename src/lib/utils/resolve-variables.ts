@@ -134,6 +134,34 @@ const MODE_LABELS: Record<string, string> = {
 };
 
 /**
+ * Échappe le texte utilisateur avant injection dans le HTML des templates
+ * programme (Lot A2). Évite que le contenu IA / saisi casse le markup.
+ */
+function escapeProgrammeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/**
+ * Forme d'une séquence enrichie (Lot A1) lue par les résolveurs A2.
+ * Tous les champs sont optionnels : les modules legacy restent valides.
+ */
+type ProgrammeModuleA2 = {
+  title?: string;
+  duration_hours?: number;
+  summary_objective?: string;
+  operational_objectives?: string[];
+  content_details?: string[];
+  methods?: string;
+  evaluation?: string;
+  topics?: string[];
+};
+
+/**
  * Rendu d'une cellule d'émargement non signée, comportement date-aware.
  *
  * Spec : docs/superpowers/specs/2026-05-17-emargement-collectif-fix-default-status-design.md
@@ -991,6 +1019,139 @@ export function resolveVariables(content: string, data: ResolveContext): string 
       return sections.join("\n");
     })(),
 
+    // === Variables Lot A2 — Programme PDF format exemples (template v2) ===
+    // Lisent la structure enrichie A1 (programs.content). Repli propre : si le
+    // champ source est absent → chaîne vide (PAS de placeholder visible), sauf
+    // texte standard pour les délais d'accès.
+    "{{objectifs_generaux}}": (() => {
+      // Anti-titre-orphelin : le titre de section est désormais émis ICI (et non
+      // plus statiquement dans le template v2). Quand il n'y a aucun contenu, on
+      // renvoie "" → ni titre, ni bloc vide. Le markup du titre doit rester
+      // identique à `programme-formation-v2.ts` (<h2 class="section">…</h2>).
+      const SECTION_TITLE = `<h2 class="section">Objectifs généraux</h2>`;
+      const c = (data.session?.program?.content || {}) as Record<string, unknown>;
+      const list = Array.isArray(c.general_objectives)
+        ? (c.general_objectives as unknown[]).filter(
+            (o): o is string => typeof o === "string" && o.trim() !== "",
+          )
+        : [];
+      if (list.length > 0) {
+        return `${SECTION_TITLE}<ul class="bullets">${list.map((o) => `<li>${escapeProgrammeHtml(o)}</li>`).join("")}</ul>`;
+      }
+      // Repli : objectifs racine multi-lignes (content.objectives ou program.objectives).
+      const raw =
+        (typeof c.objectives === "string" ? c.objectives : "") ||
+        data.session?.program?.objectives ||
+        "";
+      const lines = raw
+        .split(/\n+/)
+        .map((l) => l.trim().replace(/^[•\-*]\s*/, ""))
+        .filter(Boolean);
+      if (lines.length === 0) return "";
+      return `${SECTION_TITLE}<ul class="bullets">${lines.map((l) => `<li>${escapeProgrammeHtml(l)}</li>`).join("")}</ul>`;
+    })(),
+    "{{delais_modalites_acces}}": (() => {
+      const c = (data.session?.program?.content || {}) as Record<string, unknown>;
+      const terms = typeof c.access_terms === "string" ? c.access_terms.trim() : "";
+      if (terms) return escapeProgrammeHtml(terms).replace(/\n/g, "<br>");
+      return "Accès sous 15 jours après validation de l'inscription. Inscription par contact direct avec l'organisme. Convocation transmise par e-mail.";
+    })(),
+    // Durée affichée sur le PDF programme v2 : priorité au programme (content),
+    // repli sur les heures planifiées de la session ; évite "[Durée heures]".
+    "{{programme_duree}}": (() => {
+      const c = (data.session?.program?.content || {}) as Record<string, unknown>;
+      const hours =
+        typeof c.duration_hours === "number"
+          ? c.duration_hours
+          : data.session?.planned_hours ?? null;
+      const days = typeof c.duration_days === "number" ? c.duration_days : null;
+      const parts: string[] = [];
+      if (hours != null) parts.push(`${hours} heure(s)`);
+      if (days != null) parts.push(`${days} jour(s)`);
+      return parts.length ? parts.join(" — ") : "À définir";
+    })(),
+    "{{sequences_resume}}": (() => {
+      // Titre de section émis ici (anti-titre-orphelin, cf {{objectifs_generaux}}).
+      const SECTION_TITLE = `<h2 class="section">Résumé des séquences</h2>`;
+      const c = (data.session?.program?.content || {}) as Record<string, unknown>;
+      const modules = Array.isArray(c.modules)
+        ? (c.modules as ProgrammeModuleA2[])
+        : [];
+      if (modules.length === 0) return "";
+      const cards = modules
+        // Skip les modules sans titre NI summary_objective (carte vide inutile).
+        .filter((m) => {
+          const hasTitle = typeof m.title === "string" && m.title.trim() !== "";
+          const hasSummary =
+            typeof m.summary_objective === "string" && m.summary_objective.trim() !== "";
+          return hasTitle || hasSummary;
+        })
+        .map((m) => {
+          const title = escapeProgrammeHtml(m.title || "");
+          const duration =
+            typeof m.duration_hours === "number" ? `<div class="seq-duration">${m.duration_hours}h</div>` : "";
+          // Garde cosmétique : pas de <p></p> quand summary_objective est vide.
+          const summary =
+            typeof m.summary_objective === "string" && m.summary_objective.trim() !== ""
+              ? `<p>${escapeProgrammeHtml(m.summary_objective)}</p>`
+              : "";
+          return `<div class="seq-card"><h3>${title}</h3>${duration}${summary}</div>`;
+        })
+        .join("");
+      // Tous les modules ont été filtrés → rien à afficher (ni titre ni grille).
+      if (cards === "") return "";
+      return `${SECTION_TITLE}<div class="seq-grid">${cards}</div>`;
+    })(),
+    "{{sequences_detail}}": (() => {
+      // Titre de section émis ici (anti-titre-orphelin, cf {{objectifs_generaux}}).
+      const SECTION_TITLE = `<h2 class="section">Déroulé pédagogique détaillé</h2>`;
+      const c = (data.session?.program?.content || {}) as Record<string, unknown>;
+      const modules = Array.isArray(c.modules)
+        ? (c.modules as ProgrammeModuleA2[])
+        : [];
+      if (modules.length === 0) return "";
+      const renderList = (label: string, items?: string[]): string => {
+        const clean = Array.isArray(items)
+          ? items.filter((i) => typeof i === "string" && i.trim() !== "")
+          : [];
+        if (clean.length === 0) return "";
+        return `<p class="seq-lbl">${label}</p><ul class="bullets">${clean
+          .map((i) => `<li>${escapeProgrammeHtml(i)}</li>`)
+          .join("")}</ul>`;
+      };
+      const renderText = (label: string, value?: string): string => {
+        if (typeof value !== "string" || value.trim() === "") return "";
+        return `<p class="seq-lbl">${label}</p><p>${escapeProgrammeHtml(value).replace(/\n/g, "<br>")}</p>`;
+      };
+      const blocs = modules
+        .map((m) => {
+          const hasTitle = typeof m.title === "string" && m.title.trim() !== "";
+          const duration =
+            typeof m.duration_hours === "number" ? ` (${m.duration_hours}h)` : "";
+          let body =
+            renderList("Objectifs opérationnels", m.operational_objectives) +
+            renderList("Contenus détaillés", m.content_details) +
+            renderText("Méthodes pédagogiques", m.methods) +
+            renderText("Évaluation", m.evaluation);
+          // Repli : module sans aucun champ enrichi mais avec topics legacy.
+          if (body === "") {
+            body = renderList("Contenus", m.topics);
+          }
+          // Skip total : ni titre, ni aucun corps (champs enrichis ni topics).
+          if (!hasTitle && body === "") return "";
+          // Évite <h3></h3> vide : pas de titre mais du corps → on commence
+          // directement par le corps (pas d'en-tête vide).
+          const head = hasTitle
+            ? `<h3>${escapeProgrammeHtml(m.title || "")}${duration}</h3>`
+            : "";
+          return `<div class="sequence">${head}${body}</div>`;
+        })
+        .join("");
+      // Tous les modules ont été filtrés → rien à afficher (ni titre ni blocs).
+      if (blocs === "") return "";
+      return `${SECTION_TITLE}${blocs}`;
+    })(),
+
     // Organisme (depuis entity settings ou fallback hardcodé)
     "{{siret_organisme}}": data.entity?.siret || "[SIRET organisme]",
     "{{nda_organisme}}": data.entity?.nda || "[NDA]",
@@ -1511,6 +1672,12 @@ export const ALIAS_TO_VARIABLE_KEY: Record<string, string> = {
   "Dispositif d'évaluation": "{{dispositif_evaluation}}",
   "Taux de satisfaction": "{{taux_satisfaction}}",
   "Effectif max": "{{effectif_max}}",
+  // === Lot A2-Programme PDF format exemples (template v2) ===
+  "Objectifs généraux": "{{objectifs_generaux}}",
+  "Délais et modalités d'accès": "{{delais_modalites_acces}}",
+  "Durée du programme": "{{programme_duree}}",
+  "Résumé des séquences": "{{sequences_resume}}",
+  "Détail des séquences": "{{sequences_detail}}",
   // === Story B-Convocation Apprenant ===
   "Nom de l'apprenant": "{{nom_apprenant}}",
   "Email de l'apprenant": "{{email_apprenant}}",
@@ -1717,6 +1884,12 @@ export const VARIABLE_KEYS = [
   "{{effectif_max}}",
   "{{liste_objectifs_pedagogiques}}",
   "{{contenu_pedagogique}}",
+  // Lot A2-Programme PDF format exemples (template v2)
+  "{{objectifs_generaux}}",
+  "{{delais_modalites_acces}}",
+  "{{programme_duree}}",
+  "{{sequences_resume}}",
+  "{{sequences_detail}}",
   // Story B-Convocation Apprenant
   "{{dates_detail}}",
   "{{url_connexion}}",

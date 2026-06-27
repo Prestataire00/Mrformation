@@ -20,6 +20,8 @@ import {
   PROGRAMME_FORMATION_HTML,
   PROGRAMME_FORMATION_FOOTER_TEMPLATE,
 } from "@/lib/templates/programme-formation";
+import { PROGRAMME_FORMATION_V2_HTML } from "@/lib/templates/programme-formation-v2";
+import { isEnrichedProgramContent } from "@/lib/utils/program-content";
 import {
   resolveDocumentVariables,
   loadEntitySettings,
@@ -86,7 +88,12 @@ export async function POST(request: NextRequest) {
       session: session as unknown as Session,
       entity,
     };
-    const resolvedHtml = resolveDocumentVariables(PROGRAMME_FORMATION_HTML, context);
+    // Lot A2 : programme enrichi → template v2 (format exemples client) ;
+    // sinon template legacy (aucune régression).
+    const programContent = (session as { program?: { content?: unknown } }).program?.content;
+    const isEnriched = isEnrichedProgramContent(programContent);
+    const tpl = isEnriched ? PROGRAMME_FORMATION_V2_HTML : PROGRAMME_FORMATION_HTML;
+    const resolvedHtml = resolveDocumentVariables(tpl, context);
     const resolvedFooter = resolveDocumentVariables(PROGRAMME_FORMATION_FOOTER_TEMPLATE, context);
 
     const engine = createDefaultEngine();
@@ -105,6 +112,8 @@ export async function POST(request: NextRequest) {
           program_id: (session as { program_id?: string }).program_id ?? "",
           program_updated_at:
             ((session as { program?: { updated_at?: string } }).program?.updated_at) ?? "",
+          // Invalide le cache au changement de template (v1 ↔ v2).
+          template_version: isEnriched ? "v2" : "v1",
         },
       },
       options: {

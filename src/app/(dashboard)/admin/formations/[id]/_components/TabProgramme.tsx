@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import {
-  FileText, Download, Trash2, Loader2, BookOpen,
+  FileText, Download, Trash2, Loader2, BookOpen, Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -19,8 +19,17 @@ import {
 import { useToast } from "@/components/ui/use-toast";
 import { isPedagogieV2Epic2Enabled } from "@/lib/feature-flags";
 import { copyProgramElearningToSession } from "@/lib/services/pedagogie-v2-snapshot";
-import type { Session, Program } from "@/lib/types";
+import type { Session, Program, ProgramContent } from "@/lib/types";
 import { getFormationKind } from "@/lib/utils/formation-companies";
+import { GenerateProgramDialog } from "@/components/programs/GenerateProgramDialog";
+import {
+  createProgram,
+  createProgramVersion,
+  updateProgram,
+  deleteProgram,
+} from "@/lib/services/programs";
+import { programContentSchema } from "@/lib/validations/program";
+import type { GeneratedProgramContent } from "@/lib/services/openai";
 
 interface Props {
   formation: Session;
@@ -36,6 +45,7 @@ export function TabProgramme({ formation, onRefresh }: Props) {
   const [programs, setPrograms] = useState<Program[]>([]);
   const [showAssign, setShowAssign] = useState(false);
   const [selectedProgramId, setSelectedProgramId] = useState("");
+  const [showGenerate, setShowGenerate] = useState(false);
 
   const program = formation.program;
 
@@ -144,6 +154,146 @@ export function TabProgramme({ formation, onRefresh }: Props) {
     }
   };
 
+  // Lot A1 — Accepter un programme généré par l'IA.
+  //  - Aucun programme attribué → createProgram (entité de la formation)
+  //    puis rattachement via sessions.program_id (même mécanisme que
+  //    l'attribution manuelle existante).
+  //  - Programme existant → createProgramVersion (snapshot) puis
+  //    updateProgram(content) sur le programme attribué.
+  // Refetch dans les deux cas. Lève en cas d'erreur (le dialog reste ouvert).
+  // Le 2e argument `title` (saisi dans le dialog) n'est pas utilisé ici :
+  // le titre du programme reste dérivé de la formation. Voie standalone (hub)
+  // l'exploite. Cf. Lot C.
+  const handleAcceptGenerated = async (ai: GeneratedProgramContent): Promise<void> => {
+    const entityId = formation.entity_id;
+
+    const content: ProgramContent = {
+      modules: ai.modules?.map((m) => ({
+        id: m.id,
+        title: m.title,
+        duration_hours: m.duration_hours,
+        topics: m.topics,
+        summary_objective: m.summary_objective,
+        operational_objectives: m.operational_objectives,
+        content_details: m.content_details,
+        methods: m.methods,
+        evaluation: m.evaluation,
+      })),
+      // PATCH 5 — aligner le fallback durée du content sur celui de la colonne :
+      // si l'IA omet la durée, on retombe sur la valeur du programme existant
+      // (sinon le content perdrait l'ancienne valeur alors que la colonne la garde).
+      duration_hours: ai.duration_hours ?? program?.duration_hours ?? program?.content?.duration_hours,
+      duration_days: ai.duration_days ?? program?.content?.duration_days,
+      location: ai.location,
+      target_audience: ai.target_audience,
+      prerequisites: ai.prerequisites,
+      team_description: ai.team_description,
+      evaluation_methods: ai.evaluation_methods,
+      pedagogical_resources: ai.pedagogical_resources,
+      certification_results: ai.certification_results,
+      general_objectives: ai.general_objectives,
+      access_terms: ai.access_terms,
+    };
+
+    // PATCH 1 — garde-fou de persistance : ne rien écrire en base si la
+    // génération n'a pas produit de séquences exploitables (modules vide →
+    // programContentSchema exige min 1). On arrête proprement avec un toast.
+    const contentCheck = programContentSchema.safeParse(content);
+    if (!contentCheck.success) {
+      toast({
+        title: "Génération inexploitable",
+        description: "La génération n'a pas produit de séquences exploitables, réessayez.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      if (program) {
+        // Programme existant : nouvelle version + mise à jour du contenu.
+        const versionResult = await createProgramVersion(
+          supabase,
+          program.id,
+          entityId,
+          program.version ?? 1,
+          program.content ?? null,
+        );
+        if (!versionResult.ok) throw new Error(versionResult.error.message);
+
+        const updateResult = await updateProgram(supabase, program.id, entityId, {
+          description: ai.description || program.description,
+          objectives: ai.objectives || program.objectives,
+          content,
+          duration_hours: ai.duration_hours ?? program.duration_hours,
+        });
+        if (!updateResult.ok) throw new Error(updateResult.error.message);
+      } else {
+        // Aucun programme : on en crée un puis on le rattache à la session.
+        const createResult = await createProgram(supabase, entityId, {
+          title: formation.title,
+          description: ai.description || null,
+          objectives: ai.objectives || null,
+          content,
+          price: null,
+          tva_rate: null,
+          duration_hours: ai.duration_hours ?? null,
+          nsf_code: null,
+          nsf_label: null,
+          is_apprenticeship: false,
+          bpf_objective: null,
+          bpf_funding_type: null,
+        });
+        if (!createResult.ok) throw new Error(createResult.error.message);
+
+        // PATCH 2 — atomicité create + rattachement : si la mise à jour de
+        // sessions.program_id échoue, le programme tout juste créé resterait
+        // orphelin (et un nouvel essai en recréerait un autre → duplication).
+        // On nettoie donc en best-effort le programme créé avant de remonter
+        // l'erreur, pour ne laisser aucun orphelin.
+        try {
+          const { error: attachError } = await supabase
+            .from("sessions")
+            .update({ program_id: createResult.program.id })
+            .eq("id", formation.id)
+            .eq("entity_id", entityId);
+          if (attachError) throw attachError;
+        } catch (attachErr) {
+          // Cleanup best-effort : suppression du programme orphelin (catch
+          // silencieux si le cleanup lui-même échoue — on remonte l'erreur
+          // initiale du rattachement).
+          try {
+            await deleteProgram(supabase, createResult.program.id, entityId);
+          } catch {
+            // ignore : cleanup best-effort
+          }
+          throw attachErr;
+        }
+      }
+
+      toast({
+        title: "Programme enregistré",
+        description: "Le programme généré a été enregistré (nouvelle version).",
+      });
+      await onRefresh();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Impossible d'enregistrer le programme";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
+      throw err instanceof Error ? err : new Error(message);
+    }
+  };
+
+  // Pré-remplissage du dialog : durée depuis la formation (override →
+  // computed → planned), public cible si renseigné au niveau session ou
+  // programme.
+  const generateDefaults = {
+    title: formation.title,
+    durationHours:
+      formation.override_hours ?? formation.computed_hours ?? formation.planned_hours ?? null,
+    durationDays: program?.content?.duration_days ?? null,
+    targetAudience:
+      formation.target_audience ?? program?.content?.target_audience ?? null,
+  };
+
   const handleDownloadPdf = async () => {
     if (!program) return;
     setSaving(true);
@@ -220,6 +370,13 @@ export function TabProgramme({ formation, onRefresh }: Props) {
                   {saving ? "Génération…" : "Télécharger le programme en pdf"}
                 </Button>
                 <Button
+                  variant="outline"
+                  className="border-purple-300 text-purple-700 hover:bg-purple-50"
+                  onClick={() => setShowGenerate(true)}
+                >
+                  <Sparkles className="h-4 w-4 mr-2" /> Générer le programme (IA)
+                </Button>
+                <Button
                   variant="destructive"
                   onClick={() => setConfirmRemove(true)}
                 >
@@ -249,9 +406,18 @@ export function TabProgramme({ formation, onRefresh }: Props) {
             <p className="text-muted-foreground">
               Aucun programme attribué à cette formation.
             </p>
-            <Button onClick={() => setShowAssign(true)}>
-              <BookOpen className="h-4 w-4 mr-2" /> Attribuer un programme
-            </Button>
+            <div className="flex flex-wrap gap-3">
+              <Button onClick={() => setShowAssign(true)}>
+                <BookOpen className="h-4 w-4 mr-2" /> Attribuer un programme
+              </Button>
+              <Button
+                variant="outline"
+                className="border-purple-300 text-purple-700 hover:bg-purple-50"
+                onClick={() => setShowGenerate(true)}
+              >
+                <Sparkles className="h-4 w-4 mr-2" /> Générer le programme (IA)
+              </Button>
+            </div>
 
             {/* DPC Toggle même sans programme */}
             <div className="flex items-center gap-3 pt-4 border-t">
@@ -314,6 +480,17 @@ export function TabProgramme({ formation, onRefresh }: Props) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Dialog génération IA (Lot A1) */}
+      <GenerateProgramDialog
+        open={showGenerate}
+        onOpenChange={setShowGenerate}
+        defaultTitle={generateDefaults.title}
+        defaultDurationHours={generateDefaults.durationHours}
+        defaultDurationDays={generateDefaults.durationDays}
+        defaultTargetAudience={generateDefaults.targetAudience}
+        onAccept={handleAcceptGenerated}
+      />
     </div>
   );
 }
