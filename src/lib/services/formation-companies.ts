@@ -93,6 +93,68 @@ export async function addCompanyToSession(
   return { ok: true };
 }
 
+export type UpdateCompanyInput = {
+  companyId: string;
+  sessionId: string;
+  entityId: string;
+  amount?: number | null;
+  email?: string | null;
+  reference?: string | null;
+};
+
+/**
+ * Met à jour les champs éditables d'une entreprise rattachée à une session
+ * (amount, email, reference) — Story 1.2.
+ *
+ * Filtrage multi-tenant : la requête vérifie que la session appartient bien à
+ * l'entity_id fourni via un filtre sur la table `sessions` jointe. Même si
+ * `formation_companies` n'a pas de colonne `entity_id` propre, on vérifie
+ * l'appartenance via session_id + entity_id.
+ *
+ * Après un UPDATE réussi, appelle `syncSessionTotalPrice()` pour recalculer
+ * `sessions.total_price`. En cas d'erreur sur l'UPDATE, le total n'est PAS
+ * resyncé (pour ne pas écrire une valeur partielle).
+ */
+export async function updateCompanyOnSession(
+  supabase: SupabaseClient,
+  input: UpdateCompanyInput,
+): Promise<ServiceResult<Record<never, never>>> {
+  // Vérification multi-tenant : la session doit appartenir à l'entity
+  const { data: session, error: sessionErr } = await supabase
+    .from("sessions")
+    .select("id")
+    .eq("id", input.sessionId)
+    .eq("entity_id", input.entityId)
+    .maybeSingle();
+
+  if (sessionErr || !session) {
+    return {
+      ok: false,
+      error: { message: "Session introuvable ou accès refusé." },
+    };
+  }
+
+  const { error } = await supabase
+    .from("formation_companies")
+    .update({
+      amount: input.amount ?? null,
+      email: input.email ?? null,
+      reference: input.reference ?? null,
+    })
+    .eq("id", input.companyId)
+    .eq("session_id", input.sessionId);
+
+  if (error) {
+    return { ok: false, error: { message: error.message, code: error.code } };
+  }
+
+  // Sync total_price SEULEMENT après un UPDATE réussi (spec : ne pas
+  // resynchroniser sur une valeur partielle en cas d'erreur).
+  await syncSessionTotalPrice(supabase, input.sessionId);
+
+  return { ok: true };
+}
+
 /**
  * Détache une entreprise d'une session (suppression de la ligne formation_companies).
  * Le filtre par `sessionId` est défense en profondeur : la RLS Supabase devrait déjà

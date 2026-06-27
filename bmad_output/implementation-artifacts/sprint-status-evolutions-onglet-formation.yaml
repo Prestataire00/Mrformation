@@ -37,15 +37,15 @@ execution_order:
   - 4-1-couleur-libre-creneau              # 8 — migration SQL + UI, M
 
 development_status:
-  epic-1: backlog
-  1-1-editer-formateur-integre: backlog
-  1-2-editer-entreprise-tarif: backlog
+  epic-1: done
+  1-1-editer-formateur-integre: done
+  1-2-editer-entreprise-tarif: done
   epic-1-retrospective: optional
 
-  epic-2: in-progress
+  epic-2: done
   2-1-hub-vue-kanban-defaut: done
   2-2-tri-sessions-recent-en-haut: done
-  2-3-planification-programme-titre-auto: backlog
+  2-3-planification-programme-titre-auto: done
   epic-2-retrospective: optional
 
   epic-3: in-progress

@@ -201,6 +201,8 @@ export default function FormationsPage() {
   const [formData, setFormData] = useState<SessionFormData>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [programs, setPrograms] = useState<ProgramOption[]>([]);
+  // Tracks whether the user manually edited the title — prevents auto-overwrite on program change.
+  const [titleCustomized, setTitleCustomized] = useState(false);
 
   // View mode
   const [viewMode, setViewMode] = useState<"grid" | "kanban">(() => {
@@ -444,6 +446,7 @@ export default function FormationsPage() {
 
   function openCreateForm() {
     setFormData(emptyForm);
+    setTitleCustomized(false);
     setShowCreateForm(true);
     fetchPrograms();
   }
@@ -578,13 +581,59 @@ export default function FormationsPage() {
       {/* Inline creation form */}
       {showCreateForm && (
         <div className="border rounded-lg p-4 bg-gray-50/50 space-y-3">
+          {/* ── Programme en premier (recommandé, optionnel) ── */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-gray-700">Programme pédagogique <span className="text-gray-400 font-normal">(recommandé)</span></label>
+            <div className="flex items-center gap-3">
+              <div className="w-72">
+                <SearchSelect
+                  options={programs.map((p) => ({ value: p.id, label: p.title, sublabel: p.description || "" }))}
+                  onSelect={(v) => {
+                    const prog = programs.find((p) => p.id === v);
+                    setFormData((f) => {
+                      const shouldAutofill = !titleCustomized || !f.title.trim();
+                      return {
+                        ...f,
+                        program_id: v,
+                        title: shouldAutofill && prog ? prog.title : f.title,
+                      };
+                    });
+                    // If the title was empty, this auto-fill doesn't count as "customized"
+                  }}
+                  placeholder="Rechercher un programme…"
+                />
+              </div>
+              {formData.program_id && (
+                <button
+                  onClick={() => setFormData((f) => ({ ...f, program_id: "" }))}
+                  className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1"
+                >
+                  {programs.find(p => p.id === formData.program_id)?.title} ✕
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Preview du contenu programme — montre à l'admin ce qui sera repris
+              dans les documents générés (convention, programme PDF, attestations). */}
+          {formData.program_id && (() => {
+            const selected = programs.find((p) => p.id === formData.program_id);
+            if (!selected) return null;
+            return <ProgramContentPreview program={selected} />;
+          })()}
+
+          {/* ── Titre + Dates + Mode ── */}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
             <Input
               placeholder="Titre de la session *"
               autoFocus
               className="h-8 text-sm"
               value={formData.title}
-              onChange={(e) => setFormData((f) => ({ ...f, title: e.target.value }))}
+              onChange={(e) => {
+                const val = e.target.value;
+                setFormData((f) => ({ ...f, title: val }));
+                setTitleCustomized(val.trim().length > 0);
+              }}
             />
             <Input
               type="date"
@@ -614,6 +663,8 @@ export default function FormationsPage() {
               </SelectContent>
             </Select>
           </div>
+
+          {/* ── Type + Sous-traitance + Actions ── */}
           <div className="flex items-center gap-3 flex-wrap">
             <Select value={formData.type} onValueChange={(v) => setFormData((f) => ({ ...f, type: v as "intra" | "inter" }))}>
               <SelectTrigger className="h-8 text-sm w-40"><SelectValue placeholder="Type" /></SelectTrigger>
@@ -622,18 +673,6 @@ export default function FormationsPage() {
                 <SelectItem value="inter">INTER — Inter-entreprises</SelectItem>
               </SelectContent>
             </Select>
-            <div className="w-48">
-              <SearchSelect
-                options={programs.map((p) => ({ value: p.id, label: p.title, sublabel: p.description || "" }))}
-                onSelect={(v) => setFormData((f) => ({ ...f, program_id: v }))}
-                placeholder="Programme (optionnel)"
-              />
-              {formData.program_id && (
-                <button onClick={() => setFormData((f) => ({ ...f, program_id: "" }))} className="text-[10px] text-gray-400 hover:text-gray-600 mt-0.5">
-                  {programs.find(p => p.id === formData.program_id)?.title} ✕
-                </button>
-              )}
-            </div>
             <label className="flex items-center gap-2 text-sm cursor-pointer">
               <Checkbox
                 checked={formData.is_subcontracted}
@@ -650,14 +689,6 @@ export default function FormationsPage() {
               {saving ? "Création…" : "Créer"}
             </Button>
           </div>
-
-          {/* Preview du contenu programme — montre à l'admin ce qui sera repris
-              dans les documents générés (convention, programme PDF, attestations). */}
-          {formData.program_id && (() => {
-            const selected = programs.find((p) => p.id === formData.program_id);
-            if (!selected) return null;
-            return <ProgramContentPreview program={selected} />;
-          })()}
         </div>
       )}
 

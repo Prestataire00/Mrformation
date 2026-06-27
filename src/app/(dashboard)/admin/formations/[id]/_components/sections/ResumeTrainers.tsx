@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Plus, Trash2, Loader2, Sparkles, Clock, CalendarDays, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { Plus, Trash2, Pencil, Loader2, Sparkles, Clock, CalendarDays, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +18,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { getInitials } from "@/lib/utils";
 import { getTrainerStats } from "@/lib/services/trainer-hours";
 import type { Session, Trainer, FormationTrainer } from "@/lib/types";
+import { EditFormationTrainerDialog } from "./EditFormationTrainerDialog";
 
 interface Props {
   formation: Session;
@@ -36,6 +37,7 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
   const [selectedHoursDone, setSelectedHoursDone] = useState("");
   const [selectedAgreedCost, setSelectedAgreedCost] = useState("");
   const [saving, setSaving] = useState(false);
+  const [editingTrainer, setEditingTrainer] = useState<FormationTrainer | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [suggesting, setSuggesting] = useState(false);
   const [suggestions, setSuggestions] = useState<Array<{ trainer_id: string; trainer_name: string; score: number; reasons_match: string[]; gaps: string[] }>>([]);
@@ -183,9 +185,14 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
                     <span className="text-xs font-medium text-muted-foreground">{ft.agreed_cost_ht} € HT</span>
                   )}
                 </div>
-                <Button size="sm" variant="ghost" className="text-red-600 hover:text-red-700" onClick={() => setDeleteId(ft.id)}>
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button size="sm" variant="ghost" onClick={() => setEditingTrainer(ft)} title="Modifier">
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button size="sm" variant="ghost" className="text-red-600 hover:text-red-700" onClick={() => setDeleteId(ft.id)}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
 
               {/* Heures prévues vs réalisées + dates */}
@@ -438,6 +445,15 @@ export function ResumeTrainers({ formation, onRefresh }: Props) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Edit Dialog */}
+      <EditFormationTrainerDialog
+        formationTrainer={editingTrainer}
+        sessionId={formation.id}
+        entityId={formation.entity_id}
+        onClose={() => setEditingTrainer(null)}
+        onRefresh={onRefresh}
+      />
 
       {/* Delete Confirmation */}
       <Dialog open={!!deleteId} onOpenChange={(o) => !o && setDeleteId(null)}>
