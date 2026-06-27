@@ -37,6 +37,7 @@ import { cn, formatDate } from "@/lib/utils";
 import { useToast } from "@/components/ui/use-toast";
 import { getScoreCategory } from "@/lib/ai/prospect-scoring";
 import { Progress } from "@/components/ui/progress";
+import { searchProspectIds } from "@/lib/services/prospect-search";
 import type { CrmProspect, ProspectStatus } from "@/lib/types";
 
 import ProspectTasksSection from "./_components/ProspectTasksSection";
@@ -49,25 +50,9 @@ import { Plus } from "lucide-react";
 
 const PAGE_SIZE = 15;
 
-/**
- * Recherche prospects — construit le pattern `ilike` pour le `.or()` PostgREST.
- * Protections (h-23 AC-5a, code review P3/P10) :
- *  - échappe les wildcards SQL LIKE (`%`, `_`, `\`) AVANT le strip DSL, pour
- *    qu'un "A_B" matche exactement et pas "AXB" ;
- *  - strippe les caractères qui cassent le DSL `.or()` PostgREST
- *    (`,()` `"'` `:` `.` `*` `\`) en les remplaçant par `%` ;
- *  - retourne null si la recherche est vide ou ne donne que des `%`
- *    (éviter le `%%%` qui matcherait toutes les lignes).
- * Partagée par fetchProspects (page) et handleExportExcel (export complet).
- */
-function computeSearchPattern(raw: string): string | null {
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
-  const likeEscaped = trimmed.replace(/[\\%_]/g, "\\$&");
-  const safe = likeEscaped.replace(/[,()"':.*\\]/g, "%");
-  if (safe.length === 0 || /^%*$/.test(safe)) return null;
-  return `%${safe}%`;
-}
+// Recherche prospects : déléguée à la RPC `search_crm_prospect_ids` (pg_trgm +
+// unaccent) via le helper `searchProspectIds` → tolère accents et fautes de
+// frappe. Les call-sites filtrent ensuite par `.in("id", ids)`.
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   new:       { label: "Lead",        color: "#374151" },
@@ -158,11 +143,24 @@ export default function ProspectListePage() {
       .order("created_at", { ascending: false })
       .range(from, to);
 
-    const searchPattern = computeSearchPattern(search);
-    if (searchPattern) {
-      query = query.or(
-        `company_name.ilike.${searchPattern},contact_name.ilike.${searchPattern},email.ilike.${searchPattern},naf_code.ilike.${searchPattern}`,
-      );
+    // Recherche fuzzy/accents : la RPC renvoie les ids correspondants, on filtre
+    // dessus en conservant entity_id / pagination / count.
+    const trimmedSearch = search.trim();
+    if (trimmedSearch) {
+      if (!entityId) { setLoading(false); return; }
+      const res = await searchProspectIds(supabase, entityId, trimmedSearch);
+      if (!res.ok) {
+        toast({ title: "Erreur", description: "Recherche indisponible.", variant: "destructive" });
+        setLoading(false);
+        return;
+      }
+      if (res.ids.length === 0) {
+        setProspects([]);
+        setTotalCount(0);
+        setLoading(false);
+        return;
+      }
+      query = query.in("id", res.ids);
     }
 
     if (statusFilter && statusFilter !== "all") {
@@ -240,7 +238,21 @@ export default function ProspectListePage() {
       // lignes de `extraFiltered`). Supabase plafonne les réponses à ~1000
       // lignes → on boucle par lots jusqu'à épuisement.
       const EXPORT_BATCH = 1000;
-      const searchPattern = computeSearchPattern(search);
+      // Recherche fuzzy : ids matchés une seule fois, appliqués à chaque lot.
+      const trimmedSearch = search.trim();
+      let searchIds: string[] | null = null;
+      if (trimmedSearch && entityId) {
+        // Export : limite élevée pour ne pas tronquer l'export filtré à la
+        // valeur par défaut de la liste.
+        const res = await searchProspectIds(supabase, entityId, trimmedSearch, 50000);
+        if (!res.ok) throw new Error(res.error.message);
+        if (res.ids.length === 0) {
+          toast({ title: "Aucun prospect à exporter", description: "La recherche ne renvoie aucun résultat." });
+          setExporting(false);
+          return;
+        }
+        searchIds = res.ids;
+      }
       const all: CrmProspect[] = [];
       let offset = 0;
       let hasMore = true;
@@ -251,10 +263,8 @@ export default function ProspectListePage() {
           .eq("entity_id", entityId)
           .order("created_at", { ascending: false })
           .range(offset, offset + EXPORT_BATCH - 1);
-        if (searchPattern) {
-          query = query.or(
-            `company_name.ilike.${searchPattern},contact_name.ilike.${searchPattern},email.ilike.${searchPattern},naf_code.ilike.${searchPattern}`,
-          );
+        if (searchIds) {
+          query = query.in("id", searchIds);
         }
         if (statusFilter !== "all") query = query.eq("status", statusFilter);
         if (sourceFilter !== "all") query = query.eq("source", sourceFilter);
