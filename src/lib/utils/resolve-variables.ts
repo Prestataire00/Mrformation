@@ -1056,6 +1056,20 @@ export function resolveVariables(content: string, data: ResolveContext): string 
       if (terms) return escapeProgrammeHtml(terms).replace(/\n/g, "<br>");
       return "Accès sous 15 jours après validation de l'inscription. Inscription par contact direct avec l'organisme. Convocation transmise par e-mail.";
     })(),
+    // Durée affichée sur le PDF programme v2 : priorité au programme (content),
+    // repli sur les heures planifiées de la session ; évite "[Durée heures]".
+    "{{programme_duree}}": (() => {
+      const c = (data.session?.program?.content || {}) as Record<string, unknown>;
+      const hours =
+        typeof c.duration_hours === "number"
+          ? c.duration_hours
+          : data.session?.planned_hours ?? null;
+      const days = typeof c.duration_days === "number" ? c.duration_days : null;
+      const parts: string[] = [];
+      if (hours != null) parts.push(`${hours} heure(s)`);
+      if (days != null) parts.push(`${days} jour(s)`);
+      return parts.length ? parts.join(" — ") : "À définir";
+    })(),
     "{{sequences_resume}}": (() => {
       // Titre de section émis ici (anti-titre-orphelin, cf {{objectifs_generaux}}).
       const SECTION_TITLE = `<h2 class="section">Résumé des séquences</h2>`;
@@ -1661,6 +1675,7 @@ export const ALIAS_TO_VARIABLE_KEY: Record<string, string> = {
   // === Lot A2-Programme PDF format exemples (template v2) ===
   "Objectifs généraux": "{{objectifs_generaux}}",
   "Délais et modalités d'accès": "{{delais_modalites_acces}}",
+  "Durée du programme": "{{programme_duree}}",
   "Résumé des séquences": "{{sequences_resume}}",
   "Détail des séquences": "{{sequences_detail}}",
   // === Story B-Convocation Apprenant ===
@@ -1872,6 +1887,7 @@ export const VARIABLE_KEYS = [
   // Lot A2-Programme PDF format exemples (template v2)
   "{{objectifs_generaux}}",
   "{{delais_modalites_acces}}",
+  "{{programme_duree}}",
   "{{sequences_resume}}",
   "{{sequences_detail}}",
   // Story B-Convocation Apprenant

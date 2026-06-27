@@ -33,11 +33,11 @@ export const PROGRAMME_FORMATION_V2_HTML = `<!DOCTYPE html>
 <meta charset="utf-8">
 <title>Programme de formation</title>
 <style>
-  @page { size: A4; margin: 18mm 16mm 22mm 16mm; }
+  @page { size: A4; margin: 14mm 16mm 20mm 16mm; }
   body {
     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
     font-size: 10pt;
-    line-height: 1.5;
+    line-height: 1.4;
     color: #1f2937;
     margin: 0;
   }
@@ -47,7 +47,7 @@ export const PROGRAMME_FORMATION_V2_HTML = `<!DOCTYPE html>
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    margin-bottom: 16px;
+    margin-bottom: 8px;
   }
   .header .org-info { flex: 1; padding-right: 12px; }
   .header .org-name {
@@ -67,33 +67,33 @@ export const PROGRAMME_FORMATION_V2_HTML = `<!DOCTYPE html>
 
   /* Bandeau titre */
   h1.title {
-    font-size: 18pt;
+    font-size: 16pt;
     font-weight: 700;
     color: #111827;
     text-align: center;
-    margin: 20px 0 16px;
-    line-height: 1.3;
+    margin: 8px 0 10px;
+    line-height: 1.25;
   }
 
   /* Sections (titres) */
   h2.section {
-    font-size: 15pt;
+    font-size: 13pt;
     font-weight: 700;
     color: #111827;
-    margin: 20px 0 8px;
+    margin: 12px 0 5px;
     letter-spacing: 0.3px;
   }
 
-  p { margin: 0 0 6px; text-align: justify; }
+  p { margin: 0 0 5px; text-align: justify; }
 
   /* Listes à puces */
   ul.bullets {
     list-style: none;
     padding: 0;
-    margin: 4px 0 8px 4px;
+    margin: 3px 0 6px 4px;
   }
   ul.bullets > li {
-    padding: 2px 0 2px 16px;
+    padding: 1px 0 1px 16px;
     position: relative;
   }
   ul.bullets > li::before {
@@ -109,7 +109,7 @@ export const PROGRAMME_FORMATION_V2_HTML = `<!DOCTYPE html>
   .boxes {
     display: flex;
     gap: 12px;
-    margin: 10px 0 8px;
+    margin: 6px 0;
   }
   .box {
     flex: 1;
@@ -135,9 +135,10 @@ export const PROGRAMME_FORMATION_V2_HTML = `<!DOCTYPE html>
   .accessibility {
     border-left: 3px solid #4b5563;
     background: #f3f4f6;
-    padding: 10px 14px;
-    margin: 16px 0 0;
+    padding: 8px 12px;
+    margin: 10px 0 0;
     font-size: 9pt;
+    page-break-inside: avoid;
   }
   .accessibility .acc-title {
     font-weight: 700;
@@ -179,23 +180,23 @@ export const PROGRAMME_FORMATION_V2_HTML = `<!DOCTYPE html>
 
   /* Déroulé détaillé — blocs texte par séquence (pages 3-4) */
   .sequence {
-    margin: 0 0 16px;
+    margin: 0 0 11px;
     page-break-inside: avoid;
   }
   .sequence h3 {
-    font-size: 12pt;
+    font-size: 11.5pt;
     font-weight: 700;
     color: #ffffff;
     background: #4b5563;
-    padding: 6px 12px;
-    margin: 0 0 8px;
+    padding: 5px 10px;
+    margin: 0 0 6px;
     border-radius: 4px;
   }
   .sequence .seq-lbl {
     font-size: 10pt;
     font-weight: 700;
     color: #111827;
-    margin: 8px 0 2px;
+    margin: 6px 0 2px;
   }
 
   /* Sauts de page entre les grandes sections */
@@ -226,7 +227,7 @@ export const PROGRAMME_FORMATION_V2_HTML = `<!DOCTYPE html>
   <div class="boxes">
     <div class="box">
       <h3>Informations pratiques</h3>
-      <div class="row"><span class="lbl">Durée :</span> [%Durée de la formation%] heure(s) — [%Durée en jours%] jour(s)</div>
+      <div class="row"><span class="lbl">Durée :</span> [%Durée du programme%]</div>
       <div class="row"><span class="lbl">Participants :</span> maximum 12</div>
       <div class="row"><span class="lbl">Prérequis :</span> [%Prérequis%]</div>
       <div class="row"><span class="lbl">Public cible :</span> [%Profil du stagiaire%]</div>
