@@ -32,9 +32,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
-import { Loader2, Save, Trash2 } from "lucide-react";
+import { Loader2, Save, Trash2, Check, Ban } from "lucide-react";
 import { updateTimeSlot, deleteTimeSlot } from "@/lib/services/time-slots";
 import { toUtcIsoFromParisTime } from "@/lib/timezone";
+import { SLOT_COLOR_PALETTE, isValidSlotColor } from "@/lib/utils/slot-colors";
+import { cn } from "@/lib/utils";
 import type { FormationTimeSlot } from "@/lib/types";
 
 interface Props {
@@ -53,6 +55,11 @@ const slotEditSchema = z
     module_objectives: z.string().max(5000).optional().nullable(),
     module_themes: z.string().max(5000).optional().nullable(),
     module_exercises: z.string().max(5000).optional().nullable(),
+    color: z
+      .string()
+      .optional()
+      .nullable()
+      .refine((v) => isValidSlotColor(v), { message: "Couleur invalide" }),
   })
   .refine((d) => new Date(d.end_time) > new Date(d.start_time), {
     message: "La fin doit être après le début",
@@ -101,6 +108,7 @@ export function SlotEditDialog({ slot, onClose, onRefresh, entityId }: Props) {
     module_objectives: "",
     module_themes: "",
     module_exercises: "",
+    color: "",
   });
 
   useEffect(() => {
@@ -113,6 +121,7 @@ export function SlotEditDialog({ slot, onClose, onRefresh, entityId }: Props) {
       module_objectives: slot.module_objectives || "",
       module_themes: slot.module_themes || "",
       module_exercises: slot.module_exercises || "",
+      color: slot.color || "",
     });
     setErrors({});
     setConfirmDelete(false);
@@ -151,6 +160,7 @@ export function SlotEditDialog({ slot, onClose, onRefresh, entityId }: Props) {
       module_objectives: form.module_objectives.trim() || null,
       module_themes: form.module_themes.trim() || null,
       module_exercises: form.module_exercises.trim() || null,
+      color: form.color || null,
     });
     if (!result.ok) {
       toast({ title: "Erreur", description: result.error.message, variant: "destructive" });
@@ -197,6 +207,39 @@ export function SlotEditDialog({ slot, onClose, onRefresh, entityId }: Props) {
               onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
               placeholder="Ex: Matinée — Introduction"
             />
+          </div>
+
+          {/* Couleur (Story 4.1) — palette restreinte, optionnelle */}
+          <div className="space-y-1.5">
+            <Label>Couleur du créneau</Label>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setForm((p) => ({ ...p, color: "" }))}
+                title="Aucune couleur"
+                className={cn(
+                  "h-7 w-7 rounded-md border flex items-center justify-center text-gray-400 hover:border-gray-400",
+                  form.color === "" ? "ring-2 ring-offset-1 ring-gray-400 border-gray-400" : "border-gray-200",
+                )}
+              >
+                <Ban className="h-3.5 w-3.5" />
+              </button>
+              {SLOT_COLOR_PALETTE.map((c) => (
+                <button
+                  key={c.value}
+                  type="button"
+                  onClick={() => setForm((p) => ({ ...p, color: c.value }))}
+                  title={c.name}
+                  style={{ backgroundColor: c.value, color: c.text }}
+                  className={cn(
+                    "h-7 w-7 rounded-md border flex items-center justify-center transition-transform hover:scale-105",
+                    form.color === c.value ? "ring-2 ring-offset-1 ring-gray-500 border-gray-400" : "border-black/5",
+                  )}
+                >
+                  {form.color === c.value && <Check className="h-3.5 w-3.5" />}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Heures */}

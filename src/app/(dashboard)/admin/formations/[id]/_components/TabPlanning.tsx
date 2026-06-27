@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, type CSSProperties } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
 import { ChevronLeft, ChevronRight, Trash2, CheckCircle, AlertTriangle, Clock, Sparkles, UserX, Calendar, Download, Loader2 } from "lucide-react";
@@ -30,8 +30,19 @@ import {
 import type { Session, FormationTimeSlot } from "@/lib/types";
 import { BulkSlotCreator } from "./BulkSlotCreator";
 import { SlotEditDialog } from "./SlotEditDialog";
+import { getSlotColorText } from "@/lib/utils/slot-colors";
 
 type ViewMode = "month" | "week" | "day" | "trainers";
+
+// Story 4.1 — style de fond d'un créneau coloré (sauf en cas de conflit, qui
+// garde sa coloration rouge prioritaire). Retourne undefined si pas de couleur.
+function slotColorStyle(
+  color: string | null | undefined,
+  conflict: boolean,
+): CSSProperties | undefined {
+  if (conflict || !color) return undefined;
+  return { backgroundColor: color, color: getSlotColorText(color) };
+}
 
 const DAYS_FR = ["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."];
 const MONTHS_FR = [
@@ -599,6 +610,7 @@ export function TabPlanning({ formation, onRefresh }: Props) {
                                 ? "bg-red-100 hover:bg-red-200 text-red-800 border border-red-300"
                                 : "bg-primary/10 hover:bg-primary/20 text-primary",
                             )}
+                            style={slotColorStyle(slot.color, conflict)}
                             title={`${new Date(slot.start_time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })} - ${slot.title || formation.title}${conflict ? " — ⚠ conflit formateur" : " — cliquer pour éditer"}`}
                           >
                             {conflict && "⚠ "}
@@ -663,6 +675,7 @@ export function TabPlanning({ formation, onRefresh }: Props) {
                                 ? "bg-red-100 hover:bg-red-200 text-red-800 border border-red-300"
                                 : "bg-primary/10 hover:bg-primary/20 text-primary",
                             )}
+                            style={slotColorStyle(slot.color, conflict)}
                             title={conflict ? "⚠ Conflit formateur — cliquer pour éditer" : "Cliquer pour éditer"}
                           >
                             <div className="font-medium flex items-center gap-1">
@@ -728,6 +741,7 @@ export function TabPlanning({ formation, onRefresh }: Props) {
                                   ? "bg-red-100 hover:bg-red-200 text-red-800 border border-red-300"
                                   : "bg-primary/10 hover:bg-primary/20 text-primary",
                               )}
+                              style={slotColorStyle(slot.color, conflict)}
                               title={conflict ? "⚠ Conflit formateur — cliquer pour éditer" : "Cliquer pour éditer"}
                             >
                               {conflict && "⚠ "}

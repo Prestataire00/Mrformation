@@ -25,7 +25,7 @@ export type ServiceResult<T> =
   | { ok: false; error: { message: string; code?: string } };
 
 const SLOT_COLUMNS =
-  "id, session_id, title, start_time, end_time, slot_order, module_title, module_objectives, module_themes, module_exercises, created_at, updated_at";
+  "id, session_id, title, start_time, end_time, slot_order, module_title, module_objectives, module_themes, module_exercises, color, created_at, updated_at";
 
 export interface TimeSlotCreateInput {
   title?: string | null;
@@ -36,6 +36,8 @@ export interface TimeSlotCreateInput {
   module_objectives?: string | null;
   module_themes?: string | null;
   module_exercises?: string | null;
+  // Story 4.1 — couleur de fond du créneau (hex, palette UI) ; null = aucune.
+  color?: string | null;
 }
 
 export type TimeSlotUpdateInput = Partial<TimeSlotCreateInput>;
