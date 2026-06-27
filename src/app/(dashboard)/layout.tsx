@@ -6,7 +6,7 @@ import { Header } from "@/components/layout/Header";
 import { MobileSidebarWrapper } from "@/components/layout/MobileSidebarWrapper";
 import { EntityProvider } from "@/contexts/EntityContext";
 import { GlobalProviders } from "@/components/layout/GlobalProviders";
-import { shouldForceProfileEntity } from "@/lib/auth/effective-entity";
+import { resolveActiveEntity } from "@/lib/auth/effective-entity";
 import type { Entity } from "@/lib/types";
 
 export default async function DashboardLayout({
@@ -21,41 +21,36 @@ export default async function DashboardLayout({
     redirect("/login");
   }
 
-  // Read entity from cookie
   const cookieStore = cookies();
   const entityCookieId = cookieStore.get("entity_id")?.value;
 
-  if (!entityCookieId) {
-    redirect("/select-entity");
-  }
-
-  // Load current entity
-  const { data: currentEntity } = await supabase
-    .from("entities")
-    .select("*")
-    .eq("id", entityCookieId)
-    .single();
-
-  // Load all entities (for the switcher)
-  const { data: allEntities } = await supabase
-    .from("entities")
-    .select("*")
-    .order("name");
-
-  // Load profile
+  // Profil (rôle + entité) et liste des entités (pour le switcher).
   const { data: profile } = await supabase
     .from("profiles")
     .select("*")
     .eq("id", user.id)
     .single();
 
-  // Un rôle non super_admin reste lié à l'entité de son profil (RLS). Si le
-  // cookie pré-login pointe une entité étrangère, on force celle du profil —
-  // sinon l'espace paraît vide et toute création est refusée par la RLS.
-  // (EntityProvider re-synchronise alors le cookie côté client.)
-  const entity: Entity | null = shouldForceProfileEntity(profile?.role, profile?.entity_id, entityCookieId)
-    ? ((allEntities ?? []).find((e) => e.id === profile?.entity_id) ?? currentEntity ?? null)
-    : (currentEntity ?? null);
+  const { data: allEntities } = await supabase
+    .from("entities")
+    .select("*")
+    .order("name");
+
+  // Connexion unique : l'entité active est DÉRIVÉE du profil (plus de
+  // /select-entity forcé sur cookie absent — il pourrait juste avoir expiré).
+  // On ne redirige que si l'entité n'est pas résoluble (cas résiduel).
+  // super_admin → cookie ?? profil ; rôles scopés → profil (RLS).
+  const { entityId: activeEntityId, needsSelection } = resolveActiveEntity(
+    profile?.role,
+    profile?.entity_id,
+    entityCookieId,
+  );
+  if (needsSelection) {
+    redirect("/select-entity");
+  }
+
+  const entity: Entity | null =
+    (allEntities ?? []).find((e) => e.id === activeEntityId) ?? null;
   const entitySlug = entity?.slug ?? "mr-formation";
 
   return (

@@ -5,11 +5,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Loader2, Eye, EyeOff, GraduationCap } from "lucide-react";
 
-function getCookie(name: string): string | null {
-  const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
-  return match ? decodeURIComponent(match[1]) : null;
-}
-
 function setCookie(name: string, value: string, days = 365) {
   const expires = new Date(Date.now() + days * 864e5).toUTCString();
   document.cookie = `${name}=${encodeURIComponent(value)};expires=${expires};path=/;SameSite=Lax`;
@@ -26,25 +21,6 @@ const ENTITY_CONFIG: Record<string, { name: string; gradient: string }> = {
   },
 };
 
-const ROLE_LABELS: Record<string, string> = {
-  organisme: "Organisme de formation",
-  learner: "Apprenant",
-  company: "Entreprise",
-  trainer: "Formateur",
-  admin: "Administrateur",
-  commercial: "Commercial",
-};
-
-// Map UI role keys to the DB roles they correspond to
-const ROLE_KEY_TO_DB_ROLE: Record<string, string> = {
-  organisme: "super_admin",
-  learner: "learner",
-  company: "client",
-  trainer: "trainer",
-  admin: "admin",
-  commercial: "commercial",
-};
-
 export default function LoginPage() {
   return (
     <Suspense>
@@ -58,10 +34,10 @@ function LoginContent() {
   const searchParams = useSearchParams();
   const supabase = createClient();
 
-  const entitySlug = searchParams.get("entity") ?? "";
-  const roleKey = searchParams.get("role") ?? "";
-  const entityConfig = ENTITY_CONFIG[entitySlug];
-  const roleLabel = ROLE_LABELS[roleKey];
+  // Entité : pré-remplie depuis l'URL (QR/PDF) si présente, sinon choisie via
+  // le sélecteur inline UNIQUEMENT pour le login par identifiant (la résolution
+  // username→email est scopée par entité). Le login par email n'en a pas besoin.
+  const [entitySlug, setEntitySlug] = useState(searchParams.get("entity") ?? "");
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -144,7 +120,10 @@ function LoginContent() {
       return;
     }
 
-    // Fetch user profile to get role and set cookie
+    // Connexion unique : l'entité active est DÉRIVÉE du profil (plus de choix
+    // d'organisme pré-login). On pose les cookies role + entity_id depuis le
+    // profil pour éviter un détour par /select-entity ; le middleware re-dérive
+    // de toute façon l'entité du profil (source de vérité).
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -152,57 +131,15 @@ function LoginContent() {
     if (user) {
       const { data: profile } = await supabase
         .from("profiles")
-        .select("role")
+        .select("role, entity_id")
         .eq("id", user.id)
         .single();
 
       if (profile?.role) {
-        // If a role was selected on select-role page, verify it matches
-        const expectedDbRole = roleKey ? ROLE_KEY_TO_DB_ROLE[roleKey] : null;
-
-        if (expectedDbRole && profile.role !== expectedDbRole) {
-          // Role mismatch — sign out and show error
-          await supabase.auth.signOut();
-          const expectedLabel = ROLE_LABELS[roleKey] || roleKey;
-          const DB_ROLE_LABELS: Record<string, string> = {
-            super_admin: "Organisme de formation",
-            admin: "Administrateur",
-            commercial: "Commercial",
-            learner: "Apprenant",
-            client: "Entreprise",
-            trainer: "Formateur",
-          };
-          const actualRoleName = DB_ROLE_LABELS[profile.role] || profile.role;
-          setError(
-            `Ce compte est associé au profil "${actualRoleName}". Vous ne pouvez pas vous connecter en tant que "${expectedLabel}". Veuillez sélectionner le bon profil.`
-          );
-          setLoading(false);
-          return;
-        }
-
         setCookie("user_role", profile.role, 30);
       }
-    }
-
-    // If entity was selected from landing page but no cookie yet, set it now
-    if (entitySlug && !getCookie("entity_id")) {
-      // Look up the entity ID by slug
-      const { data: entity } = await supabase
-        .from("entities")
-        .select("id")
-        .eq("slug", entitySlug)
-        .single();
-
-      if (entity) {
-        setCookie("entity_id", entity.id);
-
-        // Also update the profile entity_id
-        if (user) {
-          await supabase
-            .from("profiles")
-            .update({ entity_id: entity.id })
-            .eq("id", user.id);
-        }
+      if (profile?.entity_id) {
+        setCookie("entity_id", profile.entity_id);
       }
     }
 
@@ -211,12 +148,10 @@ function LoginContent() {
     router.refresh();
   }
 
-  const headerTitle = entityConfig
-    ? entityConfig.name
-    : "LMS FORMATION";
-  const headerGradient = entityConfig
-    ? entityConfig.gradient
-    : "linear-gradient(135deg, #374151, #B91C1C)";
+  // Connexion unique : branding générique (l'organisme n'est plus choisi
+  // avant l'auth ; le branding par entité s'applique après, dans le dashboard).
+  const headerTitle = "LMS FORMATION";
+  const headerGradient = "linear-gradient(135deg, #374151, #B91C1C)";
 
   return (
     <div
@@ -311,9 +246,7 @@ function LoginContent() {
                   SE CONNECTER
                 </p>
                 <p className="text-gray-500 text-sm text-center mb-6">
-                  {roleLabel
-                    ? `Connexion ${roleLabel}`
-                    : "Veuillez remplir vos identifiants pour vous connecter."}
+                  Veuillez remplir vos identifiants pour vous connecter.
                 </p>
 
                 {error && (
@@ -340,6 +273,29 @@ function LoginContent() {
                       reçu dans votre PDF de bienvenue.
                     </p>
                   </div>
+
+                  {/* Sélecteur d'organisme inline : nécessaire UNIQUEMENT pour
+                      la connexion par identifiant (apprenant sans email), car la
+                      résolution username→email est scopée par entité. Masqué
+                      pour la connexion par email. */}
+                  {email.trim().length > 0 && !email.includes("@") && (
+                    <div>
+                      <label htmlFor="entity-select" className="block text-xs text-gray-500 mb-1.5">
+                        Votre organisme de formation
+                      </label>
+                      <select
+                        id="entity-select"
+                        value={entitySlug}
+                        onChange={(e) => setEntitySlug(e.target.value)}
+                        className="w-full px-4 py-3 bg-blue-50 border border-blue-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#374151] focus:border-transparent"
+                      >
+                        <option value="">Sélectionnez votre organisme…</option>
+                        {Object.entries(ENTITY_CONFIG).map(([slug, cfg]) => (
+                          <option key={slug} value={slug}>{cfg.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
 
                   <div className="relative">
                     <input
@@ -410,20 +366,6 @@ function LoginContent() {
               </p>
             </div>
           )}
-        </div>
-
-        {/* Back link */}
-        <div className="text-center mt-4">
-          <button
-            onClick={() =>
-              router.push(
-                entitySlug ? `/select-role?entity=${entitySlug}` : "/"
-              )
-            }
-            className="text-white/60 text-sm hover:text-white transition-colors"
-          >
-            &larr; Retour
-          </button>
         </div>
 
         <p className="text-center text-white/60 text-xs mt-4">

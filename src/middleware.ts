@@ -1,6 +1,7 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { PAGE_PERMISSIONS, API_PERMISSIONS, findMatchingRoles, type Role } from "@/lib/auth/permissions";
+import { resolveActiveEntity } from "@/lib/auth/effective-entity";
 
 export async function middleware(request: NextRequest) {
   // Bypass pour les requêtes server-to-server signées avec CRON_SECRET.
@@ -53,7 +54,7 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Public routes
-  const publicPaths = ["/login", "/select-entity", "/select-role", "/reset-password", "/api/auth", "/emargement", "/api/emargement", "/sign", "/api/documents/sign", "/api/documents/sign-status", "/access", "/questionnaire", "/api/questionnaire"];
+  const publicPaths = ["/login", "/select-entity", "/reset-password", "/api/auth", "/emargement", "/api/emargement", "/sign", "/api/documents/sign", "/api/documents/sign-status", "/access", "/questionnaire", "/api/questionnaire"];
   const isPublicPath = publicPaths.some((p) => pathname.startsWith(p));
   const isRoot = pathname === "/";
 
@@ -62,7 +63,8 @@ export async function middleware(request: NextRequest) {
     if (pathname.startsWith("/api/")) {
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
-    return NextResponse.redirect(new URL("/", request.url));
+    // Connexion unique : on envoie directement vers la page de login.
+    return NextResponse.redirect(new URL("/login", request.url));
   }
 
   if (user && pathname === "/login") {
@@ -143,15 +145,7 @@ export async function middleware(request: NextRequest) {
       });
   }
 
-  // Entity selection enforcement: authenticated users must have an entity cookie
-  if (user && !isPublicPath && !isRoot) {
-    const entityId = request.cookies.get("entity_id")?.value;
-    if (!entityId && !pathname.startsWith("/api/")) {
-      return NextResponse.redirect(new URL("/select-entity", request.url));
-    }
-  }
-
-  // RBAC: Role-based access control
+  // Entité active + RBAC : une seule lecture du profil (rôle + entity_id).
   if (user && !isPublicPath && !isRoot) {
     // Sécurité : le rôle est TOUJOURS lu depuis la DB et jamais depuis le cookie.
     // Un cookie client-side est modifiable (XSS, dev tools) → ne peut pas être
@@ -159,11 +153,44 @@ export async function middleware(request: NextRequest) {
     // n'est conservé que pour l'affichage UI côté client (sans valeur de sécurité).
     const { data: profile } = await supabase
       .from("profiles")
-      .select("role")
+      .select("role, entity_id")
       .eq("id", user.id)
       .single();
 
     const userRole = profile?.role;
+
+    // Connexion unique : l'entité active est DÉRIVÉE du profil (plus de
+    // /select-entity forcé). Si le cookie manque ou diverge, on le pose ici
+    // (sur la requête ET la réponse pour que la page courante le voie). On ne
+    // route vers /select-entity qu'en dernier recours (entité non résoluble :
+    // super_admin sans entité, ou profil sans entity_id — cas résiduel).
+    const cookieEntityId = request.cookies.get("entity_id")?.value;
+    const { entityId: activeEntityId, needsSelection } = resolveActiveEntity(
+      userRole,
+      profile?.entity_id as string | null | undefined,
+      cookieEntityId,
+    );
+    if (needsSelection) {
+      if (!pathname.startsWith("/api/")) {
+        return NextResponse.redirect(new URL("/select-entity", request.url));
+      }
+    } else if (activeEntityId && !cookieEntityId) {
+      // On ne pose le cookie que s'il est ABSENT (QR / cookie expiré). Sur un
+      // cookie présent mais divergent, on ne l'écrase PAS : pour un rôle scopé
+      // la RLS s'appuie de toute façon sur le profil, et écraser provoquerait
+      // un flicker pendant le switch async d'un commercial (cookie posé avant
+      // la mise à jour du profil).
+      const entityCookie = {
+        name: "entity_id",
+        value: activeEntityId,
+        path: "/",
+        maxAge: 60 * 60 * 24 * 365,
+        sameSite: "lax" as const,
+        secure: process.env.NODE_ENV === "production",
+      };
+      request.cookies.set(entityCookie);
+      response.cookies.set(entityCookie);
+    }
 
     // Re-synchronise le cookie UI si nécessaire (httpOnly: false volontairement,
     // car lu par les pages client pour de l'affichage conditionnel uniquement).

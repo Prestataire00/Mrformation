@@ -158,3 +158,17 @@ Scope du review : feature « supports de cours attachés au programme » (table 
 
 - **Constat** : `on_enrollment` dépend d'un ping fire-and-forget (`trigger-on-enrollment`). En mode in-app sans email, un ping raté = positionnement absent de l'espace apprenant, silencieusement. (Note : avant P1 l'email était aussi gaté sur ce même ping — pas de régression nette, mais l'in-app étant désormais le seul canal, la fiabilité du ping compte davantage.)
 - **Trigger future story** : si des positionnements manquent en prod → rattrapage idempotent (ex. job qui ré-applique les règles on_enrollment des sessions récentes, ou création de l'assignment masse à la création de session plutôt qu'à l'inscription).
+
+---
+
+## Deferred from: code review of spec-connexion-unique-redirection (2026-06-27)
+
+### Rôle scopé avec entity_id NULL → coincé sur /select-entity (état corrompu)
+
+- **Constat (Blind Hunter F3)** : pour un rôle scopé (learner/client/trainer), `resolveActiveEntity` ignore le cookie et exige `profile.entity_id`. Si celui-ci est NULL, l'utilisateur est renvoyé vers `/select-entity`, mais `/api/auth/switch-entity` n'autorise que super_admin/commercial → il ne peut pas écrire son propre `profile.entity_id` → il reste bloqué sur `/select-entity` (UX dégradée, pas une boucle HTTP car la page est interactive).
+- **Pourquoi reporté** : état quasi impossible — tous les apprenants/clients sont créés AVEC `entity_id` (NOT NULL sur learners, posé par create-access/batch). Le `login` ne pose plus `profile.entity_id` (le tunnel pré-login le faisait), mais il n'y avait plus de tunnel. Probabilité ~0.
+- **Trigger future story** : si un compte scopé sans entité apparaît (incohérence d'import) → soit autoriser `/select-entity` à écrire `profile.entity_id` pour tout rôle authentifié, soit un job de réconciliation `profiles.entity_id` depuis `learners.entity_id`.
+
+### Nettoyage e2e : bloc select-role mort dans e2e/helpers/auth.ts
+
+- Le helper e2e garde un `if (page.url().includes("select-role"))` alors que la page n'existe plus (inoffensif, jamais déclenché). À retirer lors d'un passage sur les e2e.
