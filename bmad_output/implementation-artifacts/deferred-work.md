@@ -227,3 +227,36 @@ Scope du review : feature « supports de cours attachés au programme » (table 
 - **Filtre de date sur les créneaux** : on charge tous les créneaux des sessions visibles (sans borne
   start_time) pour préserver le "a des créneaux ?" global. Optimisable (charger in-range + un check
   d'existence séparé) si la volumétrie devient un souci.
+
+## Découpage : programme générateur interne (cadrage 2026-06-27)
+
+Source cadrage : `bmad_output/brainstorming/brainstorm-alignement-construction-programmes-2026-06-27/brainstorm-intent.md`.
+Lot **(A) en cours** = générateur interne côté FORMATION (onglet Programme), branche `feat/programme-generateur-interne`.
+
+- **Objectif B — Côté CRM/PROSPECT + programme flottant** : poser le même générateur sur le prospect
+  (document de vente avant signature). Option B tranchée : sauver une vraie ligne `programs`
+  « flottante » (+ PDF de vente), puis la rattacher à la formation d'un clic à la signature
+  (`set training.program_id`) — on génère une fois, on rattache, pas de régénération. **Nécessite une
+  migration SQL** pour le lien/stockage programme ↔ prospect (inexistant aujourd'hui). Dépend de (A).
+- **Objectif C — Suppression du chemin manuel séquence-par-séquence** : un seul chemin de création
+  (l'IA remplace la saisie manuelle), en conservant le lien programme → session existant
+  (`session.training_id → training.program_id → programs`). Nettoyage UX, à faire une fois (A) validé.
+
+### Sous-découpage de (A) — 2026-06-27 (spec dépassait 1600 tokens)
+
+Spec A1 en cours : `spec-programme-generateur-interne.md`, branche `feat/programme-generateur-interne`.
+
+- **A2 — PDF 4 pages au format des 2 exemples** : différé. Nouveau template
+  `src/lib/templates/programme-formation-v2.ts` reproduisant les exemples Gamma (page 1 infos
+  générales, page 2 cartes « résumé des séquences », pages 3-4 déroulé en **format texte** par
+  séquence — objectifs opérationnels / contenus détaillés / méthodes / évaluation / durée), + variables
+  de rendu dans `resolve-variables.ts` (ex. `{{sequences_resume}}` + `{{sequences_detail}}` sur le
+  pattern `{{contenu_pedagogique}}` l.902-992), + routage du template v2 dans
+  `generate-programme/route.ts` quand le programme a la structure enrichie (sans casser le legacy).
+  Dépend de la structure de séquence enrichie livrée par A1. Donne le PDF qui remplace réellement Gamma.
+  Décision Wissam : « coller à mes 2 exemples » (rework template, pas réutiliser le template Loris).
+
+## Deferred from: code review spec-programme-generateur-interne A1 (2026-06-27)
+
+- **Reset du champ « précisions » au re-render (RHF `values`)** — `GenerateProgramDialog.tsx` utilise `values:` (form réactif) avec `precisions: ""`. Un re-render parent pendant la frappe peut écraser la saisie en cours de « précisions ». Fenêtre étroite (la génération est async, `onRefresh` ne fire qu'au succès → ferme le dialog). LOW. Fix propre : `defaultValues` + `form.reset({...})` à l'ouverture, sortir `precisions` de `values`.
+- **Sémantique de versioning décalée d'un cran** — `createProgramVersion` snapshote l'ANCIEN `content` sous une version pendant que `programs.version` passe à N+1 avec le NOUVEAU content. Design préexistant du service (le changement l'utilise tel quel, conformément au spec). À revoir globalement si l'historique des versions doit être strictement aligné. LOW.

@@ -36,6 +36,13 @@ export const programContentSchema = z.object({
         duration_hours: z.number().min(0).optional(),
         objectives: z.array(z.string()).optional(),
         topics: z.array(z.string()).optional(),
+        // Lot A1 — séquence enrichie (générateur IA). Tous optionnels :
+        // les modules legacy restent valides sans ces clés.
+        summary_objective: z.string().optional(),
+        operational_objectives: z.array(z.string()).optional(),
+        content_details: z.array(z.string()).optional(),
+        methods: z.string().optional(),
+        evaluation: z.string().optional(),
       }),
     )
     .min(1, "Au moins un module est requis"),
@@ -53,6 +60,9 @@ export const programContentSchema = z.object({
   certification_results: z.string().max(5000).optional(),
   certification_terms: z.string().max(5000).optional(),
   certification_details: z.string().max(5000).optional(),
+  // Lot A1 — page 1 enrichie (générateur IA). Tous optionnels.
+  general_objectives: z.array(z.string()).optional(),
+  access_terms: z.string().max(5000).optional(),
 });
 
 export type ProgramContentInput = z.infer<typeof programContentSchema>;
@@ -125,6 +135,23 @@ export const programCreateSessionSchema = z.object({
 );
 
 export type ProgramCreateSessionInput = z.infer<typeof programCreateSessionSchema>;
+
+// ── Lot A1 : dialog "Générer le programme (IA)" ────────────────────
+//
+// Formulaire de paramétrage de la génération IA depuis l'onglet
+// Programme d'une formation. Titre + durée pré-remplis depuis la
+// session ; précisions = champ libre optionnel injecté au prompt.
+// Les champs numériques sont saisis en string (Input) puis convertis.
+
+export const generateProgramFormSchema = z.object({
+  title: z.string().min(1, "Le titre est requis").max(255, "Maximum 255 caractères"),
+  duration_hours: z.preprocess(stringToNumberOrNull, z.number().min(0).max(10_000).nullable()),
+  duration_days: z.preprocess(stringToNumberOrNull, z.number().min(0).max(365).nullable()),
+  precisions: z.preprocess(emptyToNull, z.string().max(5000).nullable()),
+});
+
+export type GenerateProgramFormInput = z.input<typeof generateProgramFormSchema>;
+export type GenerateProgramFormOutput = z.output<typeof generateProgramFormSchema>;
 
 // ── Helper : extrait une map { champ → premier message } ────────────
 

@@ -617,6 +617,13 @@ export interface ProgramContentModule {
   duration_hours?: number;
   objectives?: string[];
   topics?: string[];
+  // Lot A1 — Générateur de programme interne (séquence enrichie).
+  // Tous optionnels : les modules legacy restent valides sans ces clés.
+  summary_objective?: string;
+  operational_objectives?: string[];
+  content_details?: string[];
+  methods?: string;
+  evaluation?: string;
 }
 
 export interface ProgramContent {
@@ -635,6 +642,10 @@ export interface ProgramContent {
   certification_results?: string;
   certification_terms?: string;
   certification_details?: string;
+  // Lot A1 — Générateur de programme interne (page 1 enrichie).
+  // Tous optionnels : les programmes legacy restent valides sans ces clés.
+  general_objectives?: string[];
+  access_terms?: string;
 }
 
 export interface Program {

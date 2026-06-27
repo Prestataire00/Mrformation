@@ -8,23 +8,25 @@ export async function POST(request: NextRequest) {
   const auth = await requireRole(["super_admin", "admin"]);
   if (auth.error) return auth.error;
 
-  const { allowed, resetAt } = checkRateLimit(`ai-program:${auth.profile.id}`, { limit: 5, windowSeconds: 60 });
+  const { allowed, resetAt } = checkRateLimit(`ai-program:${auth.profile.id}`, { limit: 12, windowSeconds: 60 });
   if (!allowed) return rateLimitResponse(resetAt);
 
   try {
     const body = await request.json();
-    const { title, objectives, duration_hours, target_audience, structured } = body;
+    const { title, objectives, duration_hours, duration_days, target_audience, precisions, structured } = body;
 
     if (!title) {
       return NextResponse.json({ error: "Le titre est requis" }, { status: 400 });
     }
 
-    // Structured JSON mode for program detail page
+    // Structured JSON mode for program detail page / générateur onglet Formation
     if (structured) {
       const program = await generateStructuredProgram({
         title,
         duration_hours,
+        duration_days,
         target_audience,
+        precisions,
       });
       return NextResponse.json({ data: program });
     }
