@@ -142,3 +142,19 @@ Scope du review : feature « supports de cours attachés au programme » (table 
 - **Constat (3 relecteurs)** : le bucket `formation-docs` est `public = true`. Les supports (`ProgramSupports`) y sont stockés et le portail apprenant ouvre directement la `file_url` publique permanente (choix explicitement acté dans la spec, boundary « Never » : pas d'élévation de rôle sur signed-url). Conséquence : un fichier reste téléchargeable par quiconque possède l'URL, sans contrôle `entity_id` ni authentification, et survit à la « suppression » DB tant que le fichier Storage existe.
 - **Pourquoi reporté** : ce n'est PAS une régression de cette story — c'est l'architecture préexistante, identique à `formation_documents`/`TabDocsPartages`. La feature étend un pattern déjà en place. La défense applicative (RLS `program_documents` + signed-url côté admin + filtre `entity_id`) est en place côté lignes DB.
 - **Trigger future story** : si des supports confidentiels doivent être strictement isolés par entité → migrer `formation-docs` vers un bucket PRIVÉ, router l'apprenant via `/api/storage/signed-url` (et y AJOUTER les rôles `learner`/`client` dans `requireRole`), et purger le fichier Storage de façon bloquante à la suppression. Concerne aussi rétroactivement `formation_documents`.
+
+---
+
+## Deferred from: code review of spec-p1-auto-attribution-sans-email (2026-06-27)
+
+### Pas de contrainte UNIQUE sur questionnaire_responses(questionnaire_id, session_id, learner_id)
+
+- **Constat (Edge Case Hunter)** : la réponse in-app (`learner/questionnaires/[id]/page.tsx`) fait un `.insert()` simple ; il n'existe que des index NON uniques sur `questionnaire_responses`. La protection anti-double est uniquement côté client (readOnly + check focus cross-onglet). En course (double-clic réseau lent, 2 onglets) → 2 lignes → double-comptage dans les agrégats Qualiopi (satisfaction, progression).
+- **Amplifié par P1** : en mode in-app sans email, TOUS les apprenants passent désormais par ce chemin d'insert direct (avant, une part répondait via le token public). Exposition accrue.
+- **Pourquoi reporté** : pré-existant (chemin in-app non modifié par P1), et un fix propre (UNIQUE index + onConflict, ou route serveur dédiée) touche aussi `public-submit` et la sémantique « re-répondre ». Hors scope du découplage email.
+- **Trigger future story** : si les KPIs satisfaction/acquisition paraissent gonflés OU si un doublon est constaté en base → ajouter `CREATE UNIQUE INDEX` partiel + gérer le conflit côté insert in-app et public-submit (upsert ou 409 propre).
+
+### Robustesse du déclencheur on_enrollment (positionnement)
+
+- **Constat** : `on_enrollment` dépend d'un ping fire-and-forget (`trigger-on-enrollment`). En mode in-app sans email, un ping raté = positionnement absent de l'espace apprenant, silencieusement. (Note : avant P1 l'email était aussi gaté sur ce même ping — pas de régression nette, mais l'in-app étant désormais le seul canal, la fiabilité du ping compte davantage.)
+- **Trigger future story** : si des positionnements manquent en prod → rattrapage idempotent (ex. job qui ré-applique les règles on_enrollment des sessions récentes, ou création de l'assignment masse à la création de session plutôt qu'à l'inscription).

@@ -54,6 +54,9 @@ export interface RuleInfo {
   template_id: string | null;
   condition_subcontracted: boolean | null;
   name: string | null;
+  // P1 : si false, la règle attribue (assignment + visibilité in-app) SANS
+  // envoyer d'email. undefined/true ⇒ comportement historique (email envoyé).
+  send_email?: boolean | null;
 }
 
 export interface TemplateInfo {
@@ -198,6 +201,21 @@ export async function resolveQuestionnaireIdForRule(
     // Ne bloque pas l'envoi : le questionnaire est résolu, l'assignment est best-effort.
     console.error(`[execute-rule] création assignment ${config.table} échouée:`, insErr.message);
   }
+
+  // Visibilité in-app drift-proof : l'espace apprenant liste les questionnaires
+  // via `questionnaire_sessions` (pas via les assignments). On garantit le
+  // miroir explicitement — sans dépendre du trigger SQL de mirroring qui peut
+  // ne pas être déployé en prod (cf. P3). Idempotent via onConflict.
+  const { error: mirrorErr } = await supabase
+    .from("questionnaire_sessions")
+    .upsert(
+      { questionnaire_id: questionnaireId, session_id: sessionId },
+      { onConflict: "questionnaire_id,session_id" },
+    );
+  if (mirrorErr) {
+    console.error(`[execute-rule] miroir questionnaire_sessions échoué:`, mirrorErr.message);
+  }
+
   return questionnaireId;
 }
 
@@ -454,6 +472,17 @@ export async function executeRuleForSession(
   const { rule, session, template, customTemplatesById, dedupAgainstHistoryFromDate, onlyLearnerId } = args;
   const recipientType = rule.recipient_type || "learners";
   const recipients = await resolveRecipients(supabase, session.id, recipientType, { onlyLearnerId });
+
+  // P1 : règle questionnaire en mode « in-app only » (send_email=false). On crée
+  // l'assignment (attribution) + le miroir `questionnaire_sessions` (visibilité
+  // dans l'espace apprenant), puis on s'arrête SANS générer de token ni d'email.
+  // Attention : resolveQuestionnaireIdForRule est sinon appelé DANS le bloc email
+  // ci-dessous — d'où cette branche dédiée pour ne pas perdre l'attribution.
+  // send_email undefined/true ⇒ on ne passe pas ici ⇒ comportement historique.
+  if (isQuestionnaireRule(rule) && rule.send_email === false) {
+    await resolveQuestionnaireIdForRule(supabase, rule, session.id, session.entity_id);
+    return { enqueued: 0, skipped: recipients.length, failed: 0 };
+  }
 
   // Calculée une seule fois : la clé de matching anti-doublon dépend uniquement de la règle.
   const matchKey = dedupAgainstHistoryFromDate

@@ -37,6 +37,9 @@ function mockSupabase(config: Record<string, { maybeSingle?: { data: unknown }; 
         inserts.push({ table, row });
         return { error: config[table]?.insertError ?? null };
       }),
+      // P1 : resolveQuestionnaireIdForRule upserte aussi le miroir
+      // questionnaire_sessions (visibilité in-app). Mock no-op.
+      upsert: vi.fn(async () => ({ error: null })),
     };
     return chain;
   });
