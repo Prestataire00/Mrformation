@@ -565,7 +565,7 @@ export default function QuotesPage() {
         max_participants: effectifs,
         price: convertQuote.amount || undefined,
         planned_hours: plannedHours,
-        status: "planned",
+        status: "upcoming",
         mode: "presentiel",
         type: effectifs && effectifs > 1 ? "inter" : "intra",
         notes: `Créé depuis le devis ${convertQuote.reference}`,

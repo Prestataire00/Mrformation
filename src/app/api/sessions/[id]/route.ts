@@ -156,7 +156,7 @@ export async function PUT(request: NextRequest, { params }: RouteContext) {
         city: city ?? null,
         postal_code: postal_code ?? null,
         max_participants: max_participants ?? null,
-        status: sessionStatus ?? "planned",
+        status: sessionStatus ?? "upcoming",
         notes: notes ?? null,
         price: price ?? null,
         internal_notes: internal_notes ?? null,

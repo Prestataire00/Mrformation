@@ -68,7 +68,6 @@ export const STATUS_COLORS: Record<string, string> = {
   active: "bg-green-100 text-green-800",
   inactive: "bg-gray-100 text-gray-800",
   prospect: "bg-blue-100 text-blue-800",
-  planned: "bg-slate-100 text-slate-700",
   upcoming: "bg-blue-100 text-blue-800",
   in_progress: "bg-yellow-100 text-yellow-800",
   completed: "bg-green-100 text-green-800",
@@ -88,7 +87,6 @@ export const STATUS_COLORS: Record<string, string> = {
 };
 
 export const SESSION_STATUS_LABELS: Record<string, string> = {
-  planned: "Planifiée",
   upcoming: "À venir",
   in_progress: "En cours",
   completed: "Terminée",

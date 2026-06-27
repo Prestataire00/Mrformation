@@ -387,7 +387,7 @@ export default function AdminDashboardPage() {
         trainers ( first_name, last_name )
       `)
       .gte("start_date", now)
-      .in("status", ["planned", "upcoming", "in_progress"])
+      .in("status", ["upcoming", "in_progress"])
       .order("start_date", { ascending: true })
       .limit(5);
     if (entityId) q = q.eq("entity_id", entityId);

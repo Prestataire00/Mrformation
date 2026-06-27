@@ -20,7 +20,7 @@ describe("createSessionSchema", () => {
         start_date: "2026-04-15",
         end_date: "2026-04-17",
         location: "Paris",
-        status: "planned",
+        status: "upcoming",
         max_participants: 12,
         notes: "Test",
       }).success
