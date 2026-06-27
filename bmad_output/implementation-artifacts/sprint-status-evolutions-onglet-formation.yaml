@@ -1,0 +1,58 @@
+# bmad_output/implementation-artifacts/sprint-status-evolutions-onglet-formation.yaml
+#
+# Sprint tracking SCOPÉ au lot "Évolutions onglet Formation" (retours clients, 2026-06-27).
+# Fichier dédié — NE PAS confondre avec sprint-status.yaml (PRD principal / chantier BPF).
+#
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:   backlog → in-progress → done
+# Story Status:  backlog → ready-for-dev → in-progress → review → done
+# Retrospective: optional ↔ done
+#
+# WORKFLOW NOTES:
+# ===============
+# - Une nouvelle session Claude Code par story (cycle create-story → dev-story → code-review).
+# - L'epic passe 'in-progress' quand sa 1re story est créée.
+# - Story passe 'ready-for-dev' quand son fichier existe dans implementation-artifacts/.
+# - main = prod Netlify : merge uniquement si CI verte.
+
+generated: 2026-06-27
+last_updated: 2026-06-27
+project: LMS MR / C3V Formation — Évolutions onglet Formation
+project_key: NOKEY
+tracking_system: file-system
+story_location: bmad_output/implementation-artifacts
+epics_source: bmad_output/planning-artifacts/epics-evolutions-onglet-formation.md
+
+# Ordre d'exécution recommandé (quick wins d'abord, story à risque puis migration en dernier).
+# Le numéro = position dans le sprint, pas la story-id.
+execution_order:
+  - 3-2-supprimer-statut-fantome-planned   # 1 — fix dette, XS
+  - 2-1-hub-vue-kanban-defaut              # 2 — quick win, XS/S
+  - 2-2-tri-sessions-recent-en-haut        # 3 — quick win / vérif, XS
+  - 1-1-editer-formateur-integre           # 4 — édition, S/M
+  - 1-2-editer-entreprise-tarif            # 5 — édition, S/M
+  - 2-3-planification-programme-titre-auto # 6 — planif, S/M
+  - 3-1-badge-a-cloturer                   # 7 — transverse, À RISQUE (audit call-sites)
+  - 4-1-couleur-libre-creneau              # 8 — migration SQL + UI, M
+
+development_status:
+  epic-1: backlog
+  1-1-editer-formateur-integre: backlog
+  1-2-editer-entreprise-tarif: backlog
+  epic-1-retrospective: optional
+
+  epic-2: in-progress
+  2-1-hub-vue-kanban-defaut: done
+  2-2-tri-sessions-recent-en-haut: done
+  2-3-planification-programme-titre-auto: backlog
+  epic-2-retrospective: optional
+
+  epic-3: in-progress
+  3-1-badge-a-cloturer: backlog
+  3-2-supprimer-statut-fantome-planned: done
+  epic-3-retrospective: optional
+
+  epic-4: backlog
+  4-1-couleur-libre-creneau: backlog
+  epic-4-retrospective: optional

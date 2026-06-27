@@ -203,7 +203,16 @@ export default function FormationsPage() {
   const [programs, setPrograms] = useState<ProgramOption[]>([]);
 
   // View mode
-  const [viewMode, setViewMode] = useState<"grid" | "kanban">("grid");
+  const [viewMode, setViewMode] = useState<"grid" | "kanban">(() => {
+    if (typeof window === "undefined") return "kanban";
+    const saved = localStorage.getItem("trainings-hub-view");
+    return saved === "grid" || saved === "kanban" ? saved : "kanban";
+  });
+
+  function changeViewMode(mode: "grid" | "kanban") {
+    setViewMode(mode);
+    localStorage.setItem("trainings-hub-view", mode);
+  }
 
   // Plis des sessions closes (mode regroupé) — repliés par défaut à chaque visite.
   const [showCompleted, setShowCompleted] = useState(false);
@@ -229,21 +238,25 @@ export default function FormationsPage() {
         enrollments(id)
       `)
       .eq("entity_id", entityId)
-      .order("start_date", { ascending: false });
+      .order("start_date", { ascending: false, nullsFirst: false });
 
     if (error) {
       toast({ title: "Erreur", description: "Impossible de charger les formations.", variant: "destructive" });
     } else {
-      // Auto-compute status based on dates
+      // Auto-compute status based on dates — sessions sans date : statut DB préservé
       const now = new Date();
       const mapped = (data || []).map((s: Record<string, unknown>) => {
-        const startDate = new Date(s.start_date as string);
-        const endDate = new Date(s.end_date as string);
+        const rawStart = s.start_date as string | null;
+        const rawEnd = s.end_date as string | null;
         let computedStatus = s.status as string;
-        if (computedStatus !== "cancelled") {
+        if (computedStatus !== "cancelled" && rawStart && rawEnd) {
+          const startDate = new Date(rawStart);
+          const endDate = new Date(rawEnd);
           if (now >= endDate) computedStatus = "completed";
           else if (now >= startDate) computedStatus = "in_progress";
           else computedStatus = "upcoming";
+        } else if (computedStatus !== "cancelled" && !rawStart) {
+          computedStatus = (s.status as string) || "upcoming";
         }
         return { ...s, status: computedStatus };
       });
@@ -529,7 +542,7 @@ export default function FormationsPage() {
             variant={viewMode === "grid" ? "default" : "ghost"}
             size="sm"
             className="h-7 w-7 p-0"
-            onClick={() => setViewMode("grid")}
+            onClick={() => changeViewMode("grid")}
           >
             <LayoutGrid className="h-3.5 w-3.5" />
           </Button>
@@ -537,7 +550,7 @@ export default function FormationsPage() {
             variant={viewMode === "kanban" ? "default" : "ghost"}
             size="sm"
             className="h-7 w-7 p-0"
-            onClick={() => setViewMode("kanban")}
+            onClick={() => changeViewMode("kanban")}
           >
             <LayoutList className="h-3.5 w-3.5" />
           </Button>
@@ -773,7 +786,15 @@ export default function FormationsPage() {
                     );
                   })}
                   {colSessions.length === 0 && (
-                    <p className="text-xs text-gray-400 text-center py-6">Aucune session</p>
+                    <div className="flex flex-col items-center justify-center py-8 text-gray-400">
+                      <CalendarDays className="h-8 w-8 mb-2 text-gray-300" />
+                      <p className="text-xs font-medium text-gray-500">Aucune session</p>
+                      <p className="text-[11px] mt-0.5">
+                        {col === "upcoming" ? "Planifiez une nouvelle session" :
+                         col === "in_progress" ? "Aucune session en cours" :
+                         "Aucune session terminée"}
+                      </p>
+                    </div>
                   )}
                 </div>
               </div>
