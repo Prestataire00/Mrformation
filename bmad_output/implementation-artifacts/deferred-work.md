@@ -172,3 +172,10 @@ Scope du review : feature « supports de cours attachés au programme » (table 
 ### Nettoyage e2e : bloc select-role mort dans e2e/helpers/auth.ts
 
 - Le helper e2e garde un `if (page.url().includes("select-role"))` alors que la page n'existe plus (inoffensif, jamais déclenché). À retirer lors d'un passage sur les e2e.
+
+
+## Deferred from: code review of 1-1-editer-formateur-integre (2026-06-27)
+
+- Role legacy non-enum : `FormationTrainer.role` est `string` en base — si une valeur hors enum existe, le Select ne l'affichera pas. Typer le champ ou ajouter un fallback.
+- Race condition : pas d'optimistic locking sur `formation_trainers` — deux éditions concurrentes écrasent silencieusement.
+- Session supprimée pendant dialog ouvert : le toast "Session introuvable" s'affiche mais le dialog reste ouvert sans action claire.
