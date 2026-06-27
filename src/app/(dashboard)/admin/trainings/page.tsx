@@ -203,7 +203,16 @@ export default function FormationsPage() {
   const [programs, setPrograms] = useState<ProgramOption[]>([]);
 
   // View mode
-  const [viewMode, setViewMode] = useState<"grid" | "kanban">("grid");
+  const [viewMode, setViewMode] = useState<"grid" | "kanban">(() => {
+    if (typeof window === "undefined") return "kanban";
+    const saved = localStorage.getItem("trainings-hub-view");
+    return saved === "grid" || saved === "kanban" ? saved : "kanban";
+  });
+
+  function changeViewMode(mode: "grid" | "kanban") {
+    setViewMode(mode);
+    localStorage.setItem("trainings-hub-view", mode);
+  }
 
   // Plis des sessions closes (mode regroupé) — repliés par défaut à chaque visite.
   const [showCompleted, setShowCompleted] = useState(false);
@@ -529,7 +538,7 @@ export default function FormationsPage() {
             variant={viewMode === "grid" ? "default" : "ghost"}
             size="sm"
             className="h-7 w-7 p-0"
-            onClick={() => setViewMode("grid")}
+            onClick={() => changeViewMode("grid")}
           >
             <LayoutGrid className="h-3.5 w-3.5" />
           </Button>
@@ -537,7 +546,7 @@ export default function FormationsPage() {
             variant={viewMode === "kanban" ? "default" : "ghost"}
             size="sm"
             className="h-7 w-7 p-0"
-            onClick={() => setViewMode("kanban")}
+            onClick={() => changeViewMode("kanban")}
           >
             <LayoutList className="h-3.5 w-3.5" />
           </Button>
