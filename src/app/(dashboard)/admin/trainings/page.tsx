@@ -238,21 +238,25 @@ export default function FormationsPage() {
         enrollments(id)
       `)
       .eq("entity_id", entityId)
-      .order("start_date", { ascending: false });
+      .order("start_date", { ascending: false, nullsFirst: false });
 
     if (error) {
       toast({ title: "Erreur", description: "Impossible de charger les formations.", variant: "destructive" });
     } else {
-      // Auto-compute status based on dates
+      // Auto-compute status based on dates — sessions sans date : statut DB préservé
       const now = new Date();
       const mapped = (data || []).map((s: Record<string, unknown>) => {
-        const startDate = new Date(s.start_date as string);
-        const endDate = new Date(s.end_date as string);
+        const rawStart = s.start_date as string | null;
+        const rawEnd = s.end_date as string | null;
         let computedStatus = s.status as string;
-        if (computedStatus !== "cancelled") {
+        if (computedStatus !== "cancelled" && rawStart && rawEnd) {
+          const startDate = new Date(rawStart);
+          const endDate = new Date(rawEnd);
           if (now >= endDate) computedStatus = "completed";
           else if (now >= startDate) computedStatus = "in_progress";
           else computedStatus = "upcoming";
+        } else if (computedStatus !== "cancelled" && !rawStart) {
+          computedStatus = (s.status as string) || "upcoming";
         }
         return { ...s, status: computedStatus };
       });
