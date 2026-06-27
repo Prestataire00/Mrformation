@@ -782,7 +782,15 @@ export default function FormationsPage() {
                     );
                   })}
                   {colSessions.length === 0 && (
-                    <p className="text-xs text-gray-400 text-center py-6">Aucune session</p>
+                    <div className="flex flex-col items-center justify-center py-8 text-gray-400">
+                      <CalendarDays className="h-8 w-8 mb-2 text-gray-300" />
+                      <p className="text-xs font-medium text-gray-500">Aucune session</p>
+                      <p className="text-[11px] mt-0.5">
+                        {col === "upcoming" ? "Planifiez une nouvelle session" :
+                         col === "in_progress" ? "Aucune session en cours" :
+                         "Aucune session terminée"}
+                      </p>
+                    </div>
                   )}
                 </div>
               </div>
