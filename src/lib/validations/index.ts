@@ -104,7 +104,7 @@ export const createSessionSchema = z.object({
   start_date: dateField,
   end_date: dateField,
   location: z.string().max(255).optional().nullable(),
-  status: z.enum(["planned", "in_progress", "completed", "cancelled"]).optional().default("planned"),
+  status: z.enum(["upcoming", "in_progress", "completed", "cancelled"]).optional().default("upcoming"),
   max_participants: z.number().int().min(1).max(1000).optional().nullable(),
   notes: z.string().max(5000).optional().nullable(),
 });

@@ -263,7 +263,7 @@ export interface Training {
 }
 
 // ===== SESSIONS (= Formation dans l'UI) =====
-export type SessionStatus = "planned" | "upcoming" | "in_progress" | "completed" | "cancelled";
+export type SessionStatus = "upcoming" | "in_progress" | "completed" | "cancelled";
 export type SessionMode = "presentiel" | "distanciel" | "hybride";
 export type FormationType = "intra" | "inter";
 
