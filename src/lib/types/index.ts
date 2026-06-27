@@ -350,6 +350,8 @@ export interface FormationTimeSlot {
   module_objectives: string | null;
   module_themes: string | null;
   module_exercises: string | null;
+  // Story 4.1 — couleur de fond du créneau dans le planning (hex, palette UI).
+  color: string | null;
   created_at: string;
   updated_at: string;
 }

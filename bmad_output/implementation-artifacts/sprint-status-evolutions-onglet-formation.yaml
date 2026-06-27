@@ -53,6 +53,7 @@ development_status:
   3-2-supprimer-statut-fantome-planned: done
   epic-3-retrospective: optional
 
-  epic-4: backlog
-  4-1-couleur-libre-creneau: backlog
+  epic-4: done
+  # 4-1 : migration add_time_slot_color.sql appliquée en prod le 2026-06-27.
+  4-1-couleur-libre-creneau: done
   epic-4-retrospective: optional
