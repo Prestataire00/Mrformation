@@ -53,8 +53,7 @@ development_status:
   3-2-supprimer-statut-fantome-planned: done
   epic-3-retrospective: optional
 
-  epic-4: in-progress
-  # 4-1 : code prêt + vert ; DEPLOY BLOQUÉ tant que la migration
-  # supabase/migrations/add_time_slot_color.sql n'est pas exécutée (Dashboard).
-  4-1-couleur-libre-creneau: review
+  epic-4: done
+  # 4-1 : migration add_time_slot_color.sql appliquée en prod le 2026-06-27.
+  4-1-couleur-libre-creneau: done
   epic-4-retrospective: optional
