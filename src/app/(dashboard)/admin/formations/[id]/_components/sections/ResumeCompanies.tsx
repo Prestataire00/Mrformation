@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Plus, Trash2, Loader2 } from "lucide-react";
+import { Pencil, Plus, Trash2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,7 +17,8 @@ import { computeAmountsReconciliation, getLearnersForCompany } from "@/lib/utils
 import { addCompanyToSession, removeCompanyFromSession } from "@/lib/services/formation-companies";
 import { autoEnrollLearnerToSessionElearning } from "@/lib/services/pedagogie-v2-snapshot";
 import { isPedagogieV2Epic2Enabled } from "@/lib/feature-flags";
-import type { Session, Client } from "@/lib/types";
+import type { Session, Client, FormationCompany } from "@/lib/types";
+import { EditCompanyDialog } from "./EditCompanyDialog";
 
 interface Props {
   formation: Session;
@@ -40,6 +41,7 @@ export function ResumeCompanies({ formation, onRefresh }: Props) {
   const [linkedLearners, setLinkedLearners] = useState<Array<{ id: string; first_name: string; last_name: string }>>([]);
   const [saving, setSaving] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [editingCompany, setEditingCompany] = useState<FormationCompany | null>(null);
 
   const companies = formation.formation_companies || [];
 
@@ -276,10 +278,18 @@ export function ResumeCompanies({ formation, onRefresh }: Props) {
                     {fc.email && (
                       <span className="text-sm text-muted-foreground">{fc.email}</span>
                     )}
+                    {fc.reference && (
+                      <span className="text-sm text-muted-foreground italic">{fc.reference}</span>
+                    )}
                   </div>
-                  <Button size="sm" variant="ghost" className="text-red-600" onClick={() => setDeleteId(fc.id)}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button size="sm" variant="ghost" onClick={() => setEditingCompany(fc)}>
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button size="sm" variant="ghost" className="text-red-600" onClick={() => setDeleteId(fc.id)}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
                 {companyLearners.length > 0 && (
                   <div className="ml-4 space-y-1">
@@ -407,6 +417,17 @@ export function ResumeCompanies({ formation, onRefresh }: Props) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {editingCompany && (
+        <EditCompanyDialog
+          company={editingCompany}
+          sessionId={formation.id}
+          entityId={formation.entity_id}
+          open={!!editingCompany}
+          onOpenChange={(o) => !o && setEditingCompany(null)}
+          onSaved={onRefresh}
+        />
+      )}
 
       <Dialog open={!!deleteId} onOpenChange={(o) => !o && setDeleteId(null)}>
         <DialogContent className="max-w-sm">

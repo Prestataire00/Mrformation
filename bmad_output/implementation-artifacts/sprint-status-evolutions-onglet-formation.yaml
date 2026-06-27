@@ -38,7 +38,7 @@ execution_order:
 
 development_status:
   epic-1: in-progress
-  1-1-editer-formateur-integre: in-progress
+  1-1-editer-formateur-integre: review
   1-2-editer-entreprise-tarif: review
   epic-1-retrospective: optional
 
