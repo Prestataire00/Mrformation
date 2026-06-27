@@ -5,6 +5,13 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
 import {
+  fetchSessionSlots,
+  buildSlotDayIndex,
+  slotDayLookup,
+  dayKeyFromDate,
+  type SlotDayIndex,
+} from "@/lib/services/planning-slots";
+import {
   ChevronLeft,
   ChevronRight,
   CalendarDays,
@@ -155,7 +162,17 @@ function isSameDay(a: Date, b: Date): boolean {
   );
 }
 
-function isSessionOnDay(session: CalendarSession, day: Date): boolean {
+function isSessionOnDay(
+  session: CalendarSession,
+  day: Date,
+  slotIndex: SlotDayIndex | null,
+): boolean {
+  // Si la session a des créneaux : on l'affiche uniquement les jours de créneau.
+  if (slotIndex) {
+    const viaSlots = slotDayLookup(slotIndex, session.id, dayKeyFromDate(day));
+    if (viaSlots !== null) return viaSlots;
+  }
+  // Fallback (sessions sans créneau, ou créneaux non chargés) : span start→end.
   const start = toLocalDate(session.start_date);
   const end = toLocalDate(session.end_date);
   return day >= start && day <= end;
@@ -374,12 +391,14 @@ function MonthGrid({
   sessions,
   today,
   onSessionClick,
+  slotIndex,
 }: {
   year: number;
   month: number;
   sessions: CalendarSession[];
   today: Date;
   onSessionClick: (s: CalendarSession) => void;
+  slotIndex: SlotDayIndex | null;
 }) {
   const grid = useMemo(() => getMonthGrid(year, month), [year, month]);
 
@@ -402,7 +421,7 @@ function MonthGrid({
         {grid.map((day, idx) => {
           const isCurrentMonth = day.getMonth() === month;
           const isToday = isSameDay(day, today);
-          const daySessions = sessions.filter((s) => isSessionOnDay(s, day));
+          const daySessions = sessions.filter((s) => isSessionOnDay(s, day, slotIndex));
 
           return (
             <div
@@ -460,11 +479,13 @@ function WeekGrid({
   sessions,
   today,
   onSessionClick,
+  slotIndex,
 }: {
   currentDate: Date;
   sessions: CalendarSession[];
   today: Date;
   onSessionClick: (s: CalendarSession) => void;
+  slotIndex: SlotDayIndex | null;
 }) {
   const weekDays = useMemo(() => getWeekDays(currentDate), [currentDate]);
 
@@ -495,7 +516,7 @@ function WeekGrid({
       {/* Day columns */}
       <div className="grid grid-cols-7 flex-1 border-l border-t border-gray-200">
         {weekDays.map((day, i) => {
-          const daySessions = sessions.filter((s) => isSessionOnDay(s, day));
+          const daySessions = sessions.filter((s) => isSessionOnDay(s, day, slotIndex));
           const isToday = isSameDay(day, today);
 
           return (
@@ -534,15 +555,17 @@ function DayView({
   sessions,
   today,
   onSessionClick,
+  slotIndex,
 }: {
   currentDate: Date;
   sessions: CalendarSession[];
   today: Date;
   onSessionClick: (s: CalendarSession) => void;
+  slotIndex: SlotDayIndex | null;
 }) {
   const daySessions = useMemo(
-    () => sessions.filter((s) => isSessionOnDay(s, currentDate)),
-    [sessions, currentDate]
+    () => sessions.filter((s) => isSessionOnDay(s, currentDate, slotIndex)),
+    [sessions, currentDate, slotIndex]
   );
 
   const isToday = isSameDay(currentDate, today);
@@ -666,6 +689,8 @@ export default function PlanningPage() {
   );
 
   const [sessions, setSessions] = useState<CalendarSession[]>([]);
+  // Index des créneaux des sessions visibles (null = pas chargé → fallback span).
+  const [slotIndex, setSlotIndex] = useState<SlotDayIndex | null>(null);
   const [trainers, setTrainers] = useState<TrainerOption[]>([]);
   const [trainings, setTrainings] = useState<TrainingOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -791,7 +816,20 @@ export default function PlanningPage() {
           training: Array.isArray(s.training) ? s.training[0] ?? null : s.training,
         }));
 
+        // Charge les créneaux AVANT de poser l'état : sessions + index dans le
+        // même render (React batche les setState post-await) → pas de flash
+        // "tout le temps", et pas d'index périmé au changement de période.
+        // En cas d'échec : index null → fallback span (page non bloquée).
+        const slotsRes = await fetchSessionSlots(
+          supabase,
+          parsed.map((s) => s.id),
+        );
+        const nextIndex = slotsRes.ok ? buildSlotDayIndex(slotsRes.slots) : null;
+        if (!slotsRes.ok) {
+          console.error("Error fetching planning slots:", slotsRes.error.message);
+        }
         setSessions(parsed);
+        setSlotIndex(nextIndex);
       } catch (err) {
         console.error("Error fetching sessions:", err);
       } finally {
@@ -1051,6 +1089,7 @@ export default function PlanningPage() {
                 sessions={filteredSessions}
                 today={today}
                 onSessionClick={setSelectedSession}
+                slotIndex={slotIndex}
               />
             ) : viewMode === "week" ? (
               <WeekGrid
@@ -1058,6 +1097,7 @@ export default function PlanningPage() {
                 sessions={filteredSessions}
                 today={today}
                 onSessionClick={setSelectedSession}
+                slotIndex={slotIndex}
               />
             ) : (
               <DayView
@@ -1065,6 +1105,7 @@ export default function PlanningPage() {
                 sessions={filteredSessions}
                 today={today}
                 onSessionClick={setSelectedSession}
+                slotIndex={slotIndex}
               />
             )}
           </CardContent>
