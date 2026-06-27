@@ -204,3 +204,16 @@ Scope du review : feature « supports de cours attachés au programme » (table 
 - **Count plafonné sous recherche** : sous recherche, `totalCount`/pagination sont bornés par
   `p_limit` (1000 en liste). Acceptable pour une liste paginée ; à revoir si un compteur exact est
   requis sur de très gros volumes de matches.
+
+## Deferred from: code review "barre recherche globale header" (2026-06-27)
+
+- **Abort des requêtes en vol** : la recherche globale (header) ne fait qu'une garde reqId (ignore
+  les réponses périmées) mais n'annule pas les requêtes Supabase obsolètes (pas d'AbortController).
+  Charge réseau inutile en frappe rapide. Pré-existant comme partout dans l'app.
+- **Borne de longueur max de saisie** : pas de cap sur la longueur tapée dans la recherche globale ;
+  ajouter un maxLength raisonnable (ex. 100).
+- **aria-live sur l'état des résultats** : l'arrivée des résultats / "Aucun résultat" n'est pas
+  annoncée aux lecteurs d'écran (région aria-live à ajouter).
+- **UX ouverture** : la barre globale s'ouvre au clic (pattern command-palette) ; si on veut taper
+  directement dans le header sans clic, prévoir un input header live + popover ancré (focus conservé)
+  + nav clavier manuelle.

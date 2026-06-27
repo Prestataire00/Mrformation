@@ -13,8 +13,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, User, Search, ChevronRight, Building2, Check, ChevronsUpDown } from "lucide-react";
+import { LogOut, User, ChevronRight, Building2, Check, ChevronsUpDown } from "lucide-react";
 import { NotificationPanel } from "@/components/layout/NotificationPanel";
+import { GlobalSearch } from "@/components/layout/GlobalSearch";
 import { getInitials, ROLE_LABELS } from "@/lib/utils";
 import type { Profile, Entity } from "@/lib/types";
 
@@ -195,11 +196,8 @@ export function Header({ profile, entity }: HeaderProps) {
         ))}
       </div>
 
-      {/* Search */}
-      <div role="search" aria-label="Recherche globale" className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-white/20 rounded-lg text-sm text-white/80 w-52">
-        <Search className="w-3.5 h-3.5" />
-        <span className="text-xs">Rechercher...</span>
-      </div>
+      {/* Recherche globale (entreprises + prospects) */}
+      <GlobalSearch entityId={entity?.id ?? null} />
 
       {/* Notifications */}
       <NotificationPanel />
