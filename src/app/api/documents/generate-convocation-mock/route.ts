@@ -141,8 +141,11 @@ export async function POST(_request: NextRequest) {
 
     // Pour le mock, override session.location pour matcher le PDF Loris exactement
     const sessionForRender = { ...mockSession, location: "UNICIL, 11 RUE ARMENY 13006 MARSEILLE" } as Session;
-    // Lot H : QR code connexion pour la preview mock
-    const loginQrCodeDataUrl = (await generateLoginQrDataUrl()) ?? undefined;
+    // Lot H : QR code connexion pour la preview mock. Mock uniquement :
+    // slug de l'entité chargée si dispo, sinon "mr-formation" en dur (acceptable
+    // car preview) → /login?entity=<slug>.
+    const loginQrCodeDataUrl =
+      (await generateLoginQrDataUrl(entity?.slug ?? "mr-formation")) ?? undefined;
     const context: ResolveContext = {
       session: sessionForRender,
       learner: mockLearner,

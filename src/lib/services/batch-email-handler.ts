@@ -454,11 +454,13 @@ export async function batchSendDocsEmail(
     }
   }
 
-  // Lot H : QR code connexion pour convocation (1× par batch, identique
-  // pour tous les destinataires car URL fixe /login).
+  // Lot H : QR code connexion pour convocation (1× par batch). Un batch =
+  // une seule entité (entityId/sessionId du scope) → on encode son slug dans
+  // l'URL : /login?entity=<slug> (sélecteur d'organisme pré-rempli). Repli
+  // /login si pas de slug.
   let loginQrCodeDataUrl: string | undefined;
   if (docType === "convocation") {
-    const qr = await generateLoginQrDataUrl();
+    const qr = await generateLoginQrDataUrl(entitySettings?.slug ?? undefined);
     if (qr) loginQrCodeDataUrl = qr;
   }
 

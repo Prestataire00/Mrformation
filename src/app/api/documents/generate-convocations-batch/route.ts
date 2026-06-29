@@ -135,9 +135,11 @@ export async function POST(request: NextRequest) {
     // Service client pour les appels auth.admin (ensureLearnerAccount)
     const serviceClient = createServiceClient();
 
-    // Lot H : QR code connexion pré-calculé 1× pour tout le batch
-    // (URL identique pour tous les apprenants : /login).
-    const loginQrCodeDataUrl = (await generateLoginQrDataUrl()) ?? undefined;
+    // Lot H : QR code connexion pré-calculé 1× pour tout le batch.
+    // QR pré-scopé sur l'entité réelle → /login?entity=<slug> (sélecteur
+    // d'organisme pré-rempli pour l'apprenant sans email). Repli /login si pas de slug.
+    const loginQrCodeDataUrl =
+      (await generateLoginQrDataUrl(entity?.slug ?? undefined)) ?? undefined;
 
     // Credentials PAR apprenant (ensureLearnerAccount idempotent : réutilise
     // les credentials existants pour cohérence entre les convocations).
