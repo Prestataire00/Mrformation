@@ -122,7 +122,10 @@ export async function POST(request: NextRequest) {
     const serviceClient = createServiceClient();
 
     // Lot H : QR code connexion pré-calculé 1× pour tout le batch.
-    const loginQrCodeDataUrl = (await generateLoginQrDataUrl()) ?? undefined;
+    // QR pré-scopé sur l'entité réelle (chargée via loadEntitySettings ci-dessus)
+    // → /login?entity=<slug>. Repli /login si pas de slug.
+    const loginQrCodeDataUrl =
+      (await generateLoginQrDataUrl(entity?.slug ?? undefined)) ?? undefined;
 
     const tasks: RecipientGenerationTask[] = learners.map((learner) => ({
       ownerId: learner.id,
