@@ -61,7 +61,7 @@ import { ProgramElearningsList } from "./_components/ProgramElearningsList";
 import { ProgramSupports } from "./_components/ProgramSupports";
 import ProgramElearningDefaults from "@/components/pedagogie-v2/ProgramElearningDefaults";
 import { isPedagogieV2Epic3Enabled } from "@/lib/feature-flags";
-import { EditProgramDialog, type EditFormState } from "./_components/EditProgramDialog";
+import { EditProgramDialog, type EditModule, type EditFormState } from "./_components/EditProgramDialog";
 
 // ── Simple markdown → HTML (bold, italic, lists, line breaks) ─────────────────
 function renderMarkdown(text: string): string {
@@ -190,7 +190,10 @@ export default function ProgramDetailPage() {
     trainerId: "",
   });
 
-  // Edit form (métadonnées uniquement — Lot C : plus d'édition de séquences)
+  // Edit form - modules
+  const [editModules, setEditModules] = useState<EditModule[]>([]);
+
+  // Edit form
   const [editForm, setEditForm] = useState<EditFormState>({
     title: "",
     description: "",
@@ -265,6 +268,14 @@ export default function ProgramDetailPage() {
       certification_terms: m.certification_terms ?? "",
       certification_details: m.certification_details ?? "",
     });
+    setEditModules(
+      (m.modules ?? []).map((mod) => ({
+        id: mod.id,
+        title: mod.title,
+        duration_hours: mod.duration_hours?.toString() ?? "",
+        topics: (mod.topics ?? []).join("\n"),
+      }))
+    );
     setEditOpen(true);
   }
 
@@ -273,12 +284,21 @@ export default function ProgramDetailPage() {
     if (!program) return;
     setSaving(true);
 
-    // Lot C : les séquences (`modules`) ne sont plus éditées dans ce dialog.
-    // On préserve le `content` existant tel quel (modules inclus) et on ne
-    // met à jour que les métadonnées. Le contenu pédagogique se (re)génère
-    // exclusivement via « Générer avec l'IA ».
+    // Préserve les champs du module existant non éditables dans le dialog
+    // (objectives, day_number, slot, animation_items) — sinon ils étaient
+    // silencieusement effacés à chaque save (dégradation du rendu PDF).
+    const originalModules = ((program.content as ProgramMeta).modules ?? []) as Array<Record<string, unknown>>;
+    const modules = editModules.map((mod, idx) => ({
+      ...originalModules[idx],
+      id: mod.id || idx + 1,
+      title: mod.title,
+      duration_hours: mod.duration_hours ? parseFloat(mod.duration_hours) : undefined,
+      topics: mod.topics ? mod.topics.split("\n").filter(Boolean) : [],
+    }));
+
     const content: ProgramMeta = {
       ...(program.content as ProgramMeta),
+      modules,
       duration_hours: editForm.duration_hours ? parseFloat(editForm.duration_hours) : undefined,
       duration_days: editForm.duration_days ? parseFloat(editForm.duration_days) : undefined,
       location: editForm.location || undefined,
@@ -1054,6 +1074,8 @@ export default function ProgramDetailPage() {
         onOpenChange={setEditOpen}
         editForm={editForm}
         setEditForm={setEditForm}
+        editModules={editModules}
+        setEditModules={setEditModules}
         onSave={handleSave}
         saving={saving}
       />

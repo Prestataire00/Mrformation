@@ -88,6 +88,8 @@ import {
   Eye,
   ChevronDown,
   Sparkles,
+  Upload,
+  FilePlus,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -328,6 +330,45 @@ export default function ProgramsPage() {
     }
   };
 
+  // Création manuelle : programme minimal (1 séquence vide) puis édition (grille).
+  const handleCreateBlank = async (): Promise<void> => {
+    if (!entityId) {
+      toast({ title: "Erreur", description: "Entité non chargée — réessayez.", variant: "destructive" });
+      return;
+    }
+    setCreatingFromAi(true);
+    try {
+      const blankContent: ProgramContent = {
+        modules: [{ id: 1, title: "Séquence 1", topics: [] }],
+      };
+      const result = await createProgramService(supabase, entityId, {
+        title: "Nouveau programme",
+        description: null,
+        objectives: null,
+        content: blankContent,
+        price: null,
+        tva_rate: null,
+        duration_hours: null,
+        nsf_code: null,
+        nsf_label: null,
+        is_apprenticeship: false,
+        bpf_objective: null,
+        bpf_funding_type: null,
+      });
+      if (!result.ok) {
+        toast({ title: "Erreur", description: result.error.message, variant: "destructive" });
+        return;
+      }
+      toast({ title: "Programme créé", description: "Complétez les séquences dans l'édition." });
+      router.push(`/admin/programs/${result.program.id}`);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Impossible de créer le programme";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
+    } finally {
+      setCreatingFromAi(false);
+    }
+  };
+
   const openEditDialog = (program: Program) => {
     setEditingProgram(program);
     setFormErrors({});
@@ -538,11 +579,25 @@ export default function ProgramsPage() {
             {activeFilter !== "all" && ` (filtre : ${activeFilter === "active" ? "actifs" : "inactifs"})`}
           </p>
         </div>
-        <div className="flex gap-2">
-          {/* Lot C : unique voie de création = génération IA standalone. */}
+        <div className="flex flex-wrap gap-2">
           <Button onClick={() => setGenerateDialogOpen(true)} className="gap-2">
             <Sparkles className="h-4 w-4" />
-            Nouveau programme (IA)
+            Générer (IA)
+          </Button>
+          <Button variant="outline" asChild className="gap-2">
+            <Link href="/admin/programs/import">
+              <Upload className="h-4 w-4" />
+              Importer un PDF
+            </Link>
+          </Button>
+          <Button
+            variant="outline"
+            className="gap-2"
+            disabled={creatingFromAi}
+            onClick={handleCreateBlank}
+          >
+            <FilePlus className="h-4 w-4" />
+            Créer manuellement (vierge)
           </Button>
         </div>
       </div>
