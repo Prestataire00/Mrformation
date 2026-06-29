@@ -27,7 +27,7 @@ La spec listait `src/lib/validations/program.ts` et son test comme « à restaur
 |---|---|---|
 | `src/app/api/programs/ai-extract/route.ts` | Restaurer verbatim | Extraction IA d'un PDF → `ParsedData` |
 | `src/app/(dashboard)/admin/programs/import/page.tsx` | Restaurer verbatim | Écran d'import 3 étapes (upload → aperçu → done) |
-| `src/app/(dashboard)/admin/formations/[id]/_components/EditProgramDialog.tsx` | Restaurer verbatim | Dialog d'édition AVEC grille de modules |
+| `src/app/(dashboard)/admin/programs/[id]/_components/EditProgramDialog.tsx` | Restaurer verbatim | Dialog d'édition AVEC grille de modules |
 | `src/app/(dashboard)/admin/programs/[id]/page.tsx` | Restaurer verbatim | Détail programme : state `editModules` + `handleSave` qui écrit `content` |
 | `src/app/(dashboard)/admin/programs/page.tsx` | Édition chirurgicale | Hub : +2 boutons (Importer PDF, Créer vierge) + handler `handleCreateBlank` |
 
