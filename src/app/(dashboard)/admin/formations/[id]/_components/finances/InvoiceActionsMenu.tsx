@@ -6,7 +6,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  FileDown, Send, CheckCircle, Pencil, Undo2, MoreHorizontal,
+  FileDown, Send, CheckCircle, Pencil, Undo2, Ban, MoreHorizontal,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -21,6 +21,7 @@ export interface InvoiceActionHandlers {
   onMarkPaid: (inv: Invoice) => void;
   onEdit: (inv: Invoice) => void;
   onCreateAvoir: (inv: Invoice) => void;
+  onCancel: (inv: Invoice) => void;
 }
 
 interface Props extends InvoiceActionHandlers {
@@ -36,6 +37,7 @@ const ACTION_META: Record<
   markPaid: { label: "Marquer payée", short: "Marquer payée", icon: CheckCircle },
   edit: { label: "Modifier", short: "Modifier", icon: Pencil },
   avoir: { label: "Créer un avoir", short: "Créer un avoir", icon: Undo2 },
+  cancel: { label: "Annuler la facture", short: "Annuler", icon: Ban },
 };
 
 /** Zone 4 du spec : bouton d'action contextuel + menu « ⋯ », adaptés au statut. */
@@ -51,6 +53,7 @@ export function InvoiceActionsMenu({ invoice, ...handlers }: Props) {
       markPaid: () => handlers.onMarkPaid(invoice),
       edit: () => handlers.onEdit(invoice),
       avoir: () => handlers.onCreateAvoir(invoice),
+      cancel: () => handlers.onCancel(invoice),
     };
     dispatch[id]();
   };

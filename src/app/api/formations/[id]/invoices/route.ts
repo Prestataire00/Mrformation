@@ -47,7 +47,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
     // Compute stats from invoices (exclude avoirs from totals)
     const realInvoices = (invoices ?? []).filter((i) => !i.is_avoir);
-    const total_invoiced = realInvoices.reduce((sum, i) => sum + Number(i.amount), 0);
+    const total_invoiced = realInvoices
+      .filter((i) => i.status !== "cancelled")
+      .reduce((sum, i) => sum + Number(i.amount), 0);
     const total_paid = realInvoices
       .filter((i) => i.status === "paid")
       .reduce((sum, i) => sum + Number(i.amount), 0);

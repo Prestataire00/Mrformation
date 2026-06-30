@@ -25,7 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -76,6 +76,7 @@ export function TabFinances({ formation, onRefresh }: Props) {
   });
   const [savingInvoice, setSavingInvoice] = useState(false);
   const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<Invoice | null>(null);
 
   // Picker entreprise (Story 3.6) : en INTER, on demande explicitement à l'admin
   // quelle entreprise facturer (plus de fallback arbitraire sur formation_companies[0]).
@@ -897,6 +898,7 @@ export function TabFinances({ formation, onRefresh }: Props) {
               onMarkPaid={(inv) => handleUpdateStatus(inv.id, "paid")}
               onEdit={handleEditInvoice}
               onCreateAvoir={(inv) => handleCreateInvoice(true, inv)}
+              onCancel={(inv) => setCancelTarget(inv)}
             />
           ))}
         </div>
@@ -910,6 +912,36 @@ export function TabFinances({ formation, onRefresh }: Props) {
         onAddCharge={handleAddCharge}
         onDeleteCharge={handleDeleteCharge}
       />
+
+      {/* Dialog -- Confirmation annulation de facture */}
+      <Dialog open={cancelTarget !== null} onOpenChange={(open) => { if (!open) setCancelTarget(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Annuler cette facture ?</DialogTitle>
+            <DialogDescription>
+              {cancelTarget
+                ? `La facture restera dans le registre, marquée « Annulée », et son numéro est conservé.`
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCancelTarget(null)}>
+              Retour
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={async () => {
+                if (!cancelTarget) return;
+                const id = cancelTarget.id;
+                setCancelTarget(null);
+                await handleUpdateStatus(id, "cancelled");
+              }}
+            >
+              Annuler la facture
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Dialog -- Créer une facture avec lignes */}
       <Dialog open={invoiceDialog} onOpenChange={setInvoiceDialog}>

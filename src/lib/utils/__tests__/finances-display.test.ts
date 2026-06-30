@@ -9,21 +9,21 @@ describe("getInvoiceRowActions", () => {
   it("pending : primaire email, menu pdf/markPaid/edit/avoir", () => {
     expect(getInvoiceRowActions({ status: "pending", is_avoir: false })).toEqual({
       primary: "email",
-      menu: ["pdf", "markPaid", "edit", "avoir"],
+      menu: ["pdf", "markPaid", "edit", "avoir", "cancel"],
     });
   });
 
   it("sent : primaire markPaid, menu pdf/email/avoir", () => {
     expect(getInvoiceRowActions({ status: "sent", is_avoir: false })).toEqual({
       primary: "markPaid",
-      menu: ["pdf", "email", "avoir"],
+      menu: ["pdf", "email", "avoir", "cancel"],
     });
   });
 
   it("late : même traitement que sent", () => {
     expect(getInvoiceRowActions({ status: "late", is_avoir: false })).toEqual({
       primary: "markPaid",
-      menu: ["pdf", "email", "avoir"],
+      menu: ["pdf", "email", "avoir", "cancel"],
     });
   });
 
@@ -31,12 +31,14 @@ describe("getInvoiceRowActions", () => {
     const a = getInvoiceRowActions({ status: "paid", is_avoir: false });
     expect(a.primary).toBe("pdf");
     expect(a.menu).not.toContain("markPaid");
+    expect(a.menu).toContain("cancel");
   });
 
   it("cancelled : ni avoir ni edit", () => {
-    const a = getInvoiceRowActions({ status: "cancelled", is_avoir: false });
-    expect(a.menu).not.toContain("avoir");
-    expect(a.menu).not.toContain("edit");
+    expect(getInvoiceRowActions({ status: "cancelled", is_avoir: false })).toEqual({
+      primary: "pdf",
+      menu: [],
+    });
   });
 
   it("avoir : pdf + email uniquement, quel que soit le statut", () => {
