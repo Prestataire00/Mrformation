@@ -284,6 +284,12 @@ export async function POST(request: NextRequest) {
   try {
     const { data: entities } = await supabase.from("entities").select("id, name");
 
+    // Sessions « pack-driven » : possèdent un snapshot session_automation_steps.
+    // Elles sont exclues du moteur legacy et traitées par le passage dédié.
+    const { data: packDrivenRows } = await supabase
+      .from("session_automation_steps").select("session_id");
+    const packDrivenIds = new Set((packDrivenRows ?? []).map((r) => r.session_id as string));
+
     for (const entity of entities ?? []) {
       const entityId = entity.id;
       let emailsSent = 0;
@@ -298,13 +304,8 @@ export async function POST(request: NextRequest) {
         .eq("is_enabled", true)
         .in("trigger_type", ["session_start_minus_days", "session_end_plus_days"]);
 
-      if (!rules || rules.length === 0) {
-        results.push({ entity: entity.name, sent: 0, processed: 0, errors: 0 });
-        continue;
-      }
-
-      // Pre-load templates
-      const templateIds = rules.filter((r) => r.template_id).map((r) => r.template_id) as string[];
+      // Pre-load templates for legacy rules
+      const templateIds = (rules ?? []).filter((r) => r.template_id).map((r) => r.template_id) as string[];
       let templateMap: Record<string, TemplateInfo> = {};
       if (templateIds.length > 0) {
         const { data: tplData } = await supabase
@@ -314,13 +315,42 @@ export async function POST(request: NextRequest) {
         if (tplData) templateMap = Object.fromEntries(tplData.map((t) => [t.id, t as unknown as TemplateInfo]));
       }
 
-      // Pre-load Word custom templates referenced by UUID in attachment_doc_types
+      // Pre-load Word custom templates referenced by UUID in attachment_doc_types (legacy rules)
       const customTplIds = new Set<string>();
       for (const t of Object.values(templateMap)) {
         for (const v of t.attachment_doc_types ?? []) {
           if (UUID_REGEX.test(v)) customTplIds.add(v);
         }
       }
+
+      // Extend templateMap / customTemplatesById to also cover template_id referenced by
+      // session_automation_steps of this entity (pack-driven steps may reference templates
+      // not used by any legacy rule — without this, executeRuleForSession would fall back
+      // to document_type only, which is acceptable but lossy).
+      const { data: packStepTplRows } = await supabase
+        .from("session_automation_steps")
+        .select("template_id, session:sessions!inner(entity_id)")
+        .eq("session.entity_id", entityId)
+        .eq("is_enabled", true)
+        .not("template_id", "is", null);
+      const packStepTplIds = (packStepTplRows ?? [])
+        .map((r) => (r as { template_id: string | null }).template_id)
+        .filter((id): id is string => !!id && !templateMap[id]);
+      if (packStepTplIds.length > 0) {
+        const { data: packTplData } = await supabase
+          .from("email_templates")
+          .select("id, subject, body, attachment_doc_types")
+          .in("id", packStepTplIds);
+        if (packTplData) {
+          for (const t of packTplData) {
+            templateMap[t.id] = t as unknown as TemplateInfo;
+            for (const v of (t as unknown as TemplateInfo).attachment_doc_types ?? []) {
+              if (UUID_REGEX.test(v)) customTplIds.add(v);
+            }
+          }
+        }
+      }
+
       let customTemplatesById: Record<string, CustomTemplateInfo> = {};
       if (customTplIds.size > 0) {
         const { data: customTpls } = await supabase
@@ -331,60 +361,116 @@ export async function POST(request: NextRequest) {
         if (customTpls) customTemplatesById = Object.fromEntries(customTpls.map((t) => [t.id, t as unknown as CustomTemplateInfo]));
       }
 
-      for (const rule of rules) {
-        let targetDate: string;
-        let dateField: "start_date" | "end_date";
+      if (rules && rules.length > 0) {
+        for (const rule of rules) {
+          let targetDate: string;
+          let dateField: "start_date" | "end_date";
 
-        // Le cron tourne en UTC mais session.start_date/end_date sont des dates
-        // locales (YYYY-MM-DD sans timezone). On calcule la date cible en
-        // Europe/Paris pour éviter le décalage J-1/J+1 selon le fuseau (ex:
-        // cron à 7h UTC = 9h CEST → si on faisait toISOString().split('T')[0]
-        // après minuit Paris, on aurait la date d'avant).
-        const todayInParis = new Intl.DateTimeFormat("fr-CA", {
-          timeZone: "Europe/Paris",
-          year: "numeric", month: "2-digit", day: "2-digit",
-        }).format(new Date()); // ex: "2026-05-05"
-        const [yy, mm, dd] = todayInParis.split("-").map(Number);
-        const baseLocal = new Date(Date.UTC(yy, mm - 1, dd)); // midnight UTC same date
+          // Le cron tourne en UTC mais session.start_date/end_date sont des dates
+          // locales (YYYY-MM-DD sans timezone). On calcule la date cible en
+          // Europe/Paris pour éviter le décalage J-1/J+1 selon le fuseau (ex:
+          // cron à 7h UTC = 9h CEST → si on faisait toISOString().split('T')[0]
+          // après minuit Paris, on aurait la date d'avant).
+          const todayInParis = new Intl.DateTimeFormat("fr-CA", {
+            timeZone: "Europe/Paris",
+            year: "numeric", month: "2-digit", day: "2-digit",
+          }).format(new Date()); // ex: "2026-05-05"
+          const [yy, mm, dd] = todayInParis.split("-").map(Number);
+          const baseLocal = new Date(Date.UTC(yy, mm - 1, dd)); // midnight UTC same date
 
-        if (rule.trigger_type === "session_start_minus_days") {
-          baseLocal.setUTCDate(baseLocal.getUTCDate() + rule.days_offset);
-          targetDate = baseLocal.toISOString().split("T")[0];
-          dateField = "start_date";
-        } else {
-          baseLocal.setUTCDate(baseLocal.getUTCDate() - rule.days_offset);
-          targetDate = baseLocal.toISOString().split("T")[0];
-          dateField = "end_date";
-        }
+          if (rule.trigger_type === "session_start_minus_days") {
+            baseLocal.setUTCDate(baseLocal.getUTCDate() + rule.days_offset);
+            targetDate = baseLocal.toISOString().split("T")[0];
+            dateField = "start_date";
+          } else {
+            baseLocal.setUTCDate(baseLocal.getUTCDate() - rule.days_offset);
+            targetDate = baseLocal.toISOString().split("T")[0];
+            dateField = "end_date";
+          }
 
-        const { data: sessions } = await supabase
-          .from("sessions").select("id, title, start_date, end_date, location, entity_id, is_subcontracted, status")
-          .eq("entity_id", entityId).eq(dateField, targetDate)
-          .in("status", ["upcoming", "in_progress", "completed"]);
+          const { data: sessions } = await supabase
+            .from("sessions").select("id, title, start_date, end_date, location, entity_id, is_subcontracted, status")
+            .eq("entity_id", entityId).eq(dateField, targetDate)
+            .in("status", ["upcoming", "in_progress", "completed"]);
 
-        if (!sessions || sessions.length === 0) continue;
+          if (!sessions || sessions.length === 0) continue;
 
-        // Filter by subcontracted condition
-        const condSub = (rule as Record<string, unknown>).condition_subcontracted;
+          // Filter by subcontracted condition
+          const condSub = (rule as Record<string, unknown>).condition_subcontracted;
 
-        for (const session of sessions) {
-          if (condSub === true && !(session as Record<string, unknown>).is_subcontracted) continue;
-          if (condSub === false && (session as Record<string, unknown>).is_subcontracted) continue;
+          for (const session of sessions) {
+            if (packDrivenIds.has((session as { id: string }).id)) continue; // pack-driven → passage dédié
+            if (condSub === true && !(session as Record<string, unknown>).is_subcontracted) continue;
+            if (condSub === false && (session as Record<string, unknown>).is_subcontracted) continue;
 
-          const { enqueued, skipped, failed } = await executeRuleForSession(supabase, {
-            rule: rule as unknown as RuleInfo,
-            session: session as unknown as SessionInfo,
-            template: rule.template_id ? (templateMap[rule.template_id] as TemplateInfo) ?? null : null,
-            customTemplatesById,
-            dedupAgainstHistoryFromDate: today,
-          });
-          // processed = total destinataires considérés (sémantique d'origine, pré-refactor).
-          processed += enqueued + skipped + failed;
-          emailsSent += enqueued;
-          if (failed > 0) {
-            errors.push(`${rule.name || rule.document_type} (${(session as Record<string, string>).title ?? "session"}): ${failed} échec(s) d'enqueue`);
+            const { enqueued, skipped, failed } = await executeRuleForSession(supabase, {
+              rule: rule as unknown as RuleInfo,
+              session: session as unknown as SessionInfo,
+              template: rule.template_id ? (templateMap[rule.template_id] as TemplateInfo) ?? null : null,
+              customTemplatesById,
+              dedupAgainstHistoryFromDate: today,
+            });
+            // processed = total destinataires considérés (sémantique d'origine, pré-refactor).
+            processed += enqueued + skipped + failed;
+            emailsSent += enqueued;
+            if (failed > 0) {
+              errors.push(`${rule.name || rule.document_type} (${(session as Record<string, string>).title ?? "session"}): ${failed} échec(s) d'enqueue`);
+            }
           }
         }
+      }
+
+      // ── Passage PACK-DRIVEN (date-based) : exécute les snapshots de l'entité ──
+      const { data: sessSteps } = await supabase
+        .from("session_automation_steps")
+        .select("*, session:sessions!inner(id, title, start_date, end_date, location, entity_id, is_subcontracted, status)")
+        .eq("is_enabled", true)
+        .in("trigger_type", ["session_start_minus_days", "session_end_plus_days"])
+        .eq("session.entity_id", entityId)
+        .in("session.status", ["upcoming", "in_progress", "completed"]);
+
+      for (const step of sessSteps ?? []) {
+        const sess = (step as { session: { id: string; start_date: string; end_date: string } }).session;
+        // Même calcul de date cible (Europe/Paris) que le legacy.
+        const todayInParis = new Intl.DateTimeFormat("fr-CA", {
+          timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit",
+        }).format(new Date());
+        const [yy, mm, dd] = todayInParis.split("-").map(Number);
+        const baseLocal = new Date(Date.UTC(yy, mm - 1, dd));
+        let targetDate: string;
+        let sessionDate: string;
+        if ((step as { trigger_type: string }).trigger_type === "session_start_minus_days") {
+          baseLocal.setUTCDate(baseLocal.getUTCDate() + (step as { days_offset: number }).days_offset);
+          targetDate = baseLocal.toISOString().split("T")[0];
+          sessionDate = sess.start_date;
+        } else {
+          baseLocal.setUTCDate(baseLocal.getUTCDate() - (step as { days_offset: number }).days_offset);
+          targetDate = baseLocal.toISOString().split("T")[0];
+          sessionDate = sess.end_date;
+        }
+        if (sessionDate !== targetDate) continue;
+
+        const tplId = (step as { template_id: string | null }).template_id;
+        const { enqueued, skipped, failed } = await executeRuleForSession(supabase, {
+          rule: step as unknown as RuleInfo,
+          session: sess as unknown as SessionInfo,
+          template: tplId ? (templateMap[tplId] as TemplateInfo) ?? null : null,
+          customTemplatesById,
+          dedupAgainstHistoryFromDate: today,
+        });
+        processed += enqueued + skipped + failed;
+        emailsSent += enqueued;
+        if (failed > 0) {
+          errors.push(`${(step as { name?: string }).name ?? "étape"} (${sess.id}): ${failed} échec(s)`);
+        }
+        await supabase.from("session_automation_logs").insert({
+          session_id: sess.id,
+          rule_id: null,
+          rule_name: (step as { name?: string }).name ?? null,
+          trigger_type: (step as { trigger_type: string }).trigger_type,
+          recipient_count: enqueued,
+          status: failed > 0 ? "partial" : "success",
+        });
       }
 
       results.push({ entity: entity.name, sent: emailsSent, processed, errors: errors.length });
