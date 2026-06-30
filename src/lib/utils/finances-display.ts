@@ -43,7 +43,7 @@ export interface Stats {
 }
 
 /** Identifiant d'une action de ligne de facture. */
-export type InvoiceActionId = "pdf" | "email" | "markPaid" | "edit" | "avoir";
+export type InvoiceActionId = "pdf" | "email" | "markPaid" | "edit" | "avoir" | "cancel";
 
 export interface InvoiceRowActions {
   /** Action mise en avant (bouton visible). */
@@ -65,14 +65,14 @@ export function getInvoiceRowActions(
   }
   switch (invoice.status) {
     case "pending":
-      return { primary: "email", menu: ["pdf", "markPaid", "edit", "avoir"] };
+      return { primary: "email", menu: ["pdf", "markPaid", "edit", "avoir", "cancel"] };
     case "sent":
     case "late":
-      return { primary: "markPaid", menu: ["pdf", "email", "avoir"] };
+      return { primary: "markPaid", menu: ["pdf", "email", "avoir", "cancel"] };
     case "paid":
-      return { primary: "pdf", menu: ["email", "avoir"] };
+      return { primary: "pdf", menu: ["email", "avoir", "cancel"] };
     case "cancelled":
-      return { primary: "pdf", menu: ["email"] };
+      return { primary: "pdf", menu: [] };
     default:
       return { primary: "pdf", menu: ["email"] };
   }
