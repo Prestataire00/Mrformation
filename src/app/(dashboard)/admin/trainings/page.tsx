@@ -63,6 +63,7 @@ import Link from "next/link";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { partitionSessions } from "@/lib/utils/session-grouping";
 import { computeAdminSessionStatus, sessionNeedsClosure } from "@/lib/utils/formation";
+import { instantiatePackForSession } from "@/lib/automation/instantiate-pack";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -102,6 +103,13 @@ interface ProgramOption {
   content: ProgramContent | null;
 }
 
+interface PackOption {
+  id: string;
+  name: string;
+  icon: string | null;
+  is_default: boolean;
+}
+
 interface SessionFormData {
   program_id: string;
   title: string;
@@ -114,6 +122,7 @@ interface SessionFormData {
   max_participants: string;
   notes: string;
   is_subcontracted: boolean;
+  automation_pack_id: string;
 }
 
 const emptyForm: SessionFormData = {
@@ -128,6 +137,7 @@ const emptyForm: SessionFormData = {
   max_participants: "",
   notes: "",
   is_subcontracted: false,
+  automation_pack_id: "",
 };
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -206,6 +216,7 @@ export default function FormationsPage() {
   const [formData, setFormData] = useState<SessionFormData>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [programs, setPrograms] = useState<ProgramOption[]>([]);
+  const [packs, setPacks] = useState<PackOption[]>([]);
   // Tracks whether the user manually edited the title — prevents auto-overwrite on program change.
   const [titleCustomized, setTitleCustomized] = useState(false);
 
@@ -286,9 +297,23 @@ export default function FormationsPage() {
     setPrograms((data ?? []) as ProgramOption[]);
   }, [entityId, supabase]);
 
+  const fetchPacks = useCallback(async () => {
+    if (!entityId) return;
+    const { data } = await supabase
+      .from("automation_packs")
+      .select("id, name, icon, is_default")
+      .eq("entity_id", entityId)
+      .order("name");
+    setPacks((data ?? []) as PackOption[]);
+  }, [entityId, supabase]);
+
   useEffect(() => {
     fetchSessions();
   }, [fetchSessions]);
+
+  useEffect(() => {
+    fetchPacks();
+  }, [fetchPacks]);
 
   // CONT-1 audit BMAD : si l'utilisateur arrive depuis "Créer une formation"
   // sur la fiche programme, on ouvre directement le formulaire de création
@@ -304,17 +329,27 @@ export default function FormationsPage() {
       // Charge les programmes pour s'assurer que le picker peut afficher
       // le programme pré-sélectionné, puis ouvre le formulaire.
       await fetchPrograms();
+      // Charge les packs pour pré-sélectionner le défaut dans le formulaire.
+      const { data: freshPacks } = await supabase
+        .from("automation_packs")
+        .select("id, name, icon, is_default")
+        .eq("entity_id", entityId)
+        .order("name");
+      const loadedPacks = (freshPacks ?? []) as PackOption[];
+      setPacks(loadedPacks);
+      const defaultPackId = loadedPacks.find((p) => p.is_default)?.id ?? "";
       setFormData({
         ...emptyForm,
         title: programTitle ?? "",
         program_id: fromProgram,
+        automation_pack_id: defaultPackId,
       });
       setShowCreateForm(true);
 
       // Nettoie l'URL pour ne pas réouvrir le formulaire au refresh.
       router.replace("/admin/trainings");
     })();
-  }, [entityId, searchParams, fetchPrograms, router]);
+  }, [entityId, searchParams, fetchPrograms, supabase, router]);
 
   // ── Filtering ──────────────────────────────────────────────────────────────
 
@@ -453,7 +488,8 @@ export default function FormationsPage() {
   // ── Open inline create form ─────────────────────────────────────────────
 
   function openCreateForm() {
-    setFormData(emptyForm);
+    const defaultPackId = packs.find((p) => p.is_default)?.id ?? "";
+    setFormData({ ...emptyForm, automation_pack_id: defaultPackId });
     setTitleCustomized(false);
     setShowCreateForm(true);
     fetchPrograms();
@@ -491,13 +527,28 @@ export default function FormationsPage() {
       notes: formData.notes.trim() || null,
       status: "upcoming",
       is_subcontracted: formData.is_subcontracted,
+      automation_pack_id: formData.automation_pack_id || null,
     };
 
-    const { error } = await supabase.from("sessions").insert(payload);
+    const { data: created, error } = await supabase
+      .from("sessions")
+      .insert(payload)
+      .select("id")
+      .single();
     if (error) {
       toast({ title: "Erreur", description: error.message, variant: "destructive" });
     } else {
-      toast({ title: "Session planifiée" });
+      // Snapshot du pack choisi — NON bloquant : la formation est créée quoi qu'il arrive.
+      if (formData.automation_pack_id && created?.id) {
+        const snap = await instantiatePackForSession(supabase, formData.automation_pack_id, created.id);
+        if (!snap.ok) {
+          toast({ title: "Formation créée", description: `Parcours non appliqué : ${snap.error}`, variant: "destructive" });
+        } else {
+          toast({ title: "Session planifiée", description: `Parcours appliqué (${snap.count} étape${snap.count > 1 ? "s" : ""}).` });
+        }
+      } else {
+        toast({ title: "Session planifiée" });
+      }
       setShowCreateForm(false);
       setFormData(emptyForm);
       fetchSessions();
@@ -690,6 +741,29 @@ export default function FormationsPage() {
             </label>
             {formData.is_subcontracted && (
               <span className="text-xs text-purple-600 bg-purple-50 px-2 py-0.5 rounded">Les automatisations de sous-traitance seront activées</span>
+            )}
+            {packs.length > 0 && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-gray-700">Parcours d&apos;automatisation</label>
+                <Select
+                  value={formData.automation_pack_id || "none"}
+                  onValueChange={(v) =>
+                    setFormData((f) => ({ ...f, automation_pack_id: v === "none" ? "" : v }))
+                  }
+                >
+                  <SelectTrigger className="w-72 h-9 text-sm">
+                    <SelectValue placeholder="Choisir un parcours" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Aucun</SelectItem>
+                    {packs.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.icon ? `${p.icon} ` : ""}{p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             )}
             <div className="flex-1" />
             <Button size="sm" variant="ghost" className="text-xs h-7" onClick={() => setShowCreateForm(false)}>Annuler</Button>
