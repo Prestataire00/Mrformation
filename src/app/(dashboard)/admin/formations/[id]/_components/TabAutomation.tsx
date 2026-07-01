@@ -15,6 +15,7 @@ import Link from "next/link";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { AutomationTimeline } from "./AutomationTimeline";
 import { DryRunDialog } from "@/components/automation/DryRunDialog";
+import { FormationAutomationTimeline } from "./FormationAutomationTimeline";
 import type { Session } from "@/lib/types";
 
 interface Props {
@@ -175,6 +176,8 @@ export function TabAutomation({ formation, onRefresh }: Props) {
   }
 
   return (
+    <div className="space-y-4">
+    <FormationAutomationTimeline sessionId={formation.id} onRefresh={onRefresh} />
     <Tabs defaultValue="timeline" className="space-y-4">
       <TabsList className="h-9">
         <TabsTrigger value="timeline" className="text-xs gap-1.5"><CalendarDays className="h-3.5 w-3.5" /> Timeline</TabsTrigger>
@@ -321,5 +324,6 @@ export function TabAutomation({ formation, onRefresh }: Props) {
         />
       )}
     </Tabs>
+    </div>
   );
 }
