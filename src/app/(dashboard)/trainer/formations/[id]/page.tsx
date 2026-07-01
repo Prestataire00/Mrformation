@@ -310,13 +310,13 @@ export default function TrainerFormationDetailPage() {
                   </p>
                 )}
               </div>
-              {taskStatus.bilan !== null && (
-                <button
-                  disabled
-                  className="text-xs px-3 py-1.5 rounded border border-gray-200 text-gray-400 shrink-0 cursor-not-allowed"
+              {taskStatus.bilan !== null && taskStatus.bilanQuestionnaireId && (
+                <Link
+                  href={`/trainer/questionnaires/${taskStatus.bilanQuestionnaireId}/fill?session_id=${id}`}
+                  className="text-xs px-3 py-1.5 rounded border border-gray-300 text-gray-700 hover:bg-gray-50 shrink-0"
                 >
                   Accéder
-                </button>
+                </Link>
               )}
             </div>
 
