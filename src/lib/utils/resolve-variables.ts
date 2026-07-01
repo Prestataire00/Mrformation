@@ -1721,6 +1721,8 @@ export const ALIAS_TO_VARIABLE_KEY: Record<string, string> = {
   "E-signature du Formateur": "{{e_signature_formateur}}",
   "Adresse de la formation": "{{adresse_formation}}",
   "Coût total du formateur (HT)": "{{cout_formateur_ht}}",
+  // === Contrat de sous-traitance ===
+  "Liste des stagiaires de la session": "{{liste_apprenants}}",
 };
 
 /**

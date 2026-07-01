@@ -156,6 +156,10 @@ import {
   RESULTATS_EVALUATIONS_HTML,
   RESULTATS_EVALUATIONS_FOOTER_TEMPLATE,
 } from "./resultats-evaluations";
+import {
+  CONTRAT_SOUS_TRAITANCE_HTML,
+  CONTRAT_SOUS_TRAITANCE_FOOTER_TEMPLATE,
+} from "./contrat-sous-traitance";
 
 export interface SystemTemplate {
   html: string;
@@ -219,10 +223,12 @@ export const SYSTEM_TEMPLATES_BY_DOC_TYPE: Record<string, SystemTemplate> = {
     ownerType: "trainer",
     qualiopiBlocking: true,
   },
-  // contrat_sous_traitance retiré le 2026-05-18 : c'était un doublon strict de
-  // convention_intervention (même HTML, même footer, même ownerType), source de
-  // confusion utilisateur. Décision Wissam : on garde uniquement
-  // convention_intervention. Cf migration SQL drop_contrat_sous_traitance.sql.
+  contrat_sous_traitance: {
+    html: CONTRAT_SOUS_TRAITANCE_HTML,
+    footer: CONTRAT_SOUS_TRAITANCE_FOOTER_TEMPLATE,
+    ownerType: "trainer",
+    qualiopiBlocking: true,
+  },
   programme_formation: {
     html: PROGRAMME_FORMATION_HTML,
     footer: PROGRAMME_FORMATION_FOOTER_TEMPLATE,

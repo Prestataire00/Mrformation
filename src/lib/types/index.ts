@@ -516,6 +516,7 @@ export type ConventionDocType =
   | "cgv" | "politique_confidentialite" | "reglement_interieur" | "programme_formation"
   | "convention_entreprise" | "feuille_emargement_collectif" | "planning_semaine"
   | "convention_intervention"
+  | "contrat_sous_traitance"
   // h-22 : 23 documents secondaires (cf src/lib/templates/registry.ts + story h-22)
   | "avis_hab_elec_generique"
   | "avis_hab_elec_b0_bf_bs"

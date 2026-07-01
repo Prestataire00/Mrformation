@@ -1,7 +1,7 @@
 # Variables Catalog — Sellsy aliases `[%Var%]`
 
 Auto-synced from `src/lib/utils/resolve-variables.ts` `ALIAS_TO_VARIABLE_KEY` map.
-**Last sync** : 2026-05-16
+**Last sync** : 2026-07-01
 
 When creating a new template, use these `[%Var%]` placeholders. The resolver converts them to actual values at PDF generation time.
 
@@ -76,6 +76,7 @@ Requires `data.client` in `ResolveContext`. Pour INTER (multi-entreprises) voir 
 | `[%Nom du représentant légal du client%]` | `{{client_representant}}` | |
 | `[%Nombre d'apprenants du client%]` | `{{formation_effectifs}}` | Pour INTER |
 | `[%Apprenants du client%]` | `{{liste_apprenants}}` | Liste filtrée par client |
+| `[%Liste des stagiaires de la session%]` | `{{liste_apprenants}}` | Tous les apprenants inscrits à la session (noms, sans filtre client) — ajouté pour contrat_sous_traitance |
 
 ---
 
