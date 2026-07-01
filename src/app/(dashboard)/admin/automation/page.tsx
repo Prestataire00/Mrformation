@@ -17,7 +17,7 @@ import {
   FlaskConical, History, Pencil,
 } from "lucide-react";
 import { RuleWizard } from "@/components/automation/RuleWizard";
-import { QuickStartPacks } from "@/components/automation/QuickStartPacks";
+import { PacksManager } from "@/components/automation/PacksManager";
 import { DryRunDialog } from "@/components/automation/DryRunDialog";
 import { DomainToggle } from "@/components/automation/DomainToggle";
 import { NextRunBadge } from "@/components/automation/NextRunBadge";
@@ -145,7 +145,6 @@ export default function AutomationPage() {
   };
 
   const allRules = formationRules;
-  const existingRuleNames = allRules.map(r => r.name || "").filter(Boolean);
 
   const filteredRules = allRules.filter(r =>
     !search ||
@@ -305,7 +304,7 @@ export default function AutomationPage() {
 
       {/* Packs section */}
       <div id="packs-section">
-        <QuickStartPacks onActivated={fetchRules} existingRuleNames={existingRuleNames} />
+        <PacksManager />
       </div>
 
       {/* Rules tabs */}
