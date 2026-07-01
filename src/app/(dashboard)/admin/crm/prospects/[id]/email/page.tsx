@@ -58,6 +58,7 @@ export default function SendEmailPage() {
 
   const [subject, setSubject] = useState(searchParams.get("subject") ?? "");
   const [message, setMessage] = useState(searchParams.get("body") ?? "");
+  const [showPreview, setShowPreview] = useState(false);
 
   // IA state
   const [aiLoading, setAiLoading] = useState(false);
@@ -297,6 +298,29 @@ export default function SendEmailPage() {
             </div>
           )}
 
+          {/* Bascule aperçu */}
+          <div className="flex justify-end">
+            <Button type="button" variant="outline" size="sm" onClick={() => setShowPreview((v) => !v)}>
+              {showPreview ? "Modifier" : "Aperçu"}
+            </Button>
+          </div>
+
+          {showPreview ? (
+            <div className="rounded-lg border bg-gray-50 p-4 space-y-3">
+              <div>
+                <p className="mb-1 text-xs font-medium text-gray-500">Sujet</p>
+                <p className="text-sm font-semibold text-gray-900">{resolveTags(subject) || "—"}</p>
+              </div>
+              <div>
+                <p className="mb-1 text-xs font-medium text-gray-500">Message</p>
+                <p className="whitespace-pre-wrap text-sm text-gray-800">{resolveTags(message) || "—"}</p>
+              </div>
+              <p className="text-[11px] text-gray-400">
+                Aperçu avec les balises remplacées par les informations du prospect.
+              </p>
+            </div>
+          ) : (
+          <>
           {/* Sujet */}
           <div>
             <label className="mb-1.5 block text-sm font-medium text-gray-700">
@@ -365,6 +389,8 @@ export default function SendEmailPage() {
               className="rounded-t-none resize-none text-sm"
             />
           </div>
+          </>
+          )}
 
           {/* Result */}
           {result && (
