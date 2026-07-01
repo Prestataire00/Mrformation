@@ -14,7 +14,8 @@
  * Pour chaque formateur rattaché :
  *  - Badge "profil incomplet" si SIRET / NDA / adresse manquent (le PDF
  *    aurait des [Placeholder] visibles → la génération est bloquée).
- *  - Bouton "Générer le contrat" qui appelle l'API, télécharge le PDF.
+ *  - Bouton "Générer la convention" qui appelle generate-convention-intervention.
+ *  - Bouton "Contrat de sous-traitance" qui appelle generate-contrat-sous-traitance.
  *  - Affichage du coût HT calculé côté API si disponible.
  */
 
@@ -23,7 +24,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
-import { FileSignature, Loader2, AlertTriangle, Download } from "lucide-react";
+import { FileSignature, Loader2, AlertTriangle, Download, FileText } from "lucide-react";
 import type { Session, Trainer } from "@/lib/types";
 
 interface Props {
@@ -70,12 +71,15 @@ function downloadPdfFromBase64(base64: string, filename: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+/** Clé composite pour l'état de chargement : `${trainerId}:${docType}` */
+type GeneratingKey = `${string}:convention` | `${string}:contrat_st`;
+
 export function SubcontractingContractsPanel({ formation }: Props) {
   const supabase = createClient();
   const { toast } = useToast();
   const [rows, setRows] = useState<FormationTrainerRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [generating, setGenerating] = useState<string | null>(null);
+  const [generating, setGenerating] = useState<GeneratingKey | null>(null);
 
   const fetchTrainers = useCallback(async () => {
     setLoading(true);
@@ -98,7 +102,17 @@ export function SubcontractingContractsPanel({ formation }: Props) {
     fetchTrainers();
   }, [fetchTrainers]);
 
-  const handleGenerate = async (row: FormationTrainerRow) => {
+  /**
+   * Logique commune aux deux boutons : vérifie le profil, appelle l'endpoint,
+   * télécharge le PDF. Seuls l'endpoint et le nom de fichier diffèrent.
+   */
+  const handleGenerateDoc = async (
+    row: FormationTrainerRow,
+    endpoint: string,
+    filenamePrefix: string,
+    successTitle: string,
+    generatingKey: GeneratingKey,
+  ) => {
     if (!row.trainer) return;
     const missing = missingTrainerFields(row.trainer);
     if (missing.length > 0) {
@@ -109,22 +123,25 @@ export function SubcontractingContractsPanel({ formation }: Props) {
       });
       return;
     }
-    setGenerating(row.trainer_id);
+    setGenerating(generatingKey);
     try {
-      const res = await fetch("/api/documents/generate-convention-intervention", {
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId: formation.id, trainerId: row.trainer_id }),
       });
-      const data = await res.json();
+      const data = (await res.json()) as { pdfBase64?: string; costHt?: number; error?: string };
       if (!res.ok) {
-        throw new Error(data.error || `Erreur ${res.status}`);
+        throw new Error(data.error ?? `Erreur ${res.status}`);
       }
-      const filename = `contrat-sous-traitance-${row.trainer.last_name?.toLowerCase() || "formateur"}-${row.trainer_id.slice(0, 8)}.pdf`;
+      if (!data.pdfBase64) {
+        throw new Error("Réponse API invalide : pdfBase64 manquant");
+      }
+      const filename = `${filenamePrefix}-${row.trainer.last_name?.toLowerCase() ?? "formateur"}-${row.trainer_id.slice(0, 8)}.pdf`;
       downloadPdfFromBase64(data.pdfBase64, filename);
       toast({
-        title: "Contrat généré",
-        description: `${row.trainer.first_name} ${row.trainer.last_name} — coût HT : ${data.costHt ?? "non calculé"} €`,
+        title: successTitle,
+        description: `${row.trainer.first_name} ${row.trainer.last_name}${data.costHt != null ? ` — coût HT : ${data.costHt} €` : ""}`,
       });
     } catch (err) {
       toast({
@@ -136,6 +153,24 @@ export function SubcontractingContractsPanel({ formation }: Props) {
       setGenerating(null);
     }
   };
+
+  const handleGenerate = (row: FormationTrainerRow) =>
+    handleGenerateDoc(
+      row,
+      "/api/documents/generate-convention-intervention",
+      "convention-intervention",
+      "Convention générée",
+      `${row.trainer_id}:convention`,
+    );
+
+  const handleGenerateContratST = (row: FormationTrainerRow) =>
+    handleGenerateDoc(
+      row,
+      "/api/documents/generate-contrat-sous-traitance",
+      "contrat-sous-traitance",
+      "Contrat de sous-traitance généré",
+      `${row.trainer_id}:contrat_st`,
+    );
 
   if (loading) {
     return (
@@ -164,7 +199,9 @@ export function SubcontractingContractsPanel({ formation }: Props) {
       <div className="divide-y">
         {rows.map((row) => {
           const missing = missingTrainerFields(row.trainer);
-          const isGenerating = generating === row.trainer_id;
+          const isGeneratingConvention = generating === `${row.trainer_id}:convention`;
+          const isGeneratingContratST = generating === `${row.trainer_id}:contrat_st`;
+          const isAnyGenerating = isGeneratingConvention || isGeneratingContratST;
           const trainer = row.trainer;
           return (
             <div key={row.id} className="px-4 py-3 flex items-center justify-between gap-3">
@@ -193,19 +230,35 @@ export function SubcontractingContractsPanel({ formation }: Props) {
                   )}
                 </div>
               </div>
-              <Button
-                size="sm"
-                onClick={() => handleGenerate(row)}
-                disabled={isGenerating || missing.length > 0}
-                className="gap-1.5 shrink-0"
-              >
-                {isGenerating ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Download className="h-3.5 w-3.5" />
-                )}
-                {isGenerating ? "Génération…" : "Générer le contrat"}
-              </Button>
+              <div className="flex items-center gap-2 shrink-0">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleGenerate(row)}
+                  disabled={isAnyGenerating || missing.length > 0}
+                  className="gap-1.5"
+                >
+                  {isGeneratingConvention ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Download className="h-3.5 w-3.5" />
+                  )}
+                  {isGeneratingConvention ? "Génération…" : "Convention"}
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => handleGenerateContratST(row)}
+                  disabled={isAnyGenerating || missing.length > 0}
+                  className="gap-1.5"
+                >
+                  {isGeneratingContratST ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <FileText className="h-3.5 w-3.5" />
+                  )}
+                  {isGeneratingContratST ? "Génération…" : "Contrat de sous-traitance"}
+                </Button>
+              </div>
             </div>
           );
         })}

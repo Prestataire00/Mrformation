@@ -739,6 +739,19 @@ export default function TestConventionPage() {
     totalLatencyMs: number;
   } | null>(null);
 
+  // ── Contrat de sous-traitance (per session+trainer) ───────────────────
+  const [cstSessionId, setCstSessionId] = useState<string>("");
+  const [cstTrainerId, setCstTrainerId] = useState<string>("");
+  const [cstTrainers, setCstTrainers] = useState<TrainerRow[]>([]);
+  const [loadingCstTrainers, setLoadingCstTrainers] = useState(false);
+  const [generatingCst, setGeneratingCst] = useState(false);
+  const [lastCstResult, setLastCstResult] = useState<{
+    engineUsed: string;
+    cacheHit: boolean;
+    latencyMs: number;
+    fileSizeBytes: number;
+  } | null>(null);
+
   // Charge la liste des sessions de l'entité
   useEffect(() => {
     if (!entityId) return;
@@ -807,6 +820,24 @@ export default function TestConventionPage() {
       setLoadingInterventionTrainers(false);
     })();
   }, [supabase, interventionSessionId]);
+
+  // Charge les formateurs de la session pour contrat sous-traitance single
+  useEffect(() => {
+    if (!cstSessionId) {
+      setCstTrainers([]);
+      setCstTrainerId("");
+      return;
+    }
+    setLoadingCstTrainers(true);
+    (async () => {
+      const { data } = await supabase
+        .from("formation_trainers")
+        .select("trainer_id, trainer:trainers(id, first_name, last_name)")
+        .eq("session_id", cstSessionId);
+      setCstTrainers((data as unknown as TrainerRow[]) || []);
+      setLoadingCstTrainers(false);
+    })();
+  }, [supabase, cstSessionId]);
 
   // Charge les apprenants de la session pour convocation single
   useEffect(() => {
@@ -4015,6 +4046,74 @@ export default function TestConventionPage() {
     }
   }
 
+  // ── Contrat sous-traitance handlers ───────────────────────────────────
+  async function handleGenerateCstMock() {
+    setGeneratingCst(true);
+    setLastCstResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-contrat-sous-traitance-mock", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastCstResult({
+        engineUsed: json.engineUsed,
+        cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs,
+        fileSizeBytes: json.fileSizeBytes,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({ title: "Contrat sous-traitance mock généré", description: `${json.engineUsed} · ${json.latencyMs}ms` });
+    } catch (err) {
+      toast({
+        title: "Échec contrat sous-traitance mock",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingCst(false);
+    }
+  }
+
+  async function handleGenerateCst() {
+    if (!cstSessionId || !cstTrainerId) {
+      toast({ title: "Sélection incomplète", description: "Choisis session ET formateur.", variant: "destructive" });
+      return;
+    }
+    setGeneratingCst(true);
+    setLastCstResult(null);
+    try {
+      const res = await fetch("/api/documents/generate-contrat-sous-traitance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: cstSessionId, trainerId: cstTrainerId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setLastCstResult({
+        engineUsed: json.engineUsed,
+        cacheHit: json.cacheHit,
+        latencyMs: json.latencyMs,
+        fileSizeBytes: json.fileSizeBytes,
+      });
+      const bytes = Uint8Array.from(atob(json.pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      window.open(URL.createObjectURL(blob), "_blank");
+      toast({
+        title: "Contrat sous-traitance généré",
+        description: `${json.engineUsed} · ${json.latencyMs}ms`,
+      });
+    } catch (err) {
+      toast({
+        title: "Échec contrat sous-traitance",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingCst(false);
+    }
+  }
+
   // ── Programme handlers ────────────────────────────────────────────────
   async function handleGenerateProgrammeMock() {
     setGeneratingProgramme(true);
@@ -6644,6 +6743,149 @@ export default function TestConventionPage() {
             {lastInterventionResult.costHt != null && (
               <div><strong>Coût HT :</strong> {lastInterventionResult.costHt} €</div>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════ */}
+      {/*    Contrat de sous-traitance (Qualiopi, 8 articles)             */}
+      {/* ════════════════════════════════════════════════════════════════ */}
+
+      <div className="pt-10 border-t-2 border-dashed border-gray-300">
+        <h2 className="text-xl font-semibold flex items-center gap-2 mb-1">
+          <ScrollText className="h-5 w-5 text-amber-700" />
+          Contrat de sous-traitance Qualiopi
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Contrat Qualiopi étendu (8 articles) par (session, formateur). Inclut la
+          liste des stagiaires de la session via{" "}
+          <code className="text-xs bg-gray-100 px-1 rounded">[%Liste des stagiaires de la session%]</code>.
+          Distinct de la convention d&apos;intervention (10 articles internes).
+        </p>
+      </div>
+
+      <Card className="border-amber-200 bg-amber-50/30">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <FlaskConical className="h-4 w-4 text-amber-700" />
+            Mode rapide — Données factices
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Génère un contrat avec formateur fake (Patrick ATTLAN, OF Sécurité Formation 13)
+            + 3 stagiaires fictifs. Permet de valider le rendu visuel{" "}
+            <strong>sans données prod</strong>.
+          </p>
+          <Button
+            onClick={handleGenerateCstMock}
+            disabled={generatingCst}
+            className="w-full gap-2 bg-amber-600 hover:bg-amber-700"
+          >
+            {generatingCst ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <FlaskConical className="h-4 w-4" />
+            )}
+            Générer un contrat sous-traitance de test
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Contrat sous-traitance — Données réelles (1 formateur)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label htmlFor="cst-session-select" className="text-sm">Session</Label>
+            <Select
+              value={cstSessionId}
+              onValueChange={setCstSessionId}
+              disabled={loadingSessions || generatingCst}
+            >
+              <SelectTrigger id="cst-session-select" className="mt-1">
+                <SelectValue placeholder={loadingSessions ? "Chargement…" : "Choisir une session…"} />
+              </SelectTrigger>
+              <SelectContent>
+                {sessions.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.title} — {new Date(s.start_date).toLocaleDateString("fr-FR")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label htmlFor="cst-trainer-select" className="text-sm">Formateur rattaché</Label>
+            <Select
+              value={cstTrainerId}
+              onValueChange={setCstTrainerId}
+              disabled={!cstSessionId || loadingCstTrainers || generatingCst}
+            >
+              <SelectTrigger id="cst-trainer-select" className="mt-1">
+                <SelectValue
+                  placeholder={
+                    !cstSessionId
+                      ? "Choisis d'abord une session"
+                      : loadingCstTrainers
+                        ? "Chargement…"
+                        : cstTrainers.length === 0
+                          ? "Aucun formateur rattaché"
+                          : "Choisir un formateur…"
+                  }
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {cstTrainers.map((t) =>
+                  t.trainer ? (
+                    <SelectItem key={t.trainer_id} value={t.trainer_id}>
+                      {t.trainer.last_name} {t.trainer.first_name}
+                    </SelectItem>
+                  ) : null,
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <Button
+            onClick={handleGenerateCst}
+            disabled={!cstSessionId || !cstTrainerId || generatingCst}
+            className="w-full gap-2"
+            size="lg"
+          >
+            {generatingCst ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Génération en cours…
+              </>
+            ) : (
+              <>
+                <ScrollText className="h-4 w-4" />
+                Générer le contrat sous-traitance
+              </>
+            )}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {lastCstResult && (
+        <Card className="border-green-200 bg-green-50/30">
+          <CardHeader>
+            <CardTitle className="text-base text-green-900">✅ Dernier contrat sous-traitance</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            <div>
+              <strong>Moteur :</strong> {lastCstResult.engineUsed}
+              {lastCstResult.cacheHit && (
+                <span className="ml-2 text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded">
+                  ⚡ Cache hit
+                </span>
+              )}
+            </div>
+            <div><strong>Latence :</strong> {lastCstResult.latencyMs} ms</div>
+            <div><strong>Taille PDF :</strong> {(lastCstResult.fileSizeBytes / 1024).toFixed(1)} KB</div>
           </CardContent>
         </Card>
       )}
