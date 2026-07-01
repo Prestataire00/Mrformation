@@ -130,7 +130,7 @@ git commit -m "feat(automation): schémas Zod packs + étapes"
 ```ts
 import { NextRequest, NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/require-role";
-import { resolveActiveEntityId } from "@/lib/auth/resolve-active-entity";
+import { resolveActiveEntityId } from "@/lib/crm/active-entity";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 import { packMetaSchema } from "@/lib/validations/automation-pack";
 
@@ -188,7 +188,7 @@ export async function POST(request: NextRequest) {
 ```ts
 import { NextRequest, NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/require-role";
-import { resolveActiveEntityId } from "@/lib/auth/resolve-active-entity";
+import { resolveActiveEntityId } from "@/lib/crm/active-entity";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 import { packMetaSchema } from "@/lib/validations/automation-pack";
 
@@ -278,7 +278,7 @@ export async function DELETE(_req: NextRequest, { params }: Ctx) {
 ```ts
 import { NextRequest, NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/require-role";
-import { resolveActiveEntityId } from "@/lib/auth/resolve-active-entity";
+import { resolveActiveEntityId } from "@/lib/crm/active-entity";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 import { packStepsSchema } from "@/lib/validations/automation-pack";
 
@@ -319,7 +319,7 @@ export async function PUT(request: NextRequest, { params }: Ctx) {
 ```ts
 import { NextRequest, NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/require-role";
-import { resolveActiveEntityId } from "@/lib/auth/resolve-active-entity";
+import { resolveActiveEntityId } from "@/lib/crm/active-entity";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 
 type Ctx = { params: { id: string } };
