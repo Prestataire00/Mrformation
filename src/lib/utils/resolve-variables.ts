@@ -1435,8 +1435,11 @@ export function resolveVariables(content: string, data: ResolveContext): string 
       // timezone Paris pour éviter qu'un slot en bordure de journée (ex 22:30Z =
       // 00:30 Paris) ne se retrouve dans une dateKey UTC qui ne correspond pas
       // au jour Paris affiché (et donc dans la mauvaise semaine après group).
-      type Column = { key: string; date: string; moment: "M" | "AM"; label: string; slotIds: string[] };
+      type Column = { key: string; date: string; moment: "M" | "AM"; dShort: string; startTimes: string[]; endTimes: string[]; label: string; slotIds: string[] };
       const columnsMap = new Map<string, Column>();
+      // Heure Paris "HH:MM" d'un ISO (retour client Loris : on affiche les horaires
+      // réels du créneau à la place de "Matin"/"Après-midi").
+      const fmtHM = (iso: string) => new Date(iso).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Europe/Paris" });
       for (const slot of slots) {
         const d = new Date(slot.start_time);
         // fr-CA produit yyyy-mm-dd, parfait pour clé ISO + alignement Paris
@@ -1445,9 +1448,18 @@ export function resolveVariables(content: string, data: ResolveContext): string 
         const moment: "M" | "AM" = hour < 13 ? "M" : "AM";
         const key = `${dateKey}|${moment}`;
         const dShort = d.toLocaleDateString("fr-FR", { weekday: "short", day: "2-digit", month: "2-digit", timeZone: "Europe/Paris" });
-        const label = `${dShort}<br>${moment === "M" ? "Matin" : "Après-midi"}`;
-        if (!columnsMap.has(key)) columnsMap.set(key, { key, date: dateKey, moment, label, slotIds: [] });
-        columnsMap.get(key)!.slotIds.push(slot.id);
+        if (!columnsMap.has(key)) columnsMap.set(key, { key, date: dateKey, moment, dShort, startTimes: [], endTimes: [], label: "", slotIds: [] });
+        const col = columnsMap.get(key)!;
+        col.startTimes.push(slot.start_time);
+        col.endTimes.push(slot.end_time);
+        col.slotIds.push(slot.id);
+      }
+      // Étiquette de colonne = jour + amplitude horaire (début du 1er créneau →
+      // fin du dernier créneau de la demi-journée), au lieu de "Matin"/"Après-midi".
+      for (const col of columnsMap.values()) {
+        const start = col.startTimes.reduce((a, b) => (new Date(b) < new Date(a) ? b : a));
+        const end = col.endTimes.reduce((a, b) => (new Date(b) > new Date(a) ? b : a));
+        col.label = `${col.dShort}<br>${fmtHM(start)} - ${fmtHM(end)}`;
       }
       // Sort : par date croissante, puis Matin (M) AVANT Après-midi (AM).
       // Sans cette priorité, le localeCompare placerait "AM" avant "M"
