@@ -19,6 +19,8 @@ import {
   EyeOff,
   Camera,
 } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 
 interface ProfileData {
   id: string;
@@ -29,6 +31,7 @@ interface ProfileData {
   address: string | null;
   role: string;
   avatar_url: string | null;
+  email_signature: string | null;
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -51,6 +54,7 @@ export function ProfilePage() {
   const [lastName, setLastName] = useState("");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
+  const [emailSignature, setEmailSignature] = useState("");
 
   // Password change
   const [newPassword, setNewPassword] = useState("");
@@ -74,15 +78,15 @@ export function ProfilePage() {
       return;
     }
 
-    // First try with address column, fallback without it if column doesn't exist yet
+    // First try with address + email_signature columns, fallback without them if columns don't exist yet
     let { data, error } = await supabase
       .from("profiles")
-      .select("id, first_name, last_name, email, phone, address, role, avatar_url")
+      .select("id, first_name, last_name, email, phone, address, role, avatar_url, email_signature")
       .eq("id", user.id)
       .single();
 
     if (error && !data) {
-      // address column may not exist yet — retry without it
+      // address/email_signature columns may not exist yet — retry without them
       const res = await supabase
         .from("profiles")
         .select("id, first_name, last_name, email, phone, role, avatar_url")
@@ -102,11 +106,13 @@ export function ProfilePage() {
         address: (profile.address as string) || null,
         role: (profile.role as string) || "admin",
         avatar_url: (profile.avatar_url as string) || null,
+        email_signature: (profile.email_signature as string) || null,
       });
       setFirstName((profile.first_name as string) || "");
       setLastName((profile.last_name as string) || "");
       setPhone((profile.phone as string) || "");
       setAddress((profile.address as string) || "");
+      setEmailSignature((profile.email_signature as string) || "");
     }
     setLoading(false);
   }
@@ -121,14 +127,14 @@ export function ProfilePage() {
       phone: phone.trim() || null,
     };
 
-    // Try with address first, fallback without
+    // Try with address + email_signature first, fallback without
     let { error } = await supabase
       .from("profiles")
-      .update({ ...payload, address: address.trim() || null })
+      .update({ ...payload, address: address.trim() || null, email_signature: emailSignature.trim() || null })
       .eq("id", profile.id);
 
-    if (error && error.message.includes("address")) {
-      // address column doesn't exist yet — save without it
+    if (error && (error.message.includes("address") || error.message.includes("email_signature"))) {
+      // address/email_signature columns may not exist yet — save without them
       const res = await supabase
         .from("profiles")
         .update(payload)
@@ -382,6 +388,20 @@ export function ProfilePage() {
               onChange={(e) => setAddress(e.target.value)}
               placeholder="Adresse complète (y compris la ville)"
               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#374151]"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Signature email</Label>
+            <p className="text-xs text-muted-foreground">
+              Cette signature sera automatiquement ajoutée en bas des emails que vous envoyez.
+            </p>
+            <Textarea
+              value={emailSignature}
+              onChange={(e) => setEmailSignature(e.target.value)}
+              placeholder={"Cordialement,\nPrénom Nom\nTitre — Entreprise\nTél : 01 23 45 67 89"}
+              rows={5}
+              className="text-sm"
             />
           </div>
 

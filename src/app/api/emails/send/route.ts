@@ -87,7 +87,21 @@ export async function POST(request: NextRequest) {
     }
 
     const recipientEmail = to.trim().toLowerCase();
-    const htmlBody = toHtmlBody(body);
+
+    // Injection automatique de la signature email du commercial
+    let finalBody = body;
+    const serviceSupabase = createServiceClient();
+    const { data: senderProfile } = await serviceSupabase
+      .from("profiles")
+      .select("email_signature")
+      .eq("id", auth.user.id)
+      .maybeSingle();
+
+    if (senderProfile?.email_signature) {
+      finalBody = `${body}\n\n--\n${senderProfile.email_signature}`;
+    }
+
+    const htmlBody = toHtmlBody(finalBody);
 
     let emailStatus: "sent" | "failed" | "pending" = "pending";
     let errorMessage: string | null = null;
@@ -194,7 +208,7 @@ export async function POST(request: NextRequest) {
             to: [recipientEmail],
             subject: subject.trim(),
             html: htmlBody,
-            text: body.trim(),
+            text: finalBody.trim(),
             attachments: payload.attachments?.map((a) => ({
               filename: a.filename,
               content: Buffer.from(a.content, "base64"),

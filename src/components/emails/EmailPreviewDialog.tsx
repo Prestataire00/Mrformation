@@ -11,7 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Send, Paperclip } from "lucide-react";
+import { Loader2, Send, Paperclip, X } from "lucide-react";
 
 interface Attachment {
   filename: string;
@@ -22,12 +22,13 @@ interface Attachment {
 interface EmailPreviewDialogProps {
   open: boolean;
   onClose: () => void;
-  onSend: (data: { subject: string; body: string }) => Promise<void>;
+  onSend: (data: { subject: string; body: string; extraAttachments?: Attachment[] }) => Promise<void>;
   defaultSubject: string;
   defaultBody: string;
   recipientEmail: string;
   attachments?: Attachment[];
   entityName?: string;
+  allowExtraAttachments?: boolean;
 }
 
 export function EmailPreviewDialog({
@@ -39,10 +40,26 @@ export function EmailPreviewDialog({
   recipientEmail,
   attachments = [],
   entityName,
+  allowExtraAttachments,
 }: EmailPreviewDialogProps) {
   const [subject, setSubject] = useState(defaultSubject);
   const [body, setBody] = useState(defaultBody);
   const [sending, setSending] = useState(false);
+  const [extraAttachments, setExtraAttachments] = useState<Attachment[]>([]);
+
+  const handleAddExtra = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    Array.from(files).forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64 = (reader.result as string).split(",")[1];
+        setExtraAttachments((prev) => [...prev, { filename: file.name, content: base64, type: file.type || "application/octet-stream" }]);
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = "";
+  };
 
   // Reset when dialog opens with new defaults
   const [lastSubject, setLastSubject] = useState("");
@@ -50,12 +67,13 @@ export function EmailPreviewDialog({
     setSubject(defaultSubject);
     setBody(defaultBody);
     setLastSubject(defaultSubject);
+    setExtraAttachments([]);
   }
 
   const handleSend = async () => {
     setSending(true);
     try {
-      await onSend({ subject, body });
+      await onSend({ subject, body, extraAttachments: extraAttachments.length > 0 ? extraAttachments : undefined });
       onClose();
     } finally {
       setSending(false);
@@ -112,16 +130,40 @@ export function EmailPreviewDialog({
           </div>
 
           {/* Attachments */}
-          {attachments.length > 0 && (
+          {(attachments.length > 0 || extraAttachments.length > 0 || allowExtraAttachments) && (
             <div>
               <Label className="text-xs text-gray-500">Pièces jointes</Label>
               <div className="mt-1 space-y-1">
                 {attachments.map((att, i) => (
-                  <div key={i} className="flex items-center gap-2 bg-gray-50 rounded px-3 py-1.5 text-xs">
+                  <div key={`base-${i}`} className="flex items-center gap-2 bg-gray-50 rounded px-3 py-1.5 text-xs">
                     <Paperclip className="h-3 w-3 text-gray-400" />
                     <span>{att.filename}</span>
                   </div>
                 ))}
+                {extraAttachments.map((att, i) => (
+                  <div key={`extra-${i}`} className="flex items-center justify-between bg-gray-50 rounded px-3 py-1.5 text-xs">
+                    <div className="flex items-center gap-2">
+                      <Paperclip className="h-3 w-3 text-gray-400" />
+                      <span>{att.filename}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setExtraAttachments((prev) => prev.filter((_, j) => j !== i))}
+                      className="text-red-500 hover:text-red-700"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+                {allowExtraAttachments && (
+                  <label className="cursor-pointer">
+                    <input type="file" className="hidden" multiple onChange={handleAddExtra} accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.xlsx,.xls" />
+                    <span className="inline-flex items-center gap-1.5 text-xs text-[#374151] hover:underline cursor-pointer mt-1">
+                      <Paperclip className="h-3.5 w-3.5" />
+                      Ajouter une pièce jointe
+                    </span>
+                  </label>
+                )}
               </div>
             </div>
           )}

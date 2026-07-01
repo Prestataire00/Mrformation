@@ -11,6 +11,8 @@ import {
   CheckCircle,
   AlertCircle,
   Sparkles,
+  Paperclip,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -59,6 +61,26 @@ export default function SendEmailPage() {
   const [subject, setSubject] = useState(searchParams.get("subject") ?? "");
   const [message, setMessage] = useState(searchParams.get("body") ?? "");
   const [showPreview, setShowPreview] = useState(false);
+
+  const [attachments, setAttachments] = useState<{ filename: string; content: string; type: string }[]>([]);
+
+  const handleAddAttachment = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    Array.from(files).forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64 = (reader.result as string).split(",")[1];
+        setAttachments((prev) => [...prev, { filename: file.name, content: base64, type: file.type || "application/octet-stream" }]);
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = "";
+  };
+
+  const handleRemoveAttachment = (index: number) => {
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
+  };
 
   // IA state
   const [aiLoading, setAiLoading] = useState(false);
@@ -139,6 +161,7 @@ export default function SendEmailPage() {
           subject: resolvedSubject,
           body: resolvedBody,
           entity_id: entityId || undefined,
+          attachments: attachments.length > 0 ? attachments : undefined,
         }),
       });
 
@@ -318,6 +341,19 @@ export default function SendEmailPage() {
               <p className="text-[11px] text-gray-400">
                 Aperçu avec les balises remplacées par les informations du prospect.
               </p>
+              {attachments.length > 0 && (
+                <div>
+                  <p className="mb-1 text-xs font-medium text-gray-500">Pièces jointes ({attachments.length})</p>
+                  <div className="space-y-1">
+                    {attachments.map((att, i) => (
+                      <div key={i} className="flex items-center gap-2 bg-gray-50 rounded px-2 py-1 text-xs">
+                        <Paperclip className="h-3 w-3 text-gray-400" />
+                        <span>{att.filename}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
           <>
@@ -388,6 +424,35 @@ export default function SendEmailPage() {
               rows={12}
               className="rounded-t-none resize-none text-sm"
             />
+          </div>
+
+          {/* Pièces jointes */}
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-gray-700">
+              Pièces jointes
+            </label>
+            {attachments.length > 0 && (
+              <div className="space-y-1 mb-2">
+                {attachments.map((att, i) => (
+                  <div key={i} className="flex items-center justify-between bg-gray-50 rounded px-3 py-1.5 text-xs">
+                    <div className="flex items-center gap-2">
+                      <Paperclip className="h-3 w-3 text-gray-400" />
+                      <span>{att.filename}</span>
+                    </div>
+                    <button type="button" onClick={() => handleRemoveAttachment(i)} className="text-red-500 hover:text-red-700">
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <label className="cursor-pointer">
+              <input type="file" className="hidden" multiple onChange={handleAddAttachment} accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.xlsx,.xls,.csv" />
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-[#374151] hover:underline cursor-pointer">
+                <Paperclip className="h-3.5 w-3.5" />
+                Ajouter une pièce jointe
+              </span>
+            </label>
           </div>
           </>
           )}

@@ -14,6 +14,7 @@ import { getDefaultRecipientType, type Invoice, type Charge, type Stats } from "
 import { FinancesKpiBand } from "./finances/FinancesKpiBand";
 import { InvoiceSection } from "./finances/InvoiceSection";
 import { ChargesPanel } from "./finances/ChargesPanel";
+import { EmailPreviewDialog } from "@/components/emails/EmailPreviewDialog";
 
 const MODE_LABELS: Record<string, string> = {
   presentiel: "En présentiel",
@@ -77,6 +78,12 @@ export function TabFinances({ formation, onRefresh }: Props) {
   const [savingInvoice, setSavingInvoice] = useState(false);
   const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
   const [cancelTarget, setCancelTarget] = useState<Invoice | null>(null);
+  const [invoiceEmailPreview, setInvoiceEmailPreview] = useState<{
+    inv: Invoice;
+    recipientEmail: string;
+    pdfBase64: string;
+    pdfFilename: string;
+  } | null>(null);
 
   // Picker entreprise (Story 3.6) : en INTER, on demande explicitement à l'admin
   // quelle entreprise facturer (plus de fallback arbitraire sur formation_companies[0]).
@@ -733,7 +740,6 @@ export function TabFinances({ formation, onRefresh }: Props) {
       const enr = formation.enrollments?.find((e) => e.learner?.id === inv.recipient_id);
       email = (enr?.learner as unknown as Record<string, string> | undefined)?.email || null;
     } else if (inv.recipient_type === "financier") {
-      // L'email du financeur est porté par le financeur maître lié.
       const ff = formation.formation_financiers?.find((f) => f.id === inv.recipient_id);
       if (ff?.financeur_id) {
         const { data: fin } = await supabase
@@ -750,36 +756,18 @@ export function TabFinances({ formation, onRefresh }: Props) {
     }
 
     try {
-      toast({ title: "Génération du PDF et envoi..." });
+      toast({ title: "Génération du PDF..." });
       const pdfData = await buildPdfDataWithLines(inv);
       const base64 = await invoicePDFBase64(pdfData);
-      const res = await fetch("/api/emails/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          to: email,
-          subject: `${inv.is_avoir ? "Avoir" : "Facture"} ${invoiceDisplayRef(inv)} — ${formation.title}`,
-          body: `Bonjour,\n\nVeuillez trouver ci-joint ${inv.is_avoir ? "l'avoir" : "la facture"} ${invoiceDisplayRef(inv)} relative à la formation "${formation.title}".\n\nCordialement,\nL'équipe formation`,
-          session_id: formation.id,
-          attachments: [{
-            filename: `${invoiceDisplayRef(inv)}.pdf`,
-            content: base64,
-            type: "application/pdf",
-          }],
-        }),
+      setInvoiceEmailPreview({
+        inv,
+        recipientEmail: email,
+        pdfBase64: base64,
+        pdfFilename: `${invoiceDisplayRef(inv)}.pdf`,
       });
-      if (!res.ok) throw new Error("Erreur envoi");
-
-      await supabase
-        .from("formation_invoices")
-        .update({ status: "sent", updated_at: new Date().toISOString() })
-        .eq("id", inv.id);
-
-      toast({ title: `Facture ${invoiceDisplayRef(inv)} envoyée par email` });
-      fetchData();
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Erreur d'envoi";
-      toast({ title: "Envoi impossible", description: message, variant: "destructive" });
+      const message = err instanceof Error ? err.message : "Erreur de génération";
+      toast({ title: "Erreur", description: message, variant: "destructive" });
     }
   };
 
@@ -1246,6 +1234,45 @@ export function TabFinances({ formation, onRefresh }: Props) {
         defaultRecipientType={importRecipientType}
         onSuccess={() => { fetchData(); onRefresh(); }}
       />
+
+      {invoiceEmailPreview && (
+        <EmailPreviewDialog
+          open={!!invoiceEmailPreview}
+          onClose={() => setInvoiceEmailPreview(null)}
+          onSend={async ({ subject, body, extraAttachments }) => {
+            const { inv, recipientEmail, pdfBase64, pdfFilename } = invoiceEmailPreview;
+            const allAttachments = [
+              { filename: pdfFilename, content: pdfBase64, type: "application/pdf" },
+              ...(extraAttachments ?? []),
+            ];
+            const res = await fetch("/api/emails/send", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                to: recipientEmail,
+                subject,
+                body,
+                session_id: formation.id,
+                attachments: allAttachments,
+              }),
+            });
+            if (!res.ok) throw new Error("Erreur envoi");
+            await supabase
+              .from("formation_invoices")
+              .update({ status: "sent", updated_at: new Date().toISOString() })
+              .eq("id", inv.id);
+            toast({ title: `Facture ${invoiceDisplayRef(inv)} envoyée par email` });
+            setInvoiceEmailPreview(null);
+            fetchData();
+          }}
+          defaultSubject={`${invoiceEmailPreview.inv.is_avoir ? "Avoir" : "Facture"} ${invoiceDisplayRef(invoiceEmailPreview.inv)} — ${formation.title}`}
+          defaultBody={`Bonjour,\n\nVeuillez trouver ci-joint ${invoiceEmailPreview.inv.is_avoir ? "l'avoir" : "la facture"} ${invoiceDisplayRef(invoiceEmailPreview.inv)} relative à la formation "${formation.title}".\n\nCordialement,\nL'équipe formation`}
+          recipientEmail={invoiceEmailPreview.recipientEmail}
+          attachments={[{ filename: invoiceEmailPreview.pdfFilename, content: invoiceEmailPreview.pdfBase64, type: "application/pdf" }]}
+          entityName={entity?.name ?? undefined}
+          allowExtraAttachments
+        />
+      )}
     </div>
   );
 }

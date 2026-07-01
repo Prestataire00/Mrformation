@@ -30,6 +30,8 @@ import {
   Loader2,
   PenLine,
   CheckCircle,
+  Paperclip,
+  X,
 } from "lucide-react";
 import { downloadDevisPDF, generateDevisPDF, generateDevisPDFBase64, type DevisData } from "@/lib/devis-pdf";
 import { Button } from "@/components/ui/button";
@@ -98,6 +100,7 @@ export default function QuotesPage() {
   const [emailDialog, setEmailDialog] = useState(false);
   const [emailForm, setEmailForm] = useState({ to: "", subject: "", body: "" });
   const [emailAttachment, setEmailAttachment] = useState<{ filename: string; content: string } | null>(null);
+  const [emailExtraAttachments, setEmailExtraAttachments] = useState<{ filename: string; content: string }[]>([]);
   const [sendingEmail, setSendingEmail] = useState(false);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -495,11 +498,38 @@ export default function QuotesPage() {
 
       const entityName = entity?.name || "MR FORMATION";
       setEmailAttachment({ filename: `devis-${quote.reference}.pdf`, content: base64 });
+
+      // Résoudre template personnalisé si disponible
+      let emailSubjectResolved = `Devis ${quote.reference} - ${entityName}`;
+      let emailBodyResolved = `Bonjour,\n\nVeuillez trouver ci-joint notre devis ${quote.reference}.\n\nN'hésitez pas à nous contacter pour toute question.\n\nCordialement,\n${entityName}`;
+
+      if (entityId) {
+        const { data: tmpl } = await supabase
+          .from("email_templates")
+          .select("subject, body")
+          .eq("entity_id", entityId)
+          .eq("key", "batch_devis")
+          .eq("is_active", true)
+          .maybeSingle();
+
+        if (tmpl) {
+          const vars: Record<string, string> = {
+            reference: quote.reference ?? "",
+            destinataire: prospectName,
+            entite: entityName,
+            montant: devisData.lines.reduce((s, l) => s + l.quantity * l.unit_price, 0).toLocaleString("fr-FR") + "€ HT",
+          };
+          if (tmpl.subject) emailSubjectResolved = tmpl.subject.replace(/\{\{(\w+)\}\}/g, (_: string, k: string) => vars[k] ?? `{{${k}}}`);
+          if (tmpl.body) emailBodyResolved = tmpl.body.replace(/\{\{(\w+)\}\}/g, (_: string, k: string) => vars[k] ?? `{{${k}}}`);
+        }
+      }
+
       setEmailForm({
         to: prospectEmail,
-        subject: `Devis ${quote.reference} - ${entityName}`,
-        body: `Bonjour,\n\nVeuillez trouver ci-joint notre devis ${quote.reference}.\n\nN'hésitez pas à nous contacter pour toute question.\n\nCordialement,\n${entityName}`,
+        subject: emailSubjectResolved,
+        body: emailBodyResolved,
       });
+      setEmailExtraAttachments([]);
       setEmailDialog(true);
     } catch (err) {
       console.error("handleSendByEmail error:", err);
@@ -514,6 +544,10 @@ export default function QuotesPage() {
     }
     setSendingEmail(true);
     try {
+      const allAttachments = [
+        ...(emailAttachment ? [{ ...emailAttachment, type: "application/pdf" }] : []),
+        ...emailExtraAttachments.map((a) => ({ ...a, type: "application/octet-stream" })),
+      ];
       const res = await fetch("/api/emails/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -521,7 +555,7 @@ export default function QuotesPage() {
           to: emailForm.to.trim(),
           subject: emailForm.subject,
           body: emailForm.body,
-          attachments: emailAttachment ? [{ ...emailAttachment, type: "application/pdf" }] : undefined,
+          attachments: allAttachments.length > 0 ? allAttachments : undefined,
         }),
       });
       const result = await res.json();
@@ -667,7 +701,7 @@ export default function QuotesPage() {
   const hasActiveFilters = search || statusFilter !== "all";
 
   // Open sign preview dialog
-  const openSignPreview = (quote: CrmQuote) => {
+  const openSignPreview = async (quote: CrmQuote) => {
     const amount = Number(quote.amount) || 0;
     const recipientName = (quote as unknown as Record<string, string>).prospect_name || quote.prospect?.company_name || "";
     const entityName = entity?.name || "MR FORMATION";
@@ -676,10 +710,37 @@ export default function QuotesPage() {
       : "30 jours";
 
     setSignQuote(quote);
-    setSignSubject(`Proposition ${quote.reference} — ${entityName}`);
-    setSignBody(`Bonjour${recipientName ? ` ${recipientName}` : ""},\n\nVeuillez trouver notre proposition commerciale ${quote.reference}${amount > 0 ? ` d'un montant de ${amount.toLocaleString("fr-FR")}€ HT` : ""}.\n\nPour accepter cette proposition, veuillez la signer électroniquement en cliquant sur le lien suivant :\n\n{{lien_signature}}\n\nCe lien est valide jusqu'au ${validUntilFr}.\n\nN'hésitez pas à nous contacter pour toute question.\n\nCordialement,\nL'équipe ${entityName}`);
     setSignAttachments([]);
     setSignPreviewOpen(true);
+
+    // Tenter de charger le template personnalisé
+    let templateSubject: string | null = null;
+    let templateBody: string | null = null;
+    if (entityId) {
+      const { data: tmpl } = await supabase
+        .from("email_templates")
+        .select("subject, body")
+        .eq("entity_id", entityId)
+        .eq("key", "quote_sign_request")
+        .eq("is_active", true)
+        .maybeSingle();
+
+      if (tmpl) {
+        const vars: Record<string, string> = {
+          reference: quote.reference ?? "",
+          montant: amount > 0 ? `${amount.toLocaleString("fr-FR")}€ HT` : "",
+          destinataire: recipientName,
+          date_validite: validUntilFr,
+          entite: entityName,
+          lien_signature: "{{lien_signature}}",
+        };
+        templateSubject = (tmpl.subject ?? "").replace(/\{\{(\w+)\}\}/g, (_: string, k: string) => vars[k] ?? `{{${k}}}`);
+        templateBody = (tmpl.body ?? "").replace(/\{\{(\w+)\}\}/g, (_: string, k: string) => vars[k] ?? `{{${k}}}`);
+      }
+    }
+
+    setSignSubject(templateSubject ?? `Proposition commerciale ${quote.reference} — ${entityName}`);
+    setSignBody(templateBody ?? `Bonjour${recipientName ? ` ${recipientName}` : ""},\n\nVeuillez trouver notre proposition commerciale ${quote.reference}${amount > 0 ? ` d'un montant de ${amount.toLocaleString("fr-FR")}€ HT` : ""}.\n\nPour accepter cette proposition, veuillez la signer électroniquement en cliquant sur le lien suivant :\n\n{{lien_signature}}\n\nCe lien est valide jusqu'au ${validUntilFr}.\n\nN'hésitez pas à nous contacter pour toute question.\n\nCordialement,\nL'équipe ${entityName}`);
 
     // Auto-generate and attach the quote PDF
     (async () => {
@@ -702,6 +763,20 @@ export default function QuotesPage() {
       setSignAttachments((prev) => [...prev, { filename: file.name, content: base64 }]);
     };
     reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  const handleAddEmailAttachment = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    Array.from(files).forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64 = (reader.result as string).split(",")[1];
+        setEmailExtraAttachments((prev) => [...prev, { filename: file.name, content: base64 }]);
+      };
+      reader.readAsDataURL(file);
+    });
     e.target.value = "";
   };
 
@@ -1065,6 +1140,29 @@ export default function QuotesPage() {
                 {emailAttachment.filename}
               </div>
             )}
+            {/* Pièces jointes supplémentaires */}
+            {emailExtraAttachments.length > 0 && (
+              <div className="space-y-1">
+                {emailExtraAttachments.map((att, i) => (
+                  <div key={i} className="flex items-center justify-between bg-gray-50 rounded px-3 py-1.5 text-xs">
+                    <div className="flex items-center gap-2">
+                      <Paperclip className="h-3 w-3 text-gray-400" />
+                      <span>{att.filename}</span>
+                    </div>
+                    <button onClick={() => setEmailExtraAttachments(prev => prev.filter((_, j) => j !== i))} className="text-red-500 hover:text-red-700">
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <label className="cursor-pointer">
+              <input type="file" className="hidden" multiple onChange={handleAddEmailAttachment} accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.xlsx,.xls" />
+              <span className="inline-flex items-center gap-1.5 text-xs text-[#374151] hover:underline cursor-pointer">
+                <Paperclip className="h-3.5 w-3.5" />
+                Ajouter une pièce jointe
+              </span>
+            </label>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEmailDialog(false)}>Annuler</Button>
