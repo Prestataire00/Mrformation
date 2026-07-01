@@ -53,6 +53,7 @@ import {
 import { useToast } from "@/components/ui/use-toast";
 import { cn, formatDate, STATUS_COLORS } from "@/lib/utils";
 import { ProspectionTabs } from "@/components/crm/ProspectionTabs";
+import { findEmptyCriteria } from "@/lib/crm/builder-validation";
 import type {
   CrmCampaign,
   CrmTag,
@@ -325,6 +326,18 @@ export default function CampaignsPage() {
 
   async function handleCreate() {
     if (!validateForm()) return;
+    if (
+      formData.target_type === "segment" &&
+      findEmptyCriteria(formData.segment_criteria.criteria).length > 0
+    ) {
+      toast({
+        title: "Critères incomplets",
+        description:
+          "Un ou plusieurs critères de segment sont sans valeur — complétez-les ou supprimez-les.",
+        variant: "destructive",
+      });
+      return;
+    }
     setSaving(true);
     try {
       const payload: Record<string, unknown> = {
@@ -364,6 +377,18 @@ export default function CampaignsPage() {
 
   async function handleUpdate() {
     if (!selectedCampaign || !validateForm()) return;
+    if (
+      formData.target_type === "segment" &&
+      findEmptyCriteria(formData.segment_criteria.criteria).length > 0
+    ) {
+      toast({
+        title: "Critères incomplets",
+        description:
+          "Un ou plusieurs critères de segment sont sans valeur — complétez-les ou supprimez-les.",
+        variant: "destructive",
+      });
+      return;
+    }
     setSaving(true);
     try {
       const { error } = await supabase

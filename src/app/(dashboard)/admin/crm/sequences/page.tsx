@@ -21,6 +21,7 @@ import {
   Plus, Trash2, Mail, ClipboardList, Clock, Loader2, ChevronDown, ChevronUp, Zap, Play, Pause, Users,
 } from "lucide-react";
 import { ProspectionTabs } from "@/components/crm/ProspectionTabs";
+import { validateSequenceSteps } from "@/lib/crm/builder-validation";
 
 interface Sequence {
   id: string;
@@ -140,6 +141,11 @@ export default function SequencesPage() {
 
   async function handleSave() {
     if (!name.trim() || !entityId) return;
+    const v = validateSequenceSteps(steps);
+    if (!v.ok) {
+      toast({ title: "Étape incomplète", description: v.message, variant: "destructive" });
+      return;
+    }
     setSaving(true);
 
     let saveError: { message: string } | null = null;
