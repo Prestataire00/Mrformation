@@ -28,7 +28,7 @@ import type { LearnerStatusCell, TrainerQuestionnaire } from "@/lib/utils/questi
 interface Props { formation: Session; onRefresh: () => Promise<void>; }
 
 type StageColor = "blue" | "amber" | "emerald" | "purple";
-interface ItemType { category: "evaluation" | "satisfaction"; type: string; label: string; icon: string; description: string; target: "learner" | "company"; }
+interface ItemType { category: "evaluation" | "satisfaction"; type: string; label: string; icon: string; description: string; target: "learner" | "company" | "trainer"; }
 interface Stage { id: string; order: number; icon: typeof Target; title: string; timing: string; objective: string; color: StageColor; itemTypes: ItemType[]; }
 
 const STAGES: Stage[] = [
@@ -48,6 +48,7 @@ const STAGES: Stage[] = [
       { category: "evaluation", type: "eval_postformation", label: "Évaluation des acquis", icon: "📋", description: "Mesure ce que les apprenants ont appris", target: "learner" },
       { category: "evaluation", type: "auto_eval_post", label: "Auto-évaluation post-formation", icon: "💭", description: "L'apprenant s'auto-évalue sur ce qu'il a appris", target: "learner" },
       { category: "satisfaction", type: "satisfaction_chaud", label: "Satisfaction à chaud", icon: "😊", description: "Ressenti immédiat sur la formation", target: "learner" },
+      { category: "satisfaction", type: "quest_formateurs", label: "Bilan formateur", icon: "🧑‍🏫", description: "Le formateur remplit un bilan de fin de formation", target: "trainer" },
     ],
   },
   { id: "follow_up", order: 4, icon: TrendingUp, title: "30 jours après", timing: "Envoi automatique J+30", objective: "Mesurer l'impact concret sur le terrain", color: "purple",
@@ -140,7 +141,7 @@ export function TabQuestionnaires({ formation, onRefresh }: Props) {
   const getStats = (item: ItemType) => {
     const assignments = getAssignments(item);
     if (!assignments.length) return { configured: false, responded: 0, total: 0 };
-    const total = item.target === "learner" ? enrollments.length : companies.length;
+    const total = item.target === "learner" ? enrollments.length : item.target === "trainer" ? 1 : companies.length;
     const responded = assignments.reduce((s, a) => s + responses.filter(r => r.questionnaire_id === a.questionnaire_id).length, 0);
     return { configured: true, responded: Math.min(responded, total), total };
   };
@@ -371,7 +372,7 @@ function ItemDetail({ stage, item, formation, questionnaires, assignments, enrol
   const qs = questionnaires as Array<{ id: string; title: string; type: string }>;
   const fm = formation as Session;
   const available = qs.filter(q => q.type === "evaluation" || q.type === "survey" || q.type === item.category);
-  const total = item.target === "learner" ? enr.length : comp.length;
+  const total = item.target === "learner" ? enr.length : item.target === "trainer" ? 1 : comp.length;
   const responded = current ? resp.filter(r => r.questionnaire_id === current.questionnaire_id).length : 0;
 
   const handleAssign = async () => {
