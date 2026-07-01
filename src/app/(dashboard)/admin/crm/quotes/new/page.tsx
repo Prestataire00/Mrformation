@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
-import { ArrowLeft, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Eye } from "lucide-react";
 import { SearchSelect } from "@/components/ui/search-select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,8 +16,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { BPF_FUNDING_LABELS } from "@/lib/bpf-labels";
 import type { Program } from "@/lib/types";
+import { generateDevisPDF, type DevisData } from "@/lib/devis-pdf";
+import { useToast } from "@/components/ui/use-toast";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -62,7 +70,8 @@ export default function NewQuotePage() {
   const supabase = createClient();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { entityId } = useEntity();
+  const { entityId, entity } = useEntity();
+  const { toast } = useToast();
 
   const prospectId = searchParams.get("prospect_id");
   const clientId = searchParams.get("client_id");
@@ -73,6 +82,11 @@ export default function NewQuotePage() {
   const [saving, setSaving] = useState(false);
   const [loadingEdit, setLoadingEdit] = useState(!!editId);
   const [error, setError] = useState("");
+
+  // ─── Aperçu PDF state ──────────────────────────────────────────────────────
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [generatingPreview, setGeneratingPreview] = useState(false);
 
   const [form, setForm] = useState<QuoteFormState>({
     reference: "",
@@ -319,6 +333,84 @@ export default function NewQuotePage() {
     return calcSubtotal() + calcTVA();
   }
 
+  // ─── buildDevisDataFromForm ────────────────────────────────────────────────
+  // Produit un DevisData depuis l'état du formulaire avec le même mapping
+  // que handleSubmit (parsedLines, tva, effectifs, training_title depuis programme).
+  // Utilisé à la fois pour l'aperçu PDF et (optionnellement) comme référence
+  // pour valider la cohérence avec la sauvegarde.
+
+  function buildDevisDataFromForm(): DevisData {
+    const selectedProgram = form.program_id
+      ? programs.find((p) => p.id === form.program_id)
+      : null;
+
+    const lines = form.lines
+      .filter((l) => l.description.trim())
+      .map((l) => ({
+        description: l.description.trim(),
+        quantity: parseFloat(l.quantity.replace(",", ".")) || 1,
+        unit_price: parseFloat(l.unit_price.replace(",", ".")) || 0,
+      }));
+
+    return {
+      reference: form.reference.trim(),
+      date_creation: form.date_creation,
+      date_echeance: form.date_echeance,
+      training_start: form.training_start || undefined,
+      training_end: form.training_end || undefined,
+      training_title: selectedProgram?.title || undefined,
+      tva: parseFloat(String(form.tva).replace(",", ".")) || 20,
+      effectifs: form.effectifs ? parseInt(form.effectifs) : undefined,
+      duration: form.duration || undefined,
+      notes: form.notes || undefined,
+      mention: form.mention || undefined,
+      lines,
+      prospect_name: prospectName || "—",
+    };
+  }
+
+  // ─── Vérification minimum pour l'aperçu ───────────────────────────────────
+
+  function isPreviewReady(): boolean {
+    const hasRef = form.reference.trim().length > 0;
+    const hasLines = form.lines.some((l) => l.description.trim().length > 0);
+    return hasRef && hasLines;
+  }
+
+  // ─── Aperçu PDF ───────────────────────────────────────────────────────────
+
+  async function handlePreviewPDF() {
+    if (!isPreviewReady()) return;
+    setGeneratingPreview(true);
+    try {
+      const devisData = buildDevisDataFromForm();
+      const doc = await generateDevisPDF(
+        devisData,
+        entity?.name,
+        entity?.logo_url,
+        entity?.siret ?? null,
+        entity?.nda ?? null,
+      );
+      const blob = doc.output("blob");
+      const url = URL.createObjectURL(blob);
+      setPreviewUrl(url);
+      setPreviewOpen(true);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Erreur lors de la génération de l'aperçu.";
+      toast({ title: "Erreur aperçu PDF", description: msg, variant: "destructive" });
+    } finally {
+      setGeneratingPreview(false);
+    }
+  }
+
+  function handleClosePreview() {
+    setPreviewOpen(false);
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
+    }
+  }
+
   async function handleSubmit() {
     if (!form.reference.trim()) {
       setError("Le numéro du devis est requis.");
@@ -470,6 +562,8 @@ export default function NewQuotePage() {
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
+  const previewReady = isPreviewReady();
+
   return (
     <div className="min-h-screen bg-gray-50/50">
       {/* Header */}
@@ -483,9 +577,26 @@ export default function NewQuotePage() {
             <p className="text-sm font-bold text-gray-900">{prospectName || "Devis"}</p>
           </div>
         </div>
-        <Button onClick={handleSubmit} disabled={saving || loadingEdit} size="sm" style={{ background: "#374151" }} className="text-white text-xs">
-          {saving ? (editId ? "Enregistrement..." : "Création...") : (editId ? "Enregistrer" : "Créer le devis")}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handlePreviewPDF}
+            disabled={!previewReady || generatingPreview || loadingEdit}
+            title={
+              !previewReady
+                ? "Renseignez un numéro de devis et au moins une ligne pour prévisualiser"
+                : "Aperçu PDF du devis"
+            }
+            className="text-xs gap-1.5"
+          >
+            <Eye className="h-3.5 w-3.5" />
+            {generatingPreview ? "Génération..." : "Aperçu PDF"}
+          </Button>
+          <Button onClick={handleSubmit} disabled={saving || loadingEdit} size="sm" style={{ background: "#374151" }} className="text-white text-xs">
+            {saving ? (editId ? "Enregistrement..." : "Création...") : (editId ? "Enregistrer" : "Créer le devis")}
+          </Button>
+        </div>
       </div>
 
       {/* Content */}
@@ -633,6 +744,22 @@ export default function NewQuotePage() {
           </div>
         </details>
       </div>
+
+      {/* ─── Dialog Aperçu PDF ─────────────────────────────────────────────── */}
+      <Dialog open={previewOpen} onOpenChange={(open) => { if (!open) handleClosePreview(); }}>
+        <DialogContent className="max-w-4xl w-full">
+          <DialogHeader>
+            <DialogTitle>Aperçu du devis — {form.reference}</DialogTitle>
+          </DialogHeader>
+          {previewUrl && (
+            <iframe
+              src={previewUrl}
+              className="w-full h-[70vh] rounded border"
+              title="Aperçu PDF du devis"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
