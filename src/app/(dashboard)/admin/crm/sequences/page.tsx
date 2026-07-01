@@ -20,6 +20,7 @@ import {
 import {
   Plus, Trash2, Mail, ClipboardList, Clock, Loader2, ChevronDown, ChevronUp, Zap, Play, Pause, Users,
 } from "lucide-react";
+import { ProspectionTabs } from "@/components/crm/ProspectionTabs";
 
 interface Sequence {
   id: string;
@@ -251,6 +252,9 @@ export default function SequencesPage() {
 
   return (
     <div className="p-6 space-y-6">
+      {/* Navigation prospection */}
+      <ProspectionTabs />
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Séquences automatisées</h1>

@@ -52,6 +52,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/components/ui/use-toast";
 import { cn, formatDate, STATUS_COLORS } from "@/lib/utils";
+import { ProspectionTabs } from "@/components/crm/ProspectionTabs";
 import type {
   CrmCampaign,
   CrmTag,
@@ -557,6 +558,9 @@ export default function CampaignsPage() {
 
   return (
     <div className="space-y-6 p-6">
+      {/* Navigation prospection */}
+      <ProspectionTabs />
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
