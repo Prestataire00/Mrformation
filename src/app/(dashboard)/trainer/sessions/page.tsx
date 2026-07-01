@@ -199,6 +199,12 @@ export default function TrainerSessionsPage() {
                 {/* CTA émargement : feuille de signature + mode présentation QR */}
                 <div className="mt-4 pt-4 border-t border-gray-100 flex justify-end gap-4">
                   <Link
+                    href={`/trainer/formations/${session.id}`}
+                    className="text-xs px-2 py-1 rounded border hover:bg-gray-50"
+                  >
+                    Gérer la formation
+                  </Link>
+                  <Link
                     href={`/trainer/sessions/${session.id}/emargement-live`}
                     className="inline-flex items-center gap-1.5 text-sm font-medium text-emerald-600 hover:text-emerald-700"
                   >
