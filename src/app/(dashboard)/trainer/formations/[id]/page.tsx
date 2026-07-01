@@ -10,6 +10,7 @@ import type { TrainerTasksStatus } from "@/lib/services/trainer-tasks";
 import { useToast } from "@/components/ui/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Loader2,
   CheckCircle,
@@ -21,9 +22,11 @@ import {
   BookOpen,
   ShieldOff,
   AlertCircle,
+  PencilLine,
 } from "lucide-react";
 import { cn, formatDate } from "@/lib/utils";
 import type { FormationTimeSlot, Learner } from "@/lib/types";
+import { DerouleEditDialog } from "./_components/DerouleEditDialog";
 
 const MODE_LABELS: Record<string, string> = {
   presentiel: "Présentiel",
@@ -90,6 +93,7 @@ export default function TrainerFormationDetailPage() {
   const [unauthorized, setUnauthorized] = useState(false);
   const [session, setSession] = useState<SessionData | null>(null);
   const [taskStatus, setTaskStatus] = useState<TrainerTasksStatus | null>(null);
+  const [editingSlot, setEditingSlot] = useState<FormationTimeSlot | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -269,12 +273,28 @@ export default function TrainerFormationDetailPage() {
                   Renseigner le déroulé pédagogique réalisé
                 </p>
               </div>
-              <Link
-                href="/trainer/planning"
-                className="text-xs px-3 py-1.5 rounded border border-gray-200 text-gray-600 hover:bg-gray-50 shrink-0"
-              >
-                Accéder
-              </Link>
+              {session.formation_time_slots.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-xs shrink-0"
+                  onClick={() => {
+                    const slots = session.formation_time_slots;
+                    const hasText = (v: string | null | undefined) =>
+                      typeof v === "string" && v.trim().length > 0;
+                    const firstEmpty = slots.find(
+                      (s) =>
+                        !hasText(s.module_title) &&
+                        !hasText(s.module_objectives) &&
+                        !hasText(s.module_themes) &&
+                        !hasText(s.module_exercises)
+                    );
+                    setEditingSlot(firstEmpty ?? slots[0]);
+                  }}
+                >
+                  Accéder
+                </Button>
+              )}
             </div>
 
             {/* Tâche 2 : Bilan de fin de formation */}
@@ -359,6 +379,15 @@ export default function TrainerFormationDetailPage() {
                       <p className="text-gray-400 italic">Créneau sans titre</p>
                     )}
                   </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs shrink-0 gap-1"
+                    onClick={() => setEditingSlot(slot)}
+                  >
+                    <PencilLine className="h-3 w-3" />
+                    Renseigner le déroulé
+                  </Button>
                 </li>
               ))}
             </ul>
@@ -404,6 +433,16 @@ export default function TrainerFormationDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* ── Dialog d'édition du déroulé ── */}
+      <DerouleEditDialog
+        slot={editingSlot}
+        open={editingSlot !== null}
+        onOpenChange={(open) => {
+          if (!open) setEditingSlot(null);
+        }}
+        onSaved={fetchData}
+      />
     </div>
   );
 }

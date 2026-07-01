@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
 import { isPedagogieV2Epic4Enabled } from "@/lib/feature-flags";
 import SessionElearningAttached from "@/components/pedagogie-v2/SessionElearningAttached";
+import { filterPastSlotsWithContent } from "@/lib/services/deroule";
 import {
   Clock,
   Loader2,
@@ -16,6 +17,9 @@ import {
   GraduationCap,
   Play,
   AlertCircle,
+  ChevronDown,
+  ChevronUp,
+  BookOpen,
 } from "lucide-react";
 
 interface EnrolledSession {
@@ -77,6 +81,16 @@ interface TrainingGroup {
   elearning_assignments: ElearningAssignment[];
 }
 
+interface TimeSlotDeroule {
+  id: string;
+  start_time: string;
+  end_time: string;
+  module_title: string | null;
+  module_objectives: string | null;
+  module_themes: string | null;
+  module_exercises: string | null;
+}
+
 interface ProgramEnrollmentData {
   id: string;
   program_id: string;
@@ -107,6 +121,10 @@ export default function LearnerMyTrainingsPage() {
   const [programEnrollments, setProgramEnrollments] = useState<ProgramEnrollmentData[]>([]);
   const [loading, setLoading] = useState(true);
   const [profileMissing, setProfileMissing] = useState(false);
+  // Déroulé — créneaux passés avec contenu, indexés par session_id
+  const [slotsPerSession, setSlotsPerSession] = useState<Record<string, TimeSlotDeroule[]>>({});
+  // Sections repliables — set des session_id ouverts
+  const [expandedSessions, setExpandedSessions] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     loadMyTrainings();
@@ -292,6 +310,32 @@ export default function LearnerMyTrainingsPage() {
     });
 
     setTrainingGroups(groups);
+
+    // ── Déroulé : charger les créneaux passés avec contenu pour toutes les sessions
+    const allSessionIds = Array.from(
+      new Set(groups.flatMap((g) => g.sessions.map((s) => s.id)))
+    );
+    if (allSessionIds.length > 0) {
+      const { data: rawSlots } = await supabase
+        .from("formation_time_slots")
+        .select("id, session_id, start_time, end_time, module_title, module_objectives, module_themes, module_exercises")
+        .in("session_id", allSessionIds);
+
+      if (rawSlots) {
+        const now = new Date();
+        const slotMap: Record<string, TimeSlotDeroule[]> = {};
+        for (const sid of allSessionIds) {
+          const sessionSlots = (rawSlots as (TimeSlotDeroule & { session_id: string })[])
+            .filter((s) => s.session_id === sid);
+          const pastWithContent = filterPastSlotsWithContent(sessionSlots, now);
+          if (pastWithContent.length > 0) {
+            slotMap[sid] = pastWithContent;
+          }
+        }
+        setSlotsPerSession(slotMap);
+      }
+    }
+
     setLoading(false);
   }
 
@@ -558,6 +602,112 @@ export default function LearnerMyTrainingsPage() {
                                   sessionId={session.id}
                                   learnerId={currentLearnerId}
                                 />
+                              </div>
+                            )}
+
+                            {/* ── Déroulé de la formation (créneaux passés avec contenu) ── */}
+                            {slotsPerSession[session.id] && slotsPerSession[session.id].length > 0 && (
+                              <div className="px-3 pb-2">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setExpandedSessions((prev) => {
+                                      const next = new Set(prev);
+                                      if (next.has(session.id)) {
+                                        next.delete(session.id);
+                                      } else {
+                                        next.add(session.id);
+                                      }
+                                      return next;
+                                    })
+                                  }
+                                  className="flex items-center gap-2 text-xs font-semibold text-gray-500 uppercase tracking-wider py-2 w-full text-left hover:text-gray-700 transition-colors"
+                                >
+                                  <BookOpen className="w-3.5 h-3.5" />
+                                  Déroulé de la formation
+                                  {expandedSessions.has(session.id) ? (
+                                    <ChevronUp className="w-3.5 h-3.5 ml-auto" />
+                                  ) : (
+                                    <ChevronDown className="w-3.5 h-3.5 ml-auto" />
+                                  )}
+                                </button>
+
+                                {expandedSessions.has(session.id) && (
+                                  <div className="space-y-3 mt-1">
+                                    {slotsPerSession[session.id].map((slot) => (
+                                      <div
+                                        key={slot.id}
+                                        className="rounded-lg border border-gray-100 bg-gray-50 p-3 text-sm space-y-1"
+                                      >
+                                        {/* Date + horaires */}
+                                        <p className="text-xs text-gray-400">
+                                          {new Date(slot.start_time).toLocaleDateString("fr-FR", {
+                                            weekday: "short",
+                                            day: "2-digit",
+                                            month: "short",
+                                            year: "numeric",
+                                            timeZone: "Europe/Paris",
+                                          })}{" "}
+                                          ·{" "}
+                                          {new Date(slot.start_time).toLocaleTimeString("fr-FR", {
+                                            hour: "2-digit",
+                                            minute: "2-digit",
+                                            timeZone: "Europe/Paris",
+                                          })}{" "}
+                                          –{" "}
+                                          {new Date(slot.end_time).toLocaleTimeString("fr-FR", {
+                                            hour: "2-digit",
+                                            minute: "2-digit",
+                                            timeZone: "Europe/Paris",
+                                          })}
+                                        </p>
+
+                                        {/* Titre du module */}
+                                        {slot.module_title && (
+                                          <p className="font-semibold text-gray-800">
+                                            {slot.module_title}
+                                          </p>
+                                        )}
+
+                                        {/* Thèmes abordés */}
+                                        {slot.module_themes && (
+                                          <div>
+                                            <p className="text-xs font-medium text-gray-500 mb-0.5">
+                                              Thèmes abordés
+                                            </p>
+                                            <p className="text-gray-700 whitespace-pre-wrap">
+                                              {slot.module_themes}
+                                            </p>
+                                          </div>
+                                        )}
+
+                                        {/* Objectifs */}
+                                        {slot.module_objectives && (
+                                          <div>
+                                            <p className="text-xs font-medium text-gray-500 mb-0.5">
+                                              Objectifs pédagogiques
+                                            </p>
+                                            <p className="text-gray-700 whitespace-pre-wrap">
+                                              {slot.module_objectives}
+                                            </p>
+                                          </div>
+                                        )}
+
+                                        {/* Exercices */}
+                                        {slot.module_exercises && (
+                                          <div>
+                                            <p className="text-xs font-medium text-gray-500 mb-0.5">
+                                              Exercices / travaux pratiques
+                                            </p>
+                                            <p className="text-gray-700 whitespace-pre-wrap">
+                                              {slot.module_exercises}
+                                            </p>
+                                          </div>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>
