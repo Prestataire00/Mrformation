@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { getSharedSupportsForLearner, type SharedSupport } from "@/lib/services/trainer-course-sharing";
+import type { UploadedFile } from "@/components/trainer/types";
 import { Upload, Trash2, FileText, Loader2, FolderOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -63,6 +65,34 @@ export function TabDocsPartages({ formation, onRefresh }: Props) {
   const [uploading, setUploading] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  // Lot D : supports PUBLIÉS partagés par le formateur pour cette session (lecture seule).
+  // getSharedSupportsForLearner est session-scoped (renvoie les supports publiés d'une session).
+  const [trainerSupports, setTrainerSupports] = useState<SharedSupport[]>([]);
+  useEffect(() => {
+    let active = true;
+    getSharedSupportsForLearner(supabase, [formation.id]).then((s) => {
+      if (active) setTrainerSupports(s);
+    });
+    return () => {
+      active = false;
+    };
+  }, [supabase, formation.id]);
+
+  const handleDownloadTrainerFile = async (courseId: string, file: UploadedFile) => {
+    try {
+      const res = await fetch(`/api/trainer/courses/${courseId}/file-url?path=${encodeURIComponent(file.path)}`);
+      if (!res.ok) throw new Error("Impossible de générer le lien");
+      const { url } = await res.json();
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      toast({
+        title: "Erreur",
+        description: err instanceof Error ? err.message : "Téléchargement impossible.",
+        variant: "destructive",
+      });
+    }
+  };
 
   const documents = formation.formation_documents || [];
   const enrollments = formation.enrollments || [];
@@ -294,6 +324,39 @@ export function TabDocsPartages({ formation, onRefresh }: Props) {
   return (
     <div className="space-y-6">
       <h2 className="text-xl font-bold">{formation.title} — Documents Partagés</h2>
+
+      {trainerSupports.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <FolderOpen className="h-4 w-4" /> Supports partagés par le formateur
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {trainerSupports.map((s) => (
+              <div key={s.link_id} className="p-3 bg-green-50/50 rounded-lg">
+                <p className="font-medium text-sm">{s.course.title}</p>
+                {s.course.description && (
+                  <p className="text-xs text-muted-foreground mb-1">{s.course.description}</p>
+                )}
+                <div className="space-y-1 mt-2">
+                  {s.course.files.map((f, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => handleDownloadTrainerFile(s.course.id, f)}
+                      className="flex items-center gap-2 text-sm hover:underline text-left"
+                    >
+                      <FileText className="h-4 w-4 shrink-0 text-green-600" />
+                      <span className="truncate">{f.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       {SECTIONS.map((section) => (
         <Card key={section.category}>
