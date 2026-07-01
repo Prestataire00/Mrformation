@@ -79,6 +79,8 @@ const DEFAULT_COLUMNS: KanbanColumn[] = [
   { id: "dormant",   label: "Dormant",     color: "#9ca3af" },
 ];
 
+const COLUMN_PAGE = 20;
+
 const SOURCE_OPTIONS = [
   "Bouche à oreille",
   "Réseaux sociaux",
@@ -211,6 +213,9 @@ export default function CrmProspectsPage() {
   const [draggedCardId,    setDraggedCardId]     = useState<string | null>(null);
   const [dragOverCardCol,  setDragOverCardCol]   = useState<string | null>(null);
 
+  // Limite d'affichage par colonne (Afficher plus)
+  const [colLimits, setColLimits] = useState<Record<string, number>>({});
+
   // ── Charger colonnes depuis localStorage quand entityId est prêt ─────────
   useEffect(() => {
     if (entityId === undefined) return;
@@ -319,6 +324,11 @@ export default function CrmProspectsPage() {
 
     setLoading(false);
   }, [entityId, supabase]);
+
+  // ── Réinitialiser les limites de colonne quand les filtres changent ─────────
+  useEffect(() => {
+    setColLimits({});
+  }, [search, dateFrom, dateTo, tagFilter, assignFilter]);
 
   // ── Filtrage local ────────────────────────────────────────────────────────
   const filtered = prospects.filter((p) => {
@@ -694,6 +704,7 @@ export default function CrmProspectsPage() {
         <div className="flex flex-1 gap-4 overflow-x-auto p-6">
           {columns.map((col, colIdx) => {
             const cards = getProspectsForColumn(col.id);
+            const shown = colLimits[col.id] ?? COLUMN_PAGE;
             const isDragging = draggedColIdx === colIdx;
             const isDragOver = dragOverColIdx === colIdx;
             const isCardDragTarget = dragOverCardCol === col.id && draggedCardId !== null;
@@ -743,7 +754,7 @@ export default function CrmProspectsPage() {
                     </p>
                   )}
 
-                  {cards.map((p) => {
+                  {cards.slice(0, shown).map((p) => {
                     const amount = getProspectAmount(p);
                     const product = extractField(p.notes, "Produit");
                     const isBeingDragged = draggedCardId === p.id;
@@ -825,6 +836,15 @@ export default function CrmProspectsPage() {
                       </div>
                     );
                   })}
+
+                  {cards.length > shown && (
+                    <button
+                      onClick={() => setColLimits((l) => ({ ...l, [col.id]: shown + COLUMN_PAGE }))}
+                      className="flex w-full items-center justify-center rounded py-1.5 text-xs font-medium text-gray-400 hover:bg-gray-50 hover:text-[#374151] transition"
+                    >
+                      Afficher plus ({cards.length - shown})
+                    </button>
+                  )}
                 </div>
 
                 {/* Bouton + en bas */}
