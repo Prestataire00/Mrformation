@@ -18,6 +18,7 @@ import { ResumeDescription } from "./sections/ResumeDescription";
 import { ResumeComments } from "./sections/ResumeComments";
 import { ResumeVisioLink } from "./sections/ResumeVisioLink";
 import { ResumeDangerZone } from "./sections/ResumeDangerZone";
+import { TrainerTasksIndicator } from "./sections/TrainerTasksIndicator";
 
 interface TabResumeProps {
   formation: Session;
@@ -62,6 +63,9 @@ export function TabResume({ formation, onRefresh }: TabResumeProps) {
               <ResumeManager formation={formation} onRefresh={onRefresh} />
               <div className="border-t pt-4">
                 <ResumeTrainers formation={formation} onRefresh={onRefresh} />
+              </div>
+              <div className="border-t pt-4">
+                <TrainerTasksIndicator sessionId={formation.id} />
               </div>
             </CardContent>
           </Card>
