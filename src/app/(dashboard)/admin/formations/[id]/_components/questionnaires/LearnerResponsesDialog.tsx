@@ -25,6 +25,8 @@ interface QuestionRow {
 interface ResponseRecord {
   responses: Record<string, unknown>;
   submitted_at: string;
+  trainer_id: string | null;
+  trainer: { first_name: string; last_name: string } | { first_name: string; last_name: string }[] | null;
 }
 
 export function LearnerResponsesDialog({ cell, sessionId, onClose }: Props) {
@@ -45,10 +47,10 @@ export function LearnerResponsesDialog({ cell, sessionId, onClose }: Props) {
         const supabase = createClient();
         const [qR, rR] = await Promise.all([
           supabase.from("questions").select("id, text, type, options, order_index").eq("questionnaire_id", cell.questionnaireId).order("order_index"),
-          supabase.from("questionnaire_responses").select("responses, submitted_at").eq("id", cell.responseId!).single(),
+          supabase.from("questionnaire_responses").select("responses, submitted_at, trainer_id, trainer:trainers(first_name, last_name)").eq("id", cell.responseId!).single(),
         ]);
         if (qR.data) setQuestions(qR.data);
-        if (rR.data) setRecord(rR.data);
+        if (rR.data) setRecord(rR.data as ResponseRecord);
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Erreur de chargement";
         toast({ title: "Erreur", description: message, variant: "destructive" });
@@ -64,11 +66,18 @@ export function LearnerResponsesDialog({ cell, sessionId, onClose }: Props) {
 
   if (!cell) return null;
 
+  const trainerInfo = record?.trainer_id && record.trainer
+    ? (Array.isArray(record.trainer) ? record.trainer[0] : record.trainer)
+    : null;
+  const dialogTitle = trainerInfo
+    ? `Réponses du formateur ${trainerInfo.first_name} ${trainerInfo.last_name} — ${cell.questionnaireTitle}`
+    : `Réponses de ${cell.learnerName} — ${cell.questionnaireTitle}`;
+
   return (
     <Dialog open={!!cell} onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Réponses de {cell.learnerName} — {cell.questionnaireTitle}</DialogTitle>
+          <DialogTitle>{dialogTitle}</DialogTitle>
         </DialogHeader>
 
         {loading && <div className="py-8 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" /></div>}

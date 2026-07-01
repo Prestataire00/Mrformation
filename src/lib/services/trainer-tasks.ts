@@ -4,6 +4,7 @@ export interface TrainerTasksStatus {
   deroule: boolean;
   bilan: boolean | null; // null = aucun bilan demandé (avant Lot C)
   support: boolean;
+  bilanQuestionnaireId: string | null;
 }
 
 interface SlotModuleFields {
@@ -24,7 +25,7 @@ const hasText = (v: string | null | undefined): boolean =>
   typeof v === "string" && v.trim().length > 0;
 
 /** Cœur pur : dérive le statut des 3 tâches depuis les données agrégées. */
-export function computeTrainerTasksStatus(input: ComputeInput): TrainerTasksStatus {
+export function computeTrainerTasksStatus(input: ComputeInput): Omit<TrainerTasksStatus, "bilanQuestionnaireId"> {
   const deroule = input.slots.some(
     (s) =>
       hasText(s.module_title) ||
@@ -41,7 +42,7 @@ export function computeTrainerTasksStatus(input: ComputeInput): TrainerTasksStat
 
 /**
  * Résout le statut des tâches pour une session (formateur↔admin).
- * Lot A : `bilanRequested=false` (aucun bilan formateur avant le Lot C).
+ * Lot C : branche le bilan formateur via formation_satisfaction_assignments (target_type='trainer').
  */
 export async function resolveTrainerTasksStatus(
   supabase: SupabaseClient,
@@ -57,10 +58,32 @@ export async function resolveTrainerTasksStatus(
     .select("id", { count: "exact", head: true })
     .eq("session_id", sessionId);
 
-  return computeTrainerTasksStatus({
+  // Bilan formateur : attribution target_type='trainer' sur la session.
+  const { data: bilanAssign } = await supabase
+    .from("formation_satisfaction_assignments")
+    .select("questionnaire_id")
+    .eq("session_id", sessionId)
+    .eq("target_type", "trainer")
+    .limit(1)
+    .maybeSingle();
+  const bilanQuestionnaireId = (bilanAssign?.questionnaire_id as string | undefined) ?? null;
+
+  let bilanAnswered = false;
+  if (bilanQuestionnaireId) {
+    const { count } = await supabase
+      .from("questionnaire_responses")
+      .select("id", { count: "exact", head: true })
+      .eq("session_id", sessionId)
+      .eq("questionnaire_id", bilanQuestionnaireId)
+      .not("trainer_id", "is", null);
+    bilanAnswered = (count ?? 0) > 0;
+  }
+
+  const base = computeTrainerTasksStatus({
     slots: (slots ?? []) as SlotModuleFields[],
     supportCount: supportCount ?? 0,
-    bilanRequested: false,
-    bilanAnswered: false,
+    bilanRequested: bilanQuestionnaireId !== null,
+    bilanAnswered,
   });
+  return { ...base, bilanQuestionnaireId };
 }

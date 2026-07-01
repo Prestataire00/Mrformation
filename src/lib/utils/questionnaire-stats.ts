@@ -20,7 +20,7 @@ interface Stage {
   itemTypes: Array<{
     category: "evaluation" | "satisfaction";
     type: string;
-    target: "learner" | "company";
+    target: "learner" | "company" | "trainer";
   }>;
 }
 
@@ -80,7 +80,7 @@ export function computeStageStats(
   // 3. expectedSent = attributions × destinataires concernés
   let expectedSent = 0;
   for (const row of questionnaireIdsByItem) {
-    const recipientsCount = row.item.target === "learner" ? learners.length : companies.length;
+    const recipientsCount = row.item.target === "learner" ? learners.length : row.item.target === "trainer" ? 1 : companies.length;
     expectedSent += row.qids.length * recipientsCount;
   }
 
