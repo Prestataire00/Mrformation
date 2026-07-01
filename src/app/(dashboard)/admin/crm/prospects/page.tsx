@@ -13,7 +13,6 @@ import {
   ChevronUp,
   ChevronDown,
   GripVertical,
-  LayoutGrid,
   Trash2,
   CheckSquare,
   AlertTriangle,
@@ -37,6 +36,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn, formatDate } from "@/lib/utils";
+import { ProspectsViewTabs } from "@/components/crm/ProspectsViewTabs";
 import { getScoreCategory } from "@/lib/ai/prospect-scoring";
 import { DORMANCY_THRESHOLD_DAYS } from "@/lib/crm/constants";
 import type { CrmProspect, CrmTag, ProspectStatus } from "@/lib/types";
@@ -608,6 +608,11 @@ export default function CrmProspectsPage() {
           Prospects
         </p>
 
+        {/* Barre de navigation vues */}
+        <div className="mb-3">
+          <ProspectsViewTabs />
+        </div>
+
         {/* Barre actions */}
         <div className="flex flex-wrap items-center gap-3">
 
@@ -616,9 +621,6 @@ export default function CrmProspectsPage() {
           </Button>
           <Button size="sm" variant="outline" onClick={openConfig} className="gap-1.5 text-xs">
             <Settings2 className="h-3.5 w-3.5" /> Config
-          </Button>
-          <Button size="sm" variant="ghost" asChild className="text-xs gap-1.5">
-            <Link href="/admin/crm/prospects/portfolio"><LayoutGrid className="h-3.5 w-3.5" /></Link>
           </Button>
           <Button size="sm" variant={bulkMode ? "default" : "outline"} className="text-xs gap-1.5" onClick={() => { setBulkMode(!bulkMode); setSelectedCards(new Set()); }}>
             <CheckSquare className="h-3.5 w-3.5" /> {bulkMode ? "Annuler" : "Sélection"}

@@ -9,7 +9,6 @@ import {
   Users,
   TrendingUp,
   Briefcase,
-  ChevronLeft,
   CheckCircle2,
   Clock,
   AlertCircle,
@@ -23,6 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { ProspectsViewTabs } from "@/components/crm/ProspectsViewTabs";
 import type { CrmProspect, CrmTask } from "@/lib/types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -215,15 +215,8 @@ export default function PortfolioPage() {
 
   return (
     <div className="space-y-6">
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-2 text-sm text-gray-500">
-        <Link href="/admin/crm/prospects" className="hover:text-gray-700 flex items-center gap-1">
-          <ChevronLeft className="h-4 w-4" />
-          Kanban
-        </Link>
-        <span>/</span>
-        <span className="text-gray-900 font-medium">Portefeuille</span>
-      </div>
+      {/* Navigation vues */}
+      <ProspectsViewTabs />
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">

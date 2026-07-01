@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn, formatDate } from "@/lib/utils";
+import { ProspectsViewTabs } from "@/components/crm/ProspectsViewTabs";
 import { useToast } from "@/components/ui/use-toast";
 import { getScoreCategory } from "@/lib/ai/prospect-scoring";
 import { Progress } from "@/components/ui/progress";
@@ -314,6 +315,9 @@ export default function ProspectListePage() {
 
   return (
     <div className="space-y-6">
+      {/* Navigation vues */}
+      <ProspectsViewTabs />
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

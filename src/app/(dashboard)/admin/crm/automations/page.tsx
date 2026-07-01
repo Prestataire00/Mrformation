@@ -34,6 +34,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { useEntity } from "@/contexts/EntityContext";
 import { cn } from "@/lib/utils";
 import { DomainToggle } from "@/components/automation/DomainToggle";
+import { ProspectionTabs } from "@/components/crm/ProspectionTabs";
 import { CrmRuleWizard } from "@/components/automation/CrmRuleWizard";
 import { CrmRuleTemplates } from "@/components/automation/CrmRuleTemplates";
 import { DryRunDialog } from "@/components/automation/DryRunDialog";
@@ -189,6 +190,9 @@ export default function CrmAutomationsPage() {
 
   return (
     <div className="p-6 space-y-6 max-w-5xl mx-auto">
+      {/* Navigation prospection */}
+      <ProspectionTabs />
+
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
