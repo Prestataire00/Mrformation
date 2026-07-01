@@ -72,6 +72,7 @@ import {
 import type { CrmQuote, Profile, QuoteStatus } from "@/lib/types";
 
 const QUOTE_STATUSES: QuoteStatus[] = ["draft", "sent", "accepted", "rejected", "expired"];
+const PAGE_SIZE = 25;
 
 interface QuoteStats {
   total: number;
@@ -107,6 +108,10 @@ export default function QuotesPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<QuoteStatus | "all">("all");
 
+  // Pagination
+  const [page, setPage] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
+
   // Dialogs
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedQuote, setSelectedQuote] = useState<CrmQuote | null>(null);
@@ -126,7 +131,12 @@ export default function QuotesPage() {
     fetchQuotes();
     fetchProfiles();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entityId, search, statusFilter]);
+  }, [entityId, search, statusFilter, page]);
+
+  // Reset to page 0 when filters change
+  useEffect(() => {
+    setPage(0);
+  }, [search, statusFilter]);
 
   const fetchProfiles = useCallback(async () => {
     let query = supabase.from("profiles").select("id, first_name, last_name, email").order("first_name");
@@ -140,21 +150,26 @@ export default function QuotesPage() {
     try {
       let query = supabase
         .from("crm_quotes")
-        .select(`
+        .select(
+          `
           *,
           client:clients!crm_quotes_client_id_fkey(id, company_name),
           prospect:crm_prospects!crm_quotes_prospect_id_fkey(id, company_name)
-        `)
-        .order("created_at", { ascending: false });
+        `,
+          { count: "exact" }
+        )
+        .order("created_at", { ascending: false })
+        .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
 
       if (entityId) query = query.eq("entity_id", entityId);
       if (statusFilter !== "all") query = query.eq("status", statusFilter);
       if (search.trim()) query = query.ilike("reference", `%${search.trim()}%`);
 
-      const { data, error } = await query;
+      const { data, error, count } = await query;
       if (error) throw error;
       const list = (data as CrmQuote[]) ?? [];
       setQuotes(list);
+      setTotalCount(count ?? 0);
 
       // Stats from all quotes
       let allQuery = supabase.from("crm_quotes").select("status, amount, created_at");
@@ -180,7 +195,7 @@ export default function QuotesPage() {
     } finally {
       setLoading(false);
     }
-  }, [supabase, entityId, statusFilter, search, toast]);
+  }, [supabase, entityId, statusFilter, search, toast, page]);
 
   async function handleDelete() {
     if (!selectedQuote) return;
@@ -936,6 +951,35 @@ export default function QuotesPage() {
             </div>
           )}
       </div>
+
+      {/* Pagination controls */}
+      {totalCount > PAGE_SIZE && (
+        <div className="flex items-center justify-between px-1">
+          <span className="text-xs text-muted-foreground">
+            Page {page + 1} / {Math.max(1, Math.ceil(totalCount / PAGE_SIZE))}
+          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((p) => p - 1)}
+              disabled={page === 0}
+              className="h-8 text-xs"
+            >
+              Précédent
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((p) => p + 1)}
+              disabled={(page + 1) >= Math.ceil(totalCount / PAGE_SIZE)}
+              className="h-8 text-xs"
+            >
+              Suivant
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Convert to formation Dialog */}
       <Dialog open={convertDialog} onOpenChange={setConvertDialog}>
