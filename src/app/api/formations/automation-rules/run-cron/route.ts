@@ -213,12 +213,29 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Session not found" }, { status: 404 });
       }
 
-      const { data: rules } = await supabase
-        .from("formation_automation_rules")
-        .select("*")
-        .eq("entity_id", session.entity_id)
-        .eq("trigger_type", specificTrigger)
-        .eq("is_enabled", true);
+      // Pack-driven ? → on exécute le SNAPSHOT de la session (session_automation_steps),
+      // sinon les règles d'entité (legacy). Reproduit l'anti-doublon du passage date-based :
+      // une formation pack-driven n'exécute QUE son snapshot, jamais les règles d'entité.
+      const { data: snapCheck } = await supabase
+        .from("session_automation_steps")
+        .select("id")
+        .eq("session_id", specificSessionId)
+        .limit(1);
+      const isPackDriven = (snapCheck?.length ?? 0) > 0;
+
+      const { data: rules } = isPackDriven
+        ? await supabase
+            .from("session_automation_steps")
+            .select("*")
+            .eq("session_id", specificSessionId)
+            .eq("trigger_type", specificTrigger)
+            .eq("is_enabled", true)
+        : await supabase
+            .from("formation_automation_rules")
+            .select("*")
+            .eq("entity_id", session.entity_id)
+            .eq("trigger_type", specificTrigger)
+            .eq("is_enabled", true);
 
       if (!rules || rules.length === 0) {
         return NextResponse.json({ success: true, sent: 0, message: "No rules for this trigger" });
