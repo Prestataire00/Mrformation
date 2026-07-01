@@ -98,7 +98,7 @@ export function TabQuestionnaires({ formation, onRefresh }: Props) {
         supabase.from("questionnaires").select("id, title, type").eq("entity_id", formation.entity_id).eq("is_active", true).order("title"),
         supabase.from("formation_evaluation_assignments").select("*, questionnaire:questionnaires(title)").eq("session_id", formation.id),
         supabase.from("formation_satisfaction_assignments").select("*, questionnaire:questionnaires(title)").eq("session_id", formation.id),
-        supabase.from("questionnaire_responses").select("id, questionnaire_id, learner_id").eq("session_id", formation.id),
+        supabase.from("questionnaire_responses").select("id, questionnaire_id, learner_id, trainer_id").eq("session_id", formation.id),
         supabase.from("questionnaire_tokens").select("id, questionnaire_id, learner_id, expires_at").eq("session_id", formation.id),
         loadQualiopiIndicators(supabase, formation.id),
         loadObjectivesProgression(supabase, formation.id),
@@ -363,6 +363,7 @@ function ItemDetail({ stage, item, formation, questionnaires, assignments, enrol
   const [saving, setSaving] = useState(false);
   const [adminFillTarget, setAdminFillTarget] = useState<{ learnerId: string; learnerName: string } | null>(null);
   const [qrDialog, setQrDialog] = useState<{ open: boolean; url: string; title: string; qrDataUrl: string } | null>(null);
+  const [trainerResponseCell, setTrainerResponseCell] = useState<import("@/lib/utils/questionnaire-stats").LearnerStatusCell | null>(null);
   const sb = supabase as ReturnType<typeof createClient>;
   const t = toast as (p: Record<string, unknown>) => void;
   const current = (assignments as Array<Record<string, unknown>>)[0];
@@ -374,6 +375,11 @@ function ItemDetail({ stage, item, formation, questionnaires, assignments, enrol
   const available = qs.filter(q => q.type === "evaluation" || q.type === "survey" || q.type === item.category);
   const total = item.target === "learner" ? enr.length : item.target === "trainer" ? 1 : comp.length;
   const responded = current ? resp.filter(r => r.questionnaire_id === current.questionnaire_id).length : 0;
+
+  // Pour l'item bilan formateur : trouver la réponse avec trainer_id non-null
+  const trainerResponse = current
+    ? resp.find(r => r.questionnaire_id === current.questionnaire_id && !!(r as Record<string, unknown>).trainer_id)
+    : undefined;
 
   const handleAssign = async () => {
     if (!selectedQId) return;
@@ -442,7 +448,7 @@ function ItemDetail({ stage, item, formation, questionnaires, assignments, enrol
             <Button onClick={handleAssign} disabled={!selectedQId || saving}>{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Attribuer"}</Button>
           </div>
         </div>
-        {current && (
+        {current && item.target !== "trainer" && (
           <div className="space-y-2">
             <Button variant="outline" className="w-full justify-start" onClick={async () => {
               try {
@@ -487,8 +493,50 @@ function ItemDetail({ stage, item, formation, questionnaires, assignments, enrol
           </div>
         )}
 
-        {/* Liste apprenants avec saisie admin */}
-        {current && enr.length > 0 && (
+        {current && item.target === "trainer" && (
+          <div className="space-y-2">
+            <Button variant="outline" className="w-full justify-start text-red-600 hover:bg-red-50" onClick={handleRemove} disabled={saving}><X className="h-4 w-4 mr-2" />Retirer</Button>
+          </div>
+        )}
+
+        {/* Bilan formateur : état répondu / en attente */}
+        {current && item.target === "trainer" && (
+          <div className="space-y-2">
+            <h4 className="font-semibold text-sm">Bilan formateur</h4>
+            <div className="flex items-center justify-between p-3 rounded border text-sm">
+              <div className="flex items-center gap-2">
+                {trainerResponse ? (
+                  <Badge variant="outline" className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200">Répondu</Badge>
+                ) : (
+                  <Badge variant="outline" className="text-[10px]">En attente</Badge>
+                )}
+              </div>
+              {trainerResponse && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 text-xs gap-1 shrink-0"
+                  onClick={() => {
+                    const qTitle = (current.questionnaire as Record<string, string>)?.title ?? "Bilan formateur";
+                    setTrainerResponseCell({
+                      learnerId: "",
+                      learnerName: "Formateur",
+                      questionnaireId: current.questionnaire_id as string,
+                      questionnaireTitle: qTitle,
+                      status: "answered",
+                      responseId: trainerResponse.id as string,
+                    });
+                  }}
+                >
+                  <Eye className="h-3 w-3" /> Voir les réponses
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Liste apprenants avec saisie admin (non affiché pour le bilan formateur) */}
+        {current && item.target !== "trainer" && enr.length > 0 && (
           <div className="space-y-2">
             <h4 className="font-semibold text-sm">Réponses par apprenant</h4>
             <div className="space-y-1 max-h-60 overflow-y-auto">
@@ -573,6 +621,13 @@ function ItemDetail({ stage, item, formation, questionnaires, assignments, enrol
           onSuccess={async () => { setAdminFillTarget(null); await (onRefresh as () => Promise<void>)(); }}
         />
       )}
+
+      {/* Réponses du formateur (bilan) */}
+      <LearnerResponsesDialog
+        cell={trainerResponseCell}
+        sessionId={fm.id}
+        onClose={() => setTrainerResponseCell(null)}
+      />
     </>
   );
 }
