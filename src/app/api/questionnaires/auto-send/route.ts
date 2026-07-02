@@ -75,6 +75,22 @@ export async function POST(request: NextRequest) {
 
       if (!questionnaire) continue;
 
+      // Vérifier le target_type de l'assignment satisfaction : si c'est "trainer",
+      // ne pas envoyer aux apprenants. Le questionnaire formateur (quest_formateurs)
+      // a target_type = "trainer" dans formation_satisfaction_assignments.
+      const { data: satisAssignment } = await supabase
+        .from("formation_satisfaction_assignments")
+        .select("target_type")
+        .eq("session_id", session.id)
+        .eq("questionnaire_id", questionnaire.id)
+        .limit(1)
+        .maybeSingle();
+
+      if (satisAssignment?.target_type && satisAssignment.target_type !== "learner") {
+        // Questionnaire destiné au formateur/entreprise/manager — pas aux apprenants
+        continue;
+      }
+
       // Get enrolled learners with email
       const { data: enrollments } = await supabase
         .from("enrollments")
