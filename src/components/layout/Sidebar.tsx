@@ -433,9 +433,11 @@ export function Sidebar({ entity, role = "admin", hasCrmAccess = false }: Sideba
         {filteredNavSections.map((section, idx) => (
           <div key={section.section ?? idx}>
             {section.section && (
-              <p className="px-3 pt-4 pb-1 text-[10px] font-semibold tracking-wider text-sidebar-foreground/40 uppercase first:pt-0">
-                {section.section}
-              </p>
+              <div className="px-3 pt-5 pb-1.5 first:pt-1">
+                <p className="text-[11px] font-bold tracking-wider text-sidebar-foreground/60 uppercase border-b border-sidebar-border pb-1">
+                  {section.section}
+                </p>
+              </div>
             )}
             <div className="space-y-0.5">
               {section.items.map((item) => (
