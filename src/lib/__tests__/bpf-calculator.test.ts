@@ -8,6 +8,8 @@ import {
   computeSectionCFromInvoices,
   computeDataGaps,
   computeSectionF1,
+  computeSectionF2,
+  buildSectionCView,
 } from "../bpf-calculator";
 
 // ─── computeSectionC ────────────────────────────────────────
@@ -447,5 +449,94 @@ describe("computeSectionF1", () => {
       2026,
     );
     expect(result["salarie_prive"]).toEqual({ count: 1, hours: 3.5 }); // 35/10 = 3.5h
+  });
+});
+
+// ─── computeSectionF2 ─────────────────────────────────────
+
+describe("computeSectionF2", () => {
+  const sessionInfo = {
+    s1: { duration: 7, isSubcontracted: true },
+    s2: { duration: 5, isSubcontracted: false },
+  };
+
+  it("compte stagiaires et heures des sessions sous-traitées uniquement", () => {
+    const enrollments = [
+      { learner_id: "L1", session_id: "s1", status: "confirmed" },
+      { learner_id: "L2", session_id: "s1", status: "registered" },
+      { learner_id: "L3", session_id: "s2", status: "confirmed" }, // non sous-traitée
+    ];
+    expect(computeSectionF2(enrollments, sessionInfo)).toEqual({ stagiaires: 2, heures: 14 });
+  });
+
+  it("déduplique les stagiaires mais somme les heures par inscription", () => {
+    const enrollments = [
+      { learner_id: "L1", session_id: "s1", status: "confirmed" },
+      { learner_id: "L1", session_id: "s3", status: "confirmed" },
+    ];
+    const info = {
+      s1: { duration: 7, isSubcontracted: true },
+      s3: { duration: 3, isSubcontracted: true },
+    };
+    expect(computeSectionF2(enrollments, info)).toEqual({ stagiaires: 1, heures: 10 });
+  });
+
+  it("exclut les inscriptions annulées", () => {
+    const enrollments = [
+      { learner_id: "L1", session_id: "s1", status: "cancelled" },
+      { learner_id: "L2", session_id: "s1", status: "confirmed" },
+    ];
+    expect(computeSectionF2(enrollments, sessionInfo)).toEqual({ stagiaires: 1, heures: 7 });
+  });
+
+  it("retourne zéro si aucune session sous-traitée", () => {
+    const enrollments = [{ learner_id: "L3", session_id: "s2", status: "confirmed" }];
+    expect(computeSectionF2(enrollments, sessionInfo)).toEqual({ stagiaires: 0, heures: 0 });
+  });
+
+  it("n'ajoute pas d'heures pour une inscription sans apprenant (F-2 ⊆ F-1)", () => {
+    const enrollments = [
+      { learner_id: "", session_id: "s1", status: "confirmed" },
+      { learner_id: "L2", session_id: "s1", status: "confirmed" },
+    ];
+    expect(computeSectionF2(enrollments, sessionInfo)).toEqual({ stagiaires: 1, heures: 7 });
+  });
+});
+
+// ─── buildSectionCView ────────────────────────────────────
+
+describe("buildSectionCView", () => {
+  it("combine fiable + à-vérifier par ligne (lignes distinctes)", () => {
+    const view = buildSectionCView({
+      fiable: { line_1: 1000 },
+      a_verifier: { line_2e: 500 },
+      non_classifie: { fiable: 0, a_verifier: 0 },
+    });
+    expect(view.combined).toEqual({ line_1: 1000, line_2e: 500 });
+    expect(view.fiable).toEqual({ line_1: 1000 });
+    expect(view.aVerifier).toEqual({ line_2e: 500 });
+  });
+
+  it("additionne fiable et à-vérifier sur une même ligne", () => {
+    const view = buildSectionCView({
+      fiable: { line_1: 1000 },
+      a_verifier: { line_1: 500 },
+      non_classifie: { fiable: 0, a_verifier: 0 },
+    });
+    expect(view.combined.line_1).toBe(1500);
+    expect(view.fiable.line_1).toBe(1000);
+    expect(view.aVerifier.line_1).toBe(500);
+  });
+
+  it("replie les factures sans funding_type sur la ligne 11", () => {
+    const view = buildSectionCView({
+      fiable: { line_1: 1000 },
+      a_verifier: {},
+      non_classifie: { fiable: 200, a_verifier: 300 },
+    });
+    expect(view.combined.line_11).toBe(500); // 200 + 300
+    expect(view.fiable.line_11).toBe(200);
+    expect(view.aVerifier.line_11).toBe(300);
+    expect(view.combined.line_1).toBe(1000);
   });
 });

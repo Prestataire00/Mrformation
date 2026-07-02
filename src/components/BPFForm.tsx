@@ -28,8 +28,25 @@ import {
   SectionG,
   SectionH,
 } from "./bpf";
-import { computeSectionC, computeSectionD, getF3Index, isRncpIndex } from "@/lib/bpf-calculator";
-import type { SectionDResult } from "@/lib/bpf-calculator";
+import {
+  computeSectionD,
+  getF3Index,
+  isRncpIndex,
+  computeSectionCFromInvoices,
+  buildSectionCView,
+  computeDataGaps,
+  computeSectionF2,
+} from "@/lib/bpf-calculator";
+import type { SectionDResult, DataGapsResult } from "@/lib/bpf-calculator";
+import { fetchBPFData } from "@/lib/services/bpf-report-service";
+import type {
+  BPFInvoice,
+  BPFEnrollment,
+  BPFTraining,
+  BPFFormationTrainer,
+  BPFSession,
+} from "@/lib/services/bpf-report-service";
+import { DataGapsPanel } from "@/components/bpf/DataGapsPanel";
 
 // ─── Component ──────────────────────────────────────
 
@@ -59,6 +76,17 @@ export function BPFForm({ title }: BPFFormProps) {
   const [sectionC, setSectionC] = useState<Record<string, number>>({});
   const [sectionD, setSectionD] = useState<Record<string, number>>({});
   const [sectionGManual, setSectionGManual] = useState<{ stagiaires: number; heures: number }>({ stagiaires: 0, heures: 0 });
+
+  // BPF-2.3: Cadre C basé factures (split fiable/à-vérifier) + trous de données
+  const [sectionCFiable, setSectionCFiable] = useState<Record<string, number>>({});
+  const [sectionCaVerifier, setSectionCaVerifier] = useState<Record<string, number>>({});
+  const [sectionCaVerifierCount, setSectionCaVerifierCount] = useState(0);
+  const [dataGaps, setDataGaps] = useState<DataGapsResult | null>(null);
+  const [gapInvoices, setGapInvoices] = useState<BPFInvoice[]>([]);
+  const [gapEnrollments, setGapEnrollments] = useState<BPFEnrollment[]>([]);
+  const [gapTrainings, setGapTrainings] = useState<BPFTraining[]>([]);
+  const [gapFormationTrainers, setGapFormationTrainers] = useState<BPFFormationTrainer[]>([]);
+  const [gapSessions, setGapSessions] = useState<BPFSession[]>([]);
 
   // BPF overrides (manual corrections per section)
   const [overrides, setOverrides] = useState<Record<string, unknown>>({});
@@ -151,7 +179,7 @@ export function BPFForm({ title }: BPFFormProps) {
       // Get sessions with trainer type, training hours, and bpf_objective
       const sessionQuery = supabase
         .from("sessions")
-        .select("id, mode, trainer:trainers(type), training:trainings(duration_hours, classification, nsf_code, nsf_label, bpf_objective, bpf_funding_type)")
+        .select("id, mode, is_subcontracted_to_other_of, trainer:trainers(type), training:trainings(duration_hours, classification, nsf_code, nsf_label, bpf_objective, bpf_funding_type)")
         .eq("entity_id", entityId)
         .neq("status", "cancelled");
 
@@ -171,6 +199,7 @@ export function BPFForm({ title }: BPFFormProps) {
         bpfObjective: string | null;
         nsf_code: string | null;
         nsf_label: string | null;
+        isSubcontracted: boolean;
       }> = {};
 
       if (sessions) {
@@ -203,42 +232,40 @@ export function BPFForm({ title }: BPFFormProps) {
             bpfObjective,
             nsf_code: nsfCode,
             nsf_label: nsfLabel,
+            isSubcontracted: (s.is_subcontracted_to_other_of as boolean) ?? false,
           };
         }
       }
 
       const sessionIds = sessions ? sessions.map((s) => s.id as string) : [];
 
-      // ─── Section C: Auto-calculate revenue from accepted quotes ───
-      const quoteQuery = supabase
-        .from("crm_quotes")
-        .select("id, amount, bpf_funding_type, program_id, program:programs(bpf_funding_type), client:clients(bpf_category), created_at")
-        .eq("entity_id", entityId)
-        .eq("status", "accepted");
+      // ─── Section C: produits depuis les FACTURES (BPF-2.3), split fiable/à-vérifier ───
+      // + détection des trous de données pour le DataGapsPanel (service layer, entity_id strict).
+      const bpfRaw = await fetchBPFData(supabase, entityId, fiscalYear);
 
-      if (dateFrom) quoteQuery.gte("created_at", dateFrom);
-      if (dateTo) quoteQuery.lte("created_at", dateTo + "T23:59:59");
+      const sectionCResult = computeSectionCFromInvoices(bpfRaw.invoices);
+      const cView = buildSectionCView(sectionCResult);
+      // Réutilisé plus bas pour la KPI "CA formation".
+      const computedSectionC = cView.combined;
 
-      const { data: acceptedQuotes } = await quoteQuery;
-
-      const quotesForCalc = (acceptedQuotes || []).map((q) => {
-        const program = Array.isArray(q.program)
-          ? (q.program as Record<string, unknown>[])[0]
-          : (q.program as Record<string, unknown> | null);
-        const client = Array.isArray(q.client)
-          ? (q.client as Record<string, unknown>[])[0]
-          : (q.client as Record<string, unknown> | null);
-
-        return {
-          amount: q.amount as number | null,
-          bpf_funding_type: q.bpf_funding_type as string | null,
-          program: program ? { bpf_funding_type: program.bpf_funding_type as string | null } : null,
-          client: client ? { bpf_category: client.bpf_category as string | null } : null,
-        };
+      const gaps = computeDataGaps({
+        invoices: bpfRaw.invoices,
+        enrollments: bpfRaw.enrollments,
+        trainings: bpfRaw.trainings,
+        formationTrainers: bpfRaw.formationTrainers,
+        signatures: bpfRaw.signatures,
       });
 
-      const computedSectionC = computeSectionC(quotesForCalc);
-      setSectionC(computedSectionC);
+      setSectionC(cView.combined);
+      setSectionCFiable(cView.fiable);
+      setSectionCaVerifier(cView.aVerifier);
+      setSectionCaVerifierCount(gaps.invoices_non_confirmees);
+      setDataGaps(gaps);
+      setGapInvoices(bpfRaw.invoices);
+      setGapEnrollments(bpfRaw.enrollments);
+      setGapTrainings(bpfRaw.trainings);
+      setGapFormationTrainers(bpfRaw.formationTrainers);
+      setGapSessions(bpfRaw.sessions);
 
       // ─── Section D: Auto-calculate charges from formation_trainers ───
       let computedD: SectionDResult = { total_charges: 0, salaires_formateurs: 0, achats_prestation: 0 };
@@ -274,10 +301,10 @@ export function BPFForm({ title }: BPFFormProps) {
         achats_prestation: computedD.achats_prestation,
       });
 
-      // ─── Section F-1: Learner types ───
+      // ─── Section F-1: types de stagiaires (BPF-2.3: bpf_trainee_type au niveau inscription) ───
       const enrollQuery = supabase
         .from("enrollments")
-        .select("id, session_id, learner_id, learner:learners(id, client_id, learner_type)")
+        .select("id, session_id, learner_id, status, bpf_trainee_type, learner:learners(id, client_id, learner_type)")
         .neq("status", "cancelled");
 
       if (sessionIds.length > 0) {
@@ -288,14 +315,14 @@ export function BPFForm({ title }: BPFFormProps) {
 
       // Aggregate F-1 by learner type (deduplicate learners)
       const learnerTypes: Record<string, Set<string>> = {
-        salarie: new Set(),
+        salarie_prive: new Set(),
         apprenti: new Set(),
         demandeur_emploi: new Set(),
         particulier: new Set(),
         autre: new Set(),
       };
       const learnerHours: Record<string, number> = {
-        salarie: 0,
+        salarie_prive: 0,
         apprenti: 0,
         demandeur_emploi: 0,
         particulier: 0,
@@ -321,19 +348,11 @@ export function BPFForm({ title }: BPFFormProps) {
           const learnerId = (learner?.id as string) || (e.learner_id as string) || "";
           if (!learnerId) continue;
 
-          const clientId = learner?.client_id as string | null;
-          let lType = (learner?.learner_type as string) || null;
-
-          // Fallback logic: if learner_type not set, derive from client_id
-          if (!lType || lType === "salarie") {
-            if (clientId) {
-              lType = "salarie";
-            } else {
-              lType = "particulier";
-            }
-          }
-
-          if (!learnerTypes[lType]) lType = "autre";
+          // BPF-2.3: type de stagiaire porté par l'inscription (défaut DB salarie_prive).
+          // Une inscription sans type (backfill impossible) tombe dans "autre" et
+          // reste signalée dans le DataGapsPanel (enrollments_sans_type).
+          let lType = (e.bpf_trainee_type as string) || null;
+          if (!lType || !learnerTypes[lType]) lType = "autre";
 
           const sessionId = e.session_id as string;
           const sessionInfo = sessionMap[sessionId];
@@ -379,7 +398,7 @@ export function BPFForm({ title }: BPFFormProps) {
 
       // Build F-1 rows
       const f1Rows = [
-        { label: "a. Salariés d'employeurs privés hors apprentis", stagiaires: learnerTypes.salarie.size, heures: learnerHours.salarie },
+        { label: "a. Salariés d'employeurs privés hors apprentis", stagiaires: learnerTypes.salarie_prive.size, heures: learnerHours.salarie_prive },
         { label: "b. Apprentis", stagiaires: learnerTypes.apprenti.size, heures: learnerHours.apprenti },
         { label: "c. Personnes en recherche d'emploi formées par votre organisme de formation", stagiaires: learnerTypes.demandeur_emploi.size, heures: learnerHours.demandeur_emploi },
         { label: "d. Particuliers à leurs propres frais formés par votre organisme de formation", stagiaires: learnerTypes.particulier.size, heures: learnerHours.particulier },
@@ -574,9 +593,9 @@ export function BPFForm({ title }: BPFFormProps) {
       }).length : 0;
       checks.push({ label: "Formations avec code NSF", ok: trainingsWithNsf === totalSessions && totalSessions > 0, total: totalSessions, valid: trainingsWithNsf, link: "/admin/trainings" });
 
-      // 4. Devis acceptés
-      const nbQuotes = acceptedQuotes?.length || 0;
-      checks.push({ label: "Devis acceptés (CA)", ok: nbQuotes > 0, total: nbQuotes, valid: nbQuotes, link: "/admin/crm" });
+      // 4. Factures de l'exercice (CA basé factures — BPF-2.3)
+      const nbInvoices = bpfRaw.invoices.length;
+      checks.push({ label: "Factures de l'exercice (CA)", ok: nbInvoices > 0, total: nbInvoices, valid: nbInvoices });
 
       // 5. Formateurs avec type + taux horaire
       const { data: allTrainers } = await supabase
@@ -602,12 +621,28 @@ export function BPFForm({ title }: BPFFormProps) {
 
       setVerifications(checks);
 
+      // ─── Section F-2: activité sous-traitée à un autre organisme (BPF-2.3) ───
+      // Depuis sessions.is_subcontracted_to_other_of, même base d'heures que F-1
+      // (durée session par inscription) → les stagiaires F-2 ⊆ F-1.
+      const f2SessionInfo: Record<string, { duration: number; isSubcontracted: boolean }> = {};
+      for (const [sid, info] of Object.entries(sessionMap)) {
+        f2SessionInfo[sid] = { duration: info.duration, isSubcontracted: info.isSubcontracted };
+      }
+      const f2Result = computeSectionF2(
+        (enrollments || []).map((e) => ({
+          learner_id: (e.learner_id as string) || "",
+          session_id: e.session_id as string,
+          status: (e.status as string) || "confirmed",
+        })),
+        f2SessionInfo
+      );
+
       setBpf({
         personnesInternes: { nombre: internalCount ?? 0, heures: internalHours },
         personnesExternes: { nombre: externalCount ?? 0, heures: externalHours },
         f1: f1Rows,
         f1DistanceCount: distanceLearners.size,
-        f2: { stagiaires: gManual.stagiaires, heures: gManual.heures },
+        f2: f2Result,
         f3: f3Rows,
         f4: f4Rows,
         g: gManual,
@@ -846,10 +881,10 @@ export function BPFForm({ title }: BPFFormProps) {
     // Section C
     FINANCIAL_LINES.forEach((l) => rows.push(["C", l.label, getLineValue(l.key), ""]));
     rows.push(["C", "TOTAL PRODUITS", totalProduits(), ""]);
-    // TODO BPF-2.3: when invoice-based SectionCFromInvoices is wired into BPFForm,
-    // replace the two rows below with real fiable / à_vérifier values.
-    rows.push(["C", "dont Total fiable (dates confirmées) — à compléter", "", ""]);
-    rows.push(["C", "dont À vérifier (factures importées) — à compléter", "", ""]);
+    const fiableTotalXlsx = Object.values(sectionCFiable).reduce((s, v) => s + v, 0);
+    const aVerifierTotalXlsx = Object.values(sectionCaVerifier).reduce((s, v) => s + v, 0);
+    rows.push(["C", "dont Total fiable (dates confirmées)", fiableTotalXlsx, ""]);
+    rows.push(["C", `dont À vérifier (${sectionCaVerifierCount} factures importées)`, aVerifierTotalXlsx, ""]);
 
     // Section D
     CHARGE_LINES.forEach((l) => rows.push(["D", l.label, sectionD[l.key] || 0, ""]));
@@ -873,18 +908,16 @@ export function BPFForm({ title }: BPFFormProps) {
       const entityAddress = entity?.address
         ? [entity.address, [entity.postal_code, entity.city].filter(Boolean).join(" ")].filter(Boolean).join(" ")
         : null;
-      // Derive data gaps from verification checks for the PDF summary section
-      const checkByLabel = (label: string) => verifications.find((v) => v.label === label);
-      const trainingsWithoutObj = checkByLabel("Formations avec objectif BPF");
-      const learnersWithoutType = checkByLabel("Apprenants avec type renseigné");
-      const sessionsWithoutCost = checkByLabel("Formateurs avec type et taux horaire");
-      const pdfDataGaps = {
-        invoices_sans_funding: 0,       // not tracked in BPFForm verifications yet
-        invoices_non_confirmees: 0,     // not tracked in BPFForm verifications yet
-        enrollments_sans_type: learnersWithoutType ? learnersWithoutType.total - learnersWithoutType.valid : 0,
-        trainings_sans_objective: trainingsWithoutObj ? trainingsWithoutObj.total - trainingsWithoutObj.valid : 0,
-        sessions_sans_cout: sessionsWithoutCost ? sessionsWithoutCost.total - sessionsWithoutCost.valid : 0,
-      };
+      // BPF-2.3: vrais trous de données (computeDataGaps) pour le résumé PDF.
+      const pdfDataGaps = dataGaps
+        ? {
+            invoices_sans_funding: dataGaps.invoices_sans_funding,
+            invoices_non_confirmees: dataGaps.invoices_non_confirmees,
+            enrollments_sans_type: dataGaps.enrollments_sans_type,
+            trainings_sans_objective: dataGaps.trainings_sans_objective,
+            sessions_sans_cout: dataGaps.sessions_sans_cout,
+          }
+        : undefined;
 
       await exportBPFFullToPDF({
         entityName,
@@ -899,8 +932,9 @@ export function BPFForm({ title }: BPFFormProps) {
         dateTo: filteredTo,
         bpf,
         sectionC,
-        // TODO BPF-2.3: pass sectionCFiable / sectionCaVerifier / sectionCaVerifierCount
-        // once computeSectionCFromInvoices is wired into BPFForm (invoice fetch required)
+        sectionCFiable,
+        sectionCaVerifier,
+        sectionCaVerifierCount,
         sectionD,
         sectionGManual,
         financialLines: FINANCIAL_LINES,
@@ -934,6 +968,22 @@ export function BPFForm({ title }: BPFFormProps) {
         exportingExcel={exportingExcel}
         exportingPDF={exportingPDF}
       />
+
+      {/* ═══ DONNÉES À COMPLÉTER (BPF-2.3) — éditable inline ═══ */}
+      {dataGaps && entityId && (
+        <div id="bpf-data-gaps" className="mb-6">
+          <DataGapsPanel
+            gaps={dataGaps}
+            invoices={gapInvoices}
+            enrollments={gapEnrollments}
+            trainings={gapTrainings}
+            formationTrainers={gapFormationTrainers}
+            sessions={gapSessions}
+            onRefresh={fetchData}
+            entityId={entityId}
+          />
+        </div>
+      )}
 
       {/* ═══ KPI CARDS ═══ */}
       <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-5 mb-6">
@@ -1080,6 +1130,12 @@ export function BPFForm({ title }: BPFFormProps) {
         fmtEur={fmtEur}
         overrides={(overrides.section_c as Record<string, number>) || undefined}
         onOverride={(key, val) => handleOverride("section_c", key, val)}
+        fiableTotal={Object.values(sectionCFiable).reduce((s, v) => s + v, 0)}
+        aVerifierTotal={Object.values(sectionCaVerifier).reduce((s, v) => s + v, 0)}
+        aVerifierCount={sectionCaVerifierCount}
+        onScrollToGaps={() =>
+          document.getElementById("bpf-data-gaps")?.scrollIntoView({ behavior: "smooth", block: "start" })
+        }
       />
 
       <SectionD

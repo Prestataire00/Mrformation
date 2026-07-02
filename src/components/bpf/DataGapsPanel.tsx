@@ -38,6 +38,7 @@ import {
   batchUpdateEnrollmentsBPF,
   updateTrainingBPF,
   updateFormationTrainerCost,
+  batchConfirmInvoiceDates,
 } from "@/lib/services/bpf-report-service";
 
 // ─── Props ─────────────────────────────────────────────────────
@@ -63,6 +64,7 @@ export function DataGapsPanel({
   formationTrainers,
   sessions,
   onRefresh,
+  entityId,
 }: DataGapsPanelProps) {
   const [isOpen, setIsOpen] = useState(true);
   const totalGaps =
@@ -131,6 +133,7 @@ export function DataGapsPanel({
                   <InvoicesGapTable
                     invoices={invoicesWithGaps}
                     onRefresh={onRefresh}
+                    entityId={entityId}
                   />
                 </TabsContent>
 
@@ -170,13 +173,55 @@ export function DataGapsPanel({
 function InvoicesGapTable({
   invoices,
   onRefresh,
+  entityId,
 }: {
   invoices: BPFInvoice[];
   onRefresh: () => void;
+  entityId: string;
 }) {
   const { toast } = useToast();
   const supabase = createClient();
   const [loading, setLoading] = useState<string | null>(null);
+  const [batchLoading, setBatchLoading] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+
+  // Fiabilisation "risque d'abord" : dates manquantes ou invalides et frontière
+  // d'année civile (décembre/janvier = seul vrai risque d'attribution BPF)
+  // remontent en tête pour vérification avant toute confirmation en masse.
+  const sortedInvoices = [...invoices].sort((a, b) => {
+    const risk = (inv: BPFInvoice) => {
+      if (!inv.invoice_date) return 0;
+      const m = new Date(inv.invoice_date).getMonth();
+      if (Number.isNaN(m)) return 0;
+      return m === 11 || m === 0 ? 0 : 1;
+    };
+    const ra = risk(a);
+    const rb = risk(b);
+    if (ra !== rb) return ra - rb;
+    return (a.invoice_date || "").localeCompare(b.invoice_date || "");
+  });
+
+  const unconfirmedIds = invoices
+    .filter((i) => !i.invoice_date_confirmed)
+    .map((i) => i.id);
+
+  async function handleBatchConfirm() {
+    // Recompté à l'exécution pour un compteur de toast fidèle même si une
+    // confirmation ligne-à-ligne est intervenue entre-temps.
+    const ids = invoices.filter((i) => !i.invoice_date_confirmed).map((i) => i.id);
+    if (ids.length === 0) return;
+    setBatchLoading(true);
+    try {
+      await batchConfirmInvoiceDates(supabase, entityId, ids);
+      toast({ title: `${ids.length} date(s) confirmée(s)` });
+      onRefresh();
+    } catch {
+      toast({ title: "Erreur lors de la confirmation en masse", variant: "destructive" });
+    } finally {
+      setBatchLoading(false);
+      setConfirming(false);
+    }
+  }
 
   async function handleUpdateFunding(invoiceId: string, fundingType: string) {
     setLoading(invoiceId);
@@ -219,6 +264,39 @@ function InvoicesGapTable({
 
   return (
     <div className="space-y-2 max-h-96 overflow-y-auto">
+      {unconfirmedIds.length > 0 && (
+        <div className="flex items-center justify-between gap-2 pb-2 border-b">
+          <p className="text-xs text-muted-foreground">
+            Vérifiez d&apos;abord les factures de décembre/janvier (en tête) avant de confirmer en masse.
+          </p>
+          {confirming ? (
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-xs font-medium">Confirmer {unconfirmedIds.length} date(s) ?</span>
+              <Button size="sm" className="h-7 text-xs" onClick={handleBatchConfirm} disabled={batchLoading}>
+                Oui
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                onClick={() => setConfirming(false)}
+                disabled={batchLoading}
+              >
+                Annuler
+              </Button>
+            </div>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs shrink-0"
+              onClick={() => setConfirming(true)}
+            >
+              Confirmer les {unconfirmedIds.length} dates
+            </Button>
+          )}
+        </div>
+      )}
       <div className="grid grid-cols-[1fr_100px_140px_200px_120px] gap-2 text-xs font-medium text-muted-foreground px-2 pb-1 border-b">
         <span>Client / Formation</span>
         <span>Montant</span>
@@ -226,7 +304,7 @@ function InvoicesGapTable({
         <span>Catégorie</span>
         <span>Actions</span>
       </div>
-      {invoices.map((inv) => (
+      {sortedInvoices.map((inv) => (
         <div
           key={inv.id}
           className="grid grid-cols-[1fr_100px_140px_200px_120px] gap-2 items-center px-2 py-1.5 rounded hover:bg-yellow-100/50 text-sm"

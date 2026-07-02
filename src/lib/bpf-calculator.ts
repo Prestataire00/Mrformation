@@ -431,3 +431,87 @@ export function computeSectionF1(
 
   return result;
 }
+
+// ─── Section F2: activité sous-traitée à un autre organisme ─
+
+interface EnrollmentForF2 {
+  learner_id: string;
+  session_id: string;
+  status: string;
+}
+
+interface SessionInfoForF2 {
+  duration: number;
+  isSubcontracted: boolean;
+}
+
+/**
+ * Cadre F-2 : stagiaires et heures des sessions dont l'action a été confiée
+ * à un AUTRE organisme (sessions.is_subcontracted_to_other_of = true).
+ * Même base d'heures que le F-1 affiché (durée de session par inscription),
+ * pour que les stagiaires F-2 forment un sous-ensemble cohérent du F-1.
+ */
+export function computeSectionF2(
+  enrollments: EnrollmentForF2[],
+  sessionInfoById: Record<string, SessionInfoForF2>
+): { stagiaires: number; heures: number } {
+  const learners = new Set<string>();
+  let heures = 0;
+
+  for (const e of enrollments) {
+    if (e.status === "cancelled") continue;
+    const info = sessionInfoById[e.session_id];
+    if (!info || !info.isSubcontracted) continue;
+    // On ignore les heures d'une inscription sans apprenant identifié, comme le fait
+    // le F-1 (skip learner_id vide) — garantit que F-2 ⊆ F-1 aussi en heures.
+    if (!e.learner_id) continue;
+
+    learners.add(e.learner_id);
+    heures += info.duration || 0;
+  }
+
+  return { stagiaires: learners.size, heures };
+}
+
+// ─── Vue d'affichage du Cadre C (total combiné + split) ────
+
+export interface SectionCView {
+  /** fiable + à-vérifier par ligne (total affiché en tête, ne chute pas) */
+  combined: Record<string, number>;
+  /** factures à date confirmée */
+  fiable: Record<string, number>;
+  /** factures importées non confirmées */
+  aVerifier: Record<string, number>;
+}
+
+/**
+ * Aplati le résultat de computeSectionCFromInvoices pour l'affichage et l'export.
+ * Les factures sans funding_type (non_classifie) sont repliées sur la ligne 11
+ * ("Autres produits") — comme l'ancien calcul devis — tout en restant signalées
+ * comme trou via computeDataGaps. aVerifierCount vient de gaps.invoices_non_confirmees.
+ */
+export function buildSectionCView(
+  result: SectionCFromInvoicesResult
+): SectionCView {
+  const combined: Record<string, number> = {};
+  for (const [k, v] of Object.entries(result.fiable)) {
+    combined[k] = (combined[k] || 0) + v;
+  }
+  for (const [k, v] of Object.entries(result.a_verifier)) {
+    combined[k] = (combined[k] || 0) + v;
+  }
+
+  const fiable = { ...result.fiable };
+  const aVerifier = { ...result.a_verifier };
+
+  const ncFiable = result.non_classifie.fiable;
+  const ncAVerifier = result.non_classifie.a_verifier;
+
+  if (ncFiable !== 0) fiable.line_11 = (fiable.line_11 || 0) + ncFiable;
+  if (ncAVerifier !== 0) aVerifier.line_11 = (aVerifier.line_11 || 0) + ncAVerifier;
+  if (ncFiable !== 0 || ncAVerifier !== 0) {
+    combined.line_11 = (combined.line_11 || 0) + ncFiable + ncAVerifier;
+  }
+
+  return { combined, fiable, aVerifier };
+}

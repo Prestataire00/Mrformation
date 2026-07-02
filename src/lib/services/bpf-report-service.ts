@@ -263,3 +263,22 @@ export async function updateFormationTrainerCost(
     .eq("id", formationTrainerId);
   if (error) throw error;
 }
+
+/**
+ * Confirme en une seule mutation la date de plusieurs factures.
+ * Sert le batch "Confirmer les N dates" du DataGapsPanel : fiabilisation
+ * de masse des factures importées (invoice_date_confirmed = true).
+ */
+export async function batchConfirmInvoiceDates(
+  supabase: SupabaseClient,
+  entityId: string,
+  invoiceIds: string[]
+) {
+  if (invoiceIds.length === 0) return;
+  const { error } = await supabase
+    .from("formation_invoices")
+    .update({ invoice_date_confirmed: true, updated_at: new Date().toISOString() })
+    .eq("entity_id", entityId)
+    .in("id", invoiceIds);
+  if (error) throw error;
+}
