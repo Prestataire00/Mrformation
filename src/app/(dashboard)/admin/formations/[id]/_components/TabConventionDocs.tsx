@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import {
   Loader2, Eye, CheckCircle, Send, Copy, Clock, Download,
   ChevronDown, ChevronUp, Plus, FileDown, PenLine, Undo2, Pencil,
-  AlertTriangle, Paperclip,
+  AlertTriangle, Paperclip, X, Trash2,
 } from "lucide-react";
 import DOMPurify from "dompurify";
 import { Button } from "@/components/ui/button";
@@ -63,6 +63,7 @@ import {
   SECONDARY_TEMPLATE_CATEGORIES,
   type SecondaryDocType,
 } from "@/lib/templates/secondary-categories";
+import { isCustomDocType } from "@/lib/services/custom-secondary-doc-types";
 import type {
   Session, ConventionDocType, ConventionOwnerType,
   FormationConventionDocument, DocumentTemplate,
@@ -288,6 +289,9 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
 
   // h-22 : Dialog catalogue documents secondaires
   const [secondaryCatalogOpen, setSecondaryCatalogOpen] = useState(false);
+  // Désattribution : doc_type secondaire à retirer de la session (confirmation).
+  const [desattribType, setDesattribType] = useState<string | null>(null);
+  const [desattribBusy, setDesattribBusy] = useState(false);
 
   // E3-S05 : Batch ops confirmation dialogs
   const [confirmMassSend, setConfirmMassSend] = useState<{ docType: ConventionDocType } | null>(null);
@@ -1237,7 +1241,7 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
       <div key={doc.id} className={cn("flex items-center justify-between py-2 border-b last:border-b-0 gap-2 border-l-2 pl-3", DOC_COLORS[docType] || "border-l-slate-300")}>
         <div className="flex items-center gap-2 min-w-0">
           <span className={cn("text-[10px] font-semibold px-1.5 py-0.5 rounded border shrink-0", DOC_BADGE_COLORS[docType] || DOC_BADGE_COLORS.custom)}>
-            {DOC_SHORT[docType] || docType}
+            {DOC_SHORT[docType] || (isCustomDocType(docType) ? "Perso." : docType)}
           </span>
           <span className="text-xs font-medium truncate">{label}</span>
           {renderStatusBadge(doc)}
@@ -1523,7 +1527,9 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
   // DEFAULT_*_DOCS, ni STATIC_DOCS, ni "custom" : ils étaient bien chargés
   // dans `docs` mais aucun rendu ne les itérait → invisibles. On les
   // regroupe ici par destinataire pour la section dédiée (2 vues).
-  const secondaryDocs = docs.filter((d) => isSecondaryDocType(d.doc_type));
+  const secondaryDocs = docs.filter(
+    (d) => isSecondaryDocType(d.doc_type) || isCustomDocType(d.doc_type),
+  );
   const secondaryDocTypesPresent = Array.from(
     new Set(secondaryDocs.map((d) => d.doc_type)),
   );
@@ -1607,6 +1613,48 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
         a.name.localeCompare(b.name),
     );
   })();
+
+  // ── Désattribution d'un type secondaire (retire toutes ses lignes de la session) ──
+  const desattribDocs = desattribType
+    ? secondaryDocs.filter((d) => d.doc_type === desattribType)
+    : [];
+  const desattribLabel =
+    desattribDocs[0]?.custom_label ||
+    (desattribType ? DOC_LABELS[desattribType] || desattribType : "");
+  const desattribHasSensitive = desattribDocs.some(
+    (d) => d.is_confirmed || d.is_signed || d.is_sent,
+  );
+
+  const handleDesattribuer = async () => {
+    if (!desattribType) return;
+    setDesattribBusy(true);
+    try {
+      const res = await fetch(
+        `/api/documents/attribute-secondary?formationId=${encodeURIComponent(
+          formation.id,
+        )}&docType=${encodeURIComponent(desattribType)}`,
+        { method: "DELETE" },
+      );
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "Erreur serveur");
+      const n = (result.deleted ?? 0) as number;
+      toast({
+        title: "Document retiré",
+        description: `${n} ligne${n > 1 ? "s" : ""} supprimée${n > 1 ? "s" : ""}.`,
+      });
+      setDesattribType(null);
+      await onRefresh();
+    } catch (err) {
+      toast({
+        title: "Erreur",
+        description:
+          err instanceof Error ? err.message : "Impossible de retirer le document.",
+        variant: "destructive",
+      });
+    } finally {
+      setDesattribBusy(false);
+    }
+  };
 
   // ── Avatar color helper ──
   const getAvatarColor = (name: string) => {
@@ -1993,6 +2041,27 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
             <p className="text-xs text-sky-700 mt-0.5">
               Attribués via « Ajouter doc secondaire ». Figez, générez (Voir) et signez-les comme les documents officiels.
             </p>
+            {/* Désattribution : retirer un type (toute la session) */}
+            <div className="flex flex-wrap items-center gap-1.5 mt-2">
+              <span className="text-[11px] text-sky-700">Retirer un type :</span>
+              {secondaryDocTypesPresent.map((dt) => {
+                const sample = secondaryDocs.find((d) => d.doc_type === dt);
+                const lbl =
+                  sample?.custom_label || DOC_LABELS[dt] || DOC_SHORT[dt] || dt;
+                return (
+                  <button
+                    key={dt}
+                    type="button"
+                    onClick={() => setDesattribType(dt)}
+                    title={`Retirer « ${lbl} » de la session`}
+                    className="inline-flex items-center gap-1 text-[11px] bg-white border border-sky-200 text-sky-800 rounded-full px-2 py-0.5 transition hover:bg-red-50 hover:border-red-200 hover:text-red-700"
+                  >
+                    <span className="truncate max-w-[160px]">{lbl}</span>
+                    <X className="h-3 w-3 shrink-0" />
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {/* Documents groupés par destinataire */}
@@ -2101,6 +2170,59 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
           await onRefresh();
         }}
       />
+
+      {/* Désattribution : confirmation de retrait d'un type secondaire */}
+      <Dialog
+        open={desattribType !== null}
+        onOpenChange={(open) => {
+          if (desattribBusy) return;
+          if (!open) setDesattribType(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Trash2 className="h-4 w-4 text-red-600" />
+              Retirer « {desattribLabel} » ?
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm text-gray-600">
+            <p>
+              Cette action retire ce type de document pour{" "}
+              <strong>toute la session</strong> ({desattribDocs.length} ligne
+              {desattribDocs.length > 1 ? "s" : ""}, tous destinataires). Vous
+              pourrez le ré-attribuer ensuite.
+            </p>
+            {desattribHasSensitive && (
+              <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-amber-800">
+                <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                <span className="text-xs">
+                  Au moins un document de ce type a déjà été généré, envoyé ou
+                  signé. Le retrait supprimera ces lignes de la session.
+                </span>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDesattribType(null)}
+              disabled={desattribBusy}
+            >
+              Annuler
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDesattribuer}
+              disabled={desattribBusy}
+              className="gap-2"
+            >
+              {desattribBusy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              Retirer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* E3-S05 : Batch ops confirmation dialogs */}
       <BatchOpsConfirmDialog

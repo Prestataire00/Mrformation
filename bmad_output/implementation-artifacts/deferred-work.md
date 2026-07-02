@@ -272,3 +272,10 @@ Spec A1 en cours : `spec-programme-generateur-interne.md`, branche `feat/program
 ## Deferred from: code review spec-programme-chemin-unique C (2026-06-27)
 
 - **Route `import-pdf` orpheline** — `src/app/api/programs/import-pdf/route.ts` n'a plus aucun appelant depuis la suppression de l'écran `/admin/programs/import` (lot C). Le spec gelé limitait les suppressions à la page import + la route ai-extract, donc la route import-pdf a été LAISSÉE volontairement. À supprimer dans un lot de nettoyage (grep confirmé : 0 appelant ; expose un endpoint OpenAI/pdf-parse non référencé aux rôles admin). Vérifier zéro référence avant suppression.
+
+## docs-secondaires-custom — super_admin cross-entité (2026-07-02)
+
+- **Finding (edge-case review)** : les routes du module Documents — `attribute-secondary` (POST/DELETE) et les nouvelles `custom-secondary-types` (GET/POST/PATCH) — résolvent l'entité via `profile.entity_id` (entité de rattachement), pas via le helper `resolveActiveEntityId` (cookie entity sélectionnée) utilisé côté CRM.
+- **Impact** : un super_admin opérant sur une formation d'une AUTRE entité que la sienne verra le catalogue custom / l'attribution résolus sur son entité home → types custom de l'entité visitée introuvables. Pas de fuite de sécurité (isolation stricte préservée).
+- **Pourquoi différé** : comportement PRÉ-EXISTANT du module Documents (attribute-secondary, templates/import font déjà ainsi). Aligner sur `resolveActiveEntityId` doit se faire au niveau du module entier, pas de cette story, sinon incohérence catalogue/attribution.
+- **Piste** : story dédiée « module Documents cross-entité super_admin » — introduire `resolveActiveEntityId` de façon cohérente sur toutes les routes /api/documents.

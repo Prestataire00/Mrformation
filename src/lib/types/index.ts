@@ -65,6 +65,8 @@ export type BpfObjective =
 
 export type BpfCategory = BpfFundingType;
 
+export type BpfTraineeType = "salarie_prive" | "apprenti" | "demandeur_emploi" | "particulier" | "autre";
+
 // ===== CLIENTS =====
 export type ClientStatus = "active" | "inactive" | "prospect";
 
@@ -299,6 +301,7 @@ export interface Session {
   is_completed: boolean;
   is_dpc: boolean;
   is_subcontracted: boolean;
+  is_subcontracted_to_other_of: boolean;
   catalog_pre_registration: boolean;
   // Story h-8 (Epic H) : champs pédagogiques override au niveau session.
   // Fallback chain dans le resolver : session.X → program.content.X → training.X
@@ -545,6 +548,27 @@ export type ConventionDocType =
 
 export type ConventionOwnerType = "learner" | "company" | "trainer";
 
+/** Destinataire d'un type de doc secondaire custom, figé à la création. */
+export type CustomSecondaryOwnerType = "learner" | "trainer" | "session";
+
+/**
+ * Type de document secondaire CUSTOM, défini par entité en base
+ * (table `custom_secondary_doc_types`). Cohabite avec les 23 types
+ * legacy codés en dur. Résolu via `template_id`, non-signable en v1.
+ */
+export interface CustomSecondaryDocType {
+  id: string;
+  entity_id: string;
+  doc_type: string;
+  label: string;
+  category: "habilitation" | "attestation_metier" | "administratif" | "evaluation";
+  owner_type: CustomSecondaryOwnerType;
+  template_id: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface FormationConventionDocument {
   id: string;
   session_id: string;
@@ -600,6 +624,7 @@ export interface Enrollment {
   price_per_learner: number | null;
   hours_per_learner: number | null;
   individual_price?: number | null;
+  bpf_trainee_type: BpfTraineeType;
   session?: Session;
   learner?: Learner;
   client?: Client;

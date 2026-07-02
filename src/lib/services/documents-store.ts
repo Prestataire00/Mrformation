@@ -433,6 +433,100 @@ export async function updateDocsForOwner(
 }
 
 /**
+ * DELETE en masse des documents d'un `doc_type` pour une session (désattribution).
+ * Filtre par entity_id + source_table='sessions' + source_id (session) + doc_type.
+ * Supprime toutes les lignes du type (tous destinataires) et renvoie le compte.
+ *
+ * Sert la désattribution CAP-1 : retirer d'une session un type de doc secondaire
+ * attribué par erreur. Scopé entité + session, ré-attribuable ensuite.
+ */
+export async function deleteDocsByDocType(
+  supabase: SupabaseClient,
+  entityId: string,
+  sessionId: string,
+  docType: string,
+): Promise<ServiceResult<{ deleted: number }>> {
+  const { data, error } = await supabase
+    .from("documents")
+    .delete()
+    .eq("entity_id", entityId)
+    .eq("source_table", "sessions")
+    .eq("source_id", sessionId)
+    .eq("doc_type", docType)
+    .select("id");
+  if (error) return { ok: false, error: { message: error.message, code: error.code } };
+  return { ok: true, deleted: (data ?? []).length };
+}
+
+/** Bucket Storage des templates (aligné avec /api/documents/templates/import). */
+const TEMPLATES_BUCKET = "formation-docs";
+
+export interface CreateDocxTemplateInput {
+  entityId: string;
+  name: string;
+  docType: string;
+  file: Blob;
+  fileName: string;
+  uploadedBy: string;
+}
+
+/**
+ * Upload un .docx dans le Storage et crée la ligne `document_templates`
+ * associée (mode docx_fidelity, is_system=false). Réplique le cœur de
+ * /api/documents/templates/import pour le rendre réutilisable par la création
+ * d'un type secondaire custom (le template devient la source de génération).
+ */
+export async function createDocxTemplateRecord(
+  supabase: SupabaseClient,
+  input: CreateDocxTemplateInput,
+): Promise<ServiceResult<{ templateId: string; storagePath: string }>> {
+  try {
+    const buffer = Buffer.from(await input.file.arrayBuffer());
+    const uuid = crypto.randomUUID();
+    const ext = (input.fileName.split(".").pop() || "docx").toLowerCase();
+    const storagePath = `templates/${input.entityId}/${uuid}.${ext}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from(TEMPLATES_BUCKET)
+      .upload(storagePath, buffer, {
+        contentType:
+          input.file.type ||
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        upsert: false,
+      });
+    if (uploadError) {
+      return { ok: false, error: { message: uploadError.message } };
+    }
+
+    const { data: urlData } = supabase.storage
+      .from(TEMPLATES_BUCKET)
+      .getPublicUrl(storagePath);
+
+    const { data: inserted, error: insertError } = await supabase
+      .from("document_templates")
+      .insert({
+        entity_id: input.entityId,
+        name: input.name.trim(),
+        type: input.docType,
+        content: null,
+        source_docx_url: urlData.publicUrl,
+        mode: ext === "pdf" ? "pdf_fidelity" : "docx_fidelity",
+        is_system: false,
+        uploaded_at: new Date().toISOString(),
+        uploaded_by: input.uploadedBy,
+      })
+      .select("id")
+      .single();
+    if (insertError || !inserted) {
+      return { ok: false, error: { message: insertError?.message ?? "Insertion template échouée", code: insertError?.code } };
+    }
+    return { ok: true, templateId: inserted.id as string, storagePath };
+  } catch (err) {
+    return { ok: false, error: { message: err instanceof Error ? err.message : "Erreur upload template" } };
+  }
+}
+
+/**
  * SELECT un template par ID en filtrant par entity_id (défense en profondeur).
  *
  * Résout TabConventionDocs.tsx:508 qui fetchait par template_id seulement —

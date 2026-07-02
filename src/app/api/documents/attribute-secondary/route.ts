@@ -8,32 +8,40 @@ import { getSystemTemplate } from "@/lib/templates/registry";
 import {
   SECONDARY_DOC_TYPES,
   SECONDARY_TEMPLATE_CATEGORIES,
+  isSecondaryDocType,
 } from "@/lib/templates/secondary-categories";
-import { insertDocs, getDocKeysForSession } from "@/lib/services/documents-store";
+import {
+  insertDocs,
+  getDocKeysForSession,
+  deleteDocsByDocType,
+} from "@/lib/services/documents-store";
+import {
+  listCustomTypes,
+  isCustomDocType,
+} from "@/lib/services/custom-secondary-doc-types";
+import type { CustomSecondaryDocType } from "@/lib/types";
 
 /**
  * POST /api/documents/attribute-secondary
  *
  * Story h-22 (Epic H) — code review fixes (2026-05-19).
+ * Étendu (docs-secondaires-custom) : accepte aussi les types secondaires
+ * CUSTOM actifs de l'entité (catalogue en base), résolus via `template_id`.
  *
  * Attribue 1..N documents secondaires à une session de formation.
  *
- * Mapping ownerType registry → rows DB (table unifiée `documents`) :
+ * Mapping ownerType → rows DB (table unifiée `documents`) :
  * - "learner"  → 1 row par learner enrôlé
  * - "trainer"  → 1 row par trainer assigné
- * - "session"  → 1 row attaché à la première entreprise (owner_type='company',
- *   owner_id=firstCompanyId). Sémantique : ces docs (bilan_poe, reponses_*,
- *   resultats_*) sont des synthèses uniques par session, pas par participant.
- *   On évite la fan-out par company pour ne pas dupliquer le PDF.
+ * - "session"  → 1 row attaché à la première entreprise (owner_type='company').
  *   Skip si la session n'a aucune entreprise.
- *   TODO v2 : promouvoir owner_type='session' quand `ConventionOwnerType`
- *   (legacy UI shape) sera étendue dans une story dédiée.
  *
- * Idempotence : déléguée à `documents_unique_source_owner` UNIQUE INDEX +
- * `insertDocs()` qui ignore les doublons (PG 23505) et renvoie le nombre
- * réel de lignes créées via `{ inserted }` — c'est ce compte exact, et non
- * `rowsToInsert.length`, qui est renvoyé dans `created`.
+ * Legacy : owner/template résolus via le registry système (getSystemTemplate).
+ * Custom : owner/template/label résolus via la définition en base ; le type
+ * custom est forcé non-signable (requires_signature=false) en v1 et porte le
+ * template_id uploadé (contourne l'invariant registry).
  *
+ * Idempotence : `documents_unique_source_owner` UNIQUE INDEX + `insertDocs()`.
  * Accès : admin + super_admin uniquement (RLS + filter entity_id en défense).
  */
 
@@ -41,8 +49,17 @@ const SECONDARY_DOC_TYPES_SET = new Set<string>(SECONDARY_DOC_TYPES);
 
 const bodySchema = z.object({
   formationId: z.string().uuid(),
-  docTypes: z.array(z.enum(SECONDARY_DOC_TYPES)).min(1).max(50),
+  // Types custom acceptés → validation stricte déléguée à la résolution
+  // (legacy set ∪ catalogue custom actif de l'entité).
+  docTypes: z.array(z.string().min(1)).min(1).max(50),
 });
+
+function createServiceClient() {
+  return createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  );
+}
 
 export async function POST(request: NextRequest) {
   const auth = await requireRole(["super_admin", "admin"]);
@@ -68,24 +85,12 @@ export async function POST(request: NextRequest) {
   }
   const { formationId, docTypes } = parsed.data;
 
-  // Sanity check : SECONDARY_DOC_TYPES_SET utilisé en défense (z.enum déjà strict).
-  const invalidTypes = docTypes.filter((d) => !SECONDARY_DOC_TYPES_SET.has(d));
-  if (invalidTypes.length > 0) {
-    return NextResponse.json(
-      { error: "Doc types non secondaires", invalidTypes },
-      { status: 400 },
-    );
-  }
-
   // Service client : on bypasse RLS pour faire les INSERT/SELECT côté serveur.
   // Tous les SELECTs filtrent explicitement par entity_id (défense en profondeur,
   // CLAUDE.md règle 2). Pattern aligné avec h-17 / signature-request-batch.
   let dbClient;
   try {
-    dbClient = createSupabaseClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    );
+    dbClient = createServiceClient();
   } catch {
     return NextResponse.json(
       { error: "Configuration serveur incomplète" },
@@ -109,12 +114,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Catalogue custom actif de l'entité (résolution owner/template/label).
+    const customRes = await listCustomTypes(dbClient, profile.entity_id);
+    if (!customRes.ok) throw new Error(customRes.error.message);
+    const customByDocType = new Map<string, CustomSecondaryDocType>(
+      customRes.types.map((t) => [t.doc_type, t]),
+    );
+
+    // Validation d'appartenance : chaque docType doit être legacy secondaire
+    // OU un custom actif de l'entité. Sinon → rejet (défense).
+    const invalidTypes = docTypes.filter(
+      (d) => !SECONDARY_DOC_TYPES_SET.has(d) && !customByDocType.has(d),
+    );
+    if (invalidTypes.length > 0) {
+      return NextResponse.json(
+        { error: "Doc types inconnus ou hors de votre entité", invalidTypes },
+        { status: 400 },
+      );
+    }
+
     // Charger learners/trainers/companies de la session.
-    // Sécurité multi-tenant : la session a déjà été vérifiée comme
-    // appartenant à profile.entity_id ci-dessus ; ses enrollments /
-    // formation_trainers / formation_companies en découlent par FK.
-    // ⚠️ Ces 3 tables de liaison n'ont PAS de colonne entity_id, et leur
-    // clé de session est `session_id` (pas `formation_id`).
     // `.range(0, 9999)` lève le cap Supabase 1000 rows pour grosses INTER.
     const [enrollmentsRes, trainersRes, companiesRes] = await Promise.all([
       dbClient
@@ -151,13 +170,11 @@ export async function POST(request: NextRequest) {
       .map((c) => c.client_id as string | null)
       .filter((id): id is string => !!id);
 
-    // Idempotence : on lit les rows existantes dans la table unifiée `documents`
-    // pour cette session, puis on filtre côté code. `insertDocs` swallow aussi
-    // les conflits 23505 (UNIQUE INDEX) en deuxième défense anti-concurrence.
+    // Idempotence : rows existantes pour cette session, filtrées côté code.
     const existingKeysList = await getDocKeysForSession(dbClient, formationId);
     const existingKeys = new Set(
       existingKeysList
-        .filter((d) => docTypes.includes(d.doc_type as typeof docTypes[number]))
+        .filter((d) => docTypes.includes(d.doc_type))
         .map((d) => `${d.doc_type}|${d.owner_type ?? ""}|${d.owner_id ?? ""}`),
     );
 
@@ -168,38 +185,55 @@ export async function POST(request: NextRequest) {
       owner_type: "learner" | "company" | "trainer";
       owner_id: string;
       requires_signature: boolean;
-      template_id: null;
+      template_id: string | null;
+      custom_label?: string;
     }> = [];
 
     const skippedByMissingOwner: string[] = [];
 
     for (const docType of docTypes) {
-      const tmpl = getSystemTemplate(docType);
-      if (!tmpl) {
-        // Invariant : SECONDARY_DOC_TYPES_SET ⊂ SYSTEM_TEMPLATES_BY_DOC_TYPE.
-        // Si on arrive ici, c'est qu'un nouveau type a été ajouté à
-        // secondary-categories.ts sans entry dans registry.ts.
-        console.error(
-          `[attribute-secondary] invariant violated : ${docType} not in registry`,
-        );
-        skippedByMissingOwner.push(docType);
-        continue;
+      // Résolution owner/template/label/signature selon legacy vs custom.
+      let ownerKind: "learner" | "trainer" | "session" | "company";
+      let templateId: string | null;
+      let requiresSignature: boolean;
+      let customLabel: string | undefined;
+
+      const custom = customByDocType.get(docType);
+      if (custom) {
+        ownerKind = custom.owner_type; // learner | trainer | session
+        templateId = custom.template_id;
+        requiresSignature = false; // custom non-signable en v1
+        customLabel = custom.label;
+      } else {
+        const tmpl = getSystemTemplate(docType);
+        if (!tmpl) {
+          // Invariant : SECONDARY_DOC_TYPES_SET ⊂ SYSTEM_TEMPLATES_BY_DOC_TYPE.
+          console.error(
+            `[attribute-secondary] invariant violated : ${docType} not in registry`,
+          );
+          skippedByMissingOwner.push(docType);
+          continue;
+        }
+        ownerKind = tmpl.ownerType;
+        templateId = null;
+        requiresSignature = isSecondaryDocType(docType)
+          ? !!SECONDARY_TEMPLATE_CATEGORIES[docType].signable
+          : false;
+        customLabel = undefined;
       }
-      const requiresSignature = !!SECONDARY_TEMPLATE_CATEGORIES[docType].signable;
 
       let owners: Array<{ type: "learner" | "company" | "trainer"; id: string }> = [];
-      if (tmpl.ownerType === "learner") {
+      if (ownerKind === "learner") {
         owners = learnerIds.map((id) => ({ type: "learner" as const, id }));
-      } else if (tmpl.ownerType === "trainer") {
+      } else if (ownerKind === "trainer") {
         owners = trainerIds.map((id) => ({ type: "trainer" as const, id }));
-      } else if (tmpl.ownerType === "session") {
-        // D1 résolu en code review 2026-05-19 : 1 row par session, attaché à
-        // la première entreprise. Pas de duplication par company ni de
-        // fallback trainer (semantique trompeuse).
+      } else if (ownerKind === "session") {
+        // 1 row par session, attaché à la première entreprise.
         if (companyIds.length > 0) {
           owners = [{ type: "company" as const, id: companyIds[0] }];
         }
       }
+      // ownerKind === "company" (jamais pour les secondaires) → owners vide → skip.
 
       if (owners.length === 0) {
         skippedByMissingOwner.push(docType);
@@ -216,7 +250,8 @@ export async function POST(request: NextRequest) {
           owner_type: owner.type,
           owner_id: owner.id,
           requires_signature: requiresSignature,
-          template_id: null,
+          template_id: templateId,
+          ...(customLabel ? { custom_label: customLabel } : {}),
         });
       }
     }
@@ -232,14 +267,8 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // INSERT via documents-store (table unifiée `documents`, source de vérité
-    // depuis Epic B / PR #105). Idempotent via UNIQUE INDEX
-    // `documents_unique_source_owner`. `inserted` = compte réel (gère le cas
-    // d'une attribution concurrente où une ligne aurait été créée entre le
-    // SELECT existingKeys ci-dessus et cet INSERT).
     const { inserted } = await insertDocs(dbClient, rowsToInsert);
 
-    // Audit log — sync void avec error-handling interne (cf src/lib/audit-log.ts).
     logAudit({
       supabase: dbClient,
       entityId: profile.entity_id,
@@ -264,6 +293,106 @@ export async function POST(request: NextRequest) {
     console.error("[attribute-secondary] error:", err);
     return NextResponse.json(
       { error: sanitizeError(err, "attribute-secondary") },
+      { status: 500 },
+    );
+  }
+}
+
+/**
+ * DELETE /api/documents/attribute-secondary?formationId=…&docType=…
+ *
+ * Désattribution (CAP-1) : retire d'une session TOUTES les lignes `documents`
+ * d'un type secondaire (tous destinataires), après confirmation côté UI.
+ * Scopé entité + session ; le type peut être ré-attribué ensuite.
+ *
+ * Restreint aux types secondaires (legacy ou custom) pour ne jamais toucher un
+ * document officiel (convention, etc.). Accès admin + super_admin.
+ */
+export async function DELETE(request: NextRequest) {
+  const auth = await requireRole(["super_admin", "admin"]);
+  if (auth.error) return auth.error;
+  const { user, profile } = auth as {
+    user: { id: string };
+    profile: { entity_id: string; role: string };
+  };
+
+  const { searchParams } = new URL(request.url);
+  const formationId = searchParams.get("formationId");
+  const docType = searchParams.get("docType");
+
+  if (!formationId || !docType) {
+    return NextResponse.json(
+      { error: "Les paramètres formationId et docType sont requis." },
+      { status: 400 },
+    );
+  }
+
+  // Garde : uniquement des types secondaires (legacy ou custom).
+  if (!isSecondaryDocType(docType) && !isCustomDocType(docType)) {
+    return NextResponse.json(
+      { error: "Seuls les documents secondaires peuvent être désattribués." },
+      { status: 400 },
+    );
+  }
+
+  let dbClient;
+  try {
+    dbClient = createServiceClient();
+  } catch {
+    return NextResponse.json(
+      { error: "Configuration serveur incomplète" },
+      { status: 500 },
+    );
+  }
+
+  try {
+    // Vérifier que la session appartient à l'entité du user.
+    const { data: session, error: sessionErr } = await dbClient
+      .from("sessions")
+      .select("id, entity_id")
+      .eq("id", formationId)
+      .eq("entity_id", profile.entity_id)
+      .single();
+
+    if (sessionErr || !session) {
+      return NextResponse.json(
+        { error: "Session introuvable ou hors de votre entité" },
+        { status: 404 },
+      );
+    }
+
+    const result = await deleteDocsByDocType(
+      dbClient,
+      profile.entity_id,
+      formationId,
+      docType,
+    );
+    if (!result.ok) {
+      return NextResponse.json(
+        { error: sanitizeError(new Error(result.error.message), "attribute-secondary DELETE") },
+        { status: 500 },
+      );
+    }
+
+    logAudit({
+      supabase: dbClient,
+      entityId: profile.entity_id,
+      userId: user.id,
+      action: "delete",
+      resourceType: "documents",
+      resourceId: formationId,
+      details: {
+        kind: "document_secondaire_desattribue",
+        docType,
+        deleted: result.deleted,
+      },
+    });
+
+    return NextResponse.json({ deleted: result.deleted });
+  } catch (err) {
+    console.error("[attribute-secondary DELETE] error:", err);
+    return NextResponse.json(
+      { error: sanitizeError(err, "attribute-secondary DELETE") },
       { status: 500 },
     );
   }
