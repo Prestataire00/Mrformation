@@ -8,7 +8,7 @@
  * eux-mêmes alignés sur supabase/migrations/bpf-auto-calculation.sql.
  */
 
-import type { BpfFundingTypeValue, BpfObjectiveValue } from "@/lib/bpf-enums";
+import type { BpfFundingTypeValue, BpfObjectiveValue, BpfTraineeTypeValue } from "@/lib/bpf-enums";
 
 export const BPF_FUNDING_LABELS: Record<BpfFundingTypeValue, string> = {
   entreprise_privee: "Entreprise privée",
@@ -43,4 +43,12 @@ export const BPF_OBJECTIVE_LABELS: Record<BpfObjectiveValue, string> = {
   autre_pro: "Autres formations professionnelles",
   bilan_competences: "Bilans de compétences",
   vae: "VAE (validation acquis expérience)",
+};
+
+export const BPF_TRAINEE_TYPE_LABELS: Record<BpfTraineeTypeValue, string> = {
+  salarie_prive: "Salariés d'employeurs privés (hors apprentis)",
+  apprenti: "Apprentis",
+  demandeur_emploi: "Personnes en recherche d'emploi",
+  particulier: "Particuliers à leurs propres frais",
+  autre: "Autres stagiaires",
 };

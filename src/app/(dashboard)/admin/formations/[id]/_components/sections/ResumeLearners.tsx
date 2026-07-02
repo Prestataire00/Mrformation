@@ -6,10 +6,14 @@ import { Plus, Trash2, Download, Loader2, UserPlus, Mail } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { SearchSelect } from "@/components/ui/search-select";
 import { useToast } from "@/components/ui/use-toast";
 import { getInitials } from "@/lib/utils";
@@ -61,6 +65,9 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
   const [newEmail, setNewEmail] = useState("");
   const [creatingLearner, setCreatingLearner] = useState(false);
   const [sendingAccessAll, setSendingAccessAll] = useState(false);
+
+  // BPF trainee type — shared between "add existing" and "create new" dialogs
+  const [newBpfTraineeType, setNewBpfTraineeType] = useState("salarie_prive");
 
   const enrollments = formation.enrollments || [];
 
@@ -158,17 +165,20 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
 
     // try/catch + finally : aucun throw ne doit figer le bouton « Ajouter ».
     try {
-      const result = await enrollLearner(supabase, {
-        sessionId: formation.id,
-        learnerId: selectedLearnerId,
-        clientId,
-        status: "registered",
-      });
-      if (!result.ok) {
-        if (result.error.code === "23505") {
+      const { error: enrollError } = await supabase
+        .from("enrollments")
+        .insert({
+          session_id: formation.id,
+          learner_id: selectedLearnerId,
+          client_id: clientId,
+          status: "registered",
+          bpf_trainee_type: newBpfTraineeType,
+        });
+      if (enrollError) {
+        if (enrollError.code === "23505") {
           toast({ title: "Cet apprenant est déjà inscrit", variant: "destructive" });
         } else {
-          toast({ title: "Erreur", description: result.error.message, variant: "destructive" });
+          toast({ title: "Erreur", description: enrollError.message, variant: "destructive" });
         }
         return;
       }
@@ -178,6 +188,7 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
       setDialogOpen(false);
       setSelectedLearnerId("");
       setSelectedClientId("");
+      setNewBpfTraineeType("salarie_prive");
       await onRefresh();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Impossible d'inscrire l'apprenant";
@@ -221,6 +232,7 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
         entityId: formation.entity_id,
         sessionId: formation.id,
         clientId,
+        bpfTraineeType: newBpfTraineeType,
       });
       if (!result.ok) throw new Error(result.error.message);
 
@@ -232,6 +244,7 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
       setNewLastName("");
       setNewEmail("");
       setNewLearnerClientId("");
+      setNewBpfTraineeType("salarie_prive");
       fetchLearners();
       await onRefresh();
     } catch (err: unknown) {
@@ -453,9 +466,22 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
                 )}
               </div>
             )}
+            <div className="space-y-1.5">
+              <Label>Type de stagiaire (BPF)</Label>
+              <Select value={newBpfTraineeType} onValueChange={setNewBpfTraineeType}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="salarie_prive">Salarié privé (hors apprenti)</SelectItem>
+                  <SelectItem value="apprenti">Apprenti</SelectItem>
+                  <SelectItem value="demandeur_emploi">Demandeur d&apos;emploi</SelectItem>
+                  <SelectItem value="particulier">Particulier à ses frais</SelectItem>
+                  <SelectItem value="autre">Autre</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>Annuler</Button>
+            <Button variant="outline" onClick={() => { setDialogOpen(false); setNewBpfTraineeType("salarie_prive"); }}>Annuler</Button>
             <Button onClick={handleAdd} disabled={saving || !canSubmitAdd}>
               {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Ajouter
@@ -465,7 +491,7 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
       </Dialog>
 
       {/* Create Learner Dialog */}
-      <Dialog open={createDialogOpen} onOpenChange={(open) => { setCreateDialogOpen(open); if (!open) { setNewFirstName(""); setNewLastName(""); setNewEmail(""); setNewLearnerClientId(""); } }}>
+      <Dialog open={createDialogOpen} onOpenChange={(open) => { setCreateDialogOpen(open); if (!open) { setNewFirstName(""); setNewLastName(""); setNewEmail(""); setNewLearnerClientId(""); setNewBpfTraineeType("salarie_prive"); } }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>Créer et rattacher un nouvel apprenant</DialogTitle>
@@ -515,6 +541,19 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
                 )}
               </div>
             )}
+            <div className="space-y-1.5">
+              <Label>Type de stagiaire (BPF)</Label>
+              <Select value={newBpfTraineeType} onValueChange={setNewBpfTraineeType}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="salarie_prive">Salarié privé (hors apprenti)</SelectItem>
+                  <SelectItem value="apprenti">Apprenti</SelectItem>
+                  <SelectItem value="demandeur_emploi">Demandeur d&apos;emploi</SelectItem>
+                  <SelectItem value="particulier">Particulier à ses frais</SelectItem>
+                  <SelectItem value="autre">Autre</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>Annuler</Button>

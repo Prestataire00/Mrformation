@@ -7,7 +7,7 @@
  * BpfFundingType et BpfObjective de src/lib/types/index.ts.
  */
 
-import type { BpfFundingType, BpfObjective } from "@/lib/types";
+import type { BpfFundingType, BpfObjective, BpfTraineeType } from "@/lib/types";
 
 // ── 18 valeurs funding type (SQL lignes 49-69) ──────────────────
 
@@ -48,7 +48,18 @@ export const BPF_OBJECTIVE_VALUES = [
   "vae",
 ] as const satisfies readonly BpfObjective[];
 
+// ── 5 valeurs trainee type (Cadre F-1 Cerfa 10443) ─────────────
+
+export const BPF_TRAINEE_TYPE_VALUES = [
+  "salarie_prive",
+  "apprenti",
+  "demandeur_emploi",
+  "particulier",
+  "autre",
+] as const satisfies readonly BpfTraineeType[];
+
 // ── Types dérivés ───────────────────────────────────────────────
 
 export type BpfFundingTypeValue = (typeof BPF_FUNDING_TYPE_VALUES)[number];
 export type BpfObjectiveValue = (typeof BPF_OBJECTIVE_VALUES)[number];
+export type BpfTraineeTypeValue = (typeof BPF_TRAINEE_TYPE_VALUES)[number];

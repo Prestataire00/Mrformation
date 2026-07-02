@@ -90,6 +90,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       recipient_address,
       amount,
       prefix = "FAC",
+      invoice_date,
       due_date,
       notes,
       is_avoir = false,
@@ -140,6 +141,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
     }
 
+    // Set invoice_date if provided (not in RPC signature — update separately)
+    const resolvedInvoiceDate = invoice_date || new Date().toISOString().slice(0, 10);
+    await auth.supabase
+      .from("formation_invoices")
+      .update({ invoice_date: resolvedInvoiceDate })
+      .eq("id", data.id);
+
     // Insert invoice lines if provided
     let lineWarning: string | null = null;
     if (lines && Array.isArray(lines) && lines.length > 0) {
@@ -189,7 +197,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
   try {
     const body = await request.json();
-    const { invoice_id, status, paid_at, recipient_name, recipient_type, recipient_siret, recipient_address, due_date, notes, external_reference, amount, funding_type, lines } = body;
+    const { invoice_id, status, paid_at, recipient_name, recipient_type, recipient_siret, recipient_address, invoice_date, due_date, notes, external_reference, amount, funding_type, lines } = body;
 
     if (!invoice_id) {
       return NextResponse.json(
@@ -206,6 +214,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       recipient_type !== undefined ||
       recipient_siret !== undefined ||
       recipient_address !== undefined ||
+      invoice_date !== undefined ||
       due_date !== undefined ||
       notes !== undefined ||
       external_reference !== undefined ||
@@ -248,6 +257,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     // Full edit fields (only for pending invoices)
     if (recipient_name !== undefined) updateData.recipient_name = recipient_name;
     if (recipient_type !== undefined) updateData.recipient_type = recipient_type;
+    if (invoice_date !== undefined) updateData.invoice_date = invoice_date || null;
     if (due_date !== undefined) updateData.due_date = due_date;
     if (notes !== undefined) updateData.notes = notes;
     if (external_reference !== undefined) updateData.external_reference = external_reference;

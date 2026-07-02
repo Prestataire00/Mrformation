@@ -20,6 +20,9 @@ export interface Invoice {
   is_avoir: boolean;
   parent_invoice_id: string | null;
   created_at: string;
+  invoice_date: string;
+  invoice_date_confirmed: boolean;
+  funding_type: string | null;
   reminder_count?: number;
   auto_generated?: boolean;
   external_reference?: string | null;

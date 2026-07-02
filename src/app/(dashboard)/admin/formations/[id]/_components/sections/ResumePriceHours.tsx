@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Euro, Clock, Save, X, Pencil, CalendarDays, MapPin, Users, Sparkles, Building2, RotateCcw } from "lucide-react";
+import { Euro, Clock, Save, X, Pencil, CalendarDays, MapPin, Users, Sparkles, Building2, RotateCcw, GitFork } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/components/ui/use-toast";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { updateSession } from "@/lib/services/sessions";
@@ -71,6 +72,7 @@ export function ResumePriceHours({ formation, onRefresh }: Props) {
     type: formation.type || "inter",
     max_participants: formation.max_participants?.toString() || "",
     status: formation.status || "upcoming",
+    is_subcontracted_to_other_of: formation.is_subcontracted_to_other_of ?? false,
   });
 
   // Charge les données auxiliaires : créneaux planning (pour durée auto),
@@ -137,6 +139,7 @@ export function ResumePriceHours({ formation, onRefresh }: Props) {
       type: formation.type || "inter",
       max_participants: formation.max_participants?.toString() || "",
       status: formation.status || "upcoming",
+      is_subcontracted_to_other_of: formation.is_subcontracted_to_other_of ?? false,
     });
     setEditing(true);
   };
@@ -170,6 +173,7 @@ export function ResumePriceHours({ formation, onRefresh }: Props) {
         type: form.type,
         max_participants: form.max_participants ? parseInt(form.max_participants) : null,
         status: form.status,
+        is_subcontracted_to_other_of: form.is_subcontracted_to_other_of,
       });
       if (!result.ok) {
         throw new Error(result.error.message);
@@ -336,6 +340,12 @@ export function ResumePriceHours({ formation, onRefresh }: Props) {
             <p className="font-medium">{formation.max_participants ?? "—"}</p>
           </div>
         </div>
+        {formation.is_subcontracted_to_other_of && (
+          <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+            <GitFork className="h-3.5 w-3.5 shrink-0" />
+            <span>Formation dispensée par un autre organisme (sous-traitance externe)</span>
+          </div>
+        )}
         <Button size="sm" variant="outline" onClick={openEdit} className="gap-1">
           <Pencil className="h-3.5 w-3.5" /> Modifier les infos
         </Button>
@@ -471,6 +481,22 @@ export function ResumePriceHours({ formation, onRefresh }: Props) {
             <SelectItem value="cancelled">Annulée</SelectItem>
           </SelectContent>
         </Select>
+      </div>
+      <div className="flex items-start gap-3 p-3 border rounded-md bg-muted/30">
+        <Checkbox
+          id="is_subcontracted_to_other_of"
+          checked={form.is_subcontracted_to_other_of}
+          onCheckedChange={(checked) => setForm((f) => ({ ...f, is_subcontracted_to_other_of: checked === true }))}
+          className="mt-0.5"
+        />
+        <div className="space-y-0.5">
+          <Label htmlFor="is_subcontracted_to_other_of" className="text-xs font-medium cursor-pointer">
+            Sous-traitance externe (BPF)
+          </Label>
+          <p className="text-[10px] text-muted-foreground">
+            Cochez si la formation est dispensée par un AUTRE organisme pour votre compte. Ne pas confondre avec les formateurs sous-traitants.
+          </p>
+        </div>
       </div>
       <div className="flex gap-2">
         <Button size="sm" onClick={handleSave} disabled={saving} className="gap-1">

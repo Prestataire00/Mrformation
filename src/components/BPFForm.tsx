@@ -846,6 +846,10 @@ export function BPFForm({ title }: BPFFormProps) {
     // Section C
     FINANCIAL_LINES.forEach((l) => rows.push(["C", l.label, getLineValue(l.key), ""]));
     rows.push(["C", "TOTAL PRODUITS", totalProduits(), ""]);
+    // TODO BPF-2.3: when invoice-based SectionCFromInvoices is wired into BPFForm,
+    // replace the two rows below with real fiable / à_vérifier values.
+    rows.push(["C", "dont Total fiable (dates confirmées) — à compléter", "", ""]);
+    rows.push(["C", "dont À vérifier (factures importées) — à compléter", "", ""]);
 
     // Section D
     CHARGE_LINES.forEach((l) => rows.push(["D", l.label, sectionD[l.key] || 0, ""]));
@@ -853,7 +857,7 @@ export function BPFForm({ title }: BPFFormProps) {
     // Section G
     rows.push(["G", "Formations sous-traitées", sectionGManual.stagiaires, sectionGManual.heures]);
 
-    downloadXlsx(headers, rows, `BPF_${entityName.replace(/\s+/g, "_")}_${fiscalYear}.xlsx`);
+    downloadXlsx(headers, rows, `BPF-${fiscalYear}-${entityName.replace(/\s+/g, "_")}.xlsx`);
     } catch (err) {
       console.error("[BPF] Erreur export Excel:", err);
       toast({ title: "Erreur export Excel", description: "Impossible de générer le fichier Excel.", variant: "destructive" });
@@ -869,6 +873,19 @@ export function BPFForm({ title }: BPFFormProps) {
       const entityAddress = entity?.address
         ? [entity.address, [entity.postal_code, entity.city].filter(Boolean).join(" ")].filter(Boolean).join(" ")
         : null;
+      // Derive data gaps from verification checks for the PDF summary section
+      const checkByLabel = (label: string) => verifications.find((v) => v.label === label);
+      const trainingsWithoutObj = checkByLabel("Formations avec objectif BPF");
+      const learnersWithoutType = checkByLabel("Apprenants avec type renseigné");
+      const sessionsWithoutCost = checkByLabel("Formateurs avec type et taux horaire");
+      const pdfDataGaps = {
+        invoices_sans_funding: 0,       // not tracked in BPFForm verifications yet
+        invoices_non_confirmees: 0,     // not tracked in BPFForm verifications yet
+        enrollments_sans_type: learnersWithoutType ? learnersWithoutType.total - learnersWithoutType.valid : 0,
+        trainings_sans_objective: trainingsWithoutObj ? trainingsWithoutObj.total - trainingsWithoutObj.valid : 0,
+        sessions_sans_cout: sessionsWithoutCost ? sessionsWithoutCost.total - sessionsWithoutCost.valid : 0,
+      };
+
       await exportBPFFullToPDF({
         entityName,
         entitySiret: entity?.siret ?? null,
@@ -882,12 +899,15 @@ export function BPFForm({ title }: BPFFormProps) {
         dateTo: filteredTo,
         bpf,
         sectionC,
+        // TODO BPF-2.3: pass sectionCFiable / sectionCaVerifier / sectionCaVerifierCount
+        // once computeSectionCFromInvoices is wired into BPFForm (invoice fetch required)
         sectionD,
         sectionGManual,
         financialLines: FINANCIAL_LINES,
         chargeLines: CHARGE_LINES,
         getLineValue,
         totalProduits: totalProduits(),
+        dataGaps: pdfDataGaps,
       });
     } catch (err) {
       console.error("[BPF] Erreur export PDF:", err);

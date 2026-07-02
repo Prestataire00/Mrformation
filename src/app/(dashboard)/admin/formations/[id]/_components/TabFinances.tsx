@@ -69,6 +69,7 @@ export function TabFinances({ formation, onRefresh }: Props) {
     recipient_id: "",
     recipient_siret: "",
     recipient_address: "",
+    invoice_date: new Date().toISOString().slice(0, 10),
     due_date: "",
     notes: "",
     external_reference: "",
@@ -150,6 +151,7 @@ export function TabFinances({ formation, onRefresh }: Props) {
     recipient_id: "",
     recipient_siret: "",
     recipient_address: "",
+    invoice_date: new Date().toISOString().slice(0, 10),
     due_date: "",
     notes: "",
     external_reference: "",
@@ -464,6 +466,7 @@ export function TabFinances({ formation, onRefresh }: Props) {
           recipient_address: invoiceForm.recipient_address || null,
           amount,
           prefix: isAvoir ? "AV" : prefix,
+          invoice_date: isAvoir ? null : invoiceForm.invoice_date || null,
           due_date: isAvoir ? null : invoiceForm.due_date || null,
           notes: isAvoir ? `Avoir sur ${parentInvoice?.reference}` : invoiceForm.notes || null,
           is_avoir: isAvoir,
@@ -481,7 +484,7 @@ export function TabFinances({ formation, onRefresh }: Props) {
         }
         if (!isAvoir) {
           setInvoiceDialog(false);
-          setInvoiceForm({ recipient_type: "learner", recipient_name: "", recipient_id: "", recipient_siret: "", recipient_address: "", due_date: "", notes: "", external_reference: "", funding_type: "", lines: [{ description: "", quantity: "1", unit_price: "" }] });
+          setInvoiceForm({ recipient_type: "learner", recipient_name: "", recipient_id: "", recipient_siret: "", recipient_address: "", invoice_date: new Date().toISOString().slice(0, 10), due_date: "", notes: "", external_reference: "", funding_type: "", lines: [{ description: "", quantity: "1", unit_price: "" }] });
         }
         fetchData();
       } else {
@@ -511,6 +514,7 @@ export function TabFinances({ formation, onRefresh }: Props) {
       recipient_id: inv.recipient_id,
       recipient_siret: invRecord.recipient_siret || "",
       recipient_address: invRecord.recipient_address || "",
+      invoice_date: invRecord.invoice_date ? invRecord.invoice_date.split("T")[0] : new Date().toISOString().slice(0, 10),
       due_date: inv.due_date ? inv.due_date.split("T")[0] : "",
       notes: inv.notes || "",
       external_reference: inv.external_reference || "",
@@ -544,6 +548,7 @@ export function TabFinances({ formation, onRefresh }: Props) {
           recipient_type: invoiceForm.recipient_type,
           recipient_siret: invoiceForm.recipient_siret || null,
           recipient_address: invoiceForm.recipient_address || null,
+          invoice_date: invoiceForm.invoice_date || null,
           due_date: invoiceForm.due_date || null,
           notes: invoiceForm.notes || null,
           external_reference: invoiceForm.external_reference || null,
@@ -557,7 +562,7 @@ export function TabFinances({ formation, onRefresh }: Props) {
         toast({ title: "Facture mise à jour" });
         setInvoiceDialog(false);
         setEditingInvoiceId(null);
-        setInvoiceForm({ recipient_type: "learner", recipient_name: "", recipient_id: "", recipient_siret: "", recipient_address: "", due_date: "", notes: "", external_reference: "", funding_type: "", lines: [{ description: "", quantity: "1", unit_price: "" }] });
+        setInvoiceForm({ recipient_type: "learner", recipient_name: "", recipient_id: "", recipient_siret: "", recipient_address: "", invoice_date: new Date().toISOString().slice(0, 10), due_date: "", notes: "", external_reference: "", funding_type: "", lines: [{ description: "", quantity: "1", unit_price: "" }] });
         fetchData();
       } else {
         const data = await res.json();
@@ -1050,7 +1055,11 @@ export function TabFinances({ formation, onRefresh }: Props) {
             </div>
 
             {/* Infos complémentaires */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <Label className="text-xs">Date d&apos;émission</Label>
+                <Input type="date" value={invoiceForm.invoice_date} onChange={(e) => setInvoiceForm((f) => ({ ...f, invoice_date: e.target.value }))} className="h-8 text-sm" />
+              </div>
               <div>
                 <Label className="text-xs">Date d&apos;échéance</Label>
                 <Input type="date" value={invoiceForm.due_date} onChange={(e) => setInvoiceForm((f) => ({ ...f, due_date: e.target.value }))} className="h-8 text-sm" />

@@ -56,6 +56,7 @@ export type CreateLearnerAndEnrollInput = {
   entityId: string;
   sessionId: string;
   clientId: string | null;
+  bpfTraineeType?: string;
 };
 
 export type LearnerRow = {
@@ -104,6 +105,7 @@ export async function createLearnerAndEnroll(
         learner_id: learner.id,
         client_id: input.clientId,
         status: "registered",
+        ...(input.bpfTraineeType ? { bpf_trainee_type: input.bpfTraineeType } : {}),
       });
 
     if (enrollError) {

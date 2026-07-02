@@ -5,6 +5,9 @@ import {
   getF3Index,
   isRncpIndex,
   getFundingLineKey,
+  computeSectionCFromInvoices,
+  computeDataGaps,
+  computeSectionF1,
 } from "../bpf-calculator";
 
 // ─── computeSectionC ────────────────────────────────────────
@@ -225,5 +228,224 @@ describe("cohérence F1=F3=F4", () => {
 
     expect(f1Total).toBe(f3Total);
     expect(f1Total).toBe(3);
+  });
+});
+
+// ─── computeSectionCFromInvoices ───────────────────────────
+
+describe("computeSectionCFromInvoices", () => {
+  it("aggregates by funding_type using FUNDING_TO_LINE", () => {
+    const invoices = [
+      { amount: 1000, funding_type: "entreprise_privee", invoice_date_confirmed: true, is_avoir: false, status: "confirmed" },
+      { amount: 500, funding_type: "cpf", invoice_date_confirmed: true, is_avoir: false, status: "confirmed" },
+      { amount: -200, funding_type: "entreprise_privee", invoice_date_confirmed: true, is_avoir: true, status: "confirmed" },
+    ];
+    const result = computeSectionCFromInvoices(invoices);
+    expect(result.fiable["line_1"]).toBe(800); // 1000 - 200
+    expect(result.fiable["line_2e"]).toBe(500);
+  });
+
+  it("splits fiable vs a_verifier by invoice_date_confirmed", () => {
+    const invoices = [
+      { amount: 1000, funding_type: "entreprise_privee", invoice_date_confirmed: true, is_avoir: false, status: "confirmed" },
+      { amount: 500, funding_type: "entreprise_privee", invoice_date_confirmed: false, is_avoir: false, status: "confirmed" },
+    ];
+    const result = computeSectionCFromInvoices(invoices);
+    expect(result.fiable["line_1"]).toBe(1000);
+    expect(result.a_verifier["line_1"]).toBe(500);
+  });
+
+  it("puts null funding_type into non_classifie", () => {
+    const invoices = [
+      { amount: 750, funding_type: null, invoice_date_confirmed: true, is_avoir: false, status: "confirmed" },
+    ];
+    const result = computeSectionCFromInvoices(invoices);
+    expect(result.non_classifie.fiable).toBe(750);
+    expect(result.fiable).toEqual({});
+  });
+
+  it("excludes cancelled invoices", () => {
+    const invoices = [
+      { amount: 1000, funding_type: "cpf", invoice_date_confirmed: true, is_avoir: false, status: "cancelled" },
+    ];
+    const result = computeSectionCFromInvoices(invoices);
+    expect(result.fiable["line_2e"]).toBeUndefined();
+    expect(result.a_verifier["line_2e"]).toBeUndefined();
+    expect(result.non_classifie.fiable).toBe(0);
+    expect(result.non_classifie.a_verifier).toBe(0);
+  });
+
+  it("avoir cross-year detected in dataGaps", () => {
+    const invoices = [
+      {
+        id: "inv-1",
+        amount: 1000,
+        funding_type: "entreprise_privee",
+        invoice_date_confirmed: true,
+        is_avoir: false,
+        status: "confirmed",
+        invoice_date: "2026-12-15",
+        parent_invoice_id: null,
+      },
+      {
+        id: "inv-2",
+        amount: -1000,
+        funding_type: "entreprise_privee",
+        invoice_date_confirmed: true,
+        is_avoir: true,
+        status: "confirmed",
+        invoice_date: "2027-01-10",
+        parent_invoice_id: "inv-1",
+      },
+    ];
+
+    const gaps = computeDataGaps({
+      invoices: invoices as Parameters<typeof computeDataGaps>[0]["invoices"],
+      enrollments: [],
+      trainings: [],
+      formationTrainers: [],
+      signatures: [],
+    });
+    expect(gaps.avoirs_orphelins).toHaveLength(1);
+    expect(gaps.avoirs_orphelins[0].id).toBe("inv-2");
+  });
+});
+
+// ─── computeSectionF1 ─────────────────────────────────────
+
+describe("computeSectionF1", () => {
+  it("groups by bpf_trainee_type with hours from signed slots", () => {
+    const enrollments = [
+      { id: "e1", bpf_trainee_type: "salarie_prive", status: "confirmed", session_id: "s1" },
+      { id: "e2", bpf_trainee_type: "apprenti", status: "confirmed", session_id: "s1" },
+    ];
+    const timeSlots = [
+      { id: "ts1", session_id: "s1", start_time: "2026-03-10T09:00:00Z", duration_hours: 3.5 },
+      { id: "ts2", session_id: "s1", start_time: "2026-03-11T09:00:00Z", duration_hours: 3.5 },
+    ];
+    const signatures = [
+      { enrollment_id: "e1", time_slot_id: "ts1", signed_at: "2026-03-10T09:30:00Z" },
+      { enrollment_id: "e1", time_slot_id: "ts2", signed_at: "2026-03-11T09:30:00Z" },
+      { enrollment_id: "e2", time_slot_id: "ts1", signed_at: "2026-03-10T09:30:00Z" },
+    ];
+
+    const result = computeSectionF1(enrollments, signatures, timeSlots, 2026);
+    expect(result["salarie_prive"]).toEqual({ count: 1, hours: 7 }); // 3.5 + 3.5
+    expect(result["apprenti"]).toEqual({ count: 1, hours: 3.5 }); // 1 slot
+  });
+
+  it("civil year split - session spanning 2 years", () => {
+    const enrollments = [
+      { id: "e1", bpf_trainee_type: "salarie_prive", status: "confirmed", session_id: "s1" },
+    ];
+    const timeSlots: Array<{ id: string; session_id: string; start_time: string; duration_hours: number }> = [];
+    // 20 slots in 2026, 20 in 2027
+    for (let i = 0; i < 20; i++) {
+      timeSlots.push({
+        id: `ts-2026-${i}`,
+        session_id: "s1",
+        start_time: `2026-11-${String(i + 1).padStart(2, "0")}T09:00:00Z`,
+        duration_hours: 2,
+      });
+    }
+    for (let i = 0; i < 20; i++) {
+      timeSlots.push({
+        id: `ts-2027-${i}`,
+        session_id: "s1",
+        start_time: `2027-01-${String(i + 1).padStart(2, "0")}T09:00:00Z`,
+        duration_hours: 2,
+      });
+    }
+    // Learner signed 15 in 2026 and 15 in 2027
+    const signatures: Array<{ enrollment_id: string; time_slot_id: string; signed_at: string }> = [];
+    for (let i = 0; i < 15; i++) {
+      signatures.push({
+        enrollment_id: "e1",
+        time_slot_id: `ts-2026-${i}`,
+        signed_at: `2026-11-${String(i + 1).padStart(2, "0")}T09:30:00Z`,
+      });
+    }
+    for (let i = 0; i < 15; i++) {
+      signatures.push({
+        enrollment_id: "e1",
+        time_slot_id: `ts-2027-${i}`,
+        signed_at: `2027-01-${String(i + 1).padStart(2, "0")}T09:30:00Z`,
+      });
+    }
+
+    const result2026 = computeSectionF1(enrollments, signatures, timeSlots, 2026);
+    expect(result2026["salarie_prive"]).toEqual({ count: 1, hours: 30 }); // 15 * 2h
+
+    const result2027 = computeSectionF1(enrollments, signatures, timeSlots, 2027);
+    expect(result2027["salarie_prive"]).toEqual({ count: 1, hours: 30 }); // 15 * 2h
+  });
+
+  it("excludes cancelled enrollments", () => {
+    const enrollments = [
+      { id: "e1", bpf_trainee_type: "salarie_prive", status: "cancelled", session_id: "s1" },
+    ];
+    const timeSlots = [
+      { id: "ts1", session_id: "s1", start_time: "2026-03-10T09:00:00Z", duration_hours: 3.5 },
+    ];
+    const signatures = [
+      { enrollment_id: "e1", time_slot_id: "ts1", signed_at: "2026-03-10T09:30:00Z" },
+    ];
+
+    const result = computeSectionF1(enrollments, signatures, timeSlots, 2026);
+    expect(result["salarie_prive"]).toBeUndefined();
+  });
+
+  it("abandoned learner still counts (status=registered, signed 3/10)", () => {
+    const enrollments = [
+      { id: "e1", bpf_trainee_type: "salarie_prive", status: "registered", session_id: "s1" },
+    ];
+    const timeSlots: Array<{ id: string; session_id: string; start_time: string; duration_hours: number }> = [];
+    for (let i = 0; i < 10; i++) {
+      timeSlots.push({
+        id: `ts${i}`,
+        session_id: "s1",
+        start_time: `2026-03-${String(i + 1).padStart(2, "0")}T09:00:00Z`,
+        duration_hours: 3.5,
+      });
+    }
+    const signatures = [
+      { enrollment_id: "e1", time_slot_id: "ts0", signed_at: "2026-03-01T09:30:00Z" },
+      { enrollment_id: "e1", time_slot_id: "ts1", signed_at: "2026-03-02T09:30:00Z" },
+      { enrollment_id: "e1", time_slot_id: "ts2", signed_at: "2026-03-03T09:30:00Z" },
+    ];
+
+    const result = computeSectionF1(enrollments, signatures, timeSlots, 2026);
+    expect(result["salarie_prive"]).toEqual({ count: 1, hours: 10.5 }); // 3 * 3.5h
+  });
+
+  it("legacy signature fallback (time_slot_id=null)", () => {
+    const enrollments = [
+      { id: "e1", bpf_trainee_type: "salarie_prive", status: "confirmed", session_id: "s1" },
+    ];
+    const timeSlots = [
+      { id: "ts1", session_id: "s1", start_time: "2026-03-01T09:00:00Z", duration_hours: 3.5 },
+      { id: "ts2", session_id: "s1", start_time: "2026-03-02T09:00:00Z", duration_hours: 3.5 },
+      { id: "ts3", session_id: "s1", start_time: "2026-03-03T09:00:00Z", duration_hours: 3.5 },
+      { id: "ts4", session_id: "s1", start_time: "2026-03-04T09:00:00Z", duration_hours: 3.5 },
+      { id: "ts5", session_id: "s1", start_time: "2026-03-05T09:00:00Z", duration_hours: 3.5 },
+      { id: "ts6", session_id: "s1", start_time: "2026-03-06T09:00:00Z", duration_hours: 3.5 },
+      { id: "ts7", session_id: "s1", start_time: "2026-03-07T09:00:00Z", duration_hours: 3.5 },
+      { id: "ts8", session_id: "s1", start_time: "2026-03-08T09:00:00Z", duration_hours: 3.5 },
+      { id: "ts9", session_id: "s1", start_time: "2026-03-09T09:00:00Z", duration_hours: 3.5 },
+      { id: "ts10", session_id: "s1", start_time: "2026-03-10T09:00:00Z", duration_hours: 3.5 },
+    ];
+    // session_computed_hours = sum of slot durations = 35h, total_slots = 10
+    // Legacy signature: time_slot_id=null, signed_at in 2026
+    const signatures = [
+      { enrollment_id: "e1", time_slot_id: null, signed_at: "2026-03-05T09:30:00Z", session_computed_hours: 35 },
+    ];
+
+    const result = computeSectionF1(
+      enrollments,
+      signatures as Parameters<typeof computeSectionF1>[1],
+      timeSlots,
+      2026,
+    );
+    expect(result["salarie_prive"]).toEqual({ count: 1, hours: 3.5 }); // 35/10 = 3.5h
   });
 });

@@ -823,10 +823,22 @@ interface BPFFullExportData {
     g: { stagiaires: number; heures: number };
   };
   sectionC: Record<string, number>;
+  /** Optional: fiable/à_vérifier split for Section C (from invoice-based calculation) */
+  sectionCFiable?: Record<string, number>;
+  sectionCaVerifier?: Record<string, number>;
+  sectionCaVerifierCount?: number;
   sectionD: Record<string, number>;
   sectionGManual: { stagiaires: number; heures: number };
   financialLines: { key: string; label: string; indent?: number; bold?: boolean; isTotal?: boolean; sumKeys?: string[] }[];
   chargeLines: { key: string; label: string; indent?: boolean }[];
+  /** Optional: data gaps for "Données à compléter" summary section */
+  dataGaps?: {
+    invoices_sans_funding: number;
+    invoices_non_confirmees: number;
+    enrollments_sans_type: number;
+    trainings_sans_objective: number;
+    sessions_sans_cout: number;
+  };
   getLineValue: (key: string) => number;
   totalProduits: number;
 }
@@ -885,6 +897,42 @@ export function exportBPFFullToPDF(data: BPFFullExportData): void {
   doc.text(`Période : ${data.dateFrom || "N/A"} au ${data.dateTo || "N/A"} | Généré le ${formatDateFr()}`, 14, y);
   y += 10;
 
+  // ── Données à compléter (data gaps summary) ──
+  if (data.dataGaps) {
+    const gaps: string[] = [];
+    if (data.dataGaps.invoices_sans_funding > 0)
+      gaps.push(`${data.dataGaps.invoices_sans_funding} facture${data.dataGaps.invoices_sans_funding > 1 ? "s" : ""} sans type de financement`);
+    if (data.dataGaps.invoices_non_confirmees > 0)
+      gaps.push(`${data.dataGaps.invoices_non_confirmees} facture${data.dataGaps.invoices_non_confirmees > 1 ? "s" : ""} importée${data.dataGaps.invoices_non_confirmees > 1 ? "s" : ""} non confirmée${data.dataGaps.invoices_non_confirmees > 1 ? "s" : ""}`);
+    if (data.dataGaps.enrollments_sans_type > 0)
+      gaps.push(`${data.dataGaps.enrollments_sans_type} inscription${data.dataGaps.enrollments_sans_type > 1 ? "s" : ""} sans type de stagiaire`);
+    if (data.dataGaps.trainings_sans_objective > 0)
+      gaps.push(`${data.dataGaps.trainings_sans_objective} formation${data.dataGaps.trainings_sans_objective > 1 ? "s" : ""} sans objectif BPF`);
+    if (data.dataGaps.sessions_sans_cout > 0)
+      gaps.push(`${data.dataGaps.sessions_sans_cout} session${data.dataGaps.sessions_sans_cout > 1 ? "s" : ""} sans coût formateur`);
+
+    if (gaps.length > 0) {
+      const boxH = 10 + gaps.length * 5;
+      checkPageBreak(boxH + 4);
+      fillRect(doc, 14, y, usableWidth, boxH, "#fefce8");
+      const [warnR, warnG, warnB] = hexToRgb("#ca8a04");
+      doc.setDrawColor(warnR, warnG, warnB);
+      doc.setLineWidth(0.4);
+      doc.rect(14, y, usableWidth, boxH);
+      fillRect(doc, 14, y, 2, boxH, "#ca8a04");
+      doc.setFontSize(7.5);
+      doc.setFont("helvetica", "bold");
+      setColor(doc, "#92400e");
+      doc.text("Données à compléter", 20, y + 6);
+      doc.setFont("helvetica", "normal");
+      setColor(doc, "#78350f");
+      gaps.forEach((gap, i) => {
+        doc.text(`• ${gap}`, 20, y + 11 + i * 5);
+      });
+      y += boxH + 6;
+    }
+  }
+
   // ── Section A ──
   const sectionTitle = (title: string) => {
     checkPageBreak(14);
@@ -933,7 +981,35 @@ export function exportBPFFullToPDF(data: BPFFullExportData): void {
   doc.setFontSize(8);
   doc.text("TOTAL DES PRODUITS", 18, y);
   doc.text(fmtEurPdf(data.totalProduits), 14 + usableWidth - 4, y, { align: "right" });
-  y += 8;
+  y += 6;
+
+  // ── Fiable / À vérifier sub-totals (optional) ──
+  if (data.sectionCFiable !== undefined || data.sectionCaVerifier !== undefined) {
+    checkPageBreak(18);
+    const totalFiable = Object.values(data.sectionCFiable ?? {}).reduce((s, v) => s + v, 0);
+    const totalAVerifier = Object.values(data.sectionCaVerifier ?? {}).reduce((s, v) => s + v, 0);
+    const countLabel = data.sectionCaVerifierCount !== undefined
+      ? ` (${data.sectionCaVerifierCount} facture${data.sectionCaVerifierCount > 1 ? "s" : ""} importée${data.sectionCaVerifierCount > 1 ? "s" : ""})`
+      : "";
+    fillRect(doc, 14, y, usableWidth, 14, "#f0fdf4");
+    const [gR, gG, gB] = hexToRgb("#16a34a");
+    doc.setDrawColor(gR, gG, gB);
+    doc.setLineWidth(0.3);
+    doc.rect(14, y, usableWidth, 14);
+    doc.setFontSize(7.5);
+    doc.setFont("helvetica", "normal");
+    setColor(doc, "#166534");
+    doc.text("dont Total fiable (dates confirmées) :", 18, y + 5);
+    doc.setFont("helvetica", "bold");
+    doc.text(fmtEurPdf(totalFiable), 14 + usableWidth - 4, y + 5, { align: "right" });
+    doc.setFont("helvetica", "normal");
+    doc.text(`dont À vérifier${countLabel} :`, 18, y + 11);
+    doc.setFont("helvetica", "bold");
+    doc.text(fmtEurPdf(totalAVerifier), 14 + usableWidth - 4, y + 11, { align: "right" });
+    y += 18;
+  } else {
+    y += 2;
+  }
 
   // ── Section D ──
   sectionTitle("D. BILAN FINANCIER HT : CHARGES DE L'ORGANISME");
