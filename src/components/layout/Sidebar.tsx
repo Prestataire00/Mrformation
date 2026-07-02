@@ -62,6 +62,24 @@ interface NavSection {
   items: NavItem[];
 }
 
+const SECTION_COLORS: Record<string, string> = {
+  "Commercial": "text-blue-600",
+  "Contacts": "text-emerald-600",
+  "Pédagogie": "text-violet-600",
+  "Administration": "text-amber-600",
+  "Pilotage & Finances": "text-rose-600",
+  "Paramètres": "text-slate-500",
+};
+
+const SECTION_DOT_COLORS: Record<string, string> = {
+  "Commercial": "bg-blue-500",
+  "Contacts": "bg-emerald-500",
+  "Pédagogie": "bg-violet-500",
+  "Administration": "bg-amber-500",
+  "Pilotage & Finances": "bg-rose-500",
+  "Paramètres": "bg-slate-400",
+};
+
 // ── Admin / Super Admin navigation ──────────────────────────────────────────
 
 const adminNavSections: NavSection[] = [
@@ -434,9 +452,12 @@ export function Sidebar({ entity, role = "admin", hasCrmAccess = false }: Sideba
           <div key={section.section ?? idx}>
             {section.section && (
               <div className="px-3 pt-5 pb-1.5 first:pt-1">
-                <p className="text-[11px] font-bold tracking-wider text-sidebar-foreground/60 uppercase border-b border-sidebar-border pb-1">
-                  {section.section}
-                </p>
+                <div className="flex items-center gap-1.5 pb-1 border-b border-sidebar-border">
+                  <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${SECTION_DOT_COLORS[section.section] ?? "bg-slate-400"}`} />
+                  <p className={`text-[11px] font-bold tracking-wider uppercase ${SECTION_COLORS[section.section] ?? "text-sidebar-foreground/60"}`}>
+                    {section.section}
+                  </p>
+                </div>
               </div>
             )}
             <div className="space-y-0.5">
