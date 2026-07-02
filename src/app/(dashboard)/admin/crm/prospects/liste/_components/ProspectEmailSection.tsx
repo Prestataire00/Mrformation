@@ -11,6 +11,8 @@ import {
   Mail,
   Clock,
   FileText,
+  Paperclip,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -77,6 +79,9 @@ export default function ProspectEmailSection({ prospectId, prospect }: ProspectE
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
+  const [attachments, setAttachments] = useState<
+    { filename: string; content: string; type: string }[]
+  >([]);
 
   // Templates
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
@@ -162,6 +167,31 @@ export default function ProspectEmailSection({ prospectId, prospect }: ProspectE
     });
   }
 
+  // ── Attachments ─────────────────────────────────────────────────────────────
+
+  function handleAddAttachment(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    if (!files) return;
+    Array.from(files).forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const res = reader.result as string;
+        const base64 = res.includes(",") ? res.split(",")[1] : res;
+        setAttachments((prev) => [
+          ...prev,
+          { filename: file.name, content: base64, type: file.type || "application/octet-stream" },
+        ]);
+      };
+      reader.readAsDataURL(file);
+    });
+    // Réinitialise l'input pour pouvoir re-sélectionner le même fichier.
+    e.target.value = "";
+  }
+
+  function handleRemoveAttachment(index: number) {
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
+  }
+
   // ── Replace tags with real values ──────────────────────────────────────────
 
   function resolveTags(text: string): string {
@@ -191,6 +221,7 @@ export default function ProspectEmailSection({ prospectId, prospect }: ProspectE
           entity_id: entityId || undefined,
           recipient_type: "prospect",
           recipient_id: prospectId,
+          attachments: attachments.length > 0 ? attachments : undefined,
         }),
       });
 
@@ -207,6 +238,7 @@ export default function ProspectEmailSection({ prospectId, prospect }: ProspectE
         setSubject("");
         setMessage("");
         setSelectedTemplateId("");
+        setAttachments([]);
         fetchHistory();
       } else {
         setResult({
@@ -318,6 +350,47 @@ export default function ProspectEmailSection({ prospectId, prospect }: ProspectE
                 rows={8}
                 className="resize-none text-sm"
               />
+            </div>
+
+            {/* Pièces jointes */}
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Pièces jointes</Label>
+              {attachments.length > 0 && (
+                <div className="space-y-1">
+                  {attachments.map((att, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center justify-between rounded bg-gray-50 px-3 py-1.5 text-xs"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Paperclip className="h-3 w-3 text-gray-400 shrink-0" />
+                        <span className="truncate">{att.filename}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveAttachment(i)}
+                        className="text-red-500 hover:text-red-700"
+                        title="Retirer"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <label className="cursor-pointer">
+                <input
+                  type="file"
+                  className="hidden"
+                  multiple
+                  onChange={handleAddAttachment}
+                  accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.xlsx,.xls,.csv"
+                />
+                <span className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-700 hover:underline">
+                  <Paperclip className="h-3.5 w-3.5" />
+                  Ajouter une pièce jointe
+                </span>
+              </label>
             </div>
 
             {/* Result */}
