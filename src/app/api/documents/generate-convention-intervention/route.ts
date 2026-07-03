@@ -33,6 +33,11 @@ import {
   createDefaultEngine,
 } from "@/lib/services/document-generation";
 import { computeAgreedCost, sessionDayCount } from "@/lib/utils/trainer-cost";
+import { generateLoginQrDataUrl } from "@/lib/services/login-qr-code";
+import {
+  resolveTrainerCredentialsForConvention,
+  type TrainerAccountRow,
+} from "@/lib/services/trainer-account";
 import type { Session, Trainer } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
@@ -122,10 +127,29 @@ export async function POST(request: NextRequest) {
 
     const entity = await loadEntitySettings(supabase, profile.entity_id);
 
+    // Bloc « Accès à votre espace formateur » : credentials (email + mdp stable
+    // via trainers.temp_password) + QR /login. Logique idempotente (crée le
+    // compte si absent, ne réinitialise jamais un login actif). Non bloquant :
+    // en cas d'échec, la convention se génère sans mdp (bloc + note).
+    let trainerCredentials: { email: string; password: string } | undefined;
+    let loginQrCodeDataUrl: string | undefined;
+    try {
+      const admin = createServiceRoleClient();
+      trainerCredentials = await resolveTrainerCredentialsForConvention(admin, {
+        trainer: ftTyped.trainer as unknown as TrainerAccountRow & { temp_password?: string | null },
+        entitySlug: entity?.slug ?? "",
+      });
+      loginQrCodeDataUrl = (await generateLoginQrDataUrl(entity?.slug ?? undefined)) ?? undefined;
+    } catch (credErr) {
+      console.error("[convention-intervention] credentials formateur échoués:", credErr);
+    }
+
     const context: ResolveContext = {
       session: session as unknown as Session,
       trainer: trainerWithCost,
       entity,
+      trainerCredentials,
+      loginQrCodeDataUrl,
     };
     const resolvedHtml = resolveDocumentVariables(CONVENTION_INTERVENTION_HTML, context);
     const resolvedFooter = resolveDocumentVariables(CONVENTION_INTERVENTION_FOOTER_TEMPLATE, context);

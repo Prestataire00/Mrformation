@@ -24,10 +24,21 @@ export interface ResolveContext {
    */
   learnerCredentials?: { email: string; tempPassword: string };
   /**
+   * Credentials de connexion du FORMATEUR pour les conventions formateur
+   * (convention-intervention / contrat-sous-traitance). Miroir de
+   * `learnerCredentials`, mais le login formateur = email (pas d'identifiant
+   * synthétique). `password` vient de `trainers.temp_password` (persisté par
+   * ensureTrainerAccount, cf src/lib/services/trainer-account.ts). Si undefined
+   * → le template affiche URL + email + QR + une note « mot de passe oublié ».
+   */
+  trainerCredentials?: { email: string; password: string };
+  /**
    * Lot H : QR code data URL (data:image/png;base64,...) pointant vers
    * la page de connexion. Pré-calculé côté API via `qrcode` (toDataURL
    * async, impossible côté builder sync). Utilisé par
-   * `{{qr_code_connexion}}` dans le template convocation.
+   * `{{qr_code_connexion}}` dans le template convocation ET par
+   * `{{qr_code_connexion_formateur}}` dans les conventions formateur (même
+   * champ : une convention n'a pas de QR apprenant, donc pas de collision).
    */
   loginQrCodeDataUrl?: string;
   /**
@@ -927,6 +938,34 @@ export function resolveVariables(content: string, data: ResolveContext): string 
       return typeof cost === "number" && cost > 0 ? cost.toFixed(2) : "[Coût formateur]";
     })(),
 
+    // === Bloc « Accès à votre espace formateur » (miroir du bloc apprenant) ===
+    // Le login formateur = email. Priorité à trainerCredentials.email (injecté
+    // par la route via ensureTrainerAccount / trainers.temp_password), fallback
+    // sur l'email de la fiche trainer. Vide plutôt que placeholder brut si aucun.
+    "{{email_formateur_connexion}}": (() => {
+      const fromCtx = data.trainerCredentials?.email;
+      if (fromCtx) return fromCtx;
+      // Fallback sur l'email de la fiche — MAIS uniquement s'il est réel
+      // (jamais un email synthétique `.local`, non routable et inconnu du
+      // formateur). Sinon tiret discret plutôt qu'une adresse factice.
+      const t = data.trainer as unknown as { email?: string | null } | null;
+      const real = t?.email && !isSyntheticEmail(t.email) ? t.email : "";
+      return real || "—";
+    })(),
+    // Mot de passe formateur : vient de trainers.temp_password (via
+    // trainerCredentials.password). Si absent (compte legacy sans temp_password,
+    // ou création de compte échouée), on affiche une note explicite plutôt
+    // qu'un placeholder brut — le formateur définit son mdp via « Mot de passe
+    // oublié ». Cf. I/O Matrix de la spec.
+    "{{mot_de_passe_formateur}}": data.trainerCredentials?.password
+      || `<span style="font-style:italic;color:#6b7280;">à définir via « Mot de passe oublié »</span>`,
+    // QR code connexion formateur : réutilise le MÊME loginQrCodeDataUrl
+    // générique (/login?entity=slug) que l'apprenant. Pas de collision : une
+    // convention formateur n'a pas de QR apprenant.
+    "{{qr_code_connexion_formateur}}": data.loginQrCodeDataUrl
+      ? `<img src="${data.loginQrCodeDataUrl}" alt="QR code connexion" style="width:80px;height:80px;display:block;" /><p style="font-size:7pt;color:#6b7280;text-align:center;margin:2px 0 0;line-height:1.2;">Scannez<br>pour vous connecter</p>`
+      : "",
+
     "{{contenu_pedagogique}}": (() => {
       // h-8 : fallback prioritaire sur session.pedagogical_content (TEXT libre)
       // si l'admin a saisi le contenu directement sur la session.
@@ -1733,6 +1772,12 @@ export const ALIAS_TO_VARIABLE_KEY: Record<string, string> = {
   "E-signature du Formateur": "{{e_signature_formateur}}",
   "Adresse de la formation": "{{adresse_formation}}",
   "Coût total du formateur (HT)": "{{cout_formateur_ht}}",
+  // Bloc « Accès à votre espace formateur » (miroir du bloc apprenant).
+  // NB : « URL de connexion » → {{url_connexion}} est déjà défini plus haut
+  // (section Convocation Apprenant) et réutilisé tel quel ici.
+  "Email de connexion du formateur": "{{email_formateur_connexion}}",
+  "Mot de passe formateur": "{{mot_de_passe_formateur}}",
+  "QR code connexion formateur": "{{qr_code_connexion_formateur}}",
   // === Contrat de sous-traitance ===
   "Liste des stagiaires de la session": "{{liste_apprenants}}",
 };
@@ -1939,4 +1984,8 @@ export const VARIABLE_KEYS = [
   "{{e_signature_formateur}}",
   "{{adresse_formation}}",
   "{{cout_formateur_ht}}",
+  // Bloc « Accès à votre espace formateur » (miroir du bloc apprenant)
+  "{{email_formateur_connexion}}",
+  "{{mot_de_passe_formateur}}",
+  "{{qr_code_connexion_formateur}}",
 ] as const;

@@ -5,7 +5,7 @@
  * + envoie chacune par email au formateur. Story F2.5.
  */
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { sanitizeError } from "@/lib/api-error";
 import { NextRequest, NextResponse } from "next/server";
 import {
@@ -25,6 +25,11 @@ import {
   executeBatchEmailSend,
   type RecipientGenerationTask,
 } from "@/lib/services/batch-email-handler";
+import { generateLoginQrDataUrl } from "@/lib/services/login-qr-code";
+import {
+  resolveTrainerCredentialsForConvention,
+  type TrainerAccountRow,
+} from "@/lib/services/trainer-account";
 import type { Session, Trainer } from "@/lib/types";
 
 function slugify(name: string): string {
@@ -103,6 +108,17 @@ export async function POST(request: NextRequest) {
     const service = new DocumentGenerationService({ engine, supabase });
     const sessionTitle = (session as { title?: string }).title ?? "Formation";
 
+    // Bloc « Accès à votre espace formateur » : QR /login partagé (calculé une
+    // fois) + client service_role pour créer/persister les credentials
+    // (trainers.temp_password) au fil des générations. Non bloquant.
+    let loginQrCodeDataUrl: string | undefined;
+    try {
+      loginQrCodeDataUrl = (await generateLoginQrDataUrl(entity?.slug ?? undefined)) ?? undefined;
+    } catch (qrErr) {
+      console.error("[send-conventions-intervention-batch-email] QR login échoué:", qrErr);
+    }
+    const admin = createServiceRoleClient();
+
     const tasks: RecipientGenerationTask[] = validLinks.map((ft) => {
       const trainer = ft.trainer!;
       const costHt = computeAgreedCost(ft);
@@ -121,10 +137,26 @@ export async function POST(request: NextRequest) {
           const trainerWithCost = { ...trainer, _agreed_cost_ht: costHt } as Trainer & {
             _agreed_cost_ht: number | null;
           };
+          // Credentials PAR formateur (chaque convention envoyée porte l'accès
+          // du bon formateur). Non bloquant : sans mdp → bloc + note.
+          let trainerCredentials: { email: string; password: string } | undefined;
+          try {
+            trainerCredentials = await resolveTrainerCredentialsForConvention(admin, {
+              trainer: trainer as unknown as TrainerAccountRow & { temp_password?: string | null },
+              entitySlug: entity?.slug ?? "",
+            });
+          } catch (credErr) {
+            console.error(
+              `[send-conventions-intervention-batch-email] credentials formateur ${ft.trainer_id} échoués:`,
+              credErr,
+            );
+          }
           const context: ResolveContext = {
             session: session as unknown as Session,
             trainer: trainerWithCost,
             entity,
+            trainerCredentials,
+            loginQrCodeDataUrl,
           };
           const html = resolveDocumentVariables(CONVENTION_INTERVENTION_HTML, context);
           const footer = resolveDocumentVariables(CONVENTION_INTERVENTION_FOOTER_TEMPLATE, context);

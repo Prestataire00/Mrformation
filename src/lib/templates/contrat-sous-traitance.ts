@@ -50,6 +50,20 @@ export const CONTRAT_SOUS_TRAITANCE_HTML = `<!DOCTYPE html>
   .header .logo-cell { width: 120px; text-align: right; }
   .header .logo-cell img { max-width: 120px; max-height: 100px; }
 
+  /* Bloc « Accès à votre espace formateur » (miroir du bloc apprenant de
+     convocation-apprenant.ts) : 2 colonnes, tableau credentials à gauche,
+     QR à droite, alignés verticalement au centre. */
+  .login-credentials .lc-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .login-credentials .lc-left { flex: 1 1 0; min-width: 0; }
+  .login-credentials .lc-qr {
+    flex: 0 0 80px;
+    text-align: center;
+  }
+
   h1.title {
     font-size: 13pt;
     font-weight: 700;
@@ -191,6 +205,32 @@ export const CONTRAT_SOUS_TRAITANCE_HTML = `<!DOCTYPE html>
         <td class="value">[%Liste des stagiaires de la session%]</td>
       </tr>
     </table>
+  </div>
+
+  <div class="login-credentials" style="border: 1.5px solid #2563EB; padding: 8px 10px; margin: 0 0 14px; border-radius: 6px; background: #f0f7ff;">
+    <h3 style="margin: 0 0 4px; color: #1e3a8a; font-size: 10.5pt;">🔐 Accès à votre espace formateur</h3>
+    <div class="lc-row">
+      <div class="lc-left">
+        <table style="width: 100%; margin: 2px 0; border-collapse: collapse; font-size: 8.5pt;">
+          <tr>
+            <td style="padding: 1px 6px; font-weight: 700; width: 28%;">URL :</td>
+            <td style="padding: 1px 6px;">[%URL de connexion%]</td>
+          </tr>
+          <tr>
+            <td style="padding: 1px 6px; font-weight: 700;">Email :</td>
+            <td style="padding: 1px 6px;">[%Email de connexion du formateur%]</td>
+          </tr>
+          <tr>
+            <td style="padding: 1px 6px; font-weight: 700;">Mot de passe :</td>
+            <td style="padding: 1px 6px; font-family: monospace; background: #fff; border: 1px dashed #cbd5e1; border-radius: 3px;">[%Mot de passe formateur%]</td>
+          </tr>
+        </table>
+        <p style="font-size: 7.5pt; color: #6b7280; margin: 4px 0 0;">
+          💡 Scannez le QR code à droite pour accéder directement à la page de connexion. Vous vous connectez avec votre email et pouvez modifier votre mot de passe via "Mot de passe oublié".
+        </p>
+      </div>
+      <div class="lc-qr">[%QR code connexion formateur%]</div>
+    </div>
   </div>
 
   <div class="preambule">

@@ -11,7 +11,7 @@
  * Retour : `{ zipBase64, totalTrainers, successCount, failureCount, errors, totalLatencyMs }`.
  */
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { sanitizeError } from "@/lib/api-error";
 import { NextRequest, NextResponse } from "next/server";
 import JSZip from "jszip";
@@ -29,6 +29,11 @@ import {
   createDefaultEngine,
 } from "@/lib/services/document-generation";
 import { computeAgreedCost, sessionDayCount } from "@/lib/utils/trainer-cost";
+import { generateLoginQrDataUrl } from "@/lib/services/login-qr-code";
+import {
+  resolveTrainerCredentialsForConvention,
+  type TrainerAccountRow,
+} from "@/lib/services/trainer-account";
 import type { Session, Trainer } from "@/lib/types";
 
 interface BatchError {
@@ -115,6 +120,18 @@ export async function POST(request: NextRequest) {
 
     const entity = await loadEntitySettings(supabase, profile.entity_id);
 
+    // Bloc « Accès à votre espace formateur » : le QR /login est identique pour
+    // tous les formateurs de l'entité, calculé une fois. Non bloquant.
+    let loginQrCodeDataUrl: string | undefined;
+    try {
+      loginQrCodeDataUrl = (await generateLoginQrDataUrl(entity?.slug ?? undefined)) ?? undefined;
+    } catch (qrErr) {
+      console.error("[conventions-intervention-batch] QR login échoué:", qrErr);
+    }
+    // Client service_role réutilisé pour créer/persister les credentials
+    // formateur (email + trainers.temp_password) au fil de la boucle.
+    const admin = createServiceRoleClient();
+
     const engine = createDefaultEngine();
     const service = new DocumentGenerationService({ engine, supabase });
 
@@ -145,10 +162,27 @@ export async function POST(request: NextRequest) {
         _agreed_cost_ht: costHt,
       } as Trainer & { _agreed_cost_ht: number | null };
 
+      // Credentials PAR formateur (chaque PDF porte l'accès du bon formateur).
+      // Non bloquant : en cas d'échec, le PDF se génère sans mdp (bloc + note).
+      let trainerCredentials: { email: string; password: string } | undefined;
+      try {
+        trainerCredentials = await resolveTrainerCredentialsForConvention(admin, {
+          trainer: ftTyped.trainer as unknown as TrainerAccountRow & { temp_password?: string | null },
+          entitySlug: entity?.slug ?? "",
+        });
+      } catch (credErr) {
+        console.error(
+          `[conventions-intervention-batch] credentials formateur ${ftTyped.trainer_id} échoués:`,
+          credErr,
+        );
+      }
+
       const context: ResolveContext = {
         session: session as unknown as Session,
         trainer: trainerWithCost,
         entity,
+        trainerCredentials,
+        loginQrCodeDataUrl,
       };
       const resolvedHtml = resolveDocumentVariables(CONVENTION_INTERVENTION_HTML, context);
       const resolvedFooter = resolveDocumentVariables(CONVENTION_INTERVENTION_FOOTER_TEMPLATE, context);

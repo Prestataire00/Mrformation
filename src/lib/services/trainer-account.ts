@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { generateTempPassword } from "@/lib/services/learner-account";
+import { isSyntheticEmail } from "@/lib/utils/learner-email-synthetic";
 
 /** Fiche formateur minimale nécessaire aux opérations de compte. */
 export type TrainerAccountRow = {
@@ -113,9 +114,12 @@ export async function ensureTrainerAccount(
     return { status: "error", email: resolvedEmail, password: null, syntheticEmailUsed: syntheticUsed, error: `profil: ${profileError.message}` };
   }
 
+  // Persiste aussi `temp_password` (miroir de learners.temp_password) pour que
+  // le mot de passe affiché sur la convention formateur soit stable et
+  // réutilisable sans jamais réinitialiser le login. Cf. add_trainer_temp_password.sql.
   const { error: linkError } = await admin
     .from("trainers")
-    .update({ profile_id: authUser.user.id, email: resolvedEmail })
+    .update({ profile_id: authUser.user.id, email: resolvedEmail, temp_password: password })
     .eq("id", trainer.id)
     .eq("entity_id", trainer.entity_id);
   if (linkError) {
@@ -148,7 +152,74 @@ export async function resetTrainerPassword(
   const { error } = await admin.auth.admin.updateUserById(trainer.profile_id as string, { password });
   if (error) return { ok: false, error: error.message };
 
+  // Garde `trainers.temp_password` synchro avec le password auth qu'on vient
+  // de régénérer, pour que la convention affiche le mdp réellement actif. On
+  // logue si la persistance échoue (le password auth, lui, EST déjà changé) —
+  // sinon la prochaine convention afficherait un ancien mdp devenu invalide.
+  const { error: persistError } = await admin
+    .from("trainers")
+    .update({ temp_password: password })
+    .eq("id", params.trainerId)
+    .eq("entity_id", params.entityId);
+  if (persistError) {
+    console.error(
+      "[resetTrainerPassword] persistance trainers.temp_password échouée:",
+      persistError.message,
+    );
+  }
+
   return { ok: true, email: (trainer.email as string | null), password };
+}
+
+/**
+ * Résout les credentials formateur à afficher sur une convention (bloc
+ * « Accès à votre espace formateur »), selon la logique idempotente de la spec
+ * (spec-convention-formateur-bloc-acces.md, Design Notes / I/O Matrix) :
+ *
+ *  1. `temp_password` déjà présent → on l'utilise tel quel (stable, AUCUN reset).
+ *  2. sinon, pas de `profile_id` → `ensureTrainerAccount` crée le compte et
+ *     persiste `temp_password` ; on renvoie l'email + le mdp fraîchement généré.
+ *  3. sinon (compte legacy sans `temp_password`) → PAS de reset (ne jamais
+ *     casser le login d'un formateur actif) → renvoie `undefined`. Le template
+ *     affiche alors URL + email + QR + une note « mot de passe oublié ».
+ *
+ * Non bloquant côté appelant : si la création de compte échoue, on renvoie
+ * `undefined` et la convention se génère quand même (bloc sans mdp + note).
+ *
+ * Requiert un client service_role (`ensureTrainerAccount` appelle `auth.admin.*`).
+ */
+export async function resolveTrainerCredentialsForConvention(
+  admin: SupabaseClient,
+  params: { trainer: TrainerAccountRow & { temp_password?: string | null }; entitySlug: string },
+): Promise<{ email: string; password: string } | undefined> {
+  const { trainer, entitySlug } = params;
+
+  // Un login formateur = email RÉEL et routable. Sans email, ou avec un email
+  // synthétique `.local` (fiche sans email connu), on n'affiche AUCUN credential :
+  // un mot de passe sans email routable = login inutilisable + « mot de passe
+  // oublié » qui part dans le vide. On évite aussi de créer un compte synthétique
+  // orphelin pour un doc. → le template affiche alors email vide + note.
+  if (!trainer.email || isSyntheticEmail(trainer.email)) return undefined;
+  const email = trainer.email;
+
+  // Cas 1 : mot de passe déjà persisté → stable, on ne touche à rien.
+  if (trainer.temp_password) {
+    return { email, password: trainer.temp_password };
+  }
+
+  // Cas 2 : pas encore de compte → on le crée + persiste (ensureTrainerAccount
+  // écrit trainers.temp_password quand status === "created"). On n'affiche que si
+  // un email réel a été utilisé (jamais un repli synthétique).
+  if (!trainer.profile_id) {
+    const r = await ensureTrainerAccount(admin, { trainer, entitySlug });
+    if (r.status === "created" && r.password && r.email && !r.syntheticEmailUsed) {
+      return { email: r.email, password: r.password };
+    }
+    return undefined;
+  }
+
+  // Cas 3 : compte legacy sans temp_password → pas de reset (login préservé).
+  return undefined;
 }
 
 export type OrphanTrainerAccount = {

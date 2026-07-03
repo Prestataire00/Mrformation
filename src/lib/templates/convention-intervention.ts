@@ -48,6 +48,20 @@ export const CONVENTION_INTERVENTION_HTML = `<!DOCTYPE html>
   .header .logo-cell { width: 130px; text-align: right; }
   .header .logo-cell img { max-width: 130px; max-height: 110px; }
 
+  /* Bloc « Accès à votre espace formateur » (miroir du bloc apprenant de
+     convocation-apprenant.ts) : 2 colonnes, tableau credentials à gauche,
+     QR à droite, alignés verticalement au centre. */
+  .login-credentials .lc-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .login-credentials .lc-left { flex: 1 1 0; min-width: 0; }
+  .login-credentials .lc-qr {
+    flex: 0 0 80px;
+    text-align: center;
+  }
+
   h1.title {
     font-size: 14pt;
     font-weight: 700;
@@ -126,6 +140,32 @@ export const CONVENTION_INTERVENTION_HTML = `<!DOCTYPE html>
   <p>Et le formateur: <strong>[%Nom du formateur%]</strong> (ci-après nommé le sous traitant)</p>
   <p>Situé: [%Adresse du formateur%]</p>
   <p>Déclaration d'activité n° [%NDA du formateur%], Numéro SIRET: N° [%SIRET du formateur%]</p>
+
+  <div class="login-credentials" style="border: 1.5px solid #2563EB; padding: 8px 10px; margin: 12px 0; border-radius: 6px; background: #f0f7ff;">
+    <h3 style="margin: 0 0 4px; color: #1e3a8a; font-size: 11pt;">🔐 Accès à votre espace formateur</h3>
+    <div class="lc-row">
+      <div class="lc-left">
+        <table style="width: 100%; margin: 2px 0; border-collapse: collapse; font-size: 9pt;">
+          <tr>
+            <td style="padding: 1px 6px; font-weight: 700; width: 28%;">URL :</td>
+            <td style="padding: 1px 6px;">[%URL de connexion%]</td>
+          </tr>
+          <tr>
+            <td style="padding: 1px 6px; font-weight: 700;">Email :</td>
+            <td style="padding: 1px 6px;">[%Email de connexion du formateur%]</td>
+          </tr>
+          <tr>
+            <td style="padding: 1px 6px; font-weight: 700;">Mot de passe :</td>
+            <td style="padding: 1px 6px; font-family: monospace; background: #fff; border: 1px dashed #cbd5e1; border-radius: 3px;">[%Mot de passe formateur%]</td>
+          </tr>
+        </table>
+        <p style="font-size: 8pt; color: #6b7280; margin: 4px 0 0;">
+          💡 Scannez le QR code à droite pour accéder directement à la page de connexion. Vous vous connectez avec votre email et pouvez modifier votre mot de passe via "Mot de passe oublié".
+        </p>
+      </div>
+      <div class="lc-qr">[%QR code connexion formateur%]</div>
+    </div>
+  </div>
 
   <h2 class="article">ARTICLE 1 - OBJET ET NATURE DE LA FORMATION</h2>
   <p>Le présent contrat est conclu dans le cadre d'une prestation de formation réalisée par le sous-traitant au bénéfice du donneur d'ordre.</p>

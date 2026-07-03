@@ -23,6 +23,7 @@ import { ATTESTATION_ASSIDUITE_HTML, ATTESTATION_ASSIDUITE_FOOTER_TEMPLATE } fro
 import { EMARGEMENT_INDIVIDUEL_HTML, EMARGEMENT_INDIVIDUEL_FOOTER_TEMPLATE } from "@/lib/templates/emargement-individuel";
 import { CONVENTION_ENTREPRISE_HTML, CONVENTION_FOOTER_TEMPLATE } from "@/lib/templates/convention-entreprise";
 import { CONVENTION_INTERVENTION_HTML, CONVENTION_INTERVENTION_FOOTER_TEMPLATE } from "@/lib/templates/convention-intervention";
+import { CONTRAT_SOUS_TRAITANCE_HTML, CONTRAT_SOUS_TRAITANCE_FOOTER_TEMPLATE } from "@/lib/templates/contrat-sous-traitance";
 import type { Session, Learner, Client, Trainer } from "@/lib/types";
 
 // ─── Fixtures (dates fixes pour snapshots stables) ──────────────────────
@@ -194,6 +195,16 @@ const FIXED_LEARNER_CREDENTIALS = {
   tempPassword: "SnapPass2026",
 };
 
+// Credentials formateur fixes pour le bloc « Accès à votre espace formateur »
+// (conventions formateur). Valeurs stables → snapshot déterministe.
+const FIXED_TRAINER_CREDENTIALS = {
+  email: "formateur.snap@example.fr",
+  password: "TrainerSnap2026",
+};
+
+// QR code fixe (data URL factice) pour un snapshot stable du bloc credentials.
+const FIXED_QR = "data:image/png;base64,QVJUSUZBQ1RfUVJfRklYRQ==";
+
 // ─── Tests par doc_type ─────────────────────────────────────────────────
 
 // Date "aujourd'hui" figée pour stabiliser les snapshots qui resolvent
@@ -267,7 +278,7 @@ describe("Templates snapshots — couvre F1/F2.x/F3", () => {
     expect({ html, footer }).toMatchSnapshot();
   });
 
-  it("convention-intervention : HTML + footer avec trainer + cost_ht custom var", () => {
+  it("convention-intervention : HTML + footer avec trainer + cost_ht custom var + bloc accès formateur", () => {
     const trainerWithCost = {
       ...makeTrainer(),
       _agreed_cost_ht: 1200,
@@ -276,9 +287,25 @@ describe("Templates snapshots — couvre F1/F2.x/F3", () => {
       session: makeSession(),
       trainer: trainerWithCost,
       entity: FULL_ENTITY,
+      trainerCredentials: FIXED_TRAINER_CREDENTIALS,
+      loginQrCodeDataUrl: FIXED_QR,
     };
     const html = resolveDocumentVariables(CONVENTION_INTERVENTION_HTML, context);
     const footer = resolveDocumentVariables(CONVENTION_INTERVENTION_FOOTER_TEMPLATE, context);
+    expect({ html, footer }).toMatchSnapshot();
+  });
+
+  it("contrat-sous-traitance : HTML + footer avec trainer + bloc accès formateur", () => {
+    const context: ResolveContext = {
+      session: makeSession(),
+      trainer: makeTrainer(),
+      client: makeClient(),
+      entity: FULL_ENTITY,
+      trainerCredentials: FIXED_TRAINER_CREDENTIALS,
+      loginQrCodeDataUrl: FIXED_QR,
+    };
+    const html = resolveDocumentVariables(CONTRAT_SOUS_TRAITANCE_HTML, context);
+    const footer = resolveDocumentVariables(CONTRAT_SOUS_TRAITANCE_FOOTER_TEMPLATE, context);
     expect({ html, footer }).toMatchSnapshot();
   });
 });
@@ -295,6 +322,7 @@ describe("Templates régression : aucune balise [%...%] non résolue dans output
     ["emargement-individuel", EMARGEMENT_INDIVIDUEL_HTML, "learner"],
     ["convention-entreprise", CONVENTION_ENTREPRISE_HTML, "company"],
     ["convention-intervention", CONVENTION_INTERVENTION_HTML, "trainer"],
+    ["contrat-sous-traitance", CONTRAT_SOUS_TRAITANCE_HTML, "trainer"],
   ])("%s : aucune variable orpheline après résolution", (_name, templateHtml, contextType) => {
     let context: ResolveContext;
     if (contextType === "learner") {
@@ -321,7 +349,10 @@ describe("Templates régression : aucune balise [%...%] non résolue dans output
       context = {
         session: makeSession(),
         trainer: trainerWithCost,
+        client: makeClient(),
         entity: FULL_ENTITY,
+        trainerCredentials: FIXED_TRAINER_CREDENTIALS,
+        loginQrCodeDataUrl: FIXED_QR,
       };
     }
     const resolved = resolveDocumentVariables(templateHtml, context);

@@ -170,6 +170,10 @@ export interface Trainer {
   nda: string | null;
   extranet_link: string | null;
   signature_url: string | null;
+  // Bloc « Accès à votre espace formateur » : mot de passe temporaire stocké
+  // en clair (miroir de learners.temp_password) pour l'afficher, stable, dans
+  // la convention formateur. Cf. add_trainer_temp_password.sql.
+  temp_password: string | null;
   // Lot C audit BMAD : champs DB explicitement typés pour supprimer
   // les 17× `as any` éparpillés (cf. migration-fix-schema.sql +
   // add_trainer_learner_fields.sql).

@@ -31,6 +31,11 @@ import {
   DocumentGenerationService,
   createDefaultEngine,
 } from "@/lib/services/document-generation";
+import { generateLoginQrDataUrl } from "@/lib/services/login-qr-code";
+import {
+  resolveTrainerCredentialsForConvention,
+  type TrainerAccountRow,
+} from "@/lib/services/trainer-account";
 import type { Session, Trainer } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
@@ -99,10 +104,28 @@ export async function POST(request: NextRequest) {
     const ftTyped = ft as unknown as { trainer: Trainer };
     const entity = await loadEntitySettings(supabase, profile.entity_id);
 
+    // Bloc « Accès à votre espace formateur » : credentials (email + mdp stable
+    // via trainers.temp_password) + QR /login. Logique idempotente (crée le
+    // compte si absent, ne réinitialise jamais un login actif). Non bloquant.
+    let trainerCredentials: { email: string; password: string } | undefined;
+    let loginQrCodeDataUrl: string | undefined;
+    try {
+      const admin = createServiceRoleClient();
+      trainerCredentials = await resolveTrainerCredentialsForConvention(admin, {
+        trainer: ftTyped.trainer as unknown as TrainerAccountRow & { temp_password?: string | null },
+        entitySlug: entity?.slug ?? "",
+      });
+      loginQrCodeDataUrl = (await generateLoginQrDataUrl(entity?.slug ?? undefined)) ?? undefined;
+    } catch (credErr) {
+      console.error("[contrat-sous-traitance] credentials formateur échoués:", credErr);
+    }
+
     const context: ResolveContext = {
       session: session as unknown as Session,
       trainer: ftTyped.trainer,
       entity,
+      trainerCredentials,
+      loginQrCodeDataUrl,
     };
     const resolvedHtml = resolveDocumentVariables(CONTRAT_SOUS_TRAITANCE_HTML, context);
     const resolvedFooter = resolveDocumentVariables(CONTRAT_SOUS_TRAITANCE_FOOTER_TEMPLATE, context);
