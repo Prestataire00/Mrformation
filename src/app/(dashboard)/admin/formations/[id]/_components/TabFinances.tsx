@@ -34,6 +34,7 @@ import {
 import { useToast } from "@/components/ui/use-toast";
 import { formatCurrency } from "@/lib/utils";
 import { invoiceDisplayRef } from "@/lib/utils/invoice-display-ref";
+import { parseAvoirAmount } from "@/lib/validations/avoir";
 import type { Session } from "@/lib/types";
 
 
@@ -79,6 +80,9 @@ export function TabFinances({ formation, onRefresh }: Props) {
   const [savingInvoice, setSavingInvoice] = useState(false);
   const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
   const [cancelTarget, setCancelTarget] = useState<Invoice | null>(null);
+  // Dialog avoir dédié : facture parent ciblée + montant saisi (éditable).
+  const [avoirTarget, setAvoirTarget] = useState<Invoice | null>(null);
+  const [avoirAmountInput, setAvoirAmountInput] = useState("");
   const [invoiceEmailPreview, setInvoiceEmailPreview] = useState<{
     inv: Invoice;
     recipientEmail: string;
@@ -421,7 +425,7 @@ export function TabFinances({ formation, onRefresh }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [companyPickerOpen, pendingCompanyPrefill]);
 
-  const handleCreateInvoice = async (isAvoir = false, parentInvoice?: Invoice) => {
+  const handleCreateInvoice = async (isAvoir = false, parentInvoice?: Invoice, avoirAmount?: number) => {
     const recipientName = isAvoir && parentInvoice
       ? parentInvoice.recipient_name
       : invoiceForm.recipient_name.trim();
@@ -435,9 +439,19 @@ export function TabFinances({ formation, onRefresh }: Props) {
     }
 
     // amount stocké en HT (la TVA est calculée au rendu PDF depuis entity.tva_rate).
-    const amount = isAvoir && parentInvoice
-      ? -Math.abs(parentInvoice.amount)
-      : invoiceSubtotal;
+    // Pour un avoir : montant saisi (partiel) si fourni, sinon montant plein du
+    // parent — toujours stocké en négatif (-abs). Garde défensif au lieu d'un `!`.
+    let amount: number;
+    if (isAvoir) {
+      const base = avoirAmount ?? parentInvoice?.amount;
+      if (base == null) {
+        toast({ title: "Montant de l'avoir manquant", variant: "destructive" });
+        return;
+      }
+      amount = -Math.abs(base);
+    } else {
+      amount = invoiceSubtotal;
+    }
 
     if (!isAvoir && amount <= 0) {
       toast({ title: "Montant invalide", description: "Ajoutez des lignes de produits", variant: "destructive" });
@@ -472,7 +486,7 @@ export function TabFinances({ formation, onRefresh }: Props) {
           is_avoir: isAvoir,
           parent_invoice_id: parentInvoice?.id ?? null,
           external_reference: invoiceForm.external_reference || null,
-          funding_type: isAvoir ? null : invoiceForm.funding_type || null,
+          funding_type: isAvoir ? (parentInvoice?.funding_type ?? null) : invoiceForm.funding_type || null,
           lines: parsedLines,
         }),
       });
@@ -827,6 +841,11 @@ export function TabFinances({ formation, onRefresh }: Props) {
     );
   }
 
+  // Validation live du montant de l'avoir (dialog dédié).
+  const avoirParse = avoirTarget
+    ? parseAvoirAmount(avoirAmountInput, avoirTarget.amount)
+    : null;
+
   return (
     <div className="space-y-6">
       {/* Zone 1 — Indicateurs */}
@@ -890,7 +909,7 @@ export function TabFinances({ formation, onRefresh }: Props) {
               onSendEmail={handleSendInvoiceEmail}
               onMarkPaid={(inv) => handleUpdateStatus(inv.id, "paid")}
               onEdit={handleEditInvoice}
-              onCreateAvoir={(inv) => handleCreateInvoice(true, inv)}
+              onCreateAvoir={(inv) => { setAvoirTarget(inv); setAvoirAmountInput(String(Math.abs(inv.amount))); }}
               onCancel={(inv) => setCancelTarget(inv)}
             />
           ))}
@@ -931,6 +950,66 @@ export function TabFinances({ formation, onRefresh }: Props) {
               }}
             >
               Annuler la facture
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog -- Créer un avoir (montant éditable, partiel possible) */}
+      <Dialog open={avoirTarget !== null} onOpenChange={(open) => { if (!open) setAvoirTarget(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Créer un avoir</DialogTitle>
+            <DialogDescription>
+              {avoirTarget
+                ? `Avoir sur la facture ${invoiceDisplayRef(avoirTarget)}. Le montant est stocké en négatif.`
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          {avoirTarget && (
+            <div className="space-y-4 py-2">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label className="text-muted-foreground">Facture parent</Label>
+                  <p className="text-sm font-medium">{invoiceDisplayRef(avoirTarget)}</p>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-muted-foreground">Montant de la facture</Label>
+                  <p className="text-sm font-medium">{formatCurrency(Math.abs(avoirTarget.amount))}</p>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="avoir-amount">Montant de l&apos;avoir (€ HT)</Label>
+                <Input
+                  id="avoir-amount"
+                  inputMode="decimal"
+                  value={avoirAmountInput}
+                  onChange={(e) => setAvoirAmountInput(e.target.value)}
+                  placeholder="Ex. 300"
+                  aria-invalid={avoirParse ? !avoirParse.ok : undefined}
+                />
+                {avoirParse && !avoirParse.ok && (
+                  <p className="text-sm text-destructive">{avoirParse.error}</p>
+                )}
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAvoirTarget(null)}>
+              Annuler
+            </Button>
+            <Button
+              disabled={!avoirParse || !avoirParse.ok || savingInvoice}
+              onClick={async () => {
+                if (!avoirTarget || !avoirParse || !avoirParse.ok) return;
+                const parent = avoirTarget;
+                const validatedAmount = avoirParse.amount;
+                setAvoirTarget(null);
+                await handleCreateInvoice(true, parent, validatedAmount);
+              }}
+            >
+              {savingInvoice && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Créer l&apos;avoir
             </Button>
           </DialogFooter>
         </DialogContent>
