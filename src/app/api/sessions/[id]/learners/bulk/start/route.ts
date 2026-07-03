@@ -48,6 +48,8 @@ import {
   type LearnerCredentialsRow,
 } from "@/lib/services/learner-credentials-pdf";
 import { uploadLearnerCredentialsPDF } from "@/lib/services/learner-credentials-storage";
+import { runBulkLearnerJob } from "@/lib/services/bulk-import-runner";
+import { isRailway } from "@/lib/platform";
 import { sanitizeError } from "@/lib/api-error";
 
 export const maxDuration = 30;
@@ -443,16 +445,48 @@ export async function POST(
 // ──────────────────────────────────────────────────────────────────────
 
 /**
- * Dispatch vers la Netlify Background Function en passant `Bearer CRON_SECRET`.
+ * Déclenche le traitement asynchrone du job (DUAL-MODE Netlify / Railway).
  *
  * On retourne immédiatement `queued` côté UI ; le client polera ensuite
  * GET /api/sessions/[id]/learners/bulk/status pour suivre la progression.
  *
- * Si le fetch échoue (5xx, réseau) : le job reste 'queued' et on retourne
- * 200 avec un champ `error` pour que l'UI puisse informer l'admin.
+ * - Railway (conteneur long-lived) : fire-and-forget IN-PROCESS via
+ *   `runBulkLearnerJob`. Pas de timeout serverless → on n'`await` PAS le
+ *   runner ; il écrit lui-même sa progression/statut final en DB. En cas
+ *   d'exception non capturée, on marque le job `failed` (défense en profondeur,
+ *   le runner gère déjà ses erreurs en interne).
+ * - Netlify (inchangé) : dispatch vers la Background Function via
+ *   `Bearer CRON_SECRET`. Si le fetch échoue, le job reste 'queued' et on
+ *   retourne 200 avec un champ `error` pour que l'UI puisse informer l'admin.
  */
 async function dispatchToBackground(jobId: string): Promise<NextResponse> {
   const cronSecret = process.env.CRON_SECRET;
+
+  // ── Railway : fire-and-forget in-process ──
+  if (isRailway()) {
+    const admin = createAdminClient();
+    // On NE fait PAS `await` : la route répond tout de suite (queued), le
+    // runner poursuit en tâche de fond dans le conteneur.
+    void runBulkLearnerJob({ admin, jobId }).catch(async (err) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[bulk/start] runBulkLearnerJob (railway) failed:", msg);
+      // Filet de sécurité : le runner écrit déjà `failed` en interne, mais si
+      // l'exception survient hors de son try/catch on force l'état ici.
+      await admin
+        .from("learner_bulk_import_jobs")
+        .update({ status: "failed", error_message: msg })
+        .eq("id", jobId);
+    });
+
+    return NextResponse.json({
+      ok: true,
+      jobId,
+      status: "queued",
+      pollUrl: `/api/sessions/_/learners/bulk/status?jobId=${jobId}`,
+    });
+  }
+
+  // ── Netlify : dispatch vers la Background Function (inchangé) ──
   if (!cronSecret) {
     return NextResponse.json(
       { error: "CRON_SECRET non configuré (background dispatch impossible)" },

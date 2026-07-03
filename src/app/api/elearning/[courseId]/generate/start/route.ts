@@ -19,6 +19,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sanitizeError } from "@/lib/api-error";
 import { requireElearningCourse } from "@/lib/auth/elearning-access";
+import { isRailway, getInternalBaseUrl } from "@/lib/platform";
+import { runElearningPipeline } from "@/lib/services/elearning-pipeline-runner";
+import { createServiceRoleClient } from "@/lib/supabase/server";
 
 export const maxDuration = 30;
 
@@ -78,55 +81,89 @@ export async function POST(
       );
     }
 
-    // 2. Déclenche la Background Function. Sur Netlify, elle renvoie 202
-    //    immédiatement et continue à tourner jusqu'à 15min. En dev local
-    //    sans Netlify CLI, le fetch va échouer — l'erreur est non-bloquante
-    //    car l'admin peut tester avec netlify dev.
-    const baseUrl = process.env.URL || "http://localhost:8888"; // 8888 = netlify dev port
-    const bgUrl = `${baseUrl}/.netlify/functions/elearning-generate-pipeline-background`;
-
-    try {
-      const bgRes = await fetch(bgUrl, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${cronSecret}`,
-          "Content-Type": "application/json",
+    // 2. Déclenche le pipeline (DUAL-MODE Netlify / Railway).
+    if (isRailway()) {
+      // ── Railway : conteneur long-lived → fire-and-forget IN-PROCESS. ──
+      // Pas de timeout serverless : on lance l'orchestrateur sans l'`await`.
+      // Il rappelle les sous-routes en loopback (getInternalBaseUrl) et écrit
+      // lui-même sa progression/statut final en DB (l'UI poll ces champs).
+      const railwaySupabase = createServiceRoleClient();
+      void runElearningPipeline(
+        { courseId: params.courseId, courseType, includeExam, includeGamma },
+        {
+          baseUrl: getInternalBaseUrl(),
+          cronSecret,
+          supabase: railwaySupabase,
         },
-        body: JSON.stringify({
-          courseId: params.courseId,
-          courseType,
-          includeExam,
-          includeGamma,
-        }),
+      ).catch(async (err) => {
+        // Filet de sécurité : le runner marque déjà `failed` en interne ; on
+        // couvre ici une exception qui surviendrait hors de son try/catch.
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error("[generate/start] runElearningPipeline (railway) failed:", msg);
+        await railwaySupabase
+          .from("elearning_courses")
+          .update({
+            generation_status: "failed",
+            generation_progress: {
+              step: "failed",
+              percent: 0,
+              message: "Erreur de génération",
+              error: msg,
+              started_at: startedAt,
+              updated_at: new Date().toISOString(),
+            },
+          })
+          .eq("id", params.courseId);
       });
-      // Netlify renvoie 202 pour les Background Functions. Si !ok, on log
-      // mais on revient quand même OK côté UI : le polling montrera l'état
-      // failed si quelque chose s'est mal passé.
-      if (bgRes.status !== 202 && !bgRes.ok) {
-        console.error(`[generate/start] Background trigger returned ${bgRes.status}`);
-      }
-    } catch (fetchErr) {
-      // Si le déclenchement échoue (env dev sans netlify dev), on remonte
-      // l'erreur pour que l'admin sache qu'il faut configurer.
-      const msg = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
-      await supabase
-        .from("elearning_courses")
-        .update({
-          generation_status: "failed",
-          generation_progress: {
-            step: "failed",
-            percent: 0,
-            message: "Impossible de déclencher le pipeline background",
-            error: msg,
-            started_at: startedAt,
-            updated_at: new Date().toISOString(),
+    } else {
+      // ── Netlify (inchangé) : dispatch vers la Background Function. ──
+      // Elle renvoie 202 immédiatement et continue jusqu'à 15min. En dev local
+      // sans Netlify CLI, le fetch échoue → erreur remontée pour que l'admin
+      // sache qu'il faut `netlify dev`.
+      const baseUrl = process.env.URL || "http://localhost:8888"; // 8888 = netlify dev port
+      const bgUrl = `${baseUrl}/.netlify/functions/elearning-generate-pipeline-background`;
+
+      try {
+        const bgRes = await fetch(bgUrl, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${cronSecret}`,
+            "Content-Type": "application/json",
           },
-        })
-        .eq("id", params.courseId);
-      return NextResponse.json(
-        { error: `Impossible de déclencher le pipeline : ${msg}` },
-        { status: 502 },
-      );
+          body: JSON.stringify({
+            courseId: params.courseId,
+            courseType,
+            includeExam,
+            includeGamma,
+          }),
+        });
+        // Netlify renvoie 202 pour les Background Functions. Si !ok, on log
+        // mais on revient quand même OK côté UI : le polling montrera l'état
+        // failed si quelque chose s'est mal passé.
+        if (bgRes.status !== 202 && !bgRes.ok) {
+          console.error(`[generate/start] Background trigger returned ${bgRes.status}`);
+        }
+      } catch (fetchErr) {
+        const msg = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
+        await supabase
+          .from("elearning_courses")
+          .update({
+            generation_status: "failed",
+            generation_progress: {
+              step: "failed",
+              percent: 0,
+              message: "Impossible de déclencher le pipeline background",
+              error: msg,
+              started_at: startedAt,
+              updated_at: new Date().toISOString(),
+            },
+          })
+          .eq("id", params.courseId);
+        return NextResponse.json(
+          { error: `Impossible de déclencher le pipeline : ${msg}` },
+          { status: 502 },
+        );
+      }
     }
 
     return NextResponse.json({

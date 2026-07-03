@@ -26,7 +26,12 @@ import {
   createLearnerWithCredentials,
   type CreateLearnerInput,
 } from "@/lib/services/learner-account";
-import type { LearnerCredentialsRow } from "@/lib/services/learner-credentials-pdf";
+import {
+  generateLearnerCredentialsPDF,
+  type LearnerCredentialsRow,
+  type LearnerCredentialsEntitySlug,
+} from "@/lib/services/learner-credentials-pdf";
+import { uploadLearnerCredentialsPDF } from "@/lib/services/learner-credentials-storage";
 
 // ──────────────────────────────────────────────────────────────────────
 // Types payload (miroir de la route /start)
@@ -249,4 +254,286 @@ export function buildAggregatedErrorMessage(
     return "Tous les apprenants ont échoué (voir results.learners[].errorMessage)";
   }
   return null;
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Orchestrateur de job complet (harness partagé Netlify BG / Railway in-process)
+// ──────────────────────────────────────────────────────────────────────
+//
+// Ce wrapper reproduit fidèlement le harnais de la Background Function
+// `netlify/functions/learners-bulk-create-background.mts` : chargement du job,
+// idempotence par statut, passage en `running`, validation du payload JSONB,
+// boucle de création (runBulkImportLearnerLoop), génération + upload du PDF de
+// credentials, puis écriture du statut final. Il est appelable des DEUX côtés :
+//   - Netlify BG function : `.mts` → runBulkLearnerJob(...) (wrapper HTTP mince).
+//   - Railway : la route /start le lance en fire-and-forget in-process
+//     (`void runBulkLearnerJob(...)`), le conteneur long-lived tenant la promesse
+//     jusqu'à complétion.
+//
+// Tous les writes de progression/statut restent identiques (l'UI poll ces
+// champs). Aucun mot de passe n'est jamais persisté (SEC-9).
+
+/** Résultat de `runBulkLearnerJob` — reflète l'issue de l'idempotence/exécution. */
+export interface RunBulkLearnerJobResult {
+  ok: boolean;
+  /** Statut final du job (ou statut existant en cas de skip idempotent). */
+  status: "queued" | "running" | "completed" | "failed";
+  /** Vrai si le job a été ignoré (déjà completed/failed). */
+  skipped?: boolean;
+  /** Vrai si le job était déjà `running` (rejeu concurrent). */
+  deferred?: boolean;
+  createdCount?: number;
+  errorCount?: number;
+  /** Message d'erreur si le job n'a pas pu démarrer/aboutir. */
+  error?: string;
+}
+
+export interface RunBulkLearnerJobParams {
+  /** Client service_role (bypass RLS — la garde entity_id est faite en amont). */
+  admin: SupabaseClient;
+  jobId: string;
+  logger?: StructuredLogger;
+}
+
+/** Patch DB best-effort avec log d'erreur (n'interrompt pas le flux). */
+async function patchJob(
+  admin: SupabaseClient,
+  jobId: string,
+  patch: Record<string, unknown>,
+  logger: StructuredLogger,
+): Promise<void> {
+  const { error } = await admin
+    .from("learner_bulk_import_jobs")
+    .update(patch)
+    .eq("id", jobId);
+  if (error) {
+    logger({
+      job_id: jobId,
+      step: "update_job_failed",
+      level: "error",
+      error: error.message,
+    });
+  }
+}
+
+/**
+ * Exécute un job de bulk import de bout en bout à partir de son `jobId`.
+ *
+ * Idempotence (identique au `.mts`) :
+ *   - status = "completed" | "failed" → no-op (skipped).
+ *   - status = "running"              → defer (rejeu concurrent, on n'écrase pas).
+ *   - status = "queued"               → on prend la main (→ "running").
+ *
+ * Le payload (`learners[]` + `entitySlug`) est lu depuis la colonne JSONB
+ * `payload` du job (persistée par la route /start).
+ */
+export async function runBulkLearnerJob(
+  params: RunBulkLearnerJobParams,
+): Promise<RunBulkLearnerJobResult> {
+  const { admin, jobId, logger = defaultJsonLogger } = params;
+  const startedAt = Date.now();
+  logger({ job_id: jobId, step: "start" });
+
+  // Charge le job complet (incluant `payload` JSONB).
+  const { data: job, error: loadErr } = await admin
+    .from("learner_bulk_import_jobs")
+    .select("id, entity_id, session_id, status, payload, payload_count")
+    .eq("id", jobId)
+    .single();
+
+  if (loadErr || !job) {
+    logger({
+      job_id: jobId,
+      step: "job_not_found",
+      error: loadErr?.message ?? "unknown",
+    });
+    return { ok: false, status: "failed", error: "job_not_found" };
+  }
+
+  // Idempotence par statut.
+  if (job.status === "completed" || job.status === "failed") {
+    logger({ job_id: jobId, step: "idempotent_skip", existing_status: job.status });
+    return {
+      ok: true,
+      skipped: true,
+      status: job.status as "completed" | "failed",
+    };
+  }
+  if (job.status === "running") {
+    logger({ job_id: jobId, step: "idempotent_defer", existing_status: job.status });
+    return { ok: true, deferred: true, status: "running" };
+  }
+
+  // status === "queued" → on prend la main.
+  await patchJob(admin, jobId, { status: "running" }, logger);
+
+  // Validation du payload JSONB (cast typé explicite).
+  const rawPayload = (job.payload ?? {}) as Partial<BulkImportPayload>;
+  if (
+    !rawPayload ||
+    !Array.isArray(rawPayload.learners) ||
+    !rawPayload.entitySlug ||
+    (rawPayload.entitySlug !== "mr-formation" &&
+      rawPayload.entitySlug !== "c3v-formation")
+  ) {
+    const msg = "Payload invalide: learners[] et entitySlug requis";
+    logger({ job_id: jobId, step: "payload_invalid", error: msg });
+    await patchJob(
+      admin,
+      jobId,
+      { status: "failed", error_message: msg },
+      logger,
+    );
+    return { ok: false, status: "failed", error: msg };
+  }
+
+  const payload: BulkImportPayload = {
+    learners: rawPayload.learners,
+    entitySlug: rawPayload.entitySlug,
+  };
+
+  try {
+    // Boucle de création + enrollment (helper testable).
+    const loopStartedAt = Date.now();
+    logger({ job_id: jobId, step: "loop_start", learners_total: payload.learners.length });
+    const { results, pdfRows } = await runBulkImportLearnerLoop({
+      admin,
+      entityId: job.entity_id,
+      sessionId: job.session_id,
+      payload,
+      jobId,
+      logger,
+    });
+    logger({
+      job_id: jobId,
+      step: "loop_done",
+      duration_ms: Date.now() - loopStartedAt,
+      created_count: results.created_count,
+      enrolled_count: results.enrolled_count,
+      error_count: results.error_count,
+    });
+
+    // PDF credentials (uniquement si au moins 1 succès). Passwords RAM only.
+    let pdfPath: string | null = null;
+    let pdfSignedUrl: string | null = null;
+    let pdfSignedUrlExpiresAt: string | null = null;
+
+    if (pdfRows.length > 0) {
+      const pdfStartedAt = Date.now();
+      try {
+        const [{ data: entityRow }, { data: sessionRow }] = await Promise.all([
+          admin
+            .from("entities")
+            .select("name, slug")
+            .eq("id", job.entity_id)
+            .maybeSingle(),
+          admin
+            .from("sessions")
+            .select("id, trainings(title)")
+            .eq("id", job.session_id)
+            .maybeSingle(),
+        ]);
+
+        const sessionTitle =
+          (sessionRow as { trainings: { title: string } | null } | null)
+            ?.trainings?.title ?? "Session";
+        const entityName =
+          (entityRow as { name: string } | null)?.name ?? payload.entitySlug;
+        const loginUrl =
+          (process.env.NEXT_PUBLIC_APP_URL || process.env.URL || "")
+            .trim()
+            .replace(/\/$/, "") || "https://app.lms";
+
+        const pdfBlob = await generateLearnerCredentialsPDF({
+          entityName,
+          entitySlug: payload.entitySlug as LearnerCredentialsEntitySlug,
+          sessionTitle,
+          loginUrl: `${loginUrl}/login`,
+          generatedAt: new Date(),
+          rows: pdfRows,
+        });
+
+        const uploaded = await uploadLearnerCredentialsPDF(admin, {
+          entityId: job.entity_id,
+          sessionId: job.session_id,
+          pdfBlob,
+        });
+
+        if (uploaded) {
+          pdfPath = uploaded.path;
+          pdfSignedUrl = uploaded.signedUrl;
+          pdfSignedUrlExpiresAt = new Date(
+            Date.now() + 24 * 60 * 60 * 1000,
+          ).toISOString();
+        }
+
+        logger({
+          job_id: jobId,
+          step: "pdf_generated",
+          uploaded: Boolean(uploaded),
+          duration_ms: Date.now() - pdfStartedAt,
+          rows_count: pdfRows.length,
+        });
+      } catch (pdfErr) {
+        const msg = pdfErr instanceof Error ? pdfErr.message : String(pdfErr);
+        logger({
+          job_id: jobId,
+          step: "pdf_failed",
+          level: "warn",
+          error: msg,
+          duration_ms: Date.now() - pdfStartedAt,
+        });
+        // Non bloquant : le job reste completed sans signed URL.
+      }
+    }
+
+    // Finalisation.
+    const finalStatus = decideFinalStatus(results);
+    const aggregatedError = buildAggregatedErrorMessage(results);
+
+    await patchJob(
+      admin,
+      jobId,
+      {
+        status: finalStatus,
+        results: results as unknown as Record<string, unknown>,
+        pdf_path: pdfPath,
+        pdf_signed_url: pdfSignedUrl,
+        pdf_signed_url_expires_at: pdfSignedUrlExpiresAt,
+        error_message: aggregatedError,
+      },
+      logger,
+    );
+
+    logger({
+      job_id: jobId,
+      step: finalStatus,
+      duration_ms_total: Date.now() - startedAt,
+      created_count: results.created_count,
+      error_count: results.error_count,
+    });
+
+    return {
+      ok: true,
+      status: finalStatus,
+      createdCount: results.created_count,
+      errorCount: results.error_count,
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger({
+      job_id: jobId,
+      step: "fatal",
+      level: "error",
+      error: message,
+      duration_ms_total: Date.now() - startedAt,
+    });
+    await patchJob(
+      admin,
+      jobId,
+      { status: "failed", error_message: message },
+      logger,
+    );
+    return { ok: false, status: "failed", error: message };
+  }
 }

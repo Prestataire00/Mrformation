@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sanitizeError } from "@/lib/api-error";
 import { requireElearningCourse } from "@/lib/auth/elearning-access";
+import { isRailway } from "@/lib/platform";
+import { runElearningGamma } from "@/lib/services/elearning-gamma-runner";
+import { createServiceRoleClient } from "@/lib/supabase/server";
 
 export const maxDuration = 30;
 
@@ -58,37 +61,64 @@ export async function POST(
       })
       .eq("id", params.courseId);
 
-    // Trigger BG function — Netlify renvoie 202 immédiat pour les fonctions
-    // -background ; on n'attend pas la fin (qui prend 1-3 min).
-    const baseUrl = process.env.URL || "http://localhost:8888";
-    const bgUrl = `${baseUrl}/.netlify/functions/elearning-generate-gamma-background`;
-    try {
-      const bgRes = await fetch(bgUrl, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${cronSecret}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ courseId: params.courseId }),
+    // Déclenche la génération Gamma (DUAL-MODE Netlify / Railway).
+    if (isRailway()) {
+      // ── Railway : conteneur long-lived → fire-and-forget IN-PROCESS. ──
+      // Le runner (appel API Gamma + polling + writes DB) écrit lui-même sa
+      // progression (gamma_running/gamma_done/gamma_failed) ; on ne l'`await` pas.
+      const railwaySupabase = createServiceRoleClient();
+      void runElearningGamma(
+        { courseId: params.courseId },
+        { supabase: railwaySupabase },
+      ).catch(async (err) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error("[gamma start] runElearningGamma (railway) failed:", msg);
+        await railwaySupabase
+          .from("elearning_courses")
+          .update({
+            generation_progress: {
+              step: "gamma_failed",
+              percent: 0,
+              message: "Erreur Gamma",
+              error: msg,
+              updated_at: new Date().toISOString(),
+            },
+          })
+          .eq("id", params.courseId);
       });
-      if (bgRes.status !== 202 && !bgRes.ok) {
-        console.error(`[gamma start] BG trigger returned ${bgRes.status}`);
-      }
-    } catch (fetchErr) {
-      const msg = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
-      await supabase
-        .from("elearning_courses")
-        .update({
-          generation_progress: {
-            step: "gamma_failed",
-            percent: 0,
-            message: "Impossible de déclencher Gamma",
-            error: msg,
-            updated_at: new Date().toISOString(),
+    } else {
+      // ── Netlify (inchangé) : dispatch vers la Background Function. ──
+      // Netlify renvoie 202 immédiat ; on n'attend pas la fin (1-3 min).
+      const baseUrl = process.env.URL || "http://localhost:8888";
+      const bgUrl = `${baseUrl}/.netlify/functions/elearning-generate-gamma-background`;
+      try {
+        const bgRes = await fetch(bgUrl, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${cronSecret}`,
+            "Content-Type": "application/json",
           },
-        })
-        .eq("id", params.courseId);
-      return NextResponse.json({ error: `Impossible de déclencher Gamma : ${msg}` }, { status: 502 });
+          body: JSON.stringify({ courseId: params.courseId }),
+        });
+        if (bgRes.status !== 202 && !bgRes.ok) {
+          console.error(`[gamma start] BG trigger returned ${bgRes.status}`);
+        }
+      } catch (fetchErr) {
+        const msg = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
+        await supabase
+          .from("elearning_courses")
+          .update({
+            generation_progress: {
+              step: "gamma_failed",
+              percent: 0,
+              message: "Impossible de déclencher Gamma",
+              error: msg,
+              updated_at: new Date().toISOString(),
+            },
+          })
+          .eq("id", params.courseId);
+        return NextResponse.json({ error: `Impossible de déclencher Gamma : ${msg}` }, { status: 502 });
+      }
     }
 
     return NextResponse.json({
