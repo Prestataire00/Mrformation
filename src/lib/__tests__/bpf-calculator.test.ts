@@ -10,6 +10,7 @@ import {
   computeSectionF1,
   computeSectionF2,
   buildSectionCView,
+  computeSessionBpfSummary,
 } from "../bpf-calculator";
 
 // ─── computeSectionC ────────────────────────────────────────
@@ -277,6 +278,39 @@ describe("computeSectionCFromInvoices", () => {
     expect(result.non_classifie.a_verifier).toBe(0);
   });
 
+  it("sessions_sans_cout : formateur avec hourly_rate=0 mais agreed_cost_ht renseigné n'est PAS un trou", () => {
+    const gaps = computeDataGaps({
+      invoices: [],
+      enrollments: [],
+      trainings: [],
+      formationTrainers: [{ id: "ft1", hourly_rate: 0, agreed_cost_ht: 500 }],
+      signatures: [],
+    });
+    expect(gaps.sessions_sans_cout).toBe(0);
+  });
+
+  it("sessions_sans_cout : formateur sans aucun coût (hourly_rate null + agreed_cost_ht null) est compté", () => {
+    const gaps = computeDataGaps({
+      invoices: [],
+      enrollments: [],
+      trainings: [],
+      formationTrainers: [{ id: "ft1", hourly_rate: null, agreed_cost_ht: null }],
+      signatures: [],
+    });
+    expect(gaps.sessions_sans_cout).toBe(1);
+  });
+
+  it("sessions_sans_cout : compat ascendante — agreed_cost_ht omis + hourly_rate 0 reste un trou", () => {
+    const gaps = computeDataGaps({
+      invoices: [],
+      enrollments: [],
+      trainings: [],
+      formationTrainers: [{ id: "ft1", hourly_rate: 0 }],
+      signatures: [],
+    });
+    expect(gaps.sessions_sans_cout).toBe(1);
+  });
+
   it("avoir cross-year detected in dataGaps", () => {
     const invoices = [
       {
@@ -538,5 +572,137 @@ describe("buildSectionCView", () => {
     expect(view.fiable.line_11).toBe(200);
     expect(view.aVerifier.line_11).toBe(300);
     expect(view.combined.line_1).toBe(1000);
+  });
+});
+
+// ─── computeSessionBpfSummary ──────────────────────────────
+
+describe("computeSessionBpfSummary", () => {
+  // Session "propre" : 4 inscrits non annulés, training 8h,
+  // 2 factures 1000€ + 500€ confirmées, objectif + coûts renseignés.
+  const cleanInput: Parameters<typeof computeSessionBpfSummary>[0] = {
+    invoices: [
+      {
+        id: "inv-1",
+        amount: 1000,
+        funding_type: "entreprise_privee",
+        invoice_date_confirmed: true,
+        is_avoir: false,
+        status: "confirmed",
+        invoice_date: "2026-03-01",
+        parent_invoice_id: null,
+      },
+      {
+        id: "inv-2",
+        amount: 500,
+        funding_type: "cpf",
+        invoice_date_confirmed: true,
+        is_avoir: false,
+        status: "confirmed",
+        invoice_date: "2026-04-01",
+        parent_invoice_id: null,
+      },
+    ],
+    enrollments: [
+      { id: "e1", learner_id: "L1", session_id: "s1", status: "confirmed", bpf_trainee_type: "salarie_prive" },
+      { id: "e2", learner_id: "L2", session_id: "s1", status: "confirmed", bpf_trainee_type: "salarie_prive" },
+      { id: "e3", learner_id: "L3", session_id: "s1", status: "registered", bpf_trainee_type: "salarie_prive" },
+      { id: "e4", learner_id: "L4", session_id: "s1", status: "confirmed", bpf_trainee_type: "apprenti" },
+    ],
+    trainings: [{ id: "t1", bpf_objective: "autre_pro" }],
+    formationTrainers: [{ id: "ft1", hourly_rate: 50 }],
+    signatures: [],
+    isSubcontracted: false,
+    durationHours: 8,
+  };
+
+  it("résume stagiaires, heures et CA (4 stagiaires · 32 h · 1 500 €)", () => {
+    const s = computeSessionBpfSummary(cleanInput);
+    expect(s.stagiaires).toBe(4);
+    expect(s.heures).toBe(32); // 8h × 4 inscriptions non annulées
+    expect(s.caTotal).toBe(1500); // 1000 + 500
+    expect(s.caFiable).toBe(1500); // dates confirmées
+    expect(s.caAVerifier).toBe(0);
+  });
+
+  it("pastille verte : totalGaps = 0 quand toutes les données sont complètes", () => {
+    const s = computeSessionBpfSummary(cleanInput);
+    expect(s.totalGaps).toBe(0);
+    expect(s.aVerifierCount).toBe(0);
+  });
+
+  it("pastille rouge : totalGaps compte les 5 trous (ici 2 inscriptions sans type)", () => {
+    const s = computeSessionBpfSummary({
+      ...cleanInput,
+      enrollments: [
+        { id: "e1", learner_id: "L1", session_id: "s1", status: "confirmed", bpf_trainee_type: null },
+        { id: "e2", learner_id: "L2", session_id: "s1", status: "confirmed", bpf_trainee_type: null },
+        { id: "e3", learner_id: "L3", session_id: "s1", status: "confirmed", bpf_trainee_type: "salarie_prive" },
+        { id: "e4", learner_id: "L4", session_id: "s1", status: "confirmed", bpf_trainee_type: "apprenti" },
+      ],
+    });
+    expect(s.gaps.enrollments_sans_type).toBe(2);
+    expect(s.totalGaps).toBe(2);
+  });
+
+  it("compte le trou facture non confirmée dans totalGaps et aVerifierCount", () => {
+    const s = computeSessionBpfSummary({
+      ...cleanInput,
+      invoices: [
+        {
+          id: "inv-1",
+          amount: 1000,
+          funding_type: "entreprise_privee",
+          invoice_date_confirmed: false, // non confirmée → à vérifier
+          is_avoir: false,
+          status: "confirmed",
+          invoice_date: "2026-03-01",
+          parent_invoice_id: null,
+        },
+      ],
+    });
+    expect(s.aVerifierCount).toBe(1);
+    expect(s.gaps.invoices_non_confirmees).toBe(1);
+    expect(s.totalGaps).toBe(1);
+    expect(s.caAVerifier).toBe(1000);
+    expect(s.caFiable).toBe(0);
+    expect(s.caTotal).toBe(1000);
+  });
+
+  it("F-1 méthode durée-session : heures = durationHours × inscription (pas heures signées)", () => {
+    const s = computeSessionBpfSummary(cleanInput);
+    const salarie = s.f1.find((r) => r.type === "salarie_prive");
+    const apprenti = s.f1.find((r) => r.type === "apprenti");
+    // 3 salariés (dont 1 registered qui compte) × 8h = 24h
+    expect(salarie).toEqual({ type: "salarie_prive", stagiaires: 3, heures: 24 });
+    // 1 apprenti × 8h = 8h
+    expect(apprenti).toEqual({ type: "apprenti", stagiaires: 1, heures: 8 });
+  });
+
+  it("F-1 : bpf_trainee_type null bascule dans 'autre' et exclut les annulés", () => {
+    const s = computeSessionBpfSummary({
+      ...cleanInput,
+      enrollments: [
+        { id: "e1", learner_id: "L1", session_id: "s1", status: "confirmed", bpf_trainee_type: null },
+        { id: "e2", learner_id: "L2", session_id: "s1", status: "cancelled", bpf_trainee_type: "salarie_prive" },
+      ],
+    });
+    const autre = s.f1.find((r) => r.type === "autre");
+    expect(autre).toEqual({ type: "autre", stagiaires: 1, heures: 8 });
+    // L'inscription annulée ne compte pas.
+    expect(s.stagiaires).toBe(1);
+    expect(s.heures).toBe(8);
+  });
+
+  it("F-2 : stagiaires/heures des sessions sous-traitées (⊆ F-1)", () => {
+    const s = computeSessionBpfSummary({ ...cleanInput, isSubcontracted: true });
+    // 4 inscriptions non annulées, session sous-traitée, 8h chacune.
+    expect(s.f2.stagiaires).toBe(4);
+    expect(s.f2.heures).toBe(32);
+  });
+
+  it("F-2 : zéro quand la session n'est pas sous-traitée", () => {
+    const s = computeSessionBpfSummary(cleanInput);
+    expect(s.f2).toEqual({ stagiaires: 0, heures: 0 });
   });
 });

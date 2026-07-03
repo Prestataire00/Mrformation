@@ -318,6 +318,10 @@ export interface Session {
   // qualiopi_manual est stocké dans sessions.qualiopi_manual (JSONB).
   qualiopi_score?: number | null;
   qualiopi_manual?: Record<string, boolean> | null;
+  // Onglet BPF (validation par formation) : audit qui/quand a validé la session
+  // pour le BPF. Alimenté par validateSessionBPF / effacé par unvalidateSessionBPF.
+  bpf_validated_at?: string | null;
+  bpf_validated_by?: string | null;
   updated_at: string;
   created_at: string;
   // Relations

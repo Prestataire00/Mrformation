@@ -8,6 +8,7 @@ import {
   ArrowLeft, Loader2, Eye, Calendar, FileText, PenLine,
   ClipboardCheck, GraduationCap, Euro, ShieldCheck, MessageSquare, Zap,
   Users, Clock, Briefcase, CheckCircle, RotateCcw, Copy, MoreHorizontal, Trash2, AlertTriangle,
+  FileBarChart,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -40,6 +41,7 @@ import { TabElearning } from "./_components/TabElearning";
 import { TabFinances } from "./_components/TabFinances";
 import { TabQualiopi } from "./_components/TabQualiopi";
 import { TabAutomation } from "./_components/TabAutomation";
+import { TabBpf } from "./_components/TabBpf";
 
 const MODE_LABELS: Record<string, string> = {
   presentiel: "Présentiel",
@@ -151,6 +153,7 @@ export default function FormationDetailPage() {
     { value: "elearning", label: "E-Learning", icon: GraduationCap },
     { value: "finances", label: "Finances", icon: Euro },
     { value: "qualiopi", label: "Qualiopi", icon: ShieldCheck },
+    { value: "bpf", label: "BPF", icon: FileBarChart },
     { value: "automation", label: "Automatisation", icon: Zap },
     { value: "communication", label: "Communication", icon: MessageSquare },
   ], [kpis]);
@@ -484,6 +487,11 @@ export default function FormationDetailPage() {
         {/* 8. Qualiopi */}
         <TabsContent value="qualiopi" className="mt-6">
           <TabQualiopi formation={formation} />
+        </TabsContent>
+
+        {/* 8bis. BPF (contribution de la formation au bilan pédagogique) */}
+        <TabsContent value="bpf" className="mt-6">
+          <TabBpf formation={formation} onRefresh={fetchFormation} />
         </TabsContent>
 
         {/* 9. Automatisation */}

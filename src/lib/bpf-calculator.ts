@@ -238,6 +238,7 @@ interface TrainingForDataGaps {
 interface FormationTrainerForDataGaps {
   id: string;
   hourly_rate: number | null;
+  agreed_cost_ht?: number | null;
 }
 
 interface SignatureForDataGaps {
@@ -316,8 +317,11 @@ export function computeDataGaps(data: {
     (t) => !t.bpf_objective
   ).length;
 
+  // Aligné sur le DataGapsPanel (onglet Formateurs) : un formateur n'est un
+  // "trou" que si AUCUN coût n'est renseigné (ni agreed_cost_ht, ni hourly_rate).
+  // agreed_cost_ht == null couvre null ET undefined (tests sans ce champ inchangés).
   const sessions_sans_cout = formationTrainers.filter(
-    (ft) => ft.hourly_rate === null || ft.hourly_rate === 0
+    (ft) => ft.agreed_cost_ht == null && (ft.hourly_rate === null || ft.hourly_rate === 0)
   ).length;
 
   const signatures_legacy = signatures.filter(
@@ -514,4 +518,244 @@ export function buildSectionCView(
   }
 
   return { combined, fiable, aVerifier };
+}
+
+// ─── Synthèse BPF par session (onglet BPF du détail formation) ─────
+
+/** Ordre canonique des buckets F-1 (aligné sur BPFForm / rapport global). */
+const F1_TRAINEE_TYPES = [
+  "salarie_prive",
+  "apprenti",
+  "demandeur_emploi",
+  "particulier",
+  "autre",
+] as const;
+
+type F1TraineeType = (typeof F1_TRAINEE_TYPES)[number];
+
+export interface SessionF1Row {
+  type: F1TraineeType;
+  stagiaires: number;
+  heures: number;
+}
+
+interface SessionBpfInvoice {
+  amount: number;
+  funding_type: string | null;
+  invoice_date_confirmed: boolean;
+  is_avoir: boolean;
+  status: string;
+  id?: string;
+  invoice_date?: string | null;
+  parent_invoice_id?: string | null;
+}
+
+interface SessionBpfEnrollment {
+  id: string;
+  learner_id: string;
+  session_id: string;
+  status: string;
+  bpf_trainee_type: string | null;
+}
+
+interface SessionBpfTraining {
+  id: string;
+  bpf_objective: string | null;
+}
+
+interface SessionBpfFormationTrainer {
+  id: string;
+  hourly_rate: number | null;
+  agreed_cost_ht?: number | null;
+}
+
+interface SessionBpfSignature {
+  time_slot_id: string | null;
+}
+
+export interface SessionBpfSummary {
+  /** Stagiaires uniques (mêmes règles que le F-1 global). */
+  stagiaires: number;
+  /** Heures = durée training × inscriptions non annulées (méthode globale). */
+  heures: number;
+  sectionC: SectionCView;
+  /** Total CA HT = fiable + à-vérifier (combined). */
+  caTotal: number;
+  /** Sous-total des factures à date confirmée. */
+  caFiable: number;
+  /** Sous-total des factures importées non confirmées. */
+  caAVerifier: number;
+  /** Nombre de factures à vérifier (= gaps.invoices_non_confirmees, cohérent BPF-2.3). */
+  aVerifierCount: number;
+  /** F-1 par type de stagiaire (méthode durée-session, comme le global). */
+  f1: SessionF1Row[];
+  /** F-2 : activité sous-traitée à un autre organisme. */
+  f2: { stagiaires: number; heures: number };
+  gaps: DataGapsResult;
+  /** Les 5 trous "bloquants" du DataGapsPanel (pastille 🟢 ⇔ 0). */
+  totalGaps: number;
+}
+
+function sumRecordValues(rec: Record<string, number>): number {
+  return Object.values(rec).reduce((sum, v) => sum + v, 0);
+}
+
+/**
+ * Synthèse BPF d'UNE session : compose les calculateurs purs existants sur des
+ * données déjà filtrées par session_id, pour que le résumé de l'onglet égale la
+ * contribution de cette session au rapport global (`/admin/reports/bpf`).
+ *
+ * - Cadre C : buildSectionCView(computeSectionCFromInvoices(factures de la session)).
+ * - F-1 : méthode du rapport global (BPFForm) — heures = durationHours par
+ *   inscription non annulée, stagiaires = learners uniques par bpf_trainee_type
+ *   (null → "autre"). PAS computeSectionF1 (heures signées → divergerait).
+ * - F-2 : computeSectionF2 (sessions sous-traitées à un autre organisme).
+ * - totalGaps : les 5 trous du DataGapsPanel (identique au panneau).
+ */
+export function computeSessionBpfSummary(data: {
+  invoices: SessionBpfInvoice[];
+  enrollments: SessionBpfEnrollment[];
+  trainings: SessionBpfTraining[];
+  formationTrainers: SessionBpfFormationTrainer[];
+  signatures: SessionBpfSignature[];
+  isSubcontracted: boolean;
+  durationHours: number;
+}): SessionBpfSummary {
+  const {
+    invoices,
+    enrollments,
+    trainings,
+    formationTrainers,
+    signatures,
+    isSubcontracted,
+    durationHours,
+  } = data;
+
+  // ── Cadre C (produits, split fiable / à-vérifier) ──
+  const sectionCResult = computeSectionCFromInvoices(
+    invoices.map((inv) => ({
+      amount: inv.amount,
+      funding_type: inv.funding_type,
+      invoice_date_confirmed: inv.invoice_date_confirmed,
+      is_avoir: inv.is_avoir,
+      status: inv.status,
+    }))
+  );
+  const sectionC = buildSectionCView(sectionCResult);
+  const caFiable = sumRecordValues(sectionC.fiable);
+  const caAVerifier = sumRecordValues(sectionC.aVerifier);
+  const caTotal = sumRecordValues(sectionC.combined);
+
+  // ── Trous de données (5 compteurs + avoirs orphelins + signatures legacy) ──
+  const gaps = computeDataGaps({
+    invoices: invoices.map((inv) => ({
+      id: inv.id,
+      amount: inv.amount,
+      funding_type: inv.funding_type,
+      invoice_date_confirmed: inv.invoice_date_confirmed,
+      is_avoir: inv.is_avoir,
+      status: inv.status,
+      invoice_date: inv.invoice_date,
+      parent_invoice_id: inv.parent_invoice_id,
+    })),
+    enrollments: enrollments.map((e) => ({
+      id: e.id,
+      bpf_trainee_type: e.bpf_trainee_type,
+      status: e.status,
+    })),
+    trainings: trainings.map((t) => ({
+      id: t.id,
+      bpf_objective: t.bpf_objective,
+    })),
+    formationTrainers: formationTrainers.map((ft) => ({
+      id: ft.id,
+      hourly_rate: ft.hourly_rate,
+      agreed_cost_ht: ft.agreed_cost_ht ?? null,
+    })),
+    signatures: signatures.map((s) => ({ time_slot_id: s.time_slot_id })),
+  });
+
+  // totalGaps = exactement les 5 trous "bloquants" du DataGapsPanel.
+  const totalGaps =
+    gaps.invoices_sans_funding +
+    gaps.invoices_non_confirmees +
+    gaps.enrollments_sans_type +
+    gaps.trainings_sans_objective +
+    gaps.sessions_sans_cout;
+
+  // aVerifierCount cohérent avec BPF-2.3 : nombre de factures non confirmées.
+  const aVerifierCount = gaps.invoices_non_confirmees;
+
+  // ── Cadre F-1 : méthode du rapport global (durée training × inscription) ──
+  const learnersByType: Record<F1TraineeType, Set<string>> = {
+    salarie_prive: new Set(),
+    apprenti: new Set(),
+    demandeur_emploi: new Set(),
+    particulier: new Set(),
+    autre: new Set(),
+  };
+  const hoursByType: Record<F1TraineeType, number> = {
+    salarie_prive: 0,
+    apprenti: 0,
+    demandeur_emploi: 0,
+    particulier: 0,
+    autre: 0,
+  };
+
+  for (const e of enrollments) {
+    if (e.status === "cancelled") continue;
+    const learnerId = e.learner_id || "";
+    if (!learnerId) continue;
+
+    // bpf_trainee_type null/inconnu → "autre" (comme BPFForm).
+    let lType = e.bpf_trainee_type as F1TraineeType | null;
+    if (!lType || !(lType in learnersByType)) lType = "autre";
+
+    learnersByType[lType].add(learnerId);
+    hoursByType[lType] += durationHours;
+  }
+
+  const f1: SessionF1Row[] = F1_TRAINEE_TYPES.map((type) => ({
+    type,
+    stagiaires: learnersByType[type].size,
+    heures: hoursByType[type],
+  }));
+
+  const stagiaires = f1.reduce((sum, row) => sum + row.stagiaires, 0);
+  const heures = f1.reduce((sum, row) => sum + row.heures, 0);
+
+  // ── Cadre F-2 : activité sous-traitée à un autre organisme ──
+  // Mono-session : chaque inscription pointe la même session, même durée/flag.
+  const sessionInfoById: Record<
+    string,
+    { duration: number; isSubcontracted: boolean }
+  > = {};
+  for (const e of enrollments) {
+    sessionInfoById[e.session_id] = {
+      duration: durationHours,
+      isSubcontracted,
+    };
+  }
+  const f2 = computeSectionF2(
+    enrollments.map((e) => ({
+      learner_id: e.learner_id || "",
+      session_id: e.session_id,
+      status: e.status,
+    })),
+    sessionInfoById
+  );
+
+  return {
+    stagiaires,
+    heures,
+    sectionC,
+    caTotal,
+    caFiable,
+    caAVerifier,
+    aVerifierCount,
+    f1,
+    f2,
+    gaps,
+    totalGaps,
+  };
 }
