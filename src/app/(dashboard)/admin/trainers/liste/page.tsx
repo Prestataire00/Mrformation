@@ -15,6 +15,13 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { Trainer as TrainerFull } from "@/lib/types";
 import { TrainersViewSwitcher } from "../_components/TrainersViewSwitcher";
 import { useConfirmDialog } from "@/hooks/useConfirmDialog";
@@ -41,6 +48,8 @@ export default function TrainersListePage() {
   const [total, setTotal] = useState(0);
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
+  // Filtre Actif/Inactif (défaut : Actifs). Serveur-side car la liste est paginée.
+  const [statusFilter, setStatusFilter] = useState<"active" | "inactive" | "all">("active");
   const [editItem, setEditItem] = useState<Trainer | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -59,6 +68,13 @@ export default function TrainersListePage() {
         query = query.or(`first_name.ilike.%${safe}%,last_name.ilike.%${safe}%,email.ilike.%${safe}%`);
       }
 
+      // Filtre statut (serveur) : « actif » = non-inactif, null inclus (aligné sur /admin/trainers).
+      if (statusFilter === "inactive") {
+        query = query.eq("status", "inactive");
+      } else if (statusFilter === "active") {
+        query = query.or("status.is.null,status.neq.inactive");
+      }
+
       const from = (page - 1) * PAGE_SIZE;
       query = query.range(from, from + PAGE_SIZE - 1);
 
@@ -73,7 +89,7 @@ export default function TrainersListePage() {
     } finally {
       setLoading(false);
     }
-  }, [supabase, search, page, toast, entityId]);
+  }, [supabase, search, page, toast, entityId, statusFilter]);
 
   useEffect(() => { fetchTrainers(); }, [fetchTrainers]);
 
@@ -199,6 +215,22 @@ export default function TrainersListePage() {
           <Search className="h-4 w-4" />
           Rechercher
         </button>
+        <Select
+          value={statusFilter}
+          onValueChange={(v) => {
+            setStatusFilter(v as "active" | "inactive" | "all");
+            setPage(1);
+          }}
+        >
+          <SelectTrigger className="w-40">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="active">Actifs</SelectItem>
+            <SelectItem value="inactive">Inactifs</SelectItem>
+            <SelectItem value="all">Tous</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Count */}
