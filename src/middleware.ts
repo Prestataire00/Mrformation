@@ -2,6 +2,7 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { PAGE_PERMISSIONS, API_PERMISSIONS, findMatchingRoles, type Role } from "@/lib/auth/permissions";
 import { resolveActiveEntity } from "@/lib/auth/effective-entity";
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase/public-config";
 
 export async function middleware(request: NextRequest) {
   // Bypass pour les requêtes server-to-server signées avec CRON_SECRET.
@@ -26,8 +27,8 @@ export async function middleware(request: NextRequest) {
   });
 
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    SUPABASE_URL,
+    SUPABASE_ANON_KEY,
     {
       cookies: {
         get(name: string) {
