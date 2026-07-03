@@ -759,3 +759,154 @@ export function computeSessionBpfSummary(data: {
     totalGaps,
   };
 }
+
+// ─── Progression de dépôt BPF (barre X/Y du rapport global) ─────────
+
+interface DepositProgressInvoice {
+  id?: string;
+  amount: number;
+  funding_type: string | null;
+  invoice_date_confirmed: boolean;
+  is_avoir: boolean;
+  status: string;
+  invoice_date?: string | null;
+  parent_invoice_id?: string | null;
+  session_id: string | null;
+}
+
+interface DepositProgressEnrollment {
+  id: string;
+  bpf_trainee_type: string | null;
+  status: string;
+  session_id: string;
+}
+
+interface DepositProgressTraining {
+  id: string;
+  bpf_objective: string | null;
+}
+
+interface DepositProgressFormationTrainer {
+  id: string;
+  hourly_rate: number | null;
+  agreed_cost_ht?: number | null;
+  session_id: string;
+}
+
+interface DepositProgressSignature {
+  time_slot_id: string | null;
+  session_id: string;
+}
+
+interface DepositProgressSession {
+  id: string;
+  training_id: string | null;
+}
+
+export interface BpfDepositProgress {
+  /** Y : nombre de sessions de l'exercice (sessionIds.length). */
+  total: number;
+  /** X : sessions validées ET sans trou (🟢). */
+  ready: number;
+  /** true si total > 0 ET toutes les sessions sont prêtes → « prêt à déposer ». */
+  allReady: boolean;
+}
+
+/**
+ * Progression « X/Y formations validées → prêt à déposer » du rapport BPF global.
+ *
+ * Pour chaque session de l'exercice (`sessionIds`), on rejoue `computeDataGaps`
+ * sur les données déjà chargées (`bpfRaw`) filtrées par `session_id` — même
+ * définition de « sans trou » (les 5 compteurs bloquants) que la pastille de
+ * l'onglet BPF et que le DataGapsPanel, garantissant la cohérence.
+ *
+ * Une session est comptée dans X (`ready`) si elle est à la fois :
+ *  - validée (`validatedBySession[sessionId] === true`, lu de façon résiliente
+ *    côté service depuis `bpf_validated_at`), ET
+ *  - actuellement sans trou (`totalGaps === 0`).
+ *
+ * Auto-dé-validation PASSIVE : une session validée dont un trou réapparaît sort
+ * simplement de X (aucune écriture — l'audit `bpf_validated_at` reste intact).
+ *
+ * Fonction PURE et testable — aucune I/O.
+ */
+export function computeBpfDepositProgress(
+  sessionIds: string[],
+  data: {
+    invoices: DepositProgressInvoice[];
+    enrollments: DepositProgressEnrollment[];
+    trainings: DepositProgressTraining[];
+    formationTrainers: DepositProgressFormationTrainer[];
+    signatures: DepositProgressSignature[];
+    sessions: DepositProgressSession[];
+  },
+  validatedBySession: Record<string, boolean>
+): BpfDepositProgress {
+  const { invoices, enrollments, trainings, formationTrainers, signatures, sessions } =
+    data;
+
+  let ready = 0;
+
+  for (const sessionId of sessionIds) {
+    // Le training de la session (via sessions[].training_id).
+    const trainingId = sessions.find((s) => s.id === sessionId)?.training_id ?? null;
+    const sessionTrainings = trainingId
+      ? trainings.filter((t) => t.id === trainingId)
+      : [];
+
+    const gaps = computeDataGaps({
+      invoices: invoices
+        .filter((inv) => inv.session_id === sessionId)
+        .map((inv) => ({
+          id: inv.id,
+          amount: inv.amount,
+          funding_type: inv.funding_type,
+          invoice_date_confirmed: inv.invoice_date_confirmed,
+          is_avoir: inv.is_avoir,
+          status: inv.status,
+          invoice_date: inv.invoice_date,
+          parent_invoice_id: inv.parent_invoice_id,
+        })),
+      enrollments: enrollments
+        .filter((e) => e.session_id === sessionId)
+        .map((e) => ({
+          id: e.id,
+          bpf_trainee_type: e.bpf_trainee_type,
+          status: e.status,
+        })),
+      trainings: sessionTrainings.map((t) => ({
+        id: t.id,
+        bpf_objective: t.bpf_objective,
+      })),
+      formationTrainers: formationTrainers
+        .filter((ft) => ft.session_id === sessionId)
+        .map((ft) => ({
+          id: ft.id,
+          hourly_rate: ft.hourly_rate,
+          agreed_cost_ht: ft.agreed_cost_ht ?? null,
+        })),
+      signatures: signatures
+        .filter((s) => s.session_id === sessionId)
+        .map((s) => ({ time_slot_id: s.time_slot_id })),
+    });
+
+    // Les 5 mêmes trous « bloquants » que le DataGapsPanel / la pastille.
+    const totalGaps =
+      gaps.invoices_sans_funding +
+      gaps.invoices_non_confirmees +
+      gaps.enrollments_sans_type +
+      gaps.trainings_sans_objective +
+      gaps.sessions_sans_cout;
+
+    if (validatedBySession[sessionId] === true && totalGaps === 0) {
+      ready += 1;
+    }
+  }
+
+  const total = sessionIds.length;
+  return {
+    total,
+    ready,
+    allReady: total > 0 && ready === total,
+  };
+}

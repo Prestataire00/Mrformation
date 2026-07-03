@@ -36,9 +36,11 @@ import {
   buildSectionCView,
   computeDataGaps,
   computeSectionF2,
+  computeBpfDepositProgress,
 } from "@/lib/bpf-calculator";
-import type { SectionDResult, DataGapsResult } from "@/lib/bpf-calculator";
-import { fetchBPFData } from "@/lib/services/bpf-report-service";
+import type { SectionDResult, DataGapsResult, BpfDepositProgress } from "@/lib/bpf-calculator";
+import { fetchBPFData, fetchSessionValidations } from "@/lib/services/bpf-report-service";
+import { Progress } from "@/components/ui/progress";
 import type {
   BPFInvoice,
   BPFEnrollment,
@@ -87,6 +89,13 @@ export function BPFForm({ title }: BPFFormProps) {
   const [gapTrainings, setGapTrainings] = useState<BPFTraining[]>([]);
   const [gapFormationTrainers, setGapFormationTrainers] = useState<BPFFormationTrainer[]>([]);
   const [gapSessions, setGapSessions] = useState<BPFSession[]>([]);
+
+  // Progression de dépôt BPF : X (sessions validées ET vertes) / Y (sessions de l'exercice).
+  const [depositProgress, setDepositProgress] = useState<BpfDepositProgress>({
+    total: 0,
+    ready: 0,
+    allReady: false,
+  });
 
   // BPF overrides (manual corrections per section)
   const [overrides, setOverrides] = useState<Record<string, unknown>>({});
@@ -266,6 +275,19 @@ export function BPFForm({ title }: BPFFormProps) {
       setGapTrainings(bpfRaw.trainings);
       setGapFormationTrainers(bpfRaw.formationTrainers);
       setGapSessions(bpfRaw.sessions);
+
+      // ─── Progression de dépôt : X/Y formations validées (barre du rapport) ───
+      // Y = sessions de l'exercice (sessionIds, du sessionQuery filtré date) ;
+      // X = validées (bpf_validated_at non null, lu de façon résiliente) ET sans
+      // trou (totalGaps === 0, mêmes 5 compteurs que le DataGapsPanel), recalculé
+      // à chaque chargement → auto-dé-validation passive (aucune écriture).
+      const validations = await fetchSessionValidations(supabase, entityId, sessionIds);
+      const validatedBySession: Record<string, boolean> = {};
+      for (const id of sessionIds) {
+        validatedBySession[id] = !!validations[id]?.validated_at;
+      }
+      const progress = computeBpfDepositProgress(sessionIds, bpfRaw, validatedBySession);
+      setDepositProgress(progress);
 
       // ─── Section D: Auto-calculate charges from formation_trainers ───
       let computedD: SectionDResult = { total_charges: 0, salaires_formateurs: 0, achats_prestation: 0 };
@@ -968,6 +990,40 @@ export function BPFForm({ title }: BPFFormProps) {
         exportingExcel={exportingExcel}
         exportingPDF={exportingPDF}
       />
+
+      {/* ═══ PROGRESSION DE DÉPÔT — X/Y formations validées ═══ */}
+      {depositProgress.total > 0 && (
+        <div
+          className={`mb-6 rounded-xl border p-5 ${
+            depositProgress.allReady
+              ? "border-green-200 bg-green-50"
+              : "border-blue-200 bg-blue-50"
+          }`}
+        >
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+              <ClipboardCheck className="h-4 w-4" />
+              Sessions validées pour le BPF
+            </h3>
+            <span className="text-sm font-medium text-gray-700">
+              {depositProgress.ready}/{depositProgress.total} formations validées
+            </span>
+          </div>
+          <Progress
+            value={
+              depositProgress.total > 0
+                ? (depositProgress.ready / depositProgress.total) * 100
+                : 0
+            }
+            className={depositProgress.allReady ? "[&>div]:bg-green-600" : ""}
+          />
+          {depositProgress.allReady && (
+            <p className="mt-3 text-sm font-medium text-green-700">
+              🎉 BPF prêt à déposer
+            </p>
+          )}
+        </div>
+      )}
 
       {/* ═══ DONNÉES À COMPLÉTER (BPF-2.3) — éditable inline ═══ */}
       {dataGaps && entityId && (

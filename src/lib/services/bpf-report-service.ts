@@ -434,6 +434,59 @@ export async function fetchValidatorName(
 }
 
 /**
+ * État de validation BPF de plusieurs sessions, pour la barre de progression
+ * « X/Y formations validées » du rapport global.
+ *
+ * RÉSILIENCE (contre-mesure directe au hotfix `dc573b13`) : la lecture des
+ * colonnes `bpf_validated_at`/`bpf_validated_by` est ISOLÉE dans son propre
+ * try/catch. Un SELECT explicite d'une colonne absente du cache de schéma
+ * PostgREST fait échouer TOUTE la requête — jamais dans le fetch global.
+ * En cas d'échec (cache pas encore rechargé, colonne manquante…), on renvoie
+ * une map vide : la barre affiche X=0 sans casser le rapport (warn console,
+ * pas de toast). entity_id strict → isolation multi-tenant.
+ */
+export async function fetchSessionValidations(
+  supabase: SupabaseClient,
+  entityId: string,
+  sessionIds: string[]
+): Promise<Record<string, { validated_at: string | null; validated_by: string | null }>> {
+  if (sessionIds.length === 0) return {};
+
+  try {
+    const { data, error } = await supabase
+      .from("sessions")
+      .select("id, bpf_validated_at, bpf_validated_by")
+      .eq("entity_id", entityId)
+      .in("id", sessionIds);
+
+    if (error) throw error;
+
+    const map: Record<
+      string,
+      { validated_at: string | null; validated_by: string | null }
+    > = {};
+    for (const row of data ?? []) {
+      const r = row as {
+        id: string;
+        bpf_validated_at: string | null;
+        bpf_validated_by: string | null;
+      };
+      map[r.id] = {
+        validated_at: r.bpf_validated_at ?? null,
+        validated_by: r.bpf_validated_by ?? null,
+      };
+    }
+    return map;
+  } catch (err) {
+    console.warn(
+      "[BPF] fetchSessionValidations: lecture de l'état de validation indisponible (barre à 0)",
+      err
+    );
+    return {};
+  }
+}
+
+/**
  * Valide une session pour le BPF : trace qui (userId) et quand (now).
  * entity_id strict → un admin ne valide que dans son organisme.
  */

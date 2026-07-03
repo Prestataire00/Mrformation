@@ -11,6 +11,7 @@ import {
   computeSectionF2,
   buildSectionCView,
   computeSessionBpfSummary,
+  computeBpfDepositProgress,
 } from "../bpf-calculator";
 
 // ─── computeSectionC ────────────────────────────────────────
@@ -704,5 +705,130 @@ describe("computeSessionBpfSummary", () => {
   it("F-2 : zéro quand la session n'est pas sous-traitée", () => {
     const s = computeSessionBpfSummary(cleanInput);
     expect(s.f2).toEqual({ stagiaires: 0, heures: 0 });
+  });
+});
+
+// ─── computeBpfDepositProgress ─────────────────────────────
+
+describe("computeBpfDepositProgress", () => {
+  type ProgressData = Parameters<typeof computeBpfDepositProgress>[1];
+
+  /**
+   * Construit un jeu de données par session. Chaque session pointe un training
+   * dédié : `green` → training AVEC objectif + formateur avec coût (0 trou) ;
+   * sinon → training SANS objectif (trous_objectif = 1 → 🔴). Les factures,
+   * inscriptions et signatures sont laissées vides (pas d'autres trous).
+   */
+  function buildData(sessions: { id: string; green: boolean }[]): ProgressData {
+    return {
+      invoices: [],
+      enrollments: [],
+      signatures: [],
+      sessions: sessions.map((s) => ({ id: s.id, training_id: `t-${s.id}` })),
+      trainings: sessions.map((s) => ({
+        id: `t-${s.id}`,
+        bpf_objective: s.green ? "autre_pro" : null,
+      })),
+      formationTrainers: sessions.map((s) => ({
+        id: `ft-${s.id}`,
+        // vert → coût renseigné (pas de trou) ; rouge → training sans objectif
+        // de toute façon, mais on donne aussi un coût pour isoler la cause.
+        hourly_rate: 50,
+        agreed_cost_ht: null,
+        session_id: s.id,
+      })),
+    };
+  }
+
+  it("compte une session validée ET verte (sans trou) dans X", () => {
+    const sessionIds = ["s1"];
+    const data = buildData([{ id: "s1", green: true }]);
+    const result = computeBpfDepositProgress(sessionIds, data, { s1: true });
+    expect(result).toEqual({ total: 1, ready: 1, allReady: true });
+  });
+
+  it("ne compte PAS une session validée mais rouge (trou réapparu)", () => {
+    const sessionIds = ["s1"];
+    // Training sans objectif → totalGaps ≥ 1 → rouge, même si validée.
+    const data = buildData([{ id: "s1", green: false }]);
+    const result = computeBpfDepositProgress(sessionIds, data, { s1: true });
+    expect(result).toEqual({ total: 1, ready: 0, allReady: false });
+  });
+
+  it("ne compte PAS une session verte mais non validée", () => {
+    const sessionIds = ["s1"];
+    const data = buildData([{ id: "s1", green: true }]);
+    // Pas d'entrée dans validatedBySession (ou false) → non comptée.
+    const result = computeBpfDepositProgress(sessionIds, data, { s1: false });
+    expect(result).toEqual({ total: 1, ready: 0, allReady: false });
+  });
+
+  it("progression partielle : 3/5 (3 validées+vertes, 1 validée-rouge, 1 non validée)", () => {
+    const sessionIds = ["s1", "s2", "s3", "s4", "s5"];
+    const data = buildData([
+      { id: "s1", green: true },
+      { id: "s2", green: true },
+      { id: "s3", green: true },
+      { id: "s4", green: false }, // validée mais rouge → exclue
+      { id: "s5", green: true }, // verte mais non validée → exclue
+    ]);
+    const validated = { s1: true, s2: true, s3: true, s4: true, s5: false };
+    const result = computeBpfDepositProgress(sessionIds, data, validated);
+    expect(result).toEqual({ total: 5, ready: 3, allReady: false });
+  });
+
+  it("allReady = true quand toutes les sessions sont validées ET vertes", () => {
+    const sessionIds = ["s1", "s2", "s3", "s4"];
+    const data = buildData([
+      { id: "s1", green: true },
+      { id: "s2", green: true },
+      { id: "s3", green: true },
+      { id: "s4", green: true },
+    ]);
+    const validated = { s1: true, s2: true, s3: true, s4: true };
+    const result = computeBpfDepositProgress(sessionIds, data, validated);
+    expect(result).toEqual({ total: 4, ready: 4, allReady: true });
+  });
+
+  it("total === 0 quand aucune session dans l'exercice (barre masquée)", () => {
+    const result = computeBpfDepositProgress([], buildData([]), {});
+    expect(result).toEqual({ total: 0, ready: 0, allReady: false });
+  });
+
+  it("isole les données par session_id (un trou sur une autre session ne pénalise pas)", () => {
+    const sessionIds = ["s1", "s2"];
+    const data: ProgressData = {
+      invoices: [
+        // Facture sans funding rattachée à s2 uniquement → trou de s2, pas de s1.
+        {
+          id: "inv-s2",
+          amount: 100,
+          funding_type: null,
+          invoice_date_confirmed: true,
+          is_avoir: false,
+          status: "confirmed",
+          invoice_date: "2026-03-01",
+          parent_invoice_id: null,
+          session_id: "s2",
+        },
+      ],
+      enrollments: [],
+      signatures: [],
+      sessions: [
+        { id: "s1", training_id: "t1" },
+        { id: "s2", training_id: "t2" },
+      ],
+      trainings: [
+        { id: "t1", bpf_objective: "autre_pro" },
+        { id: "t2", bpf_objective: "autre_pro" },
+      ],
+      formationTrainers: [
+        { id: "ft1", hourly_rate: 50, agreed_cost_ht: null, session_id: "s1" },
+        { id: "ft2", hourly_rate: 50, agreed_cost_ht: null, session_id: "s2" },
+      ],
+    };
+    // Les deux validées : s1 verte (comptée), s2 a un trou facture (exclue).
+    const result = computeBpfDepositProgress(sessionIds, data, { s1: true, s2: true });
+    expect(result).toEqual({ total: 2, ready: 1, allReady: false });
   });
 });
