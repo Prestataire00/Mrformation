@@ -97,10 +97,11 @@ export function TabBpf({ formation, onRefresh }: TabBpfProps) {
   >([]);
   const [sessions, setSessions] = useState<BPFSession[]>([]);
 
-  // Audit de validation (source = colonnes sessions, rafraîchies au fetch).
-  const [validatedAt, setValidatedAt] = useState<string | null>(
-    formation.bpf_validated_at ?? null
-  );
+  // Audit de validation lu depuis la prop `formation` (chargée en select("*"),
+  // tolérante aux colonnes absentes) — jamais re-SELECT explicite qui ferait
+  // planter l'onglet si la migration/cache de schéma n'est pas encore en place.
+  // Rafraîchi via onRefresh (qui recharge la formation parente) après validation.
+  const validatedAt = formation.bpf_validated_at ?? null;
   const [validatorName, setValidatorName] = useState<string | null>(null);
 
   const [userId, setUserId] = useState<string | null>(null);
@@ -140,17 +141,6 @@ export function TabBpf({ formation, onRefresh }: TabBpfProps) {
       setTrainings(raw.trainings);
       setFormationTrainers(raw.formationTrainers);
       setSessions(raw.sessions);
-
-      // Audit : lit l'état frais de la session (source = colonnes sessions).
-      const rawValidatedAt = sessionRow?.bpf_validated_at ?? null;
-      const rawValidatedBy = sessionRow?.bpf_validated_by ?? null;
-      setValidatedAt(rawValidatedAt);
-
-      // Nom du validateur (best effort — sinon on affiche la date seule).
-      const validatorId = rawValidatedBy;
-      setValidatorName(
-        validatorId ? await fetchValidatorName(supabase, validatorId) : null
-      );
     } catch (err) {
       console.error("[TabBpf] Erreur chargement BPF session:", err);
       setLoadError(true);
@@ -167,6 +157,23 @@ export function TabBpf({ formation, onRefresh }: TabBpfProps) {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Nom du validateur (best effort), découplé du fetch BPF : dérivé de la prop
+  // `formation` → ne peut pas casser le chargement de l'onglet.
+  useEffect(() => {
+    const validatorId = formation.bpf_validated_by ?? null;
+    if (!validatorId) {
+      setValidatorName(null);
+      return;
+    }
+    let active = true;
+    fetchValidatorName(supabase, validatorId).then((name) => {
+      if (active) setValidatorName(name);
+    });
+    return () => {
+      active = false;
+    };
+  }, [formation.bpf_validated_by, supabase]);
 
   // Rafraîchit à la fois la formation parente et les données de l'onglet.
   const refetch = useCallback(async () => {

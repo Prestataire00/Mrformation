@@ -303,10 +303,15 @@ export async function fetchBPFDataForSession(
   year: number
 ): Promise<BPFRawData> {
   // 1. La session (bornée entity_id → isolation stricte).
+  // NB : on ne SELECT PAS bpf_validated_at/by ici. L'état de validation est lu
+  // côté composant depuis la prop `formation` (chargée en select("*"), tolérante
+  // aux colonnes absentes). Un SELECT explicite de ces colonnes ferait échouer
+  // TOUT le fetch si la migration / le cache de schéma PostgREST n'est pas encore
+  // en place — cassant l'onglet entier au lieu de juste masquer la ligne d'audit.
   const { data: session, error: sessionErr } = await supabase
     .from("sessions")
     .select(
-      "id, title, training_id, start_date, end_date, computed_hours, is_subcontracted_to_other_of, entity_id, bpf_validated_at, bpf_validated_by"
+      "id, title, training_id, start_date, end_date, computed_hours, is_subcontracted_to_other_of, entity_id"
     )
     .eq("id", sessionId)
     .eq("entity_id", entityId)
