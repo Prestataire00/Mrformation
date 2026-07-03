@@ -289,7 +289,7 @@ export default function AdminDashboardPage() {
     // CA depuis les factures (source fiable ; remplace l'ancien parsing des notes CRM).
     let invoicesQ = supabase
       .from("formation_invoices")
-      .select("amount, status, paid_at, created_at");
+      .select("amount, status, paid_at, created_at, is_avoir");
     if (entityId) invoicesQ = invoicesQ.eq("entity_id", entityId);
     const { data: invoices } = await invoicesQ;
     const { realise, previsionnel } = computeRevenueFromInvoices(invoices ?? [], year);
