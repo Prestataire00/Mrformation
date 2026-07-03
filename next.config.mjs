@@ -13,6 +13,9 @@ const nextConfig = {
     ],
   },
   experimental: {
+    // Active `src/instrumentation.ts` (Next 14 : encore derrière ce flag) —
+    // démarre le scheduler cron in-process sur Railway.
+    instrumentationHook: true,
     serverComponentsExternalPackages: ["pdf-parse", "officeparser", "pptxgenjs"],
     optimizePackageImports: [
       "lucide-react",
