@@ -52,7 +52,7 @@ export interface BPFTraining {
 
 export interface BPFTrainerNested {
   id: string;
-  is_external: boolean;
+  type: string | null;
   hourly_rate: number | null;
   first_name: string | null;
   last_name: string | null;
@@ -181,7 +181,7 @@ export async function fetchBPFData(
   const { data: formationTrainers, error: ftErr } = await supabase
     .from("formation_trainers")
     .select(
-      "id, session_id, trainer_id, hourly_rate, agreed_cost_ht, trainers(id, is_external, hourly_rate, first_name, last_name)"
+      "id, session_id, trainer_id, hourly_rate, agreed_cost_ht, trainers(id, type, hourly_rate, first_name, last_name)"
     )
     .in("session_id", safeSessionIds);
 
@@ -394,7 +394,7 @@ export async function fetchBPFDataForSession(
   const { data: formationTrainers, error: ftErr } = await supabase
     .from("formation_trainers")
     .select(
-      "id, session_id, trainer_id, hourly_rate, agreed_cost_ht, trainers(id, is_external, hourly_rate, first_name, last_name)"
+      "id, session_id, trainer_id, hourly_rate, agreed_cost_ht, trainers(id, type, hourly_rate, first_name, last_name)"
     )
     .eq("session_id", sessionId);
 
