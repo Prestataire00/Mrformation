@@ -97,6 +97,7 @@ export default function TrainersPage() {
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebounce(search, 300);
   const [typeFilter, setTypeFilter] = useState<"all" | "internal" | "external">("all");
+  const [statusFilter, setStatusFilter] = useState<"active" | "inactive" | "all">("active");
   const [competencyFilter, setCompetencyFilter] = useState("");
   const [levelFilter, setLevelFilter] = useState<string>("all");
 
@@ -170,13 +171,17 @@ export default function TrainersPage() {
       t.email?.toLowerCase().includes(searchLower) ||
       t.competencies.some((c) => c.competency.toLowerCase().includes(searchLower));
     const matchType = typeFilter === "all" || t.type === typeFilter;
+    const trainerStatus = (t as unknown as { status?: string | null }).status;
+    const matchStatus = statusFilter === "all"
+      || (statusFilter === "active" && trainerStatus !== "inactive")
+      || (statusFilter === "inactive" && trainerStatus === "inactive");
     const matchCompetency =
       competencyFilter === "" ||
       t.competencies.some((c) => c.competency.toLowerCase().includes(competencyFilter.toLowerCase()));
     const matchLevel =
       levelFilter === "all" ||
       t.competencies.some((c) => c.level === levelFilter);
-    return matchSearch && matchType && matchCompetency && matchLevel;
+    return matchSearch && matchType && matchStatus && matchCompetency && matchLevel;
   });
 
   const allCompetencies = [...new Set(trainers.flatMap((t) => t.competencies.map((c) => c.competency)))].sort();
@@ -407,6 +412,14 @@ export default function TrainersPage() {
             <SelectItem value="all">Tous types</SelectItem>
             <SelectItem value="internal">Interne</SelectItem>
             <SelectItem value="external">Externe</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}>
+          <SelectTrigger className="w-36 h-9"><SelectValue placeholder="Statut" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="active">Actifs</SelectItem>
+            <SelectItem value="inactive">Inactifs</SelectItem>
+            <SelectItem value="all">Tous</SelectItem>
           </SelectContent>
         </Select>
         <Select value={competencyFilter || "all"} onValueChange={(v) => setCompetencyFilter(v === "all" ? "" : v)}>
