@@ -75,9 +75,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "sessionId est obligatoire" }, { status: 400 });
     }
 
+    // program:programs(*) requis pour la balise objectifs : le fallback
+    // liste_objectifs_pedagogiques lit program.objectives (priorité 2). Sans
+    // ce join, la balise tombe vide en masse alors qu'elle marche via
+    // generate-from-template (qui joint program). Cf. bug objectifs batch.
     const { data: session } = await supabase
       .from("sessions")
-      .select("*, training:trainings(*)")
+      .select("*, training:trainings(*), program:programs(*)")
       .eq("id", body.sessionId)
       .eq("entity_id", profile.entity_id)
       .single();

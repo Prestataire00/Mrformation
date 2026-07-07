@@ -58,10 +58,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Session (gate entity_id) + training (objectifs)
+    // Session (gate entity_id) + training + program. `program:programs(*)` est
+    // requis pour la balise objectifs (fallback liste_objectifs_pedagogiques →
+    // program.objectives, priorité 2), sinon la balise tombe vide.
     const { data: session } = await supabase
       .from("sessions")
-      .select("*, training:trainings(*)")
+      .select("*, training:trainings(*), program:programs(*)")
       .eq("id", body.sessionId)
       .eq("entity_id", profile.entity_id)
       .single();
