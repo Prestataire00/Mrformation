@@ -41,17 +41,19 @@ describe("getInvoiceRowActions", () => {
     });
   });
 
-  it("avoir : pdf + email uniquement, quel que soit le statut", () => {
-    expect(getInvoiceRowActions({ status: "sent", is_avoir: true })).toEqual({
-      primary: "pdf",
-      menu: ["email"],
-    });
+  it("avoir émis (sent/late/paid/cancelled) : pdf + email, pas d'édition", () => {
+    for (const status of ["sent", "late", "paid", "cancelled"]) {
+      expect(getInvoiceRowActions({ status, is_avoir: true })).toEqual({
+        primary: "pdf",
+        menu: ["email"],
+      });
+    }
   });
 
-  it("avoir + pending : la garde is_avoir précède le statut (pas de edit)", () => {
+  it("avoir + pending : édition du montant proposée (edit + email)", () => {
     expect(getInvoiceRowActions({ status: "pending", is_avoir: true })).toEqual({
       primary: "pdf",
-      menu: ["email"],
+      menu: ["edit", "email"],
     });
   });
 

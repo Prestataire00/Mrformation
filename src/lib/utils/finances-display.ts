@@ -64,7 +64,12 @@ export function getInvoiceRowActions(
   invoice: Pick<Invoice, "status" | "is_avoir">,
 ): InvoiceRowActions {
   if (invoice.is_avoir) {
-    return { primary: "pdf", menu: ["email"] };
+    // Un avoir encore `pending` peut voir son montant corrigé (règle H7 :
+    // seul le contenu d'un document non émis reste modifiable). Une fois
+    // émis (sent/paid/late/cancelled), plus d'édition — seulement pdf/email.
+    return invoice.status === "pending"
+      ? { primary: "pdf", menu: ["edit", "email"] }
+      : { primary: "pdf", menu: ["email"] };
   }
   switch (invoice.status) {
     case "pending":

@@ -80,8 +80,11 @@ export function TabFinances({ formation, onRefresh }: Props) {
   const [savingInvoice, setSavingInvoice] = useState(false);
   const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
   const [cancelTarget, setCancelTarget] = useState<Invoice | null>(null);
-  // Dialog avoir dédié : facture parent ciblée + montant saisi (éditable).
+  // Dialog avoir dédié. En création : avoirTarget = facture parent. En édition :
+  // avoirTarget = l'avoir lui-même et avoirEditingId = son id (montant corrigé
+  // via PATCH au lieu d'un nouvel avoir). Cf. spec édition-montant-avoir.
   const [avoirTarget, setAvoirTarget] = useState<Invoice | null>(null);
+  const [avoirEditingId, setAvoirEditingId] = useState<string | null>(null);
   const [avoirAmountInput, setAvoirAmountInput] = useState("");
   const [invoiceEmailPreview, setInvoiceEmailPreview] = useState<{
     inv: Invoice;
@@ -589,6 +592,45 @@ export function TabFinances({ formation, onRefresh }: Props) {
     }
   };
 
+  // ── Edit existing avoir (montant uniquement) ──
+
+  // Ouvre le dialog avoir en mode édition : avoirTarget = l'avoir, pré-rempli
+  // avec son montant courant (valeur absolue). Le plafond de validation est
+  // dérivé de la facture parent (cf. dialog), pas de l'avoir lui-même.
+  const handleEditAvoir = (avoir: Invoice) => {
+    setAvoirEditingId(avoir.id);
+    setAvoirTarget(avoir);
+    setAvoirAmountInput(String(Math.abs(avoir.amount)));
+  };
+
+  // Retourne true si la mise à jour a réussi, pour que l'appelant ne ferme le
+  // dialog qu'en cas de succès (sinon la saisie serait perdue sur erreur/409).
+  const handleUpdateAvoir = async (avoirId: string, validatedAmount: number): Promise<boolean> => {
+    setSavingInvoice(true);
+    try {
+      const res = await fetch(`/api/formations/${formation.id}/invoices`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        // Avoir toujours stocké en négatif. La route applique la garde H7
+        // (contenu modifiable seulement si statut `pending`).
+        body: JSON.stringify({ invoice_id: avoirId, amount: -Math.abs(validatedAmount) }),
+      });
+      if (res.ok) {
+        toast({ title: "Montant de l'avoir mis à jour" });
+        fetchData();
+        return true;
+      }
+      const data = await res.json();
+      toast({ title: "Erreur", description: data.error, variant: "destructive" });
+      return false;
+    } catch {
+      toast({ title: "Erreur réseau", variant: "destructive" });
+      return false;
+    } finally {
+      setSavingInvoice(false);
+    }
+  };
+
   // ── Update status ──
 
   const handleUpdateStatus = async (invoiceId: string, status: string) => {
@@ -841,9 +883,20 @@ export function TabFinances({ formation, onRefresh }: Props) {
     );
   }
 
+  // Plafond du montant de l'avoir. En création, avoirTarget EST la facture
+  // parent → plafond = |avoirTarget.amount|. En édition, avoirTarget est l'avoir
+  // → on prend le montant de sa facture parent (sinon on plafonnerait à la
+  // valeur erronée). Parent introuvable (avoir importé sans parent) → pas de
+  // plafond (Infinity) : parseAvoirAmount n'impose alors que « > 0 ».
+  const avoirParent = avoirEditingId
+    ? invoices.find((i) => i.id === avoirTarget?.parent_invoice_id)
+    : avoirTarget;
+  const avoirMax = avoirEditingId
+    ? (avoirParent ? Math.abs(avoirParent.amount) : Number.POSITIVE_INFINITY)
+    : (avoirTarget ? Math.abs(avoirTarget.amount) : 0);
   // Validation live du montant de l'avoir (dialog dédié).
   const avoirParse = avoirTarget
-    ? parseAvoirAmount(avoirAmountInput, avoirTarget.amount)
+    ? parseAvoirAmount(avoirAmountInput, avoirMax)
     : null;
 
   return (
@@ -908,8 +961,8 @@ export function TabFinances({ formation, onRefresh }: Props) {
               onDownloadPdf={handleDownloadPdf}
               onSendEmail={handleSendInvoiceEmail}
               onMarkPaid={(inv) => handleUpdateStatus(inv.id, "paid")}
-              onEdit={handleEditInvoice}
-              onCreateAvoir={(inv) => { setAvoirTarget(inv); setAvoirAmountInput(String(Math.abs(inv.amount))); }}
+              onEdit={(inv) => inv.is_avoir ? handleEditAvoir(inv) : handleEditInvoice(inv)}
+              onCreateAvoir={(inv) => { setAvoirEditingId(null); setAvoirTarget(inv); setAvoirAmountInput(String(Math.abs(inv.amount))); }}
               onCancel={(inv) => setCancelTarget(inv)}
             />
           ))}
@@ -955,14 +1008,16 @@ export function TabFinances({ formation, onRefresh }: Props) {
         </DialogContent>
       </Dialog>
 
-      {/* Dialog -- Créer un avoir (montant éditable, partiel possible) */}
-      <Dialog open={avoirTarget !== null} onOpenChange={(open) => { if (!open) setAvoirTarget(null); }}>
+      {/* Dialog -- Avoir : création (montant partiel) ou édition du montant. */}
+      <Dialog open={avoirTarget !== null} onOpenChange={(open) => { if (!open) { setAvoirTarget(null); setAvoirEditingId(null); } }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Créer un avoir</DialogTitle>
+            <DialogTitle>{avoirEditingId ? "Modifier le montant de l'avoir" : "Créer un avoir"}</DialogTitle>
             <DialogDescription>
               {avoirTarget
-                ? `Avoir sur la facture ${invoiceDisplayRef(avoirTarget)}. Le montant est stocké en négatif.`
+                ? avoirEditingId
+                  ? `Correction du montant de l'avoir ${invoiceDisplayRef(avoirTarget)}. Le montant est stocké en négatif.`
+                  : `Avoir sur la facture ${invoiceDisplayRef(avoirTarget)}. Le montant est stocké en négatif.`
                 : ""}
             </DialogDescription>
           </DialogHeader>
@@ -970,12 +1025,16 @@ export function TabFinances({ formation, onRefresh }: Props) {
             <div className="space-y-4 py-2">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <Label className="text-muted-foreground">Facture parent</Label>
+                  <Label className="text-muted-foreground">{avoirEditingId ? "Avoir" : "Facture parent"}</Label>
                   <p className="text-sm font-medium">{invoiceDisplayRef(avoirTarget)}</p>
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-muted-foreground">Montant de la facture</Label>
-                  <p className="text-sm font-medium">{formatCurrency(Math.abs(avoirTarget.amount))}</p>
+                  <Label className="text-muted-foreground">{avoirEditingId ? "Facture parent" : "Montant de la facture"}</Label>
+                  <p className="text-sm font-medium">
+                    {avoirEditingId
+                      ? (avoirParent ? `${invoiceDisplayRef(avoirParent)} — ${formatCurrency(Math.abs(avoirParent.amount))}` : "—")
+                      : formatCurrency(Math.abs(avoirTarget.amount))}
+                  </p>
                 </div>
               </div>
               <div className="space-y-1.5">
@@ -995,21 +1054,31 @@ export function TabFinances({ formation, onRefresh }: Props) {
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setAvoirTarget(null)}>
+            <Button variant="outline" onClick={() => { setAvoirTarget(null); setAvoirEditingId(null); }}>
               Annuler
             </Button>
             <Button
               disabled={!avoirParse || !avoirParse.ok || savingInvoice}
               onClick={async () => {
                 if (!avoirTarget || !avoirParse || !avoirParse.ok) return;
-                const parent = avoirTarget;
                 const validatedAmount = avoirParse.amount;
-                setAvoirTarget(null);
-                await handleCreateInvoice(true, parent, validatedAmount);
+                if (avoirEditingId) {
+                  // Ne ferme le dialog qu'au succès : sur 409 (avoir devenu non
+                  // émis modifiable) ou erreur réseau, la saisie reste visible.
+                  const ok = await handleUpdateAvoir(avoirEditingId, validatedAmount);
+                  if (ok) {
+                    setAvoirTarget(null);
+                    setAvoirEditingId(null);
+                  }
+                } else {
+                  const parent = avoirTarget;
+                  setAvoirTarget(null);
+                  await handleCreateInvoice(true, parent, validatedAmount);
+                }
               }}
             >
               {savingInvoice && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Créer l&apos;avoir
+              {avoirEditingId ? "Enregistrer" : "Créer l'avoir"}
             </Button>
           </DialogFooter>
         </DialogContent>
