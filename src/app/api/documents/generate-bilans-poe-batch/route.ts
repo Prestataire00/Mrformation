@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { data: session } = await supabase
-      .from("sessions").select("*, training:trainings(*)")
+      .from("sessions").select("*, training:trainings(*), program:programs(*)")
       .eq("id", body.sessionId).eq("entity_id", profile.entity_id).single();
     if (!session) {
       return NextResponse.json({ error: "Session introuvable" }, { status: 404 });

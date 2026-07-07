@@ -28,6 +28,7 @@ import {
   createDefaultEngine,
 } from "@/lib/services/document-generation";
 import { ensureLearnerAccount } from "@/lib/services/learner-account";
+import { generateLoginQrDataUrl } from "@/lib/services/login-qr-code";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import type { Session, Learner } from "@/lib/types";
 
@@ -116,11 +117,18 @@ export async function POST(request: NextRequest) {
       console.warn("[generate-convocation] ensureLearnerAccount failed:", err);
     }
 
+    // QR de connexion (comme le batch) : le template convocation affiche un QR
+    // + le texte « Scannez le QR code ». Sans loginQrCodeDataUrl, la balise
+    // {{qr_code_connexion}} rendait vide et le texte restait orphelin.
+    const loginQrCodeDataUrl =
+      (await generateLoginQrDataUrl(entity?.slug ?? undefined)) ?? undefined;
+
     const context: ResolveContext = {
       session: session as unknown as Session,
       learner,
       entity,
       learnerCredentials: learnerCredentials ?? undefined,
+      loginQrCodeDataUrl,
     };
     const resolvedHtml = resolveDocumentVariables(CONVOCATION_APPRENANT_HTML, context);
     const resolvedFooter = resolveDocumentVariables(CONVOCATION_APPRENANT_FOOTER_TEMPLATE, context);

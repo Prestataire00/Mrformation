@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
     const { data: session } = await supabase
       .from("sessions")
       .select(
-        "*, training:trainings(*), formation_trainers:formation_trainers(trainer:trainers(*))",
+        "*, training:trainings(*), program:programs(*), formation_trainers:formation_trainers(trainer:trainers(*))",
       )
       .eq("id", body.sessionId)
       .eq("entity_id", profile.entity_id)
