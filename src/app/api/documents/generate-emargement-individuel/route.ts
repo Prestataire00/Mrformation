@@ -97,6 +97,10 @@ export async function POST(request: NextRequest) {
       entity,
       signedLearnerIds: sigData.signedLearnerIds,
       signaturesById: sigData.signaturesById,
+      // Requis : le builder tableau_signature_individuel passe en mode
+      // slot-aware dès qu'il y a des formation_time_slots (joints ci-dessus) et
+      // lit signaturesBySlotPerson. Sans ce champ, aucune signature ne s'affiche.
+      signaturesBySlotPerson: sigData.signaturesBySlotPerson,
     };
     const resolvedHtml = resolveDocumentVariables(EMARGEMENT_INDIVIDUEL_HTML, context);
     const resolvedFooter = resolveDocumentVariables(EMARGEMENT_INDIVIDUEL_FOOTER_TEMPLATE, context);
