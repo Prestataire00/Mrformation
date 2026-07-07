@@ -96,7 +96,11 @@ export async function POST(request: NextRequest) {
     const tpl = await createDocxTemplateRecord(auth.supabase, {
       entityId: auth.profile.entity_id,
       name: parsed.data.label,
-      docType: "custom_secondary", // type indicatif ; le lien réel est template_id.
+      // `document_templates.type` est contraint (CHECK type_check) à
+      // agreement|certificate|attendance|invoice|other. La valeur est ici
+      // purement indicative — le lien réel est `template_id` — donc on prend
+      // 'other' (valeur autorisée) pour ne pas violer la contrainte.
+      docType: "other",
       file,
       fileName,
       uploadedBy: auth.user.id,
