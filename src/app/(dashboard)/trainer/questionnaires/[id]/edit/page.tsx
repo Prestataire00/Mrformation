@@ -25,7 +25,7 @@ export default function EditTrainerQuestionnairePage() {
         .maybeSingle();
       const { data: questions } = await supabase
         .from("questions")
-        .select("text, type, options, is_required, order_index")
+        .select("text, type, options, is_required, order_index, correct_answer")
         .eq("questionnaire_id", id)
         .order("order_index", { ascending: true });
       if (q) {
@@ -33,11 +33,12 @@ export default function EditTrainerQuestionnairePage() {
           title: q.title ?? "",
           description: q.description ?? "",
           type: q.type ?? "evaluation",
-          questions: ((questions as Array<{ text: string; type: string; options: string[] | null; is_required: boolean }> | null) ?? []).map((qq) => ({
+          questions: ((questions as Array<{ text: string; type: string; options: string[] | null; is_required: boolean; correct_answer: string | null }> | null) ?? []).map((qq) => ({
             text: qq.text,
             type: (["rating", "text", "multiple_choice", "yes_no"].includes(qq.type) ? qq.type : "text") as BuilderQuestionType,
             options: qq.options ?? [],
             is_required: qq.is_required,
+            correct_answer: qq.correct_answer ?? null,
           } as BuilderQuestion)),
         });
       }
