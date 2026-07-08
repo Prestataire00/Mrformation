@@ -137,20 +137,15 @@ export default function LearnerQuestionnairesPage() {
       return;
     }
 
-    // Fetch session details (end_date + status requis pour temporiser les
-    // questionnaires « fin de formation »).
+    // Fetch session details
     const { data: sessionsData } = await supabase
       .from("sessions")
-      .select("id, title, start_date, end_date, status")
+      .select("id, title, start_date")
       .in("id", sessionIds);
 
     const sessionsMap = new Map(
       (sessionsData || []).map((s) => [s.id, s])
     );
-
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const isSessionEnded = (s: { status?: string | null; end_date?: string | null }) =>
-      s.status === "completed" || (!!s.end_date && String(s.end_date).slice(0, 10) <= todayStr);
 
     // Check which questionnaires the learner already answered
     const { data: existingResponses } = await supabase
@@ -173,10 +168,10 @@ export default function LearnerQuestionnairesPage() {
       if (!session) continue;
 
       // Gate applicatif : exclut le bilan formateur / questionnaires entreprise
-      // et masque les questionnaires « fin de formation » avant la fin de session.
+      // (destinés au formateur/entreprise). Les questionnaires apprenant sont
+      // tous visibles d'emblée (pas de temporisation).
       if (!isLearnerQuestionnaireVisible(
         (questionnaire as { quality_indicator_type?: string | null }).quality_indicator_type,
-        isSessionEnded(session),
       )) continue;
 
       result.push({
