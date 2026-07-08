@@ -172,7 +172,16 @@ export function TrainerQuestionnaireBuilder({
               <div className="pl-6">
                 <Input
                   value={q.options.join(", ")}
-                  onChange={(e) => updateQuestion(i, { options: e.target.value.split(",").map((o) => o.trim()) })}
+                  onChange={(e) => {
+                    const newOptions = e.target.value.split(",").map((o) => o.trim());
+                    // Réconcilie la bonne réponse : si l'option marquée correcte
+                    // n'existe plus (renommée/supprimée), on la remet à null pour
+                    // éviter une bonne réponse fantôme jamais matchable.
+                    const stale =
+                      q.correct_answer != null &&
+                      !newOptions.some((o) => o && o === q.correct_answer);
+                    updateQuestion(i, { options: newOptions, ...(stale ? { correct_answer: null } : {}) });
+                  }}
                   placeholder="Options séparées par des virgules"
                   className="h-8 text-xs"
                 />
