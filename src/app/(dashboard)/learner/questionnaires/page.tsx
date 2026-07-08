@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { pickLearnerRecord } from "@/lib/learner/pick-learner-record";
+import { isLearnerQuestionnaireVisible } from "@/lib/learner/questionnaire-visibility";
 import { useEntity } from "@/contexts/EntityContext";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -116,10 +117,11 @@ export default function LearnerQuestionnairesPage() {
 
     const questionnaireIds = [...new Set(qSessions.map((qs) => qs.questionnaire_id))];
 
-    // Fetch active questionnaires filtered by entity
+    // Fetch active questionnaires filtered by entity (quality_indicator_type
+    // requis pour le gate de visibilité apprenant).
     let qQuery = supabase
       .from("questionnaires")
-      .select("id, title, description, type")
+      .select("id, title, description, type, quality_indicator_type")
       .eq("is_active", true)
       .in("id", questionnaireIds);
 
@@ -135,15 +137,20 @@ export default function LearnerQuestionnairesPage() {
       return;
     }
 
-    // Fetch session details
+    // Fetch session details (end_date + status requis pour temporiser les
+    // questionnaires « fin de formation »).
     const { data: sessionsData } = await supabase
       .from("sessions")
-      .select("id, title, start_date")
+      .select("id, title, start_date, end_date, status")
       .in("id", sessionIds);
 
     const sessionsMap = new Map(
       (sessionsData || []).map((s) => [s.id, s])
     );
+
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const isSessionEnded = (s: { status?: string | null; end_date?: string | null }) =>
+      s.status === "completed" || (!!s.end_date && String(s.end_date).slice(0, 10) <= todayStr);
 
     // Check which questionnaires the learner already answered
     const { data: existingResponses } = await supabase
@@ -164,6 +171,13 @@ export default function LearnerQuestionnairesPage() {
 
       const session = sessionsMap.get(qs.session_id);
       if (!session) continue;
+
+      // Gate applicatif : exclut le bilan formateur / questionnaires entreprise
+      // et masque les questionnaires « fin de formation » avant la fin de session.
+      if (!isLearnerQuestionnaireVisible(
+        (questionnaire as { quality_indicator_type?: string | null }).quality_indicator_type,
+        isSessionEnded(session),
+      )) continue;
 
       result.push({
         id: questionnaire.id,
