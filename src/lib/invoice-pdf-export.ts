@@ -210,8 +210,15 @@ function renderFormationDetails(doc: jsPDF, data: InvoicePdfData, y: number): nu
     doc.text(`${label}: `, MARGIN, y);
     const labelWidth = doc.getTextWidth(`${label}: `);
     doc.setFont("helvetica", "bold");
-    doc.text(value, MARGIN + labelWidth, y);
-    y += 4.5;
+    // Wrap la valeur sur la largeur disponible (sinon une longue liste
+    // d'apprenants/formateurs déborde et se fait couper à droite de la page).
+    // Les lignes suivantes s'alignent sous la valeur (indent = labelWidth).
+    const valueWidth = PAGE_W - MARGIN * 2 - labelWidth;
+    const valueLines = doc.splitTextToSize(value, valueWidth) as string[];
+    valueLines.forEach((line, i) => {
+      doc.text(line, MARGIN + labelWidth, y + i * 4);
+    });
+    y += 4.5 + (valueLines.length - 1) * 4;
   };
 
   printLine("Intitulé de la formation", data.sessionTitle);
