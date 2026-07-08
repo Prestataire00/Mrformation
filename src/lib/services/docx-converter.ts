@@ -21,6 +21,7 @@
 import Docxtemplater from "docxtemplater";
 import PizZip from "pizzip";
 import { generatePdfFromDocx, type PdfGenerationResult } from "@/lib/services/pdf-generator";
+import { ALIAS_TO_VARIABLE_KEY } from "@/lib/utils/resolve-variables";
 
 /**
  * Variables à substituer dans le .docx. Les clés correspondent aux placeholders
@@ -59,23 +60,67 @@ export async function convertDocxToPdfWithVariables(
 }
 
 /**
- * Applique les variables à un .docx via docxtemplater (remplacement {{key}}).
- * Throws si les placeholders sont invalides ou si le document est corrompu.
+ * Normalise un libellé Sellsy pour le lookup dans `ALIAS_TO_VARIABLE_KEY`.
+ *
+ * Word « embellit » automatiquement le texte tapé par l'utilisateur :
+ *   - l'apostrophe droite `'` devient l'apostrophe typographique `’` (U+2019) ;
+ *   - des espaces insécables (U+00A0) se glissent avant `%`, `:` ou dans les
+ *     libellés.
+ * Sans normalisation, `[%Nom de l’apprenant%]` (courbe) ne matcherait jamais la
+ * clé `"Nom de l'apprenant"` (droite) du map → balise laissée en clair. On
+ * ramène donc les deux côtés (libellé tapé + clés du map) à une forme canonique.
+ */
+function normalizeLabel(raw: string): string {
+  return String(raw)
+    .replace(/[‘’‛′]/g, "'") // apostrophes courbes/prime → droite
+    .replace(/ /g, " ") // espace insécable → espace normal
+    .replace(/\s+/g, " ") // espaces multiples → un seul
+    .trim();
+}
+
+/**
+ * Construit le map `libellé normalisé → valeur` à partir des variables passées
+ * (indexées par clé technique) et de `ALIAS_TO_VARIABLE_KEY`.
+ *
+ * On n'inclut QUE les libellés dont la clé technique a une valeur fournie : les
+ * autres tomberont dans le `nullGetter` et resteront affichés `[%…%]` (parité
+ * avec le résolveur HTML, utile pour repérer une balise mal orthographiée).
+ */
+function buildLabelMap(cleanVars: Record<string, string>): Record<string, string> {
+  const labelMap: Record<string, string> = {};
+  for (const [label, braced] of Object.entries(ALIAS_TO_VARIABLE_KEY)) {
+    const techKey = braced.replace(/^\{\{|\}\}$/g, "");
+    if (Object.prototype.hasOwnProperty.call(cleanVars, techKey)) {
+      labelMap[normalizeLabel(label)] = cleanVars[techKey];
+    }
+  }
+  return labelMap;
+}
+
+/**
+ * Applique les variables à un .docx via docxtemplater.
+ *
+ * Supporte DEUX formats de balises, sur deux passes successives :
+ *   1. `{{cle_technique}}` — convention Mustache historique (templates déjà
+ *      migrés, power users).
+ *   2. `[%Libellé en français%]` — convention Sellsy/Loris affichée dans l'UI
+ *      (`documents/how-to`, `documents/variables`). C'est ce que l'utilisateur
+ *      tape dans son Word importé. Converti à la volée via le map d'alias.
+ *
+ * Chaque passe s'appuie sur le moteur de délimiteurs de docxtemplater, qui
+ * recoud les runs XML AVANT de chercher les balises : une balise éclatée par
+ * Word en plusieurs runs (styles, correction orthographique…) est donc bien
+ * détectée — ce qu'un simple regex sur le XML brut raterait.
+ *
+ * Throws si le document est corrompu sur la passe `{{…}}`. Une erreur sur la
+ * passe `[%…%]` (ex. délimiteur orphelin dans le doc) est capturée et le
+ * résultat de la 1ʳᵉ passe est renvoyé (non-régression : au pire les `[%…%]`
+ * restent non résolus, comme avant ce correctif).
  */
 export function applyVariablesToDocx(
   docxBuffer: Buffer,
   variables: DocxVariables
 ): Buffer {
-  const zip = new PizZip(docxBuffer);
-  const doc = new Docxtemplater(zip, {
-    paragraphLoop: true,
-    linebreaks: true,
-    // Délimiteurs par défaut : {variable}. On force {{variable}} pour
-    // matcher la convention Mustache et éviter les conflits avec les
-    // accolades naturelles dans les documents.
-    delimiters: { start: "{{", end: "}}" },
-  });
-
   // Convertit les valeurs nullish/undefined en chaîne vide pour éviter
   // d'afficher "undefined" dans le PDF.
   const cleanVars: Record<string, string> = {};
@@ -83,12 +128,45 @@ export function applyVariablesToDocx(
     cleanVars[key] = value == null ? "" : String(value);
   }
 
-  doc.render(cleanVars);
-
-  return doc.getZip().generate({
-    type: "nodebuffer",
-    compression: "DEFLATE",
+  // ── Passe 1 : format {{cle_technique}} ──
+  const docTech = new Docxtemplater(new PizZip(docxBuffer), {
+    paragraphLoop: true,
+    linebreaks: true,
+    // Délimiteurs par défaut : {variable}. On force {{variable}} pour
+    // matcher la convention Mustache et éviter les conflits avec les
+    // accolades naturelles dans les documents.
+    delimiters: { start: "{{", end: "}}" },
   });
+  docTech.render(cleanVars);
+  const afterTech = docTech.getZip().generate({ type: "nodebuffer", compression: "DEFLATE" });
+
+  // ── Passe 2 : format [%Libellé en français%] (alias Sellsy) ──
+  const labelMap = buildLabelMap(cleanVars);
+  try {
+    const docAlias = new Docxtemplater(new PizZip(afterTech), {
+      paragraphLoop: true,
+      linebreaks: true,
+      delimiters: { start: "[%", end: "%]" },
+      // Lookup exact sur le libellé normalisé (les clés contiennent espaces,
+      // apostrophes et accents → on court-circuite le parseur d'expression
+      // par défaut qui buterait dessus).
+      parser: (tag: string) => ({
+        get: (scope: Record<string, string>) => scope[normalizeLabel(tag)],
+      }),
+      // Libellé inconnu (absent du map) → on le réaffiche tel quel pour audit,
+      // au lieu de le vider silencieusement.
+      nullGetter: (part: { value?: string; module?: string }) =>
+        part.module ? "" : `[%${part.value ?? ""}%]`,
+    });
+    docAlias.render(labelMap);
+    return docAlias.getZip().generate({ type: "nodebuffer", compression: "DEFLATE" });
+  } catch (err) {
+    console.warn(
+      "[docx-converter] passe alias [%…%] échouée, fallback sur le résultat {{…}} :",
+      err instanceof Error ? err.message : err
+    );
+    return afterTech;
+  }
 }
 
 /**
