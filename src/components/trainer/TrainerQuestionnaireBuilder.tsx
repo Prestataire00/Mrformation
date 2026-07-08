@@ -19,6 +19,7 @@ export interface BuilderQuestion {
   type: BuilderQuestionType;
   options: string[];
   is_required: boolean;
+  correct_answer?: string | null;
 }
 
 export interface BuilderInitial {
@@ -51,7 +52,10 @@ export function TrainerQuestionnaireBuilder({
   const [saving, setSaving] = useState(false);
 
   const addQuestion = () =>
-    setQuestions((p) => [...p, { text: "", type: "rating", options: [], is_required: true }]);
+    setQuestions((p) => [
+      ...p,
+      { text: "", type: "rating", options: [], is_required: true, correct_answer: null },
+    ]);
   const removeQuestion = (i: number) => setQuestions((p) => p.filter((_, idx) => idx !== i));
   const updateQuestion = (i: number, patch: Partial<BuilderQuestion>) =>
     setQuestions((p) => p.map((q, idx) => (idx === i ? { ...q, ...patch } : q)));
@@ -142,7 +146,12 @@ export function TrainerQuestionnaireBuilder({
               </Button>
             </div>
             <div className="flex items-center gap-3 pl-6">
-              <Select value={q.type} onValueChange={(v) => updateQuestion(i, { type: v as BuilderQuestionType })}>
+              <Select
+                value={q.type}
+                onValueChange={(v) =>
+                  updateQuestion(i, { type: v as BuilderQuestionType, correct_answer: null })
+                }
+              >
                 <SelectTrigger className="w-44 h-8 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {(Object.keys(QUESTION_TYPE_LABELS) as BuilderQuestionType[]).map((t) => (
@@ -167,6 +176,39 @@ export function TrainerQuestionnaireBuilder({
                   placeholder="Options séparées par des virgules"
                   className="h-8 text-xs"
                 />
+              </div>
+            )}
+            {q.type === "multiple_choice" && type !== "satisfaction" && (
+              <div className="pl-6 space-y-1">
+                <label className="text-xs text-muted-foreground">Bonne réponse (optionnel)</label>
+                <Select
+                  value={q.correct_answer ?? "none"}
+                  onValueChange={(v) => updateQuestion(i, { correct_answer: v === "none" ? null : v })}
+                >
+                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Non noté" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Non noté</SelectItem>
+                    {q.options.filter((o) => o.trim()).map((o, oi) => (
+                      <SelectItem key={oi} value={o}>{o}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {q.type === "yes_no" && type !== "satisfaction" && (
+              <div className="pl-6 space-y-1">
+                <label className="text-xs text-muted-foreground">Bonne réponse (optionnel)</label>
+                <Select
+                  value={q.correct_answer ?? "none"}
+                  onValueChange={(v) => updateQuestion(i, { correct_answer: v === "none" ? null : v })}
+                >
+                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Non noté" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Non noté</SelectItem>
+                    <SelectItem value="oui">Oui</SelectItem>
+                    <SelectItem value="non">Non</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             )}
           </div>
