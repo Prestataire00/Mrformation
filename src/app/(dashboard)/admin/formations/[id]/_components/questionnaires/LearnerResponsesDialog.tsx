@@ -20,6 +20,7 @@ interface QuestionRow {
   type: string;
   options: unknown;
   order_index: number;
+  correct_answer?: unknown;
 }
 
 interface ResponseRecord {
@@ -46,7 +47,7 @@ export function LearnerResponsesDialog({ cell, sessionId, onClose }: Props) {
       try {
         const supabase = createClient();
         const [qR, rR] = await Promise.all([
-          supabase.from("questions").select("id, text, type, options, order_index").eq("questionnaire_id", cell.questionnaireId).order("order_index"),
+          supabase.from("questions").select("id, text, type, options, order_index, correct_answer").eq("questionnaire_id", cell.questionnaireId).order("order_index"),
           supabase.from("questionnaire_responses").select("responses, submitted_at, trainer_id, trainer:trainers(first_name, last_name)").eq("id", cell.responseId!).single(),
         ]);
         if (qR.data) setQuestions(qR.data);
@@ -121,22 +122,26 @@ function ResponseRenderer({ question, response }: { question: QuestionRow; respo
     }
 
     case "multiple_choice": {
-      const opts = question.options as { options?: string[]; correct_answer?: number } | null | undefined;
-      const choices = opts?.options ?? [];
-      const correctIdx = typeof opts?.correct_answer === "number" ? opts.correct_answer : null;
+      // Choix : nouveau format = options tableau nu ; legacy = { options: [...] }.
+      const opts = question.options as { options?: string[] } | null | undefined;
+      const choices = Array.isArray(question.options)
+        ? (question.options as string[])
+        : (opts?.options ?? []);
 
       let userLabel: string;
-      let userIdx: number;
       if (typeof response === "number") {
-        userIdx = response;
         userLabel = choices[response] ?? `Option ${response}`;
       } else {
         const respStr = String(response);
-        userIdx = choices.findIndex((o) => normalize(o) === normalize(respStr));
+        const userIdx = choices.findIndex((o) => normalize(o) === normalize(respStr));
         userLabel = userIdx >= 0 ? choices[userIdx] : respStr;
       }
 
-      const correctness = correctIdx !== null ? isCorrect({ id: question.id, type: question.type, options: question.options }, response) : null;
+      // isCorrect gère colonne dédiée (texte) ET legacy (index) ; null si non noté.
+      const correctness = isCorrect(
+        { id: question.id, type: question.type, options: question.options, correct_answer: question.correct_answer },
+        response,
+      );
 
       return (
         <p className="text-sm">
@@ -151,7 +156,18 @@ function ResponseRenderer({ question, response }: { question: QuestionRow; respo
     case "true_false": {
       const normalized = normalize(response);
       const display = normalized === "oui" || normalized === "true" ? "Oui" : "Non";
-      return <p className="text-sm">Réponse : <b>{display}</b></p>;
+      // Correction si une bonne réponse est définie (colonne dédiée).
+      const correctness = isCorrect(
+        { id: question.id, type: question.type, options: question.options, correct_answer: question.correct_answer },
+        response,
+      );
+      return (
+        <p className="text-sm">
+          Réponse : <b>{display}</b>
+          {correctness === true && <span className="text-emerald-600 ml-2"><CheckCircle2 className="h-3.5 w-3.5 inline" /> Correct</span>}
+          {correctness === false && <span className="text-red-600 ml-2"><XCircle className="h-3.5 w-3.5 inline" /> Incorrect</span>}
+        </p>
+      );
     }
 
     case "program_objectives": {

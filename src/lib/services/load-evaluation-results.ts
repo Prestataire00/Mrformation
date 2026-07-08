@@ -70,7 +70,7 @@ export async function loadEvaluationResults(
     const [{ data: questions }, { data: response }] = await Promise.all([
       supabase
         .from("questions")
-        .select("id, type, options")
+        .select("id, type, options, correct_answer")
         .eq("questionnaire_id", questionnaire.id),
       supabase
         .from("questionnaire_responses")

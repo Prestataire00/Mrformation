@@ -44,6 +44,7 @@ interface QuestionRow {
   text: string;
   type: string;
   options: unknown;
+  correct_answer?: unknown;
 }
 
 interface ResponseRow {
@@ -128,7 +129,7 @@ async function loadSatisfactionAggregates(
   const [{ data: questions }, { data: responses }] = await Promise.all([
     supabase
       .from("questions")
-      .select("id, text, type, options, questionnaire_id, order_index")
+      .select("id, text, type, options, questionnaire_id, order_index, correct_answer")
       .in("questionnaire_id", satisfactionQuestionnaireIds)
       .order("order_index", { ascending: true }),
     supabase
@@ -263,7 +264,7 @@ export async function loadQualiopiIndicators(
     const [{ data: evalQuestions }, { data: evalResponses }] = await Promise.all([
       supabase
         .from("questions")
-        .select("id, type, options, questionnaire_id")
+        .select("id, type, options, questionnaire_id, correct_answer")
         .in("questionnaire_id", evalQuestionnaireIds),
       supabase
         .from("questionnaire_responses")
@@ -339,7 +340,7 @@ async function loadEvaluationAggregates(
 
   const tasks = evalQs.map(async (qs) => {
     const [{ data: questions }, { data: responses }] = await Promise.all([
-      supabase.from("questions").select("id, type, options").eq("questionnaire_id", qs.id),
+      supabase.from("questions").select("id, type, options, correct_answer").eq("questionnaire_id", qs.id),
       supabase.from("questionnaire_responses").select("learner_id, responses")
         .eq("questionnaire_id", qs.id).eq("session_id", sessionId),
     ]);
