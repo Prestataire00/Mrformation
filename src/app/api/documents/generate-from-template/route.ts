@@ -13,6 +13,7 @@ import {
 } from "@/lib/services/document-generation";
 import {
   resolveDocumentVariables,
+  getResolvedVariablesMap,
   loadEntitySettings,
   type ResolveContext,
 } from "@/lib/utils/resolve-variables";
@@ -26,7 +27,7 @@ import { loadEvaluationResults } from "@/lib/services/load-evaluation-results";
 import { generateLoginQrDataUrl } from "@/lib/services/login-qr-code";
 import { buildLoginQrCodeDataUrl } from "@/lib/services/credentials-qr";
 import { ensureLearnerAccount } from "@/lib/services/learner-account";
-import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { createClient as createSupabaseClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Session, Learner, Client, Trainer } from "@/lib/types";
 
 function createServiceClient() {
@@ -36,6 +37,93 @@ function createServiceClient() {
   return createSupabaseClient(url, key, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
+}
+
+/**
+ * Version du résolveur de variables du chemin docx_fidelity (Word importé).
+ * Incrémenter à chaque changement de logique de substitution pour invalider les
+ * PDFs en cache générés par l'ancienne logique (sinon un PDF avec balises non
+ * résolues resterait servi depuis le cache). Bump v2 : support format
+ * `[%Libellé%]` + jeu de variables complet côté docx.
+ */
+const DOCX_RESOLVER_VERSION = "docx-alias-v2";
+
+/**
+ * Construit un `ResolveContext` minimal (session + apprenant + client +
+ * formateur + organisme) pour un Word importé en mode `docx_fidelity`.
+ *
+ * Contrairement au chemin des templates système HTML, on n'ajoute PAS les
+ * extras spécifiques à un doc_type (tableaux de signatures, agrégats, QR,
+ * credentials) : ce sont des builders qui produisent du HTML, non injectable
+ * proprement dans un .docx natif. Un Word importé n'utilise que des variables
+ * scalaires (noms, dates, montants, champs organisme).
+ */
+async function buildDocxResolveContext(
+  supabase: SupabaseClient,
+  entityId: string,
+  context: { session_id?: string; learner_id?: string; client_id?: string; trainer_id?: string },
+  sessionData: Record<string, unknown> | null,
+): Promise<ResolveContext> {
+  const learner = context.learner_id
+    ? ((await supabase.from("learners").select("*").eq("id", context.learner_id).single()).data as Learner | null)
+    : null;
+
+  // Résout l'entreprise soit via client_id explicite, soit via l'enrollment de
+  // l'apprenant pour cette session (doc per-apprenant).
+  let resolvedClientId: string | null = context.client_id ?? null;
+  if (!resolvedClientId && context.learner_id && context.session_id) {
+    const { data: enr } = await supabase
+      .from("enrollments")
+      .select("client_id")
+      .eq("session_id", context.session_id)
+      .eq("learner_id", context.learner_id)
+      .maybeSingle();
+    resolvedClientId = (enr?.client_id as string | null) ?? null;
+  }
+  const client = resolvedClientId
+    ? await loadClientWithContacts(supabase, resolvedClientId)
+    : null;
+
+  let trainer: (Trainer & { _agreed_cost_ht?: number | null }) | null = null;
+  if (context.trainer_id) {
+    trainer = (await supabase.from("trainers").select("*").eq("id", context.trainer_id).single())
+      .data as Trainer | null;
+    if (trainer && context.session_id) {
+      const { data: ft } = await supabase
+        .from("formation_trainers")
+        .select(
+          "agreed_cost_ht, hourly_rate, hours_done, daily_rate, dates_done, session:sessions(planned_hours, start_date, end_date)",
+        )
+        .eq("session_id", context.session_id)
+        .eq("trainer_id", context.trainer_id)
+        .maybeSingle();
+      if (ft) {
+        const ftTyped = ft as {
+          agreed_cost_ht: number | null;
+          hourly_rate: number | null;
+          hours_done: number | null;
+          daily_rate: number | null;
+          dates_done: string | null;
+          session: { planned_hours?: number | null; start_date?: string | null; end_date?: string | null } | null;
+        };
+        const costHt = computeAgreedCost(ftTyped, {
+          hours: ftTyped.session?.planned_hours ?? null,
+          days: sessionDayCount(ftTyped.session?.start_date, ftTyped.session?.end_date),
+        });
+        trainer = { ...trainer, _agreed_cost_ht: costHt };
+      }
+    }
+  }
+
+  const entity = await loadEntitySettings(supabase, entityId);
+
+  return {
+    session: (sessionData as unknown as Session) ?? undefined,
+    learner: learner ?? undefined,
+    client: client ?? undefined,
+    trainer: trainer ?? undefined,
+    entity,
+  };
 }
 
 /**
@@ -251,6 +339,11 @@ export async function POST(request: NextRequest) {
           .digest("hex")
       : null;
 
+    // Pour un Word importé (docx_fidelity) : injecte la version du résolveur dans
+    // le hash de cache pour invalider les PDFs générés avant le support [%…%].
+    const docxCacheHash =
+      (template?.mode as string | undefined) === "docx_fidelity" ? DOCX_RESOLVER_VERSION : null;
+
     const cacheKey = computeCacheKey({
       entity_id: auth.profile.entity_id,
       template_id: template?.id ?? null,
@@ -264,7 +357,7 @@ export async function POST(request: NextRequest) {
       learner_updated_at: learnerUpdatedAt,
       client_updated_at: clientUpdatedAt,
       trainer_updated_at: trainerUpdatedAt,
-      html_hash: systemTplHash,
+      html_hash: systemTplHash ?? docxCacheHash,
       custom_variables: payload.custom_variables ?? null,
     });
 
@@ -302,9 +395,21 @@ export async function POST(request: NextRequest) {
             { status: 400 }
           );
         }
+        // Jeu de variables complet : le Word importé peut référencer n'importe
+        // quelle balise du catalogue ([%Nom de l'organisme%], [%Montant HT%],
+        // [%Coût total du formateur (HT)%], etc.), pas seulement les ~8 clés
+        // d'autoVars. On résout donc tout le contexte puis on laisse finalVars
+        // (autoVars + custom_variables) prendre le dessus.
+        const docxCtx = await buildDocxResolveContext(
+          auth.supabase,
+          auth.profile.entity_id,
+          payload.context,
+          sessionDataForFallback,
+        );
+        const docxVars = { ...getResolvedVariablesMap(docxCtx), ...finalVars };
         // Bucket privé (RGPD) : URL signée pour que le converter externe puisse fetch le .docx.
         const fetchableDocxUrl = await toSignedStorageUrl(createServiceClient(), template.source_docx_url);
-        const result = await convertDocxToPdfWithVariables(fetchableDocxUrl, finalVars);
+        const result = await convertDocxToPdfWithVariables(fetchableDocxUrl, docxVars);
         pdfBase64 = result.base64;
         sizeBytes = result.sizeBytes;
       } else {
