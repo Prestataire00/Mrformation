@@ -83,6 +83,28 @@ describe("Attestation assiduité — heures réalisées & taux (logique présenc
     };
     expect(resolve("{{heures_realisees_apprenant}}", ctx)).toBe("10.50");
   });
+
+  it("learnerAttendance présent (émargement partiel) prime sur l'heuristique binaire", () => {
+    const ctx: ResolveContext = {
+      session,
+      learner,
+      // Présent au sens binaire (a signé ≥1 fois) mais assiduité réelle partielle.
+      signedLearnerIds: new Set(["learner-1"]),
+      learnerAttendance: { signedHours: 3, totalHours: 7, ratePct: 42.86 },
+    };
+    expect(resolve("{{heures_realisees_apprenant}}", ctx)).toBe("3.00");
+    expect(resolve("{{taux_realisation}}", ctx)).toBe("42.86");
+  });
+
+  it("learnerAttendance intégral → heures = total, taux = 100", () => {
+    const ctx: ResolveContext = {
+      session,
+      learner,
+      learnerAttendance: { signedHours: 7, totalHours: 7, ratePct: 100 },
+    };
+    expect(resolve("{{heures_realisees_apprenant}}", ctx)).toBe("7.00");
+    expect(resolve("{{taux_realisation}}", ctx)).toBe("100.00");
+  });
 });
 
 describe("Attestation AIPR — résultat examen & ville de naissance", () => {

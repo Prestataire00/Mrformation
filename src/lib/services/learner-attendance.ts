@@ -45,6 +45,58 @@ function slotHours(s: AttendanceSlot): number {
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
+/** Ligne de signature brute (table `signatures`) pour un lookup slot-aware. */
+export interface SlotSignatureRow {
+  signer_id: string | null;
+  time_slot_id: string | null;
+}
+
+/** Assiduité pré-calculée d'un apprenant pour l'attestation d'assiduité. */
+export interface AttestationAttendance {
+  signedHours: number;
+  totalHours: number;
+  ratePct: number;
+}
+
+/**
+ * Calcule l'assiduité par créneau d'UN apprenant pour l'attestation d'assiduité,
+ * en réutilisant `computeLearnerAttendance`. Base du taux = heures
+ * (`signedHours / totalHours`).
+ *
+ * Retourne `null` — signal « retomber sur l'heuristique legacy (présence
+ * intégrale) » — quand aucun calcul slot-level n'est possible :
+ *   - la session n'a aucun créneau (`slots` vide), OU
+ *   - l'apprenant n'a aucune signature slot-level (toutes à `time_slot_id` NULL,
+ *     émargement legacy non slot-aware).
+ */
+export function computeAttestationAttendance(
+  slots: AttendanceSlot[],
+  signatureRows: SlotSignatureRow[],
+  learnerId: string,
+): AttestationAttendance | null {
+  if (slots.length === 0) return null;
+  const signedSlotIds = signatureRows
+    .filter((s) => s.signer_id === learnerId && s.time_slot_id)
+    .map((s) => s.time_slot_id as string);
+  if (signedSlotIds.length === 0) return null;
+
+  const [session] = computeLearnerAttendance([
+    { session_id: "", title: "", slots, signedSlotIds },
+  ]).sessions;
+
+  const totalHours = session.total_hours;
+  const signedHours = session.signed_hours;
+  // Créneaux dégénérés (durées nulles/négatives) ou signatures orphelines
+  // (time_slot_id absent des créneaux de la session) → 0h calculé. On préfère
+  // retomber sur le fallback legacy (présence intégrale) plutôt qu'imprimer un
+  // faux « 0 heure / 0 % » sur un document légal Qualiopi.
+  if (totalHours <= 0 || signedHours <= 0) return null;
+  // Taux affiché avec 2 décimales dans l'attestation → arrondi à 2 décimales
+  // (ex. 3h/7h = 42.857… → 42.86).
+  const ratePct = Math.round((signedHours / totalHours) * 10000) / 100;
+  return { signedHours, totalHours, ratePct };
+}
+
 export function computeLearnerAttendance(
   sessions: AttendanceSessionInput[],
 ): LearnerAttendance {

@@ -22,6 +22,10 @@ import {
   DocumentGenerationService,
   createDefaultEngine,
 } from "@/lib/services/document-generation";
+import {
+  computeAttestationAttendance,
+  type SlotSignatureRow,
+} from "@/lib/services/learner-attendance";
 import type { Session, Learner } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
@@ -69,20 +73,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Enrollment + learner + signatures en parallèle
-    const [{ data: enrollment }, { data: signatureRows }] = await Promise.all([
-      supabase
-        .from("enrollments")
-        .select("id, learner:learners(*)")
-        .eq("session_id", body.sessionId)
-        .eq("learner_id", body.learnerId)
-        .maybeSingle(),
-      supabase
-        .from("signatures")
-        .select("signer_id")
-        .eq("session_id", body.sessionId)
-        .eq("signer_type", "learner"),
-    ]);
+    // Enrollment + learner + signatures + créneaux en parallèle
+    const [{ data: enrollment }, { data: signatureRows }, { data: slotRows }] =
+      await Promise.all([
+        supabase
+          .from("enrollments")
+          .select("id, learner:learners(*)")
+          .eq("session_id", body.sessionId)
+          .eq("learner_id", body.learnerId)
+          .maybeSingle(),
+        supabase
+          .from("signatures")
+          .select("signer_id, time_slot_id")
+          .eq("session_id", body.sessionId)
+          .eq("signer_type", "learner"),
+        supabase
+          .from("formation_time_slots")
+          .select("id, start_time, end_time")
+          .eq("session_id", body.sessionId),
+      ]);
 
     if (!enrollment || !(enrollment as { learner?: unknown }).learner) {
       return NextResponse.json(
@@ -100,11 +109,22 @@ export async function POST(request: NextRequest) {
 
     const entity = await loadEntitySettings(supabase, profile.entity_id);
 
+    // Assiduité par créneau (null si session sans créneaux ou apprenant sans
+    // signature slot-level → fallback présence intégrale dans le résolveur).
+    const slots = (slotRows ?? []) as { id: string; start_time: string; end_time: string }[];
+    const learnerAttendance =
+      computeAttestationAttendance(
+        slots,
+        (signatureRows ?? []) as SlotSignatureRow[],
+        body.learnerId,
+      ) ?? undefined;
+
     const context: ResolveContext = {
       session: session as unknown as Session,
       learner,
       entity,
       signedLearnerIds,
+      learnerAttendance,
     };
     const resolvedHtml = resolveDocumentVariables(ATTESTATION_ASSIDUITE_HTML, context);
     const resolvedFooter = resolveDocumentVariables(ATTESTATION_ASSIDUITE_FOOTER_TEMPLATE, context);
@@ -124,6 +144,12 @@ export async function POST(request: NextRequest) {
         custom_variables: {
           present: signedLearnerIds.has(body.learnerId) ? "1" : "0",
           signed_count: String(signedLearnerIds.size),
+          ...(learnerAttendance
+            ? {
+                signed_hours: String(learnerAttendance.signedHours),
+                rate_pct: String(learnerAttendance.ratePct),
+              }
+            : {}),
         },
       },
       options: {
