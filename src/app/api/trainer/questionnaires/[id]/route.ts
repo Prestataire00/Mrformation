@@ -10,6 +10,7 @@ interface QuestionInput {
   type: string;
   options: string[] | null;
   is_required: boolean;
+  correct_answer?: string | null;
 }
 
 /** PUT — édite titre/description/type + remplace les questions (créateur uniquement). */
@@ -46,6 +47,8 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
         options: q.type === "multiple_choice" ? (q.options ?? []).filter((o) => o.trim()) : null,
         is_required: q.is_required !== false,
         order_index: i + 1,
+        correct_answer:
+          (q.type === "multiple_choice" || q.type === "yes_no") ? (q.correct_answer ?? null) : null,
       }));
       const { error: qErr } = await supabase.from("questions").insert(rows);
       if (qErr) return NextResponse.json({ error: qErr.message }, { status: 500 });
