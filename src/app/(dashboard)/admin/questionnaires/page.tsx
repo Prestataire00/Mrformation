@@ -134,6 +134,7 @@ interface QuestionFormData {
   type: QuestionType;
   is_required: boolean;
   options: string[];
+  correctAnswer: string | null;
 }
 
 const emptyQForm: QuestionnaireFormData = {
@@ -148,6 +149,7 @@ const emptyQuestionForm: QuestionFormData = {
   type: "rating",
   is_required: true,
   options: ["", ""],
+  correctAnswer: null,
 };
 
 export default function QuestionnairesPage() {
@@ -339,6 +341,11 @@ export default function QuestionnairesPage() {
         ? questionForm.options.filter((o) => o.trim())
         : null,
       order_index: nextOrder,
+      correct_answer:
+        (questionForm.type === "multiple_choice" || questionForm.type === "yes_no") &&
+        selectedQ.type !== "satisfaction"
+          ? (questionForm.correctAnswer ?? null)
+          : null,
     };
     const { error } = await supabase.from("questions").insert(payload);
     if (error) { toast({ title: "Erreur", description: error.message, variant: "destructive" }); }
@@ -965,7 +972,7 @@ export default function QuestionnairesPage() {
                     <Label htmlFor="nq_type">Type de réponse</Label>
                     <Select
                       value={questionForm.type}
-                      onValueChange={(v) => setQuestionForm((p) => ({ ...p, type: v as QuestionType, options: v === "multiple_choice" ? ["", ""] : [] }))}
+                      onValueChange={(v) => setQuestionForm((p) => ({ ...p, type: v as QuestionType, options: v === "multiple_choice" ? ["", ""] : [], correctAnswer: null }))}
                     >
                       <SelectTrigger id="nq_type">
                         <SelectValue />
@@ -998,13 +1005,28 @@ export default function QuestionnairesPage() {
                   <div className="space-y-2">
                     <Label>Options de réponse</Label>
                     {questionForm.options.map((opt, i) => (
-                      <div key={i} className="flex gap-2">
+                      <div key={i} className="flex items-center gap-2">
+                        {selectedQ && selectedQ.type !== "satisfaction" && (
+                          <input
+                            type="radio"
+                            name="admin-correct-mcq"
+                            title="Bonne réponse"
+                            className="h-4 w-4 shrink-0"
+                            checked={opt.trim() !== "" && questionForm.correctAnswer === opt}
+                            onChange={() => setQuestionForm((p) => ({ ...p, correctAnswer: opt }))}
+                          />
+                        )}
                         <Input
                           value={opt}
                           onChange={(e) => {
                             const newOpts = [...questionForm.options];
+                            const old = newOpts[i];
                             newOpts[i] = e.target.value;
-                            setQuestionForm((p) => ({ ...p, options: newOpts }));
+                            setQuestionForm((p) => ({
+                              ...p,
+                              options: newOpts,
+                              correctAnswer: p.correctAnswer === old ? e.target.value : p.correctAnswer,
+                            }));
                           }}
                           placeholder={`Option ${i + 1}`}
                           className="text-sm"
@@ -1012,8 +1034,13 @@ export default function QuestionnairesPage() {
                         {questionForm.options.length > 2 && (
                           <button
                             onClick={() => {
+                              const removed = questionForm.options[i];
                               const newOpts = questionForm.options.filter((_, idx) => idx !== i);
-                              setQuestionForm((p) => ({ ...p, options: newOpts }));
+                              setQuestionForm((p) => ({
+                                ...p,
+                                options: newOpts,
+                                correctAnswer: p.correctAnswer === removed ? null : p.correctAnswer,
+                              }));
                             }}
                             className="p-2 rounded hover:bg-red-50 text-gray-400 hover:text-red-600"
                           >
@@ -1022,6 +1049,15 @@ export default function QuestionnairesPage() {
                         )}
                       </div>
                     ))}
+                    {selectedQ && selectedQ.type !== "satisfaction" && questionForm.correctAnswer && (
+                      <button
+                        type="button"
+                        className="text-xs text-muted-foreground underline"
+                        onClick={() => setQuestionForm((p) => ({ ...p, correctAnswer: null }))}
+                      >
+                        Bonne réponse : « {questionForm.correctAnswer} » — retirer (non noté)
+                      </button>
+                    )}
                     <Button
                       type="button"
                       variant="outline"
@@ -1032,6 +1068,26 @@ export default function QuestionnairesPage() {
                       <Plus className="h-3.5 w-3.5" />
                       Ajouter une option
                     </Button>
+                  </div>
+                )}
+
+                {/* Correct answer for yes/no */}
+                {questionForm.type === "yes_no" && selectedQ && selectedQ.type !== "satisfaction" && (
+                  <div className="space-y-1.5">
+                    <Label>Bonne réponse</Label>
+                    <Select
+                      value={questionForm.correctAnswer ?? "none"}
+                      onValueChange={(v) => setQuestionForm((p) => ({ ...p, correctAnswer: v === "none" ? null : v }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Non noté</SelectItem>
+                        <SelectItem value="oui">Oui</SelectItem>
+                        <SelectItem value="non">Non</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 )}
 
