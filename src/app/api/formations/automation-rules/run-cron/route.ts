@@ -5,6 +5,7 @@ import { resolveEmailTemplate } from "@/lib/services/email-template-resolver";
 import {
   executeRuleForSession,
   resolveRecipients,
+  ensureSessionQuestionnaireAttributions,
   UUID_REGEX,
   type RuleInfo,
   type SessionInfo,
@@ -211,6 +212,21 @@ export async function POST(request: NextRequest) {
 
       if (!session) {
         return NextResponse.json({ error: "Session not found" }, { status: 404 });
+      }
+
+      // Attribution EAGER du parcours questionnaire dès l'inscription : TOUS les
+      // questionnaires (pré, post, satisfaction à chaud, bilan formateur) sont
+      // attribués/visibles côté admin immédiatement, sans attendre la clôture.
+      // Fiabilise l'attribution qui, lazy, ne se faisait que pour le pré
+      // (on_enrollment) ; l'étape « fin de formation » dépendait d'une clôture
+      // manuelle peu fiable, et le bilan formateur n'avait aucun trigger.
+      // Attribution seule (pas d'email/miroir) : l'envoi reste géré par les règles.
+      if (specificTrigger === "on_enrollment") {
+        await ensureSessionQuestionnaireAttributions(
+          supabase,
+          (session as { id: string }).id,
+          (session as { entity_id: string }).entity_id,
+        );
       }
 
       // Pack-driven ? → on exécute le SNAPSHOT de la session (session_automation_steps),

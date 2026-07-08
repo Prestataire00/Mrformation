@@ -156,7 +156,9 @@ export async function resolveQuestionnaireIdForRule(
   const config = QUESTIONNAIRE_TYPE_TO_ASSIGNMENT[rule.document_type];
   if (!config) return null;
 
-  // 1. Assignment explicite déjà présent → priorité.
+  // 1. Assignment explicite déjà présent → priorité (attribution manuelle OU
+  //    attribution EAGER faite à l'inscription, cf. ensureSessionQuestionnaireAttributions).
+  let questionnaireId: string | undefined;
   const { data: existing } = await supabase
     .from(config.table)
     .select("questionnaire_id")
@@ -164,48 +166,53 @@ export async function resolveQuestionnaireIdForRule(
     .eq(config.typeColumn, config.typeValue)
     .limit(1)
     .maybeSingle();
-  if (existing?.questionnaire_id) return existing.questionnaire_id as string;
 
-  // 2. Auto-attribution : sans entité, on ne peut pas résoudre le questionnaire default.
-  if (!entityId) return null;
+  if (existing?.questionnaire_id) {
+    questionnaireId = existing.questionnaire_id as string;
+  } else {
+    // 2. Auto-attribution : sans entité, on ne peut pas résoudre le questionnaire default.
+    if (!entityId) return null;
 
-  const { data: defaultQ } = await supabase
-    .from("questionnaires")
-    .select("id")
-    .eq("entity_id", entityId)
-    .eq("quality_indicator_type", config.qualityIndicator)
-    .eq("is_active", true)
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-  const questionnaireId = defaultQ?.id as string | undefined;
-  if (!questionnaireId) {
-    console.warn(
-      `[execute-rule] aucun questionnaire actif '${config.qualityIndicator}' pour l'entité ${entityId} — règle ${rule.document_type} ignorée`,
+    const { data: defaultQ } = await supabase
+      .from("questionnaires")
+      .select("id")
+      .eq("entity_id", entityId)
+      .eq("quality_indicator_type", config.qualityIndicator)
+      .eq("is_active", true)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    questionnaireId = defaultQ?.id as string | undefined;
+    if (!questionnaireId) {
+      console.warn(
+        `[execute-rule] aucun questionnaire actif '${config.qualityIndicator}' pour l'entité ${entityId} — règle ${rule.document_type} ignorée`,
+      );
+      return null;
+    }
+
+    // 3. Création lazy de l'assignment (en masse : learner_id/target_id = null).
+    const insertRow = config.table === "formation_evaluation_assignments"
+      ? { session_id: sessionId, questionnaire_id: questionnaireId, evaluation_type: config.typeValue, learner_id: null }
+      : { session_id: sessionId, questionnaire_id: questionnaireId, satisfaction_type: config.typeValue, target_type: "learner", target_id: null };
+    const { error: insErr } = await supabase.from(config.table).insert(insertRow);
+    // Violation d'unicité = l'assignment masse existe déjà (créé en concurrence) :
+    // bénin, l'index unique partiel garantit l'idempotence (cf. migration seed).
+    const isDuplicate = !!insErr && (
+      (insErr as { code?: string }).code === "23505" ||
+      /duplicate|unique/i.test(insErr.message ?? "")
     );
-    return null;
+    if (insErr && !isDuplicate) {
+      // Ne bloque pas l'envoi : le questionnaire est résolu, l'assignment est best-effort.
+      console.error(`[execute-rule] création assignment ${config.table} échouée:`, insErr.message);
+    }
   }
 
-  // 3. Création lazy de l'assignment (en masse : learner_id/target_id = null).
-  const insertRow = config.table === "formation_evaluation_assignments"
-    ? { session_id: sessionId, questionnaire_id: questionnaireId, evaluation_type: config.typeValue, learner_id: null }
-    : { session_id: sessionId, questionnaire_id: questionnaireId, satisfaction_type: config.typeValue, target_type: "learner", target_id: null };
-  const { error: insErr } = await supabase.from(config.table).insert(insertRow);
-  // Violation d'unicité = l'assignment masse existe déjà (créé en concurrence) :
-  // bénin, l'index unique partiel garantit l'idempotence (cf. migration seed).
-  const isDuplicate = !!insErr && (
-    (insErr as { code?: string }).code === "23505" ||
-    /duplicate|unique/i.test(insErr.message ?? "")
-  );
-  if (insErr && !isDuplicate) {
-    // Ne bloque pas l'envoi : le questionnaire est résolu, l'assignment est best-effort.
-    console.error(`[execute-rule] création assignment ${config.table} échouée:`, insErr.message);
-  }
-
-  // Visibilité in-app drift-proof : l'espace apprenant liste les questionnaires
-  // via `questionnaire_sessions` (pas via les assignments). On garantit le
-  // miroir explicitement — sans dépendre du trigger SQL de mirroring qui peut
-  // ne pas être déployé en prod (cf. P3). Idempotent via onConflict.
+  // 4. Miroir questionnaire_sessions — TOUJOURS (idempotent), y compris quand
+  // l'assignment préexistait. C'est ici, au déclenchement du trigger (inscription
+  // pour le pré, clôture pour post/satisfaction), que la visibilité in-app doit
+  // apparaître. Sans ça, l'attribution EAGER (qui crée l'assignment sans miroir)
+  // priverait l'apprenant de la visibilité in-app au bon moment. L'espace
+  // apprenant liste via `questionnaire_sessions`, pas via les assignments.
   const { error: mirrorErr } = await supabase
     .from("questionnaire_sessions")
     .upsert(
@@ -217,6 +224,86 @@ export async function resolveQuestionnaireIdForRule(
   }
 
   return questionnaireId;
+}
+
+/**
+ * Parcours questionnaire Qualiopi complet — indicateur qualité → cible d'attribution.
+ * Sert à l'attribution EAGER (dès l'inscription) de TOUT le parcours, pas
+ * seulement le pré. Inclut le bilan formateur (`quest_formateurs`, target
+ * trainer) qui n'avait aucun chemin d'auto-attribution.
+ */
+const PARCOURS_ATTRIBUTIONS: ReadonlyArray<{
+  qualityIndicator: string;
+  table: "formation_evaluation_assignments" | "formation_satisfaction_assignments";
+  typeColumn: "evaluation_type" | "satisfaction_type";
+  typeValue: string;
+  targetType: "learner" | "trainer";
+}> = [
+  { qualityIndicator: "auto_eval_pre", table: "formation_evaluation_assignments", typeColumn: "evaluation_type", typeValue: "auto_eval_pre", targetType: "learner" },
+  { qualityIndicator: "auto_eval_post", table: "formation_evaluation_assignments", typeColumn: "evaluation_type", typeValue: "auto_eval_post", targetType: "learner" },
+  { qualityIndicator: "satisfaction_chaud", table: "formation_satisfaction_assignments", typeColumn: "satisfaction_type", typeValue: "satisfaction_chaud", targetType: "learner" },
+  { qualityIndicator: "quest_formateurs", table: "formation_satisfaction_assignments", typeColumn: "satisfaction_type", typeValue: "quest_formateurs", targetType: "trainer" },
+];
+
+/**
+ * Attribution EAGER de tout le parcours questionnaire à une session, dès
+ * l'inscription. Crée les lignes d'assignment (attribution masse : learner_id/
+ * target_id = null) pour chaque indicateur qualité dont l'entité a un
+ * questionnaire actif. Idempotent : respecte une attribution déjà présente
+ * (manuelle ou créée par le trigger).
+ *
+ * Volontairement SANS email ni miroir `questionnaire_sessions` : l'envoi et la
+ * visibilité côté apprenant/formateur restent gérés au bon trigger
+ * (on_session_completion pour post/satisfaction) — sinon un apprenant pourrait
+ * répondre à la satisfaction dès le jour 1, et le bilan formateur fuiterait
+ * dans la liste apprenant (qui lit questionnaire_sessions sans filtre de cible).
+ * Objectif : que TOUT le parcours soit attribué/visible côté admin dès le début,
+ * au lieu d'une attribution lazy qui ne marchait de façon fiable que pour le pré.
+ */
+export async function ensureSessionQuestionnaireAttributions(
+  supabase: SupabaseClient,
+  sessionId: string,
+  entityId: string,
+): Promise<{ attributed: string[] }> {
+  const attributed: string[] = [];
+  for (const cfg of PARCOURS_ATTRIBUTIONS) {
+    // 1. Déjà attribué ? (idempotence + respect d'une attribution manuelle)
+    const { data: existing } = await supabase
+      .from(cfg.table)
+      .select("id")
+      .eq("session_id", sessionId)
+      .eq(cfg.typeColumn, cfg.typeValue)
+      .limit(1)
+      .maybeSingle();
+    if (existing) continue;
+
+    // 2. Questionnaire par défaut de l'entité pour cet indicateur qualité.
+    const { data: defaultQ } = await supabase
+      .from("questionnaires")
+      .select("id")
+      .eq("entity_id", entityId)
+      .eq("quality_indicator_type", cfg.qualityIndicator)
+      .eq("is_active", true)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (!defaultQ?.id) continue; // entité sans questionnaire pour cet indicateur → rien à attribuer
+
+    // 3. Insert de l'assignment (masse). Duplicate = créé en concurrence → bénin.
+    const insertRow = cfg.table === "formation_evaluation_assignments"
+      ? { session_id: sessionId, questionnaire_id: defaultQ.id, evaluation_type: cfg.typeValue, learner_id: null }
+      : { session_id: sessionId, questionnaire_id: defaultQ.id, satisfaction_type: cfg.typeValue, target_type: cfg.targetType, target_id: null };
+    const { error: insErr } = await supabase.from(cfg.table).insert(insertRow);
+    const isDuplicate = !!insErr && (
+      (insErr as { code?: string }).code === "23505" || /duplicate|unique/i.test(insErr.message ?? "")
+    );
+    if (insErr && !isDuplicate) {
+      console.error(`[ensureAttributions] ${cfg.table} ${cfg.typeValue}:`, insErr.message);
+      continue;
+    }
+    attributed.push(cfg.typeValue);
+  }
+  return { attributed };
 }
 
 /**

@@ -3,6 +3,7 @@ import {
   buildAttachmentsForRecipient,
   buildFallbackEmail,
   resolveQuestionnaireIdForRule,
+  ensureSessionQuestionnaireAttributions,
   isQuestionnaireRule,
   QUESTIONNAIRE_DOCUMENT_TYPES,
   type SessionInfo,
@@ -132,6 +133,9 @@ describe("resolveQuestionnaireIdForRule", () => {
         eq: vi.fn().mockReturnThis(),
         limit: vi.fn().mockReturnThis(),
         maybeSingle: vi.fn(async () => ({ data: { questionnaire_id: "QUEST-1" }, error: null })),
+        // Le miroir questionnaire_sessions est désormais upserté même quand
+        // l'assignment préexiste (visibilité in-app au trigger).
+        upsert: vi.fn(async () => ({ error: null })),
       })),
     };
     const rule: RuleInfo = { id: "r1", trigger_type: "session_start_minus_days", document_type: "questionnaire_positionnement", days_offset: 3, recipient_type: "learners", template_id: null, condition_subcontracted: null, name: null };
@@ -173,5 +177,72 @@ describe("executeRuleForSession — injection lien token (Chantier 2c)", () => {
     const result = body + `\n\n📝 Lien direct vers le questionnaire :\n${link}`;
     expect(result.endsWith(`📝 Lien direct vers le questionnaire :\n${link}`)).toBe(true);
     expect(result.includes("Bonjour,")).toBe(true);
+  });
+});
+
+describe("ensureSessionQuestionnaireAttributions (attribution eager du parcours)", () => {
+  // Mock supabase minimal : route les .maybeSingle() par table (existence
+  // d'assignment vs questionnaire par défaut) et capture les .insert().
+  function makeSupabase(opts: { existing?: boolean; hasDefault?: (qi: string) => boolean }) {
+    const inserts: Array<{ table: string; row: Record<string, unknown> }> = [];
+    const supabase = {
+      from(table: string) {
+        const eqArgs: Record<string, unknown> = {};
+        const builder: Record<string, unknown> = {
+          select: () => builder,
+          eq: (col: string, val: unknown) => { eqArgs[col] = val; return builder; },
+          order: () => builder,
+          limit: () => builder,
+          maybeSingle: async () => {
+            if (table === "questionnaires") {
+              const qi = eqArgs["quality_indicator_type"] as string;
+              const ok = opts.hasDefault ? opts.hasDefault(qi) : true;
+              return { data: ok ? { id: `Q-${qi}` } : null, error: null };
+            }
+            return { data: opts.existing ? { id: "EX" } : null, error: null };
+          },
+          insert: async (row: Record<string, unknown>) => { inserts.push({ table, row }); return { error: null }; },
+        };
+        return builder;
+      },
+    };
+    return { supabase, inserts };
+  }
+
+  it("attribue tout le parcours (pré, post, satisfaction, bilan formateur) quand rien n'existe", async () => {
+    const { supabase, inserts } = makeSupabase({ existing: false });
+    const res = await ensureSessionQuestionnaireAttributions(supabase as never, "s1", "ent-A");
+    expect(res.attributed.sort()).toEqual(
+      ["auto_eval_post", "auto_eval_pre", "quest_formateurs", "satisfaction_chaud"].sort(),
+    );
+    expect(inserts).toHaveLength(4);
+    // Le bilan formateur cible le formateur (target_type trainer), pas l'apprenant.
+    const formateur = inserts.find((i) => i.row.satisfaction_type === "quest_formateurs");
+    expect(formateur?.table).toBe("formation_satisfaction_assignments");
+    expect(formateur?.row.target_type).toBe("trainer");
+    // Satisfaction à chaud cible l'apprenant.
+    const satis = inserts.find((i) => i.row.satisfaction_type === "satisfaction_chaud");
+    expect(satis?.row.target_type).toBe("learner");
+    // auto_eval_post en attribution masse (learner_id null).
+    const post = inserts.find((i) => i.row.evaluation_type === "auto_eval_post");
+    expect(post?.table).toBe("formation_evaluation_assignments");
+    expect(post?.row.learner_id).toBe(null);
+  });
+
+  it("idempotent : n'insère rien si les assignments existent déjà", async () => {
+    const { supabase, inserts } = makeSupabase({ existing: true });
+    const res = await ensureSessionQuestionnaireAttributions(supabase as never, "s1", "ent-A");
+    expect(res.attributed).toEqual([]);
+    expect(inserts).toHaveLength(0);
+  });
+
+  it("n'attribue que les indicateurs pour lesquels l'entité a un questionnaire actif", async () => {
+    const { supabase, inserts } = makeSupabase({
+      existing: false,
+      hasDefault: (qi) => qi === "auto_eval_pre",
+    });
+    const res = await ensureSessionQuestionnaireAttributions(supabase as never, "s1", "ent-A");
+    expect(res.attributed).toEqual(["auto_eval_pre"]);
+    expect(inserts).toHaveLength(1);
   });
 });
