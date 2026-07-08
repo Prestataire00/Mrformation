@@ -6,10 +6,13 @@
  * formation + section "Assiduité du stagiaire" avec heures réalisées + taux
  * + résultat évaluation + signature.
  *
- * MVP "heures réalisées" : si l'apprenant a ≥1 signature pour la session,
- * on suppose qu'il a fait l'intégralité (heures = planned_hours, taux 100%).
- * Sinon : 0h, 0%. À affiner ultérieurement via signatures par créneau si
- * besoin (nécessiterait migration du schéma signatures).
+ * "Heures réalisées" : calculées par créneau émargé — somme des durées des
+ * `formation_time_slots` que l'apprenant a signés (signatures portant
+ * `time_slot_id`), taux = heures suivies / heures totales des créneaux. Cf.
+ * `computeAttestationAttendance` (src/lib/services/learner-attendance.ts).
+ * Fallback legacy (session sans créneaux ou signatures non slot-aware) :
+ * présence intégrale (heures = planned_hours, taux 100%) si l'apprenant a
+ * ≥1 signature, sinon 0h / 0%.
  */
 
 export const ATTESTATION_ASSIDUITE_HTML = `<!DOCTYPE html>

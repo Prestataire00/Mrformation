@@ -22,6 +22,10 @@ import {
   DocumentGenerationService,
   createDefaultEngine,
 } from "@/lib/services/document-generation";
+import {
+  computeAttestationAttendance,
+  type SlotSignatureRow,
+} from "@/lib/services/learner-attendance";
 import type { Session, Learner } from "@/lib/types";
 
 interface BatchError {
@@ -84,17 +88,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const [{ data: enrollments, error: enrErr }, { data: signatureRows }] = await Promise.all([
-      supabase
-        .from("enrollments")
-        .select("learner:learners(*)")
-        .eq("session_id", body.sessionId),
-      supabase
-        .from("signatures")
-        .select("signer_id")
-        .eq("session_id", body.sessionId)
-        .eq("signer_type", "learner"),
-    ]);
+    const [{ data: enrollments, error: enrErr }, { data: signatureRows }, { data: slotRows }] =
+      await Promise.all([
+        supabase
+          .from("enrollments")
+          .select("learner:learners(*)")
+          .eq("session_id", body.sessionId),
+        supabase
+          .from("signatures")
+          .select("signer_id, time_slot_id")
+          .eq("session_id", body.sessionId)
+          .eq("signer_type", "learner"),
+        supabase
+          .from("formation_time_slots")
+          .select("id, start_time, end_time")
+          .eq("session_id", body.sessionId),
+      ]);
 
     if (enrErr) {
       return NextResponse.json(
@@ -121,15 +130,23 @@ export async function POST(request: NextRequest) {
 
     const entity = await loadEntitySettings(supabase, profile.entity_id);
 
+    const slots = (slotRows ?? []) as { id: string; start_time: string; end_time: string }[];
+    const signatureRowsTyped = (signatureRows ?? []) as SlotSignatureRow[];
+
     const engine = createDefaultEngine();
     const service = new DocumentGenerationService({ engine, supabase });
 
     const tasks = learners.map(async (learner) => {
+      // Assiduité par créneau (null → fallback présence intégrale legacy).
+      const learnerAttendance =
+        computeAttestationAttendance(slots, signatureRowsTyped, learner.id) ?? undefined;
+
       const context: ResolveContext = {
         session: session as unknown as Session,
         learner,
         entity,
         signedLearnerIds,
+        learnerAttendance,
       };
       const resolvedHtml = resolveDocumentVariables(ATTESTATION_ASSIDUITE_HTML, context);
       const resolvedFooter = resolveDocumentVariables(ATTESTATION_ASSIDUITE_FOOTER_TEMPLATE, context);
@@ -145,6 +162,12 @@ export async function POST(request: NextRequest) {
           session_updated_at: (session as { updated_at?: string }).updated_at ?? null,
           custom_variables: {
             present: signedLearnerIds.has(learner.id) ? "1" : "0",
+            ...(learnerAttendance
+              ? {
+                  signed_hours: String(learnerAttendance.signedHours),
+                  rate_pct: String(learnerAttendance.ratePct),
+                }
+              : {}),
           },
         },
         options: {

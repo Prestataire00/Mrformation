@@ -18,6 +18,14 @@ export interface ResolveContext {
    */
   signedLearnerIds?: Set<string>;
   /**
+   * Assiduité pré-calculée par créneau de l'apprenant courant (attestation
+   * d'assiduité). Fournie par les routes quand des signatures slot-level
+   * existent. Si présente, les builders `{{heures_realisees_apprenant}}` et
+   * `{{taux_realisation}}` l'utilisent au lieu de l'heuristique binaire
+   * `signedLearnerIds`. Si `undefined` → fallback legacy (présence intégrale).
+   */
+  learnerAttendance?: { signedHours: number; totalHours: number; ratePct: number };
+  /**
    * Credentials de connexion de l'apprenant pour la convocation
    * (cf src/lib/services/learner-account.ts:ensureLearnerAccount).
    * Si undefined → fallback "[Mot de passe apprenant]" dans le template.
@@ -774,10 +782,13 @@ export function resolveVariables(content: string, data: ResolveContext): string 
 
     // === Story B-Attestation Assiduité ===
     // Heures effectivement réalisées par l'apprenant courant.
-    // MVP : si data.signedLearnerIds inclut data.learner.id → planned_hours.
-    //       Sinon → 0.
-    // À affiner ultérieurement avec signatures par créneau (formation_time_slots).
+    // Priorité : assiduité pré-calculée par créneau (data.learnerAttendance,
+    // fournie par les routes quand des signatures slot-level existent).
+    // Fallback legacy (pas de créneaux / signatures non slot-aware / mock) :
+    //   - signedLearnerIds inclut l'apprenant → planned_hours (présence intégrale)
+    //   - sinon → 0
     "{{heures_realisees_apprenant}}": (() => {
+      if (data.learnerAttendance) return data.learnerAttendance.signedHours.toFixed(2);
       const planned = data.session?.planned_hours;
       if (!planned || !data.learner) return "0.00";
       const signed = data.signedLearnerIds;
@@ -787,6 +798,7 @@ export function resolveVariables(content: string, data: ResolveContext): string 
       return signed.has(data.learner.id) ? planned.toFixed(2) : "0.00";
     })(),
     "{{taux_realisation}}": (() => {
+      if (data.learnerAttendance) return data.learnerAttendance.ratePct.toFixed(2);
       const planned = data.session?.planned_hours;
       if (!planned || !data.learner) return "0.00";
       const signed = data.signedLearnerIds;
