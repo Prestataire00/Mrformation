@@ -7,7 +7,7 @@ import { InsertVariableButton } from "@/components/editor/InsertVariableButton";
 import { useEntity } from "@/contexts/EntityContext";
 import { EmailTemplate, EmailHistory, Session, Client, Learner } from "@/lib/types";
 import { cn, formatDateTime, truncate } from "@/lib/utils";
-import { resolveVariables, findUnresolvedVariables } from "@/lib/utils/resolve-variables";
+import { resolveVariables, findUnresolvedVariables, type ResolveContext } from "@/lib/utils/resolve-variables";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -323,6 +323,9 @@ export default function EmailsPage() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [learners, setLearners] = useState<Learner[]>([]);
+  // Paramètres organisme (entity) pour résoudre les balises [%Nom de
+  // l'organisme%], [%SIRET de l'organisme%]… côté client (sinon fallback).
+  const [entitySettings, setEntitySettings] = useState<ResolveContext["entity"] | null>(null);
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
   const [selectedClientId, setSelectedClientId] = useState<string>("");
   const [selectedLearnerId, setSelectedLearnerId] = useState<string>("");
@@ -410,14 +413,22 @@ export default function EmailsPage() {
   // Fetch context data for send dialog selectors
   const fetchSendContext = useCallback(async () => {
     if (!entityId) return;
-    const [sessRes, cliRes, leaRes] = await Promise.all([
+    const [sessRes, cliRes, leaRes, entRes] = await Promise.all([
       supabase.from("sessions").select("*, trainer:trainers(*)").eq("entity_id", entityId).order("start_date", { ascending: false }).limit(100),
       supabase.from("clients").select("*").eq("entity_id", entityId).order("company_name").limit(200),
       supabase.from("learners").select("*").eq("entity_id", entityId).order("last_name").limit(500),
+      supabase
+        .from("entities")
+        .select(
+          "name, slug, siret, nda, address, postal_code, city, email, phone, website, president_name, president_title, signature_text, stamp_url, signature_url, logo_url",
+        )
+        .eq("id", entityId)
+        .maybeSingle(),
     ]);
     if (sessRes.data) setSessions(sessRes.data as unknown as Session[]);
     if (cliRes.data) setClients(cliRes.data as unknown as Client[]);
     if (leaRes.data) setLearners(leaRes.data as unknown as Learner[]);
+    if (entRes.data) setEntitySettings(entRes.data as unknown as ResolveContext["entity"]);
   }, [entityId]);
 
   useEffect(() => {
@@ -445,14 +456,15 @@ export default function EmailsPage() {
       return;
     }
 
-    const resolvedSubject = resolveVariables(originalSubject, { session, client, learner });
-    const resolvedBody = resolveVariables(originalBody, { session, client, learner });
+    const ctx = { session, client, learner, entity: entitySettings };
+    const resolvedSubject = resolveVariables(originalSubject, ctx);
+    const resolvedBody = resolveVariables(originalBody, ctx);
     setSendForm((prev) => ({
       ...prev,
       subject: resolvedSubject,
       body: resolvedBody,
     }));
-  }, [selectedSessionId, selectedClientId, selectedLearnerId, sendDialogOpen, originalSubject, originalBody, sessions, clients, learners]);
+  }, [selectedSessionId, selectedClientId, selectedLearnerId, sendDialogOpen, originalSubject, originalBody, sessions, clients, learners, entitySettings]);
 
   const filteredTemplates = templates.filter((t) => {
     const matchSearch =

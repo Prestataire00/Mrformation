@@ -1,7 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { resolveVariables } from "@/lib/utils/resolve-variables";
+import {
+  resolveVariables,
+  loadEntitySettings,
+  type ResolveContext,
+} from "@/lib/utils/resolve-variables";
 import { enqueueEmail, type EmailAttachmentDescriptor } from "@/lib/services/email-queue";
-import type { Session, Learner, Trainer } from "@/lib/types";
+import type { Session, Learner, Trainer, Client } from "@/lib/types";
 import { ensureQuestionnaireToken, buildPublicQuestionnaireUrl } from "@/lib/automation/questionnaire-token-helper";
 
 /**
@@ -576,6 +580,36 @@ export async function executeRuleForSession(
     ? (rule.name || DOCUMENT_TYPE_SUBJECTS[rule.document_type] || rule.document_type)
     : "";
 
+  // Contexte enrichi (organisme + entreprise) chargé 1× par session, seulement
+  // si un template est à résoudre. Sans l'entity, les balises [%Nom de
+  // l'organisme%], [%SIRET de l'organisme%]… tombaient sur leur fallback dans
+  // les emails d'automation ; sans le client, [%Nom du client%] restait vide.
+  // Chargement en 2 requêtes (enrollments puis clients .in) pour éviter toute
+  // ambiguïté d'embedding PostgREST sur enrollments↔clients.
+  let entitySettings: ResolveContext["entity"] | null = null;
+  const clientByLearner = new Map<string, Client>();
+  if (template) {
+    entitySettings = await loadEntitySettings(supabase, session.entity_id);
+    const { data: enrollRows } = await supabase
+      .from("enrollments")
+      .select("learner_id, client_id")
+      .eq("session_id", session.id);
+    const rows = (enrollRows ?? []) as Array<{ learner_id: string | null; client_id: string | null }>;
+    const clientIds = [...new Set(rows.map((r) => r.client_id).filter((v): v is string => !!v))];
+    if (clientIds.length > 0) {
+      const { data: clientRows } = await supabase.from("clients").select("*").in("id", clientIds);
+      const clientsById = new Map(
+        ((clientRows ?? []) as Client[]).map((c) => [(c as { id: string }).id, c]),
+      );
+      for (const r of rows) {
+        if (r.learner_id && r.client_id) {
+          const cl = clientsById.get(r.client_id);
+          if (cl) clientByLearner.set(r.learner_id, cl);
+        }
+      }
+    }
+  }
+
   let enqueued = 0;
   let skipped = 0;
   let failed = 0;
@@ -597,10 +631,12 @@ export async function executeRuleForSession(
     let subject: string;
     let body: string;
     if (template) {
-      const ctx = {
+      const ctx: ResolveContext = {
         session: session as unknown as Session,
+        entity: entitySettings,
         learner: recipient.type === "learner" ? (recipient as unknown as Learner) : null,
         trainer: recipient.type === "trainer" ? (recipient as unknown as Trainer) : null,
+        client: recipient.type === "learner" ? (clientByLearner.get(recipient.id) ?? null) : null,
       };
       subject = resolveVariables(template.subject, ctx);
       body = resolveVariables(template.body, ctx);
