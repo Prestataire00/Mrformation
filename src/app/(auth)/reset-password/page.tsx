@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { parseRecoveryLink } from "@/lib/auth/recovery-link";
 import { Loader2, Eye, EyeOff, GraduationCap } from "lucide-react";
 
 export default function ResetPasswordPage() {
@@ -15,6 +16,64 @@ export default function ResetPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  // État du lien de récupération : on doit établir une session AVANT d'autoriser
+  // `updateUser` (sinon « Auth session missing » → « lien cassé »).
+  const [status, setStatus] = useState<"verifying" | "ready" | "invalid">("verifying");
+
+  useEffect(() => {
+    let active = true;
+
+    // Le client Supabase peut détecter le hash implicite tout seul et émettre
+    // PASSWORD_RECOVERY / SIGNED_IN → session prête.
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!active) return;
+      if (event === "PASSWORD_RECOVERY" || (session && event === "SIGNED_IN")) {
+        setStatus("ready");
+      }
+    });
+
+    (async () => {
+      const link = parseRecoveryLink(window.location.search, window.location.hash);
+
+      if (link.kind === "error") {
+        setStatus("invalid");
+        return;
+      }
+
+      if (link.kind === "code") {
+        // Flux PKCE : échange du code contre une session.
+        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(link.code!);
+        if (!active) return;
+        if (!exchangeError) {
+          setStatus("ready");
+          return;
+        }
+        // Le code a pu être déjà consommé automatiquement → vérifier la session.
+        const { data } = await supabase.auth.getSession();
+        if (!active) return;
+        setStatus(data.session ? "ready" : "invalid");
+        return;
+      }
+
+      // hash-token ou none : une session peut déjà exister (détectée par le
+      // client). Sinon on laisse une courte fenêtre à onAuthStateChange avant
+      // de déclarer le lien invalide.
+      const { data } = await supabase.auth.getSession();
+      if (!active) return;
+      if (data.session) {
+        setStatus("ready");
+        return;
+      }
+      setTimeout(() => {
+        if (active) setStatus((s) => (s === "verifying" ? "invalid" : s));
+      }, 2500);
+    })();
+
+    return () => {
+      active = false;
+      sub.subscription.unsubscribe();
+    };
+  }, [supabase]);
 
   async function handleReset(e: React.FormEvent) {
     e.preventDefault();
@@ -91,7 +150,26 @@ export default function ResetPasswordPage() {
               </div>
             )}
 
-            {success ? (
+            {status === "verifying" ? (
+              <div className="flex flex-col items-center gap-3 py-8 text-gray-500 text-sm">
+                <Loader2 className="w-6 h-6 animate-spin" />
+                Vérification du lien de réinitialisation…
+              </div>
+            ) : status === "invalid" ? (
+              <div className="space-y-4">
+                <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg text-sm">
+                  Ce lien de réinitialisation est invalide ou a expiré. Les liens sont à usage
+                  unique et valables un temps limité. Veuillez en demander un nouveau.
+                </div>
+                <button
+                  onClick={() => router.push("/login")}
+                  className="w-full py-3 rounded-lg font-semibold text-white text-sm uppercase tracking-widest transition-all"
+                  style={{ background: "linear-gradient(135deg, #374151, #B91C1C)" }}
+                >
+                  Demander un nouveau lien
+                </button>
+              </div>
+            ) : success ? (
               <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm">
                 Mot de passe modifié avec succès ! Redirection vers la page de connexion...
               </div>
