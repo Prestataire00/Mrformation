@@ -254,6 +254,11 @@ export async function POST(request: NextRequest) {
           session_id: session_id ?? null,
           recipient_type: recipient_type ?? null,
           recipient_id: recipient_id ?? null,
+          // Trace des pièces jointes (fichiers transmis) pour l'historique.
+          attachments: (payload.attachments ?? []).map((a) => ({
+            type: "file",
+            filename: a.filename,
+          })),
         })
         .select("id")
         .single();

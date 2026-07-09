@@ -8,6 +8,7 @@ import { useEntity } from "@/contexts/EntityContext";
 import { EmailTemplate, EmailHistory, Session, Client, Learner } from "@/lib/types";
 import { cn, formatDateTime, truncate } from "@/lib/utils";
 import { resolveVariables, findUnresolvedVariables, type ResolveContext } from "@/lib/utils/resolve-variables";
+import { describeAttachment, type EmailAttachmentRecord } from "@/lib/email/document-labels";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -60,6 +61,7 @@ import {
   AlertTriangle,
   User,
   Copy,
+  Paperclip,
 } from "lucide-react";
 
 type EmailStatus = "sent" | "failed" | "pending";
@@ -260,6 +262,7 @@ const emptyTemplateForm: TemplateFormData = {
 type EmailHistoryWithTemplate = EmailHistory & {
   template: { name: string; type: string } | null;
   sender: { first_name: string | null; last_name: string | null } | null;
+  attachments?: EmailAttachmentRecord[] | null;
 };
 
 export default function EmailsPage() {
@@ -1755,6 +1758,27 @@ export default function EmailsPage() {
                 <p className="text-xs font-medium text-gray-500 mb-1">Objet</p>
                 <p className="text-sm font-medium text-gray-800">{detailItem.subject}</p>
               </div>
+
+              {/* Attachments */}
+              {Array.isArray(detailItem.attachments) && detailItem.attachments.length > 0 && (
+                <div className="p-3 bg-gray-50 rounded-lg border">
+                  <p className="text-xs font-medium text-gray-500 mb-2">Pièces jointes</p>
+                  <div className="space-y-1.5">
+                    {detailItem.attachments.map((att, i) => {
+                      const { label, note } = describeAttachment(att);
+                      return (
+                        <div key={i} className="flex items-start gap-2">
+                          <Paperclip className="h-3.5 w-3.5 text-gray-400 mt-0.5 shrink-0" />
+                          <div className="min-w-0">
+                            <p className="text-sm text-gray-800">{label}</p>
+                            {note && <p className="text-xs text-indigo-600">{note}</p>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Body */}
               <div className="p-4 bg-white rounded-lg border min-h-[150px]">
