@@ -175,6 +175,8 @@ export async function executeBatchEmailSend(
           recipient_type: options.ownerType,
           recipient_id: task.ownerId,
           sent_via: "resend",
+          // Trace de la pièce jointe (PDF du document) pour l'historique.
+          attachments: [{ type: options.docType, filename: task.attachmentFilename }],
         });
       } catch (logErr) {
         console.error("[batch-email-handler] email_history insert failed:", logErr);

@@ -185,6 +185,13 @@ export async function POST(request: NextRequest) {
       sent_at: new Date().toISOString(),
       sent_via: "resend",
       session_id,
+      sent_by: auth.profile?.id ?? auth.user.id,
+      // Trace de la pièce jointe pour l'historique (le PDF n'est joint que si sa
+      // génération a réussi). signature_link=true : l'email contient le lien de
+      // signature du document.
+      attachments: pdfBase64
+        ? [{ type: doc.doc_type, filename: `${docLabel}.pdf`, signature_link: true }]
+        : [],
     });
 
     logAudit({
