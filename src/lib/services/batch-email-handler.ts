@@ -475,23 +475,44 @@ export async function batchSendDocsEmail(
       .toLowerCase()
       .slice(0, 60) || "destinataire";
 
-    // em-b-5 : applique les variables si template du resolver, sinon legacy
+    // Contexte de résolution du TEXTE de l'email (objet + corps), identique à
+    // celui du PDF (cf. generatePdf plus bas). Indispensable : les balises
+    // insérées depuis le catalogue UI le sont au format Sellsy `[%Libellé%]`
+    // (cf. InsertVariableButton), que l'ancien `applyBatchVars` codé en dur
+    // ignorait totalement → `[%Date de fin de la formation%]`, `[%Nom de
+    // l'organisme%]`, etc. restaient littérales dans l'email.
+    const emailCtx: ResolveContext = {
+      session: session as unknown as Session,
+      entity: entitySettings,
+      learner:
+        ownerType === "learner" || ownerType === "session"
+          ? (recipient.fullRecord as unknown as Learner)
+          : undefined,
+      client: ownerType === "company" ? (recipient.fullRecord as unknown as Client) : undefined,
+      trainer: ownerType === "trainer" ? (recipient.fullRecord as unknown as Trainer) : undefined,
+      sessionAggregates,
+      loginQrCodeDataUrl,
+    };
+
+    // Résolveur unifié (catalogue complet : `{{cle}}` ET `[%Libellé%]`), PUIS
+    // compat legacy pour les clés hors-catalogue des anciens templates seedés
+    // ({{formation}}, {{entite}}, {{prenom_formateur}} — laissées littérales par
+    // le résolveur car absentes du catalogue, donc réécrites ici).
     const applyBatchVars = (s: string) =>
-      s
+      resolveDocumentVariables(s, emailCtx)
         .replaceAll("{{formation}}", sessionTitle)
         .replaceAll("{{entite}}", entityName)
-        .replaceAll("{{prenom_apprenant}}", recipient.name)
-        .replaceAll("{{prenom_formateur}}", recipient.name)
-        .replaceAll("{{nom_apprenant}}", recipient.name);
+        .replaceAll("{{prenom_formateur}}", recipient.name);
 
     const finalSubject = resolvedSubjectTpl
       ? applyBatchVars(resolvedSubjectTpl)
       : `${subjectLabel} — ${sessionTitle}`;
-    const finalTextBody = resolvedBodyTpl
-      ? applyBatchVars(resolvedBodyTpl)
-      : buildEmailTextBody(docType, sessionTitle, recipient.name);
-    const finalHtmlBody = resolvedBodyTpl
-      ? `<div style="font-family:sans-serif;font-size:14px;line-height:1.6;color:#374151;white-space:pre-wrap;">${applyBatchVars(resolvedBodyTpl).replace(/\n/g, "<br/>")}</div>`
+    // Résout le corps une seule fois (réutilisé pour les versions texte + HTML).
+    const resolvedBodyText = resolvedBodyTpl ? applyBatchVars(resolvedBodyTpl) : null;
+    const finalTextBody =
+      resolvedBodyText ?? buildEmailTextBody(docType, sessionTitle, recipient.name);
+    const finalHtmlBody = resolvedBodyText
+      ? `<div style="font-family:sans-serif;font-size:14px;line-height:1.6;color:#374151;white-space:pre-wrap;">${resolvedBodyText.replace(/\n/g, "<br/>")}</div>`
       : buildEmailHtmlBody(docType, sessionTitle, recipient.name);
 
     return {
