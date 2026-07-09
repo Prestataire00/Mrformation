@@ -36,13 +36,20 @@ describe("em-b-5 / em-b-6 — batch-email-handler sur resolver unifié", () => {
     expect(handlerSource).toMatch(/console\.warn[\s\S]{0,200}batch-email[\s\S]{0,200}fallback hardcoded/);
   });
 
-  it("applyBatchVars factorisé sur 5 variables", () => {
+  it("applyBatchVars passe par le résolveur unifié (catalogue {{}} ET [%%]) puis compat legacy", () => {
     expect(handlerSource).toMatch(/const applyBatchVars = \(s: string\) =>/);
+    // Le résolveur unifié est désormais appliqué au TEXTE de l'email (le fix :
+    // sans ça les balises [%Libellé%] du catalogue restaient littérales).
+    expect(handlerSource).toMatch(/resolveDocumentVariables\(s, emailCtx\)/);
+    // Compat legacy conservée pour les clés hors-catalogue des anciens seeds.
     expect(handlerSource).toMatch(/\{\{formation\}\}/);
     expect(handlerSource).toMatch(/\{\{entite\}\}/);
-    expect(handlerSource).toMatch(/\{\{prenom_apprenant\}\}/);
     expect(handlerSource).toMatch(/\{\{prenom_formateur\}\}/);
-    expect(handlerSource).toMatch(/\{\{nom_apprenant\}\}/);
+  });
+
+  it("emailCtx construit comme le contexte PDF (session + entity + owner)", () => {
+    expect(handlerSource).toMatch(/const emailCtx: ResolveContext = \{/);
+    expect(handlerSource).toMatch(/entity: entitySettings/);
   });
 
   it("finalSubject : applyBatchVars(resolvedSubjectTpl) ou legacy label hardcoded", () => {
@@ -51,14 +58,13 @@ describe("em-b-5 / em-b-6 — batch-email-handler sur resolver unifié", () => {
     expect(handlerSource).toMatch(/`\$\{subjectLabel\} — \$\{sessionTitle\}`/);
   });
 
-  it("finalTextBody : applyBatchVars ou buildEmailTextBody legacy", () => {
-    expect(handlerSource).toMatch(/const finalTextBody = resolvedBodyTpl/);
-    expect(handlerSource).toMatch(/applyBatchVars\(resolvedBodyTpl\)/);
-    expect(handlerSource).toMatch(/buildEmailTextBody\(docType, sessionTitle, recipient\.name\)/);
+  it("finalTextBody : corps résolu 1× ou buildEmailTextBody legacy", () => {
+    expect(handlerSource).toMatch(/const resolvedBodyText = resolvedBodyTpl \? applyBatchVars\(resolvedBodyTpl\) : null/);
+    expect(handlerSource).toMatch(/const finalTextBody =\s*\n?\s*resolvedBodyText \?\? buildEmailTextBody\(docType, sessionTitle, recipient\.name\)/);
   });
 
   it("finalHtmlBody : wrap HTML dynamique ou buildEmailHtmlBody", () => {
-    expect(handlerSource).toMatch(/const finalHtmlBody = resolvedBodyTpl/);
+    expect(handlerSource).toMatch(/const finalHtmlBody = resolvedBodyText/);
     expect(handlerSource).toMatch(/font-family:sans-serif/);
     expect(handlerSource).toMatch(/white-space:pre-wrap/);
   });
