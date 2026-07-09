@@ -10,6 +10,7 @@ import {
   notifyProspectWon,
 } from "@/lib/crm/automations";
 import { logCommercialAction } from "@/lib/crm/log-commercial-action";
+import { applyQuoteTemplate, type QuoteEmailTemplate } from "@/lib/crm/quote-email-template";
 import {
   Plus,
   Search,
@@ -102,6 +103,14 @@ export default function QuotesPage() {
   const [emailAttachment, setEmailAttachment] = useState<{ filename: string; content: string } | null>(null);
   const [emailExtraAttachments, setEmailExtraAttachments] = useState<{ filename: string; content: string }[]>([]);
   const [sendingEmail, setSendingEmail] = useState(false);
+
+  // Modèles d'email de devis (sélecteur des deux dialogs) + variables courantes
+  // pour re-substituer à la sélection d'un modèle.
+  const [devisTemplates, setDevisTemplates] = useState<QuoteEmailTemplate[]>([]);
+  const [emailTemplateId, setEmailTemplateId] = useState<string>("");
+  const [emailVars, setEmailVars] = useState<Record<string, string>>({});
+  const [signTemplateId, setSignTemplateId] = useState<string>("");
+  const [signVars, setSignVars] = useState<Record<string, string>>({});
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
@@ -147,6 +156,45 @@ export default function QuotesPage() {
     const { data } = await query;
     setProfiles((data as Profile[]) ?? []);
   }, [supabase, entityId]);
+
+  // Modèles d'email « devis » de l'entité : type='devis' OU clés canoniques
+  // (quote_sign_request / batch_devis). Alimente les deux sélecteurs.
+  const fetchDevisTemplates = useCallback(async () => {
+    if (!entityId) return;
+    const { data } = await supabase
+      .from("email_templates")
+      .select("id, key, name, subject, body")
+      .eq("entity_id", entityId)
+      .eq("is_active", true)
+      .or("type.eq.devis,key.in.(quote_sign_request,batch_devis)")
+      .order("name");
+    setDevisTemplates((data as QuoteEmailTemplate[]) ?? []);
+  }, [supabase, entityId]);
+
+  useEffect(() => {
+    fetchDevisTemplates();
+  }, [fetchDevisTemplates]);
+
+  // Sélection d'un modèle → re-substitue les variables courantes dans les champs
+  // éditables (l'utilisateur peut ensuite retoucher).
+  const onSelectEmailTemplate = (id: string) => {
+    setEmailTemplateId(id);
+    const tpl = devisTemplates.find((t) => t.id === id);
+    if (tpl) {
+      const { subject, body } = applyQuoteTemplate(tpl, emailVars);
+      setEmailForm((f) => ({ ...f, subject, body }));
+    }
+  };
+
+  const onSelectSignTemplate = (id: string) => {
+    setSignTemplateId(id);
+    const tpl = devisTemplates.find((t) => t.id === id);
+    if (tpl) {
+      const { subject, body } = applyQuoteTemplate(tpl, signVars);
+      setSignSubject(subject);
+      setSignBody(body);
+    }
+  };
 
   const fetchQuotes = useCallback(async () => {
     setLoading(true);
@@ -499,35 +547,28 @@ export default function QuotesPage() {
       const entityName = entity?.name || "MR FORMATION";
       setEmailAttachment({ filename: `devis-${quote.reference}.pdf`, content: base64 });
 
-      // Résoudre template personnalisé si disponible
-      let emailSubjectResolved = `Devis ${quote.reference} - ${entityName}`;
-      let emailBodyResolved = `Bonjour,\n\nVeuillez trouver ci-joint notre devis ${quote.reference}.\n\nN'hésitez pas à nous contacter pour toute question.\n\nCordialement,\n${entityName}`;
+      // Variables de substitution (stockées pour le sélecteur de modèle).
+      const vars: Record<string, string> = {
+        reference: quote.reference ?? "",
+        destinataire: prospectName,
+        entite: entityName,
+        montant: devisData.lines.reduce((s, l) => s + l.quantity * l.unit_price, 0).toLocaleString("fr-FR") + "€ HT",
+      };
+      setEmailVars(vars);
 
-      if (entityId) {
-        const { data: tmpl } = await supabase
-          .from("email_templates")
-          .select("subject, body")
-          .eq("entity_id", entityId)
-          .eq("key", "batch_devis")
-          .eq("is_active", true)
-          .maybeSingle();
-
-        if (tmpl) {
-          const vars: Record<string, string> = {
-            reference: quote.reference ?? "",
-            destinataire: prospectName,
-            entite: entityName,
-            montant: devisData.lines.reduce((s, l) => s + l.quantity * l.unit_price, 0).toLocaleString("fr-FR") + "€ HT",
-          };
-          if (tmpl.subject) emailSubjectResolved = tmpl.subject.replace(/\{\{(\w+)\}\}/g, (_: string, k: string) => vars[k] ?? `{{${k}}}`);
-          if (tmpl.body) emailBodyResolved = tmpl.body.replace(/\{\{(\w+)\}\}/g, (_: string, k: string) => vars[k] ?? `{{${k}}}`);
-        }
-      }
+      // Modèle par défaut = batch_devis s'il existe, sinon fallback en dur.
+      const defaultSubject = `Devis ${quote.reference} - ${entityName}`;
+      const defaultBody = `Bonjour,\n\nVeuillez trouver ci-joint notre devis ${quote.reference}.\n\nN'hésitez pas à nous contacter pour toute question.\n\nCordialement,\n${entityName}`;
+      const batchTpl = devisTemplates.find((t) => t.key === "batch_devis");
+      setEmailTemplateId(batchTpl?.id ?? "");
+      const resolved = batchTpl
+        ? applyQuoteTemplate(batchTpl, vars)
+        : { subject: defaultSubject, body: defaultBody };
 
       setEmailForm({
         to: prospectEmail,
-        subject: emailSubjectResolved,
-        body: emailBodyResolved,
+        subject: resolved.subject,
+        body: resolved.body,
       });
       setEmailExtraAttachments([]);
       setEmailDialog(true);
@@ -713,34 +754,29 @@ export default function QuotesPage() {
     setSignAttachments([]);
     setSignPreviewOpen(true);
 
-    // Tenter de charger le template personnalisé
-    let templateSubject: string | null = null;
-    let templateBody: string | null = null;
-    if (entityId) {
-      const { data: tmpl } = await supabase
-        .from("email_templates")
-        .select("subject, body")
-        .eq("entity_id", entityId)
-        .eq("key", "quote_sign_request")
-        .eq("is_active", true)
-        .maybeSingle();
+    // Variables de substitution (lien_signature omis → laissé littéral, il est
+    // re-substitué côté serveur). Stockées pour le sélecteur de modèle.
+    const vars: Record<string, string> = {
+      reference: quote.reference ?? "",
+      montant: amount > 0 ? `${amount.toLocaleString("fr-FR")}€ HT` : "",
+      destinataire: recipientName,
+      date_validite: validUntilFr,
+      entite: entityName,
+    };
+    setSignVars(vars);
 
-      if (tmpl) {
-        const vars: Record<string, string> = {
-          reference: quote.reference ?? "",
-          montant: amount > 0 ? `${amount.toLocaleString("fr-FR")}€ HT` : "",
-          destinataire: recipientName,
-          date_validite: validUntilFr,
-          entite: entityName,
-          lien_signature: "{{lien_signature}}",
+    // Modèle par défaut = quote_sign_request s'il existe, sinon fallback en dur.
+    const signTpl = devisTemplates.find((t) => t.key === "quote_sign_request");
+    setSignTemplateId(signTpl?.id ?? "");
+    const resolved = signTpl
+      ? applyQuoteTemplate(signTpl, vars)
+      : {
+          subject: `Proposition commerciale ${quote.reference} — ${entityName}`,
+          body: `Bonjour${recipientName ? ` ${recipientName}` : ""},\n\nVeuillez trouver notre proposition commerciale ${quote.reference}${amount > 0 ? ` d'un montant de ${amount.toLocaleString("fr-FR")}€ HT` : ""}.\n\nPour accepter cette proposition, veuillez la signer électroniquement en cliquant sur le lien suivant :\n\n{{lien_signature}}\n\nCe lien est valide jusqu'au ${validUntilFr}.\n\nN'hésitez pas à nous contacter pour toute question.\n\nCordialement,\nL'équipe ${entityName}`,
         };
-        templateSubject = (tmpl.subject ?? "").replace(/\{\{(\w+)\}\}/g, (_: string, k: string) => vars[k] ?? `{{${k}}}`);
-        templateBody = (tmpl.body ?? "").replace(/\{\{(\w+)\}\}/g, (_: string, k: string) => vars[k] ?? `{{${k}}}`);
-      }
-    }
 
-    setSignSubject(templateSubject ?? `Proposition commerciale ${quote.reference} — ${entityName}`);
-    setSignBody(templateBody ?? `Bonjour${recipientName ? ` ${recipientName}` : ""},\n\nVeuillez trouver notre proposition commerciale ${quote.reference}${amount > 0 ? ` d'un montant de ${amount.toLocaleString("fr-FR")}€ HT` : ""}.\n\nPour accepter cette proposition, veuillez la signer électroniquement en cliquant sur le lien suivant :\n\n{{lien_signature}}\n\nCe lien est valide jusqu'au ${validUntilFr}.\n\nN'hésitez pas à nous contacter pour toute question.\n\nCordialement,\nL'équipe ${entityName}`);
+    setSignSubject(resolved.subject);
+    setSignBody(resolved.body);
 
     // Auto-generate and attach the quote PDF
     (async () => {
@@ -1119,6 +1155,21 @@ export default function QuotesPage() {
                 placeholder="email@exemple.fr"
               />
             </div>
+            {devisTemplates.length > 0 && (
+              <div className="space-y-1.5">
+                <Label>Modèle d&apos;email</Label>
+                <Select value={emailTemplateId} onValueChange={onSelectEmailTemplate}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choisir un modèle" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {devisTemplates.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="space-y-1.5">
               <Label>Objet</Label>
               <Input
@@ -1201,6 +1252,21 @@ export default function QuotesPage() {
             <DialogTitle>Envoyer pour signature — {signQuote?.reference}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
+            {devisTemplates.length > 0 && (
+              <div>
+                <Label className="text-xs">Modèle d&apos;email</Label>
+                <Select value={signTemplateId} onValueChange={onSelectSignTemplate}>
+                  <SelectTrigger className="h-8 text-sm">
+                    <SelectValue placeholder="Choisir un modèle" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {devisTemplates.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div>
               <Label className="text-xs">Sujet</Label>
               <Input value={signSubject} onChange={(e) => setSignSubject(e.target.value)} className="h-8 text-sm" />
