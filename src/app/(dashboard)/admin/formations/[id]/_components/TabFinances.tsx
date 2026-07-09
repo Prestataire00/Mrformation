@@ -14,7 +14,8 @@ import { getDefaultRecipientType, type Invoice, type Charge, type Stats } from "
 import { FinancesKpiBand } from "./finances/FinancesKpiBand";
 import { InvoiceSection } from "./finances/InvoiceSection";
 import { ChargesPanel } from "./finances/ChargesPanel";
-import { EmailPreviewDialog } from "@/components/emails/EmailPreviewDialog";
+import { EmailPreviewDialog, type EmailTemplateOption } from "@/components/emails/EmailPreviewDialog";
+import { listFormationAttachments, type AvailableAttachment } from "@/lib/formations/formation-attachments";
 
 const MODE_LABELS: Record<string, string> = {
   presentiel: "En présentiel",
@@ -92,6 +93,25 @@ export function TabFinances({ formation, onRefresh }: Props) {
     pdfBase64: string;
     pdfFilename: string;
   } | null>(null);
+
+  // Modèles d'email + documents existants de la formation (dialog d'envoi facture).
+  const [invoiceEmailTemplates, setInvoiceEmailTemplates] = useState<EmailTemplateOption[]>([]);
+  const [formationAtts, setFormationAtts] = useState<AvailableAttachment[]>([]);
+  useEffect(() => {
+    if (!formation.id) return;
+    const entId = entity?.id ?? null;
+    (async () => {
+      let q = supabase.from("email_templates").select("id, name, subject, body").eq("is_active", true).order("name");
+      if (entId) q = q.eq("entity_id", entId);
+      const { data: tpls } = await q;
+      setInvoiceEmailTemplates((tpls ?? []) as EmailTemplateOption[]);
+      try {
+        setFormationAtts(await listFormationAttachments(supabase, formation.id, entId));
+      } catch {
+        /* liste PJ optionnelle */
+      }
+    })();
+  }, [formation.id, entity?.id, supabase]);
 
   // Picker entreprise (Story 3.6) : en INTER, on demande explicitement à l'admin
   // quelle entreprise facturer (plus de fallback arbitraire sur formation_companies[0]).
@@ -1428,6 +1448,14 @@ export function TabFinances({ formation, onRefresh }: Props) {
           attachments={[{ filename: invoiceEmailPreview.pdfFilename, content: invoiceEmailPreview.pdfBase64, type: "application/pdf" }]}
           entityName={entity?.name ?? undefined}
           allowExtraAttachments
+          templates={invoiceEmailTemplates}
+          templateVars={{
+            reference: invoiceDisplayRef(invoiceEmailPreview.inv),
+            montant: `${(Number(invoiceEmailPreview.inv.amount) || 0).toLocaleString("fr-FR")} €`,
+            entite: entity?.name ?? "",
+            titre_formation: formation.title ?? "",
+          }}
+          availableAttachments={formationAtts}
         />
       )}
     </div>

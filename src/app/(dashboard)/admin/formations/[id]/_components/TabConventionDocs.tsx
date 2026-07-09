@@ -19,7 +19,8 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
-import { EmailPreviewDialog } from "@/components/emails/EmailPreviewDialog";
+import { EmailPreviewDialog, type EmailTemplateOption } from "@/components/emails/EmailPreviewDialog";
+import { listFormationAttachments, type AvailableAttachment } from "@/lib/formations/formation-attachments";
 import { useEntity } from "@/contexts/EntityContext";
 import { renderSystemTemplate } from "@/lib/templates/registry";
 import { resolveVariables } from "@/lib/utils/resolve-variables";
@@ -323,6 +324,25 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
 
   const { entity } = useEntity();
   const entityName = entity?.name || "MR FORMATION";
+
+  // Modèles d'email + documents existants de la formation (pour le dialog d'envoi).
+  const [docEmailTemplates, setDocEmailTemplates] = useState<EmailTemplateOption[]>([]);
+  const [formationAtts, setFormationAtts] = useState<AvailableAttachment[]>([]);
+  useEffect(() => {
+    if (!formation.id) return;
+    const entId = entity?.id ?? null;
+    (async () => {
+      let q = supabase.from("email_templates").select("id, name, subject, body").eq("is_active", true).order("name");
+      if (entId) q = q.eq("entity_id", entId);
+      const { data: tpls } = await q;
+      setDocEmailTemplates((tpls ?? []) as EmailTemplateOption[]);
+      try {
+        setFormationAtts(await listFormationAttachments(supabase, formation.id, entId));
+      } catch {
+        /* liste PJ optionnelle : on n'empêche pas l'envoi */
+      }
+    })();
+  }, [formation.id, entity?.id, supabase]);
 
   const docs = formation.formation_convention_documents || [];
   const enrollments = formation.enrollments || [];
@@ -2155,6 +2175,10 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
           recipientEmail={emailPreview.recipientEmail}
           attachments={[{ filename: emailPreview.pdfFilename, content: emailPreview.pdfBase64, type: "application/pdf" }]}
           entityName={entityName}
+          allowExtraAttachments
+          templates={docEmailTemplates}
+          templateVars={{ titre_formation: formation.title ?? "", entite: entityName }}
+          availableAttachments={formationAtts}
         />
       )}
 
