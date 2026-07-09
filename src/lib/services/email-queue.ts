@@ -18,6 +18,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { appendCommercialSignature, loadCommercialSignature } from "@/lib/email/signature";
 
 /**
  * Descripteur d'une pièce jointe à résoudre au moment de l'envoi par le worker.
@@ -136,6 +137,13 @@ export async function enqueueEmail(
 
   const scheduledFor = payload.scheduled_for ?? null;
 
+  // Signature commerciale : ajoutée en bas du corps quand un expéditeur (sent_by)
+  // est connu. Les envois système/cron sans sent_by restent sans signature.
+  let body = payload.body || "";
+  if (payload.sent_by) {
+    body = appendCommercialSignature(body, await loadCommercialSignature(supabase, payload.sent_by));
+  }
+
   const { data, error } = await supabase
     .from("email_history")
     .insert({
@@ -143,7 +151,7 @@ export async function enqueueEmail(
       template_id: payload.template_id ?? null,
       recipient_email: recipient,
       subject: payload.subject.trim(),
-      body: payload.body || "",
+      body,
       status: "pending",
       sent_at: scheduledFor ? scheduledFor.toISOString() : new Date().toISOString(),
       scheduled_for: scheduledFor ? scheduledFor.toISOString() : null,
@@ -178,6 +186,22 @@ export async function enqueueEmails(
 ): Promise<{ inserted: number }> {
   if (payloads.length === 0) return { inserted: 0 };
 
+  // Signature commerciale : précharge les signatures des expéditeurs distincts
+  // (1 requête) pour les appliquer par ligne. Envois sans sent_by → pas de signature.
+  const senderIds = [...new Set(payloads.map((p) => p.sent_by).filter((v): v is string => !!v))];
+  const signatureBySender = new Map<string, string>();
+  if (senderIds.length > 0) {
+    const { data: sigRows } = await supabase
+      .from("profiles")
+      .select("id, email_signature")
+      .in("id", senderIds);
+    for (const row of (sigRows ?? []) as Array<{ id: string; email_signature: string | null }>) {
+      if (row.email_signature && row.email_signature.trim()) {
+        signatureBySender.set(row.id, row.email_signature);
+      }
+    }
+  }
+
   const rows = payloads.map((p) => {
     const recipient = p.to.trim().toLowerCase();
     if (!recipient) throw new Error("enqueueEmails: 'to' requis sur chaque payload");
@@ -185,12 +209,16 @@ export async function enqueueEmails(
     if (!p.entity_id) throw new Error("enqueueEmails: 'entity_id' requis sur chaque payload");
 
     const scheduledFor = p.scheduled_for ?? null;
+    const body = appendCommercialSignature(
+      p.body || "",
+      p.sent_by ? signatureBySender.get(p.sent_by) ?? null : null,
+    );
     return {
       entity_id: p.entity_id,
       template_id: p.template_id ?? null,
       recipient_email: recipient,
       subject: p.subject.trim(),
-      body: p.body || "",
+      body,
       status: "pending" as const,
       sent_at: scheduledFor ? scheduledFor.toISOString() : new Date().toISOString(),
       scheduled_for: scheduledFor ? scheduledFor.toISOString() : null,

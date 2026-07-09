@@ -7,6 +7,7 @@ import { decryptToken } from "@/lib/gmail/encryption";
 import { sendGmailEmail } from "@/lib/gmail/client";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 import { logAudit } from "@/lib/audit-log";
+import { appendCommercialSignature, loadCommercialSignature } from "@/lib/email/signature";
 
 // Only initialise Resend when a real API key is configured
 const isResendConfigured =
@@ -88,18 +89,13 @@ export async function POST(request: NextRequest) {
 
     const recipientEmail = to.trim().toLowerCase();
 
-    // Injection automatique de la signature email du commercial
-    let finalBody = body;
+    // Injection automatique de la signature email du commercial (helper partagé
+    // avec le chemin file d'attente — cf. lib/email/signature.ts).
     const serviceSupabase = createServiceClient();
-    const { data: senderProfile } = await serviceSupabase
-      .from("profiles")
-      .select("email_signature")
-      .eq("id", auth.user.id)
-      .maybeSingle();
-
-    if (senderProfile?.email_signature) {
-      finalBody = `${body}\n\n--\n${senderProfile.email_signature}`;
-    }
+    const finalBody = appendCommercialSignature(
+      body,
+      await loadCommercialSignature(serviceSupabase, auth.user.id),
+    );
 
     const htmlBody = toHtmlBody(finalBody);
 

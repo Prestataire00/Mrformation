@@ -42,6 +42,7 @@ import {
   createDefaultEngine,
 } from "@/lib/services/document-generation";
 import { convertDocxToPdfWithVariables } from "@/lib/services/docx-converter";
+import { appendCommercialSignature, loadCommercialSignature } from "@/lib/email/signature";
 import { toSignedStorageUrl } from "@/lib/storage/sign-storage-url";
 import { loadClientsWithContacts } from "@/lib/services/load-client";
 import { loadSessionAggregates } from "@/lib/services/load-session-aggregates";
@@ -454,6 +455,10 @@ export async function batchSendDocsEmail(
     }
   }
 
+  // Signature commerciale : chargée 1× par lot depuis le profil déclencheur
+  // (profileId), ajoutée en bas du corps résolu de chaque email.
+  const commercialSignature = await loadCommercialSignature(supabase, profileId);
+
   // Lot H : QR code connexion pour convocation (1× par batch). Un batch =
   // une seule entité (entityId/sessionId du scope) → on encode son slug dans
   // l'URL : /login?entity=<slug> (sélecteur d'organisme pré-rempli). Repli
@@ -507,8 +512,11 @@ export async function batchSendDocsEmail(
     const finalSubject = resolvedSubjectTpl
       ? applyBatchVars(resolvedSubjectTpl)
       : `${subjectLabel} — ${sessionTitle}`;
-    // Résout le corps une seule fois (réutilisé pour les versions texte + HTML).
-    const resolvedBodyText = resolvedBodyTpl ? applyBatchVars(resolvedBodyTpl) : null;
+    // Résout le corps une seule fois (réutilisé pour les versions texte + HTML)
+    // puis ajoute la signature commerciale en bas.
+    const resolvedBodyText = resolvedBodyTpl
+      ? appendCommercialSignature(applyBatchVars(resolvedBodyTpl), commercialSignature)
+      : null;
     const finalTextBody =
       resolvedBodyText ?? buildEmailTextBody(docType, sessionTitle, recipient.name);
     const finalHtmlBody = resolvedBodyText

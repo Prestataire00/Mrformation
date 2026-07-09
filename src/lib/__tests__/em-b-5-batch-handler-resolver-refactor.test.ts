@@ -58,8 +58,10 @@ describe("em-b-5 / em-b-6 — batch-email-handler sur resolver unifié", () => {
     expect(handlerSource).toMatch(/`\$\{subjectLabel\} — \$\{sessionTitle\}`/);
   });
 
-  it("finalTextBody : corps résolu 1× ou buildEmailTextBody legacy", () => {
-    expect(handlerSource).toMatch(/const resolvedBodyText = resolvedBodyTpl \? applyBatchVars\(resolvedBodyTpl\) : null/);
+  it("finalTextBody : corps résolu 1× (avec signature commerciale) ou buildEmailTextBody legacy", () => {
+    // Le corps résolu reçoit la signature commerciale via appendCommercialSignature.
+    expect(handlerSource).toMatch(/const resolvedBodyText = resolvedBodyTpl/);
+    expect(handlerSource).toMatch(/appendCommercialSignature\(applyBatchVars\(resolvedBodyTpl\), commercialSignature\)/);
     expect(handlerSource).toMatch(/const finalTextBody =\s*\n?\s*resolvedBodyText \?\? buildEmailTextBody\(docType, sessionTitle, recipient\.name\)/);
   });
 
