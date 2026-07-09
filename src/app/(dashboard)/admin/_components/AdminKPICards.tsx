@@ -10,6 +10,7 @@ import {
   TrendingUp,
   ClipboardCheck,
   MessageSquare,
+  Info,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -55,14 +56,14 @@ export function AdminKPICards({
   kpiConfig,
 }: AdminKPICardsProps) {
   const ALL_KPIS = [
-    { id: "clients_actifs",      icon: <Building2 className="h-6 w-6 text-purple-600" />, bg: "bg-purple-100", value: activeClients, label: "Clients Actifs", format: "number" },
-    { id: "nouveaux_apprenants", icon: <Users className="h-6 w-6 text-blue-600" />,       bg: "bg-blue-100",   value: newLearners,   label: "Apprenants Inscrits", format: "number" },
-    { id: "sessions_en_cours",   icon: <BookOpen className="h-6 w-6 text-orange-500" />,  bg: "bg-orange-100", value: ongoingSessions, label: "Formations En Cours", format: "number" },
-    { id: "sessions_terminees",  icon: <CheckCircle className="h-6 w-6 text-green-600" />,bg: "bg-green-100",  value: doneSessions,  label: "Formations Terminées", format: "number" },
-    { id: "ca_realise",          icon: <Euro className="h-6 w-6" style={{ color: "#374151" }} />, bg: "", bgStyle: { backgroundColor: "#e0f5f8" } as CSSProperties, value: caRealise, label: `CA Réalisé ${year}`, format: "currency" },
-    { id: "ca_previsionnel",     icon: <TrendingUp className="h-6 w-6 text-indigo-600" />,bg: "bg-indigo-100", value: caPrevisionnel, label: `CA Prévisionnel ${year}`, format: "currency" },
-    { id: "taux_completion",     icon: <ClipboardCheck className="h-6 w-6 text-teal-600" />, bg: "bg-teal-100", value: tauxCompletion, label: "Taux de Complétion", format: "percent" },
-    { id: "nb_questionnaires",   icon: <MessageSquare className="h-6 w-6 text-pink-600" />,  bg: "bg-pink-100",  value: nbQuestionnaireResponses, label: "Réponses ce mois", format: "number" },
+    { id: "clients_actifs",      icon: <Building2 className="h-6 w-6 text-purple-600" />, bg: "bg-purple-100", value: activeClients, label: "Clients Actifs", format: "number", help: "Nombre de clients au statut « actif » (toutes années confondues)." },
+    { id: "nouveaux_apprenants", icon: <Users className="h-6 w-6 text-blue-600" />,       bg: "bg-blue-100",   value: newLearners,   label: "Apprenants Inscrits", format: "number", help: `Apprenants créés durant l'année ${year}.` },
+    { id: "sessions_en_cours",   icon: <BookOpen className="h-6 w-6 text-orange-500" />,  bg: "bg-orange-100", value: ongoingSessions, label: "Formations En Cours", format: "number", help: "Sessions au statut « en cours » (toutes années confondues)." },
+    { id: "sessions_terminees",  icon: <CheckCircle className="h-6 w-6 text-green-600" />,bg: "bg-green-100",  value: doneSessions,  label: "Formations Terminées", format: "number", help: `Sessions terminées dont la date de fin est en ${year}.` },
+    { id: "ca_realise",          icon: <Euro className="h-6 w-6" style={{ color: "#374151" }} />, bg: "", bgStyle: { backgroundColor: "#e0f5f8" } as CSSProperties, value: caRealise, label: `CA Réalisé ${year}`, format: "currency", help: `Total facturé ENCAISSÉ en ${year} : factures payées, hors avoirs. Somme des montants des factures « payées » dont l'encaissement (ou la création) est en ${year}.` },
+    { id: "ca_previsionnel",     icon: <TrendingUp className="h-6 w-6 text-indigo-600" />,bg: "bg-indigo-100", value: caPrevisionnel, label: `CA Prévisionnel ${year}`, format: "currency", help: `Total facturé NON ENCORE ENCAISSÉ en ${year} : factures émises en attente / envoyées / en retard, hors avoirs. C'est ce qu'il reste à encaisser sur ce qui est déjà facturé (pas les devis ni les sessions non facturées).` },
+    { id: "taux_completion",     icon: <ClipboardCheck className="h-6 w-6 text-teal-600" />, bg: "bg-teal-100", value: tauxCompletion, label: "Taux de Complétion", format: "percent", help: `Part des inscriptions ${year} terminées : inscriptions terminées ÷ total des inscriptions de l'année.` },
+    { id: "nb_questionnaires",   icon: <MessageSquare className="h-6 w-6 text-pink-600" />,  bg: "bg-pink-100",  value: nbQuestionnaireResponses, label: "Réponses ce mois", format: "number", help: "Réponses aux questionnaires soumises durant le mois en cours." },
   ];
 
   const visibleKpis = kpiConfig
@@ -98,7 +99,13 @@ export function AdminKPICards({
                     ? `${kpi.value}%`
                     : kpi.value}
                 </p>
-                <p className="text-xs text-gray-500 mt-0.5">{kpi.label}</p>
+                <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
+                  <span className="truncate">{kpi.label}</span>
+                  {/* Info-bulle native (pas de dépendance Tooltip) : méthode de calcul au survol. */}
+                  <span title={kpi.help} aria-label={kpi.help} className="shrink-0 cursor-help inline-flex">
+                    <Info className="h-3 w-3 text-gray-400" />
+                  </span>
+                </p>
               </div>
             </CardContent>
           </Card>

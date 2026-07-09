@@ -29,4 +29,31 @@ describe("computeRevenueFromInvoices", () => {
     ];
     expect(computeRevenueFromInvoices(inv, Y)).toEqual({ realise: 0, previsionnel: 0 });
   });
+
+  it("avoir (is_avoir=true) exclu des deux sommes", () => {
+    const inv: InvoiceLite[] = [
+      { amount: 1000, status: "paid", paid_at: "2026-03-01T00:00:00Z", created_at: "2026-01-01T00:00:00Z" },
+      { amount: -250, status: "pending", paid_at: null, created_at: "2026-02-01T00:00:00Z", is_avoir: true },
+    ];
+    expect(computeRevenueFromInvoices(inv, Y)).toEqual({ realise: 1000, previsionnel: 0 });
+  });
+
+  it("montant négatif NON flaggé (avoir legacy / remise) exclu → prévisionnel jamais négatif", () => {
+    const inv: InvoiceLite[] = [
+      { amount: 5000, status: "pending", paid_at: null, created_at: "2026-04-01T00:00:00Z" },
+      // Avoir importé sans le flag, ou remise saisie en négatif :
+      { amount: -12250, status: "pending", paid_at: null, created_at: "2026-04-02T00:00:00Z" },
+    ];
+    const r = computeRevenueFromInvoices(inv, Y);
+    expect(r.previsionnel).toBe(5000);
+    expect(r.previsionnel).toBeGreaterThanOrEqual(0);
+  });
+
+  it("montant négatif payé (remboursement) exclu du réalisé", () => {
+    const inv: InvoiceLite[] = [
+      { amount: 2000, status: "paid", paid_at: "2026-05-01T00:00:00Z", created_at: "2026-05-01T00:00:00Z" },
+      { amount: -500, status: "paid", paid_at: "2026-05-02T00:00:00Z", created_at: "2026-05-02T00:00:00Z" },
+    ];
+    expect(computeRevenueFromInvoices(inv, Y).realise).toBe(2000);
+  });
 });
