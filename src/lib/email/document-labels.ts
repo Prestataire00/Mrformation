@@ -29,6 +29,9 @@ export const DOCUMENT_LABELS: Record<string, string> = {
   reponses_satisfaction_session: "Réponses de satisfaction",
   resultats_evaluations: "Résultats des évaluations",
   autorisation_image: "Autorisation de droit à l'image",
+  reglement_interieur: "Règlement intérieur",
+  cgv: "CGV",
+  politique_confidentialite: "Politique de confidentialité",
   facture: "Facture",
   devis: "Devis",
 };

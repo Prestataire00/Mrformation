@@ -139,7 +139,7 @@ describe("em-c-1 — Scaffolding UI /admin/emails (non destructif)", () => {
         ),
         "utf-8",
       );
-      expect(tabConventionDocs).toMatch(/import \{ EmailPreviewDialog \}/);
+      expect(tabConventionDocs).toMatch(/import \{ EmailPreviewDialog[\s,}]/);
     });
   });
 });
