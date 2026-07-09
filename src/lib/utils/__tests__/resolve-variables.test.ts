@@ -188,6 +188,16 @@ describe("resolveVariables — entity organisme", () => {
     );
   });
 
+  it("résout les alias Sellsy [%…%] organisme (format des emails) depuis entity", () => {
+    // Chemin exact utilisé par les emails d'automation et manuels : le catalogue
+    // UI insère du [%Libellé%], résolu via ALIAS_TO_VARIABLE_KEY → entity.
+    const result = resolveVariables(
+      "[%Nom de l'organisme%] — SIRET [%SIRET de l'organisme%]",
+      { entity: { ...FULL_ENTITY, name: "MR FORMATION" } },
+    );
+    expect(result).toBe("MR FORMATION — SIRET 11122233344455");
+  });
+
   it("résout {{logo_organisme}} en balise <img> si logo_url présent", () => {
     const result = resolveVariables("{{logo_organisme}}", {
       entity: FULL_ENTITY,
@@ -341,7 +351,8 @@ describe("Format Loris/Sellsy `[%libellé%]`", () => {
   it("garde `[%libellé inconnu%]` visible si pas d'alias (pour audit)", () => {
     const result = resolveVariables("Test [%Libellé inexistant%]", {});
     expect(result).toBe("Test [%Libellé inexistant%]");
-    expect(findUnresolvedVariables(result)).toEqual([]); // findUnresolved cherche {{xxx}}, pas [%xxx%]
+    // findUnresolvedVariables détecte désormais aussi le format Sellsy [%…%]
+    expect(findUnresolvedVariables(result)).toEqual(["[%Libellé inexistant%]"]);
   });
 
   it("résout `[%xxx%]` ET `{{xxx}}` dans le même template", () => {
@@ -373,6 +384,18 @@ describe("findUnresolvedVariables", () => {
       "{{a}}",
       "{{b}}",
     ]);
+  });
+
+  it("détecte aussi les balises Sellsy [%Libellé%] non résolues", () => {
+    expect(findUnresolvedVariables("Bonjour [%Date de fin de la formation%]")).toEqual([
+      "[%Date de fin de la formation%]",
+    ]);
+  });
+
+  it("détecte les deux formats mélangés ({{…}} + [%…%])", () => {
+    expect(
+      findUnresolvedVariables("{{inconnu}} et [%Autre libellé%]"),
+    ).toEqual(["{{inconnu}}", "[%Autre libellé%]"]);
   });
 });
 

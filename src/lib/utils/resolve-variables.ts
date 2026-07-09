@@ -1795,10 +1795,16 @@ export const ALIAS_TO_VARIABLE_KEY: Record<string, string> = {
 };
 
 /**
- * Returns an array of unresolved {{variables}} still present in the content.
+ * Retourne les balises non résolues encore présentes dans le contenu, dans les
+ * DEUX formats supportés : technique `{{variable}}` ET Sellsy `[%Libellé%]`.
+ *
+ * Historiquement ne détectait que `{{...}}`, ce qui laissait passer sans aucun
+ * avertissement une balise `[%Date de fin de la formation%]` oubliée (format
+ * pourtant inséré par défaut depuis le catalogue UI). Utilisé uniquement par
+ * l'éditeur d'email (avertissement avant envoi).
  */
 export function findUnresolvedVariables(content: string): string[] {
-  const matches = content.match(/\{\{[^}]+\}\}/g);
+  const matches = content.match(/\{\{[^}]+\}\}|\[%[^%\]]+%\]/g);
   return matches ? [...new Set(matches)] : [];
 }
 
