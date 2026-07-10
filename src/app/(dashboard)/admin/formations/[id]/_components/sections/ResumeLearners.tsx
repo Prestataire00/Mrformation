@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Plus, Trash2, Download, Loader2, UserPlus, Mail } from "lucide-react";
+import { Plus, Trash2, Download, Loader2, UserPlus, Mail, Pencil } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,6 +24,9 @@ import {
   removeEnrollment,
 } from "@/lib/services/enrollments";
 import { getFormationKind } from "@/lib/utils/formation-companies";
+import { EditFormationLearnerDialog, type EditableEnrollment } from "./EditFormationLearnerDialog";
+import { BPF_TRAINEE_TYPE_VALUES } from "@/lib/bpf-enums";
+import { BPF_TRAINEE_TYPE_LABELS } from "@/lib/bpf-labels";
 
 const ENROLLMENT_STATUS_LABELS: Record<string, string> = {
   registered: "Inscrit",
@@ -53,6 +56,7 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
   const [selectedLearnerId, setSelectedLearnerId] = useState("");
   const [saving, setSaving] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [editingEnrollment, setEditingEnrollment] = useState<EditableEnrollment | null>(null);
 
   // Company selection for INTER
   const [selectedClientId, setSelectedClientId] = useState("");
@@ -356,6 +360,14 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
                 )}
               </div>
               <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  title="Modifier le stagiaire (type BPF, coordonnées)"
+                  onClick={() => setEditingEnrollment(e as unknown as EditableEnrollment)}
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
                 <Button size="sm" variant="ghost" className="text-red-600 hover:text-red-700" onClick={() => setDeleteId(e.id)}>
                   <Trash2 className="h-4 w-4" />
                 </Button>
@@ -471,11 +483,9 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
               <Select value={newBpfTraineeType} onValueChange={setNewBpfTraineeType}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="salarie_prive">Salarié privé (hors apprenti)</SelectItem>
-                  <SelectItem value="apprenti">Apprenti</SelectItem>
-                  <SelectItem value="demandeur_emploi">Demandeur d&apos;emploi</SelectItem>
-                  <SelectItem value="particulier">Particulier à ses frais</SelectItem>
-                  <SelectItem value="autre">Autre</SelectItem>
+                  {BPF_TRAINEE_TYPE_VALUES.map((v) => (
+                    <SelectItem key={v} value={v}>{BPF_TRAINEE_TYPE_LABELS[v]}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -546,11 +556,9 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
               <Select value={newBpfTraineeType} onValueChange={setNewBpfTraineeType}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="salarie_prive">Salarié privé (hors apprenti)</SelectItem>
-                  <SelectItem value="apprenti">Apprenti</SelectItem>
-                  <SelectItem value="demandeur_emploi">Demandeur d&apos;emploi</SelectItem>
-                  <SelectItem value="particulier">Particulier à ses frais</SelectItem>
-                  <SelectItem value="autre">Autre</SelectItem>
+                  {BPF_TRAINEE_TYPE_VALUES.map((v) => (
+                    <SelectItem key={v} value={v}>{BPF_TRAINEE_TYPE_LABELS[v]}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -580,6 +588,16 @@ export function ResumeLearners({ formation, onRefresh }: Props) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {editingEnrollment && (
+        <EditFormationLearnerDialog
+          enrollment={editingEnrollment}
+          sessionId={formation.id}
+          entityId={formation.entity_id}
+          onClose={() => setEditingEnrollment(null)}
+          onRefresh={onRefresh}
+        />
+      )}
     </>
   );
 }
