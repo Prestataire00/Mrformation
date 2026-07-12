@@ -186,6 +186,18 @@ Aucun résiduel — script read-only rejouable : scratchpad `diag_loris_charges.
 
 Observable en prod sans écriture : `/admin/reports/factures` (entité C3V) → « Total facturé » ≈ 514k € au lieu de ≈ 910k € ; lignes à montants négatifs non-avoirs dans le tableau. `/admin/reports/bpf` (C3V, exercice 2026) → panneau trous : ~155 factures sans funding_type dont les charges.
 
+## Follow-up: 2026-07-12
+
+### Remédiation EXÉCUTÉE en prod (GO humain)
+
+`scripts/import-loris/reclass_loris_charges.py --apply` (PR #333, branche `chore/reclassement-charges-loris`) :
+- **220 charges créées** dans `formation_charges` (C3V 155 / +395 266,48 € ; MR 65 / +55 298,17 €), **220 factures parasites supprimées**. 0 anomalie, 0 warning.
+- Vérifié indépendamment (read-only) : 0 ligne `Loris Charge` restante ; totaux `formation_invoices` corrigés — **C3V 909 765,73 €** (292 lignes), **MR 228 933,46 €** (122 lignes) ; re-run = « Rien à faire » (idempotence).
+- Prévention en place : les deux scripts d'import routent `Type='Charge'` vers `formation_charges` (verrou d'ordre + dédupe multiset).
+- 90/96 fiches clients bootstrap désormais orphelines (listées par le script — suppression = décision séparée, cf. deferred-work).
+
+Spec (3 boucles de revue adversariale) : `../spec-reclassement-charges-loris.md`. Backlog #4 → Done (reclassement), #5 reste Open.
+
 ## Side Findings
 
 - La table `formation_charges` (supabase/migrations/add_formation_finances.sql:41-56) + ChargesPanel constituent le réceptacle naturel d'un reclassement (alimente le calcul de marge, hors CA). Quasi vide aujourd'hui (1 ligne).
