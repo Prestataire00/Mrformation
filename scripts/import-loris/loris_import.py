@@ -15,6 +15,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
 from openpyxl import load_workbook
@@ -44,6 +45,12 @@ TABLE_ORDER = [
     "crm_quotes",
     "formation_invoices",
 ]
+
+# Charges LORIS (Type='Charge') — routées vers formation_charges, JAMAIS en factures.
+# Préfixes PARTAGÉS avec scripts/import-loris/reclass_loris_charges.py (verrou d'ordre :
+# tant que des factures « Loris Charge — » subsistent, l'import n'insère AUCUNE charge).
+CHARGE_LABEL_PREFIX = "Charge LORIS — "   # labels formation_charges
+CHARGE_NOTES_PREFIX = "Loris Charge — "   # notes des factures parasites historiques (pré-reclassement)
 
 # Mapping conventionnel pour les colonnes Loris vs colonnes DB (gap → loris_metadata)
 
@@ -103,6 +110,33 @@ def rest_get(table, **params):
 
 def rest_post(table, rows, prefer="return=representation"):
     return _req("POST", table, body=rows, prefer=prefer)
+
+
+def rest_get_all(table, soft=False, **params):
+    """GET paginé — PostgREST plafonne ~1000 lignes/réponse.
+
+    Avance de len(page) et s'arrête sur page VIDE (robuste même si le serveur
+    plafonne sous la limite demandée). Sur _error : sys.exit par défaut (pas
+    d'échec silencieux — un GET de dédupe/verrou qui échoue en silence = doublons
+    garantis) ; soft=True retourne None à la place, pour les appels situés APRÈS
+    des écritures (le rapport JSON du run doit toujours être écrit)."""
+    rows = []
+    offset = 0
+    base = dict(params)
+    base.setdefault("order", "id.asc")
+    base.setdefault("limit", "1000")
+    while True:
+        page = _req("GET", table, params={**base, "offset": str(offset)})
+        if isinstance(page, dict) and page.get("_error"):
+            if soft:
+                print(f"  ⚠️  Erreur GET {table} : HTTP {page['status']} — {page['body'][:200]}")
+                return None
+            sys.exit(f"❌ Erreur GET {table} : HTTP {page['status']} — {page['body'][:300]}")
+        page = page if isinstance(page, list) else []
+        rows.extend(page)
+        if not page:
+            return rows
+        offset += len(page)
 
 
 # ── XLSX → dicts ──────────────────────────────────────────────────────────
@@ -585,6 +619,89 @@ def map_formation_invoice(row, idx, sessions_by_title, clients_by_name, code_to_
         "notes": f"Loris {norm(row.get('Type')) or 'Facture'} — mode={norm(row.get('Mode de paiement')) or 'n/a'}",
     }
     return payload
+
+
+# ── Charges (Type='Charge') → formation_charges ──────────────────────────
+
+def canon_charge_amount(v):
+    """Montant canonique de dédupe : valeur absolue quantizée half-up à 2 décimales
+    (None si NULL/illisible/NaN).
+
+    Decimal + ROUND_HALF_UP obligatoire : le round() banker's de Python divergerait
+    du NUMERIC Postgres sur les demi-cents. Guard NaN AVANT quantize (d != d ⇔ NaN) :
+    Decimal('NaN').quantize lèverait InvalidOperation et NaN casserait les clés de
+    dédupe (jamais égal à lui-même)."""
+    d = to_decimal(v)
+    if d is None or d != d or d in (float("inf"), float("-inf")):  # NULL, NaN (d != d), ±inf
+        return None
+    return abs(Decimal(str(d))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def charge_label_base(label):
+    """Base de dédupe d'une charge EXISTANTE en base : label sans le préfixe
+    'Charge LORIS — ' ni le suffixe ' ({référence})' FINAL, normalisé via
+    norm_name (insensible casse/accents).
+
+    Regex ancrée sur le suffixe parenthésé FINAL — PAS split(' (', 1), qui
+    tronquerait un destinataire contenant lui-même ' ('."""
+    s = label or ""
+    if s.startswith(CHARGE_LABEL_PREFIX):
+        s = s[len(CHARGE_LABEL_PREFIX):]
+    s = re.sub(r"\s*\([^()]*\)$", "", s)
+    return norm_name(s)
+
+
+def map_formation_charge(row, sessions_by_title, code_to_session=None):
+    """Ligne xlsx Type='Charge' (coût formateur/fournisseur) → payload formation_charges.
+
+    Label : 'Charge LORIS — {Destinataire} ({Numéro})' si Numéro présent, sinon
+    'Charge LORIS — {Destinataire}' — JAMAIS de référence synthétique dépendante
+    de l'index (non stable entre runs). L'idempotence NE repose PAS sur le label :
+    dédupe MULTISET par (entity_id, session_id, norm_name(Destinataire), montant
+    quantizé) dans la sous-étape charges de main(). Le payload embarque
+    '_dedupe_base' (retiré avant insertion)."""
+    destinataire = norm(row.get("Destinataire")) or norm(row.get("Client"))
+    formation_title = norm(row.get("Nom de la formation"))
+
+    # Matching session : identique à map_formation_invoice (Code formation fiable,
+    # repli sur le titre si le code est absent/non résolu).
+    code = norm(row.get("Code formation"))
+    session_id = code_to_session.get(code) if (code and code_to_session) else None
+    if not session_id and formation_title:
+        session_id = sessions_by_title.get(norm_name(formation_title))
+    if not session_id:
+        return {
+            "_skip_reason": f"no_session for formation '{formation_title}'",
+            "_meta": {"destinataire": destinataire},
+        }
+
+    amount = to_decimal(row.get("Montant"))
+    if (amount is None or amount != amount            # None ou NaN (d != d)
+            or amount in (float("inf"), float("-inf"))
+            or abs(amount) >= 10**8):                 # déborderait DECIMAL(10,2) → rejet du batch entier
+        return {
+            "_skip_reason": f"montant illisible/hors bornes ('{row.get('Montant')}') pour charge '{destinataire}'",
+            "_meta": {"destinataire": destinataire},
+        }
+
+    reference = norm(row.get("Numéro"))
+    recipient = destinataire or "Inconnu"
+    if reference:
+        label = f"{CHARGE_LABEL_PREFIX}{recipient} ({reference})"
+    else:
+        label = f"{CHARGE_LABEL_PREFIX}{recipient}"
+
+    # formation_charges : id, session_id, entity_id, label, amount, created_at — rien d'autre.
+    # _dedupe_base : calculée depuis le label QUI SERA ÉCRIT, via charge_label_base —
+    # la même fonction que pour les charges existantes → symétrie par construction
+    # (un destinataire finissant par « (...) » donne la même base des deux côtés).
+    return {
+        "session_id": session_id,
+        "entity_id": MR_ENTITY_ID,
+        "label": label,
+        "amount": abs(amount),
+        "_dedupe_base": charge_label_base(label),
+    }
 
 
 # ── Import orchestrator ───────────────────────────────────────────────────
@@ -1101,6 +1218,11 @@ def main():
             # Bootstrap : créer les recipients manquants (financeurs/OPCO/etc.) en tant que clients
             referenced_recipients = set()
             for row in data:
+                # Lignes Type « charge »-like (exactes → formation_charges, non exactes →
+                # skippées entièrement) : leurs destinataires (formateurs/fournisseurs) ne
+                # doivent PAS générer de fiches clients bootstrap.
+                if "charge" in (norm(row.get("Type")) or "").lower():
+                    continue
                 rec = norm(row.get("Destinataire")) or norm(row.get("Client"))
                 if rec:
                     referenced_recipients.add(rec)
@@ -1139,7 +1261,36 @@ def main():
             ref_set = {r["external_reference"] for r in (existing_refs if isinstance(existing_refs, list) else []) if r.get("external_reference")}
 
             to_insert, skipped_match, skipped_dup = [], 0, 0
+            charge_candidates = []   # (base_dédupe, payload formation_charges) — lignes Type='charge'
+            charge_skips = []        # raisons de skip côté charges (no-match session, montant illisible)
+            chargelike_types = {}    # Type contenant « charge » SANS égalité exacte → ligne skippée ENTIÈREMENT
+            unknown_types = {}       # Type non reconnu (hors facture/avoir/acompte/vide) → compté, routage facture inchangé
+            empty_types = 0          # Types vides — comptés en info, routage facture par défaut
             for idx, row in enumerate(data):
+                typ = (norm(row.get("Type")) or "").lower()
+                if typ == "charge":
+                    # Ligne Charge (coût formateur/fournisseur) → formation_charges,
+                    # JAMAIS formation_invoices (cf. reclassement des 220 lignes historiques).
+                    cp = map_formation_charge(row, lk["sessions_by_title"], lk.get("code_to_session"))
+                    if "_skip_reason" in cp:
+                        charge_skips.append(cp["_skip_reason"])
+                        continue
+                    raw_amount = to_decimal(row.get("Montant"))
+                    if raw_amount is not None and raw_amount >= 0:
+                        print(f"  ⚠️  Charge à montant ≥ 0 dans la source : « {cp['label']} » "
+                              f"({raw_amount}) — anomalie source, importée avec abs()")
+                    charge_candidates.append((cp.pop("_dedupe_base"), cp))
+                    continue
+                if "charge" in typ:
+                    # Type « charge »-like sans égalité EXACTE (ex. « Charges ») : ligne skippée
+                    # ENTIÈREMENT (ni facture ni charge) — jamais de facture parasite recréée en silence.
+                    chargelike_types[typ] = chargelike_types.get(typ, 0) + 1
+                    continue
+                if typ == "":
+                    empty_types += 1
+                elif typ not in ("facture", "avoir", "acompte"):
+                    # Type inconnu : compté et tracé (routage facture inchangé).
+                    unknown_types[typ] = unknown_types.get(typ, 0) + 1
                 p = map_formation_invoice(row, idx, lk["sessions_by_title"], lk["clients_by_name"], lk.get("code_to_session"))
                 if not p:
                     continue
@@ -1153,6 +1304,17 @@ def main():
                 p["number"] = offset_gn + idx
                 p["global_number"] = offset_gn + idx
                 to_insert.append(p)
+            if chargelike_types:
+                for t in sorted(chargelike_types):
+                    print(f"  ⚠️  Type « charge »-like non exact : '{t}' — {chargelike_types[t]} ligne(s) "
+                          f"skippée(s) ENTIÈREMENT (ni facture ni charge)")
+            if unknown_types:
+                print(f"  ⚠️  {sum(unknown_types.values())} ligne(s) de Type non reconnu "
+                      f"(hors facture/avoir/acompte/charge) — traitées comme factures :")
+                for t in sorted(unknown_types):
+                    print(f"      • Type='{t}' : {unknown_types[t]} ligne(s)")
+            if empty_types:
+                print(f"  ℹ️  {empty_types} ligne(s) sans Type — routées en facture (défaut historique)")
             print(f"  → {len(to_insert)} factures à insérer, {skipped_match} skippées (no match), {skipped_dup} doublons (déjà importé)")
             inserted, errors = insert_batch("formation_invoices", to_insert, dry)
             print(f"  ✅ inserted={len(inserted)} | errors={len(errors)}")
@@ -1162,10 +1324,137 @@ def main():
                 "total_rows": len(data),
                 "to_insert": len(to_insert),
                 "skipped_no_match": skipped_match,
+                "skipped_duplicates": skipped_dup,
+                "skipped_chargelike_entier": sum(chargelike_types.values()),
+                "chargelike_types": chargelike_types,
+                "unknown_types": unknown_types,
+                "empty_types": empty_types,
                 "inserted": len(inserted),
                 "errors": len(errors),
                 "error_samples": errors[:3],
             }
+
+            # ── CHARGES (Type='charge') → formation_charges ──────────────────
+            print(f"\n  📎 CHARGES (Type='charge') → formation_charges : "
+                  f"{len(charge_candidates) + len(charge_skips)} ligne(s) source")
+            if charge_skips:
+                print(f"  ⏭️  {len(charge_skips)} charge(s) skippée(s) (no-match session / montant illisible) — échantillon :")
+                for reason in charge_skips[:5]:
+                    print(f"      • {reason}")
+
+            # VERROU D'ORDRE (Design Notes v3) : tant que des factures parasites
+            # « Loris Charge — » subsistent pour l'entité, AUCUNE insertion de charge
+            # (sinon import et reclassement écriraient formation_charges en concurrence).
+            # Le routage des lignes Type='charge' HORS factures reste actif ci-dessus.
+            # soft=True : ce GET tourne APRÈS l'insertion des factures — une erreur bloque
+            # les charges (conservateur) mais laisse le run écrire son rapport JSON.
+            # Filtre client startswith : MÊME prédicat que le reclassement (l'ILIKE est
+            # insensible à la casse) — périmètres alignés, pas de blocage sans issue.
+            _legacy_rows = rest_get_all(
+                "formation_invoices",
+                soft=True,
+                select="id,notes",
+                **{"entity_id": f"eq.{MR_ENTITY_ID}",
+                   "external_source": "eq.loris",
+                   "notes": f"ilike.{CHARGE_NOTES_PREFIX}*"})
+            legacy_charge_invoices = (None if _legacy_rows is None else
+                                      [r for r in _legacy_rows
+                                       if (r.get("notes") or "").startswith(CHARGE_NOTES_PREFIX)])
+            if legacy_charge_invoices is None:
+                print(f"  ⛔ GET du verrou en erreur — blocage CONSERVATEUR : les "
+                      f"{len(charge_candidates)} insertion(s) de charges sont skippées "
+                      "(relancer l'import une fois le réseau/API rétabli).")
+                report["tables"]["formation_charges"] = {
+                    "charge_rows": len(charge_candidates) + len(charge_skips),
+                    "charges_blocked": len(charge_candidates),
+                    "blocked_reason": "GET verrou en erreur (blocage conservateur)",
+                    "skipped_no_match_ou_illisible": len(charge_skips),
+                    "to_insert": 0,
+                    "skipped_duplicates": 0,
+                    "inserted": 0,
+                    "errors": 0,
+                    "error_samples": [],
+                }
+            elif legacy_charge_invoices:
+                print(f"  ⛔ {len(legacy_charge_invoices)} facture(s) « {CHARGE_NOTES_PREFIX.strip()} » "
+                      f"encore dans formation_invoices — TOUTES les insertions de charges sont "
+                      f"skippées ({len(charge_candidates)} candidate(s)) :")
+                print("     jouer scripts/import-loris/reclass_loris_charges.py d'abord, puis relancer cet import.")
+                print("     ⚠️  Au re-run post-reclassement : pour un xlsx inchangé, le compteur « charges à")
+                print("        insérer » doit rester 0 — un compte > 0 peut signaler des sessions re-résolues")
+                print("        depuis l'import d'origine (code/titre) : vérifier en dry-run avant --execute.")
+                report["tables"]["formation_charges"] = {
+                    "charge_rows": len(charge_candidates) + len(charge_skips),
+                    "charges_blocked": len(charge_candidates),
+                    "skipped_no_match_ou_illisible": len(charge_skips),
+                    "to_insert": 0,
+                    "skipped_duplicates": 0,
+                    "inserted": 0,
+                    "errors": 0,
+                    "error_samples": [],
+                }
+            else:
+                # Dédupe MULTISET par (entity_id, session_id, base, montant quantizé) :
+                # base candidate = norm_name(Destinataire) ; base existante = norm_name(label
+                # sans préfixe ni suffixe ' (...)' FINAL) — cf. charge_label_base. Pour chaque
+                # clé, n'insérer que max(0, n_candidats − n_existants) : tolère les vraies
+                # charges multiples identiques (pas de drop silencieux d'une charge légitime)
+                # et un re-run import→import donne 0 insertion.
+                # soft=True : jamais de dédupe sur un GET échoué, mais ce GET tourne APRÈS
+                # l'insertion des factures — une erreur bloque les charges (conservateur,
+                # candidats vidés → 0 insertion) sans priver l'opérateur du rapport JSON.
+                existing_charges = rest_get_all(
+                    "formation_charges",
+                    soft=True,
+                    select="session_id,label,amount",
+                    **{"entity_id": f"eq.{MR_ENTITY_ID}",
+                       "label": f"like.{CHARGE_LABEL_PREFIX}*"})
+                charges_blocked_on_error = 0
+                if existing_charges is None:
+                    print(f"  ⛔ GET de dédupe en erreur — blocage CONSERVATEUR : les "
+                          f"{len(charge_candidates)} insertion(s) de charges sont skippées "
+                          "(relancer l'import une fois le réseau/API rétabli).")
+                    charges_blocked_on_error = len(charge_candidates)
+                    charge_candidates = []
+                    existing_charges = []
+                existing_counts = {}
+                for r in existing_charges:
+                    key = (MR_ENTITY_ID, r.get("session_id"),
+                           charge_label_base(r.get("label")),
+                           canon_charge_amount(r.get("amount")))
+                    existing_counts[key] = existing_counts.get(key, 0) + 1
+                charges_to_insert, charges_dup_samples, charges_skipped_dup = [], [], 0
+                remaining_existing = dict(existing_counts)
+                for base, cp in charge_candidates:
+                    key = (MR_ENTITY_ID, cp["session_id"], base, canon_charge_amount(cp["amount"]))
+                    if remaining_existing.get(key, 0) > 0:
+                        # Une charge existante « consomme » ce candidat (comptage multiset).
+                        remaining_existing[key] -= 1
+                        charges_skipped_dup += 1
+                        if len(charges_dup_samples) < 5:
+                            charges_dup_samples.append(f"{cp['label']} — {cp['amount']}")
+                        continue
+                    charges_to_insert.append(cp)
+                if charges_skipped_dup:
+                    print(f"  ⏭️  {charges_skipped_dup} candidat(s) excédentaire(s) droppé(s) "
+                          f"(dédupe multiset) — échantillon :")
+                    for sample in charges_dup_samples:
+                        print(f"      • {sample}")
+                print(f"  → {len(charges_to_insert)} charges à insérer")
+                ch_inserted, ch_errors = insert_batch("formation_charges", charges_to_insert, dry)
+                print(f"  ✅ charges inserted={len(ch_inserted)} | errors={len(ch_errors)}")
+                if ch_errors:
+                    print(f"  Sample : {ch_errors[0]}")
+                report["tables"]["formation_charges"] = {
+                    "charge_rows": len(charge_candidates) + len(charge_skips) + charges_blocked_on_error,
+                    "charges_blocked": charges_blocked_on_error,
+                    "skipped_no_match_ou_illisible": len(charge_skips),
+                    "to_insert": len(charges_to_insert),
+                    "skipped_duplicates": charges_skipped_dup,
+                    "inserted": len(ch_inserted),
+                    "errors": len(ch_errors),
+                    "error_samples": ch_errors[:3],
+                }
 
     # Final report
     report["ended_at"] = datetime.utcnow().isoformat() + "Z"

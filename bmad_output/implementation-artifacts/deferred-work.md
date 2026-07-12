@@ -297,3 +297,15 @@ Spec A1 en cours : `spec-programme-generateur-interne.md`, branche `feat/program
 ## Avoir partiel — différé review (2026-07-03)
 
 - **AV1 (BASSE, hors scope) : pas de contrôle du cumul multi-avoirs.** `parseAvoirAmount` borne chaque avoir à `≤ |montant parent|` **individuellement**, mais rien n'empêche d'émettre plusieurs avoirs partiels dont la somme dépasse la facture (ex. facture 1000 → avoir 700 + avoir 700 = 1400 avoirés) → sur-remboursement comptable possible. Hors périmètre de la story (avoir unique borné au parent). Fix éventuel : borner par `|parent| − somme(avoirs enfants existants)` calculé à l'ouverture du dialog (nécessite de fetcher les avoirs déjà liés à la facture).
+
+## Depuis spec-edition-montant-avoir (2026-07-07)
+
+- **Absence de borne serveur sur le montant d'un avoir** — le plafonnement (`0 < m ≤ |parent|`) est purement client (`parseAvoirAmount`). Ni le RPC POST ni le PATCH (`src/app/api/formations/[id]/invoices/route.ts`) ne comparent `amount` au parent. Pré-existant (touche aussi la création). Durcissement possible : valider côté serveur, et refuser un avoir non borné quand `parent_invoice_id` est résoluble.
+- **Avoirs cumulés dépassant la facture parent** — plusieurs avoirs partiels sur une même facture peuvent totaliser plus que le montant parent ; aucune somme des avoirs frères n'est vérifiée (création comme édition). Pré-existant.
+- **Avoirs importés (LORIS) non-`pending` non corrigeables via l'UI** — l'action « Modifier le montant » n'apparaît que sur les avoirs `pending` (décision produit assumée). Si un stock d'avoirs importés émis doit être corrigeable, prévoir un chemin dédié (ou une correction data ponctuelle).
+
+## Depuis spec-reclassement-charges-loris (2026-07-10)
+
+- **`formation_charges` sans colonnes de traçabilité** — seule l'origine encodée dans `label` (« Charge LORIS — X (réf) ») permet un rapprochement ; ni source, ni référence structurée, ni date de charge. Si un besoin d'audit/correction ciblée émerge : migration additive (`source`, `external_reference`, `charge_date`).
+- **Avoirs fournisseurs non représentables** — les charges sont stockées en valeur absolue ; une ligne « Charge » à montant positif (avoir/annulation fournisseur) est reclassée en `abs()` avec WARN au lieu d'être soustraite. Si le cas apparaît réellement dans les données : décider d'une représentation signée (impact ChargesPanel + marge).
+- **Fiches clients bootstrap orphelines** — le script de reclassement les LISTE seulement (96 candidates `_bootstrap_from_invoices`, initiales formateurs/fournisseurs). Suppression = décision humaine séparée (vérifier les références hors factures avant).
