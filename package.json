@@ -15,6 +15,7 @@
     "db:generate": "echo 'To regenerate the DB schema: copy supabase/schema.sql content into the Supabase SQL Editor and run it. For seed data, use supabase/seed.sql'"
   },
   "dependencies": {
+    "@abby-inc/node": "1.0.0",
     "@hookform/resolvers": "^5.2.2",
     "@netlify/functions": "^5.1.5",
     "@radix-ui/react-avatar": "^1.1.11",
