@@ -17,6 +17,11 @@ function getEncryptionKey(): Buffer {
       "ABBY_ENCRYPTION_KEY is not configured (générer avec `openssl rand -hex 32` et provisionner sur Netlify ET Railway)"
     );
   }
+  if (!/^[0-9a-f]{64}$/i.test(key)) {
+    throw new Error(
+      "ABBY_ENCRYPTION_KEY doit faire 64 caractères hexadécimaux (openssl rand -hex 32)"
+    );
+  }
   return Buffer.from(key, "hex");
 }
 

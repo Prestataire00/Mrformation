@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/use-toast";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
+import AbbyConnectionCard from "./_components/AbbyConnectionCard";
 import { Building2, MapPin, Phone, User, Image as ImageIcon, Upload, Loader2, Save, CreditCard, Receipt, Percent } from "lucide-react";
 
 interface OrgForm {
@@ -327,6 +328,10 @@ export default function OrganizationSettingsPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Facturation électronique (Abby) — card autonome : ses actions passent
+          par /api/abby/*, elle ne participe pas au handleSave global */}
+      <AbbyConnectionCard />
 
       <div className="flex justify-end sticky bottom-4">
         <Button onClick={handleSave} disabled={saving} size="lg" className="gap-2">
