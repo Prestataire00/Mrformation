@@ -1,6 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sanitizeDbError } from "@/lib/api-error";
-import { createAbbyClient, fetchCompanyIdentity } from "@/lib/abby/client";
+import {
+  createAbbyClient,
+  fetchCompanyIdentity,
+  getCompanyIdentity,
+} from "@/lib/abby/client";
 import { encryptApiKey, decryptApiKey } from "@/lib/abby/encryption";
 import { toAbbyErrorCode, type AbbyErrorCode } from "@/lib/abby/errors";
 import type {
@@ -23,7 +27,92 @@ const CODE_MESSAGES: Record<AbbyErrorCode, string> = {
   abby_rate_limited: "Trop de requêtes vers Abby",
   abby_network: "Abby injoignable",
   abby_no_connection: "Aucune connexion Abby pour cette entité",
+  abby_invalid_state: "Aucun test de connexion réussi en attente d'activation",
 };
+
+// ---------------------------------------------------------------------------
+// Helpers internes
+// ---------------------------------------------------------------------------
+
+/**
+ * Lit le référentiel du garde-fou anti-inversion (AD-5) : nom + SIRET de
+ * l'entité. SIRET absent → refus de configuration explicite (jamais de
+ * vérification impossible passée sous silence).
+ */
+async function readEntityIdentity(
+  supabase: SupabaseClient,
+  entityId: string
+): Promise<ServiceResult<{ entityName: string; entitySiret: string }>> {
+  const { data, error } = await supabase
+    .from("entities")
+    .select("name, siret")
+    .eq("id", entityId)
+    .maybeSingle();
+
+  if (error) {
+    return {
+      ok: false,
+      error: { message: sanitizeDbError(error, "abby entity identity") },
+    };
+  }
+  const siret = (data as { name: string; siret: string | null } | null)?.siret;
+  if (!data || !siret) {
+    return {
+      ok: false,
+      error: {
+        message:
+          "SIRET de l'entité non renseigné — impossible de vérifier le compte Abby (paramètres de l'organisme)",
+      },
+    };
+  }
+  return { ok: true, entityName: (data as { name: string }).name, entitySiret: siret };
+}
+
+/** Message dynamique du garde-fou anti-inversion (microcopy UX Flow 1). */
+function siretMismatchMessage(
+  found: string,
+  accountName: string | null,
+  entityName: string,
+  expected: string
+): string {
+  const account = accountName ? `SIRET ${found}, ${accountName}` : `SIRET ${found}`;
+  return `Le compte Abby connecté (${account}) ne correspond pas à ${entityName} (SIRET attendu ${expected}). Connexion refusée.`;
+}
+
+/**
+ * Pose last_error/last_error_at sur la connexion existante (si elle existe).
+ * Message en paramètre : les erreurs dynamiques (mismatch SIRET) portent
+ * les deux SIRET, les erreurs typées portent leur message court.
+ */
+async function markConnectionError(
+  supabase: SupabaseClient,
+  entityId: string,
+  message: string
+): Promise<void> {
+  const { data: existing, error: selectError } = await supabase
+    .from("abby_connections")
+    .select("id")
+    .eq("entity_id", entityId)
+    .maybeSingle();
+
+  if (selectError) {
+    sanitizeDbError(selectError, "abby connections mark error (select)");
+    return;
+  }
+  if (!existing) return;
+
+  const { error: updateError } = await supabase
+    .from("abby_connections")
+    .update({
+      last_error: message,
+      last_error_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("entity_id", entityId);
+  if (updateError) {
+    sanitizeDbError(updateError, "abby connections mark error (update)");
+  }
+}
 
 type ConnectionRow = {
   is_active: boolean | null;
@@ -118,32 +207,23 @@ export async function testAndStoreApiKey(
   } catch (err) {
     const code = toAbbyErrorCode(err);
     const message = CODE_MESSAGES[code];
-
-    const { data: existing, error: selectError } = await supabase
-      .from("abby_connections")
-      .select("id")
-      .eq("entity_id", entityId)
-      .maybeSingle();
-
-    if (selectError) {
-      sanitizeDbError(selectError, "abby connections test (select existant)");
-    }
-
-    if (existing) {
-      const { error: updateError } = await supabase
-        .from("abby_connections")
-        .update({
-          last_error: message,
-          last_error_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq("entity_id", entityId);
-      if (updateError) {
-        sanitizeDbError(updateError, "abby connections test (pose last_error)");
-      }
-    }
-
+    await markConnectionError(supabase, entityId, message);
     return { ok: false, error: { message, code } };
+  }
+
+  // Garde-fou anti-inversion (FR-3, AD-5) : HORS du try — un mismatch n'est
+  // pas une erreur d'appel Abby, et rien ne doit être stocké.
+  const entity = await readEntityIdentity(supabase, entityId);
+  if (!entity.ok) return entity;
+  if (identity.companySiret !== entity.entitySiret) {
+    const message = siretMismatchMessage(
+      identity.companySiret,
+      identity.companyName,
+      entity.entityName,
+      entity.entitySiret
+    );
+    await markConnectionError(supabase, entityId, message);
+    return { ok: false, error: { message, code: "abby_siret_mismatch" } };
   }
 
   let triplet: ReturnType<typeof encryptApiKey>;
@@ -274,4 +354,86 @@ export async function withAbbyConnection<T>(
     await stamp({ last_error: message, last_error_at: new Date().toISOString() });
     return { ok: false, error: { message, code } };
   }
+}
+
+/**
+ * Active la connexion testée de l'entité (FR-2) — second clic explicite.
+ * Séquence : état `testee` requis → re-vérification SIRET LIVE (AD-5 : le
+ * garde-fou joue au test ET à l'activation) → UPDATE conditionnel atomique
+ * (anti double-onglet). Aucun contournement du mismatch n'existe (FR-3).
+ */
+export async function activateConnection(
+  supabase: SupabaseClient,
+  entityId: string
+): Promise<ServiceResult<Record<never, never>>> {
+  const stateRes = await getConnectionState(supabase, entityId);
+  if (!stateRes.ok) return stateRes;
+  if (stateRes.state.status !== "testee") {
+    return {
+      ok: false,
+      error: {
+        message: CODE_MESSAGES.abby_invalid_state,
+        code: "abby_invalid_state",
+      },
+    };
+  }
+
+  const entity = await readEntityIdentity(supabase, entityId);
+  if (!entity.ok) return entity;
+
+  // Re-vérification LIVE de l'identité du compte (premier consommateur réel
+  // de withAbbyConnection — stats last_used_at/last_error gérées par lui).
+  // La comparaison SIRET se fait HORS de fn : un throw custom sans `status`
+  // serait mal mappé en abby_network par toAbbyErrorCode.
+  const live = await withAbbyConnection(supabase, entityId, (client) =>
+    getCompanyIdentity(client)
+  );
+  if (!live.ok) return live;
+
+  if (live.data.companySiret !== entity.entitySiret) {
+    const message = siretMismatchMessage(
+      live.data.companySiret,
+      live.data.companyName,
+      entity.entityName,
+      entity.entitySiret
+    );
+    await markConnectionError(supabase, entityId, message);
+    return { ok: false, error: { message, code: "abby_siret_mismatch" } };
+  }
+
+  // UPDATE conditionnel atomique : seule une ligne encore « testée »
+  // (is_active=false, jamais activée) peut basculer — anti double-onglet.
+  const { data: updated, error } = await supabase
+    .from("abby_connections")
+    .update({
+      is_active: true,
+      connected_at: new Date().toISOString(),
+      company_name: live.data.companyName,
+      company_siret: live.data.companySiret,
+      last_error: null,
+      last_error_at: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("entity_id", entityId)
+    .eq("is_active", false)
+    .is("connected_at", null)
+    .select("entity_id");
+
+  if (error) {
+    return {
+      ok: false,
+      error: { message: sanitizeDbError(error, "abby connections activate") },
+    };
+  }
+  if (!updated || updated.length === 0) {
+    return {
+      ok: false,
+      error: {
+        message: CODE_MESSAGES.abby_invalid_state,
+        code: "abby_invalid_state",
+      },
+    };
+  }
+
+  return { ok: true };
 }

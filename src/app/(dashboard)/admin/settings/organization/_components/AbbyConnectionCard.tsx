@@ -51,6 +51,7 @@ export default function AbbyConnectionCard() {
   const [testResult, setTestResult] = useState<AbbyTestConnectionResult | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
   const [replacing, setReplacing] = useState(false);
+  const [activating, setActivating] = useState(false);
   // Garde anti-obsolescence : ignorer les résolutions d'une entité précédente
   // (le super_admin peut switcher d'entité pendant un fetch/submit en vol)
   const entityRef = useRef(entityId);
@@ -137,8 +138,50 @@ export default function AbbyConnectionCard() {
     }
   };
 
+  const handleActivate = async () => {
+    const forEntity = entityRef.current;
+    setActivating(true);
+    setTestError(null);
+    try {
+      const res = await fetch("/api/abby/connections/activate", { method: "POST" });
+      const json = (await res.json()) as
+        | { state: AbbyConnectionState }
+        | { error: { message: string; code?: string } };
+
+      if (entityRef.current !== forEntity) return;
+
+      if (!res.ok || "error" in json) {
+        const err = "error" in json ? json.error : undefined;
+        const message = errorMessage(err?.code, err?.message);
+        setTestError(message);
+        toast({ title: "Activation refusée", description: message, variant: "destructive" });
+        await loadState();
+        return;
+      }
+
+      setTestResult(null);
+      toast({
+        title: "Connexion Abby activée",
+        description: "Les factures de cette entité pourront être poussées vers Abby.",
+      });
+      await loadState();
+    } catch {
+      if (entityRef.current !== forEntity) return;
+      const message = ERROR_MESSAGES.abby_network as string;
+      setTestError(message);
+      toast({ title: "Activation refusée", description: message, variant: "destructive" });
+    } finally {
+      if (entityRef.current === forEntity) setActivating(false);
+    }
+  };
+
   const hasStoredKey = state !== null && state.status !== "non_configuree";
   const showForm = !loadError && (!hasStoredKey || replacing);
+  // FR-2 : le bouton Activer n'existe qu'à l'état « testée », formulaire fermé
+  // (rouvrir le formulaire ou changer la clé invalide le test côté UI ; la
+  // garantie structurelle est server-side : on n'active que la ligne stockée)
+  const canActivate = state?.status === "testee" && !replacing;
+  const isActive = state?.status === "active" || state?.status === "en_erreur";
   const identityName =
     testResult?.companyName ??
     state?.companyName ??
@@ -177,20 +220,33 @@ export default function AbbyConnectionCard() {
             {hasStoredKey && identitySiret && (
               <div className="border rounded-lg p-4 bg-gray-50 space-y-1">
                 <p className="text-sm font-medium">
-                  Compte trouvé : {identityName} — SIRET {identitySiret}
+                  {isActive ? "Compte connecté" : "Compte trouvé"} : {identityName} — SIRET {identitySiret}
                 </p>
                 {(testResult?.isInTestMode ?? false) && (
                   <p className="text-xs text-gray-500">Compte en mode test.</p>
                 )}
+                {isActive && state?.connectedAt && (
+                  <p className="text-xs text-gray-500">
+                    Connectée le {formatDateTime(state.connectedAt)}
+                    {state.lastUsedAt && ` — dernier usage le ${formatDateTime(state.lastUsedAt)}`}
+                  </p>
+                )}
                 <p className="text-xs text-gray-500">
                   Clé enregistrée ({"•".repeat(8)}) — jamais réaffichée.
-                  L&apos;activation de la connexion arrive à l&apos;étape suivante.
                 </p>
-                {!replacing && (
-                  <Button variant="outline" size="sm" className="mt-2" onClick={() => setReplacing(true)}>
-                    Remplacer la clé
-                  </Button>
-                )}
+                <div className="flex items-center gap-2 mt-2">
+                  {canActivate && (
+                    <Button size="sm" disabled={activating} className="gap-2" onClick={() => void handleActivate()}>
+                      {activating && <Loader2 className="h-4 w-4 animate-spin" />}
+                      {activating ? "Activation…" : "C'est bien ce compte → Activer"}
+                    </Button>
+                  )}
+                  {!replacing && (
+                    <Button variant="outline" size="sm" onClick={() => setReplacing(true)}>
+                      Remplacer la clé
+                    </Button>
+                  )}
+                </div>
               </div>
             )}
 
