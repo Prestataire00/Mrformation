@@ -10,8 +10,11 @@ export type AbbyErrorCode =
   | "abby_validation"
   | "abby_rate_limited"
   | "abby_network"
-  // Extension assumée de l'union AD-16 : aucune connexion stockée pour l'entité
-  | "abby_no_connection";
+  // Extensions assumées de l'union AD-16 :
+  // aucune connexion stockée pour l'entité
+  | "abby_no_connection"
+  // opération refusée car l'état dérivé ne le permet pas (ex. activer sans test réussi)
+  | "abby_invalid_state";
 
 const STATUS_TO_CODE: Record<number, AbbyErrorCode> = {
   400: "abby_validation",
