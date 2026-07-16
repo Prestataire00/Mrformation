@@ -52,6 +52,8 @@ export default function AbbyConnectionCard() {
   const [testError, setTestError] = useState<string | null>(null);
   const [replacing, setReplacing] = useState(false);
   const [activating, setActivating] = useState(false);
+  const [deactivating, setDeactivating] = useState(false);
+  const [retesting, setRetesting] = useState(false);
   // Garde anti-obsolescence : ignorer les résolutions d'une entité précédente
   // (le super_admin peut switcher d'entité pendant un fetch/submit en vol)
   const entityRef = useRef(entityId);
@@ -94,9 +96,74 @@ export default function AbbyConnectionCard() {
     setTestResult(null);
     setTestError(null);
     setReplacing(false);
-    setActivating(false); // le finally de handleActivate saute son reset si l'entité a changé en vol
+    // les finally gardés par entityRef sautent leur reset si l'entité change en vol
+    setActivating(false);
+    setDeactivating(false);
+    setRetesting(false);
     void loadState();
   }, [entityId, loadState]);
+
+  // Appel d'action générique sur la connexion (deactivate / retest) : garde
+  // anti-obsolescence, erreurs typées, refetch systématique
+  const callConnectionAction = async (
+    path: string,
+    setBusy: (b: boolean) => void,
+    successToast: { title: string; description?: string },
+    failureTitle: string
+  ) => {
+    const forEntity = entityRef.current;
+    setBusy(true);
+    setTestError(null);
+    try {
+      const res = await fetch(path, { method: "POST" });
+      const json = (await res.json()) as
+        | { state: AbbyConnectionState | null }
+        | { error: { message: string; code?: string } };
+
+      if (entityRef.current !== forEntity) return;
+
+      if (!res.ok || "error" in json) {
+        const err = "error" in json ? json.error : undefined;
+        const message = errorMessage(err?.code, err?.message);
+        setTestError(message);
+        toast({ title: failureTitle, description: message, variant: "destructive" });
+      } else {
+        toast(successToast);
+      }
+      await loadState();
+    } catch {
+      if (entityRef.current !== forEntity) return;
+      const message = ERROR_MESSAGES.abby_network as string;
+      setTestError(message);
+      toast({ title: failureTitle, description: message, variant: "destructive" });
+    } finally {
+      if (entityRef.current === forEntity) setBusy(false);
+    }
+  };
+
+  const handleDeactivate = async () => {
+    if (
+      !window.confirm(
+        "Désactiver la connexion Abby de cette entité ? Les boutons de push seront désactivés — la clé reste enregistrée."
+      )
+    ) {
+      return;
+    }
+    await callConnectionAction(
+      "/api/abby/connections/deactivate",
+      setDeactivating,
+      { title: "Connexion Abby désactivée" },
+      "Désactivation impossible"
+    );
+  };
+
+  const handleRetest = () =>
+    callConnectionAction(
+      "/api/abby/connections/retest",
+      setRetesting,
+      { title: "Connexion vérifiée", description: "La clé fonctionne." },
+      "Vérification échouée"
+    );
 
   const onSubmit = async (values: TestConnectionInput) => {
     const forEntity = entityRef.current;
@@ -178,11 +245,16 @@ export default function AbbyConnectionCard() {
 
   const hasStoredKey = state !== null && state.status !== "non_configuree";
   const showForm = !loadError && (!hasStoredKey || replacing);
-  // FR-2 : le bouton Activer n'existe qu'à l'état « testée », formulaire fermé
-  // (rouvrir le formulaire ou changer la clé invalide le test côté UI ; la
-  // garantie structurelle est server-side : on n'active que la ligne stockée)
-  const canActivate = state?.status === "testee" && !replacing;
+  // Activer (testée) / Réactiver (désactivée) — formulaire fermé : rouvrir le
+  // formulaire ou changer la clé invalide le test côté UI (FR-2 pour la
+  // saisie ; la réactivation internalise son propre test live — design 1.4).
+  // Garantie structurelle server-side : on n'active que la ligne stockée.
+  const canActivate =
+    (state?.status === "testee" || state?.status === "desactivee") && !replacing;
   const isActive = state?.status === "active" || state?.status === "en_erreur";
+  const isDeactivated = state?.status === "desactivee";
+  const canRetest = (state?.status === "en_erreur" || isDeactivated) && !replacing;
+  const anyBusy = activating || deactivating || retesting;
   const identityName =
     testResult?.companyName ??
     state?.companyName ??
@@ -221,8 +293,18 @@ export default function AbbyConnectionCard() {
             {hasStoredKey && identitySiret && (
               <div className="border rounded-lg p-4 bg-gray-50 space-y-1">
                 <p className="text-sm font-medium">
-                  {isActive ? "Compte connecté" : "Compte trouvé"} : {identityName} — SIRET {identitySiret}
+                  {isActive
+                    ? "Compte connecté"
+                    : isDeactivated
+                      ? "Compte connecté (désactivé)"
+                      : "Compte trouvé"}{" "}
+                  : {identityName} — SIRET {identitySiret}
                 </p>
+                {isDeactivated && (
+                  <p className="text-xs text-gray-500">
+                    Connexion désactivée — les factures de cette entité ne peuvent plus être poussées.
+                  </p>
+                )}
                 {(testResult?.isInTestMode ?? false) && (
                   <p className="text-xs text-gray-500">Compte en mode test.</p>
                 )}
@@ -235,15 +317,31 @@ export default function AbbyConnectionCard() {
                 <p className="text-xs text-gray-500">
                   Clé enregistrée ({"•".repeat(8)}) — jamais réaffichée.
                 </p>
-                <div className="flex items-center gap-2 mt-2">
+                <div className="flex flex-wrap items-center gap-2 mt-2">
                   {canActivate && (
-                    <Button size="sm" disabled={activating} className="gap-2" onClick={() => void handleActivate()}>
+                    <Button size="sm" disabled={anyBusy} className="gap-2" onClick={() => void handleActivate()}>
                       {activating && <Loader2 className="h-4 w-4 animate-spin" />}
-                      {activating ? "Activation…" : "C'est bien ce compte → Activer"}
+                      {activating
+                        ? "Activation…"
+                        : isDeactivated
+                          ? "Réactiver"
+                          : "C'est bien ce compte → Activer"}
+                    </Button>
+                  )}
+                  {canRetest && (
+                    <Button variant="outline" size="sm" disabled={anyBusy} className="gap-2" onClick={() => void handleRetest()}>
+                      {retesting && <Loader2 className="h-4 w-4 animate-spin" />}
+                      {retesting ? "Vérification…" : "Retester"}
+                    </Button>
+                  )}
+                  {isActive && (
+                    <Button variant="outline" size="sm" disabled={anyBusy} className="gap-2" onClick={() => void handleDeactivate()}>
+                      {deactivating && <Loader2 className="h-4 w-4 animate-spin" />}
+                      {deactivating ? "Désactivation…" : "Désactiver"}
                     </Button>
                   )}
                   {!replacing && (
-                    <Button variant="outline" size="sm" onClick={() => setReplacing(true)}>
+                    <Button variant="outline" size="sm" disabled={anyBusy} onClick={() => setReplacing(true)}>
                       Remplacer la clé
                     </Button>
                   )}

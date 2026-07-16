@@ -19,6 +19,8 @@ import {
   testAndStoreApiKey,
   withAbbyConnection,
   activateConnection,
+  deactivateConnection,
+  retestConnection,
 } from "../abby-connections";
 import { encryptApiKey } from "@/lib/abby/encryption";
 
@@ -389,7 +391,24 @@ describe("activateConnection — activation explicite avec re-vérification SIRE
     expect(activation?.company_siret).toBe(SIRET_MR);
     expect(activation?.last_error).toBeNull();
     expect(calls.updateEq).toHaveBeenCalledWith("is_active", false);
-    expect(calls.updateEq).toHaveBeenCalledWith("connected_at", null);
+    // Évolution 1.4 (réactivation) : la condition connected_at IS NULL a été
+    // retirée de l'UPDATE atomique — adaptation assumée du test 1.3
+    expect(calls.updateEq).not.toHaveBeenCalledWith("connected_at", null);
+  });
+
+  it("réactivation depuis desactivee : happy path (évolution 1.4)", async () => {
+    getCompanyIdentityMock.mockResolvedValue(IDENTITY);
+    const { supabase, calls } = makeSupabaseMock({
+      row: testeeRow({ connected_at: "2026-07-15T09:00:00Z" }), // desactivee
+    });
+    const res = await activateConnection(supabase, ENTITY_ID);
+
+    expect(res.ok).toBe(true);
+    const activation = calls.update.mock.calls
+      .map((c) => c[0])
+      .find((p) => p.is_active === true);
+    expect(activation).toBeTruthy();
+    expect(activation?.connected_at).toBeTruthy();
   });
 
   it("mismatch à l'activation (compte changé) : pas d'activation, last_error dynamique — 2 update successifs assumés", async () => {
@@ -442,5 +461,114 @@ describe("activateConnection — activation explicite avec re-vérification SIRE
 
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error.code).toBe("abby_invalid_state");
+  });
+});
+
+describe("deactivateConnection — désactivation explicite (FR-4)", () => {
+  it("happy path : is_active=false, connected_at et last_error INTOUCHÉS, isolation entité assertée", async () => {
+    const { supabase, calls } = makeSupabaseMock({
+      updateResult: [{ entity_id: ENTITY_ID, company_siret: SIRET_MR }],
+    });
+    const res = await deactivateConnection(supabase, ENTITY_ID);
+
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.companySiret).toBe(SIRET_MR);
+    const payload = calls.update.mock.calls[0][0];
+    expect(payload).toMatchObject({ is_active: false });
+    expect(payload).not.toHaveProperty("connected_at");
+    expect(payload).not.toHaveProperty("last_error");
+    expect(calls.updateEq).toHaveBeenCalledWith("entity_id", ENTITY_ID);
+    expect(calls.updateEq).toHaveBeenCalledWith("is_active", true);
+  });
+
+  it("0 ligne touchée (rien d'actif) : abby_invalid_state avec message contextuel", async () => {
+    const { supabase } = makeSupabaseMock({ updateResult: [] });
+    const res = await deactivateConnection(supabase, ENTITY_ID);
+
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.error.code).toBe("abby_invalid_state");
+      expect(res.error.message).toMatch(/désactiver/i);
+    }
+  });
+});
+
+describe("retestConnection — health-check de la clé stockée (FR-4)", () => {
+  it("succès : identité rafraîchie, JAMAIS d'écriture is_active/connected_at, filtre entity_id", async () => {
+    getCompanyIdentityMock.mockResolvedValue(IDENTITY);
+    const { supabase, calls } = makeSupabaseMock({ row: testeeRow() });
+    const res = await retestConnection(supabase, ENTITY_ID);
+
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.identity).toEqual(IDENTITY);
+    const payloads = calls.update.mock.calls.map((c) => c[0]);
+    expect(payloads.some((p) => "is_active" in p)).toBe(false);
+    expect(payloads.some((p) => "connected_at" in p)).toBe(false);
+    const refresh = payloads.find((p) => p.company_siret === SIRET_MR);
+    expect(refresh).toBeTruthy();
+    expect(calls.updateEq).toHaveBeenCalledWith("entity_id", ENTITY_ID);
+  });
+
+  it("échec Abby (429) : code propagé, stats posées par withAbbyConnection", async () => {
+    getCompanyIdentityMock.mockRejectedValue({ status: 429 });
+    const { supabase, calls } = makeSupabaseMock({ row: testeeRow() });
+    const res = await retestConnection(supabase, ENTITY_ID);
+
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.code).toBe("abby_rate_limited");
+    const payloads = calls.update.mock.calls.map((c) => c[0]);
+    expect(payloads.some((p) => p.last_error)).toBe(true);
+  });
+
+  it("mismatch SIRET : abby_siret_mismatch + last_error dynamique, jamais is_active", async () => {
+    getCompanyIdentityMock.mockResolvedValue({ ...IDENTITY, companySiret: SIRET_C3V });
+    const { supabase, calls } = makeSupabaseMock({ row: testeeRow() });
+    const res = await retestConnection(supabase, ENTITY_ID);
+
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.error.code).toBe("abby_siret_mismatch");
+      expect(res.error.message).toContain(SIRET_C3V);
+    }
+    const payloads = calls.update.mock.calls.map((c) => c[0]);
+    expect(payloads.some((p) => "is_active" in p)).toBe(false);
+  });
+
+  it("aucune connexion : abby_no_connection", async () => {
+    const { supabase } = makeSupabaseMock({ row: null });
+    const res = await retestConnection(supabase, ENTITY_ID);
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.code).toBe("abby_no_connection");
+  });
+
+  it("SIRET entité NULL : refus config SANS appel Abby", async () => {
+    const { supabase } = makeSupabaseMock({
+      row: testeeRow(),
+      entity: { name: "MR FORMATION", siret: null },
+    });
+    const res = await retestConnection(supabase, ENTITY_ID);
+
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.message).toMatch(/SIRET de l'entité/);
+    expect(getCompanyIdentityMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("enchaînement AC epic « Remplacer la clé » : le flux test → activation se rejoue intégralement", () => {
+  it("remplacement sur connexion ACTIVE (clé valide, SIRET match) → retour à l'état testée, réactivable", async () => {
+    fetchCompanyIdentityMock.mockResolvedValue(IDENTITY);
+    const active = makeSupabaseMock({
+      row: { id: "conn-1", is_active: true, connected_at: "2026-07-15T09:00:00Z" },
+    });
+    const test = await testAndStoreApiKey(active.supabase, ENTITY_ID, "suk_nouvelle_cle");
+    expect(test.ok).toBe(true);
+    const [payload] = active.calls.upsert.mock.calls[0];
+    expect(payload).toMatchObject({ is_active: false, connected_at: null }); // → testee
+
+    // Depuis l'état testée résultant, l'activation refonctionne
+    getCompanyIdentityMock.mockResolvedValue(IDENTITY);
+    const testee = makeSupabaseMock({ row: testeeRow() });
+    const activation = await activateConnection(testee.supabase, ENTITY_ID);
+    expect(activation.ok).toBe(true);
   });
 });
