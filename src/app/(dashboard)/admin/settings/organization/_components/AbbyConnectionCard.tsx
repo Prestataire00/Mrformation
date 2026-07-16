@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,8 +13,10 @@ import { FileCheck, Loader2 } from "lucide-react";
 import type { AbbyConnectionState, AbbyTestConnectionResult } from "@/lib/types/abby";
 import { testConnectionSchema, type TestConnectionInput } from "@/lib/validations/abby";
 
+import type { AbbyErrorCode } from "@/lib/abby/errors";
+
 // Microcopy des erreurs typées (AD-16 : l'UI mappe code → message)
-const ERROR_MESSAGES: Record<string, string> = {
+const ERROR_MESSAGES: Partial<Record<AbbyErrorCode, string>> = {
   abby_auth_failed:
     "Clé API refusée par Abby. Vérifiez la clé dans Abby → Paramètres → Intégrations, puis réessayez.",
   abby_plan_no_api:
@@ -23,7 +25,11 @@ const ERROR_MESSAGES: Record<string, string> = {
 };
 
 function errorMessage(code?: string, fallback?: string): string {
-  return (code && ERROR_MESSAGES[code]) || fallback || ERROR_MESSAGES.abby_network;
+  return (
+    (code && ERROR_MESSAGES[code as AbbyErrorCode]) ||
+    fallback ||
+    (ERROR_MESSAGES.abby_network as string)
+  );
 }
 
 function formatDateTime(iso: string): string {
@@ -41,9 +47,14 @@ export default function AbbyConnectionCard() {
   const { entityId } = useEntity();
   const [loading, setLoading] = useState(true);
   const [state, setState] = useState<AbbyConnectionState | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const [testResult, setTestResult] = useState<AbbyTestConnectionResult | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
   const [replacing, setReplacing] = useState(false);
+  // Garde anti-obsolescence : ignorer les résolutions d'une entité précédente
+  // (le super_admin peut switcher d'entité pendant un fetch/submit en vol)
+  const entityRef = useRef(entityId);
+  entityRef.current = entityId;
 
   const {
     register,
@@ -55,20 +66,26 @@ export default function AbbyConnectionCard() {
   });
 
   const loadState = useCallback(async () => {
+    const forEntity = entityRef.current;
     setLoading(true);
+    setLoadError(false);
     try {
       // Lecture LMS uniquement (jamais d'appel Abby au montage — AD-22)
       const res = await fetch("/api/abby/connections");
+      if (entityRef.current !== forEntity) return; // entité changée en vol
       if (res.ok) {
         const json = (await res.json()) as { state: AbbyConnectionState };
         setState(json.state);
       } else {
         setState(null);
+        setLoadError(true);
       }
     } catch {
+      if (entityRef.current !== forEntity) return;
       setState(null);
+      setLoadError(true);
     }
-    setLoading(false);
+    if (entityRef.current === forEntity) setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -80,6 +97,7 @@ export default function AbbyConnectionCard() {
   }, [entityId, loadState]);
 
   const onSubmit = async (values: TestConnectionInput) => {
+    const forEntity = entityRef.current;
     setTestError(null);
     setTestResult(null);
     try {
@@ -91,6 +109,8 @@ export default function AbbyConnectionCard() {
       const json = (await res.json()) as
         | AbbyTestConnectionResult
         | { error: { message: string; code?: string } };
+
+      if (entityRef.current !== forEntity) return; // entité changée en vol
 
       if (!res.ok || "error" in json) {
         const err = "error" in json ? json.error : undefined;
@@ -110,14 +130,15 @@ export default function AbbyConnectionCard() {
       });
       await loadState();
     } catch {
-      const message = ERROR_MESSAGES.abby_network;
+      if (entityRef.current !== forEntity) return;
+      const message = ERROR_MESSAGES.abby_network as string;
       setTestError(message);
       toast({ title: "Test de connexion échoué", description: message, variant: "destructive" });
     }
   };
 
   const hasStoredKey = state !== null && state.status !== "non_configuree";
-  const showForm = !hasStoredKey || replacing;
+  const showForm = !loadError && (!hasStoredKey || replacing);
   const identityName =
     testResult?.companyName ??
     state?.companyName ??
@@ -143,6 +164,15 @@ export default function AbbyConnectionCard() {
               Connectez le compte Abby de cette entité pour pousser vos factures vers une
               Plateforme Agréée. La clé API se génère dans Abby → Paramètres → Intégrations.
             </p>
+
+            {loadError && (
+              <div className="border border-amber-200 rounded-lg p-3 bg-amber-50 text-sm text-amber-800 flex items-center justify-between gap-3">
+                <span>Impossible de charger l&apos;état de la connexion Abby.</span>
+                <Button variant="outline" size="sm" onClick={() => void loadState()}>
+                  Réessayer
+                </Button>
+              </div>
+            )}
 
             {hasStoredKey && identitySiret && (
               <div className="border rounded-lg p-4 bg-gray-50 space-y-1">
@@ -184,10 +214,14 @@ export default function AbbyConnectionCard() {
                     type="password"
                     autoComplete="off"
                     placeholder="suk_…"
+                    aria-invalid={!!errors.apiKey}
+                    aria-describedby={errors.apiKey ? "abby-api-key-error" : undefined}
                     {...register("apiKey")}
                   />
                   {errors.apiKey && (
-                    <p className="text-xs text-red-600 mt-1">{errors.apiKey.message}</p>
+                    <p id="abby-api-key-error" className="text-xs text-red-600 mt-1">
+                      {errors.apiKey.message}
+                    </p>
                   )}
                 </div>
                 <div className="flex items-center gap-2">

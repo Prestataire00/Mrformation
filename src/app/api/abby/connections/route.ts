@@ -59,9 +59,10 @@ export async function POST(request: NextRequest) {
     );
 
     if (!result.ok) {
+      // Code typé = échec du test Abby (422) ; pas de code = erreur interne (500)
       return NextResponse.json(
         { error: { message: result.error.message, code: result.error.code } },
-        { status: 422 }
+        { status: result.error.code ? 422 : 500 }
       );
     }
 
