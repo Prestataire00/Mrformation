@@ -146,7 +146,26 @@ export async function testAndStoreApiKey(
     return { ok: false, error: { message, code } };
   }
 
-  const triplet = encryptApiKey(apiKey);
+  let triplet: ReturnType<typeof encryptApiKey>;
+  try {
+    triplet = encryptApiKey(apiKey);
+  } catch (err) {
+    // Erreur de CONFIGURATION serveur (env absente/malformée) — la distinguer
+    // explicitement d'une « erreur interne » générique : la route est admin-only,
+    // le nom de la variable est actionnable pour l'opérateur (NFR-5)
+    sanitizeDbError(
+      { message: err instanceof Error ? err.message : String(err) },
+      "abby connections encrypt (config)"
+    );
+    return {
+      ok: false,
+      error: {
+        message:
+          "Configuration serveur incomplète : ABBY_ENCRYPTION_KEY absente ou invalide sur ce déploiement (64 caractères hex — openssl rand -hex 32, à poser sur Netlify ET Railway).",
+      },
+    };
+  }
+
   const { error } = await supabase.from("abby_connections").upsert(
     {
       entity_id: entityId,

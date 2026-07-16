@@ -151,6 +151,17 @@ describe("testAndStoreApiKey — test de clé et stockage chiffré", () => {
     expect(JSON.stringify(payload)).not.toContain("suk_ma-cle-secrete");
   });
 
+  it("ABBY_ENCRYPTION_KEY absente/malformée : erreur de configuration EXPLICITE, aucune écriture (pas de 'erreur interne')", async () => {
+    fetchCompanyIdentityMock.mockResolvedValue(IDENTITY);
+    delete process.env.ABBY_ENCRYPTION_KEY;
+    const { supabase, calls } = makeSupabaseMock();
+    const res = await testAndStoreApiKey(supabase, ENTITY_ID, "suk_valide");
+
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.message).toMatch(/ABBY_ENCRYPTION_KEY/);
+    expect(calls.upsert).not.toHaveBeenCalled();
+  });
+
   it("remplacement de clé : connected_at repasse explicitement à NULL (retour à l'état testée)", async () => {
     fetchCompanyIdentityMock.mockResolvedValue(IDENTITY);
     const { supabase, calls } = makeSupabaseMock({
