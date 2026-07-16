@@ -27,7 +27,7 @@ const CODE_MESSAGES: Record<AbbyErrorCode, string> = {
   abby_rate_limited: "Trop de requêtes vers Abby",
   abby_network: "Abby injoignable",
   abby_no_connection: "Aucune connexion Abby pour cette entité",
-  abby_invalid_state: "Aucun test de connexion réussi en attente d'activation",
+  abby_invalid_state: "État de connexion incompatible avec l'action",
 };
 
 // ---------------------------------------------------------------------------

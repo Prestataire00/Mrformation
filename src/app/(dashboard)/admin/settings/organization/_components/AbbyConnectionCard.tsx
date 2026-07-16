@@ -254,7 +254,7 @@ export default function AbbyConnectionCard() {
   const isActive = state?.status === "active" || state?.status === "en_erreur";
   const isDeactivated = state?.status === "desactivee";
   const canRetest = (state?.status === "en_erreur" || isDeactivated) && !replacing;
-  const anyBusy = activating || deactivating || retesting;
+  const anyBusy = activating || deactivating || retesting || isSubmitting;
   const identityName =
     testResult?.companyName ??
     state?.companyName ??
@@ -334,7 +334,7 @@ export default function AbbyConnectionCard() {
                       {retesting ? "Vérification…" : "Retester"}
                     </Button>
                   )}
-                  {isActive && (
+                  {isActive && !replacing && (
                     <Button variant="outline" size="sm" disabled={anyBusy} className="gap-2" onClick={() => void handleDeactivate()}>
                       {deactivating && <Loader2 className="h-4 w-4 animate-spin" />}
                       {deactivating ? "Désactivation…" : "Désactiver"}
@@ -380,7 +380,7 @@ export default function AbbyConnectionCard() {
                   )}
                 </div>
                 <div className="flex items-center gap-2">
-                  <Button type="submit" disabled={isSubmitting} className="gap-2">
+                  <Button type="submit" disabled={anyBusy} className="gap-2">
                     {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
                     {isSubmitting ? "Vérification du compte…" : "Tester et connecter"}
                   </Button>
