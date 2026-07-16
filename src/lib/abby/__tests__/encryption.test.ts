@@ -49,6 +49,17 @@ describe("chiffrement des clés API Abby (AES-256-GCM)", () => {
     );
   });
 
+  it("jette une erreur explicite (pas un RangeError cryptique) si la clé n'est pas 64 caractères hex", () => {
+    process.env.ABBY_ENCRYPTION_KEY = "pas-du-hex-du-tout";
+    expect(() => encryptApiKey("secret")).toThrowError(
+      /64 caractères hexadécimaux/
+    );
+    process.env.ABBY_ENCRYPTION_KEY = TEST_KEY.slice(0, 32); // trop courte
+    expect(() => encryptApiKey("secret")).toThrowError(
+      /64 caractères hexadécimaux/
+    );
+  });
+
   it("refuse de déchiffrer si l'authTag est falsifié (intégrité GCM)", () => {
     const { encrypted, iv } = encryptApiKey("secret-a-proteger");
     const forgedTag = "00".repeat(16);
