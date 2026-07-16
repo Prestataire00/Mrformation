@@ -94,6 +94,7 @@ export default function AbbyConnectionCard() {
     setTestResult(null);
     setTestError(null);
     setReplacing(false);
+    setActivating(false); // le finally de handleActivate saute son reset si l'entité a changé en vol
     void loadState();
   }, [entityId, loadState]);
 

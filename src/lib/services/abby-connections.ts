@@ -403,6 +403,10 @@ export async function activateConnection(
 
   // UPDATE conditionnel atomique : seule une ligne encore « testée »
   // (is_active=false, jamais activée) peut basculer — anti double-onglet.
+  // Résidu TOCTOU assumé (non exploitable pour FR-3) : un re-test concurrent
+  // peut remplacer le triplet entre le getMe live et cet UPDATE, mais le seul
+  // chemin d'écriture du triplet exige lui-même un match SIRET live — aucune
+  // clé mismatchée ne peut être stockée, donc jamais activée.
   const { data: updated, error } = await supabase
     .from("abby_connections")
     .update({
