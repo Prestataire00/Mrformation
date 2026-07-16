@@ -92,21 +92,12 @@ function lines(vatCode) {
 }
 
 async function setTimeline(invoiceId) {
-  // Unité d'emittedAt inconnue (ms vs s) — essai ms, repli s, constat consigné
-  try {
-    await abby.invoice.updateTimeline({
-      path: { invoiceId },
-      body: { emittedAt: Date.now(), paymentDelay: "thirty_days" },
-    });
-    findings.constats.push("timeline.emittedAt accepte des millisecondes (Date.now())");
-  } catch (err) {
-    record("timeline:ms:échec", { status: err?.status, message: String(err?.message).slice(0, 200) });
-    await abby.invoice.updateTimeline({
-      path: { invoiceId },
-      body: { emittedAt: Math.floor(Date.now() / 1000), paymentDelay: "thirty_days" },
-    });
-    findings.constats.push("timeline.emittedAt exige des SECONDES (repli appliqué)");
-  }
+  // ⚠️ emittedAt est en SECONDES (constat du 16/07 : les millisecondes sont
+  // ACCEPTÉES sans erreur puis interprétées comme des secondes → date 58509).
+  await abby.invoice.updateTimeline({
+    path: { invoiceId },
+    body: { emittedAt: Math.floor(Date.now() / 1000), paymentDelay: "thirty_days" },
+  });
 }
 
 async function buildInvoice(customerId, label, vatCode, generalInformations) {
@@ -140,9 +131,23 @@ async function buildInvoice(customerId, label, vatCode, generalInformations) {
 // ─── Run ───────────────────────────────────────────────────────────────────
 await assertTestMode("démarrage");
 
-// 1. Organization de test — d'abord SANS siret (constat pour validation.ts)
+// 1. Organization de test — réutilisée si un run précédent l'a créée
+// (évite l'accumulation dans le compte test), sinon créée SANS siret
+// (constat pour validation.ts)
 let orgId;
 try {
+  const { data: existing } = await abby.organization.retrieveOrganizations({
+    query: { page: 1, limit: 10, search: "TEST RECETTE LMS" },
+  });
+  const found = (existing.docs ?? existing)?.[0];
+  if (found?.id) {
+    orgId = found.id;
+    record("organization:réutilisée", { id: orgId });
+  }
+} catch {
+  // liste indisponible → on créera
+}
+if (!orgId) try {
   const { data: org } = await abby.organization.createOrganization({
     body: { name: "TEST RECETTE LMS — à supprimer", emails: ["test-recette@example.invalid"] },
   });
