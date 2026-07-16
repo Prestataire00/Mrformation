@@ -368,11 +368,14 @@ export async function activateConnection(
 ): Promise<ServiceResult<Record<never, never>>> {
   const stateRes = await getConnectionState(supabase, entityId);
   if (!stateRes.ok) return stateRes;
-  if (stateRes.state.status !== "testee") {
+  // Évolution 1.4 : la réactivation d'une connexion désactivée passe par le
+  // même chemin (FR-2 satisfaite par internalisation — le test live est
+  // exécuté dans l'action même, juste avant la bascule atomique)
+  if (!["testee", "desactivee"].includes(stateRes.state.status)) {
     return {
       ok: false,
       error: {
-        message: CODE_MESSAGES.abby_invalid_state,
+        message: "Aucune connexion testée ou désactivée à activer",
         code: "abby_invalid_state",
       },
     };
@@ -401,12 +404,12 @@ export async function activateConnection(
     return { ok: false, error: { message, code: "abby_siret_mismatch" } };
   }
 
-  // UPDATE conditionnel atomique : seule une ligne encore « testée »
-  // (is_active=false, jamais activée) peut basculer — anti double-onglet.
-  // Résidu TOCTOU assumé (non exploitable pour FR-3) : un re-test concurrent
-  // peut remplacer le triplet entre le getMe live et cet UPDATE, mais le seul
-  // chemin d'écriture du triplet exige lui-même un match SIRET live — aucune
-  // clé mismatchée ne peut être stockée, donc jamais activée.
+  // UPDATE conditionnel atomique : seule une ligne inactive (testée ou
+  // désactivée) peut basculer — anti double-onglet. Résidu TOCTOU assumé
+  // (non exploitable pour FR-3) : un re-test concurrent peut remplacer le
+  // triplet entre le getMe live et cet UPDATE, mais le seul chemin
+  // d'écriture du triplet exige lui-même un match SIRET live — aucune clé
+  // mismatchée ne peut être stockée, donc jamais activée.
   const { data: updated, error } = await supabase
     .from("abby_connections")
     .update({
@@ -420,7 +423,6 @@ export async function activateConnection(
     })
     .eq("entity_id", entityId)
     .eq("is_active", false)
-    .is("connected_at", null)
     .select("entity_id");
 
   if (error) {
@@ -433,11 +435,104 @@ export async function activateConnection(
     return {
       ok: false,
       error: {
-        message: CODE_MESSAGES.abby_invalid_state,
+        message: "Aucune connexion testée ou désactivée à activer",
         code: "abby_invalid_state",
       },
     };
   }
 
   return { ok: true };
+}
+
+/**
+ * Désactive la connexion active de l'entité (FR-4). La clé, l'identité,
+ * `connected_at` et l'éventuelle `last_error` restent en place — l'état
+ * dérivé devient « désactivée » (réactivable via activateConnection).
+ */
+export async function deactivateConnection(
+  supabase: SupabaseClient,
+  entityId: string
+): Promise<ServiceResult<{ companySiret: string | null }>> {
+  const { data: updated, error } = await supabase
+    .from("abby_connections")
+    .update({
+      is_active: false,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("entity_id", entityId)
+    .eq("is_active", true)
+    .select("entity_id, company_siret");
+
+  if (error) {
+    return {
+      ok: false,
+      error: { message: sanitizeDbError(error, "abby connections deactivate") },
+    };
+  }
+  if (!updated || updated.length === 0) {
+    return {
+      ok: false,
+      error: {
+        message: "Aucune connexion active à désactiver",
+        code: "abby_invalid_state",
+      },
+    };
+  }
+
+  return {
+    ok: true,
+    companySiret:
+      (updated[0] as { company_siret: string | null }).company_siret ?? null,
+  };
+}
+
+/**
+ * Health-check de la clé STOCKÉE (FR-4) : relit l'identité du compte en
+ * live et re-compare le SIRET. Ne modifie JAMAIS is_active/connected_at.
+ * Succès → last_error nettoyée (stamp de withAbbyConnection) + identité
+ * rafraîchie ; échec Abby → last_error posée (stamp) ; mismatch →
+ * last_error dynamique via markConnectionError.
+ */
+export async function retestConnection(
+  supabase: SupabaseClient,
+  entityId: string
+): Promise<ServiceResult<{ identity: AbbyTestConnectionResult }>> {
+  // Garde SIRET entité AVANT tout appel Abby (sinon le stamp succès
+  // nettoierait last_error avant un échec de configuration)
+  const entity = await readEntityIdentity(supabase, entityId);
+  if (!entity.ok) return entity;
+
+  const live = await withAbbyConnection(supabase, entityId, (client) =>
+    getCompanyIdentity(client)
+  );
+  if (!live.ok) return live;
+
+  if (live.data.companySiret !== entity.entitySiret) {
+    const message = siretMismatchMessage(
+      live.data.companySiret,
+      live.data.companyName,
+      entity.entityName,
+      entity.entitySiret
+    );
+    await markConnectionError(supabase, entityId, message);
+    return { ok: false, error: { message, code: "abby_siret_mismatch" } };
+  }
+
+  const { error } = await supabase
+    .from("abby_connections")
+    .update({
+      company_name: live.data.companyName,
+      company_siret: live.data.companySiret,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("entity_id", entityId);
+
+  if (error) {
+    return {
+      ok: false,
+      error: { message: sanitizeDbError(error, "abby connections retest") },
+    };
+  }
+
+  return { ok: true, identity: live.data };
 }
