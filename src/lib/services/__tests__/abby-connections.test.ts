@@ -375,6 +375,16 @@ describe("activateConnection — activation explicite avec re-vérification SIRE
     if (!res.ok) expect(res.error.code).toBe("abby_invalid_state");
   });
 
+  it("refuse en_erreur : impossible de « laver » une erreur via l'activation (garde 1.4)", async () => {
+    const { supabase, calls } = makeSupabaseMock({
+      row: testeeRow({ is_active: true, connected_at: "2026-07-16", last_error: "boom" }),
+    });
+    const res = await activateConnection(supabase, ENTITY_ID);
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.code).toBe("abby_invalid_state");
+    expect(calls.update).not.toHaveBeenCalled();
+  });
+
   it("happy path : re-getMe live via withAbbyConnection puis UPDATE conditionnel atomique d'activation", async () => {
     getCompanyIdentityMock.mockResolvedValue(IDENTITY);
     const { supabase, calls } = makeSupabaseMock({ row: testeeRow() });
