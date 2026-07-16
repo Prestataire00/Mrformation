@@ -49,13 +49,17 @@ function makeSupabaseMock(opts: { row?: Row } = {}) {
     ),
     selectEq: vi.fn<(col: string, val: unknown) => void>(),
   };
+  const selectColumns = vi.fn<(cols: string) => void>();
   const from = vi.fn(() => ({
-    select: vi.fn(() => ({
-      eq: (col: string, val: unknown) => {
-        calls.selectEq(col, val);
-        return { maybeSingle: async () => ({ data: opts.row ?? null, error: null }) };
-      },
-    })),
+    select: vi.fn((cols: string) => {
+      selectColumns(cols);
+      return {
+        eq: (col: string, val: unknown) => {
+          calls.selectEq(col, val);
+          return { maybeSingle: async () => ({ data: opts.row ?? null, error: null }) };
+        },
+      };
+    }),
     upsert: (payload: Record<string, unknown>, options?: Record<string, unknown>) => {
       return calls.upsert(payload, options);
     },
@@ -64,7 +68,12 @@ function makeSupabaseMock(opts: { row?: Row } = {}) {
       return { eq: calls.updateEq };
     },
   }));
-  return { supabase: { from } as unknown as SupabaseClient, from, calls };
+  return {
+    supabase: { from } as unknown as SupabaseClient,
+    from,
+    calls,
+    selectColumns,
+  };
 }
 
 beforeEach(() => {
@@ -95,6 +104,13 @@ describe("getConnectionState — dérivation des états (AD-4 + précision conne
     });
     const res = await getConnectionState(supabase, ENTITY_ID);
     if (res.ok) expect(res.state.status).toBe("testee");
+  });
+
+  it("ne SELECT jamais les colonnes chiffrées (AD-18 — les select strings échappent à tsc)", async () => {
+    const { supabase, selectColumns } = makeSupabaseMock({ row: null });
+    await getConnectionState(supabase, ENTITY_ID);
+    const cols = selectColumns.mock.calls[0]?.[0] ?? "";
+    expect(cols).not.toMatch(/encrypted_api_key|key_iv|key_auth_tag/);
   });
 
   it("dérive active / en_erreur / desactivee selon is_active, last_error et connected_at", async () => {
@@ -133,6 +149,19 @@ describe("testAndStoreApiKey — test de clé et stockage chiffré", () => {
     expect(payload.key_iv).toBeTruthy();
     expect(payload.key_auth_tag).toBeTruthy();
     expect(JSON.stringify(payload)).not.toContain("suk_ma-cle-secrete");
+  });
+
+  it("remplacement de clé : connected_at repasse explicitement à NULL (retour à l'état testée)", async () => {
+    fetchCompanyIdentityMock.mockResolvedValue(IDENTITY);
+    const { supabase, calls } = makeSupabaseMock({
+      row: { id: "conn-1", connected_at: "2026-07-14T10:00:00Z" },
+    });
+    const res = await testAndStoreApiKey(supabase, ENTITY_ID, "suk_remplacement");
+
+    expect(res.ok).toBe(true);
+    const [payload] = calls.upsert.mock.calls[0];
+    expect(payload).toHaveProperty("connected_at", null);
+    expect(payload).toMatchObject({ is_active: false });
   });
 
   it("échec sans ligne existante : erreur typée, AUCUNE écriture", async () => {

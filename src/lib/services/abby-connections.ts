@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { sanitizeDbError } from "@/lib/api-error";
 import { createAbbyClient, fetchCompanyIdentity } from "@/lib/abby/client";
 import { encryptApiKey, decryptApiKey } from "@/lib/abby/encryption";
 import { toAbbyErrorCode, type AbbyErrorCode } from "@/lib/abby/errors";
@@ -52,7 +53,10 @@ export async function getConnectionState(
     .maybeSingle();
 
   if (error) {
-    return { ok: false, error: { message: error.message } };
+    return {
+      ok: false,
+      error: { message: sanitizeDbError(error, "abby connections state") },
+    };
   }
 
   if (!data) {
@@ -115,14 +119,18 @@ export async function testAndStoreApiKey(
     const code = toAbbyErrorCode(err);
     const message = CODE_MESSAGES[code];
 
-    const { data: existing } = await supabase
+    const { data: existing, error: selectError } = await supabase
       .from("abby_connections")
       .select("id")
       .eq("entity_id", entityId)
       .maybeSingle();
 
+    if (selectError) {
+      sanitizeDbError(selectError, "abby connections test (select existant)");
+    }
+
     if (existing) {
-      await supabase
+      const { error: updateError } = await supabase
         .from("abby_connections")
         .update({
           last_error: message,
@@ -130,6 +138,9 @@ export async function testAndStoreApiKey(
           updated_at: new Date().toISOString(),
         })
         .eq("entity_id", entityId);
+      if (updateError) {
+        sanitizeDbError(updateError, "abby connections test (pose last_error)");
+      }
     }
 
     return { ok: false, error: { message, code } };
@@ -145,6 +156,9 @@ export async function testAndStoreApiKey(
       company_name: identity.companyName,
       company_siret: identity.companySiret,
       is_active: false,
+      // NULL explicite : une clé remplacée repasse à l'état « testée » —
+      // la 1.3 distingue « testée » de « désactivée » par connected_at (AC-3)
+      connected_at: null,
       last_error: null,
       last_error_at: null,
       updated_at: new Date().toISOString(),
@@ -153,7 +167,10 @@ export async function testAndStoreApiKey(
   );
 
   if (error) {
-    return { ok: false, error: { message: error.message } };
+    return {
+      ok: false,
+      error: { message: sanitizeDbError(error, "abby connections upsert") },
+    };
   }
 
   return { ok: true, identity };
@@ -177,7 +194,10 @@ export async function withAbbyConnection<T>(
     .maybeSingle();
 
   if (error) {
-    return { ok: false, error: { message: error.message } };
+    return {
+      ok: false,
+      error: { message: sanitizeDbError(error, "abby connections resolve") },
+    };
   }
   if (!row) {
     return {
@@ -194,11 +214,25 @@ export async function withAbbyConnection<T>(
     key_iv: string;
     key_auth_tag: string;
   };
-  const apiKey = decryptApiKey(
-    triplet.encrypted_api_key,
-    triplet.key_iv,
-    triplet.key_auth_tag
-  );
+  let apiKey: string;
+  try {
+    apiKey = decryptApiKey(
+      triplet.encrypted_api_key,
+      triplet.key_iv,
+      triplet.key_auth_tag
+    );
+  } catch {
+    // Triplet illisible (ABBY_ENCRYPTION_KEY changée, données corrompues) :
+    // la seule issue est de re-saisir la clé — même traitement que « pas de connexion »
+    return {
+      ok: false,
+      error: {
+        message:
+          "Clé Abby stockée illisible (clé de chiffrement changée ?) — remplacez la clé dans les paramètres",
+        code: "abby_no_connection",
+      },
+    };
+  }
   const client = createAbbyClient(apiKey);
 
   const stamp = (patch: Record<string, unknown>) =>
