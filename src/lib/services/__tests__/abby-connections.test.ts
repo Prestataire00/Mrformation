@@ -238,9 +238,11 @@ describe("testAndStoreApiKey — test de clé, garde-fou SIRET et stockage chiff
     expect(calls.update).not.toHaveBeenCalled();
   });
 
-  it("mismatch avec ligne existante : last_error = message dynamique, triplet intact", async () => {
+  it("mismatch avec ligne existante ACTIVE : last_error dynamique, triplet intact, is_active/connected_at intouchés (→ dérivation en_erreur)", async () => {
     fetchCompanyIdentityMock.mockResolvedValue({ ...IDENTITY, companySiret: SIRET_C3V });
-    const { supabase, calls } = makeSupabaseMock({ row: { id: "conn-1" } });
+    const { supabase, calls } = makeSupabaseMock({
+      row: { id: "conn-1", is_active: true, connected_at: "2026-07-16T09:00:00Z" },
+    });
     const res = await testAndStoreApiKey(supabase, ENTITY_ID, "suk_cle-de-c3v");
 
     expect(res.ok).toBe(false);
@@ -249,6 +251,8 @@ describe("testAndStoreApiKey — test de clé, garde-fou SIRET et stockage chiff
     const updatePayload = calls.update.mock.calls[0][0];
     expect(String(updatePayload.last_error)).toContain(SIRET_C3V);
     expect(updatePayload).not.toHaveProperty("encrypted_api_key");
+    expect(updatePayload).not.toHaveProperty("is_active");
+    expect(updatePayload).not.toHaveProperty("connected_at");
   });
 
   it("entities.siret NULL : refus config explicite, aucun stockage (AC-2)", async () => {
