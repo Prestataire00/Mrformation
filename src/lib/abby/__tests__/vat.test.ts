@@ -12,7 +12,7 @@ describe("TVA Abby — mapping taux → vatCode (AD-17, valeurs vérifiées en r
 
   it("jette une erreur explicite pour un taux hors enum (jamais d'arrondi silencieux)", () => {
     expect(() => resolveVatCode(7)).toThrowError(/taux de TVA 7/i);
-    expect(() => resolveVatCode(19.6)).toThrowError(/19.6/);
+    expect(() => resolveVatCode(19.6)).toThrowError(/19\.6/);
     expect(() => resolveVatCode(0)).toThrowError(/0/); // 0 % = exonération, pas un taux
   });
 
