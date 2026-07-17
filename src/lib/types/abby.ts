@@ -33,3 +33,48 @@ export interface AbbyTestConnectionResult {
   companySiret: string;
   isInTestMode: boolean;
 }
+
+// ─── Résolution des clients facturés (Epic 2) ────────────────────────────
+
+export type AbbyRecipientType = "learner" | "company" | "financier";
+
+/** Référence polymorphe d'un destinataire de facture LMS. */
+export interface AbbyRecipientRef {
+  type: AbbyRecipientType;
+  id: string;
+}
+
+/**
+ * Données normalisées d'un destinataire, lues depuis sa table source.
+ * `email` est null pour les entreprises (la table clients n'en a pas —
+ * la story 2.2 tranche : contact principal ou omission).
+ */
+export interface AbbyRecipientData {
+  kind: "contact" | "organization";
+  name: string;
+  siret: string | null;
+  email: string | null;
+  firstName?: string;
+  lastName?: string;
+  address?: string | null;
+  postalCode?: string | null;
+  city?: string | null;
+}
+
+/**
+ * Issue de la résolution d'un destinataire vers un client Abby (FR-5/FR-6).
+ * `auto_linkable` n'est PAS persisté par la résolution : l'unique écrivain
+ * de la liaison est l'étape 1 de la saga (AD-10/AD-21).
+ */
+export type AbbyCustomerResolution =
+  | {
+      outcome: "linked";
+      abbyCustomerId: string;
+      abbyCustomerType: "contact" | "organization";
+    }
+  | {
+      outcome: "auto_linkable";
+      abbyCustomerId: string;
+      abbyCustomerType: "organization";
+    }
+  | { outcome: "to_create"; recipient: AbbyRecipientData };
