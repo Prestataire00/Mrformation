@@ -275,6 +275,21 @@ describe("resolveRecipient — les trois issues, sans jamais écrire (AD-10/AD-2
     expect(searchOrganizationsMock).not.toHaveBeenCalled();
   });
 
+  it("SIRET non plausible (tronqué ou tout-zéros) : to_create SANS recherche — jamais d'auto-liaison sur du junk d'import", async () => {
+    for (const junk of ["1234567", "00000000000000"]) {
+      searchOrganizationsMock.mockClear();
+      const { supabase } = makeSupabaseMock({
+        client: { entity_id: ENTITY_ID, company_name: "Importée", siret: junk },
+      });
+      const res = await resolveRecipient(supabase, ABBY_CLIENT, ENTITY_ID, {
+        type: "company",
+        id: "c1",
+      });
+      if (res.ok) expect(res.resolution.outcome).toBe("to_create");
+      expect(searchOrganizationsMock).not.toHaveBeenCalled();
+    }
+  });
+
   it("company SANS siret : to_create direct sans recherche", async () => {
     const { supabase } = makeSupabaseMock({
       client: { entity_id: ENTITY_ID, company_name: "Sans Siret", siret: null },
