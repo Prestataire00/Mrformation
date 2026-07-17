@@ -155,7 +155,10 @@ export async function readRecipient(
  *
  * Dérogation AD-10 assumée (spine amendé 17/07) : la recherche Abby n'est
  * lancée QUE si un critère d'auto-liaison existe (organization avec SIRET
- * LMS) — chercher contacts/sans-SIRET serait du code mort.
+ * LMS plausible) — chercher contacts/sans-SIRET serait du code mort.
+ *
+ * ⚠️ Peut JETER si Abby est injoignable (searchOrganizations non wrappé) :
+ * toujours appeler sous `withAbbyConnection` (3.2/3.3), qui catch et mappe.
  */
 export async function resolveRecipient(
   supabase: SupabaseClient,
@@ -195,7 +198,16 @@ export async function resolveRecipient(
   if (!read.ok) return read;
   const recipient = read.recipient;
 
-  if (recipient.kind === "organization" && recipient.siret) {
+  // Auto-liaison uniquement sur SIRET PLAUSIBLE (14 chiffres, pas un
+  // placeholder tout-zéros) : un junk d'import identique des deux côtés
+  // ne doit jamais lier deux sociétés différentes (FR-6 « exactement
+  // identique » suppose un vrai SIRET)
+  const siretPlausible =
+    recipient.siret !== null &&
+    recipient.siret.length === 14 &&
+    !/^0{14}$/.test(recipient.siret);
+
+  if (recipient.kind === "organization" && siretPlausible) {
     const candidates = await searchOrganizations(abbyClient, recipient.name);
     const match = candidates.find(
       (c) => normalizeSiret(c.siret) === recipient.siret
