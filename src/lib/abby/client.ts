@@ -45,3 +45,30 @@ export async function fetchCompanyIdentity(
 ): Promise<AbbyCompanyIdentity> {
   return getCompanyIdentity(createAbbyClient(apiKey));
 }
+
+export interface AbbyOrganizationSummary {
+  id: string;
+  name: string;
+  siret: string | null;
+}
+
+/**
+ * Recherche read-only d'organizations par nom (anti-doublon FR-6).
+ * `page ≥ 1` obligatoire ; `limit: 100` — un homonyme au SIRET identique
+ * au-delà de la première page serait un doublon évitable, pour le même coût.
+ */
+export async function searchOrganizations(
+  abby: Abby,
+  name: string
+): Promise<AbbyOrganizationSummary[]> {
+  const { data } = await abby.organization.retrieveOrganizations({
+    query: { page: 1, limit: 100, search: name },
+  });
+  const docs = (data as { docs?: Array<Record<string, unknown>> }).docs ?? [];
+  // Normalisation défensive : les types du SDK mentent (précédent commercialName)
+  return docs.map((d) => ({
+    id: String(d.id),
+    name: (d.name as string | null) ?? "",
+    siret: d.siret == null ? null : String(d.siret),
+  }));
+}
