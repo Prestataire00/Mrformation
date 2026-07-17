@@ -46,6 +46,24 @@ export async function fetchCompanyIdentity(
   return getCompanyIdentity(createAbbyClient(apiKey));
 }
 
+/** Crée une organization Abby (ÉCRITURE — appelée par la saga uniquement). */
+export async function createOrganizationCustomer(
+  abby: Abby,
+  dto: import("@abby-inc/node").CreateOrganizationDto
+): Promise<{ id: string }> {
+  const { data } = await abby.organization.createOrganization({ body: dto });
+  return { id: String((data as { id: unknown }).id) };
+}
+
+/** Crée un contact Abby (ÉCRITURE — appelée par la saga uniquement). */
+export async function createContactCustomer(
+  abby: Abby,
+  dto: import("@abby-inc/node").CreateContactDto
+): Promise<{ id: string }> {
+  const { data } = await abby.contact.createContact({ body: dto });
+  return { id: String((data as { id: unknown }).id) };
+}
+
 export interface AbbyOrganizationSummary {
   id: string;
   name: string;
