@@ -2,8 +2,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { sanitizeDbError } from "@/lib/api-error";
 import {
   searchOrganizations,
+  createOrganizationCustomer,
+  createContactCustomer,
   type createAbbyClient,
 } from "@/lib/abby/client";
+import { isPlausibleSiret, validateRecipientForAbby } from "@/lib/abby/validation";
+import { toCreateOrganizationDto, toCreateContactDto } from "@/lib/abby/mappers";
 import type {
   AbbyCustomerResolution,
   AbbyRecipientData,
@@ -65,13 +69,32 @@ export async function readRecipient(
     if (row.entity_id !== entityId) {
       return { ok: false, error: { message: ERR_AUTRE_ENTITE } };
     }
+
+    // Email d'organization = contact principal du client (décision 2.2).
+    // ⚠️ is_primary est nullable : nullsFirst:false, sinon un NULL d'import
+    // gagnerait sur true. Enrichissement non fatal : erreur → email null.
+    let email: string | null = null;
+    const { data: contact, error: contactError } = await supabase
+      .from("contacts")
+      .select("email")
+      .eq("client_id", recipientId)
+      .order("is_primary", { ascending: false, nullsFirst: false })
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (contactError) {
+      sanitizeDbError(contactError, "abby readRecipient contact principal");
+    } else {
+      email = (contact as { email: string | null } | null)?.email ?? null;
+    }
+
     return {
       ok: true,
       recipient: {
         kind: "organization",
         name: row.company_name,
         siret: normalizeSiret(row.siret),
-        email: null, // clients n'a pas de colonne email — tranché en 2.2
+        email,
         address: row.address,
         postalCode: row.postal_code,
         city: row.city,
@@ -198,16 +221,11 @@ export async function resolveRecipient(
   if (!read.ok) return read;
   const recipient = read.recipient;
 
-  // Auto-liaison uniquement sur SIRET PLAUSIBLE (14 chiffres, pas un
-  // placeholder tout-zéros) : un junk d'import identique des deux côtés
-  // ne doit jamais lier deux sociétés différentes (FR-6 « exactement
+  // Auto-liaison uniquement sur SIRET PLAUSIBLE (garde factorisée dans
+  // validation.ts en 2.2) : un junk d'import identique des deux côtés ne
+  // doit jamais lier deux sociétés différentes (FR-6 « exactement
   // identique » suppose un vrai SIRET)
-  const siretPlausible =
-    recipient.siret !== null &&
-    recipient.siret.length === 14 &&
-    !/^0{14}$/.test(recipient.siret);
-
-  if (recipient.kind === "organization" && siretPlausible) {
+  if (recipient.kind === "organization" && isPlausibleSiret(recipient.siret)) {
     const candidates = await searchOrganizations(abbyClient, recipient.name);
     const match = candidates.find(
       (c) => normalizeSiret(c.siret) === recipient.siret
@@ -256,4 +274,93 @@ export async function persistCustomerLink(
     };
   }
   return { ok: true };
+}
+
+/**
+ * Garantit l'existence du client Abby d'un destinataire et de sa liaison —
+ * le bloc « étape 1 de la saga » (câblé en 3.3).
+ *
+ * ⚠️ ÉCRIT côté Abby ET côté base — réservé à la SAGA (AD-10/AD-21),
+ * JAMAIS la préview (qui n'utilise que resolveRecipient + validation).
+ * Peut JETER si Abby est injoignable : appeler sous withAbbyConnection.
+ *
+ * Note TOCTOU pour 3.3 : si la création Abby réussit mais que
+ * persistCustomerLink échoue, un retry repart en `to_create` → doublon Abby
+ * possible pour les destinataires SANS SIRET (non ré-auto-liables). 3.3
+ * place son checkpoint en connaissance : le filet reste UNIQUE + verrou.
+ */
+export async function ensureCustomerForRecipient(
+  supabase: SupabaseClient,
+  abbyClient: AbbyClient,
+  entityId: string,
+  ref: AbbyRecipientRef
+): Promise<
+  ServiceResult<{
+    abbyCustomerId: string;
+    abbyCustomerType: "contact" | "organization";
+    created: boolean;
+  }>
+> {
+  const resolved = await resolveRecipient(supabase, abbyClient, entityId, ref);
+  if (!resolved.ok) return resolved;
+  const resolution = resolved.resolution;
+
+  if (resolution.outcome === "linked") {
+    return {
+      ok: true,
+      abbyCustomerId: resolution.abbyCustomerId,
+      abbyCustomerType: resolution.abbyCustomerType,
+      created: false,
+    };
+  }
+
+  if (resolution.outcome === "auto_linkable") {
+    const persisted = await persistCustomerLink(
+      supabase,
+      entityId,
+      ref,
+      resolution.abbyCustomerId,
+      resolution.abbyCustomerType
+    );
+    if (!persisted.ok) return persisted;
+    return {
+      ok: true,
+      abbyCustomerId: resolution.abbyCustomerId,
+      abbyCustomerType: resolution.abbyCustomerType,
+      created: false,
+    };
+  }
+
+  // to_create : validation qualité LMS (même code/message que la préview)
+  const validation = validateRecipientForAbby(ref.type, resolution.recipient);
+  if (!validation.valid) {
+    return {
+      ok: false,
+      error: { message: validation.message, code: "abby_validation" },
+    };
+  }
+
+  const abbyCustomerType =
+    resolution.recipient.kind === "organization" ? "organization" : "contact";
+  const { id: abbyCustomerId } =
+    abbyCustomerType === "organization"
+      ? await createOrganizationCustomer(
+          abbyClient,
+          toCreateOrganizationDto(resolution.recipient)
+        )
+      : await createContactCustomer(
+          abbyClient,
+          toCreateContactDto(resolution.recipient)
+        );
+
+  const persisted = await persistCustomerLink(
+    supabase,
+    entityId,
+    ref,
+    abbyCustomerId,
+    abbyCustomerType
+  );
+  if (!persisted.ok) return persisted;
+
+  return { ok: true, abbyCustomerId, abbyCustomerType, created: true };
 }

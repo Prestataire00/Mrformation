@@ -4,16 +4,25 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 // L'ACL est mockée : le SDK n'est jamais chargé ici (AD-2)
 const searchOrganizationsMock =
   vi.fn<(client: unknown, name: string) => Promise<unknown>>();
+const createOrganizationCustomerMock =
+  vi.fn<(client: unknown, dto: unknown) => Promise<{ id: string }>>();
+const createContactCustomerMock =
+  vi.fn<(client: unknown, dto: unknown) => Promise<{ id: string }>>();
 
 vi.mock("@/lib/abby/client", () => ({
   searchOrganizations: (client: unknown, name: string) =>
     searchOrganizationsMock(client, name),
+  createOrganizationCustomer: (client: unknown, dto: unknown) =>
+    createOrganizationCustomerMock(client, dto),
+  createContactCustomer: (client: unknown, dto: unknown) =>
+    createContactCustomerMock(client, dto),
 }));
 
 import {
   readRecipient,
   resolveRecipient,
   persistCustomerLink,
+  ensureCustomerForRecipient,
 } from "../abby-customers";
 import type { createAbbyClient } from "@/lib/abby/client";
 
@@ -45,6 +54,7 @@ function makeSupabaseMock(
     client?: Row;
     learner?: Row;
     financier?: Row;
+    contact?: Row;
   } = {}
 ) {
   const calls = {
@@ -63,8 +73,10 @@ function makeSupabaseMock(
     if (table === "clients") return opts.client ?? null;
     if (table === "learners") return opts.learner ?? null;
     if (table === "formation_financiers") return opts.financier ?? null;
+    if (table === "contacts") return opts.contact ?? null;
     return null;
   };
+  const orderCalls = vi.fn<(table: string, col: string, opts: unknown) => void>();
 
   const from = vi.fn((table: string) => {
     calls.tablesRead(table);
@@ -75,6 +87,11 @@ function makeSupabaseMock(
             calls.selectEq(table, col, val);
             return chain;
           },
+          order: (col: string, o: unknown) => {
+            orderCalls(table, col, o);
+            return chain;
+          },
+          limit: () => chain,
           maybeSingle: async () => ({ data: rowFor(table), error: null }),
         };
         return chain;
@@ -86,7 +103,12 @@ function makeSupabaseMock(
     };
   });
 
-  return { supabase: { from } as unknown as SupabaseClient, from, calls };
+  return {
+    supabase: { from } as unknown as SupabaseClient,
+    from,
+    calls,
+    orderCalls,
+  };
 }
 
 beforeEach(() => {
@@ -325,5 +347,132 @@ describe("persistCustomerLink — unique écrivain de la liaison (saga uniquemen
     expect(options).toMatchObject({
       onConflict: "entity_id,recipient_type,recipient_id",
     });
+  });
+});
+
+describe("readRecipient(company) — email du contact principal (décision 2.2)", () => {
+  it("lit l'email du contact principal avec tri is_primary nullsFirst:false", async () => {
+    const { supabase, orderCalls } = makeSupabaseMock({
+      client: { entity_id: ENTITY_ID, company_name: "ACME", siret: SIRET_ACME },
+      contact: { email: "principal@acme.fr" },
+    });
+    const res = await readRecipient(supabase, ENTITY_ID, "company", "c1");
+    if (res.ok) expect(res.recipient.email).toBe("principal@acme.fr");
+    expect(orderCalls).toHaveBeenCalledWith(
+      "contacts",
+      "is_primary",
+      expect.objectContaining({ ascending: false, nullsFirst: false })
+    );
+  });
+
+  it("aucun contact : email null (emails sera omis à la création)", async () => {
+    const { supabase } = makeSupabaseMock({
+      client: { entity_id: ENTITY_ID, company_name: "ACME", siret: SIRET_ACME },
+      contact: null,
+    });
+    const res = await readRecipient(supabase, ENTITY_ID, "company", "c1");
+    if (res.ok) expect(res.recipient.email).toBeNull();
+  });
+});
+
+describe("ensureCustomerForRecipient — étape 1 de saga (ÉCRIT — réservé 3.3)", () => {
+  const COMPANY_OK = {
+    entity_id: ENTITY_ID,
+    company_name: "ACME SAS",
+    siret: SIRET_ACME,
+    address: "1 rue du Test",
+    postal_code: "13001",
+    city: "Marseille",
+  };
+
+  beforeEach(() => {
+    createOrganizationCustomerMock.mockReset();
+    createContactCustomerMock.mockReset();
+  });
+
+  it("linked : retour direct, AUCUNE écriture (ni création ni liaison)", async () => {
+    const { supabase, calls } = makeSupabaseMock({
+      link: { abby_customer_id: "abby-42", abby_customer_type: "organization" },
+    });
+    const res = await ensureCustomerForRecipient(supabase, ABBY_CLIENT, ENTITY_ID, {
+      type: "company",
+      id: "c1",
+    });
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.abbyCustomerId).toBe("abby-42");
+      expect(res.created).toBe(false);
+    }
+    expect(createOrganizationCustomerMock).not.toHaveBeenCalled();
+    expect(calls.upsert).not.toHaveBeenCalled();
+  });
+
+  it("auto_linkable : persiste la liaison SANS création", async () => {
+    searchOrganizationsMock.mockResolvedValue([
+      { id: "abby-7", name: "ACME SAS", siret: SIRET_ACME },
+    ]);
+    const { supabase, calls } = makeSupabaseMock({ client: COMPANY_OK });
+    const res = await ensureCustomerForRecipient(supabase, ABBY_CLIENT, ENTITY_ID, {
+      type: "company",
+      id: "c1",
+    });
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.abbyCustomerId).toBe("abby-7");
+      expect(res.created).toBe(false);
+    }
+    expect(createOrganizationCustomerMock).not.toHaveBeenCalled();
+    expect(calls.upsert).toHaveBeenCalledTimes(1);
+    expect(calls.upsert.mock.calls[0][0]).toMatchObject({ abby_customer_id: "abby-7" });
+  });
+
+  it("to_create valide : crée l'organization (payload mappé) puis persiste la liaison", async () => {
+    searchOrganizationsMock.mockResolvedValue([]);
+    createOrganizationCustomerMock.mockResolvedValue({ id: "abby-neuf" });
+    const { supabase, calls } = makeSupabaseMock({ client: COMPANY_OK });
+    const res = await ensureCustomerForRecipient(supabase, ABBY_CLIENT, ENTITY_ID, {
+      type: "company",
+      id: "c1",
+    });
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.abbyCustomerId).toBe("abby-neuf");
+      expect(res.abbyCustomerType).toBe("organization");
+      expect(res.created).toBe(true);
+    }
+    const dto = createOrganizationCustomerMock.mock.calls[0][1] as Record<string, unknown>;
+    expect(dto).toMatchObject({ name: "ACME SAS", siret: SIRET_ACME });
+    expect(calls.upsert).toHaveBeenCalledTimes(1);
+  });
+
+  it("to_create learner : crée un CONTACT", async () => {
+    createContactCustomerMock.mockResolvedValue({ id: "abby-contact-1" });
+    const { supabase } = makeSupabaseMock({
+      learner: { entity_id: ENTITY_ID, first_name: "Marie", last_name: "Dupont", email: null },
+    });
+    const res = await ensureCustomerForRecipient(supabase, ABBY_CLIENT, ENTITY_ID, {
+      type: "learner",
+      id: "l1",
+    });
+    if (res.ok) expect(res.abbyCustomerType).toBe("contact");
+    expect(createContactCustomerMock).toHaveBeenCalledTimes(1);
+    expect(createOrganizationCustomerMock).not.toHaveBeenCalled();
+  });
+
+  it("to_create INVALIDE (fiche incomplète) : abby_validation, AUCUNE écriture", async () => {
+    const { supabase, calls } = makeSupabaseMock({
+      client: { entity_id: ENTITY_ID, company_name: "Incomplète", siret: null },
+    });
+    const res = await ensureCustomerForRecipient(supabase, ABBY_CLIENT, ENTITY_ID, {
+      type: "company",
+      id: "c1",
+    });
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.error.code).toBe("abby_validation");
+      expect(res.error.message).toMatch(/Compléter la fiche client/);
+    }
+    expect(createOrganizationCustomerMock).not.toHaveBeenCalled();
+    expect(calls.upsert).not.toHaveBeenCalled();
   });
 });

@@ -1,4 +1,5 @@
 import type { VatCode } from "@abby-inc/node";
+import { isPlausibleSiret } from "./validation";
 
 // Configuration TVA du pont Abby (AD-17) — valeurs VÉRIFIÉES empiriquement
 // sur compte réel en mode test le 16/07/2026 (story abby-1-5, PDF inspectés) :
@@ -45,3 +46,16 @@ export const VAT_EXONERATION_FORMATION = {
   vatCode: "FR_00HT" as VatCode,
   footerNote: "TVA non applicable, article 261-4-4° du CGI.",
 } as const;
+
+/**
+ * Dérive le numéro de TVA intracommunautaire français depuis un SIRET :
+ * FR + clé (2 chiffres) + SIREN, avec clé = (12 + 3 × (SIREN mod 97)) mod 97.
+ * Donnée publique déterministe — vecteur vérifié sur le PDF de recette du
+ * 16/07 : SIREN MR 913113296 → FR51913113296. Null si SIRET non plausible.
+ */
+export function deriveFrVatNumber(siret: string): string | null {
+  if (!isPlausibleSiret(siret)) return null;
+  const siren = siret.slice(0, 9);
+  const key = (12 + 3 * (Number(siren) % 97)) % 97;
+  return `FR${String(key).padStart(2, "0")}${siren}`;
+}

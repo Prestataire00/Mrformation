@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { resolveVatCode, VAT_RATE_TO_CODE, VAT_EXONERATION_FORMATION } from "../vat";
+import {
+  resolveVatCode,
+  VAT_RATE_TO_CODE,
+  VAT_EXONERATION_FORMATION,
+  deriveFrVatNumber,
+} from "../vat";
 
 describe("TVA Abby — mapping taux → vatCode (AD-17, valeurs vérifiées en recette 16/07)", () => {
   it("mappe les 5 taux français vers leur code Abby", () => {
@@ -30,5 +35,21 @@ describe("TVA Abby — exonération formation professionnelle (art. 261-4-4° CG
     // Aucune vatMention : toutes les valeurs de l'enum Abby rendent une
     // mention légale FAUSSE pour la formation (vérifié PDF par PDF le 16/07)
     expect("vatMention" in VAT_EXONERATION_FORMATION).toBe(false);
+  });
+});
+
+describe("TVA Abby — dérivation du numéro de TVA intracommunautaire FR", () => {
+  it("vecteur RÉEL : SIRET MR → FR51913113296 (vérifié sur le PDF de recette du 16/07)", () => {
+    expect(deriveFrVatNumber("91311329600036")).toBe("FR51913113296");
+  });
+
+  it("clé < 10 : paddée à 2 chiffres (SIREN mod 97 = 63 → clé 07)", () => {
+    // 63 → (12 + 189) mod 97 = 201 mod 97 = 7
+    expect(deriveFrVatNumber("00000006300012")).toBe("FR07000000063");
+  });
+
+  it("SIRET non plausible : null (jamais de TVA dérivée sur du junk)", () => {
+    expect(deriveFrVatNumber("1234567")).toBeNull();
+    expect(deriveFrVatNumber("00000000000000")).toBeNull();
   });
 });
