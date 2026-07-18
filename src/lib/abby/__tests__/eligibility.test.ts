@@ -80,6 +80,13 @@ describe("canPushInvoice — bouton ACTIF seulement si connexion active", () => 
     }
   );
 
+  it.each(["non_configuree", "testee"] as AbbyConnectionStatus[])(
+    "connexion %s (zone masquée) → jamais poussable, même si un appelant saute isAbbyZoneVisible",
+    (status) => {
+      expect(canPushInvoice(INVOICE_VIERGE, status)).toBe(false);
+    }
+  );
+
   it("facture non éligible : jamais poussable même connexion active", () => {
     expect(canPushInvoice({ ...INVOICE_VIERGE, status: "cancelled" }, "active")).toBe(false);
   });

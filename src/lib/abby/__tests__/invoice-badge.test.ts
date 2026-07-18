@@ -60,6 +60,22 @@ describe("deriveAbbyBadge — LA fonction pure unique (table de dérivation de l
     expect(b.label).toBe("Finalisée");
   });
 
+  it("finalisée + erreur résiduelle d'une tentative passée → reste « Finalisée » (priorité)", () => {
+    const b = deriveAbbyBadge(
+      { ...BASE, abby_push_state: "finalized", abby_invoice_number: "F-2026-0042", abby_last_error: "boom" },
+      NOW
+    );
+    expect(b.label).toBe("Finalisée · F-2026-0042");
+  });
+
+  it("verrou non parsable (défensif) → traité comme périmé, « Interrompue — à reprendre »", () => {
+    const b = deriveAbbyBadge(
+      { ...BASE, abby_push_state: "pushing", abby_push_locked_at: "pas-une-date" },
+      NOW
+    );
+    expect(b.label).toBe("Interrompue — à reprendre");
+  });
+
   it.each(["pushing", "draft_created", "lines_set", "details_set"])(
     "état intermédiaire %s + verrou frais (< 2 min) → « Push en cours »",
     (state) => {
