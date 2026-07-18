@@ -26,6 +26,15 @@ export interface Invoice {
   reminder_count?: number;
   auto_generated?: boolean;
   external_reference?: string | null;
+  // Colonnes Abby (story abby-3-1) — requises nullables, PAS optionnelles :
+  // la route /invoices fait select("*") (superset d'ABBY_INVOICE_SELECT),
+  // elles arrivent toujours. Un champ optionnel masquerait une colonne
+  // manquante (select strings invisibles pour tsc).
+  abby_push_state: string | null;
+  abby_push_locked_at: string | null;
+  abby_invoice_number: string | null;
+  abby_state: string | null;
+  abby_last_error: string | null;
 }
 
 /** Une charge de formation. */

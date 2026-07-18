@@ -37,6 +37,7 @@ import { formatCurrency } from "@/lib/utils";
 import { invoiceDisplayRef } from "@/lib/utils/invoice-display-ref";
 import { parseAvoirAmount } from "@/lib/validations/avoir";
 import type { Session } from "@/lib/types";
+import type { AbbyConnectionState, AbbyConnectionStatus } from "@/lib/types/abby";
 
 
 interface Props {
@@ -170,6 +171,44 @@ export function TabFinances({ formation, onRefresh }: Props) {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Zone Abby (story abby-3-1) : état de connexion de l'entité active.
+  // useEffect SÉPARÉ de fetchData (dont les deps ne se relancent pas au
+  // switch d'entité) ; GET /api/abby/connections = lecture BASE uniquement,
+  // aucun appel Abby au montage (AD-22). null = pas résolu → Skeleton ;
+  // erreur de fetch → "non_configuree" (fail-closed : zone masquée).
+  const [abbyConnectionStatus, setAbbyConnectionStatus] =
+    useState<AbbyConnectionStatus | null>(null);
+  useEffect(() => {
+    let stale = false;
+    setAbbyConnectionStatus(null);
+    (async () => {
+      try {
+        const res = await fetch("/api/abby/connections");
+        if (stale) return;
+        if (res.ok) {
+          const json = (await res.json()) as { state: AbbyConnectionState };
+          setAbbyConnectionStatus(json.state.status);
+        } else {
+          setAbbyConnectionStatus("non_configuree");
+        }
+      } catch {
+        if (!stale) setAbbyConnectionStatus("non_configuree");
+      }
+    })();
+    return () => {
+      stale = true;
+    };
+  }, [entity?.id]);
+
+  // Handler 3.1 du bouton « Pousser vers Abby » : toast informatif honnête
+  // (dérogation transitoire assumée — remplacé par le dialog préview en 3.2).
+  const handleAbbyPush = (_inv: Invoice) => {
+    toast({
+      title: "Pousser vers Abby",
+      description: "La prévisualisation du push arrive dans la prochaine mise à jour.",
+    });
+  };
 
   // Crée un formulaire de facture vierge (fonction → `lines` jamais partagé).
   const createEmptyInvoiceForm = () => ({
@@ -978,6 +1017,8 @@ export function TabFinances({ formation, onRefresh }: Props) {
               title={title}
               icon={icon}
               invoices={invoices.filter((i) => i.recipient_type === type)}
+              abbyConnectionStatus={abbyConnectionStatus}
+              onAbbyPush={handleAbbyPush}
               onDownloadPdf={handleDownloadPdf}
               onSendEmail={handleSendInvoiceEmail}
               onMarkPaid={(inv) => handleUpdateStatus(inv.id, "paid")}
