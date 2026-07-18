@@ -2,16 +2,20 @@ import { InvoiceRow } from "./InvoiceRow";
 import type { InvoiceActionHandlers } from "./InvoiceActionsMenu";
 import { formatCurrency } from "@/lib/utils";
 import type { Invoice } from "@/lib/utils/finances-display";
+import type { AbbyConnectionStatus } from "@/lib/types/abby";
 
 interface Props extends InvoiceActionHandlers {
   title: string;
   icon: string;
   /** Factures déjà filtrées sur ce type de destinataire. */
   invoices: Invoice[];
+  /** null = état de connexion Abby pas encore résolu (Skeleton). */
+  abbyConnectionStatus: AbbyConnectionStatus | null;
+  onAbbyPush: (inv: Invoice) => void;
 }
 
 /** Zone 3 du spec : section par type. Masquée (`null`) si aucune facture. */
-export function InvoiceSection({ title, icon, invoices, ...handlers }: Props) {
+export function InvoiceSection({ title, icon, invoices, abbyConnectionStatus, onAbbyPush, ...handlers }: Props) {
   if (invoices.length === 0) return null;
 
   // Total = factures hors avoirs (cohérent avec les KPIs).
@@ -33,7 +37,13 @@ export function InvoiceSection({ title, icon, invoices, ...handlers }: Props) {
         </span>
       </div>
       {invoices.map((inv) => (
-        <InvoiceRow key={inv.id} invoice={inv} {...handlers} />
+        <InvoiceRow
+          key={inv.id}
+          invoice={inv}
+          abbyConnectionStatus={abbyConnectionStatus}
+          onAbbyPush={onAbbyPush}
+          {...handlers}
+        />
       ))}
     </div>
   );
