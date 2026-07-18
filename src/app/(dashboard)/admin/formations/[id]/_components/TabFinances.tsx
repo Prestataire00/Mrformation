@@ -14,6 +14,7 @@ import { getDefaultRecipientType, type Invoice, type Charge, type Stats } from "
 import { FinancesKpiBand } from "./finances/FinancesKpiBand";
 import { InvoiceSection } from "./finances/InvoiceSection";
 import { ChargesPanel } from "./finances/ChargesPanel";
+import { AbbyPushPreviewDialog } from "./finances/AbbyPushPreviewDialog";
 import { EmailPreviewDialog, type EmailTemplateOption } from "@/components/emails/EmailPreviewDialog";
 import { listFormationAttachments, type AvailableAttachment } from "@/lib/formations/formation-attachments";
 
@@ -182,6 +183,8 @@ export function TabFinances({ formation, onRefresh }: Props) {
   useEffect(() => {
     let stale = false;
     setAbbyConnectionStatus(null);
+    // Une préview de l'entité A ne doit jamais rester ouverte sous l'entité B
+    setAbbyPreviewTarget(null);
     (async () => {
       try {
         const res = await fetch("/api/abby/connections");
@@ -201,13 +204,11 @@ export function TabFinances({ formation, onRefresh }: Props) {
     };
   }, [entity?.id]);
 
-  // Handler 3.1 du bouton « Pousser vers Abby » : toast informatif honnête
-  // (dérogation transitoire assumée — remplacé par le dialog préview en 3.2).
-  const handleAbbyPush = (_inv: Invoice) => {
-    toast({
-      title: "Pousser vers Abby",
-      description: "La prévisualisation du push arrive dans la prochaine mise à jour.",
-    });
+  // Story 3.2 : « Pousser vers Abby » ouvre le dialog de prévisualisation
+  // (FR-9 — jamais d'action directe). Fermé au switch d'entité (anti-stale).
+  const [abbyPreviewTarget, setAbbyPreviewTarget] = useState<Invoice | null>(null);
+  const handleAbbyPush = (inv: Invoice) => {
+    setAbbyPreviewTarget(inv);
   };
 
   // Crée un formulaire de facture vierge (fonction → `lines` jamais partagé).
@@ -1037,6 +1038,12 @@ export function TabFinances({ formation, onRefresh }: Props) {
         totalCharges={stats.total_charges}
         onAddCharge={handleAddCharge}
         onDeleteCharge={handleDeleteCharge}
+      />
+
+      {/* Dialog -- Prévisualisation du push Abby (story 3.2, FR-9) */}
+      <AbbyPushPreviewDialog
+        invoice={abbyPreviewTarget}
+        onClose={() => setAbbyPreviewTarget(null)}
       />
 
       {/* Dialog -- Confirmation annulation de facture */}
