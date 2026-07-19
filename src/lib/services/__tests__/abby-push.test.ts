@@ -520,6 +520,78 @@ describe("étapes 2-5 : CAS, checkpoints, erreurs", () => {
   });
 });
 
+describe("chemins d'échec de checkpoint (review #351)", () => {
+  const LOCKED = "2026-07-19T10:00:00.000Z";
+  const PUSHING = { ...BASE_INVOICE, abby_push_state: "pushing", abby_push_locked_at: LOCKED };
+
+  it("checkpoint 0 ligne (état écrasé entre-temps) → 409, jamais requalifié en doublon", async () => {
+    const { supabase } = makeDb({
+      invoice: PUSHING,
+      updateResults: [{ rows: 1 }, { rows: 0 }], // restamp OK, checkpoint 0 ligne
+    });
+    const res = await advancePushStep(supabase, ENTITY_ID, INVOICE_ID);
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.error.code).toBe("abby_invalid_state");
+      expect(res.error.message).not.toMatch(/existe déjà/);
+    }
+  });
+
+  it("checkpoint 23505 (violation UNIQUE abby_invoice_id) → abby_duplicate, wording doublon", async () => {
+    const { supabase } = makeDb({
+      invoice: PUSHING,
+      updateResults: [{ rows: 1 }, { rows: 1, errorCode: "23505" }],
+    });
+    const res = await advancePushStep(supabase, ENTITY_ID, INVOICE_ID);
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.error.code).toBe("abby_duplicate");
+      expect(res.error.message).toMatch(/existe déjà/);
+    }
+  });
+
+  it("checkpoint en erreur DB NON-unique (panne transitoire) → erreur générique, PAS le wording doublon", async () => {
+    const { supabase } = makeDb({
+      invoice: PUSHING,
+      updateResults: [{ rows: 1 }, { rows: 1, errorCode: "57014" }], // timeout PG
+    });
+    const res = await advancePushStep(supabase, ENTITY_ID, INVOICE_ID);
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.error.code).toBeUndefined();
+      expect(res.error.message).not.toMatch(/existe déjà/);
+    }
+  });
+});
+
+describe("run chaîné NULL → finalized (AC-2 : getMe UNE fois sur la saga entière)", () => {
+  it("5 appels successifs : états dans l'ordre, getMe appelé exactement 1 fois au total", async () => {
+    const invoice = { ...BASE_INVOICE };
+    const { supabase, updates } = makeDb({ invoice });
+    const states: string[] = [];
+
+    for (let i = 0; i < 5; i++) {
+      const res = await advancePushStep(supabase, ENTITY_ID, INVOICE_ID);
+      expect(res.ok).toBe(true);
+      if (!res.ok) return;
+      states.push(res.step.state);
+      // Simule la persistance DB : applique le dernier payload d'update
+      // (checkpoint OU acquisition) sur la ligne mutable lue au prochain tour
+      for (const u of updates.splice(0)) {
+        if (u.table === "formation_invoices") Object.assign(invoice, u.payload);
+      }
+    }
+
+    expect(states).toEqual(["pushing", "draft_created", "lines_set", "details_set", "finalized"]);
+    expect(getCompanyIdentityMock).toHaveBeenCalledTimes(1);
+    expect(createDraftInvoiceMock).toHaveBeenCalledTimes(1);
+    expect(finalizeBillingMock).toHaveBeenCalledTimes(1);
+    expect(invoice.abby_push_state).toBe("finalized");
+    expect(invoice.abby_push_locked_at).toBeNull();
+    expect(invoice.abby_invoice_number).toBe("F-2026-0042");
+  });
+});
+
 describe("backoff 429 confiné à l'étape (AC-6)", () => {
   it("429 puis succès : 1 retry après 500 ms, l'étape aboutit", async () => {
     vi.useFakeTimers();

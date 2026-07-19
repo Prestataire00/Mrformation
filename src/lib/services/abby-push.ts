@@ -84,8 +84,13 @@ const LOCK_HELD_MESSAGE = "Un push est déjà en cours sur cette facture.";
 const RETRY_DELAYS_MS = [500, 1000];
 const RETRY_DEADLINE_MS = 5000;
 
-async function withRateLimitRetry<T>(fn: () => Promise<T>): Promise<T> {
-  const start = Date.now();
+async function withRateLimitRetry<T>(
+  fn: () => Promise<T>,
+  stepStart: number = Date.now()
+): Promise<T> {
+  // `stepStart` est PARTAGÉ entre les appels d'une même étape (étapes 4-5 en
+  // ont deux) : la deadline borne l'ÉTAPE, pas chaque appel — sinon le pire
+  // cas dépasse le timeout Netlify 10 s (review #351)
   for (let attempt = 0; ; attempt++) {
     try {
       return await fn();
@@ -94,7 +99,7 @@ async function withRateLimitRetry<T>(fn: () => Promise<T>): Promise<T> {
       if (
         code !== "abby_rate_limited" ||
         attempt >= RETRY_DELAYS_MS.length ||
-        Date.now() - start > RETRY_DEADLINE_MS
+        Date.now() - stepStart > RETRY_DEADLINE_MS
       ) {
         throw err;
       }
@@ -138,6 +143,15 @@ async function recordStepError(
  * valeur LUE au chargement. Une condition d'état seule ne sérialise PAS deux
  * POST concurrents (l'état ne change qu'au checkpoint) — le CAS garantit que
  * le second appel, qui a lu un locked_at déjà écrasé, fait 0 ligne → 409.
+ *
+ * RÉSIDU DOCUMENTÉ (review #351) : un 2ᵉ acteur dont le CHARGEMENT survient
+ * après le re-stamp du 1ᵉʳ lit le stamp frais et passe le CAS — fenêtre = la
+ * durée d'un appel Abby. Sans colonne de jeton propriétaire (schéma AD-6),
+ * ce résidu n'est pas fermable ; conséquence maximale = un brouillon Abby
+ * orphelin (étape 2), JAMAIS une double finalisation légale (index UNIQUE +
+ * checkpoints conditionnels). En pratique l'UI n'offre aucun chemin de
+ * ré-entrée mid-saga en 3.3 (bouton masqué dès abby_push_state non NULL) ;
+ * la Reprise 3.4 relit l'état réel Abby avant d'avancer.
  */
 async function restampLock(
   supabase: SupabaseClient,
@@ -176,14 +190,16 @@ async function restampLock(
 }
 
 /** Checkpoint conditionnel sur l'état attendu — n'écrase jamais un état plus
- * avancé ; chaque checkpoint réussi efface abby_last_error. */
+ * avancé ; chaque checkpoint réussi efface abby_last_error. `dbCode` remonte
+ * le code PostgREST BRUT : seul le 23505 (violation UNIQUE) est un doublon —
+ * requalifier toute erreur DB en doublon serait un mensonge (review #351). */
 async function checkpoint(
   supabase: SupabaseClient,
   entityId: string,
   invoiceId: string,
   expectedState: AbbyPushState,
   patch: Record<string, unknown>
-): Promise<{ ok: true } | { ok: false; error: AbbyPushError }> {
+): Promise<{ ok: true } | { ok: false; error: AbbyPushError; dbCode?: string }> {
   const { data, error } = await supabase
     .from("formation_invoices")
     .update({ ...patch, abby_last_error: null })
@@ -192,7 +208,11 @@ async function checkpoint(
     .eq("abby_push_state", expectedState)
     .select("id");
   if (error) {
-    return { ok: false, error: { message: sanitizeDbError(error, "abby push checkpoint") } };
+    return {
+      ok: false,
+      error: { message: sanitizeDbError(error, "abby push checkpoint") },
+      dbCode: (error as { code?: string }).code,
+    };
   }
   if (!data || data.length === 0) {
     return {
@@ -495,8 +515,10 @@ async function stepCreateDraft(
     abby_pushed_at: new Date().toISOString(),
   });
   if (!cp.ok) {
-    // Violation UNIQUE sur abby_invoice_id = doublon structurel
-    if (cp.error.message !== LOCK_HELD_MESSAGE) {
+    // SEUL le 23505 (violation UNIQUE sur abby_invoice_id) est un doublon
+    // structurel — toute autre erreur DB reste une erreur générique (le
+    // wording « existe déjà » serait faux et masquerait un brouillon perdu)
+    if (cp.dbCode === "23505") {
       return {
         ok: false,
         error: {
@@ -540,9 +562,10 @@ async function stepSendLines(
 
   let abbyLines;
   try {
-    abbyLines = toAbbyInvoiceLines(linesRes.lines, vat);
+    abbyLines = toAbbyInvoiceLines(linesRes.lines, vat, { isAvoir: invoice.is_avoir });
   } catch (err) {
-    // Taux hors enum — erreur explicite du mapper (AD-17)
+    // Taux hors enum OU ligne négative sur facture — erreurs explicites du
+    // mapper (AD-17 + parité préview, review #351)
     const message = err instanceof Error ? err.message : "Taux de TVA non supporté.";
     await recordStepError(supabase, entityId, invoice.id, message);
     return { ok: false, error: { message, code: "abby_validation" } };
@@ -589,12 +612,15 @@ async function stepSendDetails(
   if (!entityRes.ok) return entityRes;
   const vatExempt = entityRes.entity.tva_exempt === true;
 
+  const stepStart = Date.now();
   const res = await withAbbyConnection(supabase, entityId, async (client: AbbyClient) => {
-    await withRateLimitRetry(() =>
-      setInvoiceTimeline(client, abbyInvoiceId, toAbbyTimeline(invoice.invoice_date))
+    await withRateLimitRetry(
+      () => setInvoiceTimeline(client, abbyInvoiceId, toAbbyTimeline(invoice.invoice_date)),
+      stepStart
     );
-    await withRateLimitRetry(() =>
-      setInvoiceGeneralInformations(client, abbyInvoiceId, toAbbyGeneralInformations(vatExempt))
+    await withRateLimitRetry(
+      () => setInvoiceGeneralInformations(client, abbyInvoiceId, toAbbyGeneralInformations(vatExempt)),
+      stepStart
     );
   });
   if (!res.ok) {
@@ -630,9 +656,10 @@ async function stepFinalize(
   }
   const abbyInvoiceId = invoice.abby_invoice_id;
 
+  const stepStart = Date.now();
   const res = await withAbbyConnection(supabase, entityId, async (client: AbbyClient) => {
-    await withRateLimitRetry(() => finalizeBilling(client, abbyInvoiceId));
-    return withRateLimitRetry(() => getAbbyInvoice(client, abbyInvoiceId));
+    await withRateLimitRetry(() => finalizeBilling(client, abbyInvoiceId), stepStart);
+    return withRateLimitRetry(() => getAbbyInvoice(client, abbyInvoiceId), stepStart);
   });
   if (!res.ok) {
     await recordStepError(

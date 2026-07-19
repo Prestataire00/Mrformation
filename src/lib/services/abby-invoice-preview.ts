@@ -161,6 +161,24 @@ export async function buildInvoicePreview(
           },
         ];
 
+  // 4bis. Ligne négative sur une FACTURE (remise saisie librement) : bloquée
+  // dès la préview — le mapper de la saga la refuse (parité AC-4 3.3, review
+  // #351), autant que le gérant l'apprenne AVANT de confirmer
+  if (!invoice.is_avoir) {
+    const negative = previewLines.find((l) => l.quantity < 0 || l.unitPriceHT < 0);
+    if (negative) {
+      return {
+        ok: false,
+        error: {
+          message:
+            `Ligne « ${negative.description} » à montant négatif : non supporté sur une facture. ` +
+            "Pour corriger une facture poussée, utilisez un avoir.",
+          code: "abby_validation",
+        },
+      };
+    }
+  }
+
   // 5. Entité : régime TVA + nom (anti-inversion — le nom AFFICHÉ vient d'ici)
   const { data: entityData, error: entityError } = await supabase
     .from("entities")
