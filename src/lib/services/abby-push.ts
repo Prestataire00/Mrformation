@@ -293,14 +293,30 @@ async function loadInvoiceLines(
   };
 }
 
+const INTERMEDIATE_STATES: ReadonlySet<string> = new Set([
+  "pushing",
+  "draft_created",
+  "lines_set",
+  "details_set",
+]);
+
+function isLockStale(lockedAt: string | null): boolean {
+  if (lockedAt === null) return true;
+  const t = Date.parse(lockedAt);
+  return Number.isNaN(t) || Date.now() - t >= ABBY_PUSH_LOCK_TTL_MS;
+}
+
 /**
- * Avance la saga d'UNE étape depuis l'état persisté (AD-8).
+ * Avance la saga d'UNE étape depuis l'état persisté (AD-8). La REPRISE est
+ * inférée serveur (état intermédiaire + verrou périmé/NULL = ré-acquisition)
+ * — le seul flag client est `restartFromZero` (consentement AD-8).
  * Machine : NULL → pushing → draft_created → lines_set → details_set → finalized.
  */
 export async function advancePushStep(
   supabase: SupabaseClient,
   entityId: string,
-  invoiceId: string
+  invoiceId: string,
+  opts: { restartFromZero?: boolean } = {}
 ): Promise<AbbyPushResult> {
   // Garde connexion ACTIVE (AD-13 — même garde que la préview 3.2 :
   // isPushButtonVisible est sans condition de connexion, withAbbyConnection
@@ -346,6 +362,51 @@ export async function advancePushStep(
     };
   }
 
+  // Entrée de REPRISE (3.4) : état intermédiaire + verrou périmé/NULL +
+  // brouillon connu → réconciliation avec l'état réel Abby AVANT d'avancer.
+  // Un verrou FRAIS = boucle active mid-saga : jamais de relecture.
+  const intermediate =
+    invoice.abby_push_state !== null &&
+    INTERMEDIATE_STATES.has(invoice.abby_push_state);
+  const staleEntry = intermediate && isLockStale(invoice.abby_push_locked_at);
+
+  if (staleEntry && invoice.status === "cancelled") {
+    // Miroir serveur d'isPushResumable : le verrou de contenu 3.5 n'existe
+    // pas encore — une annulée interrompue ne doit JAMAIS être finalisée
+    return {
+      ok: false,
+      error: {
+        message: "Cette facture est annulée — son push ne peut pas être repris.",
+        code: "abby_invalid_state",
+      },
+    };
+  }
+
+  if (staleEntry && invoice.abby_invoice_id !== null) {
+    return reconcileAndAdvance(supabase, entityId, invoice, opts);
+  }
+
+  if (opts.restartFromZero) {
+    // Sans brouillon connu (ou hors reprise), il n'y a rien à effacer :
+    // le restart n'a de sens qu'après un abby_draft_missing
+    return {
+      ok: false,
+      error: {
+        message: "Repartir de zéro n'est pas possible dans cet état.",
+        code: "abby_invalid_state",
+      },
+    };
+  }
+
+  return dispatchStep(supabase, entityId, invoice);
+}
+
+/** Dispatch d'une étape depuis l'état persisté (extrait pour la réconciliation). */
+async function dispatchStep(
+  supabase: SupabaseClient,
+  entityId: string,
+  invoice: PushInvoiceRow
+): Promise<AbbyPushResult> {
   switch (invoice.abby_push_state) {
     case null:
       return stepAcquireAndEnsureCustomer(supabase, entityId, invoice);
@@ -375,6 +436,148 @@ export async function advancePushStep(
   }
 }
 
+/**
+ * Réconciliation de reprise (AD-8) : garde SIRET (AD-5 — la reprise EST la
+ * ré-acquisition, spine verbatim) PUIS relecture de la facture Abby, dans la
+ * MÊME enveloppe. Issues :
+ * - numéro présent (signal robuste : ReadInvoiceDto.number est OPTIONNEL,
+ *   la finalisation est l'acte qui numérote) → conclure SANS écriture Abby ;
+ * - 404 → `abby_draft_missing` (ou restart si `restartFromZero` confirmé) ;
+ * - brouillon présent → dispatch normal (le CAS accepte le verrou périmé) —
+ *   restartFromZero est alors REFUSÉ (jamais d'effacement d'un brouillon vivant).
+ */
+async function reconcileAndAdvance(
+  supabase: SupabaseClient,
+  entityId: string,
+  invoice: PushInvoiceRow,
+  opts: { restartFromZero?: boolean }
+): Promise<AbbyPushResult> {
+  const abbyInvoiceId = invoice.abby_invoice_id as string;
+  const currentState = invoice.abby_push_state as AbbyPushState;
+
+  const entityRes = await loadEntity(supabase, entityId);
+  if (!entityRes.ok) return entityRes;
+  const expectedSiret = entityRes.entity.siret;
+  if (!expectedSiret) {
+    return {
+      ok: false,
+      error: {
+        message:
+          "Le SIRET de l'entité n'est pas renseigné — impossible de vérifier le compte Abby. Complétez-le dans les paramètres de l'organisme.",
+      },
+    };
+  }
+
+  const res = await withAbbyConnection(supabase, entityId, async (client: AbbyClient) => {
+    const identity = await withRateLimitRetry(() => getCompanyIdentity(client));
+    if (identity.companySiret !== expectedSiret) {
+      return { kind: "siret_mismatch" as const, found: identity.companySiret };
+    }
+    const read = await withRateLimitRetry(() => getAbbyInvoice(client, abbyInvoiceId));
+    return { kind: "read" as const, read };
+  });
+
+  if (!res.ok) {
+    if (res.error.code === "abby_not_found") {
+      // Brouillon disparu côté Abby
+      if (opts.restartFromZero) {
+        return performRestart(supabase, entityId, invoice, currentState);
+      }
+      return {
+        ok: false,
+        error: {
+          message:
+            "Le brouillon Abby de cette facture n'existe plus. Vous pouvez repartir de zéro — un nouveau brouillon sera créé.",
+          code: "abby_draft_missing",
+        },
+      };
+    }
+    return { ok: false, error: res.error };
+  }
+
+  if (res.data.kind === "siret_mismatch") {
+    return {
+      ok: false,
+      error: {
+        message: `Le compte Abby connecté (SIRET ${res.data.found}) ne correspond pas à l'entité (SIRET ${expectedSiret}). Push bloqué.`,
+        code: "abby_siret_mismatch",
+      },
+    };
+  }
+  const read = res.data.read;
+
+  if (read.number !== null) {
+    // Interruption entre finalize Abby et persistance LMS : conclure en
+    // persistant, SANS aucun nouvel appel d'écriture (AC-3)
+    const cp = await checkpoint(supabase, entityId, invoice.id, currentState, {
+      abby_invoice_number: read.number,
+      abby_state: read.state,
+      abby_finalized_at: new Date().toISOString(),
+      abby_push_state: "finalized",
+      abby_push_locked_at: null,
+    });
+    if (!cp.ok) return cp;
+    return {
+      ok: true,
+      step: { state: "finalized", done: true, abbyInvoiceNumber: read.number },
+    };
+  }
+
+  if (opts.restartFromZero) {
+    return {
+      ok: false,
+      error: {
+        message:
+          "Le brouillon Abby existe toujours — la reprise normale va le compléter, pas besoin de repartir de zéro.",
+        code: "abby_invalid_state",
+      },
+    };
+  }
+
+  // Brouillon présent → la saga complète depuis le checkpoint persisté
+  return dispatchStep(supabase, entityId, invoice);
+}
+
+/**
+ * Repartir-de-zéro confirmé : l'UNIQUE chemin qui efface `abby_invoice_id`
+ * (AD-8), en UN SEUL UPDATE atomique avec la ré-acquisition du verrou —
+ * CAS sur l'état LU et l'id LU, verrou périmé/NULL exigé.
+ */
+async function performRestart(
+  supabase: SupabaseClient,
+  entityId: string,
+  invoice: PushInvoiceRow,
+  currentState: AbbyPushState
+): Promise<AbbyPushResult> {
+  const staleIso = new Date(Date.now() - ABBY_PUSH_LOCK_TTL_MS).toISOString();
+  const { data, error } = await supabase
+    .from("formation_invoices")
+    .update({
+      abby_invoice_id: null,
+      abby_push_state: "pushing",
+      abby_push_locked_at: new Date().toISOString(),
+      abby_last_error: null,
+    })
+    .eq("id", invoice.id)
+    .eq("entity_id", entityId)
+    .eq("abby_push_state", currentState)
+    .eq("abby_invoice_id", invoice.abby_invoice_id as string)
+    .or(`abby_push_locked_at.is.null,abby_push_locked_at.lt.${staleIso}`)
+    .select("id");
+  if (error) {
+    return { ok: false, error: { message: sanitizeDbError(error, "abby push restart") } };
+  }
+  if (!data || data.length === 0) {
+    return {
+      ok: false,
+      error: { message: LOCK_HELD_MESSAGE, code: "abby_invalid_state" },
+    };
+  }
+  // La boucle continue en étape 2 (le client est déjà lié — étape 1 refaite
+  // n'est pas nécessaire : le lien abby_customer_links persiste)
+  return { ok: true, step: { state: "pushing", done: false } };
+}
+
 /** Étape 1 (NULL → pushing) : acquisition exclusive + garde SIRET (getMe
  * EXACTEMENT une fois par saga, AD-5) + ensureCustomerForRecipient (premier
  * call-site du bloc 2.2 — le verrou sérialise le TOCTOU documenté). */
@@ -402,7 +605,13 @@ async function stepAcquireAndEnsureCustomer(
   // Acquisition atomique — strictement exclusive sur l'état NULL (FR-11)
   const { data: acquired, error: acquireError } = await supabase
     .from("formation_invoices")
-    .update({ abby_push_state: "pushing", abby_push_locked_at: new Date().toISOString() })
+    .update({
+      abby_push_state: "pushing",
+      abby_push_locked_at: new Date().toISOString(),
+      // Nettoyage : une erreur résiduelle d'un cycle rollbacké ne doit pas
+      // survivre à une nouvelle acquisition (legs 3.3, atteignable en 3.4)
+      abby_last_error: null,
+    })
     .eq("id", invoice.id)
     .eq("entity_id", entityId)
     .is("abby_push_state", null)

@@ -1,4 +1,5 @@
-import type { AbbyConnectionStatus } from "@/lib/types/abby";
+import type { AbbyConnectionStatus, AbbyPushState } from "@/lib/types/abby";
+import { ABBY_PUSH_LOCK_TTL_MS } from "./invoice-badge";
 
 // Prédicats NOMMÉS d'éligibilité/visibilité Abby (AD-13) : calculés en un
 // seul endroit, consommés par l'UI ET re-vérifiés par chaque route concernée.
@@ -60,6 +61,59 @@ export function canPushInvoice(
   connectionStatus: AbbyConnectionStatus
 ): boolean {
   return isPushButtonVisible(invoice) && connectionStatus === "active";
+}
+
+/** Champs minimaux pour l'éligibilité à la REPRISE (story 3.4). */
+export interface AbbyPushResumeInput {
+  abby_push_state: string | null;
+  abby_push_locked_at: string | null;
+  is_avoir: boolean;
+  status: string;
+}
+
+const INTERMEDIATE_STATES = new Set([
+  "pushing",
+  "draft_created",
+  "lines_set",
+  "details_set",
+]);
+
+/**
+ * Push interrompu reprenable : état intermédiaire + verrou périmé (> 2 min)
+ * ou NULL. `status !== "cancelled"` est OBLIGATOIRE ici : le verrou serveur
+ * du contenu n'arrive qu'en 3.5 — sans ce terme, une facture annulée au push
+ * interrompu pourrait être finalisée légalement. `now` en paramètre (pure).
+ */
+export function isPushResumable(invoice: AbbyPushResumeInput, now: Date): boolean {
+  if (invoice.is_avoir || invoice.status === "cancelled") return false;
+  if (
+    invoice.abby_push_state === null ||
+    !INTERMEDIATE_STATES.has(invoice.abby_push_state)
+  ) {
+    return false;
+  }
+  if (invoice.abby_push_locked_at === null) return true;
+  const lockedAt = Date.parse(invoice.abby_push_locked_at);
+  return Number.isNaN(lockedAt) || now.getTime() - lockedAt >= ABBY_PUSH_LOCK_TTL_MS;
+}
+
+/**
+ * État curseur → PROCHAINE étape à exécuter (bandeau de reprise + libellés
+ * de boucle du dialog — source unique, remplace le mapping local 3.3).
+ */
+export function getResumeStep(state: AbbyPushState | string): number {
+  switch (state) {
+    case "pushing":
+      return 2;
+    case "draft_created":
+      return 3;
+    case "lines_set":
+      return 4;
+    case "details_set":
+      return 5;
+    default:
+      return 1;
+  }
 }
 
 /** Tooltip du bouton désactivé — verbatim EXPERIENCE.md § Component Patterns. */

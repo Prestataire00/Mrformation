@@ -12,3 +12,12 @@ export const testConnectionSchema = z.object({
 });
 
 export type TestConnectionInput = z.infer<typeof testConnectionSchema>;
+
+// Body de POST /api/abby/invoices/[id]/push (story 3.4) — OPTIONNEL :
+// les appels de boucle nominale n'envoient pas de body ; `restartFromZero`
+// est le consentement explicite du repartir-de-zéro (AD-8).
+export const pushRequestSchema = z.object({
+  restartFromZero: z.boolean().optional(),
+});
+
+export type PushRequestInput = z.infer<typeof pushRequestSchema>;
