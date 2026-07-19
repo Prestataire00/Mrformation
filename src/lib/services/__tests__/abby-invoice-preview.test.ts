@@ -190,9 +190,9 @@ describe("buildInvoicePreview — garde-fous d'accès (AC-1)", () => {
     if (!res.ok) expect(res.error.code).toBe("abby_not_found");
   });
 
-  it("facture déjà poussée → abby_invalid_state (re-vérification AD-13 côté serveur)", async () => {
+  it("facture FINALISÉE → abby_invalid_state (re-vérification AD-13 ; un état intermédiaire à verrou périmé est désormais une reprise, cf. 3.4)", async () => {
     const { supabase } = makeSupabase({
-      invoice: { ...INVOICE_ROW, abby_push_state: "draft_created" },
+      invoice: { ...INVOICE_ROW, abby_push_state: "finalized" },
     });
     const res = await buildInvoicePreview(supabase, ENTITY_ID, INVOICE_ID);
     expect(res.ok).toBe(false);
@@ -245,6 +245,7 @@ describe("buildInvoicePreview — contenu (AC-1/AC-2)", () => {
         totalTTC: 1200,
         exonerationMention: null,
       },
+      resume: null,
     });
   });
 
@@ -304,6 +305,47 @@ describe("buildInvoicePreview — contenu (AC-1/AC-2)", () => {
       expect(res.preview.recipient.outcome).toBe("to_create");
       expect(res.preview.recipient.name).toBe("ACME SAS");
     }
+  });
+});
+
+describe("buildInvoicePreview — préview de REPRISE (story 3.4)", () => {
+  it("push interrompu (verrou périmé) → préview OK avec resume.fromStep", async () => {
+    const { supabase } = makeSupabase({
+      invoice: {
+        ...INVOICE_ROW,
+        abby_push_state: "draft_created",
+        abby_push_locked_at: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+      },
+    });
+    const res = await buildInvoicePreview(supabase, ENTITY_ID, INVOICE_ID);
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.preview.resume).toEqual({ fromStep: 3 });
+  });
+
+  it("boucle ACTIVE (verrou frais) → toujours 409 (pas de préview mid-saga)", async () => {
+    const { supabase } = makeSupabase({
+      invoice: {
+        ...INVOICE_ROW,
+        abby_push_state: "draft_created",
+        abby_push_locked_at: new Date().toISOString(),
+      },
+    });
+    const res = await buildInvoicePreview(supabase, ENTITY_ID, INVOICE_ID);
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.code).toBe("abby_invalid_state");
+  });
+
+  it("annulée interrompue → 409 (jamais de reprise sur cancelled)", async () => {
+    const { supabase } = makeSupabase({
+      invoice: {
+        ...INVOICE_ROW,
+        abby_push_state: "draft_created",
+        abby_push_locked_at: null,
+        status: "cancelled",
+      },
+    });
+    const res = await buildInvoicePreview(supabase, ENTITY_ID, INVOICE_ID);
+    expect(res.ok).toBe(false);
   });
 });
 

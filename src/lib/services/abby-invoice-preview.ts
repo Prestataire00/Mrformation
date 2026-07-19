@@ -5,7 +5,11 @@ import type {
   AbbyRecipientType,
 } from "@/lib/types/abby";
 import { ABBY_INVOICE_SELECT } from "@/lib/abby/invoice-badge";
-import { isPushButtonVisible } from "@/lib/abby/eligibility";
+import {
+  isPushButtonVisible,
+  isPushResumable,
+  getResumeStep,
+} from "@/lib/abby/eligibility";
 import { validateRecipientForAbby } from "@/lib/abby/validation";
 import { VAT_EXONERATION_FORMATION } from "@/lib/abby/vat";
 import { invoiceDisplayRef } from "@/lib/utils/invoice-display-ref";
@@ -109,13 +113,24 @@ export async function buildInvoicePreview(
   // runtime (relation N→1), cast documenté (pattern abby-customers financier)
   const invoice = invoiceData as unknown as PreviewInvoiceRow;
 
-  // 3. Éligibilité (AD-13) : jamais poussée, non annulée, pas un avoir
+  // 3. Éligibilité (AD-13) : jamais poussée OU push interrompu reprenable
+  // (3.4 — verrou périmé/NULL) ; annulée, avoir, boucle active → refus
+  const resumable = isPushResumable(
+    {
+      abby_push_state: invoice.abby_push_state,
+      abby_push_locked_at: invoice.abby_push_locked_at,
+      is_avoir: invoice.is_avoir,
+      status: invoice.status,
+    },
+    new Date()
+  );
   if (
     !isPushButtonVisible({
       abby_push_state: invoice.abby_push_state,
       status: invoice.status,
       is_avoir: invoice.is_avoir,
-    })
+    }) &&
+    !resumable
   ) {
     return {
       ok: false,
@@ -254,6 +269,9 @@ export async function buildInvoicePreview(
       totalTTC: totals.totalTTC,
       exonerationMention: vatExempt ? VAT_EXONERATION_FORMATION.footerNote : null,
     },
+    resume: resumable
+      ? { fromStep: getResumeStep(invoice.abby_push_state ?? "") }
+      : null,
   };
 
   return { ok: true, preview };

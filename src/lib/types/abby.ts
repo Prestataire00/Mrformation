@@ -113,6 +113,8 @@ export interface AbbyInvoicePreview {
     /** footerNote QO-1 si exonérée, sinon null. */
     exonerationMention: string | null;
   };
+  /** Reprise d'un push interrompu (3.4) : prochaine étape, sinon null. */
+  resume: { fromStep: number } | null;
 }
 
 /**

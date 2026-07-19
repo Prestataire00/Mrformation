@@ -22,6 +22,7 @@ import type {
   AbbyPreviewError,
   AbbyPushStepOutcome,
 } from "@/lib/types/abby";
+import { getResumeStep } from "@/lib/abby/eligibility";
 
 // Dialog de prévisualisation du push (FR-9, AD-21). La préview est LA
 // confirmation : pas de second dialog par-dessus (un seul niveau de modal).
@@ -52,18 +53,11 @@ const STEP_LABELS: Record<number, string> = {
   5: "finalisation…",
 };
 
-/** État curseur retourné → numéro de la PROCHAINE étape à exécuter. */
-const STATE_TO_NEXT_STEP: Record<string, number> = {
-  pushing: 2,
-  draft_created: 3,
-  lines_set: 4,
-  details_set: 5,
-};
-
 type PushUiState =
   | { kind: "idle" }
   | { kind: "pushing"; step: number }
   | { kind: "success"; number: string | null }
+  | { kind: "confirmRestart"; message: string }
   | { kind: "pushError"; message: string };
 
 interface Props {
@@ -129,18 +123,41 @@ export function AbbyPushPreviewDialog({ invoice, onClose, onPushed }: Props) {
   const isPushing = push.kind === "pushing";
 
   // Boucle avance-saga (AD-8) : un POST = une étape, jusqu'à done ou erreur.
-  // Toute issue (succès OU erreur) refetch TabFinances — le badge de ligne
-  // reflète l'état persisté réel.
-  const handleConfirm = async () => {
+  // La reprise (3.4) est la MÊME boucle — seul le premier POST d'un restart
+  // confirmé porte { restartFromZero: true }. Toute issue refetch TabFinances.
+  const runPushLoop = async (restartFromZero: boolean) => {
     if (!invoiceId) return;
-    setPush({ kind: "pushing", step: 1 });
+    const initialStep = restartFromZero ? 2 : (preview?.resume?.fromStep ?? 1);
+    setPush({ kind: "pushing", step: initialStep });
     try {
+      let isFirstCall = true;
       for (;;) {
-        const res = await fetch(`/api/abby/invoices/${invoiceId}/push`, { method: "POST" });
+        const res = await fetch(`/api/abby/invoices/${invoiceId}/push`, {
+          method: "POST",
+          ...(restartFromZero && isFirstCall
+            ? {
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ restartFromZero: true }),
+              }
+            : {}),
+        });
+        isFirstCall = false;
         const json = (await res.json()) as
           | { step: AbbyPushStepOutcome }
           | { error: AbbyPreviewError };
         if (!res.ok || !("step" in json)) {
+          const code = "error" in json ? json.error.code : undefined;
+          if (code === "abby_draft_missing") {
+            // Bascule de CONTENU (jamais un second modal — UX-DR12)
+            setPush({
+              kind: "confirmRestart",
+              message:
+                ("error" in json && json.error.message) ||
+                "Le brouillon Abby de cette facture n'existe plus.",
+            });
+            onPushed();
+            return;
+          }
           setPush({
             kind: "pushError",
             message:
@@ -160,8 +177,8 @@ export function AbbyPushPreviewDialog({ invoice, onClose, onPushed }: Props) {
           onPushed();
           return;
         }
-        const nextStep = STATE_TO_NEXT_STEP[json.step.state];
-        if (nextStep === undefined) {
+        const nextStep = getResumeStep(json.step.state);
+        if (nextStep === 1) {
           // État inattendu (jamais nominal) : sortir proprement plutôt que
           // boucler — le badge refetché dira la vérité
           setPush({ kind: "pushError", message: "État de push inattendu — rechargez la page." });
@@ -178,6 +195,8 @@ export function AbbyPushPreviewDialog({ invoice, onClose, onPushed }: Props) {
       onPushed();
     }
   };
+  const handleConfirm = () => runPushLoop(false);
+  const handleRestartFromZero = () => runPushLoop(true);
 
   return (
     <Dialog
@@ -251,6 +270,18 @@ export function AbbyPushPreviewDialog({ invoice, onClose, onPushed }: Props) {
 
         {preview && (
           <div className="space-y-4">
+            {/* Bandeau de reprise (3.4, UX-DR8) */}
+            {preview.resume && push.kind !== "success" && (
+              <Alert>
+                <AlertTitle>Reprise à l'étape {preview.resume.fromStep}</AlertTitle>
+                <AlertDescription>
+                  {preview.resume.fromStep >= 3
+                    ? "Le brouillon Abby existant sera complété, pas recréé."
+                    : "Le client est vérifié, le brouillon va être créé."}
+                </AlertDescription>
+              </Alert>
+            )}
+
             {/* Entité émettrice — garde-fou anti-inversion : NOM résolu serveur,
                 couleur d'entité côté client */}
             <div
@@ -344,6 +375,20 @@ export function AbbyPushPreviewDialog({ invoice, onClose, onPushed }: Props) {
                 <AlertDescription>{push.message}</AlertDescription>
               </Alert>
             )}
+
+            {push.kind === "confirmRestart" && (
+              <Alert>
+                <AlertTitle>Repartir de zéro ?</AlertTitle>
+                <AlertDescription>
+                  <p>{push.message}</p>
+                  <p className="mt-2">
+                    Un nouveau brouillon sera créé dans Abby, puis complété et
+                    finalisé normalement. Aucun doublon : l'ancien brouillon
+                    n'existe plus.
+                  </p>
+                </AlertDescription>
+              </Alert>
+            )}
           </div>
         )}
 
@@ -360,6 +405,15 @@ export function AbbyPushPreviewDialog({ invoice, onClose, onPushed }: Props) {
           {/* Ordre DOM : Annuler d'abord, CTA en dernier — Tab atteint le CTA en dernier */}
           {push.kind === "success" ? (
             <Button onClick={onClose}>Fermer</Button>
+          ) : push.kind === "confirmRestart" ? (
+            <>
+              <Button variant="outline" onClick={onClose}>
+                Annuler
+              </Button>
+              <Button variant="destructive" onClick={handleRestartFromZero}>
+                Repartir de zéro
+              </Button>
+            </>
           ) : (
             <>
               <Button
@@ -374,7 +428,9 @@ export function AbbyPushPreviewDialog({ invoice, onClose, onPushed }: Props) {
                 <Button onClick={handleConfirm} disabled={isPushing}>
                   {push.kind === "pushing"
                     ? `Étape ${push.step}/5 — ${STEP_LABELS[push.step]}`
-                    : "Confirmer et finaliser"}
+                    : preview.resume
+                      ? "Reprendre le push"
+                      : "Confirmer et finaliser"}
                 </Button>
               )}
             </>

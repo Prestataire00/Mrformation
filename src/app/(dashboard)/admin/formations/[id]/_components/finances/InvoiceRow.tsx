@@ -15,7 +15,7 @@ import type { AbbyConnectionStatus } from "@/lib/types/abby";
 import {
   isAbbyZoneVisible,
   isPushButtonVisible,
-  canPushInvoice,
+  isPushResumable,
   getPushDisabledReason,
 } from "@/lib/abby/eligibility";
 import { deriveAbbyBadge } from "@/lib/abby/invoice-badge";
@@ -63,6 +63,20 @@ function AbbyZone({
     new Date()
   );
   const disabledReason = getPushDisabledReason(status);
+  // Push initial OU reprise (3.4) — prédicats mutuellement exclusifs
+  const actionLabel = isPushButtonVisible(invoice)
+    ? "Pousser vers Abby"
+    : isPushResumable(
+          {
+            abby_push_state: invoice.abby_push_state,
+            abby_push_locked_at: invoice.abby_push_locked_at,
+            is_avoir: invoice.is_avoir,
+            status: invoice.status,
+          },
+          new Date()
+        )
+      ? "Reprendre le push"
+      : null;
 
   return (
     <span className="w-40 shrink-0 flex flex-col items-start gap-1">
@@ -72,15 +86,15 @@ function AbbyZone({
       >
         {badge.label}
       </Badge>
-      {isPushButtonVisible(invoice) &&
-        (canPushInvoice(invoice, status) ? (
+      {actionLabel !== null &&
+        (status === "active" ? (
           <Button
             size="sm"
             variant="outline"
             className="h-6 px-2 text-[11px]"
             onClick={() => onAbbyPush(invoice)}
           >
-            Pousser vers Abby
+            {actionLabel}
           </Button>
         ) : disabledReason ? (
           <TooltipProvider>
@@ -95,7 +109,7 @@ function AbbyZone({
                     className="h-6 px-2 text-[11px] pointer-events-none"
                     disabled
                   >
-                    Pousser vers Abby
+                    {actionLabel}
                   </Button>
                 </span>
               </TooltipTrigger>

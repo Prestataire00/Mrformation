@@ -317,8 +317,8 @@ describe("étape 1 (NULL → pushing) : acquisition + SIRET + ensureCustomer", (
   });
 });
 
-describe("étapes 2-5 : CAS, checkpoints, erreurs", () => {
-  const LOCKED = "2026-07-19T10:00:00.000Z";
+describe("étapes 2-5 : CAS, checkpoints, erreurs (mid-boucle : verrou FRAIS — la réconciliation 3.4 ne se déclenche pas)", () => {
+  const LOCKED = new Date(Date.now() - 30_000).toISOString();
 
   it("étape 2 : re-stamp CAS (valeur lue dans le or) + brouillon + checkpoint draft_created", async () => {
     const { supabase, updates } = makeDb({
@@ -521,7 +521,7 @@ describe("étapes 2-5 : CAS, checkpoints, erreurs", () => {
 });
 
 describe("chemins d'échec de checkpoint (review #351)", () => {
-  const LOCKED = "2026-07-19T10:00:00.000Z";
+  const LOCKED = new Date(Date.now() - 30_000).toISOString();
   const PUSHING = { ...BASE_INVOICE, abby_push_state: "pushing", abby_push_locked_at: LOCKED };
 
   it("checkpoint 0 ligne (état écrasé entre-temps) → 409, jamais requalifié en doublon", async () => {
@@ -592,13 +592,175 @@ describe("run chaîné NULL → finalized (AC-2 : getMe UNE fois sur la saga ent
   });
 });
 
+describe("réconciliation de reprise (story 3.4, AD-8)", () => {
+  const STALE = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+  const INTERRUPTED = {
+    ...BASE_INVOICE,
+    abby_push_state: "draft_created",
+    abby_push_locked_at: STALE,
+    abby_invoice_id: "abby-inv-9",
+  };
+
+  it("déjà finalisée (numéro présent) → conclusion SANS écriture Abby, done avec numéro, garde SIRET exécutée", async () => {
+    getAbbyInvoiceMock.mockResolvedValue({ id: "abby-inv-9", number: "F-2026-0099", state: "finalized" });
+    const { supabase, updates } = makeDb({ invoice: INTERRUPTED });
+    const res = await advancePushStep(supabase, ENTITY_ID, INVOICE_ID);
+    expect(res).toEqual({
+      ok: true,
+      step: { state: "finalized", done: true, abbyInvoiceNumber: "F-2026-0099" },
+    });
+    expect(finalizeBillingMock).not.toHaveBeenCalled();
+    expect(setInvoiceLinesMock).not.toHaveBeenCalled();
+    expect(getCompanyIdentityMock).toHaveBeenCalledTimes(1); // ré-acquisition = garde AD-5
+    const cp = updates.find((u) => u.payload.abby_push_state === "finalized");
+    expect(cp).toBeDefined();
+    expect(cp!.filters).toContain("eq:abby_push_state|draft_created"); // conditionnel sur l'état LU
+    expect(cp!.payload.abby_push_locked_at).toBeNull();
+  });
+
+  it("brouillon présent (pas de numéro) → la saga complète depuis le checkpoint (étape 3)", async () => {
+    getAbbyInvoiceMock.mockResolvedValue({ id: "abby-inv-9", number: null, state: "draft" });
+    const { supabase } = makeDb({ invoice: INTERRUPTED });
+    const res = await advancePushStep(supabase, ENTITY_ID, INVOICE_ID);
+    expect(res).toEqual({ ok: true, step: { state: "lines_set", done: false } });
+    expect(setInvoiceLinesMock).toHaveBeenCalled();
+    expect(createDraftInvoiceMock).not.toHaveBeenCalled(); // JAMAIS de recréation
+  });
+
+  it("404 (brouillon disparu) → abby_draft_missing, rien n'avance", async () => {
+    withAbbyConnectionMock.mockResolvedValueOnce({
+      ok: false,
+      error: { message: "introuvable", code: "abby_not_found" },
+    } as never);
+    const { supabase, updates } = makeDb({ invoice: INTERRUPTED });
+    const res = await advancePushStep(supabase, ENTITY_ID, INVOICE_ID);
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.code).toBe("abby_draft_missing");
+    expect(updates).toHaveLength(0);
+  });
+
+  it("SIRET mismatch à la ré-acquisition → blocage franc (2 SIRET), aucune relecture ni avance", async () => {
+    getCompanyIdentityMock.mockResolvedValue({
+      companyName: "AUTRE",
+      companySiret: "98525216200021",
+      isInTestMode: true,
+    });
+    const { supabase, updates } = makeDb({ invoice: INTERRUPTED });
+    const res = await advancePushStep(supabase, ENTITY_ID, INVOICE_ID);
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.error.code).toBe("abby_siret_mismatch");
+      expect(res.error.message).toContain(SIRET_MR);
+      expect(res.error.message).toContain("98525216200021");
+    }
+    expect(getAbbyInvoiceMock).not.toHaveBeenCalled();
+    expect(updates).toHaveLength(0);
+  });
+
+  it("verrou FRAIS + id : PAS de réconciliation (mid-boucle — jamais de relecture)", async () => {
+    const { supabase } = makeDb({
+      invoice: { ...INTERRUPTED, abby_push_locked_at: new Date().toISOString() },
+    });
+    await advancePushStep(supabase, ENTITY_ID, INVOICE_ID);
+    expect(getCompanyIdentityMock).not.toHaveBeenCalled();
+    expect(getAbbyInvoiceMock).not.toHaveBeenCalled();
+  });
+
+  it("annulée interrompue → refus (le verrou de contenu 3.5 n'existe pas encore)", async () => {
+    const { supabase } = makeDb({ invoice: { ...INTERRUPTED, status: "cancelled" } });
+    const res = await advancePushStep(supabase, ENTITY_ID, INVOICE_ID);
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.code).toBe("abby_invalid_state");
+    expect(getCompanyIdentityMock).not.toHaveBeenCalled();
+  });
+
+  it("interrompue à pushing SANS abby_invoice_id : pas de relecture possible, la boucle continue (étape 2)", async () => {
+    const { supabase } = makeDb({
+      invoice: { ...BASE_INVOICE, abby_push_state: "pushing", abby_push_locked_at: STALE, abby_invoice_id: null },
+    });
+    const res = await advancePushStep(supabase, ENTITY_ID, INVOICE_ID);
+    expect(res).toEqual({ ok: true, step: { state: "draft_created", done: false } });
+    expect(getAbbyInvoiceMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("repartir-de-zéro (story 3.4, AD-8 — unique effaceur)", () => {
+  const STALE = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+  const INTERRUPTED = {
+    ...BASE_INVOICE,
+    abby_push_state: "draft_created",
+    abby_push_locked_at: STALE,
+    abby_invoice_id: "abby-inv-9",
+  };
+
+  it("404 re-confirmé + restartFromZero → UN update atomique (id effacé, CAS état+id LUS) puis pushing", async () => {
+    withAbbyConnectionMock.mockResolvedValueOnce({
+      ok: false,
+      error: { message: "introuvable", code: "abby_not_found" },
+    } as never);
+    const { supabase, updates } = makeDb({ invoice: INTERRUPTED });
+    const res = await advancePushStep(supabase, ENTITY_ID, INVOICE_ID, { restartFromZero: true });
+    expect(res).toEqual({ ok: true, step: { state: "pushing", done: false } });
+    expect(updates).toHaveLength(1);
+    const restart = updates[0];
+    expect(restart.payload).toMatchObject({
+      abby_invoice_id: null,
+      abby_push_state: "pushing",
+      abby_last_error: null,
+    });
+    expect(restart.filters).toContain("eq:abby_push_state|draft_created");
+    expect(restart.filters).toContain("eq:abby_invoice_id|abby-inv-9");
+  });
+
+  it("brouillon encore VIVANT + restartFromZero → refus (jamais d'effacement d'un brouillon existant)", async () => {
+    getAbbyInvoiceMock.mockResolvedValue({ id: "abby-inv-9", number: null, state: "draft" });
+    const { supabase, updates } = makeDb({ invoice: INTERRUPTED });
+    const res = await advancePushStep(supabase, ENTITY_ID, INVOICE_ID, { restartFromZero: true });
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.code).toBe("abby_invalid_state");
+    expect(updates).toHaveLength(0);
+  });
+
+  it("déjà finalisée + restartFromZero → conclusion (flag ignoré)", async () => {
+    getAbbyInvoiceMock.mockResolvedValue({ id: "abby-inv-9", number: "F-2026-0099", state: "finalized" });
+    const { supabase } = makeDb({ invoice: INTERRUPTED });
+    const res = await advancePushStep(supabase, ENTITY_ID, INVOICE_ID, { restartFromZero: true });
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.step.done).toBe(true);
+  });
+
+  it("restartFromZero hors reprise (état NULL ou verrou frais) → refus", async () => {
+    const { supabase } = makeDb();
+    const res = await advancePushStep(supabase, ENTITY_ID, INVOICE_ID, { restartFromZero: true });
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.code).toBe("abby_invalid_state");
+
+    const { supabase: sb2 } = makeDb({
+      invoice: { ...INTERRUPTED, abby_push_locked_at: new Date().toISOString() },
+    });
+    const res2 = await advancePushStep(sb2, ENTITY_ID, INVOICE_ID, { restartFromZero: true });
+    expect(res2.ok).toBe(false);
+  });
+
+  it("restart CAS perdu (0 ligne) → 409 propre", async () => {
+    withAbbyConnectionMock.mockResolvedValueOnce({
+      ok: false,
+      error: { message: "introuvable", code: "abby_not_found" },
+    } as never);
+    const { supabase } = makeDb({ invoice: INTERRUPTED, updateResults: [{ rows: 0 }] });
+    const res = await advancePushStep(supabase, ENTITY_ID, INVOICE_ID, { restartFromZero: true });
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.code).toBe("abby_invalid_state");
+  });
+});
+
 describe("backoff 429 confiné à l'étape (AC-6)", () => {
   it("429 puis succès : 1 retry après 500 ms, l'étape aboutit", async () => {
     vi.useFakeTimers();
     const err429 = Object.assign(new Error("rate"), { status: 429 });
     createDraftInvoiceMock.mockRejectedValueOnce(err429).mockResolvedValueOnce({ id: "abby-inv-9" });
     const { supabase } = makeDb({
-      invoice: { ...BASE_INVOICE, abby_push_state: "pushing", abby_push_locked_at: "2026-07-19T10:00:00.000Z" },
+      invoice: { ...BASE_INVOICE, abby_push_state: "pushing", abby_push_locked_at: new Date().toISOString() },
     });
     const promise = advancePushStep(supabase, ENTITY_ID, INVOICE_ID);
     await vi.advanceTimersByTimeAsync(500);
@@ -612,7 +774,7 @@ describe("backoff 429 confiné à l'étape (AC-6)", () => {
     const err429 = Object.assign(new Error("rate"), { status: 429 });
     createDraftInvoiceMock.mockRejectedValue(err429);
     const { supabase } = makeDb({
-      invoice: { ...BASE_INVOICE, abby_push_state: "pushing", abby_push_locked_at: "2026-07-19T10:00:00.000Z" },
+      invoice: { ...BASE_INVOICE, abby_push_state: "pushing", abby_push_locked_at: new Date().toISOString() },
     });
     const promise = advancePushStep(supabase, ENTITY_ID, INVOICE_ID);
     await vi.advanceTimersByTimeAsync(2000);
