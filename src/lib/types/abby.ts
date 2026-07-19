@@ -128,3 +128,24 @@ export interface AbbyPreviewError {
 export type AbbyPreviewResult =
   | { ok: true; preview: AbbyInvoicePreview }
   | { ok: false; error: AbbyPreviewError };
+
+// ─── Saga de push (Epic 3, story 3.3) ─────────────────────────────────────
+
+/** Curseur de saga — union du CHECK SQL `abby_push_state` (AD-6). */
+export type AbbyPushState =
+  | "pushing"
+  | "draft_created"
+  | "lines_set"
+  | "details_set"
+  | "finalized";
+
+/**
+ * Résultat d'UNE étape d'avance-saga (AD-8 — schéma fixé en 3.3, ex-Deferred).
+ * `state` = curseur APRÈS l'étape ; le client boucle tant que `!done`.
+ * Les libellés d'étape vivent côté UI.
+ */
+export interface AbbyPushStepOutcome {
+  state: AbbyPushState;
+  done: boolean;
+  abbyInvoiceNumber?: string;
+}

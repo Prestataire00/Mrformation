@@ -14,9 +14,14 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useEntity } from "@/contexts/EntityContext";
+import { useToast } from "@/components/ui/use-toast";
 import { formatCurrency } from "@/lib/utils";
 import type { Invoice } from "@/lib/utils/finances-display";
-import type { AbbyInvoicePreview, AbbyPreviewError } from "@/lib/types/abby";
+import type {
+  AbbyInvoicePreview,
+  AbbyPreviewError,
+  AbbyPushStepOutcome,
+} from "@/lib/types/abby";
 
 // Dialog de prévisualisation du push (FR-9, AD-21). La préview est LA
 // confirmation : pas de second dialog par-dessus (un seul niveau de modal).
@@ -38,15 +43,42 @@ type PreviewState =
   | { kind: "blocked"; message: string; missingFields: string[] }
   | { kind: "error"; message: string };
 
+/** Libellés des 5 étapes (2 = exemple verbatim EXPERIENCE.md). */
+const STEP_LABELS: Record<number, string> = {
+  1: "résolution du client…",
+  2: "création de la facture…",
+  3: "envoi des lignes…",
+  4: "dates et mentions…",
+  5: "finalisation…",
+};
+
+/** État curseur retourné → numéro de la PROCHAINE étape à exécuter. */
+const STATE_TO_NEXT_STEP: Record<string, number> = {
+  pushing: 2,
+  draft_created: 3,
+  lines_set: 4,
+  details_set: 5,
+};
+
+type PushUiState =
+  | { kind: "idle" }
+  | { kind: "pushing"; step: number }
+  | { kind: "success"; number: string | null }
+  | { kind: "pushError"; message: string };
+
 interface Props {
   /** Facture à prévisualiser — null = dialog fermé. */
   invoice: Invoice | null;
   onClose: () => void;
+  /** Refetch TabFinances (badge de ligne) après toute issue de push. */
+  onPushed: () => void;
 }
 
-export function AbbyPushPreviewDialog({ invoice, onClose }: Props) {
+export function AbbyPushPreviewDialog({ invoice, onClose, onPushed }: Props) {
   const { entity } = useEntity();
+  const { toast } = useToast();
   const [state, setState] = useState<PreviewState>({ kind: "loading" });
+  const [push, setPush] = useState<PushUiState>({ kind: "idle" });
   const cancelRef = useRef<HTMLButtonElement>(null);
 
   const invoiceId = invoice?.id ?? null;
@@ -54,6 +86,7 @@ export function AbbyPushPreviewDialog({ invoice, onClose }: Props) {
     if (!invoiceId) return;
     let stale = false;
     setState({ kind: "loading" });
+    setPush({ kind: "idle" });
     (async () => {
       try {
         const res = await fetch(`/api/abby/invoices/${invoiceId}/preview`);
@@ -93,15 +126,76 @@ export function AbbyPushPreviewDialog({ invoice, onClose }: Props) {
 
   const themeColor = entity?.theme_color ?? "#374151";
   const preview = state.kind === "ready" ? state.preview : null;
+  const isPushing = push.kind === "pushing";
+
+  // Boucle avance-saga (AD-8) : un POST = une étape, jusqu'à done ou erreur.
+  // Toute issue (succès OU erreur) refetch TabFinances — le badge de ligne
+  // reflète l'état persisté réel.
+  const handleConfirm = async () => {
+    if (!invoiceId) return;
+    setPush({ kind: "pushing", step: 1 });
+    try {
+      for (;;) {
+        const res = await fetch(`/api/abby/invoices/${invoiceId}/push`, { method: "POST" });
+        const json = (await res.json()) as
+          | { step: AbbyPushStepOutcome }
+          | { error: AbbyPreviewError };
+        if (!res.ok || !("step" in json)) {
+          setPush({
+            kind: "pushError",
+            message:
+              ("error" in json && json.error.message) || "Le push a échoué.",
+          });
+          onPushed();
+          return;
+        }
+        if (json.step.done) {
+          setPush({ kind: "success", number: json.step.abbyInvoiceNumber ?? null });
+          toast({
+            title: "Facture finalisée dans Abby",
+            description: json.step.abbyInvoiceNumber
+              ? `Numéro Abby : ${json.step.abbyInvoiceNumber}`
+              : undefined,
+          });
+          onPushed();
+          return;
+        }
+        setPush({ kind: "pushing", step: STATE_TO_NEXT_STEP[json.step.state] ?? 5 });
+      }
+    } catch {
+      setPush({
+        kind: "pushError",
+        message: "Le push a été interrompu (réseau). Vous pourrez le reprendre.",
+      });
+      onPushed();
+    }
+  };
 
   return (
-    <Dialog open={invoice !== null} onOpenChange={(open) => { if (!open) onClose(); }}>
+    <Dialog
+      open={invoice !== null}
+      onOpenChange={(open) => {
+        // Verrouillé pendant le push : aucune fermeture jusqu'à l'issue (UX-DR4)
+        if (!open && !isPushing) onClose();
+      }}
+    >
       <DialogContent
-        className="max-w-2xl max-h-[90vh] overflow-y-auto max-sm:h-full max-sm:max-h-none max-sm:max-w-full max-sm:rounded-none"
+        className={`max-w-2xl max-h-[90vh] overflow-y-auto max-sm:h-full max-sm:max-h-none max-sm:max-w-full max-sm:rounded-none ${
+          isPushing ? "[&>button]:hidden" : ""
+        }`}
         onOpenAutoFocus={(e) => {
           // Focus initial sur « Annuler » (l'action sûre) — UX-DR4
           e.preventDefault();
           cancelRef.current?.focus();
+        }}
+        onEscapeKeyDown={(e) => {
+          if (isPushing) e.preventDefault();
+        }}
+        onPointerDownOutside={(e) => {
+          if (isPushing) e.preventDefault();
+        }}
+        onInteractOutside={(e) => {
+          if (isPushing) e.preventDefault();
         }}
       >
         <DialogHeader>
@@ -223,24 +317,59 @@ export function AbbyPushPreviewDialog({ invoice, onClose }: Props) {
               </p>
             )}
 
-            <p className="text-sm font-medium">{LEGAL_WORDING}</p>
+            {push.kind === "success" ? (
+              <Alert>
+                <AlertTitle>
+                  Finalisée{push.number ? ` — Abby : ${push.number}` : ""}
+                </AlertTitle>
+                <AlertDescription>
+                  La facture est désormais légale et numérotée par Abby.
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <p className="text-sm font-medium">{LEGAL_WORDING}</p>
+            )}
+
+            {push.kind === "pushError" && (
+              <Alert variant="destructive">
+                <AlertTitle>Le push n'a pas abouti</AlertTitle>
+                <AlertDescription>{push.message}</AlertDescription>
+              </Alert>
+            )}
           </div>
         )}
 
+        {/* Progression réelle annoncée aux lecteurs d'écran (UX-DR5) */}
+        <span aria-live="polite" className="sr-only">
+          {isPushing && push.kind === "pushing"
+            ? `Étape ${push.step}/5 — ${STEP_LABELS[push.step]}`
+            : push.kind === "success"
+              ? `Finalisée${push.number ? ` — Abby : ${push.number}` : ""}`
+              : ""}
+        </span>
+
         <DialogFooter className="gap-2 sm:gap-0">
           {/* Ordre DOM : Annuler d'abord, CTA en dernier — Tab atteint le CTA en dernier */}
-          <Button ref={cancelRef} variant="outline" onClick={onClose}>
-            Annuler
-          </Button>
-          {preview && (
-            <div className="flex flex-col items-end gap-1">
-              {/* CTA désactivé en 3.2 : le câblage saga arrive en 3.3 — un CTA
-                  actif répondant « bientôt » sur un acte légal serait trompeur */}
-              <Button disabled>Confirmer et finaliser</Button>
-              <span className="text-xs text-muted-foreground">
-                Le push arrive dans la prochaine mise à jour.
-              </span>
-            </div>
+          {push.kind === "success" ? (
+            <Button onClick={onClose}>Fermer</Button>
+          ) : (
+            <>
+              <Button
+                ref={cancelRef}
+                variant="outline"
+                onClick={onClose}
+                disabled={isPushing}
+              >
+                {push.kind === "pushError" ? "Fermer" : "Annuler"}
+              </Button>
+              {preview && push.kind !== "pushError" && (
+                <Button onClick={handleConfirm} disabled={isPushing}>
+                  {push.kind === "pushing"
+                    ? `Étape ${push.step}/5 — ${STEP_LABELS[push.step]}`
+                    : "Confirmer et finaliser"}
+                </Button>
+              )}
+            </>
           )}
         </DialogFooter>
       </DialogContent>
