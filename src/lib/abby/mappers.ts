@@ -50,23 +50,38 @@ export interface AbbyInvoiceLineInput {
 /**
  * Lignes LMS → lignes Abby : euros → CENTIMES entiers (`Math.round` PAR
  * LIGNE), HT partout (`isTaxIncluded: false`), `type: "service_delivery"`
- * (« SERVICE » n'existe pas — le doc-comment du SDK ment). `Math.abs` AVANT
- * l'arrondi : le signe négatif LMS d'un avoir est une convention interne, la
- * nature créditrice est portée par le type asset côté Abby (AD-17).
- * Taux hors enum → resolveVatCode JETTE (erreur explicite, jamais d'arrondi
- * silencieux) — la saga la mappe en `abby_validation`.
+ * (« SERVICE » n'existe pas — le doc-comment du SDK ment).
+ *
+ * Signes (correctif review #351) :
+ * - AVOIR (`isAvoir=true`) : `Math.abs` — le signe négatif LMS est une
+ *   convention interne, la nature créditrice = type asset côté Abby (AD-17).
+ * - FACTURE : une ligne négative (remise saisie librement dans le LMS) est
+ *   REFUSÉE — l'abs gonflerait le total légal au-dessus de la préview
+ *   confirmée (parité AC-4), et le passthrough signé n'a jamais été validé
+ *   côté Abby. Le chemin correction = avoir.
+ * Taux hors enum → resolveVatCode JETTE — la saga mappe en `abby_validation`.
  */
 export function toAbbyInvoiceLines(
   lines: AbbyInvoiceLineInput[],
-  vat: { vatExempt: boolean; tvaRate: number }
+  vat: { vatExempt: boolean; tvaRate: number },
+  opts: { isAvoir: boolean }
 ): AbbyBillingLine[] {
   const vatCode = vat.vatExempt
     ? VAT_EXONERATION_FORMATION.vatCode
     : resolveVatCode(vat.tvaRate);
+  if (!opts.isAvoir) {
+    const negative = lines.find((l) => l.quantity < 0 || l.unitPriceHT < 0);
+    if (negative) {
+      throw new Error(
+        `Ligne « ${negative.description} » à montant négatif : non supporté sur une facture. ` +
+          "Pour corriger une facture poussée, utilisez un avoir."
+      );
+    }
+  }
   return lines.map((l) => ({
     designation: l.description,
-    unitPrice: Math.round(Math.abs(l.unitPriceHT) * 100),
-    quantity: Math.abs(l.quantity),
+    unitPrice: Math.round((opts.isAvoir ? Math.abs(l.unitPriceHT) : l.unitPriceHT) * 100),
+    quantity: opts.isAvoir ? Math.abs(l.quantity) : l.quantity,
     quantityUnit: "unit",
     type: "service_delivery",
     vatCode,

@@ -160,7 +160,15 @@ export function AbbyPushPreviewDialog({ invoice, onClose, onPushed }: Props) {
           onPushed();
           return;
         }
-        setPush({ kind: "pushing", step: STATE_TO_NEXT_STEP[json.step.state] ?? 5 });
+        const nextStep = STATE_TO_NEXT_STEP[json.step.state];
+        if (nextStep === undefined) {
+          // État inattendu (jamais nominal) : sortir proprement plutôt que
+          // boucler — le badge refetché dira la vérité
+          setPush({ kind: "pushError", message: "État de push inattendu — rechargez la page." });
+          onPushed();
+          return;
+        }
+        setPush({ kind: "pushing", step: nextStep });
       }
     } catch {
       setPush({
