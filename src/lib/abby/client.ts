@@ -142,9 +142,12 @@ export async function getAbbyInvoice(
 ): Promise<{ id: string; number: string | null; state: string | null }> {
   const { data } = await abby.invoice.getInvoice({ path: { invoiceId } });
   const d = data as Record<string, unknown>;
+  // Chaîne vide → null : le numéro est LE signal « finalisée » de la
+  // réconciliation 3.4 — un "" concluerait à tort une finalisation (review #353)
+  const rawNumber = d.number == null ? null : String(d.number).trim();
   return {
     id: String(d.id),
-    number: d.number == null ? null : String(d.number),
+    number: rawNumber === "" ? null : rawNumber,
     state: d.state == null ? null : String(d.state),
   };
 }
