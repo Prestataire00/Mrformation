@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, type ReactNode } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
+import { deleteSession } from "@/lib/services/sessions";
 import { useDebounce } from "@/hooks/useDebounce";
 import { cn, formatDate } from "@/lib/utils";
 import type { ProgramContent } from "@/lib/types";
@@ -576,11 +577,13 @@ export default function FormationsPage() {
   // ── Delete session ────────────────────────────────────────────────────────
 
   async function handleDelete() {
-    if (!sessionToDelete) return;
+    if (!sessionToDelete || !entityId) return;
     setDeleting(true);
-    const { error } = await supabase.from("sessions").delete().eq("id", sessionToDelete.id);
-    if (error) {
-      toast({ title: "Erreur", description: error.message, variant: "destructive" });
+    // Passe par le service deleteSession (garde Abby 3.5 : refuse si la
+    // session porte une facture engagée — la CASCADE effacerait sa trace)
+    const res = await deleteSession(supabase, sessionToDelete.id, entityId);
+    if (!res.ok) {
+      toast({ title: "Erreur", description: res.error.message, variant: "destructive" });
     } else {
       toast({ title: "Session supprimée" });
       setSessions((prev) => prev.filter((s) => s.id !== sessionToDelete.id));

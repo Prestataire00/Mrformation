@@ -255,8 +255,14 @@ function InvoicesGapTable({
       await updateInvoiceBPF(supabase, invoiceId, { invoice_date: date });
       toast({ title: "Date mise à jour" });
       onRefresh();
-    } catch {
-      toast({ title: "Erreur lors de la mise à jour", variant: "destructive" });
+    } catch (e) {
+      // Le verrou Abby (3.5) jette avec un message actionnable « créez un
+      // avoir » — le faire remonter au lieu du générique
+      toast({
+        title: "Erreur lors de la mise à jour",
+        description: e instanceof Error ? e.message : undefined,
+        variant: "destructive",
+      });
     } finally {
       setLoading(null);
     }

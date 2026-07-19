@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useEntity } from "@/contexts/EntityContext";
+import { deleteSession } from "@/lib/services/sessions";
 import { Session, Training, Trainer } from "@/lib/types";
 import { cn, formatDate, formatDateTime, STATUS_COLORS, SESSION_STATUS_LABELS } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -425,11 +426,13 @@ export default function SessionsPage() {
   };
 
   const handleDelete = async () => {
-    if (!sessionToDelete) return;
+    if (!sessionToDelete || !entityId) return;
     setDeleting(true);
-    const { error } = await supabase.from("sessions").delete().eq("id", sessionToDelete.id);
-    if (error) {
-      toast({ title: "Erreur", description: error.message, variant: "destructive" });
+    // Passe par le service deleteSession (garde Abby 3.5 : refuse si la
+    // session porte une facture engagée — la CASCADE effacerait sa trace)
+    const res = await deleteSession(supabase, sessionToDelete.id, entityId);
+    if (!res.ok) {
+      toast({ title: "Erreur", description: res.error.message, variant: "destructive" });
     } else {
       toast({ title: "Session supprimée" });
       setDeleteDialogOpen(false);
