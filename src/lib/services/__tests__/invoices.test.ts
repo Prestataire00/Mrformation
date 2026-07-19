@@ -10,7 +10,7 @@ vi.mock("@/lib/utils/invoice-builder", () => ({
 import { buildInvoiceLines } from "@/lib/utils/invoice-builder";
 
 function makeMockSupabase(opts: {
-  invoices: Array<{ id: string; status: string; recipient_type: string; recipient_id: string }>;
+  invoices: Array<{ id: string; status: string; recipient_type: string; recipient_id: string; abby_push_state?: string | null }>;
   fetchError?: { message: string; code: string } | null;
   deleteErrors?: Record<string, { message: string; code: string }>;
   insertErrors?: Record<string, { message: string; code: string }>;
@@ -18,7 +18,8 @@ function makeMockSupabase(opts: {
 }) {
   // Fetch invoices
   const selectInvoicesEq = vi.fn().mockResolvedValue({
-    data: opts.fetchError ? null : opts.invoices,
+    // abby_push_state par défaut null — comme une facture jamais poussée
+    data: opts.fetchError ? null : opts.invoices.map((r) => ({ abby_push_state: null, ...r })),
     error: opts.fetchError ?? null,
   });
   const selectInvoices = vi.fn().mockReturnValue({ eq: selectInvoicesEq });
@@ -205,5 +206,35 @@ describe("cascadeSessionPriceToPendingInvoices", () => {
       expect(result.impacted).toBe(0);
     }
     expect(buildInvoiceLines).not.toHaveBeenCalled();
+  });
+
+  it("facture pending+company POUSSÉE (verrou Abby 3.5) → blocked, lignes INTACTES", async () => {
+    const { supabase } = makeMockSupabase({
+      invoices: [
+        { id: "inv1", status: "pending", recipient_type: "company", recipient_id: "c1", abby_push_state: "draft_created" },
+      ],
+    });
+    const result = await cascadeSessionPriceToPendingInvoices(supabase, "s1", fakeFormation);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.blocked).toBe(1);
+      expect(result.impacted).toBe(0);
+    }
+    expect(buildInvoiceLines).not.toHaveBeenCalled();
+  });
+
+  it("facture NON poussée (abby_push_state null EXPLICITE) → impacted — anti-piège undefined/select", async () => {
+    (buildInvoiceLines as ReturnType<typeof vi.fn>).mockReturnValue({
+      amountHT: 500,
+      lines: [{ description: "l", quantity: 1, unit_price: 500 }],
+    });
+    const { supabase } = makeMockSupabase({
+      invoices: [
+        { id: "inv1", status: "pending", recipient_type: "company", recipient_id: "c1", abby_push_state: null },
+      ],
+    });
+    const result = await cascadeSessionPriceToPendingInvoices(supabase, "s1", fakeFormation);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.impacted).toBe(1);
   });
 });

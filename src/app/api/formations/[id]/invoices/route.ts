@@ -3,6 +3,7 @@ import { requireRole } from "@/lib/auth/require-role";
 import { sanitizeError, sanitizeDbError } from "@/lib/api-error";
 import { logAudit } from "@/lib/audit-log";
 import { resolveActiveEntityId } from "@/lib/crm/active-entity";
+import { isContentLocked } from "@/lib/abby/eligibility";
 
 interface RouteContext {
   params: { id: string };
@@ -222,10 +223,13 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       funding_type !== undefined ||
       lines !== undefined;
 
-    if (contentEdit) {
+    // Verrou Abby (story 3.5, AD-12) : le lookup couvre AUSSI l'annulation
+    // status-only (qui le sautait — le blocage cancelled serait contournable).
+    const wantsCancel = status === "cancelled";
+    if (contentEdit || wantsCancel) {
       const { data: current, error: currentErr } = await auth.supabase
         .from("formation_invoices")
-        .select("status")
+        .select("status, abby_push_state")
         .eq("id", invoice_id)
         .eq("entity_id", resolveActiveEntityId(auth.profile))
         .maybeSingle();
@@ -238,7 +242,22 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       if (!current) {
         return NextResponse.json({ error: "Facture introuvable." }, { status: 404 });
       }
-      if (current.status !== "pending") {
+      // Garde Abby AVANT H7 : une facture engagée chez Abby (états
+      // intermédiaires inclus) a son contenu figé et ne s'annule plus —
+      // toute correction passe par un avoir (FR-21)
+      if (isContentLocked({ abby_push_state: current.abby_push_state })) {
+        return NextResponse.json(
+          {
+            error: contentEdit
+              ? "Le contenu de cette facture est verrouillé : elle est engagée dans Abby. Pour la corriger, créez un avoir."
+              : "Une facture engagée dans Abby ne peut pas être annulée. Pour la compenser, créez un avoir.",
+          },
+          { status: 409 }
+        );
+      }
+      // H7 : reste conditionné à contentEdit SEUL — l'annulation d'une
+      // facture émise NON-poussée (sent/late/paid) est une action légitime
+      if (contentEdit && current.status !== "pending") {
         return NextResponse.json(
           { error: "Cette facture est déjà émise : seul son statut peut encore être modifié, pas son contenu." },
           { status: 409 }

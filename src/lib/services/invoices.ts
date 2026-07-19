@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Session } from "@/lib/types";
+import { isContentLocked } from "@/lib/abby/eligibility";
 import { buildInvoiceLines } from "@/lib/utils/invoice-builder";
 import { getAmountForCompany } from "@/lib/utils/formation-companies";
 
@@ -23,6 +24,7 @@ type InvoiceRow = {
   status: string;
   recipient_type: string;
   recipient_id: string;
+  abby_push_state: string | null;
 };
 
 const BLOCKED_STATUSES = new Set(["sent", "paid", "late"]);
@@ -45,7 +47,7 @@ export async function cascadeSessionPriceToPendingInvoices(
 ): Promise<ServiceResult<CascadeReport>> {
   const { data, error } = await supabase
     .from("formation_invoices")
-    .select("id, status, recipient_type, recipient_id")
+    .select("id, status, recipient_type, recipient_id, abby_push_state")
     .eq("session_id", sessionId);
 
   if (error) {
@@ -56,6 +58,14 @@ export async function cascadeSessionPriceToPendingInvoices(
   const report: CascadeReport = { impacted: 0, blocked: 0, skipped: 0, errors: [] };
 
   for (const invoice of invoices) {
+    // Verrou Abby (story 3.5, FR-21) : une facture engagée chez Abby a son
+    // contenu figé quel que soit son statut (une poussée peut être pending).
+    // Comptée en `blocked` — même toast « utiliser un avoir » (skipped n'est
+    // jamais affiché : divergence silencieuse sinon).
+    if (isContentLocked({ abby_push_state: invoice.abby_push_state })) {
+      report.blocked += 1;
+      continue;
+    }
     if (BLOCKED_STATUSES.has(invoice.status)) {
       report.blocked += 1;
       continue;
