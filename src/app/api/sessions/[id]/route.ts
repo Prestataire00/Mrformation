@@ -304,6 +304,32 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
       );
     }
 
+    // Verrou Abby (story 3.5, FR-21) : la CASCADE emporterait les factures —
+    // la trace LMS d'une facture engagée chez Abby doit survivre (miroir de
+    // la garde du service deleteSession)
+    const { count: lockedCount, error: lockError } = await supabase
+      .from("formation_invoices")
+      .select("id", { count: "exact", head: true })
+      .eq("session_id", params.id)
+      .eq("entity_id", profile.entity_id)
+      .not("abby_push_state", "is", null);
+    if (lockError) {
+      return NextResponse.json(
+        { data: null, error: sanitizeDbError(lockError, "delete session lock") },
+        { status: 500 }
+      );
+    }
+    if ((lockedCount ?? 0) > 0) {
+      return NextResponse.json(
+        {
+          data: null,
+          error:
+            "Cette session porte des factures engagées dans Abby — suppression impossible (la trace d'une facture légale doit être conservée).",
+        },
+        { status: 409 }
+      );
+    }
+
     const { error: deleteError } = await supabase
       .from("sessions")
       .delete()
