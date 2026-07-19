@@ -386,6 +386,16 @@ export async function advancePushStep(
     return reconcileAndAdvance(supabase, entityId, invoice, opts);
   }
 
+  if (staleEntry && invoice.abby_invoice_id === null && !opts.restartFromZero) {
+    // Reprise SANS brouillon connu (interrompue à `pushing`) : pas de
+    // relecture possible, mais la garde SIRET AD-5 s'applique QUAND MÊME —
+    // c'est une ré-acquisition, et la fin de saga (création → finalisation
+    // légale) s'exécuterait sinon sans re-vérifier le compte (review #353)
+    const guard = await verifyEntitySiret(supabase, entityId);
+    if (!guard.ok) return guard;
+    return dispatchStep(supabase, entityId, invoice);
+  }
+
   if (opts.restartFromZero) {
     // Sans brouillon connu (ou hors reprise), il n'y a rien à effacer :
     // le restart n'a de sens qu'après un abby_draft_missing
@@ -399,6 +409,41 @@ export async function advancePushStep(
   }
 
   return dispatchStep(supabase, entityId, invoice);
+}
+
+/** Message de mismatch SIRET — mêmes DEUX SIRET partout (FR-3). */
+function siretMismatchError(found: string, expected: string): AbbyPushError {
+  return {
+    message: `Le compte Abby connecté (SIRET ${found}) ne correspond pas à l'entité (SIRET ${expected}). Push bloqué.`,
+    code: "abby_siret_mismatch",
+  };
+}
+
+/** Garde SIRET AD-5 seule (ré-acquisition sans brouillon à relire). */
+async function verifyEntitySiret(
+  supabase: SupabaseClient,
+  entityId: string
+): Promise<{ ok: true } | { ok: false; error: AbbyPushError }> {
+  const entityRes = await loadEntity(supabase, entityId);
+  if (!entityRes.ok) return entityRes;
+  const expectedSiret = entityRes.entity.siret;
+  if (!expectedSiret) {
+    return {
+      ok: false,
+      error: {
+        message:
+          "Le SIRET de l'entité n'est pas renseigné — impossible de vérifier le compte Abby. Complétez-le dans les paramètres de l'organisme.",
+      },
+    };
+  }
+  const res = await withAbbyConnection(supabase, entityId, (client: AbbyClient) =>
+    withRateLimitRetry(() => getCompanyIdentity(client))
+  );
+  if (!res.ok) return { ok: false, error: res.error };
+  if (res.data.companySiret !== expectedSiret) {
+    return { ok: false, error: siretMismatchError(res.data.companySiret, expectedSiret) };
+  }
+  return { ok: true };
 }
 
 /** Dispatch d'une étape depuis l'état persisté (extrait pour la réconciliation). */
@@ -496,13 +541,7 @@ async function reconcileAndAdvance(
   }
 
   if (res.data.kind === "siret_mismatch") {
-    return {
-      ok: false,
-      error: {
-        message: `Le compte Abby connecté (SIRET ${res.data.found}) ne correspond pas à l'entité (SIRET ${expectedSiret}). Push bloqué.`,
-        code: "abby_siret_mismatch",
-      },
-    };
+    return { ok: false, error: siretMismatchError(res.data.found, expectedSiret) };
   }
   const read = res.data.read;
 
@@ -661,13 +700,7 @@ async function stepAcquireAndEnsureCustomer(
   const outcome = connRes.data;
   if (outcome.kind === "siret_mismatch") {
     await rollbackAcquisition(supabase, entityId, invoice.id);
-    return {
-      ok: false,
-      error: {
-        message: `Le compte Abby connecté (SIRET ${outcome.found}) ne correspond pas à l'entité (SIRET ${expectedSiret}). Push bloqué.`,
-        code: "abby_siret_mismatch",
-      },
-    };
+    return { ok: false, error: siretMismatchError(outcome.found, expectedSiret) };
   }
   if (!outcome.ensured.ok) {
     await rollbackAcquisition(supabase, entityId, invoice.id);

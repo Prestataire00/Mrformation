@@ -674,13 +674,39 @@ describe("réconciliation de reprise (story 3.4, AD-8)", () => {
     expect(getCompanyIdentityMock).not.toHaveBeenCalled();
   });
 
-  it("interrompue à pushing SANS abby_invoice_id : pas de relecture possible, la boucle continue (étape 2)", async () => {
+  it("interrompue à pushing SANS abby_invoice_id : pas de relecture, mais garde SIRET exécutée (AD-5), puis étape 2", async () => {
     const { supabase } = makeDb({
       invoice: { ...BASE_INVOICE, abby_push_state: "pushing", abby_push_locked_at: STALE, abby_invoice_id: null },
     });
     const res = await advancePushStep(supabase, ENTITY_ID, INVOICE_ID);
     expect(res).toEqual({ ok: true, step: { state: "draft_created", done: false } });
     expect(getAbbyInvoiceMock).not.toHaveBeenCalled();
+    expect(getCompanyIdentityMock).toHaveBeenCalledTimes(1); // ré-acquisition = garde AD-5, même sans brouillon
+  });
+
+  it("interrompue à pushing SANS id + SIRET mismatch → blocage franc, la saga ne repart pas", async () => {
+    getCompanyIdentityMock.mockResolvedValue({
+      companyName: "AUTRE",
+      companySiret: "98525216200021",
+      isInTestMode: true,
+    });
+    const { supabase } = makeDb({
+      invoice: { ...BASE_INVOICE, abby_push_state: "pushing", abby_push_locked_at: STALE, abby_invoice_id: null },
+    });
+    const res = await advancePushStep(supabase, ENTITY_ID, INVOICE_ID);
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.code).toBe("abby_siret_mismatch");
+    expect(createDraftInvoiceMock).not.toHaveBeenCalled();
+  });
+
+  it("number relu vide (\"\") → traité comme BROUILLON, jamais une fausse finalisation", async () => {
+    // getAbbyInvoice normalise "" → null (client.ts) ; on simule ici la
+    // normalisation faite : number null → dispatch normal
+    getAbbyInvoiceMock.mockResolvedValue({ id: "abby-inv-9", number: null, state: "draft" });
+    const { supabase, updates } = makeDb({ invoice: INTERRUPTED });
+    const res = await advancePushStep(supabase, ENTITY_ID, INVOICE_ID);
+    expect(res.ok).toBe(true);
+    expect(updates.every((u) => u.payload.abby_push_state !== "finalized")).toBe(true);
   });
 });
 
