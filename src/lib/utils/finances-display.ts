@@ -1,6 +1,8 @@
 // Helpers d'affichage de l'onglet Finances (fiche formation).
 // Fonctions pures — cf. spec docs/superpowers/specs/2026-05-21-page-finances-refonte-design.md
 
+import { isContentLocked } from "@/lib/abby/eligibility";
+
 /** Une facture telle que renvoyée par l'API /invoices. */
 export interface Invoice {
   id: string;
@@ -68,8 +70,28 @@ export interface InvoiceRowActions {
  * Action primaire + contenu du menu « ⋯ » d'une facture, selon son statut.
  * Respecte la règle serveur H7 : « edit » n'est proposé que sur les factures
  * `pending`. Cf. spec §4.3.
+ *
+ * Verrou Abby (story 3.5, AD-12/AD-13) : une facture engagée chez Abby
+ * (`abby_push_state` non NULL, états intermédiaires inclus) perd `edit` et
+ * `cancel` — `avoir` RESTE (c'est LE chemin de correction, FR-21), pdf/email/
+ * markPaid restent (transitions de workflow libres). Même prédicat que les
+ * gardes serveur — jamais un simple masquage UI.
  */
 export function getInvoiceRowActions(
+  invoice: Pick<Invoice, "status" | "is_avoir" | "abby_push_state">,
+): InvoiceRowActions {
+  const base = getBaseInvoiceRowActions(invoice);
+  if (!isContentLocked({ abby_push_state: invoice.abby_push_state })) {
+    return base;
+  }
+  const isLockedOut = (a: InvoiceActionId) => a === "edit" || a === "cancel";
+  return {
+    primary: isLockedOut(base.primary) ? "pdf" : base.primary,
+    menu: base.menu.filter((a) => !isLockedOut(a)),
+  };
+}
+
+function getBaseInvoiceRowActions(
   invoice: Pick<Invoice, "status" | "is_avoir">,
 ): InvoiceRowActions {
   if (invoice.is_avoir) {

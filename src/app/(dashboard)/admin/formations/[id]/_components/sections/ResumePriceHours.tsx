@@ -191,7 +191,7 @@ export function ResumePriceHours({ formation, onRefresh }: Props) {
           }
           if (cascade.blocked > 0) {
             toast({
-              title: `${cascade.blocked} facture${cascade.blocked > 1 ? "s" : ""} déjà envoyée${cascade.blocked > 1 ? "s" : ""} non modifiée${cascade.blocked > 1 ? "s" : ""}`,
+              title: `${cascade.blocked} facture${cascade.blocked > 1 ? "s" : ""} non modifiée${cascade.blocked > 1 ? "s" : ""} (déjà envoyée${cascade.blocked > 1 ? "s" : ""} ou engagée${cascade.blocked > 1 ? "s" : ""} dans Abby)`,
               description: "Utiliser un avoir si correction commerciale nécessaire.",
             });
           }

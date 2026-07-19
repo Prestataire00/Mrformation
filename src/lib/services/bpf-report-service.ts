@@ -2,6 +2,7 @@
 // Supabase queries to fetch all data needed for BPF report calculation.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { isContentLocked } from "@/lib/abby/eligibility";
 
 // ─── Raw data types returned by fetchBPFData ───────────────
 
@@ -209,6 +210,24 @@ export async function updateInvoiceBPF(
     invoice_date_confirmed?: boolean;
   }
 ) {
+  // Verrou Abby (story 3.5, FR-21) : invoice_date EST la date d'émission
+  // poussée à Abby (emittedAt) — une remédiation BPF ne doit jamais faire
+  // diverger la date LMS d'une facture légale. funding_type et
+  // invoice_date_confirmed restent LIBRES (analytique BPF, non poussés).
+  if (updates.invoice_date !== undefined) {
+    const { data: current, error: lookupError } = await supabase
+      .from("formation_invoices")
+      .select("abby_push_state")
+      .eq("id", invoiceId)
+      .maybeSingle();
+    if (lookupError) throw lookupError;
+    const row = current as { abby_push_state: string | null } | null;
+    if (row && isContentLocked({ abby_push_state: row.abby_push_state })) {
+      throw new Error(
+        "La date d'émission de cette facture est verrouillée : elle est engagée dans Abby. Pour la corriger, créez un avoir."
+      );
+    }
+  }
   const { error } = await supabase
     .from("formation_invoices")
     .update({ ...updates, updated_at: new Date().toISOString() })

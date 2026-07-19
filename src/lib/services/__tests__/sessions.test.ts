@@ -427,27 +427,52 @@ describe("duplicateSession", () => {
 });
 
 describe("deleteSession", () => {
-  it("exécute un seul DELETE filtré par id + entity_id", async () => {
+  /** Mock 2 tables : count des factures verrouillées (story 3.5) + DELETE session. */
+  function makeDeleteMock(lockedCount: number) {
     const eqCalls: Array<{ col: string; val: unknown }> = [];
+    let deleted = false;
     const supabase = {
-      from: vi.fn(() => ({
-        delete: vi.fn(() => ({
-          eq: vi.fn(function (this: object, col: string, val: unknown) {
-            eqCalls.push({ col, val });
-            return Object.assign(this, {
-              eq: vi.fn(function (col2: string, val2: unknown) {
-                eqCalls.push({ col: col2, val: val2 });
-                return Promise.resolve({ error: null });
-              }),
-            });
-          }),
-        })),
-      })),
+      from: vi.fn((table: string) => {
+        if (table === "formation_invoices") {
+          const builder: Record<string, unknown> = {};
+          builder.select = vi.fn(() => builder);
+          builder.eq = vi.fn(() => builder);
+          builder.not = vi.fn(() => Promise.resolve({ count: lockedCount, error: null }));
+          return builder;
+        }
+        return {
+          delete: vi.fn(() => ({
+            eq: vi.fn(function (this: object, col: string, val: unknown) {
+              eqCalls.push({ col, val });
+              return Object.assign(this, {
+                eq: vi.fn(function (col2: string, val2: unknown) {
+                  eqCalls.push({ col: col2, val: val2 });
+                  deleted = true;
+                  return Promise.resolve({ error: null });
+                }),
+              });
+            }),
+          })),
+        };
+      }),
     };
+    return { supabase, eqCalls, wasDeleted: () => deleted };
+  }
+
+  it("exécute un seul DELETE filtré par id + entity_id (aucune facture verrouillée)", async () => {
+    const { supabase, eqCalls } = makeDeleteMock(0);
     const res = await deleteSession(supabase as never, "SESS-1", "ENT-A");
     expect(res.ok).toBe(true);
     expect(eqCalls).toContainEqual({ col: "id", val: "SESS-1" });
     expect(eqCalls).toContainEqual({ col: "entity_id", val: "ENT-A" });
+  });
+
+  it("session portant une facture engagée dans Abby → refus, AUCUN delete (story 3.5, FR-21)", async () => {
+    const { supabase, wasDeleted } = makeDeleteMock(1);
+    const res = await deleteSession(supabase as never, "SESS-1", "ENT-A");
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.message).toMatch(/engagées dans Abby/);
+    expect(wasDeleted()).toBe(false);
   });
 });
 
