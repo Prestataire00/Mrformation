@@ -1045,6 +1045,7 @@ export function TabFinances({ formation, onRefresh }: Props) {
       <AbbyPushPreviewDialog
         invoice={abbyPreviewTarget}
         onClose={() => setAbbyPreviewTarget(null)}
+        onPushed={fetchData}
       />
 
       {/* Dialog -- Confirmation annulation de facture */}
