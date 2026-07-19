@@ -180,6 +180,10 @@ export function TabFinances({ formation, onRefresh }: Props) {
   // erreur de fetch → "non_configuree" (fail-closed : zone masquée).
   const [abbyConnectionStatus, setAbbyConnectionStatus] =
     useState<AbbyConnectionStatus | null>(null);
+  // Story 3.2 : « Pousser vers Abby » ouvre le dialog de prévisualisation
+  // (FR-9 — jamais d'action directe). Déclaré AVANT l'effet qui le reset
+  // (règle projet post-incident TDZ). Fermé au switch d'entité (anti-stale).
+  const [abbyPreviewTarget, setAbbyPreviewTarget] = useState<Invoice | null>(null);
   useEffect(() => {
     let stale = false;
     setAbbyConnectionStatus(null);
@@ -204,9 +208,6 @@ export function TabFinances({ formation, onRefresh }: Props) {
     };
   }, [entity?.id]);
 
-  // Story 3.2 : « Pousser vers Abby » ouvre le dialog de prévisualisation
-  // (FR-9 — jamais d'action directe). Fermé au switch d'entité (anti-stale).
-  const [abbyPreviewTarget, setAbbyPreviewTarget] = useState<Invoice | null>(null);
   const handleAbbyPush = (inv: Invoice) => {
     setAbbyPreviewTarget(inv);
   };

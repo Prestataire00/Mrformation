@@ -284,13 +284,15 @@ describe("buildInvoicePreview — contenu (AC-1/AC-2)", () => {
     });
   });
 
-  it("to_create valide : outcome to_create (« sera créé dans Abby »)", async () => {
+  it("to_create valide : outcome to_create, et recipient.name = COLONNE facture (pas la résolution)", async () => {
     resolveRecipientMock.mockResolvedValue({
       ok: true,
       resolution: {
         outcome: "to_create",
         recipient: {
-          kind: "organization", name: "ACME SAS", siret: "12345678900011",
+          // Nom VOLONTAIREMENT différent de la colonne facture : prouve que
+          // l'affichage vient de formation_invoices.recipient_name (décision story)
+          kind: "organization", name: "ACME SAS (fiche source)", siret: "12345678900011",
           email: null, address: "1 rue Test", postalCode: "13001", city: "Marseille",
         },
       },
@@ -298,7 +300,10 @@ describe("buildInvoicePreview — contenu (AC-1/AC-2)", () => {
     const { supabase } = makeSupabase();
     const res = await buildInvoicePreview(supabase, ENTITY_ID, INVOICE_ID);
     expect(res.ok).toBe(true);
-    if (res.ok) expect(res.preview.recipient.outcome).toBe("to_create");
+    if (res.ok) {
+      expect(res.preview.recipient.outcome).toBe("to_create");
+      expect(res.preview.recipient.name).toBe("ACME SAS");
+    }
   });
 });
 
@@ -328,7 +333,7 @@ describe("buildInvoicePreview — blocage validation (AC-3) et erreurs", () => {
     expect(res.ok).toBe(true);
   });
 
-  it("pas de connexion du tout : erreur externe withAbbyConnection forwardée (abby_no_connection)", async () => {
+  it("non_configuree → abby_invalid_state (le check getConnectionState précède withAbbyConnection)", async () => {
     getConnectionStateMock.mockResolvedValue({
       ok: true,
       state: connectionState("non_configuree"),
