@@ -106,6 +106,21 @@ export function toAbbyTimeline(invoiceDateIso: string): {
 }
 
 /**
+ * Epoch Abby → ISO (story 4.1). Les dates Abby sont en SECONDES (cf.
+ * `toAbbyTimeline` en écriture) — détection d'échelle DÉFENSIVE : une valeur
+ * > 1e12 est déjà en millisecondes. Un facteur 1000 non détecté poserait une
+ * date en l'an 58509 (incident réel du projet, story 1.5).
+ */
+export function epochToIso(value: number | null | undefined): string | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return null;
+  }
+  const ms = value > 1e12 ? value : value * 1000;
+  const d = new Date(ms);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+/**
  * Mentions générales : exonérée → footerNote QO-1 SANS AUCUNE vatMention
  * (toutes les valeurs de l'enum rendent une mention légale fausse — PDF
  * vérifiés un à un le 16/07) ; assujettie → body vide (recette a-tva20).

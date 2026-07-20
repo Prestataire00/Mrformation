@@ -135,20 +135,34 @@ export async function finalizeBilling(
   await abby.billing.finalize({ path: { billingId } });
 }
 
-/** Relit la facture Abby (number/state) — normalisation défensive. */
+/**
+ * Relit la facture Abby — normalisation défensive.
+ * `paidAt`/`finalizedAt` sont des epochs NUMÉRIQUES (secondes) exposés bruts :
+ * la conversion vit dans `mappers.epochToIso` (AD-17, fonctions pures).
+ */
 export async function getAbbyInvoice(
   abby: Abby,
   invoiceId: string
-): Promise<{ id: string; number: string | null; state: string | null }> {
+): Promise<{
+  id: string;
+  number: string | null;
+  state: string | null;
+  paidAt: number | null;
+  finalizedAt: number | null;
+}> {
   const { data } = await abby.invoice.getInvoice({ path: { invoiceId } });
   const d = data as Record<string, unknown>;
   // Chaîne vide → null : le numéro est LE signal « finalisée » de la
   // réconciliation 3.4 — un "" concluerait à tort une finalisation (review #353)
   const rawNumber = d.number == null ? null : String(d.number).trim();
+  const num = (v: unknown): number | null =>
+    typeof v === "number" && Number.isFinite(v) ? v : null;
   return {
     id: String(d.id),
     number: rawNumber === "" ? null : rawNumber,
     state: d.state == null ? null : String(d.state),
+    paidAt: num(d.paidAt),
+    finalizedAt: num(d.finalizedAt),
   };
 }
 
