@@ -1,5 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { ABBY_INVOICE_SELECT } from "@/lib/abby/invoice-badge";
+import {
+  ABBY_INVOICE_SELECT,
+  ABBY_INVOICE_NOT_FOUND_MESSAGE,
+} from "@/lib/abby/invoice-badge";
 import { isPushFinalized } from "@/lib/abby/eligibility";
 import { epochToIso } from "@/lib/abby/mappers";
 import { getAbbyInvoice, type createAbbyClient } from "@/lib/abby/client";
@@ -46,8 +49,6 @@ interface StatusInvoiceRow {
   abby_state: string | null;
   abby_last_error: string | null;
 }
-
-const NOT_FOUND_MESSAGE = "Facture introuvable chez Abby.";
 
 /**
  * Relit l'état d'une facture chez Abby et met à jour le CACHE local.
@@ -112,7 +113,7 @@ export async function refreshInvoiceStatus(
   if (!res.ok) {
     const isNotFound = res.error.code === "abby_not_found";
     const message = isNotFound
-      ? NOT_FOUND_MESSAGE
+      ? ABBY_INVOICE_NOT_FOUND_MESSAGE
       : res.error.message || "Actualisation du statut Abby impossible.";
     const written = await writeStatusPatch(supabase, entityId, invoiceId, {
       abby_last_error: message,

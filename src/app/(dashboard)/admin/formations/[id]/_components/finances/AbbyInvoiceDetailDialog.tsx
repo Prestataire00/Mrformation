@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -14,6 +14,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/components/ui/use-toast";
 import { Loader2 } from "lucide-react";
 import { invoiceDisplayRef } from "@/lib/utils/invoice-display-ref";
+import { ABBY_INVOICE_NOT_FOUND_MESSAGE } from "@/lib/abby/invoice-badge";
 import type { Invoice } from "@/lib/utils/finances-display";
 
 // Dialog détail Abby (story 4.1, UX-DR6). N'affiche QUE des données
@@ -52,9 +53,28 @@ function DetailRow({ label, value }: { label: string; value: string | null }) {
   );
 }
 
+/** Réponse de la dernière actualisation — prime sur le snapshot de props. */
+interface FreshStatus {
+  state: string | null;
+  syncedAt: string;
+  paidAt: string | null;
+  finalizedAt: string | null;
+  notFound: boolean;
+}
+
 export function AbbyInvoiceDetailDialog({ invoice, onClose, onRefreshed }: Props) {
   const { toast } = useToast();
   const [refreshing, setRefreshing] = useState(false);
+  // ⚠️ `invoice` est un SNAPSHOT pris à l'ouverture : le refetch de
+  // TabFinances ne le re-synchronise pas. La réponse de la route est donc
+  // conservée ici et PRIME sur les props (sinon le bandeau « Introuvable »
+  // et la nouvelle date d'actualisation n'apparaîtraient qu'après
+  // fermeture/réouverture — review #357).
+  const [fresh, setFresh] = useState<FreshStatus | null>(null);
+  const invoiceId = invoice?.id ?? null;
+  useEffect(() => {
+    setFresh(null);
+  }, [invoiceId]);
 
   const handleRefresh = async () => {
     if (!invoice) return;
@@ -64,9 +84,10 @@ export function AbbyInvoiceDetailDialog({ invoice, onClose, onRefreshed }: Props
         method: "POST",
       });
       const json = (await res.json()) as
-        | { status: { notFound: boolean; state: string | null } }
+        | { status: FreshStatus }
         | { error: { message: string } };
       if (res.ok && "status" in json) {
+        setFresh(json.status);
         toast({
           title: json.status.notFound
             ? "Facture introuvable chez Abby"
@@ -91,8 +112,16 @@ export function AbbyInvoiceDetailDialog({ invoice, onClose, onRefreshed }: Props
     }
   };
 
-  const syncedAt = formatDateTime(invoice?.abby_synced_at ?? null);
-  const isNotFound = Boolean(invoice?.abby_last_error?.includes("introuvable chez Abby"));
+  const syncedAt = formatDateTime(fresh?.syncedAt ?? invoice?.abby_synced_at ?? null);
+  // Égalité stricte sur la constante partagée (jamais un `includes` sur un
+  // texte dupliqué) ; la réponse fraîche prime sur la colonne persistée
+  const isNotFound =
+    fresh?.notFound ??
+    invoice?.abby_last_error === ABBY_INVOICE_NOT_FOUND_MESSAGE;
+  const paidAtDisplay = fresh && !fresh.notFound ? fresh.paidAt : invoice?.abby_paid_at ?? null;
+  const finalizedAtDisplay =
+    fresh && !fresh.notFound ? fresh.finalizedAt : invoice?.abby_finalized_at ?? null;
+  const lastErrorDisplay = fresh ? (fresh.notFound ? ABBY_INVOICE_NOT_FOUND_MESSAGE : null) : invoice?.abby_last_error ?? null;
 
   return (
     <Dialog open={invoice !== null} onOpenChange={(open) => { if (!open) onClose(); }}>
@@ -120,8 +149,8 @@ export function AbbyInvoiceDetailDialog({ invoice, onClose, onRefreshed }: Props
 
             <div className="space-y-1.5 rounded-md border p-3">
               <DetailRow label="Numéro Abby" value={invoice.abby_invoice_number} />
-              <DetailRow label="Finalisée le" value={formatDateTime(invoice.abby_finalized_at)} />
-              <DetailRow label="Payée le (Abby)" value={formatDateTime(invoice.abby_paid_at)} />
+              <DetailRow label="Finalisée le" value={formatDateTime(finalizedAtDisplay)} />
+              <DetailRow label="Payée le (Abby)" value={formatDateTime(paidAtDisplay)} />
               <DetailRow label="Poussée le" value={formatDateTime(invoice.abby_pushed_at)} />
               <div className="flex justify-between gap-4 text-sm">
                 <span className="text-muted-foreground">Dernière actualisation</span>
@@ -131,11 +160,11 @@ export function AbbyInvoiceDetailDialog({ invoice, onClose, onRefreshed }: Props
               </div>
             </div>
 
-            {invoice.abby_last_error && !isNotFound && (
+            {lastErrorDisplay && !isNotFound && (
               <Alert variant="destructive">
                 <AlertTitle>Dernière erreur</AlertTitle>
                 <AlertDescription>
-                  {invoice.abby_last_error}
+                  {lastErrorDisplay}
                   {syncedAt ? ` (le ${syncedAt})` : ""}
                 </AlertDescription>
               </Alert>
