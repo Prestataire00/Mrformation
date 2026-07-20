@@ -1,4 +1,4 @@
-import { Badge } from "@/components/ui/badge";
+import { Badge, badgeVariants } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -85,28 +85,26 @@ function AbbyZone({
   // Badge cliquable UNIQUEMENT sur une facture finalisée (story 4.1) : le
   // dialog détail n'a rien d'utile à montrer sur un push en cours, et le DOM
   // des autres lignes reste strictement identique.
-  const badgeEl = (
-    <Badge
-      variant={badge.variant ?? "default"}
-      className={`${badge.className ?? ""} text-[11px] whitespace-nowrap`}
-    >
-      {badge.label}
-    </Badge>
-  );
+  const badgeClasses = `${badge.className ?? ""} text-[11px] whitespace-nowrap`;
 
   return (
     <span className="w-40 shrink-0 flex flex-col items-start gap-1">
       {isPushFinalized(invoice) ? (
+        // Les classes du badge sont portées PAR le <button> : un <div>
+        // (ce que rend Badge) n'est pas du phrasing content, donc invalide
+        // à l'intérieur d'un bouton (review #357)
         <button
           type="button"
           onClick={() => onAbbyDetail(invoice)}
           aria-label={`Détail Abby de la facture ${invoiceDisplayRef(invoice)}`}
-          className="rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring hover:opacity-80"
+          className={`${badgeVariants({ variant: badge.variant ?? "default" })} ${badgeClasses} hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
         >
-          {badgeEl}
+          {badge.label}
         </button>
       ) : (
-        badgeEl
+        <Badge variant={badge.variant ?? "default"} className={badgeClasses}>
+          {badge.label}
+        </Badge>
       )}
       {actionLabel !== null &&
         (status === "active" ? (

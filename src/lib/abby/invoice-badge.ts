@@ -25,6 +25,14 @@ export const ABBY_INVOICE_SELECT: string = ABBY_BADGE_COLUMNS.join(", ");
 export const ABBY_PUSH_LOCK_TTL_MS = 2 * 60 * 1000;
 
 /**
+ * Message persisté dans `abby_last_error` quand la facture a disparu chez
+ * Abby (story 4.1). Partagé service ↔ UI : le bandeau « Introuvable chez
+ * Abby » compare par ÉGALITÉ à cette constante — jamais par `includes` sur
+ * un texte dupliqué (une reformulation casserait le bandeau en silence).
+ */
+export const ABBY_INVOICE_NOT_FOUND_MESSAGE = "Facture introuvable chez Abby.";
+
+/**
  * Descripteur d'affichage : `variant` shadcn standard, OU `className`
  * reprenant les classes exactes des badges LMS existants (relevé QO-4,
  * InvoiceRow.STATUS_BADGES) — jamais les deux, jamais de couleur nouvelle.

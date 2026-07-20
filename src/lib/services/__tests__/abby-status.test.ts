@@ -42,6 +42,7 @@ function makeDb(
   updateResults: Array<{ rows: number }> = []
 ) {
   const updates: UpdateCall[] = [];
+  const selectFilters: string[] = [];
   const queue = [...updateResults];
   const supabase = {
     from: vi.fn(() => {
@@ -69,11 +70,14 @@ function makeDb(
         filters.push(`${col}=${String(val)}`);
         return builder;
       });
-      builder.maybeSingle = vi.fn(async () => ({ data: invoice, error: null }));
+      builder.maybeSingle = vi.fn(async () => {
+        selectFilters.push(...filters);
+        return { data: invoice, error: null };
+      });
       return builder;
     }),
   } as unknown as SupabaseClient;
-  return { supabase, updates };
+  return { supabase, updates, selectFilters };
 }
 
 function activeState(): AbbyConnectionState {
@@ -204,6 +208,23 @@ describe("refreshInvoiceStatus — gardes (AC-3)", () => {
     const res = await refreshInvoiceStatus(supabase, ENTITY_ID, INVOICE_ID);
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error.code).toBe("abby_not_found");
+  });
+
+  it("le SELECT est filtré par entity_id (isolation multi-tenant prouvée, pas seulement le retour null)", async () => {
+    const { supabase, selectFilters } = makeDb();
+    await refreshInvoiceStatus(supabase, ENTITY_ID, INVOICE_ID);
+    expect(selectFilters).toContain(`entity_id=${ENTITY_ID}`);
+    expect(selectFilters).toContain(`id=${INVOICE_ID}`);
+  });
+
+  it("UPDATE 0 ligne (état changé entre la garde et l'écriture) → 409, garde de course AD-13", async () => {
+    const { supabase } = makeDb(FINALIZED_INVOICE, [{ rows: 0 }]);
+    const res = await refreshInvoiceStatus(supabase, ENTITY_ID, INVOICE_ID);
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.error.code).toBe("abby_invalid_state");
+      expect(res.error.message).toMatch(/rechargez la page/);
+    }
   });
 });
 
