@@ -207,7 +207,7 @@ async function writeStatusPatch(
 }
 
 export type AbbyRecordPaymentResult =
-  | { ok: true; payment: { paidAt: string; state: string | null } }
+  | { ok: true; payment: { paidAt: string; state: string | null; abbyInvoiceNumber: string | null } }
   | { ok: false; error: AbbyStatusError };
 
 /**
@@ -291,21 +291,21 @@ export async function recordPaymentInLms(
   // relecture a eu lieu) pour que l'UI cesse de proposer l'action ;
   // l'issue de ce patch ne doit JAMAIS masquer le motif du refus.
   if (read.state !== "paid" || !paidAtIso) {
+    const refusal =
+      read.state !== "paid"
+        ? "Abby n'indique plus cette facture comme payée."
+        : "Abby indique cette facture payée mais sans date de paiement exploitable — enregistrement refusé.";
+    // Le motif est PERSISTÉ quand l'état relu reste 'paid' : sans lui, le
+    // prédicat resterait vrai et l'action serait reproposée en boucle (409
+    // à chaque clic). Quand l'état a changé, le prédicat suffit à masquer.
     await writeStatusPatch(supabase, entityId, invoiceId, {
       abby_state: read.state,
       abby_synced_at: syncedAt,
-      abby_last_error: null,
+      abby_last_error: read.state === "paid" ? refusal : null,
     });
-    return {
-      ok: false,
-      error: {
-        message:
-          read.state !== "paid"
-            ? "Abby n'indique plus cette facture comme payée."
-            : "Abby indique cette facture payée mais sans date de paiement exploitable — enregistrement refusé.",
-        code: "abby_invalid_state",
-      },
-    };
+    // ⚠️ Le retour du patch est IGNORÉ volontairement : son échec éventuel
+    // ne doit jamais masquer le motif réel du refus
+    return { ok: false, error: { message: refusal, code: "abby_invalid_state" } };
   }
 
   // UPDATE dédié : conditionnel sur `status <> 'paid'` (idempotence +
@@ -326,6 +326,10 @@ export async function recordPaymentInLms(
     .eq("entity_id", entityId)
     .eq("abby_push_state", "finalized")
     .neq("status", "paid")
+    // Durcissement : une bascule vers cancelled entre la garde pré-SDK et
+    // l'écriture ne doit pas être écrasée par status='paid'
+    .neq("status", "cancelled")
+    .eq("is_avoir", false)
     .select("id");
   if (updateError) {
     return { ok: false, error: { message: sanitizeDbError(updateError, "abby record payment") } };
@@ -340,5 +344,8 @@ export async function recordPaymentInLms(
     };
   }
 
-  return { ok: true, payment: { paidAt: paidAtIso, state: read.state } };
+  return {
+    ok: true,
+    payment: { paidAt: paidAtIso, state: read.state, abbyInvoiceNumber: read.number },
+  };
 }
