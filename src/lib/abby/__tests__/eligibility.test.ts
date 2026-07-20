@@ -9,6 +9,7 @@ import {
   isContentLocked,
   isPushResumable,
   getResumeStep,
+  canRecordPaymentInLms,
 } from "../eligibility";
 import type { AbbyConnectionStatus } from "@/lib/types/abby";
 
@@ -152,5 +153,40 @@ describe("getPushDisabledReason — tooltip verbatim EXPERIENCE.md", () => {
 
   it("active : aucun message (bouton actif)", () => {
     expect(getPushDisabledReason("active")).toBeNull();
+  });
+});
+
+describe("canRecordPaymentInLms — enregistrement du paiement (story 4.2, FR-18)", () => {
+  const PAYABLE = {
+    abby_push_state: "finalized" as string | null,
+    abby_state: "paid" as string | null,
+    status: "sent",
+    is_avoir: false,
+  };
+
+  it("finalisée + Abby payée + LMS non payée → action proposée", () => {
+    expect(canRecordPaymentInLms(PAYABLE)).toBe(true);
+  });
+
+  it("LMS déjà payée → jamais proposée (idempotence)", () => {
+    expect(canRecordPaymentInLms({ ...PAYABLE, status: "paid" })).toBe(false);
+  });
+
+  it("Abby pas payée (null ou finalized) → jamais proposée", () => {
+    expect(canRecordPaymentInLms({ ...PAYABLE, abby_state: null })).toBe(false);
+    expect(canRecordPaymentInLms({ ...PAYABLE, abby_state: "finalized" })).toBe(false);
+  });
+
+  it("facture annulée → jamais proposée", () => {
+    expect(canRecordPaymentInLms({ ...PAYABLE, status: "cancelled" })).toBe(false);
+  });
+
+  it("AVOIR → jamais proposée (l'Epic 5 en finalisera)", () => {
+    expect(canRecordPaymentInLms({ ...PAYABLE, is_avoir: true })).toBe(false);
+  });
+
+  it("push non finalisé → jamais proposée (borne AD-13)", () => {
+    expect(canRecordPaymentInLms({ ...PAYABLE, abby_push_state: "details_set" })).toBe(false);
+    expect(canRecordPaymentInLms({ ...PAYABLE, abby_push_state: null })).toBe(false);
   });
 });

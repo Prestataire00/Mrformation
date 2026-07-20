@@ -3,7 +3,7 @@ import {
   ABBY_INVOICE_SELECT,
   ABBY_INVOICE_NOT_FOUND_MESSAGE,
 } from "@/lib/abby/invoice-badge";
-import { isPushFinalized } from "@/lib/abby/eligibility";
+import { isPushFinalized, canRecordPaymentInLms } from "@/lib/abby/eligibility";
 import { epochToIso } from "@/lib/abby/mappers";
 import { getAbbyInvoice, type createAbbyClient } from "@/lib/abby/client";
 import { sanitizeDbError } from "@/lib/api-error";
@@ -40,6 +40,10 @@ export type AbbyStatusResult =
 /** Colonnes propres nécessaires (⚠️ abby_invoice_id hors fragment — piège 3.3). */
 const STATUS_INVOICE_COLUMNS = "id, abby_invoice_id";
 
+/** Idem + `status` et `is_avoir` (hors fragment aussi) pour l'enregistrement
+ * de paiement : le prédicat 4.2 en dépend. */
+const PAYMENT_INVOICE_COLUMNS = "id, status, is_avoir, abby_invoice_id";
+
 interface StatusInvoiceRow {
   id: string;
   abby_invoice_id: string | null;
@@ -48,6 +52,11 @@ interface StatusInvoiceRow {
   abby_invoice_number: string | null;
   abby_state: string | null;
   abby_last_error: string | null;
+}
+
+interface PaymentInvoiceRow extends StatusInvoiceRow {
+  status: string;
+  is_avoir: boolean;
 }
 
 /**
@@ -195,4 +204,141 @@ async function writeStatusPatch(
     };
   }
   return { ok: true };
+}
+
+export type AbbyRecordPaymentResult =
+  | { ok: true; payment: { paidAt: string; state: string | null } }
+  | { ok: false; error: AbbyStatusError };
+
+/**
+ * Enregistre dans le LMS un paiement constaté chez Abby (FR-18, AD-11).
+ *
+ * ⚠️ SEULE route ABBY autorisée à écrire `status='paid'` et `paid_at`.
+ * Elle RELIT l'état réel côté Abby au moment du clic et pose `paid_at` =
+ * date de paiement ABBY LIVE — jamais le cache `abby_paid_at`, jamais la
+ * date du clic (l'incident historique du projet : 24 factures `paid` sans
+ * `paid_at`). Un `state='paid'` SANS `paidAt` exploitable est REFUSÉ.
+ *
+ * (Le chemin manuel « Marquer payée » du menu reste libre — AD-12 : les
+ * transitions de workflow ne sont pas bornées par AD-11, qui régit les
+ * chemins Abby.)
+ */
+export async function recordPaymentInLms(
+  supabase: SupabaseClient,
+  entityId: string,
+  invoiceId: string
+): Promise<AbbyRecordPaymentResult> {
+  const stateRes = await getConnectionState(supabase, entityId);
+  if (!stateRes.ok) return { ok: false, error: stateRes.error };
+  if (stateRes.state.status !== "active") {
+    return {
+      ok: false,
+      error: {
+        message:
+          "La connexion Abby de cette entité n'est pas active. Réactivez-la dans les paramètres.",
+        code: "abby_invalid_state",
+      },
+    };
+  }
+
+  const { data, error } = await supabase
+    .from("formation_invoices")
+    .select(`${PAYMENT_INVOICE_COLUMNS}, ${ABBY_INVOICE_SELECT}`)
+    .eq("id", invoiceId)
+    .eq("entity_id", entityId)
+    .maybeSingle();
+  if (error) {
+    return { ok: false, error: { message: sanitizeDbError(error, "abby payment invoice") } };
+  }
+  if (!data) {
+    return { ok: false, error: { message: "Facture introuvable.", code: "abby_not_found" } };
+  }
+  const invoice = data as unknown as PaymentInvoiceRow;
+
+  // Gardes AVANT tout appel SDK et toute écriture (AD-13)
+  if (
+    !canRecordPaymentInLms({
+      abby_push_state: invoice.abby_push_state,
+      abby_state: invoice.abby_state,
+      status: invoice.status,
+      is_avoir: invoice.is_avoir,
+    }) ||
+    !invoice.abby_invoice_id
+  ) {
+    return {
+      ok: false,
+      error: {
+        message:
+          "Cette facture n'est pas éligible à l'enregistrement du paiement (déjà payée dans le LMS, ou non signalée payée par Abby).",
+        code: "abby_invalid_state",
+      },
+    };
+  }
+  const abbyInvoiceId = invoice.abby_invoice_id;
+
+  // Relecture LIVE — geste explicite (AD-22)
+  const res = await withAbbyConnection(supabase, entityId, (client: AbbyClient) =>
+    getAbbyInvoice(client, abbyInvoiceId)
+  );
+  if (!res.ok) return { ok: false, error: res.error };
+
+  const read = res.data;
+  const paidAtIso = epochToIso(read.paidAt);
+  const syncedAt = new Date().toISOString();
+
+  // Divergence : Abby ne dit plus « payée », OU dit payée sans date
+  // exploitable → REFUS. Les caches sont tout de même rafraîchis (la
+  // relecture a eu lieu) pour que l'UI cesse de proposer l'action ;
+  // l'issue de ce patch ne doit JAMAIS masquer le motif du refus.
+  if (read.state !== "paid" || !paidAtIso) {
+    await writeStatusPatch(supabase, entityId, invoiceId, {
+      abby_state: read.state,
+      abby_synced_at: syncedAt,
+      abby_last_error: null,
+    });
+    return {
+      ok: false,
+      error: {
+        message:
+          read.state !== "paid"
+            ? "Abby n'indique plus cette facture comme payée."
+            : "Abby indique cette facture payée mais sans date de paiement exploitable — enregistrement refusé.",
+        code: "abby_invalid_state",
+      },
+    };
+  }
+
+  // UPDATE dédié : conditionnel sur `status <> 'paid'` (idempotence +
+  // concurrence) ET sur le curseur finalisé (AD-13). writeStatusPatch ne
+  // convient pas — il ne porte pas la condition de statut.
+  const { data: updated, error: updateError } = await supabase
+    .from("formation_invoices")
+    .update({
+      status: "paid",
+      paid_at: paidAtIso,
+      abby_state: read.state,
+      abby_paid_at: paidAtIso,
+      abby_synced_at: syncedAt,
+      abby_last_error: null,
+      updated_at: syncedAt,
+    })
+    .eq("id", invoiceId)
+    .eq("entity_id", entityId)
+    .eq("abby_push_state", "finalized")
+    .neq("status", "paid")
+    .select("id");
+  if (updateError) {
+    return { ok: false, error: { message: sanitizeDbError(updateError, "abby record payment") } };
+  }
+  if (!updated || updated.length === 0) {
+    return {
+      ok: false,
+      error: {
+        message: "Le statut de cette facture a changé — rechargez la page.",
+        code: "abby_invalid_state",
+      },
+    };
+  }
+
+  return { ok: true, payment: { paidAt: paidAtIso, state: read.state } };
 }

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { refreshInvoiceStatus } from "../abby-status";
+import { refreshInvoiceStatus, recordPaymentInLms } from "../abby-status";
 import type { AbbyConnectionState } from "@/lib/types/abby";
 
 vi.mock("../abby-connections", () => ({
@@ -68,6 +68,10 @@ function makeDb(
       });
       builder.eq = vi.fn((col: string, val: unknown) => {
         filters.push(`${col}=${String(val)}`);
+        return builder;
+      });
+      builder.neq = vi.fn((col: string, val: unknown) => {
+        filters.push(`${col}<>${String(val)}`);
         return builder;
       });
       builder.maybeSingle = vi.fn(async () => {
@@ -258,5 +262,104 @@ describe("refreshInvoiceStatus — introuvable chez Abby (AC-4)", () => {
     if (!res.ok) expect(res.error.code).toBe("abby_network");
     expect("abby_state" in updates[0].payload).toBe(false);
     expect(updates[0].payload.abby_last_error).toBe("Abby injoignable");
+  });
+});
+
+describe("recordPaymentInLms — LA seule route Abby qui écrit status/paid_at (FR-18, AD-11)", () => {
+  const PAYABLE = {
+    ...FINALIZED_INVOICE,
+    status: "sent",
+    is_avoir: false,
+    abby_state: "paid" as string | null,
+  };
+
+  it("succès : status='paid' + paid_at = date ABBY LIVE (jamais le cache ni la date du clic)", async () => {
+    getAbbyInvoiceMock.mockResolvedValue({
+      id: "abby-inv-9", number: "F-2026-0042", state: "paid",
+      paidAt: 1784332800, finalizedAt: 1784246400,
+    });
+    const { supabase, updates } = makeDb(PAYABLE);
+    const res = await recordPaymentInLms(supabase, ENTITY_ID, INVOICE_ID);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.payment.paidAt).toBe("2026-07-18T00:00:00.000Z");
+    expect(updates).toHaveLength(1);
+    const patch = updates[0].payload;
+    expect(patch.status).toBe("paid");
+    // ⛔ la date vient de l'epoch relu — PAS de new Date(), PAS du cache
+    expect(patch.paid_at).toBe("2026-07-18T00:00:00.000Z");
+    expect(patch.abby_paid_at).toBe("2026-07-18T00:00:00.000Z");
+    // UPDATE conditionnel : idempotence + borne AD-13
+    expect(updates[0].filters).toContain("abby_push_state=finalized");
+  });
+
+  it("Abby ne dit plus « payée » → REFUS, aucune écriture de status/paid_at, caches rafraîchis", async () => {
+    getAbbyInvoiceMock.mockResolvedValue({
+      id: "abby-inv-9", number: "F", state: "finalized", paidAt: null, finalizedAt: null,
+    });
+    const { supabase, updates } = makeDb(PAYABLE);
+    const res = await recordPaymentInLms(supabase, ENTITY_ID, INVOICE_ID);
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.error.code).toBe("abby_invalid_state");
+      expect(res.error.message).toMatch(/n'indique plus/);
+    }
+    // le cache EST rafraîchi (la relecture a eu lieu) mais sans status/paid_at
+    expect(updates).toHaveLength(1);
+    expect(updates[0].payload.abby_state).toBe("finalized");
+    expect("status" in updates[0].payload).toBe(false);
+    expect("paid_at" in updates[0].payload).toBe(false);
+  });
+
+  it("state='paid' mais paidAt absent/0 → REFUS (jamais de paid sans date — incident historique)", async () => {
+    for (const paidAt of [null, 0]) {
+      getAbbyInvoiceMock.mockResolvedValue({
+        id: "abby-inv-9", number: "F", state: "paid", paidAt, finalizedAt: null,
+      });
+      const { supabase, updates } = makeDb(PAYABLE);
+      const res = await recordPaymentInLms(supabase, ENTITY_ID, INVOICE_ID);
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.error.message).toMatch(/sans date de paiement/);
+      expect(updates.every((u) => !("status" in u.payload))).toBe(true);
+    }
+  });
+
+  it("facture déjà payée en LMS → refus SANS appel SDK (idempotence)", async () => {
+    const { supabase, updates } = makeDb({ ...PAYABLE, status: "paid" });
+    const res = await recordPaymentInLms(supabase, ENTITY_ID, INVOICE_ID);
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.code).toBe("abby_invalid_state");
+    expect(getAbbyInvoiceMock).not.toHaveBeenCalled();
+    expect(updates).toHaveLength(0);
+  });
+
+  it("avoir ou facture annulée → refus sans appel SDK", async () => {
+    for (const override of [{ is_avoir: true }, { status: "cancelled" }]) {
+      const { supabase } = makeDb({ ...PAYABLE, ...override });
+      const res = await recordPaymentInLms(supabase, ENTITY_ID, INVOICE_ID);
+      expect(res.ok).toBe(false);
+    }
+    expect(getAbbyInvoiceMock).not.toHaveBeenCalled();
+  });
+
+  it("UPDATE final 0 ligne (course : payée entre-temps) → 409 propre", async () => {
+    getAbbyInvoiceMock.mockResolvedValue({
+      id: "abby-inv-9", number: "F", state: "paid", paidAt: 1784332800, finalizedAt: null,
+    });
+    const { supabase } = makeDb(PAYABLE, [{ rows: 0 }]);
+    const res = await recordPaymentInLms(supabase, ENTITY_ID, INVOICE_ID);
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.code).toBe("abby_invalid_state");
+  });
+
+  it("erreur réseau pendant la relecture → erreur typée, AUCUNE écriture", async () => {
+    withAbbyConnectionMock.mockResolvedValue({
+      ok: false, error: { message: "Abby injoignable", code: "abby_network" },
+    } as never);
+    const { supabase, updates } = makeDb(PAYABLE);
+    const res = await recordPaymentInLms(supabase, ENTITY_ID, INVOICE_ID);
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.code).toBe("abby_network");
+    expect(updates).toHaveLength(0);
   });
 });

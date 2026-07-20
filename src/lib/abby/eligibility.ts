@@ -116,6 +116,31 @@ export function getResumeStep(state: AbbyPushState | string): number {
   }
 }
 
+/** Champs minimaux pour proposer l'enregistrement du paiement (story 4.2). */
+export interface AbbyRecordPaymentInput {
+  abby_push_state: string | null;
+  abby_state: string | null;
+  status: string;
+  is_avoir: boolean;
+}
+
+/**
+ * « Enregistrer le paiement dans le LMS » (FR-18, AD-11) : proposé UNIQUEMENT
+ * sur une facture poussée-finalisée qu'Abby déclare payée et que le LMS ne
+ * considère pas encore payée. Exclut les avoirs (l'Epic 5 en finalisera) et
+ * les annulées — alignement sur isPushButtonVisible/isPushResumable.
+ * Consommé par l'UI ET re-vérifié serveur (AD-13).
+ */
+export function canRecordPaymentInLms(invoice: AbbyRecordPaymentInput): boolean {
+  return (
+    isPushFinalized({ abby_push_state: invoice.abby_push_state }) &&
+    invoice.abby_state === "paid" &&
+    invoice.status !== "paid" &&
+    invoice.status !== "cancelled" &&
+    !invoice.is_avoir
+  );
+}
+
 /** Tooltip du bouton désactivé — verbatim EXPERIENCE.md § Component Patterns. */
 export const PUSH_DISABLED_TOOLTIP =
   "Reconnectez le compte Abby de cette entité dans les paramètres";
