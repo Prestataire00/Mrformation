@@ -76,12 +76,16 @@ export function AbbyInvoiceDetailDialog({ invoice, onClose, onRefreshed }: Props
   // FreshStatus ne porte aucun statut LMS → mémoriser l'enregistrement ici,
   // sinon le bouton resterait et le 2ᵉ clic partirait en 409.
   const [recordedPaidAt, setRecordedPaidAt] = useState<string | null>(null);
+  // Refus serveur (Abby ne dit plus « payée », ou pas de date) : le snapshot
+  // reste optimiste, il faut couper l'action ici sinon chaque clic re-409
+  const [paymentBlocked, setPaymentBlocked] = useState<string | null>(null);
   const [mode, setMode] = useState<"view" | "confirmPayment">("view");
   const [recording, setRecording] = useState(false);
   const invoiceId = invoice?.id ?? null;
   useEffect(() => {
     setFresh(null);
     setRecordedPaidAt(null);
+    setPaymentBlocked(null);
     setMode("view");
   }, [invoiceId]);
 
@@ -139,10 +143,12 @@ export function AbbyInvoiceDetailDialog({ invoice, onClose, onRefreshed }: Props
           description: `Date de paiement : ${formatDateTime(json.payment.paidAt) ?? json.payment.paidAt}`,
         });
       } else {
+        const message = "error" in json ? json.error.message : "Enregistrement impossible.";
+        setPaymentBlocked(message);
         setMode("view");
         toast({
           title: "Enregistrement impossible",
-          description: "error" in json ? json.error.message : undefined,
+          description: message,
           variant: "destructive",
         });
       }
@@ -173,6 +179,7 @@ export function AbbyInvoiceDetailDialog({ invoice, onClose, onRefreshed }: Props
     invoice !== null &&
     !isNotFound &&
     recordedPaidAt === null &&
+    paymentBlocked === null &&
     canRecordPaymentInLms({
       abby_push_state: invoice.abby_push_state,
       abby_state: effectiveAbbyState,
@@ -181,7 +188,7 @@ export function AbbyInvoiceDetailDialog({ invoice, onClose, onRefreshed }: Props
     });
 
   return (
-    <Dialog open={invoice !== null} onOpenChange={(open) => { if (!open) onClose(); }}>
+    <Dialog open={invoice !== null} onOpenChange={(open) => { if (!open && !recording) onClose(); }}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto max-sm:h-full max-sm:max-h-none max-sm:max-w-full max-sm:rounded-none">
         <DialogHeader>
           <DialogTitle>
@@ -231,6 +238,13 @@ export function AbbyInvoiceDetailDialog({ invoice, onClose, onRefreshed }: Props
               </Alert>
             )}
           </div>
+        )}
+
+        {paymentBlocked && (
+          <Alert variant="destructive">
+            <AlertTitle>Paiement non enregistré</AlertTitle>
+            <AlertDescription>{paymentBlocked}</AlertDescription>
+          </Alert>
         )}
 
         {/* Confirmation simple : bascule de CONTENU, jamais un second modal

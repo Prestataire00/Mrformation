@@ -44,7 +44,10 @@ export async function POST(_request: Request, context: RouteContext) {
       action: "abby_payment_recorded",
       resourceType: "formation_invoice",
       resourceId: context.params.id,
-      details: { paid_at: result.payment.paidAt },
+      details: {
+        paid_at: result.payment.paidAt,
+        abby_invoice_number: result.payment.abbyInvoiceNumber,
+      },
     });
 
     return NextResponse.json({ payment: result.payment });
