@@ -16,6 +16,7 @@ import {
   isAbbyZoneVisible,
   isPushButtonVisible,
   isPushResumable,
+  isPushFinalized,
   getPushDisabledReason,
 } from "@/lib/abby/eligibility";
 import { deriveAbbyBadge } from "@/lib/abby/invoice-badge";
@@ -35,6 +36,7 @@ interface Props extends InvoiceActionHandlers {
   /** null = état de connexion pas encore résolu (Skeleton sur la zone Abby). */
   abbyConnectionStatus: AbbyConnectionStatus | null;
   onAbbyPush: (inv: Invoice) => void;
+  onAbbyDetail: (inv: Invoice) => void;
 }
 
 /**
@@ -47,10 +49,12 @@ function AbbyZone({
   invoice,
   status,
   onAbbyPush,
+  onAbbyDetail,
 }: {
   invoice: Invoice;
   status: AbbyConnectionStatus;
   onAbbyPush: (inv: Invoice) => void;
+  onAbbyDetail: (inv: Invoice) => void;
 }) {
   const badge = deriveAbbyBadge(
     {
@@ -78,14 +82,32 @@ function AbbyZone({
       ? "Reprendre le push"
       : null;
 
+  // Badge cliquable UNIQUEMENT sur une facture finalisée (story 4.1) : le
+  // dialog détail n'a rien d'utile à montrer sur un push en cours, et le DOM
+  // des autres lignes reste strictement identique.
+  const badgeEl = (
+    <Badge
+      variant={badge.variant ?? "default"}
+      className={`${badge.className ?? ""} text-[11px] whitespace-nowrap`}
+    >
+      {badge.label}
+    </Badge>
+  );
+
   return (
     <span className="w-40 shrink-0 flex flex-col items-start gap-1">
-      <Badge
-        variant={badge.variant ?? "default"}
-        className={`${badge.className ?? ""} text-[11px] whitespace-nowrap`}
-      >
-        {badge.label}
-      </Badge>
+      {isPushFinalized(invoice) ? (
+        <button
+          type="button"
+          onClick={() => onAbbyDetail(invoice)}
+          aria-label={`Détail Abby de la facture ${invoiceDisplayRef(invoice)}`}
+          className="rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring hover:opacity-80"
+        >
+          {badgeEl}
+        </button>
+      ) : (
+        badgeEl
+      )}
       {actionLabel !== null &&
         (status === "active" ? (
           <Button
@@ -122,7 +144,7 @@ function AbbyZone({
 }
 
 /** Zone 4 du spec : une ligne de facture lisible. */
-export function InvoiceRow({ invoice, abbyConnectionStatus, onAbbyPush, ...handlers }: Props) {
+export function InvoiceRow({ invoice, abbyConnectionStatus, onAbbyPush, onAbbyDetail, ...handlers }: Props) {
   const badge = STATUS_BADGES[invoice.status] ?? STATUS_BADGES.pending;
 
   return (
@@ -160,7 +182,7 @@ export function InvoiceRow({ invoice, abbyConnectionStatus, onAbbyPush, ...handl
           <Skeleton className="h-5 w-24" />
         </span>
       ) : isAbbyZoneVisible(abbyConnectionStatus) ? (
-        <AbbyZone invoice={invoice} status={abbyConnectionStatus} onAbbyPush={onAbbyPush} />
+        <AbbyZone invoice={invoice} status={abbyConnectionStatus} onAbbyPush={onAbbyPush} onAbbyDetail={onAbbyDetail} />
       ) : null}
       <span className="w-52 shrink-0">
         <InvoiceActionsMenu invoice={invoice} {...handlers} />

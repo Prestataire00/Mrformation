@@ -37,6 +37,12 @@ export interface Invoice {
   abby_invoice_number: string | null;
   abby_state: string | null;
   abby_last_error: string | null;
+  // Dates du cycle Abby (story 4.1 — dialog détail). Présentes en base
+  // depuis la migration 1.1 et remontées par le select("*") de la route.
+  abby_pushed_at: string | null;
+  abby_finalized_at: string | null;
+  abby_paid_at: string | null;
+  abby_synced_at: string | null;
 }
 
 /** Une charge de formation. */

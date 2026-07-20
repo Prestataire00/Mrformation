@@ -12,10 +12,11 @@ interface Props extends InvoiceActionHandlers {
   /** null = état de connexion Abby pas encore résolu (Skeleton). */
   abbyConnectionStatus: AbbyConnectionStatus | null;
   onAbbyPush: (inv: Invoice) => void;
+  onAbbyDetail: (inv: Invoice) => void;
 }
 
 /** Zone 3 du spec : section par type. Masquée (`null`) si aucune facture. */
-export function InvoiceSection({ title, icon, invoices, abbyConnectionStatus, onAbbyPush, ...handlers }: Props) {
+export function InvoiceSection({ title, icon, invoices, abbyConnectionStatus, onAbbyPush, onAbbyDetail, ...handlers }: Props) {
   if (invoices.length === 0) return null;
 
   // Total = factures hors avoirs (cohérent avec les KPIs).
@@ -42,6 +43,7 @@ export function InvoiceSection({ title, icon, invoices, abbyConnectionStatus, on
           invoice={inv}
           abbyConnectionStatus={abbyConnectionStatus}
           onAbbyPush={onAbbyPush}
+          onAbbyDetail={onAbbyDetail}
           {...handlers}
         />
       ))}

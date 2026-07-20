@@ -15,6 +15,7 @@ import { FinancesKpiBand } from "./finances/FinancesKpiBand";
 import { InvoiceSection } from "./finances/InvoiceSection";
 import { ChargesPanel } from "./finances/ChargesPanel";
 import { AbbyPushPreviewDialog } from "./finances/AbbyPushPreviewDialog";
+import { AbbyInvoiceDetailDialog } from "./finances/AbbyInvoiceDetailDialog";
 import { EmailPreviewDialog, type EmailTemplateOption } from "@/components/emails/EmailPreviewDialog";
 import { listFormationAttachments, type AvailableAttachment } from "@/lib/formations/formation-attachments";
 
@@ -184,11 +185,16 @@ export function TabFinances({ formation, onRefresh }: Props) {
   // (FR-9 — jamais d'action directe). Déclaré AVANT l'effet qui le reset
   // (règle projet post-incident TDZ). Fermé au switch d'entité (anti-stale).
   const [abbyPreviewTarget, setAbbyPreviewTarget] = useState<Invoice | null>(null);
+  // Story 4.1 : clic sur le badge d'une facture finalisée → dialog détail.
+  // Prédicats disjoints avec la préview (push = non finalisée) : les deux
+  // dialogs ne peuvent pas être ouverts en même temps (un seul modal).
+  const [abbyDetailTarget, setAbbyDetailTarget] = useState<Invoice | null>(null);
   useEffect(() => {
     let stale = false;
     setAbbyConnectionStatus(null);
-    // Une préview de l'entité A ne doit jamais rester ouverte sous l'entité B
+    // Une préview/un détail de l'entité A ne doit jamais rester ouvert sous B
     setAbbyPreviewTarget(null);
+    setAbbyDetailTarget(null);
     (async () => {
       try {
         const res = await fetch("/api/abby/connections");
@@ -210,6 +216,9 @@ export function TabFinances({ formation, onRefresh }: Props) {
 
   const handleAbbyPush = (inv: Invoice) => {
     setAbbyPreviewTarget(inv);
+  };
+  const handleAbbyDetail = (inv: Invoice) => {
+    setAbbyDetailTarget(inv);
   };
 
   // Crée un formulaire de facture vierge (fonction → `lines` jamais partagé).
@@ -1021,6 +1030,7 @@ export function TabFinances({ formation, onRefresh }: Props) {
               invoices={invoices.filter((i) => i.recipient_type === type)}
               abbyConnectionStatus={abbyConnectionStatus}
               onAbbyPush={handleAbbyPush}
+              onAbbyDetail={handleAbbyDetail}
               onDownloadPdf={handleDownloadPdf}
               onSendEmail={handleSendInvoiceEmail}
               onMarkPaid={(inv) => handleUpdateStatus(inv.id, "paid")}
@@ -1046,6 +1056,13 @@ export function TabFinances({ formation, onRefresh }: Props) {
         invoice={abbyPreviewTarget}
         onClose={() => setAbbyPreviewTarget(null)}
         onPushed={fetchData}
+      />
+
+      {/* Dialog -- Détail Abby d'une facture finalisée (story 4.1) */}
+      <AbbyInvoiceDetailDialog
+        invoice={abbyDetailTarget}
+        onClose={() => setAbbyDetailTarget(null)}
+        onRefreshed={fetchData}
       />
 
       {/* Dialog -- Confirmation annulation de facture */}

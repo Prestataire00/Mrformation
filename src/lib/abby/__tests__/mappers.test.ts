@@ -5,6 +5,7 @@ import {
   toAbbyInvoiceLines,
   toAbbyTimeline,
   toAbbyGeneralInformations,
+  epochToIso,
 } from "../mappers";
 import type { AbbyRecipientData } from "@/lib/types/abby";
 
@@ -164,6 +165,27 @@ describe("toAbbyTimeline — SECONDES (piège an 58509) + thirty_days V1", () =>
     });
     // garde anti-régression : l'epoch secondes de 2026 tient sur 10 chiffres
     expect(String(t.emittedAt)).toHaveLength(10);
+  });
+});
+
+describe("epochToIso — dates Abby (story 4.1, piège an 58509)", () => {
+  it("secondes (format Abby nominal) → ISO correct", () => {
+    // 2026-07-18T00:00:00Z = 1784332800 s
+    const iso = epochToIso(1784332800);
+    expect(iso).toBe("2026-07-18T00:00:00.000Z");
+  });
+
+  it("millisecondes (défensif) → détectées, PAS d'année 58509", () => {
+    const iso = epochToIso(1784332800000);
+    expect(iso).toBe("2026-07-18T00:00:00.000Z");
+    expect(new Date(iso as string).getFullYear()).toBe(2026);
+  });
+
+  it("absent / null / 0 / NaN → null (jamais une date fantôme)", () => {
+    expect(epochToIso(null)).toBeNull();
+    expect(epochToIso(undefined)).toBeNull();
+    expect(epochToIso(0)).toBeNull();
+    expect(epochToIso(Number.NaN)).toBeNull();
   });
 });
 

@@ -200,7 +200,7 @@ beforeEach(() => {
   setInvoiceTimelineMock.mockResolvedValue(undefined);
   setInvoiceGeneralInformationsMock.mockResolvedValue(undefined);
   finalizeBillingMock.mockResolvedValue(undefined);
-  getAbbyInvoiceMock.mockResolvedValue({ id: "abby-inv-9", number: "F-2026-0042", state: "finalized" });
+  getAbbyInvoiceMock.mockResolvedValue({ id: "abby-inv-9", number: "F-2026-0042", state: "finalized", paidAt: null, finalizedAt: null });
 });
 
 afterEach(() => {
@@ -602,7 +602,7 @@ describe("réconciliation de reprise (story 3.4, AD-8)", () => {
   };
 
   it("déjà finalisée (numéro présent) → conclusion SANS écriture Abby, done avec numéro, garde SIRET exécutée", async () => {
-    getAbbyInvoiceMock.mockResolvedValue({ id: "abby-inv-9", number: "F-2026-0099", state: "finalized" });
+    getAbbyInvoiceMock.mockResolvedValue({ id: "abby-inv-9", number: "F-2026-0099", state: "finalized", paidAt: null, finalizedAt: null });
     const { supabase, updates } = makeDb({ invoice: INTERRUPTED });
     const res = await advancePushStep(supabase, ENTITY_ID, INVOICE_ID);
     expect(res).toEqual({
@@ -619,7 +619,7 @@ describe("réconciliation de reprise (story 3.4, AD-8)", () => {
   });
 
   it("brouillon présent (pas de numéro) → la saga complète depuis le checkpoint (étape 3)", async () => {
-    getAbbyInvoiceMock.mockResolvedValue({ id: "abby-inv-9", number: null, state: "draft" });
+    getAbbyInvoiceMock.mockResolvedValue({ id: "abby-inv-9", number: null, state: "draft", paidAt: null, finalizedAt: null });
     const { supabase } = makeDb({ invoice: INTERRUPTED });
     const res = await advancePushStep(supabase, ENTITY_ID, INVOICE_ID);
     expect(res).toEqual({ ok: true, step: { state: "lines_set", done: false } });
@@ -702,7 +702,7 @@ describe("réconciliation de reprise (story 3.4, AD-8)", () => {
   it("number relu vide (\"\") → traité comme BROUILLON, jamais une fausse finalisation", async () => {
     // getAbbyInvoice normalise "" → null (client.ts) ; on simule ici la
     // normalisation faite : number null → dispatch normal
-    getAbbyInvoiceMock.mockResolvedValue({ id: "abby-inv-9", number: null, state: "draft" });
+    getAbbyInvoiceMock.mockResolvedValue({ id: "abby-inv-9", number: null, state: "draft", paidAt: null, finalizedAt: null });
     const { supabase, updates } = makeDb({ invoice: INTERRUPTED });
     const res = await advancePushStep(supabase, ENTITY_ID, INVOICE_ID);
     expect(res.ok).toBe(true);
@@ -739,7 +739,7 @@ describe("repartir-de-zéro (story 3.4, AD-8 — unique effaceur)", () => {
   });
 
   it("brouillon encore VIVANT + restartFromZero → refus (jamais d'effacement d'un brouillon existant)", async () => {
-    getAbbyInvoiceMock.mockResolvedValue({ id: "abby-inv-9", number: null, state: "draft" });
+    getAbbyInvoiceMock.mockResolvedValue({ id: "abby-inv-9", number: null, state: "draft", paidAt: null, finalizedAt: null });
     const { supabase, updates } = makeDb({ invoice: INTERRUPTED });
     const res = await advancePushStep(supabase, ENTITY_ID, INVOICE_ID, { restartFromZero: true });
     expect(res.ok).toBe(false);
@@ -748,7 +748,7 @@ describe("repartir-de-zéro (story 3.4, AD-8 — unique effaceur)", () => {
   });
 
   it("déjà finalisée + restartFromZero → conclusion (flag ignoré)", async () => {
-    getAbbyInvoiceMock.mockResolvedValue({ id: "abby-inv-9", number: "F-2026-0099", state: "finalized" });
+    getAbbyInvoiceMock.mockResolvedValue({ id: "abby-inv-9", number: "F-2026-0099", state: "finalized", paidAt: null, finalizedAt: null });
     const { supabase } = makeDb({ invoice: INTERRUPTED });
     const res = await advancePushStep(supabase, ENTITY_ID, INVOICE_ID, { restartFromZero: true });
     expect(res.ok).toBe(true);
