@@ -41,20 +41,27 @@ describe("FR-20 — le push Abby n'influe sur aucun agrégat BPF", () => {
 
   it("computeSectionCFromInvoices : lot NON poussé ≡ lot poussé/payé (mêmes montants)", () => {
     const nonPoussees = baseRows.map(toBpf);
-    // Même lot « après push » : colonnes abby_* renseignées, reste identique
-    const poussees = baseRows
-      .map((r) => ({
-        ...r,
-        abby_push_state: "finalized",
-        abby_invoice_number: "F-2026-0042",
-        abby_state: "paid",
-        abby_paid_at: "2026-07-18T00:00:00.000Z",
-      }))
-      .map(toBpf);
+    // Même lot « après push » : colonnes abby_* renseignées, reste identique.
+    // ⚠️ On garde les abby_* ATTACHÉES et on les passe telles quelles à la
+    // fonction (cast) — surtout PAS de re-projection par toBpf qui les
+    // droperait et rendrait le test tautologique. Ainsi les deux entrées
+    // DIFFÈRENT réellement (l'une porte des clés abby_*, l'autre non) : si un
+    // jour computeSectionCFromInvoices se mettait à lire abby_state (ex.
+    // forcer le statut « payé »), le lot poussé (abby_state:"paid") divergerait
+    // et CE test rougirait.
+    const poussees = baseRows.map((r) => ({
+      ...r,
+      abby_push_state: "finalized",
+      abby_invoice_number: "F-2026-0042",
+      abby_state: "paid",
+      abby_paid_at: "2026-07-18T00:00:00.000Z",
+    }));
 
-    expect(computeSectionCFromInvoices(poussees)).toEqual(
-      computeSectionCFromInvoices(nonPoussees)
-    );
+    expect(
+      computeSectionCFromInvoices(
+        poussees as unknown as Parameters<typeof computeSectionCFromInvoices>[0]
+      )
+    ).toEqual(computeSectionCFromInvoices(nonPoussees));
   });
 
   it("computeDataGaps : idem — l'état Abby ne crée ni ne comble aucun trou", () => {
