@@ -1,5 +1,5 @@
 # generated: 2026-07-13
-# last_updated: 2026-07-21 (abby-4-4 DONE via PR #363 + fix review PR #364 — témoin BPF rendu non tautologique ; 🏁 EPIC 4 COMPLET. Prochaine : abby-5-1, dernier epic P4 = lot + avoirs)
+# last_updated: 2026-07-21 (abby-5-1 créée + ready-for-dev — Epic 5 → in-progress ; périmètre = sélection + récap consolidé uniquement, exécution = 5.2 ; CTA récap désactivé comme en 3.2 ; canPushInvoice = éligibilité lot, consolidation en fonction pure testée)
 # project: lms-platform
 # project_key: NOKEY
 # tracking_system: file-system
@@ -85,8 +85,8 @@ development_status:
   abby-4-3-pdf-facturx-officiel: done
   abby-4-4-non-regression-bpf-exports: done
   abby-epic-4-retrospective: optional
-  abby-epic-5: backlog
-  abby-5-1-multi-selection-et-recap-consolide: backlog
+  abby-epic-5: in-progress
+  abby-5-1-multi-selection-et-recap-consolide: ready-for-dev
   abby-5-2-execution-sequentielle-du-lot: backlog
   abby-5-3-pousser-un-avoir-rattache: backlog
   abby-epic-5-retrospective: optional
