@@ -1,0 +1,110 @@
+# generated: 2026-07-13
+# last_updated: 2026-07-21 (abby-4-4 DONE via PR #363 + fix review PR #364 — témoin BPF rendu non tautologique ; 🏁 EPIC 4 COMPLET. Prochaine : abby-5-1, dernier epic P4 = lot + avoirs)
+# project: lms-platform
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: bmad_output/implementation-artifacts
+# module: abby-facturation-electronique
+# scope: Pont manuel LMS → Abby (Plateforme Agréée) — connexion par entité, liaison clients, push saga, boucle retour, lot + avoirs
+# epics_source: bmad_output/planning-artifacts/epics-abby-facturation-electronique.md
+# readiness: bmad_output/planning-artifacts/implementation-readiness-report-2026-07-13.md (READY 2026-07-13)
+# architecture: bmad_output/planning-artifacts/architecture/architecture-abby-facturation-electronique-2026-07-13/ARCHITECTURE-SPINE.md (23 ADs)
+#
+# Note de convention :
+# Ce fichier est SÉPARÉ des autres modules (sprint-status.yaml = Documents/portail/PDFs legacy,
+# sprint-status-emails.yaml, sprint-status-automatisations.yaml, sprint-status-evolutions-onglet-formation.yaml).
+# Préfixe `abby-` sur toutes les clés pour éviter toute collision si fusion future.
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog → in-progress: Automatically when first story is created (via create-story)
+#   - in-progress → done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# Action Item Status:
+#   - open: Not yet addressed
+#   - in-progress: Actively being worked on
+#   - done: Completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Ordre strict des epics = phasage PRD P0→P4, chaque epic livrable seul (entité pilote d'abord)
+# - abby-1-5 (vérifications empiriques) DÉBLOQUE : QO-1 vatCode → bloquant Epic 3 (abby-3-3),
+#   cycle endpoints asset → bloquant Epic 5 (abby-5-3). La lancer tôt dans l'Epic 1.
+# - abby-1-1 (migration) : jouer la migration dans Supabase Dashboard AVANT de pousser le code (AD-20, règle projet)
+# - abby-3-3 dense : note de découpage serveur/UI incluse dans la story (sans renumérotation)
+# - Barrières : tsc --noEmit + vitest (ESLint cassé) ; jamais d'E2E d'écriture Abby (base prod)
+# - Merge main systématique en session dev (vert only) — mémoire projet
+# - Les 4 items de pré-vol ci-dessous (action_items) conditionnent le démarrage : les lever pendant l'Epic 1
+
+generated: 2026-07-13
+last_updated: 2026-07-13
+project: lms-platform
+project_key: NOKEY
+tracking_system: file-system
+story_location: bmad_output/implementation-artifacts
+
+development_status:
+  abby-epic-1: done
+  abby-1-1-fondations-donnees-et-secrets: done
+  abby-1-2-saisir-et-tester-la-cle-api: done
+  abby-1-3-activer-la-connexion-apres-verification: done
+  abby-1-4-cycle-de-vie-de-la-connexion: done
+  abby-1-5-verifications-empiriques-bloquantes: done
+  abby-epic-1-retrospective: optional
+  abby-epic-2: done
+  abby-2-1-resoudre-un-client-facture: done
+  abby-2-2-creer-le-client-abby-type: done
+  abby-epic-2-retrospective: optional
+  abby-epic-3: done
+  abby-3-1-zone-abby-et-eligibilite-tabfinances: done
+  abby-3-2-previsualisation-obligatoire: done
+  abby-3-3-executer-le-push-saga-progression: done
+  abby-3-4-reprendre-un-push-interrompu: done
+  abby-3-5-verrouiller-le-contenu-facture: done
+  abby-epic-3-retrospective: optional
+  abby-epic-4: done
+  abby-4-1-consulter-actualiser-statut-abby: done
+  abby-4-2-enregistrer-le-paiement: done
+  abby-4-3-pdf-facturx-officiel: done
+  abby-4-4-non-regression-bpf-exports: done
+  abby-epic-4-retrospective: optional
+  abby-epic-5: backlog
+  abby-5-1-multi-selection-et-recap-consolide: backlog
+  abby-5-2-execution-sequentielle-du-lot: backlog
+  abby-5-3-pousser-un-avoir-rattache: backlog
+  abby-epic-5-retrospective: optional
+
+action_items:
+  - id: preflight-1
+    status: done
+    owner: client
+    text: "RÉSOLU 13/07 : les 2 clés transmises par le gérant (format suk_ underscore !) ; accès API vérifié read-only sur les 2 comptes (getMe 200 → plan Pro OK) ; SIRET API = entities.siret ×2 ; isInTestMode=1 ×2. Détail : investigations/abby-verifications-p0-2026-07-13.md — clés HORS repo, à saisir dans la card connexion en story 1.3"
+  - id: preflight-2
+    status: done
+    owner: dev
+    text: "RÉSOLU 13/07 (validation story 1.1) : entities.siret existe déjà et est seedée en prod (MR 91311329600036 via add_invoice_auto_fields.sql, C3V 98525216200021 via init_entity_c3v_formation.sql) — reste une vérification de contrôle en Task 6 de abby-1-1, aucun seed à écrire"
+  - id: preflight-3
+    status: done
+    owner: dev
+    text: "RÉSOLU 14/07 : ABBY_ENCRYPTION_KEY provisionnée par le gérant sur Netlify ET Railway (même valeur) ; clé locale dev dans .env.local"
+  - id: preflight-4
+    status: done
+    owner: pm
+    text: "RÉSOLU 17/07 (confirmé par Ismael) : non-rétroactivité = pas d'import/backfill, pas de cutoff d'éligibilité — toute facture existante est éligible au push MANUEL, rien ne part automatiquement. La lecture du spine est validée telle quelle pour l'Epic 3"

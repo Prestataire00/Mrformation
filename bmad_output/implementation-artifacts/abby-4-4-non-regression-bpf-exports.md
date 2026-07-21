@@ -1,6 +1,6 @@
 # Story abby-4.4 : Garantir la non-régression BPF, exports et rapprochements
 
-Status: review
+Status: done
 
 baseline_commit: bd65492f (main après merge PR #362 — abby-4-3 done)
 
