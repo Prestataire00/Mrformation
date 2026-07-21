@@ -15,4 +15,16 @@ describe("invoiceDisplayRef", () => {
     expect(invoiceDisplayRef({ reference: null, external_reference: "FAC-25-9" })).toBe("FAC-25-9");
     expect(invoiceDisplayRef({ reference: null, external_reference: null })).toBe("");
   });
+
+  it("FR-20 : le rapprochement ignore le Numéro Abby d'une facture poussée", () => {
+    // Une facture poussée porte un abby_invoice_number — la référence
+    // affichée/rapprochée reste la référence INTERNE, jamais le numéro Abby.
+    const pushed = {
+      reference: "FAC-26-45",
+      external_reference: null,
+      abby_invoice_number: "F-2026-0003",
+      abby_state: "paid",
+    } as unknown as Parameters<typeof invoiceDisplayRef>[0];
+    expect(invoiceDisplayRef(pushed)).toBe("FAC-26-45");
+  });
 });
