@@ -8,7 +8,6 @@ import {
   ChevronDown, ChevronUp, Plus, FileDown, PenLine, Undo2, Pencil,
   AlertTriangle, Paperclip, X, Trash2,
 } from "lucide-react";
-import DOMPurify from "dompurify";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -22,8 +21,6 @@ import { useToast } from "@/components/ui/use-toast";
 import { EmailPreviewDialog, type EmailTemplateOption } from "@/components/emails/EmailPreviewDialog";
 import { listFormationAttachments, type AvailableAttachment } from "@/lib/formations/formation-attachments";
 import { useEntity } from "@/contexts/EntityContext";
-import { renderSystemTemplate } from "@/lib/templates/registry";
-import { resolveVariables } from "@/lib/utils/resolve-variables";
 import { validateCompanyExport, findUncoveredLearners } from "@/lib/utils/formation-companies";
 import { exportHtmlToPDF } from "@/lib/pdf-export";
 import { SubcontractingContractsPanel } from "./sections/SubcontractingContractsPanel";
@@ -41,8 +38,6 @@ import {
   markDocSent,
   updateDocsByDocType,
   updateDocsForOwner,
-  getTemplateById,
-  getLatestSignatureForDoc,
   batchSendEmailWithRefetch,
   batchRequestSignaturesWithRefetch,
   batchConfirmDocumentsWithRefetch,
@@ -515,69 +510,6 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
 
   // ===== GENERATE DOCUMENT HTML (reusable) =====
 
-  const generateDocHtml = async (doc: FormationConventionDocument): Promise<string> => {
-    const learner = enrollments.find((e) => e.learner?.id === doc.owner_id)?.learner;
-    const company = companies.find((c) => c.client_id === doc.owner_id)?.client;
-    const trainerData = trainers.find((t) => t.trainer_id === doc.owner_id)?.trainer;
-
-    // Charger la signature client si le document est signé (B3 — entity_id check)
-    let clientSignature: { signer_name: string | null; signed_at: string | null } | null = null;
-    if (doc.is_signed) {
-      const sigResult = await getLatestSignatureForDoc(supabase, formation.entity_id, doc.id);
-      if (sigResult.ok && sigResult.signature) clientSignature = sigResult.signature;
-    }
-
-    const templateData = {
-      formation,
-      learner: learner ? { id: learner.id, first_name: learner.first_name, last_name: learner.last_name, email: learner.email ?? undefined } : undefined,
-      company: company || undefined,
-      trainer: trainerData || undefined,
-      entityName,
-      entity: entity ?? undefined,
-      doc: { document_date: doc.document_date || null, confirmed_at: doc.confirmed_at || null },
-      // signature_data omis intentionnellement (non utilisé par les templates, remplacé par B3)
-      clientSignature: clientSignature
-        ? { signature_data: "", signer_name: clientSignature.signer_name ?? "", signed_at: clientSignature.signed_at ?? "" }
-        : null,
-    };
-
-    // Bug Story B0 — résolu : `entity` était oublié dans le contexte, ce qui
-    // cassait toutes les variables organisme ({{logo_organisme}},
-    // {{siret_organisme}}, {{signature_organisme}}, etc.). Le `entity` est
-    // pourtant chargé plus haut et utilisé pour `templateData`.
-    const resolveCtx = {
-      session: formation,
-      learner: learner || null,
-      client: company || null,
-      trainer: trainerData || null,
-      entity: entity ?? null,
-    };
-
-    let htmlContent: string | null = null;
-
-    if (doc.template_id) {
-      const tplResult = await getTemplateById(supabase, formation.entity_id, doc.template_id);
-      if (tplResult.ok && tplResult.template?.content?.trim()) {
-        htmlContent = resolveVariables(tplResult.template.content, resolveCtx);
-      }
-    } else {
-      const { data: systemTemplate } = await supabase
-        .from("document_templates")
-        .select("content")
-        .eq("system_key", doc.doc_type)
-        .eq("entity_id", formation.entity_id)
-        .single();
-
-      if (systemTemplate?.content?.trim()) {
-        htmlContent = resolveVariables(systemTemplate.content, resolveCtx);
-      } else {
-        htmlContent = renderSystemTemplate(doc.doc_type, templateData);
-      }
-    }
-
-    return DOMPurify.sanitize(htmlContent || "");
-  };
-
   // ===== VIEW DOCUMENT =====
 
   const handleView = async (doc: FormationConventionDocument) => {
@@ -615,6 +547,43 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
         },
       },
     );
+  };
+
+  // Téléchargement PDF via le MÊME flux serveur que handleView
+  // (generate-from-template : contexte complet, joins, agrégats, credentials/QR,
+  // gabarits Word, validation Qualiopi). Remplace l'ancien rendu client
+  // generateDocHtml qui produisait un document amputé (tableaux vides, PDF blanc
+  // pour les .docx) — divergent de la génération normale.
+  const downloadDocViaServer = async (
+    doc: FormationConventionDocument,
+    filenameOverride?: string,
+  ): Promise<boolean> => {
+    const result = await generateDocument({
+      template_id: doc.template_id || undefined,
+      doc_type: doc.template_id ? undefined : doc.doc_type,
+      context: {
+        session_id: formation.id,
+        learner_id: doc.owner_type === "learner" ? doc.owner_id : undefined,
+        client_id: doc.owner_type === "company" ? doc.owner_id : undefined,
+        trainer_id: doc.owner_type === "trainer" ? doc.owner_id : undefined,
+      },
+    });
+    // null = erreur déjà signalée (toast du hook) ou modal INCOMPLETE_DATA ouverte
+    if (!result) return false;
+
+    const byteChars = atob(result.base64);
+    const byteArray = new Uint8Array(byteChars.length);
+    for (let i = 0; i < byteChars.length; i++) byteArray[i] = byteChars.charCodeAt(i);
+    const blob = new Blob([byteArray], { type: "application/pdf" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filenameOverride || result.filename || `${doc.doc_type}_${doc.id}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    return true;
   };
 
   // ===== HELPERS =====
@@ -741,7 +710,15 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     setSaving(null);
   };
 
-  const handleSendConfirmed = async ({ subject, body }: { subject: string; body: string }) => {
+  const handleSendConfirmed = async ({
+    subject,
+    body,
+    extraAttachments,
+  }: {
+    subject: string;
+    body: string;
+    extraAttachments?: { filename: string; content: string; type: string }[];
+  }) => {
     if (!emailPreview) return;
     const { docId, recipientEmail, pdfFilename, pdfBase64 } = emailPreview;
 
@@ -753,11 +730,12 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
         subject,
         body,
         session_id: formation.id,
-        attachments: [{
-          filename: pdfFilename,
-          content: pdfBase64,
-          type: "application/pdf",
-        }],
+        attachments: [
+          { filename: pdfFilename, content: pdfBase64, type: "application/pdf" },
+          // PJ ajoutées dans la prévisualisation (upload local + documents de la
+          // formation) — elles étaient silencieusement perdues avant ce correctif.
+          ...(extraAttachments ?? []),
+        ],
       }),
     });
 
@@ -916,23 +894,24 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
     const targetDocs = docs.filter((d) => d.doc_type === docType && d.owner_type === ownerType);
     toast({ title: `Génération de ${targetDocs.length} PDF...` });
 
+    let downloaded = 0;
     for (const doc of targetDocs) {
       if (!canExportCompanyDoc(doc)) continue;
-      const html = await generateDocHtml(doc);
-      const label = DOC_LABELS[doc.doc_type] || doc.doc_type;
 
       const learner = enrollments.find((e) => e.learner?.id === doc.owner_id)?.learner;
       const suffix = learner
         ? `${learner.last_name}_${learner.first_name}`
         : doc.owner_id.slice(0, 8);
 
-      await exportHtmlToPDF(label, html, `${doc.doc_type}_${suffix}.pdf`, entityName);
+      // Flux serveur (generate-from-template) — même document que la génération
+      // normale, contrairement à l'ancien rendu client amputé.
+      if (await downloadDocViaServer(doc, `${doc.doc_type}_${suffix}.pdf`)) downloaded++;
 
       // Delay to avoid saturating the browser
       await new Promise((r) => setTimeout(r, 600));
     }
 
-    toast({ title: `${targetDocs.length} PDF téléchargés` });
+    toast({ title: `${downloaded}/${targetDocs.length} PDF téléchargés` });
     setMassDownloading(null);
   };
 
@@ -1708,10 +1687,9 @@ export function TabConventionDocs({ formation, onRefresh }: Props) {
         onClick={async (e) => {
           e.stopPropagation();
           if (!canExportCompanyDoc(doc)) return;
-          const html = await generateDocHtml(doc);
-          const label = doc.custom_label || DOC_LABELS[doc.doc_type] || doc.doc_type;
-          await exportHtmlToPDF(label, html, `${doc.doc_type}_${doc.id}`, entityName);
-          toast({ title: "PDF téléchargé" });
+          // Flux serveur (comme l'aperçu au clic sur la cellule) : le PDF
+          // téléchargé est désormais identique à la génération normale.
+          if (await downloadDocViaServer(doc)) toast({ title: "PDF téléchargé" });
         }}
         className="bg-white border shadow-sm rounded-full p-1 hover:bg-gray-50"
         title="Télécharger PDF"
