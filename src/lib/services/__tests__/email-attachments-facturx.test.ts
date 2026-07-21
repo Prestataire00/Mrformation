@@ -23,13 +23,17 @@ const generatePdfMock = vi.mocked(generatePdfFromFragment);
 
 const INVOICE_ID = "inv-1";
 
-function makeSupabase(invoice: unknown) {
+function makeSupabase(invoice: unknown, lookupError: { message: string } | null = null) {
   return {
     from: vi.fn(() => {
       const builder: Record<string, unknown> = {};
       builder.select = vi.fn(() => builder);
       builder.eq = vi.fn(() => builder);
-      builder.maybeSingle = vi.fn(async () => ({ data: invoice, error: null }));
+      builder.order = vi.fn(() => builder);
+      builder.maybeSingle = vi.fn(async () => ({
+        data: lookupError ? null : invoice,
+        error: lookupError,
+      }));
       return builder;
     }),
   } as unknown as SupabaseClient;
@@ -90,6 +94,19 @@ describe("pièce jointe facture — chemin Factur-X (story 4.3)", () => {
     });
     expect(out).toHaveLength(0);
     expect(generatePdfMock).not.toHaveBeenCalled();
+  });
+
+  it("ERREUR de lecture facture → jamais de repli jsPDF (on ne SAIT pas si poussée — AC-5 strict)", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const supabase = makeSupabase(null, { message: "db timeout" });
+    const out = await resolveAttachments(supabase, DESCRIPTORS as never, {
+      preferAbbyPdf: true,
+    });
+    expect(out).toHaveLength(0);
+    expect(generatePdfMock).not.toHaveBeenCalled();
+    const logged = logSpy.mock.calls.map((c) => String(c[0])).join(" ");
+    expect(logged).toContain("invoice_lookup_error");
+    logSpy.mockRestore();
   });
 
   it("poussée + connexion INACTIVE → log critique dédié (état durable ≠ panne)", async () => {

@@ -378,13 +378,32 @@ async function resolveFacturXAttachment(
     .select("entity_id, abby_push_state, abby_invoice_id")
     .eq("id", invoiceId)
     .maybeSingle();
-  if (error || !data) return { handled: false, attachment: null };
+
+  // ⚠️ Une ERREUR de lecture ≠ « facture non poussée ». Si on ne SAIT PAS,
+  // on ne doit PAS retomber sur le PDF interne (il pourrait s'agir d'une
+  // poussée → document non légal envoyé, ce qu'AC-5 interdit strictement) :
+  // handled=true + null → email sans PJ + log.
+  if (error) {
+    console.log(
+      JSON.stringify({
+        event: "email_attachment_facturx_failed",
+        level: "error",
+        ts: new Date().toISOString(),
+        invoice_id: invoiceId,
+        reason: "invoice_lookup_error",
+        message: error.message,
+      }),
+    );
+    return { handled: true, attachment: null };
+  }
+  if (!data) return { handled: false, attachment: null };
 
   const invoice = data as {
     entity_id: string;
     abby_push_state: string | null;
     abby_invoice_id: string | null;
   };
+  // Non poussée = chemin jsPDF LÉGITIME (handled=false)
   if (!isPushFinalized({ abby_push_state: invoice.abby_push_state }) || !invoice.abby_invoice_id) {
     return { handled: false, attachment: null };
   }
