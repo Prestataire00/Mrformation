@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { refreshInvoiceStatus, recordPaymentInLms } from "../abby-status";
+import { refreshInvoiceStatus, recordPaymentInLms, getInvoicePdf } from "../abby-status";
 import type { AbbyConnectionState } from "@/lib/types/abby";
 
 vi.mock("../abby-connections", () => ({
@@ -10,14 +10,16 @@ vi.mock("../abby-connections", () => ({
 vi.mock("@/lib/abby/client", () => ({
   createAbbyClient: vi.fn(),
   getAbbyInvoice: vi.fn(),
+  downloadInvoicePdf: vi.fn(),
 }));
 
 import { getConnectionState, withAbbyConnection } from "../abby-connections";
-import { getAbbyInvoice } from "@/lib/abby/client";
+import { getAbbyInvoice, downloadInvoicePdf } from "@/lib/abby/client";
 
 const getConnectionStateMock = vi.mocked(getConnectionState);
 const withAbbyConnectionMock = vi.mocked(withAbbyConnection);
 const getAbbyInvoiceMock = vi.mocked(getAbbyInvoice);
+const downloadInvoicePdfMock = vi.mocked(downloadInvoicePdf);
 
 const ENTITY_ID = "ent-mr";
 const INVOICE_ID = "inv-1";
@@ -114,6 +116,7 @@ beforeEach(() => {
     paidAt: 1784332800, // secondes
     finalizedAt: 1784246400,
   });
+  downloadInvoicePdfMock.mockResolvedValue(Buffer.from("%PDF-1.7 fake"));
 });
 
 describe("refreshInvoiceStatus — INVARIANT AD-11 (jamais status ni paid_at LMS)", () => {
@@ -404,6 +407,63 @@ describe("recordPaymentInLms — LA seule route Abby qui écrit status/paid_at (
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error.code).toBe("abby_invalid_state");
     expect(getAbbyInvoiceMock).not.toHaveBeenCalled();
+    expect(updates).toHaveLength(0);
+  });
+});
+
+describe("getInvoicePdf — proxy Factur-X (AD-15, story 4.3)", () => {
+  const PDF_INVOICE = {
+    ...FINALIZED_INVOICE,
+    reference: "FAC-2026-0007",
+    external_reference: null,
+  };
+
+  it("finalisée : renvoie le binaire + nom dérivé du numéro Abby, AUCUNE écriture", async () => {
+    const { supabase, updates } = makeDb(PDF_INVOICE);
+    const res = await getInvoicePdf(supabase, ENTITY_ID, INVOICE_ID);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.pdf.toString()).toContain("%PDF");
+    expect(res.filename).toBe("facture-F-2026-0042.pdf");
+    // AD-15 : rien n'est stocké — pas même abby_synced_at
+    expect(updates).toHaveLength(0);
+  });
+
+  it("sans numéro Abby : nom de repli sur la référence LMS", async () => {
+    const { supabase } = makeDb({ ...PDF_INVOICE, abby_invoice_number: null });
+    const res = await getInvoicePdf(supabase, ENTITY_ID, INVOICE_ID);
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.filename).toBe("facture-FAC-2026-0007.pdf");
+  });
+
+  it("push non finalisé → abby_invalid_state SANS appel SDK", async () => {
+    const { supabase } = makeDb({ ...PDF_INVOICE, abby_push_state: "lines_set" });
+    const res = await getInvoicePdf(supabase, ENTITY_ID, INVOICE_ID);
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.code).toBe("abby_invalid_state");
+    expect(downloadInvoicePdfMock).not.toHaveBeenCalled();
+  });
+
+  it("connexion INACTIVE → code dédié abby_connection_inactive (≠ panne réseau)", async () => {
+    getConnectionStateMock.mockResolvedValue({
+      ok: true,
+      state: { ...activeState(), status: "desactivee", isActive: false },
+    } as never);
+    const { supabase } = makeDb(PDF_INVOICE);
+    const res = await getInvoicePdf(supabase, ENTITY_ID, INVOICE_ID);
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.code).toBe("abby_connection_inactive");
+    expect(downloadInvoicePdfMock).not.toHaveBeenCalled();
+  });
+
+  it("panne Abby → erreur typée remontée, aucune écriture", async () => {
+    withAbbyConnectionMock.mockResolvedValue({
+      ok: false, error: { message: "Abby injoignable", code: "abby_network" },
+    } as never);
+    const { supabase, updates } = makeDb(PDF_INVOICE);
+    const res = await getInvoicePdf(supabase, ENTITY_ID, INVOICE_ID);
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.code).toBe("abby_network");
     expect(updates).toHaveLength(0);
   });
 });

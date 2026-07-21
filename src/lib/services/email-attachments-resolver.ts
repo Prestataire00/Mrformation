@@ -9,6 +9,8 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { isPushFinalized } from "@/lib/abby/eligibility";
+import { getInvoicePdf } from "@/lib/services/abby-status";
 import type { EmailAttachmentDescriptor } from "@/lib/services/email-queue";
 import { renderSystemTemplate } from "@/lib/templates/registry";
 import { generatePdfFromFragment } from "@/lib/services/pdf-generator";
@@ -70,13 +72,18 @@ const FILENAME_LABELS: Record<string, string> = {
  */
 export async function resolveAttachments(
   supabase: SupabaseClient,
-  descriptors: EmailAttachmentDescriptor[]
+  descriptors: EmailAttachmentDescriptor[],
+  // Story 4.3 : n'est passé QUE par le worker d'envoi (client service_role).
+  // `/api/documents/generate` (user-scoped, ouvert aux trainer) ne le passe
+  // PAS — sinon la lecture d'abby_connections échouerait sous RLS et
+  // renverrait un 404 sur toute facture poussée (régression).
+  options: { preferAbbyPdf?: boolean } = {}
 ): Promise<ResolvedAttachment[]> {
   const resolved: ResolvedAttachment[] = [];
 
   for (const desc of descriptors) {
     try {
-      const att = await resolveOne(supabase, desc);
+      const att = await resolveOne(supabase, desc, options);
       if (att) resolved.push(att);
     } catch (err) {
       console.error(
@@ -92,7 +99,8 @@ export async function resolveAttachments(
 
 async function resolveOne(
   supabase: SupabaseClient,
-  desc: EmailAttachmentDescriptor
+  desc: EmailAttachmentDescriptor,
+  options: { preferAbbyPdf?: boolean } = {}
 ): Promise<ResolvedAttachment | null> {
   // Cas 1 : fichier déjà uploadé (URL Storage signée par exemple) — joint tel quel
   if (desc.type === "file_url") {
@@ -122,7 +130,7 @@ async function resolveOne(
   // (canvas pour QR codes notamment). On wrap dans try/catch large : si la gen
   // échoue, on log un event critical et l'email part sans la PJ (fail-safe).
   if (desc.type === "facture") {
-    return await resolveFacture(supabase, desc.payload.invoice_id);
+    return await resolveFacture(supabase, desc.payload.invoice_id, options.preferAbbyPdf === true);
   }
   if (desc.type === "devis") {
     return await resolveDevis(supabase, desc.payload.quote_id);
@@ -354,10 +362,69 @@ async function renderTemplateHtml(
 // Visuellement proche du PDF jsPDF de TabFinances mais pas pixel-perfect.
 // Story em-c-12 future pour unifier les 2 versions (preview client / email serveur).
 
+/**
+ * Tente le PDF Factur-X. `handled: false` = la facture n'est pas poussée,
+ * le chemin jsPDF EXISTANT prend la suite (comportement inchangé).
+ * `handled: true` avec `attachment: null` = poussée mais proxy en échec :
+ * PAS de repli sur le PDF interne (un document non légal ne doit jamais
+ * partir à la place de la facture légale — AC-5).
+ */
+async function resolveFacturXAttachment(
+  supabase: SupabaseClient,
+  invoiceId: string,
+): Promise<{ handled: boolean; attachment: ResolvedAttachment | null }> {
+  const { data, error } = await supabase
+    .from("formation_invoices")
+    .select("entity_id, abby_push_state, abby_invoice_id")
+    .eq("id", invoiceId)
+    .maybeSingle();
+  if (error || !data) return { handled: false, attachment: null };
+
+  const invoice = data as {
+    entity_id: string;
+    abby_push_state: string | null;
+    abby_invoice_id: string | null;
+  };
+  if (!isPushFinalized({ abby_push_state: invoice.abby_push_state }) || !invoice.abby_invoice_id) {
+    return { handled: false, attachment: null };
+  }
+
+  const res = await getInvoicePdf(supabase, invoice.entity_id, invoiceId);
+  if (res.ok) {
+    return { handled: true, attachment: { filename: res.filename, content: res.pdf } };
+  }
+
+  // Poussée mais PDF indisponible : log structuré, aucune PJ (jamais jsPDF).
+  // La connexion inactive est un état DURABLE (toutes les relances de
+  // l'entité partiraient sans facture) → niveau critique, distinct d'une panne.
+  const inactive = res.error.code === "abby_connection_inactive";
+  console.log(
+    JSON.stringify({
+      event: "email_attachment_facturx_failed",
+      level: inactive ? "critical" : "error",
+      ts: new Date().toISOString(),
+      invoice_id: invoiceId,
+      entity_id: invoice.entity_id,
+      reason: res.error.code ?? "unknown",
+      message: res.error.message,
+    }),
+  );
+  return { handled: true, attachment: null };
+}
+
 async function resolveFacture(
   supabase: SupabaseClient,
   invoiceId: string,
+  preferAbbyPdf = false,
 ): Promise<ResolvedAttachment | null> {
+  // Story 4.3 (AD-15) : sur une facture poussée-finalisée, le document
+  // OFFICIEL est le Factur-X d'Abby. Appel DIRECT du service (même
+  // processus) — jamais un fetch HTTP sur notre propre route : ce code
+  // tourne dans le worker de relances, sans cookie de session.
+  if (preferAbbyPdf) {
+    const facturx = await resolveFacturXAttachment(supabase, invoiceId);
+    if (facturx.handled) return facturx.attachment;
+  }
   try {
     const start = Date.now();
     const html = await renderFactureHtml(supabase, invoiceId);
