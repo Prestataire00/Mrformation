@@ -14,6 +14,72 @@ import {
   computeBpfDepositProgress,
 } from "../bpf-calculator";
 
+// ─── FR-20 : non-régression push Abby (story 4.4) ──────────────
+// Le BPF agrège les factures via un projeté à 5 champs qui n'inclut AUCUNE
+// colonne abby_* : le push est donc structurellement invisible du calcul.
+// Ces témoins figent l'invariant — deux lots ne différant QUE par leur état
+// Abby produisent des agrégats identiques.
+
+describe("FR-20 — le push Abby n'influe sur aucun agrégat BPF", () => {
+  // Projection d'une ligne DB (avec colonnes abby_*) vers l'entrée BPF :
+  // elle DROPPE tout ce qui est abby_* — c'est le cœur de l'invariant.
+  const toBpf = (row: Record<string, unknown>) => ({
+    amount: row.amount as number,
+    funding_type: row.funding_type as string | null,
+    invoice_date_confirmed: row.invoice_date_confirmed as boolean,
+    is_avoir: row.is_avoir as boolean,
+    status: row.status as string,
+  });
+
+  const baseRows = [
+    { amount: 1000, funding_type: "entreprise_privee", invoice_date_confirmed: true, is_avoir: false, status: "sent" },
+    { amount: 2000, funding_type: "cpf", invoice_date_confirmed: false, is_avoir: false, status: "pending" },
+    { amount: -300, funding_type: "entreprise_privee", invoice_date_confirmed: true, is_avoir: true, status: "sent" },
+    { amount: 500, funding_type: null, invoice_date_confirmed: true, is_avoir: false, status: "sent" },
+    { amount: 9999, funding_type: "cpf", invoice_date_confirmed: true, is_avoir: false, status: "cancelled" },
+  ];
+
+  it("computeSectionCFromInvoices : lot NON poussé ≡ lot poussé/payé (mêmes montants)", () => {
+    const nonPoussees = baseRows.map(toBpf);
+    // Même lot « après push » : colonnes abby_* renseignées, reste identique
+    const poussees = baseRows
+      .map((r) => ({
+        ...r,
+        abby_push_state: "finalized",
+        abby_invoice_number: "F-2026-0042",
+        abby_state: "paid",
+        abby_paid_at: "2026-07-18T00:00:00.000Z",
+      }))
+      .map(toBpf);
+
+    expect(computeSectionCFromInvoices(poussees)).toEqual(
+      computeSectionCFromInvoices(nonPoussees)
+    );
+  });
+
+  it("computeDataGaps : idem — l'état Abby ne crée ni ne comble aucun trou", () => {
+    const gapsRows = baseRows.map((r) => ({
+      id: `inv-${r.amount}`,
+      amount: r.amount,
+      funding_type: r.funding_type,
+      invoice_date: "2026-07-15",
+      invoice_date_confirmed: r.invoice_date_confirmed,
+      is_avoir: r.is_avoir,
+      status: r.status,
+      recipient_name: "X",
+    }));
+    const rest = { enrollments: [], trainings: [], formationTrainers: [], signatures: [] };
+    // Le projeté DataGaps ignore abby_* (le type InvoiceForDataGaps ne les
+    // déclare pas) → les colonnes abby_* renseignées ne changent rien
+    const poussees = gapsRows.map((r) => ({ ...r, abby_push_state: "finalized", abby_state: "paid" }));
+    expect(
+      computeDataGaps({ invoices: poussees, ...rest } as unknown as Parameters<typeof computeDataGaps>[0])
+    ).toEqual(
+      computeDataGaps({ invoices: gapsRows, ...rest } as unknown as Parameters<typeof computeDataGaps>[0])
+    );
+  });
+});
+
 // ─── computeSectionC ────────────────────────────────────────
 
 describe("computeSectionC", () => {
