@@ -83,7 +83,11 @@ async function sendOne(supabase: SupabaseClient, email: PendingEmail): Promise<S
     let resolvedAttachments: Awaited<ReturnType<typeof resolveAttachments>> = [];
     if (attachmentDescriptors.length > 0) {
       try {
-        resolvedAttachments = await resolveAttachments(supabase, attachmentDescriptors);
+        // Story 4.3 : ce worker (client service_role) est le SEUL à activer le
+        // chemin Factur-X — documents/generate reste au PDF interne (RLS)
+        resolvedAttachments = await resolveAttachments(supabase, attachmentDescriptors, {
+          preferAbbyPdf: true,
+        });
       } catch (attachErr) {
         console.error(
           `[email ${email.id}] resolveAttachments failed, sending without:`,

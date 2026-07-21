@@ -69,14 +69,14 @@ describe("em-c-10 — Génération PDF serveur facture + devis (Puppeteer)", () 
     it("resolveFacture appelle generatePdfFromFragment avec le HTML rendu", () => {
       expect(resolverSource).toMatch(/async function resolveFacture/);
       expect(resolverSource).toMatch(
-        /resolveFacture[\s\S]{0,800}?await generatePdfFromFragment\(html, "Facture"\)/,
+        /async function resolveFacture[\s\S]{0,2500}?await generatePdfFromFragment\(html, "Facture"\)/,
       );
     });
 
     it("resolveDevis appelle generatePdfFromFragment avec le HTML rendu", () => {
       expect(resolverSource).toMatch(/async function resolveDevis/);
       expect(resolverSource).toMatch(
-        /resolveDevis[\s\S]{0,800}?await generatePdfFromFragment\(html, "Devis"\)/,
+        /async function resolveDevis[\s\S]{0,2500}?await generatePdfFromFragment\(html, "Devis"\)/,
       );
     });
 

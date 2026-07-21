@@ -15,7 +15,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { Loader2 } from "lucide-react";
 import { invoiceDisplayRef } from "@/lib/utils/invoice-display-ref";
 import { ABBY_INVOICE_NOT_FOUND_MESSAGE } from "@/lib/abby/invoice-badge";
-import { canRecordPaymentInLms } from "@/lib/abby/eligibility";
+import { canRecordPaymentInLms, isPushFinalized } from "@/lib/abby/eligibility";
 import type { Invoice } from "@/lib/utils/finances-display";
 
 // Dialog détail Abby (story 4.1, UX-DR6). N'affiche QUE des données
@@ -81,6 +81,7 @@ export function AbbyInvoiceDetailDialog({ invoice, onClose, onRefreshed }: Props
   const [paymentBlocked, setPaymentBlocked] = useState<string | null>(null);
   const [mode, setMode] = useState<"view" | "confirmPayment">("view");
   const [recording, setRecording] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const invoiceId = invoice?.id ?? null;
   useEffect(() => {
     setFresh(null);
@@ -158,6 +159,41 @@ export function AbbyInvoiceDetailDialog({ invoice, onClose, onRefreshed }: Props
     } finally {
       setRecording(false);
       onRefreshed();
+    }
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!invoice) return;
+    setDownloading(true);
+    try {
+      const res = await fetch(`/api/abby/invoices/${invoice.id}/pdf`);
+      if (!res.ok) {
+        // Erreur typée en JSON (jamais en binaire) — on l'affiche
+        const json = (await res.json().catch(() => null)) as
+          | { error?: { message?: string } }
+          | null;
+        toast({
+          title: "Téléchargement impossible",
+          description: json?.error?.message,
+          variant: "destructive",
+        });
+        return;
+      }
+      const blob = await res.blob();
+      const disposition = res.headers.get("Content-Disposition") ?? "";
+      const match = /filename="([^"]+)"/.exec(disposition);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = match?.[1] ?? "facture.pdf";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast({ title: "Téléchargement impossible", variant: "destructive" });
+    } finally {
+      setDownloading(false);
     }
   };
 
@@ -275,6 +311,12 @@ export function AbbyInvoiceDetailDialog({ invoice, onClose, onRefreshed }: Props
               <Button variant="outline" onClick={onClose} disabled={refreshing}>
                 Fermer
               </Button>
+              {invoice && !isNotFound && isPushFinalized(invoice) && (
+                <Button variant="outline" onClick={handleDownloadPdf} disabled={downloading || refreshing}>
+                  {downloading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  Télécharger le PDF Factur-X
+                </Button>
+              )}
               {canRecordPayment && (
                 <Button variant="outline" onClick={() => setMode("confirmPayment")} disabled={refreshing}>
                   Enregistrer le paiement dans le LMS

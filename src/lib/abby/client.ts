@@ -166,6 +166,25 @@ export async function getAbbyInvoice(
   };
 }
 
+/**
+ * Télécharge le PDF Factur-X d'une facture (AD-15 — proxy à la demande,
+ * JAMAIS stocké). Nom de méthode empiriquement validé (recette 1.5,
+ * `scripts/abby-recette-mode-test.mjs:63`) : c'est `downloadPdf`, pas
+ * `download` — le doc-comment du SDK ment.
+ */
+export async function downloadInvoicePdf(
+  abby: Abby,
+  billingId: string
+): Promise<Buffer> {
+  const { data } = await abby.billing.downloadPdf({ path: { billingId } });
+  const blob = data as unknown as { arrayBuffer?: () => Promise<ArrayBuffer> };
+  if (typeof blob?.arrayBuffer !== "function") {
+    // Normalisation défensive : les types SDK mentent (précédents 1.2/1.5)
+    throw new Error("Réponse PDF Abby inattendue (arrayBuffer indisponible).");
+  }
+  return Buffer.from(await blob.arrayBuffer());
+}
+
 export interface AbbyOrganizationSummary {
   id: string;
   name: string;

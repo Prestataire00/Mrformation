@@ -5,7 +5,12 @@ import {
 } from "@/lib/abby/invoice-badge";
 import { isPushFinalized, canRecordPaymentInLms } from "@/lib/abby/eligibility";
 import { epochToIso } from "@/lib/abby/mappers";
-import { getAbbyInvoice, type createAbbyClient } from "@/lib/abby/client";
+import {
+  getAbbyInvoice,
+  downloadInvoicePdf,
+  type createAbbyClient,
+} from "@/lib/abby/client";
+import { invoiceDisplayRef } from "@/lib/utils/invoice-display-ref";
 import { sanitizeDbError } from "@/lib/api-error";
 import { getConnectionState, withAbbyConnection } from "./abby-connections";
 
@@ -43,6 +48,10 @@ const STATUS_INVOICE_COLUMNS = "id, abby_invoice_id";
 /** Idem + `status` et `is_avoir` (hors fragment aussi) pour l'enregistrement
  * de paiement : le prédicat 4.2 en dépend. */
 const PAYMENT_INVOICE_COLUMNS = "id, status, is_avoir, abby_invoice_id";
+
+/** PDF (4.3) : `reference`/`external_reference` servent au nom de fichier
+ * de repli via invoiceDisplayRef (hors fragment). */
+const PDF_INVOICE_COLUMNS = "id, reference, external_reference, abby_invoice_id";
 
 interface StatusInvoiceRow {
   id: string;
@@ -348,4 +357,87 @@ export async function recordPaymentInLms(
     ok: true,
     payment: { paidAt: paidAtIso, state: read.state, abbyInvoiceNumber: read.number },
   };
+}
+
+export type AbbyInvoicePdfResult =
+  | { ok: true; pdf: Buffer; filename: string }
+  | { ok: false; error: AbbyStatusError };
+
+/** Nom de fichier sûr : pas de séparateur ni d'espace. */
+function safePdfFilename(base: string): string {
+  const cleaned = base.replace(/[\\/\s]+/g, "-").replace(/[^A-Za-z0-9._-]/g, "");
+  return `facture-${cleaned || "abby"}.pdf`;
+}
+
+/**
+ * Proxifie le PDF Factur-X d'une facture poussée-finalisée (AD-15).
+ *
+ * ⚠️ Rien n'est stocké : ni en base, ni en Storage, ni en cache mémoire.
+ * AUCUNE écriture sur `formation_invoices` — télécharger n'est pas
+ * actualiser (la sémantique d'`abby_synced_at` appartient à la 4.1).
+ * `abby_connections.last_used_at` reste stampé par `withAbbyConnection`
+ * (télémétrie contractuelle AD-4) — comportement attendu.
+ *
+ * Appelée par la route `/pdf` ET par le resolver de pièces jointes email
+ * (même processus, jamais un fetch HTTP interne — voir story § piège).
+ */
+export async function getInvoicePdf(
+  supabase: SupabaseClient,
+  entityId: string,
+  invoiceId: string
+): Promise<AbbyInvoicePdfResult> {
+  const stateRes = await getConnectionState(supabase, entityId);
+  if (!stateRes.ok) return { ok: false, error: stateRes.error };
+  if (stateRes.state.status !== "active") {
+    return {
+      ok: false,
+      error: {
+        message:
+          "La connexion Abby de cette entité n'est pas active — le PDF Factur-X est indisponible.",
+        // Code DISTINCT d'une panne : état durable, à tracer en critique
+        code: "abby_connection_inactive",
+      },
+    };
+  }
+
+  const { data, error } = await supabase
+    .from("formation_invoices")
+    .select(`${PDF_INVOICE_COLUMNS}, ${ABBY_INVOICE_SELECT}`)
+    .eq("id", invoiceId)
+    .eq("entity_id", entityId)
+    .maybeSingle();
+  if (error) {
+    return { ok: false, error: { message: sanitizeDbError(error, "abby pdf invoice") } };
+  }
+  if (!data) {
+    return { ok: false, error: { message: "Facture introuvable.", code: "abby_not_found" } };
+  }
+  const invoice = data as unknown as StatusInvoiceRow & {
+    reference: string | null;
+    external_reference: string | null;
+  };
+
+  if (
+    !isPushFinalized({ abby_push_state: invoice.abby_push_state }) ||
+    !invoice.abby_invoice_id
+  ) {
+    return {
+      ok: false,
+      error: {
+        message: "Le PDF Factur-X n'existe que pour une facture finalisée dans Abby.",
+        code: "abby_invalid_state",
+      },
+    };
+  }
+  const abbyInvoiceId = invoice.abby_invoice_id;
+
+  const res = await withAbbyConnection(supabase, entityId, (client: AbbyClient) =>
+    downloadInvoicePdf(client, abbyInvoiceId)
+  );
+  if (!res.ok) return { ok: false, error: res.error };
+
+  const filename = safePdfFilename(
+    invoice.abby_invoice_number ?? invoiceDisplayRef(invoice)
+  );
+  return { ok: true, pdf: res.data, filename };
 }

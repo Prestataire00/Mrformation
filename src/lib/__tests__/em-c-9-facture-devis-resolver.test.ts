@@ -22,7 +22,7 @@ describe("em-c-9 — Scaffold facture/devis (resolver + wiring invoices/process-
   describe("Resolver email-attachments-resolver.ts (dispatch)", () => {
     it("dispatch facture vers resolveFacture(supabase, desc.payload.invoice_id)", () => {
       expect(resolverSource).toMatch(
-        /if \(desc\.type === "facture"\)[\s\S]{0,200}?resolveFacture\(supabase, desc\.payload\.invoice_id\)/,
+        /if \(desc\.type === "facture"\)[\s\S]{0,200}?resolveFacture\(supabase, desc\.payload\.invoice_id,/,
       );
     });
 
