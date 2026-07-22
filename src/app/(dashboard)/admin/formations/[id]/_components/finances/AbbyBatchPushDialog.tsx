@@ -141,6 +141,9 @@ export function AbbyBatchPushDialog({ invoices, onClose, onPushed }: Props) {
 
   // Exécution séquentielle du lot (AD-14) : une saga complète avant la suivante.
   const handleExecute = async () => {
+    // Garde de ré-entrance (symétrique à handleResume) : jamais deux boucles
+    // concurrentes sur les mêmes factures légales (double finalisation).
+    if (phase !== "recap") return;
     const token = runTokenRef.current;
     const ready = readyRows.map((r) => r.invoiceId);
     if (ready.length === 0) return;
