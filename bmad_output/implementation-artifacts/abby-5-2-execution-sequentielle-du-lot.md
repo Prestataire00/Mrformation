@@ -1,6 +1,6 @@
 # Story abby-5.2 : Exécuter le lot séquentiellement, les erreurs n'arrêtent rien
 
-Status: review
+Status: done
 
 baseline_commit: 294a924f (main après abby-5-1 done)
 
