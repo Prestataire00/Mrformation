@@ -1112,11 +1112,15 @@ export function TabFinances({ formation, onRefresh }: Props) {
         onRefreshed={fetchData}
       />
 
-      {/* Dialog -- Récapitulatif consolidé du lot (story 5.1) */}
+      {/* Dialog -- Récap consolidé + exécution du lot (stories 5.1 + 5.2) */}
       <AbbyBatchPushDialog
         invoices={batchDialogInvoices}
         onClose={() => setBatchDialogInvoices(null)}
-        onConfirmed={() => setBatchDialogInvoices(null)}
+        onPushed={() => {
+          // Fin de lot / reprise : badges à jour + sélection purgée (5.1/5.2).
+          fetchData();
+          setBatchSelected(new Set());
+        }}
       />
 
       {/* Dialog -- Confirmation annulation de facture */}

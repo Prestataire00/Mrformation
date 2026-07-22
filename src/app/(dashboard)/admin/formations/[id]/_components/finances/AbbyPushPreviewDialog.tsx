@@ -17,12 +17,8 @@ import { useEntity } from "@/contexts/EntityContext";
 import { useToast } from "@/components/ui/use-toast";
 import { formatCurrency } from "@/lib/utils";
 import type { Invoice } from "@/lib/utils/finances-display";
-import type {
-  AbbyInvoicePreview,
-  AbbyPreviewError,
-  AbbyPushStepOutcome,
-} from "@/lib/types/abby";
-import { getResumeStep } from "@/lib/abby/eligibility";
+import type { AbbyInvoicePreview, AbbyPreviewError } from "@/lib/types/abby";
+import { runInvoicePushLoop } from "@/lib/abby/push-loop";
 
 // Dialog de prévisualisation du push (FR-9, AD-21). La préview est LA
 // confirmation : pas de second dialog par-dessus (un seul niveau de modal).
@@ -127,73 +123,30 @@ export function AbbyPushPreviewDialog({ invoice, onClose, onPushed }: Props) {
   // confirmé porte { restartFromZero: true }. Toute issue refetch TabFinances.
   const runPushLoop = async (restartFromZero: boolean) => {
     if (!invoiceId) return;
+    // L'orchestrateur n'émet PAS l'étape initiale : l'appelant la pose (reprise
+    // vs restart) — sinon le bouton ne passe pas `disabled` au 1er POST et
+    // « Étape 1/5 » disparaît (parité stricte avec l'inline d'avant 5.2).
     const initialStep = restartFromZero ? 2 : (preview?.resume?.fromStep ?? 1);
     setPush({ kind: "pushing", step: initialStep });
-    try {
-      let isFirstCall = true;
-      for (;;) {
-        const res = await fetch(`/api/abby/invoices/${invoiceId}/push`, {
-          method: "POST",
-          ...(restartFromZero && isFirstCall
-            ? {
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ restartFromZero: true }),
-              }
-            : {}),
-        });
-        isFirstCall = false;
-        const json = (await res.json()) as
-          | { step: AbbyPushStepOutcome }
-          | { error: AbbyPreviewError };
-        if (!res.ok || !("step" in json)) {
-          const code = "error" in json ? json.error.code : undefined;
-          if (code === "abby_draft_missing") {
-            // Bascule de CONTENU (jamais un second modal — UX-DR12)
-            setPush({
-              kind: "confirmRestart",
-              message:
-                ("error" in json && json.error.message) ||
-                "Le brouillon Abby de cette facture n'existe plus.",
-            });
-            onPushed();
-            return;
-          }
-          setPush({
-            kind: "pushError",
-            message:
-              ("error" in json && json.error.message) || "Le push a échoué.",
-          });
-          onPushed();
-          return;
-        }
-        if (json.step.done) {
-          setPush({ kind: "success", number: json.step.abbyInvoiceNumber ?? null });
-          toast({
-            title: "Facture finalisée dans Abby",
-            description: json.step.abbyInvoiceNumber
-              ? `Numéro Abby : ${json.step.abbyInvoiceNumber}`
-              : undefined,
-          });
-          onPushed();
-          return;
-        }
-        const nextStep = getResumeStep(json.step.state);
-        if (nextStep === 1) {
-          // État inattendu (jamais nominal) : sortir proprement plutôt que
-          // boucler — le badge refetché dira la vérité
-          setPush({ kind: "pushError", message: "État de push inattendu — rechargez la page." });
-          onPushed();
-          return;
-        }
-        setPush({ kind: "pushing", step: nextStep });
-      }
-    } catch {
-      setPush({
-        kind: "pushError",
-        message: "Le push a été interrompu (réseau). Vous pourrez le reprendre.",
+    // Boucle avance-saga (AD-8) factorisée dans push-loop.ts, partagée avec le
+    // lot (5.2). On mappe le résultat terminal sur l'état UI existant.
+    const outcome = await runInvoicePushLoop(invoiceId, {
+      restartFromZero,
+      onStep: (step) => setPush({ kind: "pushing", step }),
+    });
+    if (outcome.kind === "finalized") {
+      setPush({ kind: "success", number: outcome.number });
+      toast({
+        title: "Facture finalisée dans Abby",
+        description: outcome.number ? `Numéro Abby : ${outcome.number}` : undefined,
       });
-      onPushed();
+    } else if (outcome.kind === "draft_missing") {
+      // Bascule de CONTENU (jamais un second modal — UX-DR12)
+      setPush({ kind: "confirmRestart", message: outcome.message });
+    } else {
+      setPush({ kind: "pushError", message: outcome.message });
     }
+    onPushed();
   };
   const handleConfirm = () => runPushLoop(false);
   const handleRestartFromZero = () => runPushLoop(true);
