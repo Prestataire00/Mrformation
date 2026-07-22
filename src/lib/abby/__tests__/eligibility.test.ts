@@ -10,6 +10,9 @@ import {
   isPushResumable,
   getResumeStep,
   canRecordPaymentInLms,
+  isBatchSelectable,
+  getBatchIneligibilityReason,
+  PUSH_DISABLED_TOOLTIP,
 } from "../eligibility";
 import type { AbbyConnectionStatus } from "@/lib/types/abby";
 
@@ -188,5 +191,75 @@ describe("canRecordPaymentInLms — enregistrement du paiement (story 4.2, FR-18
   it("push non finalisé → jamais proposée (borne AD-13)", () => {
     expect(canRecordPaymentInLms({ ...PAYABLE, abby_push_state: "details_set" })).toBe(false);
     expect(canRecordPaymentInLms({ ...PAYABLE, abby_push_state: null })).toBe(false);
+  });
+});
+
+describe("isBatchSelectable — éligibilité au lot = bouton unitaire visible ET actif (story 5.1, AD-13)", () => {
+  it("facture vierge + connexion active → cochable", () => {
+    expect(isBatchSelectable(INVOICE_VIERGE, "active")).toBe(true);
+  });
+
+  it("strictement aligné sur canPushInvoice (jamais de divergence lot/unitaire)", () => {
+    const statuses: AbbyConnectionStatus[] = [
+      "active", "en_erreur", "desactivee", "non_configuree", "testee",
+    ];
+    const invoices = [
+      INVOICE_VIERGE,
+      { ...INVOICE_VIERGE, is_avoir: true },
+      { ...INVOICE_VIERGE, status: "cancelled" },
+      { ...INVOICE_VIERGE, abby_push_state: "finalized" },
+      { ...INVOICE_VIERGE, abby_push_state: "draft_created" },
+    ];
+    for (const inv of invoices) {
+      for (const s of statuses) {
+        expect(isBatchSelectable(inv, s)).toBe(canPushInvoice(inv, s));
+      }
+    }
+  });
+});
+
+describe("getBatchIneligibilityReason — motif du tooltip d'une ligne non cochable (story 5.1)", () => {
+  it("ligne cochable → null (aucun tooltip)", () => {
+    expect(getBatchIneligibilityReason(INVOICE_VIERGE, "active")).toBeNull();
+  });
+
+  it("avoir → renvoie vers sa facture d'origine", () => {
+    expect(getBatchIneligibilityReason({ ...INVOICE_VIERGE, is_avoir: true }, "active")).toBe(
+      "Un avoir se pousse depuis sa facture d'origine.",
+    );
+  });
+
+  it("annulée → non transmissible", () => {
+    expect(getBatchIneligibilityReason({ ...INVOICE_VIERGE, status: "cancelled" }, "active")).toBe(
+      "Facture annulée — non transmissible.",
+    );
+  });
+
+  it("poussée-finalisée → déjà transmise", () => {
+    expect(getBatchIneligibilityReason({ ...INVOICE_VIERGE, abby_push_state: "finalized" }, "active")).toBe(
+      "Déjà transmise à Abby.",
+    );
+  });
+
+  it.each(["pushing", "draft_created", "lines_set", "details_set"])(
+    "push interrompu (%s) → reprise, JAMAIS « déjà transmise »",
+    (state) => {
+      expect(getBatchIneligibilityReason({ ...INVOICE_VIERGE, abby_push_state: state }, "active")).toBe(
+        "Push interrompu — reprenez-le depuis cette ligne.",
+      );
+    },
+  );
+
+  it.each(["desactivee", "en_erreur"] as AbbyConnectionStatus[])(
+    "jamais poussée mais connexion %s → reconnecter",
+    (status) => {
+      expect(getBatchIneligibilityReason(INVOICE_VIERGE, status)).toBe(PUSH_DISABLED_TOOLTIP);
+    },
+  );
+
+  it("avoir prime sur l'état de connexion", () => {
+    expect(getBatchIneligibilityReason({ ...INVOICE_VIERGE, is_avoir: true }, "desactivee")).toBe(
+      "Un avoir se pousse depuis sa facture d'origine.",
+    );
   });
 });
