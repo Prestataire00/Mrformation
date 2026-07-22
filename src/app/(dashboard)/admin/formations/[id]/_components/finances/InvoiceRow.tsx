@@ -1,5 +1,6 @@
 import { Badge, badgeVariants } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Tooltip,
@@ -18,6 +19,8 @@ import {
   isPushResumable,
   isPushFinalized,
   getPushDisabledReason,
+  isBatchSelectable,
+  getBatchIneligibilityReason,
 } from "@/lib/abby/eligibility";
 import { deriveAbbyBadge } from "@/lib/abby/invoice-badge";
 
@@ -37,6 +40,58 @@ interface Props extends InvoiceActionHandlers {
   abbyConnectionStatus: AbbyConnectionStatus | null;
   onAbbyPush: (inv: Invoice) => void;
   onAbbyDetail: (inv: Invoice) => void;
+  /** Sélection de lot (story 5.1) — piloté par TabFinances. */
+  selected: boolean;
+  onToggleSelect: (inv: Invoice) => void;
+}
+
+/**
+ * Cellule de tête de la sélection de lot (story 5.1) : une Checkbox sur les
+ * lignes éligibles au lot (`isBatchSelectable` = bouton unitaire visible ET
+ * actif, AD-13), sinon un placeholder focusable avec le motif « pourquoi pas »
+ * (UX-DR7 : accessible clavier, pas hover-only). Rendue uniquement quand la
+ * Zone Abby est visible (connexion déjà activée).
+ */
+function BatchSelectCell({
+  invoice,
+  status,
+  selected,
+  onToggleSelect,
+}: {
+  invoice: Invoice;
+  status: AbbyConnectionStatus;
+  selected: boolean;
+  onToggleSelect: (inv: Invoice) => void;
+}) {
+  if (isBatchSelectable(invoice, status)) {
+    return (
+      <Checkbox
+        checked={selected}
+        onCheckedChange={() => onToggleSelect(invoice)}
+        aria-label={`Sélectionner la facture ${invoiceDisplayRef(invoice)} pour le lot Abby`}
+      />
+    );
+  }
+  const reason = getBatchIneligibilityReason(invoice, status);
+  // Non sélectionnable ⇒ motif garanti non null ; garde tsc (reason: string|null).
+  if (!reason) return null;
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          {/* span focusable : le placeholder doit rester atteignable au clavier */}
+          <span
+            tabIndex={0}
+            aria-label={reason}
+            className="inline-flex h-4 w-4 items-center justify-center rounded text-muted-foreground/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            —
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>{reason}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
 }
 
 /**
@@ -142,11 +197,28 @@ function AbbyZone({
 }
 
 /** Zone 4 du spec : une ligne de facture lisible. */
-export function InvoiceRow({ invoice, abbyConnectionStatus, onAbbyPush, onAbbyDetail, ...handlers }: Props) {
+export function InvoiceRow({ invoice, abbyConnectionStatus, onAbbyPush, onAbbyDetail, selected, onToggleSelect, ...handlers }: Props) {
   const badge = STATUS_BADGES[invoice.status] ?? STATUS_BADGES.pending;
 
   return (
     <div className="flex items-center gap-3 py-2.5 border-b border-gray-100 last:border-0">
+      {/* Cellule de sélection de lot (story 5.1) : présente uniquement quand la
+          Zone Abby l'est. Connexion jamais activée → aucune cellule (DOM identique
+          à l'existant, FR-8). Non résolue → Skeleton fin, cohérent avec la Zone. */}
+      {abbyConnectionStatus === null ? (
+        <span className="w-8 shrink-0 flex items-center justify-center">
+          <Skeleton className="h-4 w-4" />
+        </span>
+      ) : isAbbyZoneVisible(abbyConnectionStatus) ? (
+        <span className="w-8 shrink-0 flex items-center justify-center">
+          <BatchSelectCell
+            invoice={invoice}
+            status={abbyConnectionStatus}
+            selected={selected}
+            onToggleSelect={onToggleSelect}
+          />
+        </span>
+      ) : null}
       <span className="font-mono text-xs text-muted-foreground w-24 shrink-0">
         {invoiceDisplayRef(invoice)}
       </span>

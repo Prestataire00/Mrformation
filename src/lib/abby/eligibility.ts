@@ -153,3 +153,38 @@ export function getPushDisabledReason(
     ? PUSH_DISABLED_TOOLTIP
     : null;
 }
+
+/**
+ * Éligibilité au LOT (story 5.1, AD-13) : une facture est cochable pour le lot
+ * SI ET SEULEMENT SI son bouton unitaire « Pousser vers Abby » est visible ET
+ * actif. Alias NOMMÉ de `canPushInvoice` — jamais de logique dupliquée, pour que
+ * l'éligibilité lot et unitaire ne divergent jamais.
+ */
+export function isBatchSelectable(
+  invoice: AbbyPushEligibilityInput,
+  connectionStatus: AbbyConnectionStatus
+): boolean {
+  return canPushInvoice(invoice, connectionStatus);
+}
+
+/**
+ * Motif (tooltip focusable) d'une ligne NON cochable au lot, ou `null` si elle
+ * l'est. Ordre des branches (la 1ʳᵉ qui matche gagne) : avoir → annulée →
+ * poussée-finalisée → push interrompu (état intermédiaire) → connexion inactive.
+ * ⚠️ « Déjà transmise » NE couvre PAS un push interrompu : la même ligne affiche
+ * un badge « Interrompue » + un bouton « Reprendre le push » (InvoiceRow), dire
+ * « déjà transmise » y serait faux. On compose sur `isPushFinalized`.
+ */
+export function getBatchIneligibilityReason(
+  invoice: AbbyPushEligibilityInput,
+  connectionStatus: AbbyConnectionStatus
+): string | null {
+  if (invoice.is_avoir) return "Un avoir se pousse depuis sa facture d'origine.";
+  if (invoice.status === "cancelled") return "Facture annulée — non transmissible.";
+  if (isPushFinalized(invoice)) return "Déjà transmise à Abby.";
+  if (invoice.abby_push_state !== null)
+    return "Push interrompu — reprenez-le depuis cette ligne.";
+  // Ici : jamais poussée, non avoir, non annulée → cochable SSI connexion active.
+  if (connectionStatus !== "active") return PUSH_DISABLED_TOOLTIP;
+  return null;
+}

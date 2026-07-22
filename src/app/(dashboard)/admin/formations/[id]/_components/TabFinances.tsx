@@ -16,6 +16,8 @@ import { InvoiceSection } from "./finances/InvoiceSection";
 import { ChargesPanel } from "./finances/ChargesPanel";
 import { AbbyPushPreviewDialog } from "./finances/AbbyPushPreviewDialog";
 import { AbbyInvoiceDetailDialog } from "./finances/AbbyInvoiceDetailDialog";
+import { AbbyBatchPushDialog } from "./finances/AbbyBatchPushDialog";
+import { isBatchSelectable } from "@/lib/abby/eligibility";
 import { EmailPreviewDialog, type EmailTemplateOption } from "@/components/emails/EmailPreviewDialog";
 import { listFormationAttachments, type AvailableAttachment } from "@/lib/formations/formation-attachments";
 
@@ -189,12 +191,19 @@ export function TabFinances({ formation, onRefresh }: Props) {
   // Prédicats disjoints avec la préview (push = non finalisée) : les deux
   // dialogs ne peuvent pas être ouverts en même temps (un seul modal).
   const [abbyDetailTarget, setAbbyDetailTarget] = useState<Invoice | null>(null);
+  // Story 5.1 : sélection de lot (globale aux 3 sections) + dialog récapitulatif.
+  // Déclarés AVANT l'effet qui les reset (règle projet post-incident TDZ).
+  const [batchSelected, setBatchSelected] = useState<Set<string>>(new Set());
+  const [batchDialogInvoices, setBatchDialogInvoices] = useState<Invoice[] | null>(null);
   useEffect(() => {
     let stale = false;
     setAbbyConnectionStatus(null);
     // Une préview/un détail de l'entité A ne doit jamais rester ouvert sous B
     setAbbyPreviewTarget(null);
     setAbbyDetailTarget(null);
+    // Sélection/récap de lot : ne jamais survivre au changement d'entité.
+    setBatchSelected(new Set());
+    setBatchDialogInvoices(null);
     (async () => {
       try {
         const res = await fetch("/api/abby/connections");
@@ -219,6 +228,15 @@ export function TabFinances({ formation, onRefresh }: Props) {
   };
   const handleAbbyDetail = (inv: Invoice) => {
     setAbbyDetailTarget(inv);
+  };
+  // Story 5.1 : coche/décoche une facture pour le lot (Set immutable — React).
+  const handleToggleBatchSelect = (inv: Invoice) => {
+    setBatchSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(inv.id)) next.delete(inv.id);
+      else next.add(inv.id);
+      return next;
+    });
   };
 
   // Crée un formulaire de facture vierge (fonction → `lines` jamais partagé).
@@ -969,6 +987,15 @@ export function TabFinances({ formation, onRefresh }: Props) {
     ? parseAvoirAmount(avoirAmountInput, avoirMax)
     : null;
 
+  // Story 5.1 : sélection EFFECTIVE du lot = factures cochées ENCORE éligibles.
+  // Garde null tsc : isBatchSelectable exige un status non-null (eligibility.ts) —
+  // une sélection ne peut exister que connexion active. L'intersection écarte
+  // aussi un id périmé (facture devenue poussée depuis la coche).
+  const selectedInvoices =
+    abbyConnectionStatus === "active"
+      ? invoices.filter((i) => batchSelected.has(i.id) && isBatchSelectable(i, abbyConnectionStatus))
+      : [];
+
   return (
     <div className="space-y-6">
       {/* Zone 1 — Indicateurs */}
@@ -990,6 +1017,24 @@ export function TabFinances({ formation, onRefresh }: Props) {
           </Button>
         </div>
       </div>
+
+      {/* Barre de lot Abby (story 5.1) : absente à 0 sélection (UX-DR7 « Lot vide »). */}
+      {selectedInvoices.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/40 px-4 py-2.5">
+          <span className="text-sm font-medium text-gray-800">
+            {selectedInvoices.length} facture{selectedInvoices.length > 1 ? "s" : ""} sélectionnée
+            {selectedInvoices.length > 1 ? "s" : ""}
+          </span>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="ghost" onClick={() => setBatchSelected(new Set())}>
+              Tout décocher
+            </Button>
+            <Button size="sm" onClick={() => setBatchDialogInvoices(selectedInvoices)}>
+              Pousser la sélection vers Abby ({selectedInvoices.length})
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Auto-generate button */}
       {canAutoGenerate && (
@@ -1031,6 +1076,8 @@ export function TabFinances({ formation, onRefresh }: Props) {
               abbyConnectionStatus={abbyConnectionStatus}
               onAbbyPush={handleAbbyPush}
               onAbbyDetail={handleAbbyDetail}
+              selectedIds={batchSelected}
+              onToggleSelect={handleToggleBatchSelect}
               onDownloadPdf={handleDownloadPdf}
               onSendEmail={handleSendInvoiceEmail}
               onMarkPaid={(inv) => handleUpdateStatus(inv.id, "paid")}
@@ -1063,6 +1110,13 @@ export function TabFinances({ formation, onRefresh }: Props) {
         invoice={abbyDetailTarget}
         onClose={() => setAbbyDetailTarget(null)}
         onRefreshed={fetchData}
+      />
+
+      {/* Dialog -- Récapitulatif consolidé du lot (story 5.1) */}
+      <AbbyBatchPushDialog
+        invoices={batchDialogInvoices}
+        onClose={() => setBatchDialogInvoices(null)}
+        onConfirmed={() => setBatchDialogInvoices(null)}
       />
 
       {/* Dialog -- Confirmation annulation de facture */}
