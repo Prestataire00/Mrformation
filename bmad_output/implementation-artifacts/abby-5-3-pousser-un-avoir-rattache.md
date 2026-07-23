@@ -1,6 +1,6 @@
 # Story abby-5.3 : Pousser un avoir rattaché à sa facture Abby d'origine
 
-Status: review
+Status: done
 
 baseline_commit: 1ca35f18 (main après abby-5-2 done)
 
