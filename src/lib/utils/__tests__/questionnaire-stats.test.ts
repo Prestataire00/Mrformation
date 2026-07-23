@@ -108,4 +108,36 @@ describe("computeLearnerStatuses", () => {
     const result = computeLearnerStatuses(enrollments, evalAssignments, [], tokens, responses);
     expect(result[0].status).toBe("not_sent");
   });
+
+  it("exclut le bilan formateur (satisfaction target_type='trainer') de la grille apprenant (retour Loris #20)", () => {
+    const enrollments = [
+      { learner: { id: "L1", first_name: "Alice", last_name: "Martin" } },
+      { learner: { id: "L2", first_name: "Bob", last_name: "Dupont" } },
+    ];
+    // Un questionnaire apprenant + un bilan formateur ciblé trainer.
+    const evalAssignments = [
+      { questionnaire_id: "q1", evaluation_type: "eval_preformation", questionnaire: { title: "Positionnement" } },
+    ];
+    const satisAssignments = [
+      { questionnaire_id: "qf", satisfaction_type: "bilan_formateur", target_type: "trainer", questionnaire: { title: "Bilan formateur" } },
+    ];
+    const tokens: Array<{ questionnaire_id?: string; learner_id?: string; expires_at?: string; id?: string }> = [];
+    const responses: Array<{ questionnaire_id?: string; learner_id?: string; id: string }> = [];
+
+    const result = computeLearnerStatuses(enrollments, evalAssignments, satisAssignments, tokens, responses);
+    // 2 apprenants × 1 questionnaire APPRENANT = 2 cellules (le bilan formateur exclu).
+    expect(result).toHaveLength(2);
+    expect(result.every((c) => c.questionnaireId === "q1")).toBe(true);
+    expect(result.some((c) => c.questionnaireId === "qf")).toBe(false);
+  });
+
+  it("garde une satisfaction ciblée apprenant (target_type='learner')", () => {
+    const enrollments = [{ learner: { id: "L1", first_name: "Alice", last_name: "M" } }];
+    const satisAssignments = [
+      { questionnaire_id: "qs", satisfaction_type: "satisfaction_chaud", target_type: "learner", questionnaire: { title: "Satisfaction" } },
+    ];
+    const result = computeLearnerStatuses(enrollments, [], satisAssignments, [], []);
+    expect(result).toHaveLength(1);
+    expect(result[0].questionnaireId).toBe("qs");
+  });
 });
