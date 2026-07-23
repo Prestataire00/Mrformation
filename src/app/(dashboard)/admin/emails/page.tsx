@@ -497,6 +497,13 @@ export default function EmailsPage() {
     ? learners.filter((l) => l.client_id === selectedClientId)
     : learners;
 
+  // Retour Loris #2 : « aucune balise ne fonctionne ». Les balises ne se
+  // remplissent que si un contexte (session/client/apprenant) est sélectionné.
+  // On détecte les variables non résolues (format {{…}} ET [%…%]) pour afficher
+  // un bandeau explicite quand aucun contexte n'est choisi.
+  const sendUnresolvedVars = findUnresolvedVariables(`${sendForm.subject} ${sendForm.body}`);
+  const sendHasNoContext = !selectedSessionId && !selectedClientId && !selectedLearnerId;
+
   // Template CRUD
   const openAddTemplate = () => {
     setEditingTemplate(null);
@@ -696,8 +703,12 @@ export default function EmailsPage() {
     // Warn about unresolved variables
     const unresolved = findUnresolvedVariables(sendForm.subject + " " + sendForm.body);
     if (unresolved.length > 0) {
+      const noContext = !selectedSessionId && !selectedClientId && !selectedLearnerId;
+      const hint = noContext
+        ? "\n\n➡️ Astuce : sélectionnez une session / un client / un apprenant dans « Contexte » (en haut de cette fenêtre) pour les remplir automatiquement."
+        : "";
       const proceed = window.confirm(
-        `⚠️ ${unresolved.length} variable(s) non résolue(s) :\n${unresolved.join(", ")}\n\nLes variables apparaîtront en l'état dans l'email.\n\nEnvoyer quand même ?`
+        `⚠️ ${unresolved.length} variable(s) non résolue(s) :\n${unresolved.join(", ")}\n\nLes variables apparaîtront en l'état dans l'email.${hint}\n\nEnvoyer quand même ?`
       );
       if (!proceed) return;
     }
@@ -1504,8 +1515,21 @@ export default function EmailsPage() {
             {/* Context selectors for variable resolution */}
             <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg space-y-3">
               <p className="text-xs font-medium text-blue-700">
-                Contexte (optionnel) — sélectionnez pour résoudre automatiquement les variables
+                Contexte — sélectionnez pour résoudre automatiquement les variables
               </p>
+              {sendUnresolvedVars.length > 0 && sendHasNoContext && (
+                <div className="flex items-start gap-2 p-2 bg-amber-100 border border-amber-300 rounded text-xs text-amber-900">
+                  <span className="shrink-0">⚠️</span>
+                  <span>
+                    Ce message contient <strong>{sendUnresolvedVars.length} variable(s)</strong> non
+                    remplie(s) ({sendUnresolvedVars.slice(0, 3).join(", ")}
+                    {sendUnresolvedVars.length > 3 ? "…" : ""}). Choisissez une{" "}
+                    <strong>session</strong>, un <strong>client</strong> ou un{" "}
+                    <strong>apprenant</strong> ci-dessous pour les remplir automatiquement — sinon
+                    elles partiront <strong>telles quelles</strong> dans l'email.
+                  </span>
+                </div>
+              )}
               <div className="grid grid-cols-3 gap-3">
                 <div className="space-y-1">
                   <Label className="text-xs text-blue-600">Session</Label>

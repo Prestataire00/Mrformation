@@ -249,8 +249,18 @@ export function computeLearnerStatuses(
   const now = Date.now();
   const result: LearnerStatusCell[] = [];
 
-  // Construire la liste des couples (questionnaire_id, title) attribués (eval + satis)
-  const allAssignments = [...evalAssignments, ...satisAssignments];
+  // Construire la liste des couples (questionnaire_id, title) attribués aux
+  // APPRENANTS uniquement. Les assignments de satisfaction ciblés formateur /
+  // entreprise / manager / financeur (target_type ≠ 'learner') ne doivent PAS
+  // apparaître dans la grille de statut PAR APPRENANT — sinon le « bilan
+  // formateur » (ciblé trainer) se retrouvait affiché comme attribué à CHAQUE
+  // stagiaire (retour Loris #20 : « le questionnaire formateur s'attribue aux
+  // stagiaires »). Les évaluations (pré/post/positionnement) n'ont pas de
+  // target_type → apprenant par défaut.
+  const allAssignments = [...evalAssignments, ...satisAssignments].filter((a) => {
+    const t = a.target_type;
+    return t == null || t === "learner";
+  });
   const questionnaireMap = new Map<string, string>();
   for (const a of allAssignments) {
     if (typeof a.questionnaire_id === "string") {
