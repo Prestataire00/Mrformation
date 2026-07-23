@@ -18,6 +18,8 @@ const RichTextEditor = dynamic(
 );
 import { plainTextToHtml, isHtmlContent } from "@/lib/migrate-templates";
 import { exportHtmlToPDF, exportToPDF } from "@/lib/pdf-export";
+import { useDocumentGeneration } from "@/hooks/useDocumentGeneration";
+import { downloadBase64Pdf } from "@/lib/utils/download-blob";
 import { renderSystemTemplate } from "@/lib/templates/registry";
 import { BackToFormationLink } from "@/components/ui/back-to-formation-link";
 import { InsertVariableButton } from "@/components/editor/InsertVariableButton";
@@ -260,6 +262,11 @@ export default function DocumentsPage() {
   const supabase = createClient();
   const { toast } = useToast();
   const { entity, entityId } = useEntity();
+  // Génération serveur (retour Loris #9) : les modèles Word (docx_fidelity) ont
+  // un contenu HTML nul → la résolution client des balises ne s'applique pas.
+  // On route leur aperçu/génération/export vers /api/documents/generate-from-template
+  // qui résout les balises DANS le .docx (comme le chemin des docs secondaires).
+  const { generate: generateViaServer, incompleteDialog } = useDocumentGeneration();
 
   // Templates state
   const [templates, setTemplates] = useState<DocumentTemplate[]>([]);
@@ -884,6 +891,17 @@ export default function DocumentsPage() {
   };
 
   const handleExportTemplateAsPDF = async (tpl?: DocumentTemplate) => {
+    // Modèle Word enregistré : pas de contenu HTML à exporter. On produit un
+    // aperçu PDF via le serveur (balises non résolues faute de contexte →
+    // force:true pour laisser passer les placeholders sur cet aperçu de modèle).
+    if (tpl?.mode === "docx_fidelity" && tpl.id) {
+      const result = await generateViaServer({ template_id: tpl.id, context: {}, force: true });
+      if (result) {
+        downloadBase64Pdf(result.base64, result.filename || `modele-${tpl.name}.pdf`);
+        toast({ title: "Aperçu du modèle Word exporté (PDF)" });
+      }
+      return;
+    }
     const content = tpl ? getTemplateContent(tpl) : templateForm.content;
     const name = tpl?.name || templateForm.name || "Document";
     if (!content || content.replace(/<[^>]*>/g, "").trim() === "") {
@@ -919,6 +937,18 @@ export default function DocumentsPage() {
   const updatePreview = async (form: GenerateFormData) => {
     if (!form.template_id) { setPreviewContent(""); return; }
     const template = templates.find((t) => t.id === form.template_id);
+    // Modèle Word : pas d'aperçu HTML des variables ici (le rendu fidèle est un
+    // PDF LibreOffice). On l'explique plutôt que d'afficher un aperçu vide.
+    if (template?.mode === "docx_fidelity") {
+      setPreviewContent(
+        `<div style="padding:1rem;color:#374151;font-size:0.875rem;line-height:1.6">
+          <p><strong>Modèle Word (.docx)</strong> — l'aperçu des variables n'est pas rendu à l'écran.</p>
+          <p>Cliquez sur <strong>Générer</strong> : le PDF sera produit avec les balises résolues et la mise en forme Word préservée.</p>
+        </div>`,
+      );
+      setShowPreview(true);
+      return;
+    }
     if (!template?.content) { setPreviewContent(""); return; }
 
     let sessionData: Session | null = null;
@@ -972,6 +1002,33 @@ export default function DocumentsPage() {
     // insert, liaison signatures) peuvent rejeter sur coupure réseau → sans ça
     // le bouton « Générer » restait figé, aucun toast.
     try {
+
+    // Modèle Word (docx_fidelity) : contenu HTML nul → la résolution client
+    // ci-dessous ne substituerait rien. On génère côté serveur (balises
+    // résolues dans le .docx) et on télécharge le PDF. Le hook gère les 422
+    // INCOMPLETE_DATA (modal Qualiopi) et les erreurs (toast).
+    if (template.mode === "docx_fidelity") {
+      const result = await generateViaServer({
+        template_id: template.id,
+        context: {
+          session_id: generateForm.session_id || undefined,
+          client_id: generateForm.client_id || undefined,
+          learner_id: generateForm.learner_id || undefined,
+        },
+      });
+      if (result) {
+        downloadBase64Pdf(
+          result.base64,
+          result.filename || `${generateForm.name.trim() || "document"}.pdf`,
+        );
+        toast({
+          title: "Document Word généré",
+          description: "Le PDF avec les variables résolues a été téléchargé.",
+        });
+        setGenerateDialogOpen(false);
+      }
+      return;
+    }
 
     let sessionData: Session | null = null;
     let clientData: Client | null = null;
@@ -2456,6 +2513,10 @@ export default function DocumentsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Modal Qualiopi « données incomplètes » (422) pour la génération serveur
+          des modèles Word — cf. useDocumentGeneration. */}
+      {incompleteDialog}
     </div>
   );
 }

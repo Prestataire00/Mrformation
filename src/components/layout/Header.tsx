@@ -232,7 +232,11 @@ export function Header({ profile, entity }: HeaderProps) {
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => {
             const role = profile?.role ?? "admin";
-            router.push(`/${role}/profile`);
+            // Il n'existe de route profil que pour admin/learner/client/trainer.
+            // super_admin et commercial utilisent le tableau de bord admin →
+            // les mapper vers /admin/profile (sinon /super_admin/profile = 404).
+            const profileBase = role === "super_admin" || role === "commercial" ? "admin" : role;
+            router.push(`/${profileBase}/profile`);
           }}>
             <User className="mr-2 h-4 w-4" />
             Mon Profil

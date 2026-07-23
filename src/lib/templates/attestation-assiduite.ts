@@ -6,13 +6,15 @@
  * formation + section "Assiduité du stagiaire" avec heures réalisées + taux
  * + résultat évaluation + signature.
  *
- * "Heures réalisées" : calculées par créneau émargé — somme des durées des
- * `formation_time_slots` que l'apprenant a signés (signatures portant
- * `time_slot_id`), taux = heures suivies / heures totales des créneaux. Cf.
- * `computeAttestationAttendance` (src/lib/services/learner-attendance.ts).
- * Fallback legacy (session sans créneaux ou signatures non slot-aware) :
- * présence intégrale (heures = planned_hours, taux 100%) si l'apprenant a
- * ≥1 signature, sinon 0h / 0%.
+ * La section "Assiduité" est rendue via la variable calculée [%Ligne
+ * d'assiduité%] ({{ligne_assiduite}} dans resolve-variables.ts) :
+ *  - assiduité calculable (signatures slot-level) → heures réelles + taux réel
+ *    (somme des durées des `formation_time_slots` signés / heures totales, cf.
+ *    `computeAttestationAttendance` src/lib/services/learner-attendance.ts) ;
+ *  - sinon (session sans créneaux OU émargement non slot-aware) → repli
+ *    HONNÊTE : « calcul non disponible » + raison (émargement par créneau non
+ *    renseigné). On n'imprime plus un faux 100 % sur un document légal
+ *    (retour Loris #13).
  */
 
 export const ATTESTATION_ASSIDUITE_HTML = `<!DOCTYPE html>
@@ -135,8 +137,7 @@ export const ATTESTATION_ASSIDUITE_HTML = `<!DOCTYPE html>
 
   <h2 class="section">Assiduité du stagiaire</h2>
 
-  <p class="assiduite-line">Durée effectivement suivie par le/la stagiaire : <strong>[%Heures de formation réalisées par l'apprenant%] heures</strong>,<br>
-  soit un taux de réalisation de <strong>[%Taux de réalisation%] %</strong>.</p>
+  <p class="assiduite-line">[%Ligne d'assiduité%]</p>
 
   <p class="evaluation-line">Résultat de l'évaluation des acquis jalonnant ou terminant la formation (QUIZZ, TEST, QCM etc....) : <strong>ACQUIS</strong></p>
   <p class="emargement-line">La feuille d'émargement attestant cette assiduité est fournie en annexe.</p>
