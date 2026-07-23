@@ -32,9 +32,14 @@ export async function PATCH(
     .eq("id", user.id)
     .single();
 
-  if (!callerProfile || callerProfile.role !== "admin") {
+  // Fix retour Loris #35 : la route refusait `super_admin` (role !== "admin"
+  // → 403), alors qu'un super_admin peut légitimement éditer un utilisateur
+  // (cf. route DELETE qui autorise ["admin", "super_admin"]). Symptôme
+  // gérant : « impossible de modifier un utilisateur ».
+  if (!callerProfile || !["admin", "super_admin"].includes(callerProfile.role)) {
     return NextResponse.json({ error: "Accès non autorisé" }, { status: 403 });
   }
+  const isSuperAdmin = callerProfile.role === "super_admin";
 
   const body = await request.json();
   const { first_name, last_name, email, phone, role, source } = body;
@@ -46,7 +51,11 @@ export async function PATCH(
     );
   }
 
+  // Un super_admin peut conserver/attribuer le rôle super_admin (sinon éditer
+  // un compte super_admin renvoyait « Rôle invalide »). Un admin standard ne
+  // peut pas promouvoir vers super_admin.
   const validRoles = ["admin", "commercial", "trainer", "client", "learner"];
+  if (isSuperAdmin) validRoles.push("super_admin");
   if (role && !validRoles.includes(role)) {
     return NextResponse.json(
       { error: `Rôle invalide. Rôles acceptés : ${validRoles.join(", ")}` },
@@ -56,47 +65,77 @@ export async function PATCH(
 
   const userId = params.id;
   const adminClient = createAdminClient();
+  let authWarning: string | undefined;
 
+  // Le filtre entity_id ne s'applique PAS au super_admin (dont la ligne
+  // profiles a entity_id NULL → .eq("entity_id", NULL) matchait 0 row et
+  // renvoyait un faux succès sans rien modifier). On détecte aussi le cas
+  // « 0 ligne affectée » via .select() pour renvoyer 404 au lieu d'un faux
+  // { success: true } (même faille que celle corrigée sur DELETE en PR #201).
   if (source === "profile") {
-    // Update profiles table
-    const { error: profileError } = await adminClient
+    let profileUpdate = adminClient
       .from("profiles")
       .update({ first_name, last_name, email, phone: phone || null, role })
-      .eq("id", userId)
-      .eq("entity_id", callerProfile.entity_id);
+      .eq("id", userId);
+    if (!isSuperAdmin) profileUpdate = profileUpdate.eq("entity_id", callerProfile.entity_id);
+    const { data: updatedProfile, error: profileError } = await profileUpdate.select("id");
 
     if (profileError) {
       return NextResponse.json({ error: sanitizeDbError(profileError, "update user profile") }, { status: 500 });
     }
+    if (!updatedProfile || updatedProfile.length === 0) {
+      return NextResponse.json(
+        { error: "Utilisateur introuvable ou rattaché à une autre entité" },
+        { status: 404 }
+      );
+    }
 
-    // Also update the auth user's email if it changed
+    // Mise à jour de l'email de connexion (auth). En cas d'échec, l'ancien
+    // comportement avalait l'erreur → l'email profile changeait mais pas
+    // l'email de connexion (utilisateur bloqué). On la remonte désormais en
+    // avertissement pour que l'admin le sache.
     const { error: authError } = await adminClient.auth.admin.updateUserById(userId, {
       email,
     });
 
     if (authError) {
-      // Non-blocking: profile was updated, just log the auth error
       console.error("Failed to update auth email:", authError.message);
+      authWarning =
+        "Le profil a été modifié, mais l'email de connexion n'a pas pu être mis à jour. L'utilisateur doit continuer à se connecter avec son ancien email.";
     }
   } else if (source === "learner") {
-    const { error } = await adminClient
+    let learnerUpdate = adminClient
       .from("learners")
       .update({ first_name, last_name, email, phone: phone || null })
-      .eq("id", userId)
-      .eq("entity_id", callerProfile.entity_id);
+      .eq("id", userId);
+    if (!isSuperAdmin) learnerUpdate = learnerUpdate.eq("entity_id", callerProfile.entity_id);
+    const { data: updatedLearner, error } = await learnerUpdate.select("id");
 
     if (error) {
       return NextResponse.json({ error: sanitizeDbError(error, "update learner") }, { status: 500 });
     }
+    if (!updatedLearner || updatedLearner.length === 0) {
+      return NextResponse.json(
+        { error: "Apprenant introuvable ou rattaché à une autre entité" },
+        { status: 404 }
+      );
+    }
   } else if (source === "trainer") {
-    const { error } = await adminClient
+    let trainerUpdate = adminClient
       .from("trainers")
       .update({ first_name, last_name, email, phone: phone || null })
-      .eq("id", userId)
-      .eq("entity_id", callerProfile.entity_id);
+      .eq("id", userId);
+    if (!isSuperAdmin) trainerUpdate = trainerUpdate.eq("entity_id", callerProfile.entity_id);
+    const { data: updatedTrainer, error } = await trainerUpdate.select("id");
 
     if (error) {
       return NextResponse.json({ error: sanitizeDbError(error, "update trainer user") }, { status: 500 });
+    }
+    if (!updatedTrainer || updatedTrainer.length === 0) {
+      return NextResponse.json(
+        { error: "Formateur introuvable ou rattaché à une autre entité" },
+        { status: 404 }
+      );
     }
   } else {
     return NextResponse.json({ error: "Source inconnue" }, { status: 400 });
@@ -112,7 +151,7 @@ export async function PATCH(
     details: { email, role, source },
   });
 
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ success: true, warning: authWarning });
 }
 
 // DELETE: Delete user

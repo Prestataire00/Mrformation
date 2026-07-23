@@ -138,19 +138,28 @@ export async function relanceInactiveProspects(
 
     if (recentActions && recentActions.length > 0) continue;
 
-    // Check if a relance task already exists (avoid duplicates)
-    const taskTitle = `Relancer ${p.company_name}`;
-    const { data: existingTask } = await supabase
+    // Fix retour Loris : ne pas créer de relance si une action est DÉJÀ
+    // planifiée pour ce prospect — c.-à-d. une tâche/rappel ouvert dont
+    // l'échéance est aujourd'hui ou plus tard. Sinon le cron recréait un
+    // rappel « Relancer X » à chaque passage alors qu'un suivi futur existait
+    // déjà (ex. un rappel posé en novembre pour un plan 2027 sur une
+    // entreprise « full »). Ce test remplace l'ancien dédoublonnage par titre
+    // exact et le subsume : la relance créée (échéance J+3) est elle-même une
+    // tâche future, donc le passage suivant la détecte et ne duplique pas.
+    const todayStr = today.toISOString().split("T")[0];
+    const { data: plannedTask } = await supabase
       .from("crm_tasks")
       .select("id")
       .eq("entity_id", entityId)
-      .eq("title", taskTitle)
+      .eq("prospect_id", p.id)
       .in("status", ["pending", "in_progress"])
+      .gte("due_date", todayStr)
       .limit(1);
 
-    if (existingTask && existingTask.length > 0) continue;
+    if (plannedTask && plannedTask.length > 0) continue;
 
     // Create relance task
+    const taskTitle = `Relancer ${p.company_name}`;
     const assignee = p.assigned_to || (admins && admins.length > 0 ? admins[0].id : null);
     await supabase.from("crm_tasks").insert({
       entity_id: entityId,

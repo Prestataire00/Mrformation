@@ -294,6 +294,11 @@ export default function UsersPage() {
       return;
     }
 
+    if (json.warning) {
+      toast({ title: "⚠️ Modification partielle", description: json.warning, variant: "destructive" });
+    } else {
+      toast({ title: "Utilisateur modifié" });
+    }
     setEditModal(null);
     setEditSaving(false);
     loadUsers();
