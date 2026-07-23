@@ -10,15 +10,17 @@ vi.mock("../abby-connections", () => ({
 vi.mock("@/lib/abby/client", () => ({
   createAbbyClient: vi.fn(),
   getAbbyInvoice: vi.fn(),
+  readAbbyState: vi.fn(),
   downloadInvoicePdf: vi.fn(),
 }));
 
 import { getConnectionState, withAbbyConnection } from "../abby-connections";
-import { getAbbyInvoice, downloadInvoicePdf } from "@/lib/abby/client";
+import { getAbbyInvoice, readAbbyState, downloadInvoicePdf } from "@/lib/abby/client";
 
 const getConnectionStateMock = vi.mocked(getConnectionState);
 const withAbbyConnectionMock = vi.mocked(withAbbyConnection);
 const getAbbyInvoiceMock = vi.mocked(getAbbyInvoice);
+const readAbbyStateMock = vi.mocked(readAbbyState);
 const downloadInvoicePdfMock = vi.mocked(downloadInvoicePdf);
 
 const ENTITY_ID = "ent-mr";
@@ -27,6 +29,7 @@ const INVOICE_ID = "inv-1";
 const FINALIZED_INVOICE = {
   id: INVOICE_ID,
   abby_invoice_id: "abby-inv-9",
+  is_avoir: false,
   abby_push_state: "finalized" as string | null,
   abby_push_locked_at: null,
   abby_invoice_number: "F-2026-0042",
@@ -116,6 +119,14 @@ beforeEach(() => {
     paidAt: 1784332800, // secondes
     finalizedAt: 1784246400,
   });
+  // refreshInvoiceStatus relit via readAbbyState (dispatch is_avoir, story 5.3)
+  readAbbyStateMock.mockResolvedValue({
+    id: "abby-inv-9",
+    number: "F-2026-0042",
+    state: "paid",
+    paidAt: 1784332800,
+    finalizedAt: 1784246400,
+  });
   downloadInvoicePdfMock.mockResolvedValue(Buffer.from("%PDF-1.7 fake"));
 });
 
@@ -148,7 +159,7 @@ describe("refreshInvoiceStatus — INVARIANT AD-11 (jamais status ni paid_at LMS
   });
 
   it("dates Abby en millisecondes (défensif) : converties sans année fantôme", async () => {
-    getAbbyInvoiceMock.mockResolvedValue({
+    readAbbyStateMock.mockResolvedValue({
       id: "abby-inv-9", number: "F", state: "paid",
       paidAt: 1784332800000, finalizedAt: null,
     });
@@ -159,7 +170,7 @@ describe("refreshInvoiceStatus — INVARIANT AD-11 (jamais status ni paid_at LMS
   });
 
   it("dates absentes : colonnes non écrasées (pas de null qui efface une donnée connue)", async () => {
-    getAbbyInvoiceMock.mockResolvedValue({
+    readAbbyStateMock.mockResolvedValue({
       id: "abby-inv-9", number: "F", state: "finalized",
       paidAt: null, finalizedAt: null,
     });
@@ -180,7 +191,7 @@ describe("refreshInvoiceStatus — gardes (AC-3)", () => {
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error.code).toBe("abby_invalid_state");
     expect(updates).toHaveLength(0);
-    expect(getAbbyInvoiceMock).not.toHaveBeenCalled();
+    expect(readAbbyStateMock).not.toHaveBeenCalled();
   });
 
   it("jamais poussée (null explicite) → refus — anti-piège undefined", async () => {
@@ -196,7 +207,7 @@ describe("refreshInvoiceStatus — gardes (AC-3)", () => {
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error.code).toBe("abby_invalid_state");
     expect(updates).toHaveLength(0);
-    expect(getAbbyInvoiceMock).not.toHaveBeenCalled();
+    expect(readAbbyStateMock).not.toHaveBeenCalled();
   });
 
   it("connexion non active → refus, aucune lecture facture", async () => {
@@ -465,5 +476,34 @@ describe("getInvoicePdf — proxy Factur-X (AD-15, story 4.3)", () => {
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error.code).toBe("abby_network");
     expect(updates).toHaveLength(0);
+  });
+});
+
+describe("refreshInvoiceStatus — AVOIR finalisé (story 5.3, point J : dispatch getAsset)", () => {
+  it("relit via readAbbyState(is_avoir=true) → PAS de « Introuvable », jamais de paid_at", async () => {
+    readAbbyStateMock.mockResolvedValue({
+      id: "abby-asset-1",
+      number: "AV-2026-0001",
+      state: "finalized",
+      paidAt: null,
+      finalizedAt: 1784246400,
+    });
+    const { supabase, updates } = makeDb({
+      ...FINALIZED_INVOICE,
+      is_avoir: true,
+      abby_invoice_id: "abby-asset-1",
+      abby_invoice_number: "AV-2026-0001",
+      abby_state: "finalized",
+    });
+    const res = await refreshInvoiceStatus(supabase, ENTITY_ID, INVOICE_ID);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    // Jamais « Introuvable » (le bug B1 : getInvoice(assetId) → 404).
+    expect(res.status.notFound).toBe(false);
+    expect(res.status.state).toBe("finalized");
+    // Dispatch confirmé : readAbbyState appelé avec is_avoir = true.
+    expect(readAbbyStateMock).toHaveBeenCalledWith(expect.anything(), "abby-asset-1", true);
+    // Un avoir n'est jamais « payé » : pas de abby_paid_at écrit.
+    expect("abby_paid_at" in updates[0].payload).toBe(false);
   });
 });

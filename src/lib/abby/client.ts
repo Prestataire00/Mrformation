@@ -166,6 +166,88 @@ export async function getAbbyInvoice(
   };
 }
 
+// ─── Écritures/lectures AVOIR (asset) — saga 5.3, cycle CONFIRMÉ par écriture
+// le 16/07 (investigations/abby-verifications-p0). L'avoir naît de sa facture
+// Abby parente via `createAsset` (copie ses lignes), puis lignes/mentions/
+// finalize passent par les endpoints billing GÉNÉRIQUES (acceptent un assetId).
+// ⚠️ noms SDK à valider en mode test (types SDK mensongers). ─────────────────
+
+/**
+ * Crée un AVOIR (asset) DEPUIS sa facture Abby parente (AD-23) — `body:never`,
+ * l'avoir hérite le client et copie les lignes de la parente. Renvoie l'assetId
+ * (= `abby_invoice_id` de l'avoir). `abby.invoice.createAsset` (PAS `advance`).
+ */
+export async function createAsset(
+  abby: Abby,
+  parentInvoiceId: string
+): Promise<{ id: string }> {
+  const { data } = await abby.invoice.createAsset({
+    path: { invoiceId: parentInvoiceId },
+  });
+  return { id: String((data as { id: unknown }).id) };
+}
+
+/**
+ * Relit un AVOIR (asset) — même normalisation défensive que `getAbbyInvoice`,
+ * SANS `paidAt` (`ReadAssetDto` n'en a pas ; un avoir n'est jamais « payé »).
+ */
+export async function getAsset(
+  abby: Abby,
+  assetId: string
+): Promise<{
+  id: string;
+  number: string | null;
+  state: string | null;
+  finalizedAt: number | null;
+}> {
+  const { data } = await abby.asset.getAsset({ path: { assetId } });
+  const d = data as Record<string, unknown>;
+  const rawNumber = d.number == null ? null : String(d.number).trim();
+  const num = (v: unknown): number | null =>
+    typeof v === "number" && Number.isFinite(v) ? v : null;
+  return {
+    id: String(d.id),
+    number: rawNumber === "" ? null : rawNumber,
+    state: d.state == null ? null : String(d.state),
+    finalizedAt: num(d.finalizedAt),
+  };
+}
+
+/** Mentions d'un AVOIR (footerNote — JAMAIS de vatMention, QO-1). Pas de timeline asset. */
+export async function setAssetGeneralInformations(
+  abby: Abby,
+  assetId: string,
+  body: { footerNote?: string }
+): Promise<void> {
+  await abby.asset.updateGeneralInformations({
+    path: { assetId },
+    body: body as never,
+  });
+}
+
+/**
+ * Relecture d'état PARTAGÉE (AD-23) : dispatche `getAsset`/`getAbbyInvoice` sur
+ * `isAvoir` — utilisée par la saga (finalize, réconciliation) ET la route status
+ * (`refreshInvoiceStatus`). Forme uniforme ; `paidAt` = null pour un avoir.
+ */
+export async function readAbbyState(
+  abby: Abby,
+  id: string,
+  isAvoir: boolean
+): Promise<{
+  id: string;
+  number: string | null;
+  state: string | null;
+  finalizedAt: number | null;
+  paidAt: number | null;
+}> {
+  if (isAvoir) {
+    const asset = await getAsset(abby, id);
+    return { ...asset, paidAt: null };
+  }
+  return getAbbyInvoice(abby, id);
+}
+
 /**
  * Télécharge le PDF Factur-X d'une facture (AD-15 — proxy à la demande,
  * JAMAIS stocké). Nom de méthode empiriquement validé (recette 1.5,

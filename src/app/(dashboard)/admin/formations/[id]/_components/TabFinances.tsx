@@ -996,6 +996,19 @@ export function TabFinances({ formation, onRefresh }: Props) {
       ? invoices.filter((i) => batchSelected.has(i.id) && isBatchSelectable(i, abbyConnectionStatus))
       : [];
 
+  // Story 5.3 : état de push de la parente par id d'avoir (le bouton avoir
+  // dépend de « parente poussée-finalisée »). L'UI passe un état précalculé —
+  // jamais canPushAvoir (le type Invoice n'a pas abby_invoice_id).
+  const avoirParentStateById: Record<string, string | null> = {};
+  for (const inv of invoices) {
+    const invRec = inv as unknown as { is_avoir?: boolean; parent_invoice_id?: string | null };
+    if (invRec.is_avoir && invRec.parent_invoice_id) {
+      const parent = invoices.find((i) => i.id === invRec.parent_invoice_id);
+      const parentRec = parent as unknown as { abby_push_state?: string | null } | undefined;
+      avoirParentStateById[inv.id] = parentRec?.abby_push_state ?? null;
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Zone 1 — Indicateurs */}
@@ -1078,6 +1091,7 @@ export function TabFinances({ formation, onRefresh }: Props) {
               onAbbyDetail={handleAbbyDetail}
               selectedIds={batchSelected}
               onToggleSelect={handleToggleBatchSelect}
+              avoirParentStateById={avoirParentStateById}
               onDownloadPdf={handleDownloadPdf}
               onSendEmail={handleSendInvoiceEmail}
               onMarkPaid={(inv) => handleUpdateStatus(inv.id, "paid")}

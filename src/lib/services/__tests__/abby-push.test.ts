@@ -17,11 +17,13 @@ vi.mock("@/lib/abby/client", () => ({
   createAbbyClient: vi.fn(),
   getCompanyIdentity: vi.fn(),
   createDraftInvoice: vi.fn(),
+  createAsset: vi.fn(),
   setInvoiceLines: vi.fn(),
   setInvoiceTimeline: vi.fn(),
   setInvoiceGeneralInformations: vi.fn(),
+  setAssetGeneralInformations: vi.fn(),
   finalizeBilling: vi.fn(),
-  getAbbyInvoice: vi.fn(),
+  readAbbyState: vi.fn(),
 }));
 
 import { getConnectionState, withAbbyConnection } from "../abby-connections";
@@ -29,11 +31,13 @@ import { ensureCustomerForRecipient } from "../abby-customers";
 import {
   getCompanyIdentity,
   createDraftInvoice,
+  createAsset,
   setInvoiceLines,
   setInvoiceTimeline,
   setInvoiceGeneralInformations,
+  setAssetGeneralInformations,
   finalizeBilling,
-  getAbbyInvoice,
+  readAbbyState,
 } from "@/lib/abby/client";
 
 const getConnectionStateMock = vi.mocked(getConnectionState);
@@ -41,11 +45,13 @@ const withAbbyConnectionMock = vi.mocked(withAbbyConnection);
 const ensureCustomerMock = vi.mocked(ensureCustomerForRecipient);
 const getCompanyIdentityMock = vi.mocked(getCompanyIdentity);
 const createDraftInvoiceMock = vi.mocked(createDraftInvoice);
+const createAssetMock = vi.mocked(createAsset);
 const setInvoiceLinesMock = vi.mocked(setInvoiceLines);
 const setInvoiceTimelineMock = vi.mocked(setInvoiceTimeline);
 const setInvoiceGeneralInformationsMock = vi.mocked(setInvoiceGeneralInformations);
+const setAssetGeneralInformationsMock = vi.mocked(setAssetGeneralInformations);
 const finalizeBillingMock = vi.mocked(finalizeBilling);
-const getAbbyInvoiceMock = vi.mocked(getAbbyInvoice);
+const readAbbyStateMock = vi.mocked(readAbbyState);
 
 const ENTITY_ID = "ent-mr";
 const INVOICE_ID = "inv-1";
@@ -196,11 +202,13 @@ beforeEach(() => {
     created: true,
   } as never);
   createDraftInvoiceMock.mockResolvedValue({ id: "abby-inv-9" });
+  createAssetMock.mockResolvedValue({ id: "abby-asset-1" });
   setInvoiceLinesMock.mockResolvedValue(undefined);
   setInvoiceTimelineMock.mockResolvedValue(undefined);
   setInvoiceGeneralInformationsMock.mockResolvedValue(undefined);
+  setAssetGeneralInformationsMock.mockResolvedValue(undefined);
   finalizeBillingMock.mockResolvedValue(undefined);
-  getAbbyInvoiceMock.mockResolvedValue({ id: "abby-inv-9", number: "F-2026-0042", state: "finalized", paidAt: null, finalizedAt: null });
+  readAbbyStateMock.mockResolvedValue({ id: "abby-inv-9", number: "F-2026-0042", state: "finalized", paidAt: null, finalizedAt: null });
 });
 
 afterEach(() => {
@@ -227,8 +235,16 @@ describe("gardes d'accès (avant toute étape)", () => {
     if (!res.ok) expect(res.error.code).toBe("abby_not_found");
   });
 
-  it("avoir → abby_invalid_state (dispatch avoir = story 5.3)", async () => {
-    const { supabase } = makeDb({ invoice: { ...BASE_INVOICE, is_avoir: true } });
+  it("avoir dont la parente n'est PAS poussée-finalisée → abby_invalid_state (story 5.3)", async () => {
+    const { supabase } = makeDb({
+      invoice: {
+        ...BASE_INVOICE,
+        is_avoir: true,
+        amount: -300,
+        parent_invoice_id: "parent-1",
+        parent: { abby_invoice_id: null, abby_invoice_number: null, reference: "FAC-2026-0007", abby_push_state: null },
+      },
+    });
     const res = await advancePushStep(supabase, ENTITY_ID, INVOICE_ID);
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error.code).toBe("abby_invalid_state");
@@ -592,6 +608,73 @@ describe("run chaîné NULL → finalized (AC-2 : getMe UNE fois sur la saga ent
   });
 });
 
+describe("run AVOIR chaîné NULL → finalized (story 5.3, AD-23 : dispatch is_avoir)", () => {
+  const AVOIR_INVOICE = {
+    ...BASE_INVOICE,
+    amount: -300,
+    is_avoir: true,
+    parent_invoice_id: "parent-1",
+    parent: {
+      abby_invoice_id: "abby-parent-99",
+      abby_invoice_number: "F-2026-0007",
+      reference: "FAC-2026-0007",
+      abby_push_state: "finalized",
+    },
+  };
+
+  it("saga avoir : createAsset(parente), PAS d'ensureCustomer, PAS de timeline, getAsset, numéro AV-…", async () => {
+    readAbbyStateMock.mockResolvedValue({ id: "abby-asset-1", number: "AV-2026-0001", state: "finalized", paidAt: null, finalizedAt: null });
+    const invoice = { ...AVOIR_INVOICE };
+    const { supabase, updates } = makeDb({ invoice });
+    const states: string[] = [];
+
+    for (let i = 0; i < 5; i++) {
+      const res = await advancePushStep(supabase, ENTITY_ID, INVOICE_ID);
+      expect(res.ok).toBe(true);
+      if (!res.ok) return;
+      states.push(res.step.state);
+      for (const u of updates.splice(0)) {
+        if (u.table === "formation_invoices") Object.assign(invoice, u.payload);
+      }
+    }
+
+    expect(states).toEqual(["pushing", "draft_created", "lines_set", "details_set", "finalized"]);
+    // Création via ASSET sur la parente, JAMAIS createDraftInvoice.
+    expect(createAssetMock).toHaveBeenCalledTimes(1);
+    expect(createAssetMock).toHaveBeenCalledWith(expect.anything(), "abby-parent-99");
+    expect(createDraftInvoiceMock).not.toHaveBeenCalled();
+    // Client hérité : ensureCustomer JAMAIS appelé (mais getMe SIRET oui, AD-5).
+    expect(ensureCustomerMock).not.toHaveBeenCalled();
+    expect(getCompanyIdentityMock).toHaveBeenCalledTimes(1);
+    // Pas de timeline asset : uniquement setAssetGeneralInformations.
+    expect(setInvoiceTimelineMock).not.toHaveBeenCalled();
+    expect(setInvoiceGeneralInformationsMock).not.toHaveBeenCalled();
+    expect(setAssetGeneralInformationsMock).toHaveBeenCalledTimes(1);
+    // Relecture via getAsset (readAbbyState avec is_avoir=true).
+    expect(readAbbyStateMock).toHaveBeenCalledWith(expect.anything(), "abby-asset-1", true);
+    // L'assetId devient abby_invoice_id ; numéro AV-… stocké.
+    expect(invoice.abby_invoice_id).toBe("abby-asset-1");
+    expect(invoice.abby_invoice_number).toBe("AV-2026-0001");
+  });
+
+  it("reprise d'un avoir interrompu : réconciliation relit via getAsset (is_avoir=true), pas de recréation", async () => {
+    readAbbyStateMock.mockResolvedValue({ id: "abby-asset-1", number: "AV-2026-0002", state: "finalized", paidAt: null, finalizedAt: null });
+    const STALE = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    const { supabase } = makeDb({
+      invoice: {
+        ...AVOIR_INVOICE,
+        abby_push_state: "draft_created",
+        abby_push_locked_at: STALE,
+        abby_invoice_id: "abby-asset-1",
+      },
+    });
+    const res = await advancePushStep(supabase, ENTITY_ID, INVOICE_ID);
+    expect(res).toEqual({ ok: true, step: { state: "finalized", done: true, abbyInvoiceNumber: "AV-2026-0002" } });
+    expect(readAbbyStateMock).toHaveBeenCalledWith(expect.anything(), "abby-asset-1", true);
+    expect(createAssetMock).not.toHaveBeenCalled(); // JAMAIS de recréation d'avoir
+  });
+});
+
 describe("réconciliation de reprise (story 3.4, AD-8)", () => {
   const STALE = new Date(Date.now() - 10 * 60 * 1000).toISOString();
   const INTERRUPTED = {
@@ -602,7 +685,7 @@ describe("réconciliation de reprise (story 3.4, AD-8)", () => {
   };
 
   it("déjà finalisée (numéro présent) → conclusion SANS écriture Abby, done avec numéro, garde SIRET exécutée", async () => {
-    getAbbyInvoiceMock.mockResolvedValue({ id: "abby-inv-9", number: "F-2026-0099", state: "finalized", paidAt: null, finalizedAt: null });
+    readAbbyStateMock.mockResolvedValue({ id: "abby-inv-9", number: "F-2026-0099", state: "finalized", paidAt: null, finalizedAt: null });
     const { supabase, updates } = makeDb({ invoice: INTERRUPTED });
     const res = await advancePushStep(supabase, ENTITY_ID, INVOICE_ID);
     expect(res).toEqual({
@@ -619,7 +702,7 @@ describe("réconciliation de reprise (story 3.4, AD-8)", () => {
   });
 
   it("brouillon présent (pas de numéro) → la saga complète depuis le checkpoint (étape 3)", async () => {
-    getAbbyInvoiceMock.mockResolvedValue({ id: "abby-inv-9", number: null, state: "draft", paidAt: null, finalizedAt: null });
+    readAbbyStateMock.mockResolvedValue({ id: "abby-inv-9", number: null, state: "draft", paidAt: null, finalizedAt: null });
     const { supabase } = makeDb({ invoice: INTERRUPTED });
     const res = await advancePushStep(supabase, ENTITY_ID, INVOICE_ID);
     expect(res).toEqual({ ok: true, step: { state: "lines_set", done: false } });
@@ -653,7 +736,7 @@ describe("réconciliation de reprise (story 3.4, AD-8)", () => {
       expect(res.error.message).toContain(SIRET_MR);
       expect(res.error.message).toContain("98525216200021");
     }
-    expect(getAbbyInvoiceMock).not.toHaveBeenCalled();
+    expect(readAbbyStateMock).not.toHaveBeenCalled();
     expect(updates).toHaveLength(0);
   });
 
@@ -663,7 +746,7 @@ describe("réconciliation de reprise (story 3.4, AD-8)", () => {
     });
     await advancePushStep(supabase, ENTITY_ID, INVOICE_ID);
     expect(getCompanyIdentityMock).not.toHaveBeenCalled();
-    expect(getAbbyInvoiceMock).not.toHaveBeenCalled();
+    expect(readAbbyStateMock).not.toHaveBeenCalled();
   });
 
   it("annulée interrompue → refus (le verrou de contenu 3.5 n'existe pas encore)", async () => {
@@ -680,7 +763,7 @@ describe("réconciliation de reprise (story 3.4, AD-8)", () => {
     });
     const res = await advancePushStep(supabase, ENTITY_ID, INVOICE_ID);
     expect(res).toEqual({ ok: true, step: { state: "draft_created", done: false } });
-    expect(getAbbyInvoiceMock).not.toHaveBeenCalled();
+    expect(readAbbyStateMock).not.toHaveBeenCalled();
     expect(getCompanyIdentityMock).toHaveBeenCalledTimes(1); // ré-acquisition = garde AD-5, même sans brouillon
   });
 
@@ -700,9 +783,9 @@ describe("réconciliation de reprise (story 3.4, AD-8)", () => {
   });
 
   it("number relu vide (\"\") → traité comme BROUILLON, jamais une fausse finalisation", async () => {
-    // getAbbyInvoice normalise "" → null (client.ts) ; on simule ici la
+    // readAbbyState normalise "" → null (client.ts) ; on simule ici la
     // normalisation faite : number null → dispatch normal
-    getAbbyInvoiceMock.mockResolvedValue({ id: "abby-inv-9", number: null, state: "draft", paidAt: null, finalizedAt: null });
+    readAbbyStateMock.mockResolvedValue({ id: "abby-inv-9", number: null, state: "draft", paidAt: null, finalizedAt: null });
     const { supabase, updates } = makeDb({ invoice: INTERRUPTED });
     const res = await advancePushStep(supabase, ENTITY_ID, INVOICE_ID);
     expect(res.ok).toBe(true);
@@ -739,7 +822,7 @@ describe("repartir-de-zéro (story 3.4, AD-8 — unique effaceur)", () => {
   });
 
   it("brouillon encore VIVANT + restartFromZero → refus (jamais d'effacement d'un brouillon existant)", async () => {
-    getAbbyInvoiceMock.mockResolvedValue({ id: "abby-inv-9", number: null, state: "draft", paidAt: null, finalizedAt: null });
+    readAbbyStateMock.mockResolvedValue({ id: "abby-inv-9", number: null, state: "draft", paidAt: null, finalizedAt: null });
     const { supabase, updates } = makeDb({ invoice: INTERRUPTED });
     const res = await advancePushStep(supabase, ENTITY_ID, INVOICE_ID, { restartFromZero: true });
     expect(res.ok).toBe(false);
@@ -748,7 +831,7 @@ describe("repartir-de-zéro (story 3.4, AD-8 — unique effaceur)", () => {
   });
 
   it("déjà finalisée + restartFromZero → conclusion (flag ignoré)", async () => {
-    getAbbyInvoiceMock.mockResolvedValue({ id: "abby-inv-9", number: "F-2026-0099", state: "finalized", paidAt: null, finalizedAt: null });
+    readAbbyStateMock.mockResolvedValue({ id: "abby-inv-9", number: "F-2026-0099", state: "finalized", paidAt: null, finalizedAt: null });
     const { supabase } = makeDb({ invoice: INTERRUPTED });
     const res = await advancePushStep(supabase, ENTITY_ID, INVOICE_ID, { restartFromZero: true });
     expect(res.ok).toBe(true);

@@ -235,6 +235,19 @@ export function AbbyPushPreviewDialog({ invoice, onClose, onPushed }: Props) {
               </Alert>
             )}
 
+            {/* Bandeau AVOIR (5.3, UX-DR8) : rattachement à la facture parente. */}
+            {preview.parent && (
+              <Alert>
+                <AlertTitle>
+                  Avoir rattaché à {preview.parent.displayRef}
+                  {preview.parent.abbyNumber ? ` (Abby : ${preview.parent.abbyNumber})` : ""}
+                </AlertTitle>
+                <AlertDescription>
+                  Cet avoir compense la facture d&apos;origine ; il hérite de son client Abby.
+                </AlertDescription>
+              </Alert>
+            )}
+
             {/* Entité émettrice — garde-fou anti-inversion : NOM résolu serveur,
                 couleur d'entité côté client */}
             <div
@@ -249,11 +262,13 @@ export function AbbyPushPreviewDialog({ invoice, onClose, onPushed }: Props) {
                 {RECIPIENT_TYPE_LABELS[preview.recipient.type] ?? "Destinataire"} :
               </span>
               <span className="font-medium">{preview.recipient.name}</span>
-              {preview.recipient.outcome === "to_create" ? (
-                <Badge variant="secondary">Sera créé dans Abby</Badge>
-              ) : (
-                <Badge variant="outline">Existe déjà dans Abby</Badge>
-              )}
+              {/* Sort du client masqué pour un avoir (client hérité — trompeur). */}
+              {!preview.parent &&
+                (preview.recipient.outcome === "to_create" ? (
+                  <Badge variant="secondary">Sera créé dans Abby</Badge>
+                ) : (
+                  <Badge variant="outline">Existe déjà dans Abby</Badge>
+                ))}
             </div>
 
             <div className="overflow-x-auto rounded-md border">

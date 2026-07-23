@@ -1,5 +1,5 @@
 # generated: 2026-07-13
-# last_updated: 2026-07-23 (abby-5-3 créée + ready-for-dev — DERNIÈRE story : push avoir via cycle asset, dispatch is_avoir dans abby-push.ts (mêmes états AD-23), 3 wrappers ACL asset, éligibilité parente finalisée. Clôt Epic 5 + module Abby)
+# last_updated: 2026-07-23 (abby-5-3 DÉVELOPPÉE → review : push avoir via cycle asset, dispatch is_avoir A→J (saga + refreshInvoiceStatus), 2623 tests, route push inchangée. Dernière story avant clôture Epic 5 + module Abby)
 # project: lms-platform
 # project_key: NOKEY
 # tracking_system: file-system
@@ -88,7 +88,7 @@ development_status:
   abby-epic-5: in-progress
   abby-5-1-multi-selection-et-recap-consolide: done
   abby-5-2-execution-sequentielle-du-lot: done
-  abby-5-3-pousser-un-avoir-rattache: ready-for-dev
+  abby-5-3-pousser-un-avoir-rattache: review
   abby-epic-5-retrospective: optional
 
 action_items:

@@ -246,6 +246,7 @@ describe("buildInvoicePreview — contenu (AC-1/AC-2)", () => {
         exonerationMention: null,
       },
       resume: null,
+      parent: null,
     });
   });
 
