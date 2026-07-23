@@ -188,3 +188,91 @@ export function getBatchIneligibilityReason(
   if (connectionStatus !== "active") return PUSH_DISABLED_TOOLTIP;
   return null;
 }
+
+// ─── Éligibilité AVOIR (story 5.3, AD-23) ────────────────────────────────────
+// Un avoir se pousse via le cycle asset, lié à sa facture Abby PARENTE. Son
+// éligibilité dépend donc de l'état de la parente (poussée-finalisée requise),
+// pas de la sienne seule. Prédicats séparés de la facture (l'avoir reste exclu
+// de isPushButtonVisible/isBatchSelectable/isPushResumable — non-régression).
+
+/** L'avoir à évaluer. */
+export interface AbbyAvoirInput {
+  is_avoir: boolean;
+  abby_push_state: string | null;
+  status: string;
+}
+
+/** La facture parente (embed) pour la garde SERVEUR. */
+export interface AbbyAvoirParent {
+  abby_push_state: string | null;
+  abby_invoice_id: string | null;
+}
+
+/**
+ * Éligibilité au PUSH d'un avoir (SERVEUR — buildInvoicePreview + saga, qui ont
+ * `abby_invoice_id`) : avoir jamais poussé, non annulé, parente poussée-finalisée
+ * ET dotée d'un `abby_invoice_id` (input de `createAsset`). AD-13 re-vérif serveur.
+ */
+export function canPushAvoir(
+  avoir: AbbyAvoirInput,
+  parent: AbbyAvoirParent | null
+): boolean {
+  return (
+    avoir.is_avoir &&
+    avoir.abby_push_state === null &&
+    avoir.status !== "cancelled" &&
+    parent !== null &&
+    parent.abby_push_state === "finalized" &&
+    parent.abby_invoice_id !== null
+  );
+}
+
+/** Champs minimaux pour la reprise d'un avoir interrompu. */
+export interface AbbyAvoirResumeInput {
+  is_avoir: boolean;
+  abby_push_state: string | null;
+  abby_push_locked_at: string | null;
+  status: string;
+}
+
+/**
+ * Avoir au push INTERROMPU reprenable — miroir de `isPushResumable` pour l'avoir :
+ * état intermédiaire + verrou périmé/NULL + non annulé + parente finalisée.
+ * `parentPushState` (string|null) suffit (dispo côté UI ET serveur). SANS ce
+ * prédicat, un avoir interrompu n'aurait AUCUN chemin de reprise UI.
+ */
+export function canResumeAvoir(
+  avoir: AbbyAvoirResumeInput,
+  parentPushState: string | null,
+  now: Date
+): boolean {
+  if (!avoir.is_avoir || avoir.status === "cancelled") return false;
+  if (parentPushState !== "finalized") return false;
+  if (
+    avoir.abby_push_state === null ||
+    !INTERMEDIATE_STATES.has(avoir.abby_push_state)
+  ) {
+    return false;
+  }
+  if (avoir.abby_push_locked_at === null) return true;
+  const lockedAt = Date.parse(avoir.abby_push_locked_at);
+  return Number.isNaN(lockedAt) || now.getTime() - lockedAt >= ABBY_PUSH_LOCK_TTL_MS;
+}
+
+/**
+ * Motif du tooltip d'un bouton avoir DÉSACTIVÉ, ou `null` si une action (push ou
+ * reprise) est possible. Signature basée sur `parentPushState` (le type UI
+ * `Invoice` n'a pas `abby_invoice_id`). Ordre : annulé → déjà transmis → parente
+ * non finalisée → null.
+ */
+export function getAvoirActionReason(
+  avoir: { abby_push_state: string | null; status: string },
+  parentPushState: string | null
+): string | null {
+  if (avoir.status === "cancelled") return "Avoir annulé — non transmissible.";
+  if (isPushFinalized({ abby_push_state: avoir.abby_push_state }))
+    return "Déjà transmis à Abby.";
+  if (parentPushState !== "finalized")
+    return "La facture d'origine doit d'abord être transmise à Abby.";
+  return null;
+}

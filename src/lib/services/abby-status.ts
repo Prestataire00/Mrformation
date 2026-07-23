@@ -7,6 +7,7 @@ import { isPushFinalized, canRecordPaymentInLms } from "@/lib/abby/eligibility";
 import { epochToIso } from "@/lib/abby/mappers";
 import {
   getAbbyInvoice,
+  readAbbyState,
   downloadInvoicePdf,
   type createAbbyClient,
 } from "@/lib/abby/client";
@@ -42,8 +43,9 @@ export type AbbyStatusResult =
     }
   | { ok: false; error: AbbyStatusError };
 
-/** Colonnes propres nécessaires (⚠️ abby_invoice_id hors fragment — piège 3.3). */
-const STATUS_INVOICE_COLUMNS = "id, abby_invoice_id";
+/** Colonnes propres nécessaires (⚠️ abby_invoice_id hors fragment — piège 3.3 ;
+ * is_avoir pour dispatcher la relecture via getAsset — story 5.3, point J). */
+const STATUS_INVOICE_COLUMNS = "id, abby_invoice_id, is_avoir";
 
 /** Idem + `status` et `is_avoir` (hors fragment aussi) pour l'enregistrement
  * de paiement : le prédicat 4.2 en dépend. */
@@ -56,6 +58,7 @@ const PDF_INVOICE_COLUMNS = "id, reference, external_reference, abby_invoice_id"
 interface StatusInvoiceRow {
   id: string;
   abby_invoice_id: string | null;
+  is_avoir: boolean;
   abby_push_state: string | null;
   abby_push_locked_at: string | null;
   abby_invoice_number: string | null;
@@ -120,8 +123,11 @@ export async function refreshInvoiceStatus(
   }
   const abbyInvoiceId = invoice.abby_invoice_id;
 
+  // ⚠️ Story 5.3 point J : un AVOIR finalisé se relit via getAsset (readAbbyState
+  // dispatch), sinon getInvoice(assetId) → 404 « Introuvable » sur chaque avoir
+  // légalement émis. paidAt = null pour un avoir (jamais « payé »).
   const res = await withAbbyConnection(supabase, entityId, (client: AbbyClient) =>
-    getAbbyInvoice(client, abbyInvoiceId)
+    readAbbyState(client, abbyInvoiceId, invoice.is_avoir)
   );
 
   const syncedAt = new Date().toISOString();

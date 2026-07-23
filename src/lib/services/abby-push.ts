@@ -5,7 +5,7 @@ import type {
   AbbyRecipientType,
 } from "@/lib/types/abby";
 import { ABBY_INVOICE_SELECT, ABBY_PUSH_LOCK_TTL_MS } from "@/lib/abby/invoice-badge";
-import { isPushButtonVisible } from "@/lib/abby/eligibility";
+import { isPushButtonVisible, canPushAvoir } from "@/lib/abby/eligibility";
 import { toAbbyErrorCode, type AbbyErrorCode } from "@/lib/abby/errors";
 import {
   toAbbyInvoiceLines,
@@ -14,11 +14,13 @@ import {
 } from "@/lib/abby/mappers";
 import {
   createDraftInvoice,
+  createAsset,
   setInvoiceLines,
   setInvoiceTimeline,
   setInvoiceGeneralInformations,
+  setAssetGeneralInformations,
   finalizeBilling,
-  getAbbyInvoice,
+  readAbbyState,
   getCompanyIdentity,
   type createAbbyClient,
 } from "@/lib/abby/client";
@@ -47,7 +49,19 @@ export type AbbyPushResult =
 /** Colonnes propres nécessaires à la saga (⚠️ abby_invoice_id INDISPENSABLE
  * aux étapes 2-5 — absent du fragment badge ET de la liste préview 3.2). */
 const PUSH_INVOICE_COLUMNS =
-  "id, reference, external_reference, recipient_type, recipient_id, recipient_name, amount, status, is_avoir, invoice_date, due_date, abby_invoice_id";
+  "id, reference, external_reference, recipient_type, recipient_id, recipient_name, amount, status, is_avoir, invoice_date, due_date, abby_invoice_id, parent_invoice_id";
+
+/** Embed self-référentiel de la facture PARENTE (avoir uniquement, story 5.3). */
+const PARENT_EMBED =
+  "parent:formation_invoices!parent_invoice_id(abby_invoice_id, abby_invoice_number, reference, abby_push_state)";
+
+/** La parente d'un avoir — input de `createAsset` + bandeau. */
+interface ParentInvoiceRef {
+  abby_invoice_id: string | null;
+  abby_invoice_number: string | null;
+  reference: string | null;
+  abby_push_state: string | null;
+}
 
 interface PushInvoiceRow {
   id: string;
@@ -62,12 +76,15 @@ interface PushInvoiceRow {
   invoice_date: string;
   due_date: string | null;
   abby_invoice_id: string | null;
+  parent_invoice_id: string | null;
   abby_push_state: AbbyPushState | null;
   abby_push_locked_at: string | null;
   abby_invoice_number: string | null;
   abby_state: string | null;
   abby_last_error: string | null;
   session: { title: string; entity_id: string };
+  /** Parente résolue (avoir) — l'embed renvoie objet OU null au runtime. */
+  parent: ParentInvoiceRef | null;
 }
 
 interface EntityRow {
@@ -338,7 +355,7 @@ export async function advancePushStep(
   const { data: invoiceData, error: invoiceError } = await supabase
     .from("formation_invoices")
     .select(
-      `${PUSH_INVOICE_COLUMNS}, ${ABBY_INVOICE_SELECT}, session:sessions!inner(title, entity_id)`
+      `${PUSH_INVOICE_COLUMNS}, ${ABBY_INVOICE_SELECT}, session:sessions!inner(title, entity_id), ${PARENT_EMBED}`
     )
     .eq("id", invoiceId)
     .eq("entity_id", entityId)
@@ -349,18 +366,12 @@ export async function advancePushStep(
   if (!invoiceData) {
     return { ok: false, error: { message: "Facture introuvable.", code: "abby_not_found" } };
   }
-  // Embed sessions!inner = objet au runtime (validé en prod 3.2), cast documenté
+  // Embed sessions!inner = objet au runtime (validé en prod 3.2) ; embed parent
+  // = objet OU null (avoir). Cast documenté.
   const invoice = invoiceData as unknown as PushInvoiceRow;
 
-  if (invoice.is_avoir) {
-    return {
-      ok: false,
-      error: {
-        message: "Le push d'un avoir n'est pas encore disponible.",
-        code: "abby_invalid_state",
-      },
-    };
-  }
+  // Story 5.3 : l'avoir emprunte la MÊME machine à états, dispatch is_avoir
+  // (createAsset / saut client / saut timeline / getAsset). Plus de blocage.
 
   // Entrée de REPRISE (3.4) : état intermédiaire + verrou périmé/NULL +
   // brouillon connu → réconciliation avec l'état réel Abby AVANT d'avancer.
@@ -518,7 +529,7 @@ async function reconcileAndAdvance(
     if (identity.companySiret !== expectedSiret) {
       return { kind: "siret_mismatch" as const, found: identity.companySiret };
     }
-    const read = await withRateLimitRetry(() => getAbbyInvoice(client, abbyInvoiceId));
+    const read = await withRateLimitRetry(() => readAbbyState(client, abbyInvoiceId, invoice.is_avoir));
     return { kind: "read" as const, read };
   });
 
@@ -625,17 +636,25 @@ async function stepAcquireAndEnsureCustomer(
   entityId: string,
   invoice: PushInvoiceRow
 ): Promise<AbbyPushResult> {
-  if (
-    !isPushButtonVisible({
-      abby_push_state: invoice.abby_push_state,
-      status: invoice.status,
-      is_avoir: invoice.is_avoir,
-    })
-  ) {
+  // Éligibilité re-vérifiée serveur (AD-13) : avoir = parente poussée-finalisée
+  // (canPushAvoir) ; facture = jamais poussée (isPushButtonVisible).
+  const eligible = invoice.is_avoir
+    ? canPushAvoir(
+        { is_avoir: invoice.is_avoir, abby_push_state: invoice.abby_push_state, status: invoice.status },
+        invoice.parent,
+      )
+    : isPushButtonVisible({
+        abby_push_state: invoice.abby_push_state,
+        status: invoice.status,
+        is_avoir: invoice.is_avoir,
+      });
+  if (!eligible) {
     return {
       ok: false,
       error: {
-        message: "Cette facture n'est pas éligible au push vers Abby.",
+        message: invoice.is_avoir
+          ? "Cet avoir n'est pas éligible : sa facture d'origine doit d'abord être transmise à Abby."
+          : "Cette facture n'est pas éligible au push vers Abby.",
         code: "abby_invalid_state",
       },
     };
@@ -680,17 +699,21 @@ async function stepAcquireAndEnsureCustomer(
     };
   }
 
-  // UNE enveloppe withAbbyConnection = 1 déchiffrement pour getMe + ensure
+  // UNE enveloppe withAbbyConnection = 1 déchiffrement pour getMe + ensure.
+  // ⚠️ Avoir (5.3) : client HÉRITÉ de la parente → getMe SIRET quand même
+  // (AD-5, émission légale), mais PAS de ensureCustomerForRecipient.
   const connRes = await withAbbyConnection(supabase, entityId, async (client: AbbyClient) => {
     const identity = await withRateLimitRetry(() => getCompanyIdentity(client));
     if (identity.companySiret !== expectedSiret) {
       return { kind: "siret_mismatch" as const, found: identity.companySiret };
     }
+    if (invoice.is_avoir) return { kind: "ok" as const };
     const ensured = await ensureCustomerForRecipient(supabase, client, entityId, {
       type: invoice.recipient_type,
       id: invoice.recipient_id,
     });
-    return { kind: "ensured" as const, ensured };
+    if (!ensured.ok) return { kind: "ensure_failed" as const, error: ensured.error };
+    return { kind: "ok" as const };
   });
 
   if (!connRes.ok) {
@@ -702,9 +725,9 @@ async function stepAcquireAndEnsureCustomer(
     await rollbackAcquisition(supabase, entityId, invoice.id);
     return { ok: false, error: siretMismatchError(outcome.found, expectedSiret) };
   }
-  if (!outcome.ensured.ok) {
+  if (outcome.kind === "ensure_failed") {
     await rollbackAcquisition(supabase, entityId, invoice.id);
-    return { ok: false, error: outcome.ensured.error };
+    return { ok: false, error: outcome.error };
   }
 
   return { ok: true, step: { state: "pushing", done: false } };
@@ -722,27 +745,42 @@ async function stepCreateDraft(
   );
   if (!restamp.ok) return restamp;
 
-  const { data: link, error: linkError } = await supabase
-    .from("abby_customer_links")
-    .select("abby_customer_id, abby_customer_type")
-    .eq("entity_id", entityId)
-    .eq("recipient_type", invoice.recipient_type)
-    .eq("recipient_id", invoice.recipient_id)
-    .maybeSingle();
-  if (linkError) {
-    return { ok: false, error: { message: sanitizeDbError(linkError, "abby push link") } };
+  // Avoir (5.3) : création via createAsset sur la facture Abby PARENTE (client
+  // hérité — pas de lookup abby_customer_links). Garde AD-13 re-vérifiée juste
+  // avant l'appel. L'assetId retourné = abby_invoice_id de l'avoir.
+  let draftRes: Awaited<ReturnType<typeof withAbbyConnection<{ id: string }>>>;
+  if (invoice.is_avoir) {
+    const parentAbbyId = invoice.parent?.abby_invoice_id ?? null;
+    if (invoice.parent?.abby_push_state !== "finalized" || parentAbbyId === null) {
+      const message = "La facture d'origine de cet avoir n'est pas transmise à Abby.";
+      await recordStepError(supabase, entityId, invoice.id, message);
+      return { ok: false, error: { message, code: "abby_invalid_state" } };
+    }
+    draftRes = await withAbbyConnection(supabase, entityId, (client: AbbyClient) =>
+      withRateLimitRetry(() => createAsset(client, parentAbbyId))
+    );
+  } else {
+    const { data: link, error: linkError } = await supabase
+      .from("abby_customer_links")
+      .select("abby_customer_id, abby_customer_type")
+      .eq("entity_id", entityId)
+      .eq("recipient_type", invoice.recipient_type)
+      .eq("recipient_id", invoice.recipient_id)
+      .maybeSingle();
+    if (linkError) {
+      return { ok: false, error: { message: sanitizeDbError(linkError, "abby push link") } };
+    }
+    if (!link) {
+      // Incohérence : l'étape 1 aurait dû créer la liaison
+      const message = "Liaison client Abby introuvable — reprenez le push depuis le début.";
+      await recordStepError(supabase, entityId, invoice.id, message);
+      return { ok: false, error: { message, code: "abby_invalid_state" } };
+    }
+    const customerId = (link as { abby_customer_id: string }).abby_customer_id;
+    draftRes = await withAbbyConnection(supabase, entityId, (client: AbbyClient) =>
+      withRateLimitRetry(() => createDraftInvoice(client, customerId))
+    );
   }
-  if (!link) {
-    // Incohérence : l'étape 1 aurait dû créer la liaison
-    const message = "Liaison client Abby introuvable — reprenez le push depuis le début.";
-    await recordStepError(supabase, entityId, invoice.id, message);
-    return { ok: false, error: { message, code: "abby_invalid_state" } };
-  }
-  const customerId = (link as { abby_customer_id: string }).abby_customer_id;
-
-  const draftRes = await withAbbyConnection(supabase, entityId, (client: AbbyClient) =>
-    withRateLimitRetry(() => createDraftInvoice(client, customerId))
-  );
   if (!draftRes.ok) {
     await recordStepError(
       supabase, entityId, invoice.id,
@@ -856,6 +894,15 @@ async function stepSendDetails(
 
   const stepStart = Date.now();
   const res = await withAbbyConnection(supabase, entityId, async (client: AbbyClient) => {
+    // Avoir (5.3, AD-23) : PAS de timeline asset → uniquement les mentions
+    // (setAssetGeneralInformations). 1 appel → checkpoint details_set fusionné.
+    if (invoice.is_avoir) {
+      await withRateLimitRetry(
+        () => setAssetGeneralInformations(client, abbyInvoiceId, toAbbyGeneralInformations(vatExempt)),
+        stepStart
+      );
+      return;
+    }
     await withRateLimitRetry(
       () => setInvoiceTimeline(client, abbyInvoiceId, toAbbyTimeline(invoice.invoice_date)),
       stepStart
@@ -901,7 +948,7 @@ async function stepFinalize(
   const stepStart = Date.now();
   const res = await withAbbyConnection(supabase, entityId, async (client: AbbyClient) => {
     await withRateLimitRetry(() => finalizeBilling(client, abbyInvoiceId), stepStart);
-    return withRateLimitRetry(() => getAbbyInvoice(client, abbyInvoiceId), stepStart);
+    return withRateLimitRetry(() => readAbbyState(client, abbyInvoiceId, invoice.is_avoir), stepStart);
   });
   if (!res.ok) {
     await recordStepError(

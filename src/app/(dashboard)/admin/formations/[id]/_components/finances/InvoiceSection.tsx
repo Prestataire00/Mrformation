@@ -16,10 +16,12 @@ interface Props extends InvoiceActionHandlers {
   /** Sélection de lot (story 5.1) — globale à TabFinances, passée à chaque ligne. */
   selectedIds: Set<string>;
   onToggleSelect: (inv: Invoice) => void;
+  /** État de push de la parente par id d'avoir (story 5.3). */
+  avoirParentStateById: Record<string, string | null>;
 }
 
 /** Zone 3 du spec : section par type. Masquée (`null`) si aucune facture. */
-export function InvoiceSection({ title, icon, invoices, abbyConnectionStatus, onAbbyPush, onAbbyDetail, selectedIds, onToggleSelect, ...handlers }: Props) {
+export function InvoiceSection({ title, icon, invoices, abbyConnectionStatus, onAbbyPush, onAbbyDetail, selectedIds, onToggleSelect, avoirParentStateById, ...handlers }: Props) {
   if (invoices.length === 0) return null;
 
   // Total = factures hors avoirs (cohérent avec les KPIs).
@@ -49,6 +51,7 @@ export function InvoiceSection({ title, icon, invoices, abbyConnectionStatus, on
           onAbbyDetail={onAbbyDetail}
           selected={selectedIds.has(inv.id)}
           onToggleSelect={onToggleSelect}
+          avoirParentPushState={avoirParentStateById[inv.id] ?? null}
           {...handlers}
         />
       ))}

@@ -21,6 +21,8 @@ import {
   getPushDisabledReason,
   isBatchSelectable,
   getBatchIneligibilityReason,
+  canResumeAvoir,
+  getAvoirActionReason,
 } from "@/lib/abby/eligibility";
 import { deriveAbbyBadge } from "@/lib/abby/invoice-badge";
 
@@ -43,6 +45,8 @@ interface Props extends InvoiceActionHandlers {
   /** Sélection de lot (story 5.1) — piloté par TabFinances. */
   selected: boolean;
   onToggleSelect: (inv: Invoice) => void;
+  /** État de push de la parente si cette ligne est un avoir (story 5.3), sinon null. */
+  avoirParentPushState: string | null;
 }
 
 /**
@@ -103,11 +107,14 @@ function BatchSelectCell({
 function AbbyZone({
   invoice,
   status,
+  avoirParentPushState,
   onAbbyPush,
   onAbbyDetail,
 }: {
   invoice: Invoice;
   status: AbbyConnectionStatus;
+  /** État de push de la facture parente (avoir uniquement) — story 5.3. */
+  avoirParentPushState: string | null;
   onAbbyPush: (inv: Invoice) => void;
   onAbbyDetail: (inv: Invoice) => void;
 }) {
@@ -122,20 +129,60 @@ function AbbyZone({
     new Date()
   );
   const disabledReason = getPushDisabledReason(status);
-  // Push initial OU reprise (3.4) — prédicats mutuellement exclusifs
-  const actionLabel = isPushButtonVisible(invoice)
-    ? "Pousser vers Abby"
-    : isPushResumable(
-          {
-            abby_push_state: invoice.abby_push_state,
-            abby_push_locked_at: invoice.abby_push_locked_at,
-            is_avoir: invoice.is_avoir,
-            status: invoice.status,
-          },
-          new Date()
-        )
-      ? "Reprendre le push"
-      : null;
+  // Action Abby de la ligne — FACTURE (push/reprise) OU AVOIR (story 5.3, via
+  // ses propres prédicats). `label` = texte du bouton ; `active` = cliquable ;
+  // `tooltip` = motif si désactivé. Une ligne est soit facture soit avoir.
+  let label: string | null = null;
+  let active = false;
+  let tooltip: string | null = null;
+  if (!invoice.is_avoir) {
+    label = isPushButtonVisible(invoice)
+      ? "Pousser vers Abby"
+      : isPushResumable(
+            {
+              abby_push_state: invoice.abby_push_state,
+              abby_push_locked_at: invoice.abby_push_locked_at,
+              is_avoir: invoice.is_avoir,
+              status: invoice.status,
+            },
+            new Date()
+          )
+        ? "Reprendre le push"
+        : null;
+    if (label !== null) {
+      active = status === "active";
+      tooltip = active ? null : disabledReason;
+    }
+  } else {
+    const canPush =
+      avoirParentPushState === "finalized" &&
+      invoice.abby_push_state === null &&
+      invoice.status !== "cancelled";
+    const canResume = canResumeAvoir(
+      {
+        is_avoir: invoice.is_avoir,
+        abby_push_state: invoice.abby_push_state,
+        abby_push_locked_at: invoice.abby_push_locked_at,
+        status: invoice.status,
+      },
+      avoirParentPushState,
+      new Date()
+    );
+    if (canPush || canResume) {
+      label = canPush ? "Pousser l'avoir" : "Reprendre l'avoir";
+      active = status === "active";
+      tooltip = active ? null : disabledReason;
+    } else {
+      const reason = getAvoirActionReason(
+        { abby_push_state: invoice.abby_push_state, status: invoice.status },
+        avoirParentPushState
+      );
+      if (reason !== null) {
+        label = "Pousser l'avoir";
+        tooltip = reason;
+      }
+    }
+  }
 
   // Badge cliquable UNIQUEMENT sur une facture finalisée (story 4.1) : le
   // dialog détail n'a rien d'utile à montrer sur un push en cours, et le DOM
@@ -161,17 +208,17 @@ function AbbyZone({
           {badge.label}
         </Badge>
       )}
-      {actionLabel !== null &&
-        (status === "active" ? (
+      {label !== null &&
+        (active ? (
           <Button
             size="sm"
             variant="outline"
             className="h-6 px-2 text-[11px]"
             onClick={() => onAbbyPush(invoice)}
           >
-            {actionLabel}
+            {label}
           </Button>
-        ) : disabledReason ? (
+        ) : tooltip ? (
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -184,11 +231,11 @@ function AbbyZone({
                     className="h-6 px-2 text-[11px] pointer-events-none"
                     disabled
                   >
-                    {actionLabel}
+                    {label}
                   </Button>
                 </span>
               </TooltipTrigger>
-              <TooltipContent>{disabledReason}</TooltipContent>
+              <TooltipContent>{tooltip}</TooltipContent>
             </Tooltip>
           </TooltipProvider>
         ) : null)}
@@ -197,7 +244,7 @@ function AbbyZone({
 }
 
 /** Zone 4 du spec : une ligne de facture lisible. */
-export function InvoiceRow({ invoice, abbyConnectionStatus, onAbbyPush, onAbbyDetail, selected, onToggleSelect, ...handlers }: Props) {
+export function InvoiceRow({ invoice, abbyConnectionStatus, onAbbyPush, onAbbyDetail, selected, onToggleSelect, avoirParentPushState, ...handlers }: Props) {
   const badge = STATUS_BADGES[invoice.status] ?? STATUS_BADGES.pending;
 
   return (
@@ -252,7 +299,7 @@ export function InvoiceRow({ invoice, abbyConnectionStatus, onAbbyPush, onAbbyDe
           <Skeleton className="h-5 w-24" />
         </span>
       ) : isAbbyZoneVisible(abbyConnectionStatus) ? (
-        <AbbyZone invoice={invoice} status={abbyConnectionStatus} onAbbyPush={onAbbyPush} onAbbyDetail={onAbbyDetail} />
+        <AbbyZone invoice={invoice} status={abbyConnectionStatus} avoirParentPushState={avoirParentPushState} onAbbyPush={onAbbyPush} onAbbyDetail={onAbbyDetail} />
       ) : null}
       <span className="w-52 shrink-0">
         <InvoiceActionsMenu invoice={invoice} {...handlers} />

@@ -115,6 +115,8 @@ export interface AbbyInvoicePreview {
   };
   /** Reprise d'un push interrompu (3.4) : prochaine étape, sinon null. */
   resume: { fromStep: number } | null;
+  /** Avoir (5.3) : facture parente rattachée (bandeau UX-DR8). null = facture. */
+  parent: { displayRef: string; abbyNumber: string | null } | null;
 }
 
 /**

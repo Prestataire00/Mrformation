@@ -9,6 +9,8 @@ import {
   isPushButtonVisible,
   isPushResumable,
   getResumeStep,
+  canPushAvoir,
+  canResumeAvoir,
 } from "@/lib/abby/eligibility";
 import { validateRecipientForAbby } from "@/lib/abby/validation";
 import { VAT_EXONERATION_FORMATION } from "@/lib/abby/vat";
@@ -24,7 +26,19 @@ import { resolveRecipient } from "./abby-customers";
 
 /** Colonnes propres de la facture nécessaires à la préview (hors fragment abby). */
 const PREVIEW_INVOICE_COLUMNS =
-  "id, reference, external_reference, recipient_type, recipient_id, recipient_name, amount, status, is_avoir";
+  "id, reference, external_reference, recipient_type, recipient_id, recipient_name, amount, status, is_avoir, parent_invoice_id";
+
+/** Embed self-référentiel de la parente (avoir — story 5.3, bandeau + garde). */
+const PARENT_EMBED =
+  "parent:formation_invoices!parent_invoice_id(reference, external_reference, abby_invoice_id, abby_invoice_number, abby_push_state)";
+
+interface PreviewParentRef {
+  reference: string | null;
+  external_reference: string | null;
+  abby_invoice_id: string | null;
+  abby_invoice_number: string | null;
+  abby_push_state: string | null;
+}
 
 interface PreviewInvoiceRow {
   id: string;
@@ -36,12 +50,14 @@ interface PreviewInvoiceRow {
   amount: number;
   status: string;
   is_avoir: boolean;
+  parent_invoice_id: string | null;
   abby_push_state: string | null;
   abby_push_locked_at: string | null;
   abby_invoice_number: string | null;
   abby_state: string | null;
   abby_last_error: string | null;
   session: { title: string; entity_id: string };
+  parent: PreviewParentRef | null;
 }
 
 /**
@@ -92,7 +108,7 @@ export async function buildInvoicePreview(
   const { data: invoiceData, error: invoiceError } = await supabase
     .from("formation_invoices")
     .select(
-      `${PREVIEW_INVOICE_COLUMNS}, ${ABBY_INVOICE_SELECT}, session:sessions!inner(title, entity_id)`
+      `${PREVIEW_INVOICE_COLUMNS}, ${ABBY_INVOICE_SELECT}, session:sessions!inner(title, entity_id), ${PARENT_EMBED}`
     )
     .eq("id", invoiceId)
     .eq("entity_id", entityId)
@@ -113,29 +129,50 @@ export async function buildInvoicePreview(
   // runtime (relation N→1), cast documenté (pattern abby-customers financier)
   const invoice = invoiceData as unknown as PreviewInvoiceRow;
 
-  // 3. Éligibilité (AD-13) : jamais poussée OU push interrompu reprenable
-  // (3.4 — verrou périmé/NULL) ; annulée, avoir, boucle active → refus
-  const resumable = isPushResumable(
+  // 3. Éligibilité (AD-13). FACTURE : jamais poussée OU reprise (3.4). AVOIR
+  // (5.3) : parente poussée-finalisée (canPushAvoir) OU avoir interrompu
+  // reprenable (canResumeAvoir) — l'avoir a ses propres prédicats.
+  const now = new Date();
+  const parent = invoice.parent;
+  const factureResumable = isPushResumable(
     {
       abby_push_state: invoice.abby_push_state,
       abby_push_locked_at: invoice.abby_push_locked_at,
       is_avoir: invoice.is_avoir,
       status: invoice.status,
     },
-    new Date()
+    now
   );
-  if (
-    !isPushButtonVisible({
-      abby_push_state: invoice.abby_push_state,
-      status: invoice.status,
-      is_avoir: invoice.is_avoir,
-    }) &&
-    !resumable
-  ) {
+  const avoirResumable =
+    invoice.is_avoir &&
+    canResumeAvoir(
+      {
+        is_avoir: invoice.is_avoir,
+        abby_push_state: invoice.abby_push_state,
+        abby_push_locked_at: invoice.abby_push_locked_at,
+        status: invoice.status,
+      },
+      parent?.abby_push_state ?? null,
+      now
+    );
+  const resumable = invoice.is_avoir ? avoirResumable : factureResumable;
+  const eligible = invoice.is_avoir
+    ? canPushAvoir(
+        { is_avoir: invoice.is_avoir, abby_push_state: invoice.abby_push_state, status: invoice.status },
+        parent ? { abby_push_state: parent.abby_push_state, abby_invoice_id: parent.abby_invoice_id } : null,
+      ) || avoirResumable
+    : isPushButtonVisible({
+        abby_push_state: invoice.abby_push_state,
+        status: invoice.status,
+        is_avoir: invoice.is_avoir,
+      }) || factureResumable;
+  if (!eligible) {
     return {
       ok: false,
       error: {
-        message: "Cette facture n'est pas éligible au push vers Abby.",
+        message: invoice.is_avoir
+          ? "Cet avoir n'est pas éligible : sa facture d'origine doit d'abord être transmise à Abby."
+          : "Cette facture n'est pas éligible au push vers Abby.",
         code: "abby_invalid_state",
       },
     };
@@ -217,35 +254,42 @@ export async function buildInvoicePreview(
     tvaRate,
   });
 
-  // 6. Sort du client — résolution 2.1 sous withAbbyConnection (read-only :
-  // au plus une recherche Abby ; l'écriture de liaison = saga 3.3 uniquement)
-  const resolutionRes = await withAbbyConnection(supabase, entityId, (client) =>
-    resolveRecipient(supabase, client, entityId, {
-      type: invoice.recipient_type,
-      id: invoice.recipient_id,
-    })
-  );
-  if (!resolutionRes.ok) return { ok: false, error: resolutionRes.error };
-  const inner = resolutionRes.data;
-  if (!inner.ok) return { ok: false, error: inner.error };
-  const resolution = inner.resolution;
-
-  // 7. Validation qualité — périmètre to_create UNIQUEMENT (contractualisé 2.2)
-  if (resolution.outcome === "to_create") {
-    const validation = validateRecipientForAbby(
-      invoice.recipient_type,
-      resolution.recipient
+  // 6. Sort du client. AVOIR (5.3) : client HÉRITÉ de la parente → PAS de
+  // résolution Abby (outcome neutre, jamais affiché — le dialog masque le sort
+  // du client dès preview.parent). FACTURE : résolution 2.1 read-only.
+  let outcome: AbbyInvoicePreview["recipient"]["outcome"];
+  if (invoice.is_avoir) {
+    outcome = "linked";
+  } else {
+    const resolutionRes = await withAbbyConnection(supabase, entityId, (client) =>
+      resolveRecipient(supabase, client, entityId, {
+        type: invoice.recipient_type,
+        id: invoice.recipient_id,
+      })
     );
-    if (!validation.valid) {
-      return {
-        ok: false,
-        error: {
-          message: validation.message,
-          code: "abby_validation",
-          missingFields: validation.missingFields,
-        },
-      };
+    if (!resolutionRes.ok) return { ok: false, error: resolutionRes.error };
+    const inner = resolutionRes.data;
+    if (!inner.ok) return { ok: false, error: inner.error };
+    const resolution = inner.resolution;
+
+    // 7. Validation qualité — périmètre to_create UNIQUEMENT (contractualisé 2.2)
+    if (resolution.outcome === "to_create") {
+      const validation = validateRecipientForAbby(
+        invoice.recipient_type,
+        resolution.recipient
+      );
+      if (!validation.valid) {
+        return {
+          ok: false,
+          error: {
+            message: validation.message,
+            code: "abby_validation",
+            missingFields: validation.missingFields,
+          },
+        };
+      }
     }
+    outcome = resolution.outcome;
   }
 
   const preview: AbbyInvoicePreview = {
@@ -258,7 +302,7 @@ export async function buildInvoicePreview(
     recipient: {
       name: invoice.recipient_name,
       type: invoice.recipient_type,
-      outcome: resolution.outcome,
+      outcome,
     },
     lines: previewLines,
     totals: {
@@ -272,6 +316,17 @@ export async function buildInvoicePreview(
     resume: resumable
       ? { fromStep: getResumeStep(invoice.abby_push_state ?? "") }
       : null,
+    // Bandeau UX-DR8 (avoir) : réf + numéro Abby de la parente.
+    parent:
+      invoice.is_avoir && parent
+        ? {
+            displayRef: invoiceDisplayRef({
+              reference: parent.reference,
+              external_reference: parent.external_reference,
+            }),
+            abbyNumber: parent.abby_invoice_number,
+          }
+        : null,
   };
 
   return { ok: true, preview };
