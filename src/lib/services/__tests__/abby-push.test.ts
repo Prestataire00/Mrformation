@@ -614,12 +614,16 @@ describe("run AVOIR chaîné NULL → finalized (story 5.3, AD-23 : dispatch is_
     amount: -300,
     is_avoir: true,
     parent_invoice_id: "parent-1",
-    parent: {
-      abby_invoice_id: "abby-parent-99",
-      abby_invoice_number: "F-2026-0007",
-      reference: "FAC-2026-0007",
-      abby_push_state: "finalized",
-    },
+    // ⚠️ PostgREST renvoie l'embed self-ref en TABLEAU (vérifié prod 23/07) — le
+    // fixture le reflète ; la saga doit normaliser (firstOrNull) sinon refus.
+    parent: [
+      {
+        abby_invoice_id: "abby-parent-99",
+        abby_invoice_number: "F-2026-0007",
+        reference: "FAC-2026-0007",
+        abby_push_state: "finalized",
+      },
+    ],
   };
 
   it("saga avoir : createAsset(parente), PAS d'ensureCustomer, PAS de timeline, getAsset, numéro AV-…", async () => {

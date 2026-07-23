@@ -63,6 +63,13 @@ interface ParentInvoiceRef {
   abby_push_state: string | null;
 }
 
+/** Normalise un embed PostgREST self-référentiel (renvoyé en TABLEAU) → objet. */
+function firstOrNull(raw: unknown): ParentInvoiceRef | null {
+  if (raw == null) return null;
+  if (Array.isArray(raw)) return (raw[0] as ParentInvoiceRef | undefined) ?? null;
+  return raw as ParentInvoiceRef;
+}
+
 interface PushInvoiceRow {
   id: string;
   reference: string | null;
@@ -366,9 +373,13 @@ export async function advancePushStep(
   if (!invoiceData) {
     return { ok: false, error: { message: "Facture introuvable.", code: "abby_not_found" } };
   }
-  // Embed sessions!inner = objet au runtime (validé en prod 3.2) ; embed parent
-  // = objet OU null (avoir). Cast documenté.
+  // Embed sessions!inner = objet au runtime (validé en prod 3.2). ⚠️ L'embed
+  // self-référentiel `parent` est renvoyé en TABLEAU par PostgREST (vérifié en
+  // prod le 23/07) — on le normalise en objet AVANT tout usage, sinon
+  // invoice.parent.abby_push_state serait undefined et tout push d'avoir
+  // refusé à tort (« facture d'origine non transmise »). Cast documenté.
   const invoice = invoiceData as unknown as PushInvoiceRow;
+  invoice.parent = firstOrNull((invoiceData as { parent?: unknown }).parent);
 
   // Story 5.3 : l'avoir emprunte la MÊME machine à états, dispatch is_avoir
   // (createAsset / saut client / saut timeline / getAsset). Plus de blocage.

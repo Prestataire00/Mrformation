@@ -126,8 +126,18 @@ export async function buildInvoicePreview(
     };
   }
   // supabase-js infère l'embed sessions!inner en tableau — c'est un objet au
-  // runtime (relation N→1), cast documenté (pattern abby-customers financier)
+  // runtime (relation N→1), cast documenté (pattern abby-customers financier).
+  // ⚠️ L'embed self-référentiel `parent` est renvoyé en TABLEAU par PostgREST
+  // (vérifié prod 23/07) — normaliser en objet, sinon la garde avoir échoue.
   const invoice = invoiceData as unknown as PreviewInvoiceRow;
+  {
+    const rawParent = (invoiceData as { parent?: unknown }).parent;
+    invoice.parent = rawParent == null
+      ? null
+      : Array.isArray(rawParent)
+        ? ((rawParent[0] as PreviewParentRef | undefined) ?? null)
+        : (rawParent as PreviewParentRef);
+  }
 
   // 3. Éligibilité (AD-13). FACTURE : jamais poussée OU reprise (3.4). AVOIR
   // (5.3) : parente poussée-finalisée (canPushAvoir) OU avoir interrompu
@@ -179,7 +189,7 @@ export async function buildInvoicePreview(
   }
 
   // 4. Lignes — repli parité PDF : sans lignes, une ligne générée depuis le
-  // titre de session, PU = |amount| (les avoirs n'atteignent jamais ce point)
+  // titre de session, PU = |amount| (un avoir = 0 ligne → toujours ce repli)
   const { data: lineRows, error: linesError } = await supabase
     .from("formation_invoice_lines")
     .select("description, quantity, unit_price")
