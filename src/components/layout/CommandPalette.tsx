@@ -79,23 +79,31 @@ export function CommandPalette() {
       <CommandList>
         <CommandEmpty>{query.length < 2 ? "Tapez au moins 2 caractères" : "Aucun résultat"}</CommandEmpty>
 
-        <CommandGroup heading="Actions rapides">
-          <CommandItem onSelect={() => go("/admin")}>
-            <LayoutDashboard className="mr-2 h-4 w-4" /> Tableau de bord
-          </CommandItem>
-          <CommandItem onSelect={() => go("/admin/trainings")}>
-            <GraduationCap className="mr-2 h-4 w-4" /> Formations
-          </CommandItem>
-          <CommandItem onSelect={() => go("/admin/clients")}>
-            <Building2 className="mr-2 h-4 w-4" /> Entreprises
-          </CommandItem>
-          <CommandItem onSelect={() => go("/admin/reports/factures")}>
-            <Receipt className="mr-2 h-4 w-4" /> Factures
-          </CommandItem>
-          <CommandItem onSelect={() => go("/admin/crm")}>
-            <Plus className="mr-2 h-4 w-4" /> Pipeline CRM
-          </CommandItem>
-        </CommandGroup>
+        {/* Fix retour Loris : les « Actions rapides » (dont « Tableau de bord »,
+            1er item auto-surligné par cmdk) ne s'affichent QUE si aucune
+            recherche n'est en cours. Sinon, taper une recherche puis Entrée
+            sélectionnait « Tableau de bord » et renvoyait au dashboard au lieu
+            d'ouvrir le résultat cherché. En recherche, Entrée cible désormais
+            le premier vrai résultat. */}
+        {!query && (
+          <CommandGroup heading="Actions rapides">
+            <CommandItem onSelect={() => go("/admin")}>
+              <LayoutDashboard className="mr-2 h-4 w-4" /> Tableau de bord
+            </CommandItem>
+            <CommandItem onSelect={() => go("/admin/trainings")}>
+              <GraduationCap className="mr-2 h-4 w-4" /> Formations
+            </CommandItem>
+            <CommandItem onSelect={() => go("/admin/clients")}>
+              <Building2 className="mr-2 h-4 w-4" /> Entreprises
+            </CommandItem>
+            <CommandItem onSelect={() => go("/admin/reports/factures")}>
+              <Receipt className="mr-2 h-4 w-4" /> Factures
+            </CommandItem>
+            <CommandItem onSelect={() => go("/admin/crm")}>
+              <Plus className="mr-2 h-4 w-4" /> Pipeline CRM
+            </CommandItem>
+          </CommandGroup>
+        )}
 
         {results.sessions.length > 0 && (
           <>
