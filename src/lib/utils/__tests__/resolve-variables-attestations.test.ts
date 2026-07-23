@@ -107,6 +107,42 @@ describe("Attestation assiduité — heures réalisées & taux (logique présenc
   });
 });
 
+describe("Attestation assiduité — ligne d'assiduité (repli honnête, retour Loris #13)", () => {
+  const learner = makeLearner();
+  const session = makeSession({ planned_hours: 14 });
+
+  it("assiduité calculable → phrase avec heures RÉELLES et taux réel", () => {
+    const ctx: ResolveContext = {
+      session,
+      learner,
+      learnerAttendance: { signedHours: 3, totalHours: 7, ratePct: 42.86 },
+    };
+    const line = resolve("{{ligne_assiduite}}", ctx);
+    expect(line).toContain("3.00 heures");
+    expect(line).toContain("42.86 %");
+    expect(line).not.toContain("non disponible");
+  });
+
+  it("assiduité NON calculable (pas de créneaux) → repli honnête, PAS de faux 100 %", () => {
+    const ctx: ResolveContext = { session, learner, signedLearnerIds: new Set(["learner-1"]) };
+    const line = resolve("{{ligne_assiduite}}", ctx);
+    expect(line).toContain("calcul non disponible");
+    expect(line).toContain("émargement par créneau");
+    expect(line).not.toContain("100");
+  });
+
+  it("l'alias [%Ligne d'assiduité%] résout vers la même ligne", () => {
+    const ctx: ResolveContext = {
+      session,
+      learner,
+      learnerAttendance: { signedHours: 7, totalHours: 7, ratePct: 100 },
+    };
+    const line = resolve("[%Ligne d'assiduité%]", ctx);
+    expect(line).toContain("7.00 heures");
+    expect(line).toContain("100.00 %");
+  });
+});
+
 describe("Attestation AIPR — résultat examen & ville de naissance", () => {
   const session = makeSession();
 

@@ -806,6 +806,22 @@ export function resolveVariables(content: string, data: ResolveContext): string 
       return signed.has(data.learner.id) ? "100.00" : "0.00";
     })(),
 
+    // Ligne d'assiduité complète pour l'attestation (retour Loris #13).
+    // Quand l'assiduité par créneau est calculable (data.learnerAttendance,
+    // fournie dès qu'il existe des signatures slot-level) → chiffres RÉELS.
+    // Sinon (session sans créneaux OU émargement non slot-aware) → repli
+    // HONNÊTE : on n'imprime plus un faux « 100 % » sur un document légal, on
+    // indique que le calcul n'est pas disponible et pourquoi. Cf. modèle
+    // ATTESTATION_ASSIDUITE_HTML qui utilise [%Ligne d'assiduité%].
+    "{{ligne_assiduite}}": (() => {
+      if (data.learnerAttendance) {
+        const h = data.learnerAttendance.signedHours.toFixed(2);
+        const t = data.learnerAttendance.ratePct.toFixed(2);
+        return `Durée effectivement suivie par le/la stagiaire : <strong>${h} heures</strong>,<br>\n  soit un taux de réalisation de <strong>${t} %</strong>.`;
+      }
+      return `Durée effectivement suivie : <strong>calcul non disponible</strong>.<br>\n  Le taux de réalisation ne peut pas être établi automatiquement pour cette session : l'émargement par créneau n'a pas été renseigné. Renseignez les créneaux et l'émargement par créneau pour obtenir un taux réel.`;
+    })(),
+
     // === Story B-Certificat Réalisation ===
     // URL absolue vers /ministere-du-travail.png (asset public/) — Puppeteer
     // (Railway sidecar) doit pouvoir le fetcher depuis Internet, donc on
@@ -1756,6 +1772,7 @@ export const ALIAS_TO_VARIABLE_KEY: Record<string, string> = {
   // === Story B-Attestation Assiduité ===
   "Heures de formation réalisées par l'apprenant": "{{heures_realisees_apprenant}}",
   "Taux de réalisation": "{{taux_realisation}}",
+  "Ligne d'assiduité": "{{ligne_assiduite}}",
   // === Story B-Émargement Individuel ===
   "Tableau de signature de l'apprenant": "{{tableau_signature_individuel}}",
   // === Story B-Certificat diplôme ===

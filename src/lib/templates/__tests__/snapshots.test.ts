@@ -242,12 +242,25 @@ describe("Templates snapshots — couvre F1/F2.x/F3", () => {
     expect({ html, footer }).toMatchSnapshot();
   });
 
-  it("attestation-assiduite : HTML + footer avec présence signalée", () => {
+  it("attestation-assiduite : repli honnête sans émargement par créneau (calcul non disponible)", () => {
     const context: ResolveContext = {
       session: makeSession(),
       learner: makeLearner(),
       entity: FULL_ENTITY,
       signedLearnerIds: new Set(["learner-snap-1"]),
+    };
+    const html = resolveDocumentVariables(ATTESTATION_ASSIDUITE_HTML, context);
+    const footer = resolveDocumentVariables(ATTESTATION_ASSIDUITE_FOOTER_TEMPLATE, context);
+    expect({ html, footer }).toMatchSnapshot();
+  });
+
+  it("attestation-assiduite : assiduité calculée par créneau (heures + taux réels)", () => {
+    const context: ResolveContext = {
+      session: makeSession(),
+      learner: makeLearner(),
+      entity: FULL_ENTITY,
+      signedLearnerIds: new Set(["learner-snap-1"]),
+      learnerAttendance: { signedHours: 10.5, totalHours: 14, ratePct: 75 },
     };
     const html = resolveDocumentVariables(ATTESTATION_ASSIDUITE_HTML, context);
     const footer = resolveDocumentVariables(ATTESTATION_ASSIDUITE_FOOTER_TEMPLATE, context);
