@@ -1533,7 +1533,11 @@ export default function EmailsPage() {
               <div className="grid grid-cols-3 gap-3">
                 <div className="space-y-1">
                   <Label className="text-xs text-blue-600">Session</Label>
-                  <Select value={selectedSessionId} onValueChange={setSelectedSessionId}>
+                  {/* Audit 24/07 : « Aucune » pose la valeur sentinelle "none"
+                      (truthy) → sans normalisation, le bandeau « variables non
+                      remplies » se masquait à tort et la résolution retombait
+                      sur le texte brut. On normalise "none" → "". */}
+                  <Select value={selectedSessionId || "none"} onValueChange={(v) => setSelectedSessionId(v === "none" ? "" : v)}>
                     <SelectTrigger className="h-8 text-xs bg-white">
                       <SelectValue placeholder="Aucune" />
                     </SelectTrigger>
@@ -1554,8 +1558,8 @@ export default function EmailsPage() {
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs text-blue-600">Client</Label>
-                  <Select value={selectedClientId} onValueChange={(v) => {
-                    setSelectedClientId(v);
+                  <Select value={selectedClientId || "none"} onValueChange={(v) => {
+                    setSelectedClientId(v === "none" ? "" : v);
                     setSelectedLearnerId("");
                   }}>
                     <SelectTrigger className="h-8 text-xs bg-white">
@@ -1578,7 +1582,7 @@ export default function EmailsPage() {
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs text-blue-600">Apprenant</Label>
-                  <Select value={selectedLearnerId} onValueChange={setSelectedLearnerId}>
+                  <Select value={selectedLearnerId || "none"} onValueChange={(v) => setSelectedLearnerId(v === "none" ? "" : v)}>
                     <SelectTrigger className="h-8 text-xs bg-white">
                       <SelectValue placeholder="Aucun" />
                     </SelectTrigger>

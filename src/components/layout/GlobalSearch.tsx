@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Loader2, Building2, UserSearch } from "lucide-react";
+import { Search, Loader2, Building2, UserSearch, Users, GraduationCap } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import {
@@ -25,7 +25,7 @@ interface Props {
   entityId: string | null;
 }
 
-const EMPTY: GlobalSearchResults = { clients: [], prospects: [] };
+const EMPTY: GlobalSearchResults = { clients: [], prospects: [], learners: [], sessions: [] };
 
 export function GlobalSearch({ entityId }: Props) {
   const router = useRouter();
@@ -53,7 +53,11 @@ export function GlobalSearch({ entityId }: Props) {
     globalSearchEntities(supabase, entityId, q)
       .then((res) => {
         if (myReq !== reqId.current) return;
-        setResults(res.ok ? { clients: res.clients, prospects: res.prospects } : EMPTY);
+        setResults(
+          res.ok
+            ? { clients: res.clients, prospects: res.prospects, learners: res.learners, sessions: res.sessions }
+            : EMPTY,
+        );
       })
       .catch(() => {
         if (myReq === reqId.current) setResults(EMPTY);
@@ -71,7 +75,11 @@ export function GlobalSearch({ entityId }: Props) {
   }
 
   const q = debounced.trim();
-  const hasResults = results.clients.length > 0 || results.prospects.length > 0;
+  const hasResults =
+    results.clients.length > 0 ||
+    results.prospects.length > 0 ||
+    results.learners.length > 0 ||
+    results.sessions.length > 0;
   const showEmpty = !loading && q.length >= GLOBAL_SEARCH_MIN_CHARS && !hasResults;
 
   return (
@@ -95,7 +103,7 @@ export function GlobalSearch({ entityId }: Props) {
         >
           <Search className="w-3.5 h-3.5 shrink-0" />
           <span className="text-xs truncate text-left flex-1">
-            {value || "Rechercher une entreprise…"}
+            {value || "Rechercher…"}
           </span>
         </button>
       </PopoverTrigger>
@@ -104,8 +112,8 @@ export function GlobalSearch({ entityId }: Props) {
           <CommandInput
             value={value}
             onValueChange={setValue}
-            placeholder="Entreprise ou prospect…"
-            aria-label="Rechercher une entreprise ou un prospect"
+            placeholder="Entreprise, prospect, apprenant, formation…"
+            aria-label="Rechercher une entreprise, un prospect, un apprenant ou une formation"
           />
           <CommandList>
             {loading && (
@@ -131,6 +139,43 @@ export function GlobalSearch({ entityId }: Props) {
                   >
                     <Building2 className="mr-2 h-4 w-4 text-muted-foreground shrink-0" />
                     <span className="truncate">{c.company_name}</span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )}
+
+            {results.learners.length > 0 && (
+              <CommandGroup heading="Apprenants">
+                {results.learners.map((l) => (
+                  <CommandItem
+                    key={l.id}
+                    value={`learner-${l.id}`}
+                    onSelect={() => go(`/admin/clients/apprenants/${l.id}`)}
+                    className="cursor-pointer"
+                  >
+                    <Users className="mr-2 h-4 w-4 text-muted-foreground shrink-0" />
+                    <span className="flex flex-col min-w-0">
+                      <span className="truncate">{l.first_name} {l.last_name}</span>
+                      {l.email && (
+                        <span className="text-[11px] text-muted-foreground truncate">{l.email}</span>
+                      )}
+                    </span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )}
+
+            {results.sessions.length > 0 && (
+              <CommandGroup heading="Formations">
+                {results.sessions.map((s) => (
+                  <CommandItem
+                    key={s.id}
+                    value={`session-${s.id}`}
+                    onSelect={() => go(`/admin/formations/${s.id}`)}
+                    className="cursor-pointer"
+                  >
+                    <GraduationCap className="mr-2 h-4 w-4 text-muted-foreground shrink-0" />
+                    <span className="truncate">{s.title}</span>
                   </CommandItem>
                 ))}
               </CommandGroup>

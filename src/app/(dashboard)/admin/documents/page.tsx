@@ -241,7 +241,7 @@ const emptyGenerateForm: GenerateFormData = {
 };
 
 type GeneratedDocumentFull = GeneratedDocument & {
-  template: { name: string; type: DocumentType; entity_id?: string } | null;
+  template: { name: string; type: DocumentType; entity_id?: string; mode?: "editable" | "docx_fidelity" | null } | null;
   session: { title: string; trainer?: { first_name: string; last_name: string } | null } | null;
   client: { company_name: string } | null;
   learner: { first_name: string; last_name: string } | null;
@@ -592,7 +592,7 @@ export default function DocumentsPage() {
     }
     const { data, error } = await supabase
       .from("generated_documents")
-      .select("*, template:document_templates(name, type, entity_id), session:sessions(title, trainer:trainers(first_name, last_name)), client:clients(company_name), learner:learners(first_name, last_name)")
+      .select("*, template:document_templates(name, type, entity_id, mode), session:sessions(title, trainer:trainers(first_name, last_name)), client:clients(company_name), learner:learners(first_name, last_name)")
       .eq("entity_id", entityId)
       .order("created_at", { ascending: false });
     if (error) {
@@ -1021,11 +1021,35 @@ export default function DocumentsPage() {
           result.base64,
           result.filename || `${generateForm.name.trim() || "document"}.pdf`,
         );
+        // Audit 24/07 : trace le document généré dans generated_documents
+        // (content null — le PDF est régénérable à la demande depuis
+        // handleDownload via le même chemin serveur, cf. template_id +
+        // contexte stockés). Sans cet insert, le doc n'apparaissait pas dans
+        // la liste « Documents générés ».
+        const { error: insertErr } = await supabase.from("generated_documents").insert({
+          template_id: template.id,
+          session_id: generateForm.session_id || null,
+          client_id: generateForm.client_id || null,
+          learner_id: generateForm.learner_id || null,
+          name: generateForm.name.trim(),
+          content: null,
+          file_url: null,
+          entity_id: entityId,
+        });
+        if (insertErr) {
+          // Non bloquant : le PDF est déjà téléchargé, on informe seulement.
+          toast({
+            title: "Document téléchargé mais non tracé",
+            description: insertErr.message,
+            variant: "destructive",
+          });
+        }
         toast({
           title: "Document Word généré",
           description: "Le PDF avec les variables résolues a été téléchargé.",
         });
         setGenerateDialogOpen(false);
+        await fetchGeneratedDocs();
       }
       return;
     }
@@ -1131,6 +1155,23 @@ export default function DocumentsPage() {
         window.open(url, "_blank", "noopener,noreferrer");
       } catch (err) {
         toast({ title: "Erreur", description: err instanceof Error ? err.message : "Téléchargement impossible.", variant: "destructive" });
+      }
+    } else if (doc.template?.mode === "docx_fidelity" && doc.template_id) {
+      // Audit 24/07 : doc issu d'un modèle Word — content/file_url sont null,
+      // on régénère le PDF à la demande via le serveur (balises résolues) avec
+      // le contexte stocké sur la ligne. Idempotent : le cache PDF serveur
+      // rend la régénération quasi instantanée.
+      const result = await generateViaServer({
+        template_id: doc.template_id,
+        context: {
+          session_id: doc.session_id || undefined,
+          client_id: doc.client_id || undefined,
+          learner_id: doc.learner_id || undefined,
+        },
+      });
+      if (result) {
+        downloadBase64Pdf(result.base64, result.filename || `${doc.name}.pdf`);
+        toast({ title: "PDF téléchargé", description: `"${doc.name}" a été régénéré.` });
       }
     } else if (doc.content) {
       if (isHtmlContent(doc.content)) {

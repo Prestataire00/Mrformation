@@ -37,6 +37,11 @@ export const PAGE_PERMISSIONS: Array<[string, Role[]]> = [
   ["/admin/signatures", ["super_admin", "admin", "trainer"]],
   // CRM : accessible par super_admin, admin et commercial
   ["/admin/crm",        ["super_admin", "admin", "commercial"]],
+  // Page profil (Mon Profil) : le menu du Header y envoie aussi le rôle
+  // commercial (pas de route /commercial/profile) — audit 24/07 : sans cette
+  // exception le middleware le renvoyait vers / et « Mon Profil » restait
+  // cassé pour lui.
+  ["/admin/profile",    ["super_admin", "admin", "commercial"]],
   // Users management : super_admin et admin (restrictions fines dans le composant)
   ["/admin/users",      ["super_admin", "admin"]],
   // Reste du /admin : super_admin et admin uniquement
