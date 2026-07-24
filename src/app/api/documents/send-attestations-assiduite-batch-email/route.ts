@@ -25,6 +25,10 @@ import {
   executeBatchEmailSend,
   type RecipientGenerationTask,
 } from "@/lib/services/batch-email-handler";
+import {
+  computeAttestationAttendance,
+  type SlotSignatureRow,
+} from "@/lib/services/learner-attendance";
 import type { Session, Learner } from "@/lib/types";
 
 function slugify(name: string): string {
@@ -56,11 +60,17 @@ export async function POST(request: NextRequest) {
       .eq("id", body.sessionId).eq("entity_id", profile.entity_id).single();
     if (!session) return NextResponse.json({ error: "Session introuvable" }, { status: 404 });
 
-    const [{ data: enrollments, error: enrErr }, { data: signatureRows }] = await Promise.all([
-      supabase.from("enrollments").select("learner:learners(*)").eq("session_id", body.sessionId),
-      supabase.from("signatures").select("signer_id")
-        .eq("session_id", body.sessionId).eq("signer_type", "learner"),
-    ]);
+    // Fix audit 24/07 : charge aussi time_slot_id + les créneaux pour calculer
+    // l'assiduité par créneau ({{ligne_assiduite}}). Sans learnerAttendance, le
+    // template imprimait systématiquement le repli « calcul non disponible ».
+    const [{ data: enrollments, error: enrErr }, { data: signatureRows }, { data: slotRows }] =
+      await Promise.all([
+        supabase.from("enrollments").select("learner:learners(*)").eq("session_id", body.sessionId),
+        supabase.from("signatures").select("signer_id, time_slot_id")
+          .eq("session_id", body.sessionId).eq("signer_type", "learner"),
+        supabase.from("formation_time_slots").select("id, start_time, end_time")
+          .eq("session_id", body.sessionId),
+      ]);
     if (enrErr) return NextResponse.json({ error: `Lecture enrollments : ${enrErr.message}` }, { status: 500 });
 
     const learners = ((enrollments ?? []) as unknown as { learner: Learner | null }[])
@@ -80,6 +90,9 @@ export async function POST(request: NextRequest) {
     const service = new DocumentGenerationService({ engine, supabase });
     const sessionTitle = (session as { title?: string }).title ?? "Formation";
 
+    const slots = (slotRows ?? []) as { id: string; start_time: string; end_time: string }[];
+    const signatureRowsTyped = (signatureRows ?? []) as SlotSignatureRow[];
+
     const tasks: RecipientGenerationTask[] = learners.map((learner) => ({
       ownerId: learner.id,
       ownerName: `${learner.last_name} ${learner.first_name}`,
@@ -91,11 +104,14 @@ export async function POST(request: NextRequest) {
       emailTextBody: `Bonjour ${learner.first_name ?? ""},\n\nVeuillez trouver ci-joint votre attestation d'assiduité pour la formation ${sessionTitle}.\n\nCordialement,\nL'équipe formation`,
       attachmentFilename: `attestation-${slugify(`${learner.last_name} ${learner.first_name}`)}.pdf`,
       generatePdf: async () => {
+        const learnerAttendance =
+          computeAttestationAttendance(slots, signatureRowsTyped, learner.id) ?? undefined;
         const context: ResolveContext = {
           session: session as unknown as Session,
           learner,
           entity,
           signedLearnerIds,
+          learnerAttendance,
         };
         const html = resolveDocumentVariables(ATTESTATION_ASSIDUITE_HTML, context);
         const footer = resolveDocumentVariables(ATTESTATION_ASSIDUITE_FOOTER_TEMPLATE, context);
@@ -108,7 +124,14 @@ export async function POST(request: NextRequest) {
             session_id: body.sessionId,
             learner_id: learner.id,
             session_updated_at: (session as { updated_at?: string }).updated_at ?? null,
-            custom_variables: { present: signedLearnerIds.has(learner.id) ? "1" : "0" },
+            custom_variables: {
+              present: signedLearnerIds.has(learner.id) ? "1" : "0",
+              // Versionne le rendu (repli honnête v2) + encode l'assiduité :
+              // invalide les anciens PDFs « 100 % » et suit les émargements.
+              assiduite: learnerAttendance
+                ? `v2:${learnerAttendance.signedHours}/${learnerAttendance.totalHours}`
+                : "v2:fallback",
+            },
           },
           options: {
             format: "A4",

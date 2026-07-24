@@ -162,6 +162,9 @@ export async function POST(request: NextRequest) {
           session_updated_at: (session as { updated_at?: string }).updated_at ?? null,
           custom_variables: {
             present: signedLearnerIds.has(learner.id) ? "1" : "0",
+            // Fix audit 24/07 : versionne le rendu (repli honnête v2), cf.
+            // route unitaire.
+            tpl: "assiduite-v2",
             ...(learnerAttendance
               ? {
                   signed_hours: String(learnerAttendance.signedHours),

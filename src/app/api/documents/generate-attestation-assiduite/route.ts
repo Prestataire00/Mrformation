@@ -144,6 +144,10 @@ export async function POST(request: NextRequest) {
         custom_variables: {
           present: signedLearnerIds.has(body.learnerId) ? "1" : "0",
           signed_count: String(signedLearnerIds.size),
+          // Fix audit 24/07 : versionne le rendu (repli honnête v2) pour ne pas
+          // resservir depuis le cache un ancien PDF « 100 % » quand l'assiduité
+          // n'est pas calculable.
+          tpl: "assiduite-v2",
           ...(learnerAttendance
             ? {
                 signed_hours: String(learnerAttendance.signedHours),

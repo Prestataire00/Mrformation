@@ -1993,6 +1993,7 @@ export const VARIABLE_KEYS = [
   // Story B-Attestation Assiduité
   "{{heures_realisees_apprenant}}",
   "{{taux_realisation}}",
+  "{{ligne_assiduite}}",
   // Story B-Émargement Individuel
   "{{tableau_signature_individuel}}",
   // Story B-Certificat diplôme
