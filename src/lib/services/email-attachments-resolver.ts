@@ -338,6 +338,11 @@ async function renderTemplateHtml(
     if (data) trainer = data;
   }
 
+  // NB audit 24/07 : pas de calcul d'assiduité ici — `attestation_assiduite`
+  // est ABSENTE du union EmailAttachmentDescriptor (skip silencieux en amont,
+  // cf. execute-rule.ts) : ce chemin ne rend jamais ce document. Si le type
+  // est un jour ajouté au union, fournir `learnerAttendance` (cf.
+  // generate-from-template) sinon {{ligne_assiduite}} imprimera le repli.
   return renderSystemTemplate(desc.type, {
     formation: session as unknown as Session,
     learner: learner ?? undefined,

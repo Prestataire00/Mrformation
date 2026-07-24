@@ -18,11 +18,15 @@ function makeMock(opts: {
   plannedTasks: unknown[];
 }) {
   const inserts: { table: string; payload: unknown }[] = [];
+  const calls: { table: string; method: string; args: unknown[] }[] = [];
   const from = vi.fn((table: string) => {
     let isInsert = false;
     const b: Record<string, unknown> = {};
     for (const m of ["select", "eq", "not", "in", "gte", "lte", "limit", "order", "single", "maybeSingle"]) {
-      b[m] = vi.fn(() => b);
+      b[m] = vi.fn((...args: unknown[]) => {
+        calls.push({ table, method: m, args });
+        return b;
+      });
     }
     b.insert = vi.fn((payload: unknown) => {
       isInsert = true;
@@ -41,7 +45,7 @@ function makeMock(opts: {
     };
     return b;
   });
-  return { supabase: { from } as never, inserts };
+  return { supabase: { from } as never, inserts, calls };
 }
 
 describe("relanceInactiveProspects — garde « action déjà planifiée » (retour Loris #12)", () => {
@@ -80,6 +84,26 @@ describe("relanceInactiveProspects — garde « action déjà planifiée » (ret
       title: "Relancer ACME",
       status: "pending",
     });
+  });
+
+  it("le garde considère TOUTE tâche ouverte (pas de filtre de date) — une relance en retard bloque aussi (audit 24/07)", async () => {
+    const m = makeMock({
+      prospects: [prospect],
+      admins: [{ id: "A1" }],
+      recentActions: [],
+      // Une relance encore ouverte mais dont l'échéance est passée : elle doit
+      // bloquer la recréation (sinon doublon tous les ~4 jours).
+      plannedTasks: [{ id: "T-overdue" }],
+    });
+
+    const created = await relanceInactiveProspects(m.supabase, "ENT-A");
+
+    expect(created).toBe(0);
+    expect(m.inserts.filter((i) => i.table === "crm_tasks")).toHaveLength(0);
+    // Régression audit 24/07 : le garde ne doit PAS filtrer par due_date
+    // (un .gte("due_date") ferait sortir les tâches en retard du garde).
+    const gteOnTasks = m.calls.filter((c) => c.table === "crm_tasks" && c.method === "gte");
+    expect(gteOnTasks).toHaveLength(0);
   });
 
   it("NE crée PAS de relance quand une action commerciale récente existe (comportement inchangé)", async () => {

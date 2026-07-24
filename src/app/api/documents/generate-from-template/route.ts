@@ -19,6 +19,11 @@ import {
 } from "@/lib/utils/resolve-variables";
 import { validateDocumentVariables, type MissingByEntity } from "@/lib/validation/document-vars-validator";
 import { loadSignaturesBySessionId, DOC_TYPES_WITH_SIGNATURE_TABLE } from "@/lib/services/load-signatures";
+import {
+  computeAttestationAttendance,
+  type AttendanceSlot,
+  type SlotSignatureRow,
+} from "@/lib/services/learner-attendance";
 import { loadClientWithContacts } from "@/lib/services/load-client";
 import { computeAgreedCost, sessionDayCount } from "@/lib/utils/trainer-cost";
 import { createHash } from "crypto";
@@ -280,6 +285,40 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Assiduité par créneau pour l'attestation d'assiduité (fix audit 24/07) :
+    // ce chemin (utilisé par TabConventionDocs Voir/PDF/Envoyer) ne fournissait
+    // pas learnerAttendance → {{ligne_assiduite}} imprimait TOUJOURS le repli
+    // « calcul non disponible », même quand l'émargement par créneau existait.
+    // Les créneaux + signatures sont déjà chargés dans l'embed session ci-dessus.
+    // Calculé AVANT la clé de cache pour que l'assiduité participe à
+    // l'invalidation (un nouvel émargement ne change pas session.updated_at).
+    let learnerAttendance: ResolveContext["learnerAttendance"];
+    if (
+      payload.doc_type === "attestation_assiduite" &&
+      payload.context.learner_id &&
+      sessionDataForFallback
+    ) {
+      const slots = (sessionDataForFallback.formation_time_slots ?? []) as AttendanceSlot[];
+      const sigRows = (
+        (sessionDataForFallback.signatures ?? []) as Array<
+          SlotSignatureRow & { signer_type?: string | null }
+        >
+      ).filter((s) => s.signer_type === "learner");
+      learnerAttendance =
+        computeAttestationAttendance(slots, sigRows, payload.context.learner_id) ?? undefined;
+    }
+    // Marqueur de cache attestation : versionne le rendu (repli honnête v2) et
+    // encode l'assiduité calculée → invalide les anciens PDFs « 100 % » et les
+    // PDFs devenus obsolètes après un nouvel émargement.
+    const assiduiteCacheMarker: Record<string, string> | null =
+      payload.doc_type === "attestation_assiduite"
+        ? {
+            assiduite: learnerAttendance
+              ? `v2:${learnerAttendance.signedHours}/${learnerAttendance.totalHours}`
+              : "v2:fallback",
+          }
+        : null;
+
     if (payload.context.learner_id) {
       const { data: learner } = await auth.supabase
         .from("learners")
@@ -358,7 +397,9 @@ export async function POST(request: NextRequest) {
       client_updated_at: clientUpdatedAt,
       trainer_updated_at: trainerUpdatedAt,
       html_hash: systemTplHash ?? docxCacheHash,
-      custom_variables: payload.custom_variables ?? null,
+      custom_variables: assiduiteCacheMarker
+        ? { ...(payload.custom_variables ?? {}), ...assiduiteCacheMarker }
+        : (payload.custom_variables ?? null),
     });
 
     const cachedBuffer = await getCachedPdf(auth.supabase, auth.profile.entity_id, cacheKey);
@@ -700,6 +741,7 @@ export async function POST(request: NextRequest) {
           signedLearnerIds,
           signaturesById: signaturesById as ResolveContext["signaturesById"],
           signaturesBySlotPerson: signaturesBySlotPerson as ResolveContext["signaturesBySlotPerson"],
+          learnerAttendance,
           learnerCredentials: learnerCredentials ?? undefined,
           documentSignature,
           sessionAggregates,
@@ -753,7 +795,9 @@ export async function POST(request: NextRequest) {
             session_updated_at: sessionUpdatedAt,
             // Lot F + H : bump pour invalider les anciens PDFs en cache
             // (sans agrégats / sans QR code convocation, cf. audits BMAD).
-            custom_variables: { cache_version: "lot-h-bis-v1" },
+            // + marqueur assiduité (fix audit 24/07) : invalide les anciennes
+            // attestations « 100 % » et suit les nouveaux émargements.
+            custom_variables: { cache_version: "lot-h-bis-v1", ...(assiduiteCacheMarker ?? {}) },
           },
           options: {
             format: "A4",

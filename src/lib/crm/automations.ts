@@ -139,21 +139,22 @@ export async function relanceInactiveProspects(
     if (recentActions && recentActions.length > 0) continue;
 
     // Fix retour Loris : ne pas créer de relance si une action est DÉJÀ
-    // planifiée pour ce prospect — c.-à-d. une tâche/rappel ouvert dont
-    // l'échéance est aujourd'hui ou plus tard. Sinon le cron recréait un
-    // rappel « Relancer X » à chaque passage alors qu'un suivi futur existait
-    // déjà (ex. un rappel posé en novembre pour un plan 2027 sur une
-    // entreprise « full »). Ce test remplace l'ancien dédoublonnage par titre
-    // exact et le subsume : la relance créée (échéance J+3) est elle-même une
-    // tâche future, donc le passage suivant la détecte et ne duplique pas.
-    const todayStr = today.toISOString().split("T")[0];
+    // prévue pour ce prospect — c.-à-d. TOUTE tâche/rappel encore ouvert
+    // (pending/in_progress), quelle que soit son échéance. Couvre :
+    //  - un rappel planifié à une date future (le cas signalé : rappel posé
+    //    en novembre pour un plan 2027 sur une entreprise « full ») ;
+    //  - une relance encore ouverte mais EN RETARD (audit 24/07 : avec un
+    //    filtre due_date >= aujourd'hui, une relance non traitée sortait du
+    //    garde dès J+4 → le cron en recréait une tous les ~4 jours).
+    // Ce test remplace l'ancien dédoublonnage par titre exact et le subsume :
+    // la relance créée (pending) bloque les passages suivants tant qu'elle
+    // n'est pas traitée.
     const { data: plannedTask } = await supabase
       .from("crm_tasks")
       .select("id")
       .eq("entity_id", entityId)
       .eq("prospect_id", p.id)
       .in("status", ["pending", "in_progress"])
-      .gte("due_date", todayStr)
       .limit(1);
 
     if (plannedTask && plannedTask.length > 0) continue;

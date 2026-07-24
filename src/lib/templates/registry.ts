@@ -469,6 +469,10 @@ interface LegacyTemplateData {
   evaluationResults?: ResolveContext["evaluationResults"];
   // Lot H : QR code connexion pour convocation (pré-calculé async côté API).
   loginQrCodeDataUrl?: string;
+  // Fix audit 24/07 : assiduité par créneau pour {{ligne_assiduite}}
+  // (attestation d'assiduité — sans elle le repli « calcul non disponible »
+  // s'imprime même quand l'émargement par créneau existe).
+  learnerAttendance?: ResolveContext["learnerAttendance"];
 }
 
 export function renderSystemTemplate(
@@ -488,6 +492,7 @@ export function renderSystemTemplate(
     sessionAggregates: data.sessionAggregates,
     evaluationResults: data.evaluationResults,
     loginQrCodeDataUrl: data.loginQrCodeDataUrl,
+    learnerAttendance: data.learnerAttendance,
   };
 
   // Résout HTML + footer + concatène (le footer Puppeteer est géré séparément
