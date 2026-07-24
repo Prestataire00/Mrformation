@@ -21,6 +21,10 @@ import {
   DocumentGenerationService,
   createDefaultEngine,
 } from "@/lib/services/document-generation";
+import {
+  computeAttestationAttendance,
+  type SlotSignatureRow,
+} from "@/lib/services/learner-attendance";
 import type { Session, Learner } from "@/lib/types";
 
 interface BatchError {
@@ -61,9 +65,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Session introuvable" }, { status: 404 });
     }
 
-    const [{ data: enrollments, error: enrErr }, { data: signatureRows }] = await Promise.all([
+    const [{ data: enrollments, error: enrErr }, { data: signatureRows }, { data: slotRows }] = await Promise.all([
       supabase.from("enrollments").select("learner:learners(*)").eq("session_id", body.sessionId),
-      supabase.from("signatures").select("signer_id").eq("session_id", body.sessionId).eq("signer_type", "learner"),
+      supabase.from("signatures").select("signer_id, time_slot_id").eq("session_id", body.sessionId).eq("signer_type", "learner"),
+      supabase.from("formation_time_slots").select("id, start_time, end_time").eq("session_id", body.sessionId),
     ]);
     if (enrErr) {
       return NextResponse.json({ error: `Lecture enrollments : ${enrErr.message}` }, { status: 500 });
@@ -85,9 +90,16 @@ export async function POST(request: NextRequest) {
     const engine = createDefaultEngine();
     const service = new DocumentGenerationService({ engine, supabase });
 
+    // Audit 24/07 : assiduité par créneau (cf. route unitaire bilan-poe).
+    const slots = (slotRows ?? []) as { id: string; start_time: string; end_time: string }[];
+    const signatureRowsTyped = (signatureRows ?? []) as SlotSignatureRow[];
+
     const tasks = learners.map(async (learner) => {
+      const learnerAttendance =
+        computeAttestationAttendance(slots, signatureRowsTyped, learner.id) ?? undefined;
       const context: ResolveContext = {
         session: session as unknown as Session, learner, entity, signedLearnerIds,
+        learnerAttendance,
       };
       const resolvedHtml = resolveDocumentVariables(BILAN_POE_HTML, context);
       const resolvedFooter = resolveDocumentVariables(BILAN_POE_FOOTER_TEMPLATE, context);
@@ -103,6 +115,10 @@ export async function POST(request: NextRequest) {
           session_updated_at: (session as { updated_at?: string }).updated_at ?? null,
           custom_variables: {
             present: signedLearnerIds.has(learner.id) ? "1" : "0",
+            // Audit 24/07 : l'assiduité participe au cache.
+            assiduite: learnerAttendance
+              ? `${learnerAttendance.signedHours}/${learnerAttendance.totalHours}`
+              : "legacy",
           },
         },
         options: {

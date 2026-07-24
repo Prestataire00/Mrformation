@@ -21,6 +21,10 @@ import {
   DocumentGenerationService,
   createDefaultEngine,
 } from "@/lib/services/document-generation";
+import {
+  computeAttestationAttendance,
+  type SlotSignatureRow,
+} from "@/lib/services/learner-attendance";
 import type { Session, Learner } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
@@ -47,13 +51,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Session introuvable" }, { status: 404 });
     }
 
-    const [{ data: enrollment }, { data: signatureRows }] = await Promise.all([
+    const [{ data: enrollment }, { data: signatureRows }, { data: slotRows }] = await Promise.all([
       supabase
         .from("enrollments").select("id, learner:learners(*)")
         .eq("session_id", body.sessionId).eq("learner_id", body.learnerId).maybeSingle(),
       supabase
-        .from("signatures").select("signer_id")
+        .from("signatures").select("signer_id, time_slot_id")
         .eq("session_id", body.sessionId).eq("signer_type", "learner"),
+      supabase
+        .from("formation_time_slots").select("id, start_time, end_time")
+        .eq("session_id", body.sessionId),
     ]);
 
     if (!enrollment || !(enrollment as { learner?: unknown }).learner) {
@@ -69,9 +76,20 @@ export async function POST(request: NextRequest) {
 
     const entity = await loadEntitySettings(supabase, profile.entity_id);
 
+    // Audit 24/07 : assiduité par créneau — les variables heures/taux du bilan
+    // privilégient learnerAttendance quand il est calculable (sinon repli
+    // legacy présence intégrale, sémantique du document conservée).
+    const learnerAttendance =
+      computeAttestationAttendance(
+        (slotRows ?? []) as { id: string; start_time: string; end_time: string }[],
+        (signatureRows ?? []) as SlotSignatureRow[],
+        body.learnerId,
+      ) ?? undefined;
+
     const context: ResolveContext = {
       session: session as unknown as Session, learner, entity,
       signedLearnerIds,
+      learnerAttendance,
     };
     const resolvedHtml = resolveDocumentVariables(BILAN_POE_HTML, context);
     const resolvedFooter = resolveDocumentVariables(BILAN_POE_FOOTER_TEMPLATE, context);
@@ -90,6 +108,11 @@ export async function POST(request: NextRequest) {
         session_updated_at: (session as { updated_at?: string }).updated_at ?? null,
         custom_variables: {
           present: signedLearnerIds.has(body.learnerId) ? "1" : "0",
+          // Audit 24/07 : l'assiduité participe au cache (un nouvel émargement
+          // ne change pas session.updated_at).
+          assiduite: learnerAttendance
+            ? `${learnerAttendance.signedHours}/${learnerAttendance.totalHours}`
+            : "legacy",
         },
       },
       options: {

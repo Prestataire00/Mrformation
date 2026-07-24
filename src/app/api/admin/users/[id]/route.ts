@@ -66,6 +66,10 @@ export async function PATCH(
   const userId = params.id;
   const adminClient = createAdminClient();
   let authWarning: string | undefined;
+  // Audit 24/07 : trace l'entité de la cible (parité DELETE) — indispensable
+  // pour auditer une édition cross-entité faite par un super_admin (dont le
+  // entityId du log est NULL).
+  let targetEntityId: string | null = null;
 
   // Le filtre entity_id ne s'applique PAS au super_admin (dont la ligne
   // profiles a entity_id NULL → .eq("entity_id", NULL) matchait 0 row et
@@ -78,7 +82,7 @@ export async function PATCH(
       .update({ first_name, last_name, email, phone: phone || null, role })
       .eq("id", userId);
     if (!isSuperAdmin) profileUpdate = profileUpdate.eq("entity_id", callerProfile.entity_id);
-    const { data: updatedProfile, error: profileError } = await profileUpdate.select("id");
+    const { data: updatedProfile, error: profileError } = await profileUpdate.select("id, entity_id");
 
     if (profileError) {
       return NextResponse.json({ error: sanitizeDbError(profileError, "update user profile") }, { status: 500 });
@@ -89,6 +93,7 @@ export async function PATCH(
         { status: 404 }
       );
     }
+    targetEntityId = (updatedProfile[0] as { entity_id?: string | null }).entity_id ?? null;
 
     // Mise à jour de l'email de connexion (auth). En cas d'échec, l'ancien
     // comportement avalait l'erreur → l'email profile changeait mais pas
@@ -109,7 +114,7 @@ export async function PATCH(
       .update({ first_name, last_name, email, phone: phone || null })
       .eq("id", userId);
     if (!isSuperAdmin) learnerUpdate = learnerUpdate.eq("entity_id", callerProfile.entity_id);
-    const { data: updatedLearner, error } = await learnerUpdate.select("id");
+    const { data: updatedLearner, error } = await learnerUpdate.select("id, entity_id");
 
     if (error) {
       return NextResponse.json({ error: sanitizeDbError(error, "update learner") }, { status: 500 });
@@ -120,13 +125,14 @@ export async function PATCH(
         { status: 404 }
       );
     }
+    targetEntityId = (updatedLearner[0] as { entity_id?: string | null }).entity_id ?? null;
   } else if (source === "trainer") {
     let trainerUpdate = adminClient
       .from("trainers")
       .update({ first_name, last_name, email, phone: phone || null })
       .eq("id", userId);
     if (!isSuperAdmin) trainerUpdate = trainerUpdate.eq("entity_id", callerProfile.entity_id);
-    const { data: updatedTrainer, error } = await trainerUpdate.select("id");
+    const { data: updatedTrainer, error } = await trainerUpdate.select("id, entity_id");
 
     if (error) {
       return NextResponse.json({ error: sanitizeDbError(error, "update trainer user") }, { status: 500 });
@@ -137,6 +143,7 @@ export async function PATCH(
         { status: 404 }
       );
     }
+    targetEntityId = (updatedTrainer[0] as { entity_id?: string | null }).entity_id ?? null;
   } else {
     return NextResponse.json({ error: "Source inconnue" }, { status: 400 });
   }
@@ -148,7 +155,13 @@ export async function PATCH(
     action: "update",
     resourceType: source === "profile" ? "profiles" : source === "learner" ? "learners" : "trainers",
     resourceId: userId,
-    details: { email, role, source },
+    details: {
+      email,
+      role,
+      source,
+      target_entity_id: targetEntityId,
+      was_super_admin_action: isSuperAdmin,
+    },
   });
 
   return NextResponse.json({ success: true, warning: authWarning });
